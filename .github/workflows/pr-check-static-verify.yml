@@ -1,0 +1,81 @@
+name: pr-check-static-verify
+
+on:
+  workflow_call:
+    inputs:
+      node-version:
+        description: Node.js version
+        required: false
+        type: string
+        default: "22"
+      python-version:
+        description: Python version
+        required: false
+        type: string
+        default: "3.x"
+      build-command:
+        description: Optional build command before verify
+        required: false
+        type: string
+        default: ""
+      python-verify-command:
+        description: Python verification command
+        required: false
+        type: string
+        default: ""
+      node-verify-command:
+        description: Node verification command
+        required: false
+        type: string
+        default: ""
+      make-test-command:
+        description: Optional make test or similar
+        required: false
+        type: string
+        default: ""
+      run-audit-gate:
+        description: Run npm audit gate when package-lock.json exists
+        required: false
+        type: boolean
+        default: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-python@a26af69be951a213d495a4c2d2b7ddf7627adc8 # v5
+        if: inputs.python-verify-command != '' || inputs.make-test-command != ''
+        with:
+          python-version: ${{ inputs.python-version }}
+      - name: Setup Node
+        if: inputs.node-verify-command != '' || inputs.build-command != ''
+        uses: gorfednet/.github/.github/actions/setup-node@main
+        with:
+          node-version: ${{ inputs.node-version }}
+      - name: Install Node (audit only)
+        if: inputs.run-audit-gate && inputs.node-verify-command == '' && inputs.build-command == ''
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - name: npm ci (audit only)
+        if: inputs.run-audit-gate && inputs.node-verify-command == '' && inputs.build-command == ''
+        run: npm ci
+      - name: Build
+        if: inputs.build-command != ''
+        run: ${{ inputs.build-command }}
+      - name: Python verify
+        if: inputs.python-verify-command != ''
+        run: ${{ inputs.python-verify-command }}
+      - name: Node verify
+        if: inputs.node-verify-command != ''
+        run: ${{ inputs.node-verify-command }}
+      - name: Make test
+        if: inputs.make-test-command != ''
+        run: ${{ inputs.make-test-command }}
+      - name: npm audit gate
+        if: inputs.run-audit-gate
+        uses: gorfednet/.github/.github/actions/npm-audit-gate@main

@@ -1,0 +1,42 @@
+name: pr-check-static
+
+on:
+  workflow_call:
+    inputs:
+      build-command:
+        description: Optional build command (e.g. make build)
+        required: false
+        type: string
+        default: ""
+      verify-command:
+        description: Optional verification shell command
+        required: false
+        type: string
+        default: ""
+      health-paths:
+        description: Comma-separated paths to curl after build
+        required: false
+        type: string
+        default: "index.html"
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Build
+        if: inputs.build-command != ''
+        run: ${{ inputs.build-command }}
+      - name: Verify
+        if: inputs.verify-command != ''
+        run: ${{ inputs.verify-command }}
+      - name: Check required files exist
+        run: |
+          set -euo pipefail
+          IFS=',' read -ra paths <<< "${{ inputs.health-paths }}"
+          for rel in "${paths[@]}"; do
+            rel="$(echo "$rel" | xargs)"
+            test -f "$rel" || { echo "Missing file: $rel"; exit 1; }
+            echo "OK: $rel"
+          done

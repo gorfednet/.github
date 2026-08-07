@@ -1,0 +1,64 @@
+name: production-healthcheck
+
+on:
+  workflow_call:
+    inputs:
+      site-url:
+        description: Production site base URL (no trailing slash)
+        required: true
+        type: string
+      health-paths:
+        description: Comma-separated paths to check
+        required: false
+        type: string
+        default: "/"
+      node-version:
+        description: Node.js version for Playwright live smoke
+        required: false
+        type: string
+        default: "22"
+      run-playwright:
+        description: Run Playwright smoke against live URL
+        required: false
+        type: boolean
+        default: true
+
+jobs:
+  health:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: HTTP health checks
+        run: |
+          set -euo pipefail
+          base="${{ inputs.site-url }}"
+          IFS=',' read -ra paths <<< "${{ inputs.health-paths }}"
+          for path in "${paths[@]}"; do
+            path="$(echo "$path" | xargs)"
+            url="${base}${path}"
+            code="$(curl -sS -o /dev/null -w '%{http_code}' -L --max-time 30 "$url")"
+            echo "$url → HTTP $code"
+            if [[ "$code" -lt 200 || "$code" -ge 400 ]]; then
+              echo "::error::Health check failed for $url (HTTP $code)"
+              exit 1
+            fi
+          done
+      - name: Setup Node for Playwright
+        if: inputs.run-playwright
+        uses: gorfednet/.github/.github/actions/setup-node@main
+        with:
+          node-version: ${{ inputs.node-version }}
+      - uses: gorfednet/.github/.github/actions/setup-playwright@main
+        if: inputs.run-playwright
+      - name: Playwright live smoke
+        if: inputs.run-playwright
+        run: |
+          if [[ ! -f e2e/smoke.spec.ts ]]; then
+            echo "No e2e/smoke.spec.ts; skipping Playwright live smoke"
+            exit 0
+          fi
+          npx playwright test e2e/smoke.spec.ts --project=chromium
+        env:
+          CI: true
+          PLAYWRIGHT_BASE_URL: ${{ inputs.site-url }}

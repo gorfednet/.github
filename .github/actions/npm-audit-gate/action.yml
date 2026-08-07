@@ -1,0 +1,40 @@
+name: npm audit gate
+description: Fail on unallowlisted high/critical production npm audit findings
+inputs:
+  extra-workspaces:
+    description: Comma-separated workspace:dir pairs (e.g. server:server)
+    required: false
+    default: ""
+runs:
+  using: composite
+  steps:
+    - name: Checkout gorfednet/.github scripts
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      with:
+        repository: gorfednet/.github
+        path: .gorfednet-github
+        sparse-checkout: |
+          scripts
+        sparse-checkout-cone-mode: false
+    - name: Run npm audit gate
+      shell: bash
+      env:
+        NPM_AUDIT_GATE_ROOT: ${{ github.workspace }}
+      run: |
+        set -euo pipefail
+        if [[ ! -f package-lock.json ]]; then
+          echo "No package-lock.json in workspace root; skipping audit gate"
+          exit 0
+        fi
+        args=()
+        if [[ -n "${{ inputs.extra-workspaces }}" ]]; then
+          IFS=',' read -ra pairs <<< "${{ inputs.extra-workspaces }}"
+          for pair in "${pairs[@]}"; do
+            id="${pair%%:*}"
+            dir="${pair#*:}"
+            if [[ -f "${dir}/package-lock.json" ]]; then
+              args+=(--workspace="${id}:${dir}")
+            fi
+          done
+        fi
+        node .gorfednet-github/scripts/npm-audit-gate.mjs "${args[@]}"

@@ -1,0 +1,24 @@
+name: Setup Node
+description: Node.js with npm cache for a single-package repo
+inputs:
+  node-version:
+    description: Node.js version
+    required: false
+    default: "22"
+  working-directory:
+    description: Directory containing package-lock.json
+    required: false
+    default: "."
+runs:
+  using: composite
+  steps:
+    - name: Setup Node.js
+      uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+      with:
+        node-version: ${{ inputs.node-version }}
+        cache: npm
+        cache-dependency-path: ${{ inputs.working-directory }}/package-lock.json
+    - name: Install dependencies
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: npm ci

@@ -1,0 +1,58 @@
+name: pr-check-fullstack
+
+on:
+  workflow_call:
+    inputs:
+      node-version:
+        description: Node.js version
+        required: false
+        type: string
+        default: "22"
+      frontend-build-command:
+        description: Frontend build command
+        required: false
+        type: string
+        default: npm run build
+      frontend-test-command:
+        description: Frontend test command
+        required: false
+        type: string
+        default: npm test -- --run
+      server-directory:
+        description: Server package directory
+        required: false
+        type: string
+        default: server
+      server-test-command:
+        description: Server test command
+        required: false
+        type: string
+        default: npm test -- --run
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: gorfednet/.github/.github/actions/setup-node@main
+        with:
+          node-version: ${{ inputs.node-version }}
+      - name: Frontend tests
+        if: inputs.frontend-test-command != ''
+        run: ${{ inputs.frontend-test-command }}
+      - name: Frontend build
+        run: ${{ inputs.frontend-build-command }}
+      - name: Install server dependencies
+        working-directory: ${{ inputs.server-directory }}
+        run: npm ci
+      - name: Server tests
+        if: inputs.server-test-command != ''
+        working-directory: ${{ inputs.server-directory }}
+        run: ${{ inputs.server-test-command }}
+      - name: npm audit gate (root)
+        uses: gorfednet/.github/.github/actions/npm-audit-gate@main
+      - name: npm audit gate (server)
+        uses: gorfednet/.github/.github/actions/npm-audit-gate@main
+        with:
+          extra-workspaces: server:${{ inputs.server-directory }}

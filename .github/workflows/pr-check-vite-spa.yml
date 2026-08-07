@@ -1,0 +1,51 @@
+name: pr-check-vite-spa
+
+on:
+  workflow_call:
+    inputs:
+      node-version:
+        description: Node.js version
+        required: false
+        type: string
+        default: "22"
+      build-command:
+        description: Build command
+        required: false
+        type: string
+        default: npm run build
+      lint-command:
+        description: Optional lint/typecheck command
+        required: false
+        type: string
+        default: ""
+      extra-verify-command:
+        description: Optional post-build verification command
+        required: false
+        type: string
+        default: ""
+      run-audit-gate:
+        description: Run npm audit gate
+        required: false
+        type: boolean
+        default: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: gorfednet/.github/.github/actions/setup-node@main
+        with:
+          node-version: ${{ inputs.node-version }}
+      - name: Lint
+        if: inputs.lint-command != ''
+        run: ${{ inputs.lint-command }}
+      - name: Build
+        run: ${{ inputs.build-command }}
+      - name: Extra verify
+        if: inputs.extra-verify-command != ''
+        run: ${{ inputs.extra-verify-command }}
+      - name: npm audit gate
+        if: inputs.run-audit-gate
+        uses: gorfednet/.github/.github/actions/npm-audit-gate@main
