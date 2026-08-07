@@ -21,26 +21,26 @@ apply() {
 }
 
 # Vite SPAs and fullstack
-apply gorfednet/denseware.com "CI / check" "browser-compat / compat-success"
-apply gorfednet/gorfmusic.com "CI / check" "browser-compat / compat-success"
-apply gorfednet/ssatcy.com "CI / check" "browser-compat / compat-success"
-apply gorfednet/promptboi.com "CI / check" "browser-compat / compat-success"
+apply gorfednet/denseware.com "check / check" "browser-compat / compat-success"
+apply gorfednet/gorfmusic.com "check / check" "browser-compat / compat-success"
+apply gorfednet/ssatcy.com "check / check" "browser-compat / compat-success"
+apply gorfednet/promptboi.com "check / check" "browser-compat / compat-success"
 
 # Static + build
-apply gorfednet/gorfed.net "CI / check" "browser-compat / compat-success"
+apply gorfednet/gorfed.net "check / check" "browser-compat / compat-success"
 
 # Python
-apply gorfednet/TowIt "CI / test"
+apply gorfednet/TowIt "test / test"
 
 # Static verify
-apply gorfednet/anal0g.org "CI / check"
+apply gorfednet/anal0g.org "check / check"
 
 # Static HTML
-apply gorfednet/blackpixelrecords.com "CI / check"
-apply gorfednet/subrythm.com "CI / check"
-apply gorfednet/rowanmcarthur.com "CI / check"
+apply gorfednet/blackpixelrecords.com "check / check"
+apply gorfednet/subrythm.com "check / check"
+apply gorfednet/rowanmcarthur.com "check / check"
 
 # Uncomment after 4thcltr.com is pushed to GitHub:
-# apply gorfednet/4thcltr.com "CI / check" "browser-compat / compat-success"
+# apply gorfednet/4thcltr.com "check / check" "browser-compat / compat-success"
 
 echo "Done."

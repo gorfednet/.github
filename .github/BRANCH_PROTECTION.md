@@ -11,18 +11,18 @@ chmod +x scripts/setup-branch-protection.sh
 
 # Vite SPA (CI + browser compat)
 ./scripts/setup-branch-protection.sh gorfednet/denseware.com \
-  "CI / check" "browser-compat / compat-success"
+  "check / check" "browser-compat / compat-success"
 
 # Static verify (gorfed.net)
 ./scripts/setup-branch-protection.sh gorfednet/gorfed.net \
-  "CI / check" "browser-compat / compat-success"
+  "check / check" "browser-compat / compat-success"
 
 # Python Flask (towit.io)
-./scripts/setup-branch-protection.sh gorfednet/TowIt "CI / test"
+./scripts/setup-branch-protection.sh gorfednet/TowIt "test / test"
 
 # Static only
 ./scripts/setup-branch-protection.sh gorfednet/blackpixelrecords.com \
-  "CI / check"
+  "check / check"
 ```
 
 Requires [GitHub CLI](https://cli.github.com/) with **admin** on the target repo.
@@ -31,11 +31,11 @@ Requires [GitHub CLI](https://cli.github.com/) with **admin** on the target repo
 
 | Tier | Required checks |
 |------|-----------------|
-| Vite SPA | `CI / check`, `browser-compat / compat-success` |
-| Static + build | `CI / check`, `browser-compat / compat-success` |
-| Fullstack | `CI / check`, `browser-compat / compat-success` |
-| Python Flask | `CI / test` |
-| Static HTML | `CI / check` |
+| Vite SPA | `check / check`, `browser-compat / compat-success` |
+| Static + build | `check / check`, `browser-compat / compat-success` |
+| Fullstack | `check / check`, `browser-compat / compat-success` |
+| Python Flask | `test / test` |
+| Static HTML | `check / check` |
 
 `browser-compat / compat-success` is the aggregator job — do not require individual matrix cells.
 

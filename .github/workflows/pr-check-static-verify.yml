@@ -49,9 +49,13 @@ jobs:
         if: inputs.python-verify-command != '' || inputs.make-test-command != ''
         with:
           python-version: ${{ inputs.python-version }}
-      - name: Setup Node
-        if: inputs.node-verify-command != '' || inputs.build-command != ''
-        uses: gorfednet/.github/.github/actions/setup-node@main
+      - uses: gorfednet/.github/.github/actions/setup-node@main
+        if: inputs.build-command != ''
+        with:
+          node-version: ${{ inputs.node-version }}
+      - name: Setup Node (verify only)
+        if: inputs.node-verify-command != '' && inputs.build-command == ''
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: ${{ inputs.node-version }}
       - name: Install Node (audit only)
