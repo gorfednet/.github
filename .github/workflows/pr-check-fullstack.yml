@@ -45,14 +45,17 @@ jobs:
         run: ${{ inputs.frontend-build-command }}
       - name: Install server dependencies
         working-directory: ${{ inputs.server-directory }}
-        run: npm ci
+        run: |
+          if [[ -f package-lock.json ]]; then
+            npm ci
+          else
+            npm install
+          fi
       - name: Server tests
         if: inputs.server-test-command != ''
         working-directory: ${{ inputs.server-directory }}
         run: ${{ inputs.server-test-command }}
-      - name: npm audit gate (root)
-        uses: gorfednet/.github/.github/actions/npm-audit-gate@main
-      - name: npm audit gate (server)
+      - name: npm audit gate
         uses: gorfednet/.github/.github/actions/npm-audit-gate@main
         with:
           extra-workspaces: server:${{ inputs.server-directory }}
