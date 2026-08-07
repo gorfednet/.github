@@ -30,7 +30,8 @@ apply gorfednet/promptboi.com "check / check" "browser-compat / compat-success"
 apply gorfednet/gorfed.net "check / check" "browser-compat / compat-success"
 
 # Python
-apply gorfednet/TowIt "test / test"
+PROTECTED_BRANCH=master apply gorfednet/TowIt "test / test"
+PROTECTED_BRANCH=main
 
 # Static verify
 apply gorfednet/anal0g.org "check / check"
