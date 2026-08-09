@@ -69,11 +69,49 @@ nas_ssh_preflight() {
   echo "NAS SSH preflight ok."
 }
 
+nas_ssh_rsync_transfer_options() {
+  printf '%s\n' \
+    -rltvz \
+    --delete \
+    --no-perms \
+    --no-owner \
+    --no-group
+}
+
+nas_ssh_rsync_remote_options() {
+  # macOS openrsync rejects --chmod locally. Apply file-only normalization on
+  # Synology's receiver so restrictive source files become web-readable while
+  # existing shared-directory ownership and modes remain untouched.
+  printf '%s\n' "--rsync-path=umask 022 && rsync --chmod=F644"
+}
+
+nas_ssh_rsync_to() {
+  local remote_target="${1:?remote target required}"
+  shift
+  [[ "$#" -ge 1 ]] || {
+    echo "nas_ssh_rsync_to requires rsync options followed by one source path" >&2
+    return 2
+  }
+  local source_path="${!#}"
+  local caller_args=("${@:1:$#-1}")
+  local rsync_shell
+  rsync_shell="$(nas_ssh_rsync_shell)"
+  local rsync_options=()
+  local option
+  while IFS= read -r option; do
+    rsync_options+=("${option}")
+  done < <(nas_ssh_rsync_transfer_options)
+  while IFS= read -r option; do
+    rsync_options+=("${option}")
+  done < <(nas_ssh_rsync_remote_options)
+  # Apply the safety options after caller flags so a legacy -a cannot
+  # re-enable permission, owner, or group preservation.
+  rsync "${caller_args[@]}" "${rsync_options[@]}" -e "${rsync_shell}" \
+    "${source_path}" "${remote_target}"
+}
+
 nas_ssh_rsync() {
   local site_dir="${1:?site dir required}"
   shift
-  local rsync_shell
-  rsync_shell="$(nas_ssh_rsync_shell)"
-  # shellcheck disable=SC2086
-  rsync -avz --delete -e "${rsync_shell}" "$@" "$(nas_ssh_target "${site_dir}")"
+  nas_ssh_rsync_to "$(nas_ssh_target "${site_dir}")" "$@"
 }
