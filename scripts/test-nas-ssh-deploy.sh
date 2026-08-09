@@ -92,8 +92,12 @@ assert_mode 0755 "${destination_root}/private"
 assert_mode 0644 "${destination_root}/private/content.txt"
 
 captured_arguments=()
+captured_ssh_arguments=()
 rsync() {
   captured_arguments=("$@")
+}
+ssh() {
+  captured_ssh_arguments=("$@")
 }
 
 NAS_SSH_USER=test-user
@@ -110,10 +114,14 @@ nas_ssh_rsync example.test --exclude=keep-me "${source_dir}/"
 assert_argument --no-perms "${captured_arguments[@]}"
 assert_argument --no-owner "${captured_arguments[@]}"
 assert_argument --no-group "${captured_arguments[@]}"
-assert_argument "--rsync-path=umask 022 && rsync --chmod=F644" "${captured_arguments[@]}"
+assert_argument "--rsync-path=umask 022 && rsync" "${captured_arguments[@]}"
 assert_argument --delete "${captured_arguments[@]}"
 assert_argument --exclude=keep-me "${captured_arguments[@]}"
 assert_argument "test-user@test-host:/shared/websites/example.test/" "${captured_arguments[@]}"
+[[ "${captured_ssh_arguments[*]}" == *"find '/shared/websites/example.test' -type f"* ]] ||
+  fail "missing deploy-owned file readability repair"
+[[ "${captured_ssh_arguments[*]}" == *"-exec chmod a+r {} +"* ]] ||
+  fail "readability repair must add file read bits"
 for argument in "${captured_arguments[@]}"; do
   if [[ "${argument}" == -* && "${argument}" != --* && "${argument}" == *a* ]]; then
     fail "archive shorthand must not enable permission preservation: ${argument}"

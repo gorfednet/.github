@@ -80,10 +80,20 @@ nas_ssh_rsync_transfer_options() {
 }
 
 nas_ssh_rsync_remote_options() {
-  # macOS openrsync rejects --chmod locally. Apply file-only normalization on
-  # Synology's receiver so restrictive source files become web-readable while
-  # existing shared-directory ownership and modes remain untouched.
-  printf '%s\n' "--rsync-path=umask 022 && rsync --chmod=F644"
+  printf '%s\n' "--rsync-path=umask 022 && rsync"
+}
+
+nas_ssh_ensure_readable_files() {
+  local remote_target="${1:?remote target required}"
+  local remote_path="${remote_target#*:}"
+  remote_path="${remote_path%/}"
+  # Synology creates rsync files as 0600 even with --no-perms and umask 022.
+  # Add only the missing read bit on files owned by the deploy account. Never
+  # chmod directories or content owned by another service account.
+  # shellcheck disable=SC2207
+  local ssh_cmd=(ssh $(nas_ssh_options) "${NAS_SSH_USER}@${NAS_SSH_HOST}")
+  "${ssh_cmd[@]}" \
+    "find '${remote_path}' -type f -user '${NAS_SSH_USER}' ! -perm -004 -exec chmod a+r {} +"
 }
 
 nas_ssh_rsync_to() {
@@ -117,6 +127,7 @@ nas_ssh_rsync_to() {
     rsync "${rsync_options[@]}" -e "${rsync_shell}" \
       "${source_path}" "${remote_target}"
   fi
+  nas_ssh_ensure_readable_files "${remote_target}"
 }
 
 nas_ssh_rsync() {
