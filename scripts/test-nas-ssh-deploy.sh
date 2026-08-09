@@ -101,6 +101,10 @@ NAS_SSH_HOST=test-host
 NAS_SSH_PORT=22
 NAS_REMOTE_BASE=/shared/websites
 NAS_SSH_IDENTITY_FILE=
+nas_ssh_rsync example.test "${source_dir}/"
+assert_argument "test-user@test-host:/shared/websites/example.test/" "${captured_arguments[@]}"
+
+captured_arguments=()
 nas_ssh_rsync example.test --exclude=keep-me "${source_dir}/"
 
 assert_argument --no-perms "${captured_arguments[@]}"

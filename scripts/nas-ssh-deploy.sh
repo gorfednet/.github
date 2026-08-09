@@ -94,7 +94,10 @@ nas_ssh_rsync_to() {
     return 2
   }
   local source_path="${!#}"
-  local caller_args=("${@:1:$#-1}")
+  local caller_args=()
+  if [[ "$#" -gt 1 ]]; then
+    caller_args=("${@:1:$#-1}")
+  fi
   local rsync_shell
   rsync_shell="$(nas_ssh_rsync_shell)"
   local rsync_options=()
@@ -107,8 +110,13 @@ nas_ssh_rsync_to() {
   done < <(nas_ssh_rsync_remote_options)
   # Apply the safety options after caller flags so a legacy -a cannot
   # re-enable permission, owner, or group preservation.
-  rsync "${caller_args[@]}" "${rsync_options[@]}" -e "${rsync_shell}" \
-    "${source_path}" "${remote_target}"
+  if [[ "${#caller_args[@]}" -gt 0 ]]; then
+    rsync "${caller_args[@]}" "${rsync_options[@]}" -e "${rsync_shell}" \
+      "${source_path}" "${remote_target}"
+  else
+    rsync "${rsync_options[@]}" -e "${rsync_shell}" \
+      "${source_path}" "${remote_target}"
+  fi
 }
 
 nas_ssh_rsync() {
