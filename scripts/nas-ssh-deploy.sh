@@ -88,12 +88,12 @@ nas_ssh_ensure_readable_files() {
   local remote_path="${remote_target#*:}"
   remote_path="${remote_path%/}"
   # Synology creates rsync files as 0600 even with --no-perms and umask 022.
-  # Add only the missing read bit on files owned by the deploy account. Never
-  # chmod directories or content owned by another service account.
+  # Add only missing read/traverse bits on entries owned by the deploy account.
+  # Content owned by Plex or another service account is never changed.
   # shellcheck disable=SC2207
   local ssh_cmd=(ssh $(nas_ssh_options) "${NAS_SSH_USER}@${NAS_SSH_HOST}")
   "${ssh_cmd[@]}" \
-    "find '${remote_path}' -type f -user '${NAS_SSH_USER}' ! -perm -004 -exec chmod a+r {} +"
+    "find '${remote_path}' -type d -user '${NAS_SSH_USER}' ! -perm -005 -exec chmod a+rx {} +; find '${remote_path}' -type f -user '${NAS_SSH_USER}' ! -perm -004 -exec chmod a+r {} +"
 }
 
 nas_ssh_rsync_to() {

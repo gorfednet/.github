@@ -122,6 +122,10 @@ assert_argument "test-user@test-host:/shared/websites/example.test/" "${captured
   fail "missing deploy-owned file readability repair"
 [[ "${captured_ssh_arguments[*]}" == *"-exec chmod a+r {} +"* ]] ||
   fail "readability repair must add file read bits"
+[[ "${captured_ssh_arguments[*]}" == *"find '/shared/websites/example.test' -type d"* ]] ||
+  fail "missing deploy-owned directory traversal repair"
+[[ "${captured_ssh_arguments[*]}" == *"-exec chmod a+rx {} +"* ]] ||
+  fail "traversal repair must add directory read/execute bits"
 for argument in "${captured_arguments[@]}"; do
   if [[ "${argument}" == -* && "${argument}" != --* && "${argument}" == *a* ]]; then
     fail "archive shorthand must not enable permission preservation: ${argument}"
