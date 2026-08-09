@@ -75,7 +75,8 @@ nas_ssh_rsync_transfer_options() {
     --delete \
     --no-perms \
     --no-owner \
-    --no-group
+    --no-group \
+    --exclude=.deploy-env
 }
 
 nas_ssh_rsync_remote_options() {

@@ -75,6 +75,7 @@ done < <(nas_ssh_rsync_transfer_options)
 assert_argument --no-perms "${transfer_options[@]}"
 assert_argument --no-owner "${transfer_options[@]}"
 assert_argument --no-group "${transfer_options[@]}"
+assert_argument --exclude=.deploy-env "${transfer_options[@]}"
 
 local_transfer_options=()
 for option in "${transfer_options[@]}"; do
