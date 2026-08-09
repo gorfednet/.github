@@ -1,0 +1,7 @@
+# Copy to each project's .deploy-env (gitignored). Never commit secrets.
+NAS_SSH_USER=dev
+NAS_SSH_HOST=gorfednas
+NAS_SSH_PORT=22
+NAS_REMOTE_BASE=/volume1/data/websites
+NAS_SITE_DIR=example.com
+# NAS_SSH_IDENTITY_FILE=~/.ssh/id_ed25519

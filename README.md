@@ -1,37 +1,22 @@
-# gorfednet/.github
+# gorfednet.github
 
-Central GitHub Actions workflows, composite actions, and CI templates for [gorfednet](https://github.com/gorfednet) portfolio sites.
+Shared GitHub Actions workflows and NAS deploy helpers for portfolio sites.
 
-## Consumer setup
+## NAS SSH deploy (replaces SMB mounts)
 
-Each site repo adds thin caller workflows:
+1. Run Phase 0 setup once (installs your Mac SSH key on `dev@gorfednas`):
 
-```yaml
-# .github/workflows/ci.yml
-name: CI
-on:
-  pull_request:
-  push:
-    branches: [main]
-jobs:
-  check:
-    uses: gorfednet/.github/.github/workflows/pr-check-vite-spa.yml@main
-```
+   ```bash
+   NAS_DEV_PASSWORD='your-dev-password' ./scripts/setup-nas-ssh.sh
+   ```
 
-See [templates/](templates/) for Playwright smoke tests and Dependabot config.
+2. Each site uses a gitignored `.deploy-env` (see `.deploy-env.example`).
 
-## Reusable workflows
+3. Deploy from any site repo:
 
-| Workflow | Purpose |
-|----------|---------|
-| `pr-check-vite-spa.yml` | React/Vite SPAs — build, lint, audit gate |
-| `pr-check-static.yml` | Static HTML sites |
-| `pr-check-static-verify.yml` | Static + Python/Node verify (anal0g, gorfed) |
-| `pr-check-python-flask.yml` | Flask + Mongo + Redis (towit.io) |
-| `pr-check-fullstack.yml` | Frontend + server (promptboi.com) |
-| `browser-compat.yml` | Playwright Chromium/Firefox/WebKit matrix |
-| `production-healthcheck.yml` | Weekly live URL HTTP + Playwright smoke |
+   ```bash
+   make deploy          # static sites
+   make deploy-nas-dev  # bindercurve.com dev SPA
+   ```
 
-## Branch protection
-
-See [.github/BRANCH_PROTECTION.md](.github/BRANCH_PROTECTION.md).
+Shared shell helpers live in [`scripts/nas-ssh-deploy.sh`](scripts/nas-ssh-deploy.sh).
