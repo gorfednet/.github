@@ -26,21 +26,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: No legacy share-mount deploy paths
-        run: |
-          set -euo pipefail
-          if ! command -v rg >/dev/null 2>&1; then
-            sudo apt-get update -qq && sudo apt-get install -y -qq ripgrep
-          fi
-          matches="$(rg -n -i -e 'smb://|mount_smbfs|\bcifs\b|/Volumes/' \
-            --glob '!node_modules/**' --glob '!dist/**' --glob '!**/assets/**' \
-            --glob '!**/*.min.js' --glob '!package-lock.json' \
-            . 2>/dev/null || true)"
-          if [[ -n "$matches" ]]; then
-            echo "::error::Legacy share-mount deploy references found — deploy must be SSH-only"
-            echo "$matches"
-            exit 1
-          fi
-          echo "OK: SSH-only deploy paths"
+        uses: gorfednet/.github/.github/actions/no-smb-guard@main
       - name: Build
         if: inputs.build-command != ''
         run: ${{ inputs.build-command }}

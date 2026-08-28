@@ -18,6 +18,11 @@ on:
         required: false
         type: string
         default: npm test -- --run
+      lint-command:
+        description: Frontend lint command (skipped when empty)
+        required: false
+        type: string
+        default: ""
       server-directory:
         description: Server package directory
         required: false
@@ -38,6 +43,9 @@ jobs:
       - uses: gorfednet/.github/.github/actions/setup-node@main
         with:
           node-version: ${{ inputs.node-version }}
+      - name: Frontend lint
+        if: inputs.lint-command != ''
+        run: ${{ inputs.lint-command }}
       - name: Frontend tests
         if: inputs.frontend-test-command != ''
         run: ${{ inputs.frontend-test-command }}

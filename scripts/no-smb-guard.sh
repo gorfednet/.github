@@ -22,6 +22,8 @@ EXCLUDE_DIRS=(
   --glob '!package-lock.json'
   --glob '!**/package-lock.json'
   --glob '!**/no-smb-guard.sh'
+  # CI sparse-checks this repo into the caller workspace to run this script.
+  --glob '!.gorfednet-github/**'
 )
 
 if ! command -v rg >/dev/null 2>&1; then
