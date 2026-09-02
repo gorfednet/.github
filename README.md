@@ -49,3 +49,10 @@ Run the same guard locally (requires `rg`):
 ```bash
 bash scripts/no-smb-guard.sh <path>
 ```
+
+## Pull requests and Cursor Bugbot
+
+Feature work on portfolio sites is a **branch + GitHub PR** so Cursor Bugbot and the reusable `pr-check-*` workflows run. Do not push feature commits straight to `main`.
+
+Repo review notes: [`.cursor/BUGBOT.md`](.cursor/BUGBOT.md). Operator checklist (effort Low, Autofix off, incremental on): BinderCurve [`docs/CURSOR_BUGBOT.md`](https://github.com/gorfednet/bindercurve.com/blob/main/docs/CURSOR_BUGBOT.md). Do not add a Cloud Agent automation that comments on every PR.
+
