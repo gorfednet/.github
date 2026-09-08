@@ -37,6 +37,20 @@ jobs:
         if: ${{ !cancelled() }}
         run: node --test --test-reporter=spec 'test/*.test.mjs'
 
+      # The fleet registry, asked of the repositories rather than taken at its
+      # word. Needs a token, so it degrades to the schema-and-dates half on a
+      # fork PR — loudly, via the flag's own output.
+      - name: Fleet registry describes reality
+        if: ${{ !cancelled() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "${{ github.event.pull_request.head.repo.fork }}" = "true" ]; then
+            node scripts/check-fleet.mjs --offline
+          else
+            node scripts/check-fleet.mjs
+          fi
+
       # Both suites parse YAML by regex, which is fine for asserting a step
       # carries an `if:` and useless for noticing the file stopped being valid
       # YAML. A workflow GitHub cannot parse does not fail — it does not run.
