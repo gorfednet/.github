@@ -73,6 +73,23 @@ describe('check-rule-citations', () => {
     assert.match(result.stderr, /cites rule V9, but .* ends at V3/)
   })
 
+  // Found by running the checker against bindercurve.com, where a backlog
+  // entry describing Star Wars' "Comprehensive Rules v1.1" was read as citing
+  // rule V1. A version number in prose is not a citation.
+  it('does not read a lowercase version number as a citation', () => {
+    const dir = project({ source: '// Comprehensive Rules v1.1 require one base\n' })
+    assert.equal(run(dir).status, 0, run(dir).stderr)
+
+    // And the same shape past the end of the sequence still must not fire.
+    const far = project({ source: '// conforms to Rules v9.2 of the format\n' })
+    assert.equal(run(far).status, 0, far.stderr)
+  })
+
+  it('still catches an uppercase citation that looks like a version', () => {
+    const dir = project({ source: '// see rule V9 for the reasoning\n' })
+    assert.equal(run(dir).status, 1)
+  })
+
   it('accepts the citation forms that appear in real comments', () => {
     const dir = project({
       source: 'a // teardown rule V1\nb // class rule V2\nc // rules V3 and V1\n',

@@ -40,8 +40,8 @@ jobs:
             'templates/verification-kit/test/*.test.mjs' \
             | grep -c '^ *ok ' || true)
           echo "executed $count assertions"
-          if [ "$count" -lt 40 ]; then
-            echo "::error::The kit's own suite executed $count tests, expected at least 40." \
+          if [ "$count" -lt 50 ]; then
+            echo "::error::The kit's own suite executed $count tests, expected at least 50." \
                  "A glob that matches nothing exits 0 having proven nothing."
             exit 1
           fi
@@ -62,3 +62,11 @@ jobs:
       - name: No generated files tracked in this repo either
         if: ${{ !cancelled() }}
         run: node templates/verification-kit/bin/check-tracked-artifacts.mjs
+
+      # The shared rules are cited from fifteen repositories, so a gap or a
+      # duplicate here dangles someone else's code comment.
+      - name: Shared rule sequence is gapless and every citation resolves
+        if: ${{ !cancelled() }}
+        run: |
+          node templates/verification-kit/bin/check-rule-citations.mjs \
+            --source templates --source scripts

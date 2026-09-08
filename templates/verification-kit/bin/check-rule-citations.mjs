@@ -140,7 +140,12 @@ if (sources.length === 0) {
 // "verification". Prose in this file is scanned like any other source, which
 // is why the forms above are described rather than quoted: a quoted example
 // would be a citation, and would dangle the day the sequence it names ends.
-const CITATION = /\b(?:teardown |class |verification )?rules?\s+((?:[A-Z0-9]+-)?\d+|V\d+)\b/gi
+//
+// The `V` form is matched case-sensitively and refuses a following `.<digit>`,
+// because `Comprehensive Rules v1.1` is a game's rulebook version and not a
+// citation of V1. That near-miss was live in this file — the check written to
+// enforce "prove your matcher rejects a near-miss", failing to.
+const CITATION = /\b(?:teardown |class |verification )?rules?\s+((?:[A-Z0-9]+-)?\d+|V\d+)\b(?!\.\d)/gi
 
 for (const file of sources) {
   let text
@@ -151,7 +156,13 @@ for (const file of sources) {
   }
   for (const match of text.matchAll(CITATION)) {
     const raw = match[1]
-    const shared_ = /^[Vv](\d+)$/.exec(raw)
+
+    // Lowercase `v` is a version number in prose, never a citation. The regex
+    // has to stay case-insensitive for the introducer words, so the case test
+    // happens here.
+    if (/^v\d+$/.test(raw)) continue
+
+    const shared_ = /^V(\d+)$/.exec(raw)
     if (shared_) {
       const cited = Number(shared_[1])
       if (cited < 1 || cited > sharedNumbers.length) {

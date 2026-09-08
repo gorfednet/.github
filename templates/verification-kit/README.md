@@ -26,6 +26,7 @@ an ignore rule that did not cover them.
 | `bin/assert-tests-executed.mjs` | A test job reporting success while executing zero tests. Reads Playwright and Vitest JSON. |
 | `bin/bugbot-review-status.mjs` | Merging on a Bugbot `NEUTRAL` that actually means *reviewed, and found things*. |
 | `bin/check-backlog.mjs` | The plan of record decaying into prose nobody validates. |
+| `bin/check-rule-citations.mjs` | A code comment citing a rule number that has moved, or no longer exists. |
 | `bin/check-tracked-artifacts.mjs` | Generated files reaching `main` under an ignore rule that does not cover them. |
 | `bin/mutation-canary.mjs` | A guard nobody has ever seen fail being counted as coverage. |
 
@@ -38,7 +39,24 @@ fleet has nothing to install with.
 ```sh
 cp -R templates/verification-kit ./verification-kit
 cp verification-kit/templates/backlog.json docs/backlog.json
+cp docs/verification-rules.md docs/verification-rules.md   # from gorfednet/.github
 ```
+
+## Rules, and adding your own
+
+[`docs/verification-rules.md`](../../docs/verification-rules.md) holds the
+shared rules as `V1`…`Vn`. It is **append-only**: those numbers are cited from
+code in other repositories, so renumbering dangles someone else's comment.
+
+A project's own rules go in `docs/verification-rules.local.md` under a prefix
+it picks once — `**BC-1. …**`, `**4C-1. …**`. Local numbering can never collide
+with the shared sequence, so you never have to negotiate with the fleet to
+write down something you learned this morning. When a local rule turns out to
+be true of a second project, add a `V` entry that cites it; the local rule
+stays where it is so its citations keep resolving.
+
+`check-rule-citations.mjs` holds both sequences gapless and every citation
+resolvable.
 
 Then, in CI, after whatever step produces a test report:
 
