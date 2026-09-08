@@ -50,6 +50,22 @@
       "replace": "if (false) {"
     },
     {
+      "id": "drift-check-passes-when-it-cannot-fetch",
+      "guards": "A staleness check that cannot reach the canonical manifest fails. Passing there would report 'current' during an outage — the silent-green shape the whole kit exists to find.",
+      "command": "node --test 'templates/verification-kit/test/kitDrift.test.mjs'",
+      "file": "templates/verification-kit/bin/check-kit-drift.mjs",
+      "find": "} catch (cause) {\n  die(\n    `check-kit-drift: could not read the canonical manifest",
+      "replace": "} catch (cause) {\n  canonical = { version: 'unknown', files: expected }\n  void `check-kit-drift: could not read the canonical manifest"
+    },
+    {
+      "id": "drift-check-ignores-a-local-edit",
+      "guards": "A kit file edited in a consuming project fails. Otherwise it is a fix fifteen projects will not get, and a divergence the next refresh silently overwrites.",
+      "command": "node --test 'templates/verification-kit/test/kitDrift.test.mjs'",
+      "file": "templates/verification-kit/bin/check-kit-drift.mjs",
+      "find": "  else if (hash(path) !== want) modified.push(rel)",
+      "replace": "  else if (false) modified.push(rel)"
+    },
+    {
       "id": "slug-guesses-a-non-github-remote",
       "guards": "A non-GitHub remote returns null rather than a plausible-looking slug that would send API calls somewhere they cannot succeed.",
       "command": "node --test 'templates/verification-kit/test/githubSlug.test.mjs'",

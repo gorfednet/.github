@@ -1,0 +1,25 @@
+{
+  "version": "0.2.0",
+  "files": {
+    "README.md": "da9df423b3d7c02063a41b24dbeb8ef7ad264d8a000e375df0ac16fa936e42eb",
+    "bin/assert-tests-executed.mjs": "f41b8862289bfb25af9171df8c17c788efd9231984dbc02e34d4fce17822dd5b",
+    "bin/bugbot-review-status.mjs": "db9112bfc1700b7efe558159c6bcc94a336957b9f03da54b48f0c4e986cfd355",
+    "bin/check-backlog.mjs": "cf67fca26485e230b1b3216068cd9f7f5130a95ca2c323f39c63038423ca3a5c",
+    "bin/check-kit-drift.mjs": "9de896762a66426d95ad13665019a5e31e96062821eb5c4db0402ccb2528f612",
+    "bin/check-rule-citations.mjs": "aae3f2e58a632e615ad07d2f10063751b2e222e7a246eb73b630f23ba32900cc",
+    "bin/check-tracked-artifacts.mjs": "cb6a0ea982dbd98f3ac9e33ad50fad1197844513de496e646659e583d289bfe7",
+    "bin/mutation-canary.mjs": "6c8b8f091838feb20b67c5c033d2e794d741061c00912ad1ba372adde0a6c582",
+    "bin/refresh-kit.mjs": "7189f0c09fbab8fbf1b21f1eb34c196eceb7b28d1eb6e315894ce5a11cd90958",
+    "bin/write-manifest.mjs": "1738542ca118fbe8dd60944a4dbbb22ac6786eb6681b0a9ca91156c93c9a9ae6",
+    "lib/backlogSchema.mjs": "60b2fe78d7d07694d474494e6f76ae96b095cbe6ad528b6a90c8e67ab9acca7f",
+    "lib/bugbotConclusion.mjs": "e7ed1d0c208eb07d1116971974ef10aa95b4cb1c9eca8d1a5c4ceaad628bf5a1",
+    "lib/githubSlug.mjs": "ae603437ff1b6370606f1a5be6c8d58ed1cfa30f301b5643e2d82c4083766caf",
+    "test/backlogSchema.test.mjs": "a4602ae046bb0c8b4c120bb1cfa845de70cbe27da3c634c1ecc58601cf46b089",
+    "test/bugbotConclusion.test.mjs": "3404fbdb9e4f23db42523019feacf4dcaf28721a79aa4afca426dcd75d78e4ca",
+    "test/cli.test.mjs": "3cedac25af79340f3fc2f627f06a111b89dad1797e41dfcd49c411cdd30e0060",
+    "test/githubSlug.test.mjs": "578c78a4c2c3c6726f1c6be7ee13532d909e6e6de19d18ac6bbaa9ef52bb5b4f",
+    "test/kitDrift.test.mjs": "c6c3afaadf04c4e83d807082caf0c98de27e9bb0d641787ce2a65aa300910939",
+    "test/mutationCanary.test.mjs": "eab9336a04ab9261a385cb6803c59b8bd5c412dc708560f05b752cbc6ea097ad",
+    "test/ruleCitations.test.mjs": "84d5a9915fc41275dd3bed74f9a60474c5d85969467f3d678b372338c8a322d1"
+  }
+}
