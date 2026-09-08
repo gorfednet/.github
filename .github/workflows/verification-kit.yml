@@ -46,6 +46,14 @@ jobs:
             exit 1
           fi
 
+      # A kit change that merges without a manifest update leaves every
+      # consuming project unable to tell a stale copy from a current one — so
+      # the distribution mechanism would fail exactly the way the kit is meant
+      # to prevent.
+      - name: MANIFEST.json describes the kit as committed
+        if: ${{ !cancelled() }}
+        run: node templates/verification-kit/bin/write-manifest.mjs --check
+
       # Every guard above is an assumption until it has been watched failing.
       - name: Canaries — prove each guard can fail
         if: ${{ !cancelled() }}

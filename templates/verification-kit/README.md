@@ -28,6 +28,7 @@ an ignore rule that did not cover them.
 | `bin/check-backlog.mjs` | The plan of record decaying into prose nobody validates. |
 | `bin/check-rule-citations.mjs` | A code comment citing a rule number that has moved, or no longer exists. |
 | `bin/check-tracked-artifacts.mjs` | Generated files reaching `main` under an ignore rule that does not cover them. |
+| `bin/check-kit-drift.mjs` | This copy of the kit silently falling behind the canonical one, or being edited in place. |
 | `bin/mutation-canary.mjs` | A guard nobody has ever seen fail being counted as coverage. |
 
 ## Install
@@ -70,6 +71,35 @@ Then, in CI, after whatever step produces a test report:
 
 Pick `--min` from what the job runs today, minus nothing. A floor set below the
 real count tolerates exactly the silent decay it is meant to catch.
+
+## Staying current
+
+The kit is distributed by copying, because a project with no package manager
+has no other mechanism. Copying has exactly one failure mode, and it is this
+repository's own thesis turned inward: fifteen copies drift apart one fix at a
+time, every one of them still printing ticks.
+
+```sh
+node verification-kit/bin/check-kit-drift.mjs   # in CI, on every run
+node verification-kit/bin/refresh-kit.mjs       # what a drift failure tells you to run
+```
+
+It reports two different problems, because the fixes differ. **Edited here**
+means someone changed a copied file: upstream it, or move the change into a
+project-local script outside `verification-kit/`. **Stale** means upstream
+moved, and every named file is a fix or a rule this project is not getting —
+read the upstream commit, because a kit change usually means a new class of bug
+was found somewhere else in the fleet.
+
+Local integrity is checked without a network. Staleness needs one, and **fails
+closed** when it cannot reach the canonical manifest: a check that reports
+"current" when it could not look is the failure this kit exists to find. If a
+run genuinely has no network, pass `--offline`, which says so in its output
+rather than printing the same tick.
+
+`canaries.json` and `templates/` are deliberately outside the manifest. A
+project's canaries are its own — holding them to a canonical hash would put
+every project in permanent drift.
 
 ## Adding a canary
 

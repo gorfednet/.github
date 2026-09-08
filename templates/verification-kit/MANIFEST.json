@@ -1,7 +1,7 @@
 {
-  "version": "0.2.0",
+  "version": "0.4.0",
   "files": {
-    "README.md": "da9df423b3d7c02063a41b24dbeb8ef7ad264d8a000e375df0ac16fa936e42eb",
+    "README.md": "f7cddc528c7db2e2ccb31460259cffe3605edfcc269628895596cf60a247f52a",
     "bin/assert-tests-executed.mjs": "f41b8862289bfb25af9171df8c17c788efd9231984dbc02e34d4fce17822dd5b",
     "bin/bugbot-review-status.mjs": "db9112bfc1700b7efe558159c6bcc94a336957b9f03da54b48f0c4e986cfd355",
     "bin/check-backlog.mjs": "cf67fca26485e230b1b3216068cd9f7f5130a95ca2c323f39c63038423ca3a5c",
@@ -20,6 +20,6 @@
     "test/githubSlug.test.mjs": "578c78a4c2c3c6726f1c6be7ee13532d909e6e6de19d18ac6bbaa9ef52bb5b4f",
     "test/kitDrift.test.mjs": "c6c3afaadf04c4e83d807082caf0c98de27e9bb0d641787ce2a65aa300910939",
     "test/mutationCanary.test.mjs": "eab9336a04ab9261a385cb6803c59b8bd5c412dc708560f05b752cbc6ea097ad",
-    "test/ruleCitations.test.mjs": "84d5a9915fc41275dd3bed74f9a60474c5d85969467f3d678b372338c8a322d1"
+    "test/ruleCitations.test.mjs": "fd9cb401f269805e24283bcef0bb3497e342e8c71421c9f853b28c0acd1bd1ed"
   }
 }
