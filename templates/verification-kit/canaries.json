@@ -66,6 +66,30 @@
       "replace": "  else if (false) modified.push(rel)"
     },
     {
+      "id": "reusable-workflow-skips-the-gate",
+      "guards": "A reusable pr-check workflow that does not run the verification gate fails. Otherwise the project that adopts it gets a green check over nothing checked.",
+      "command": "node --test 'test/*.test.mjs'",
+      "file": ".github/workflows/pr-check-static.yml",
+      "find": "        uses: gorfednet/.github/.github/actions/verification-gate@main",
+      "replace": "        run: echo skipping the gate"
+    },
+    {
+      "id": "gate-step-loses-its-cancelled-guard",
+      "guards": "A step in the verification gate without `if: !cancelled()` fails. GitHub defaults a step to success(), so an unrelated earlier failure switches the assertion off at exactly the moment it matters.",
+      "command": "node --test 'test/*.test.mjs'",
+      "file": ".github/actions/verification-gate/action.yml",
+      "find": "    - name: No generated files tracked in git\n      if: ${{ !cancelled() }}",
+      "replace": "    - name: No generated files tracked in git"
+    },
+    {
+      "id": "bugbot-timeout-reads-as-a-pass",
+      "guards": "A Bugbot verdict job that gives up waiting must fail. 'Did not finish in time' is not 'found nothing', and reporting it as a pass reproduces the exact defect the job was written to fix.",
+      "command": "node --test 'test/*.test.mjs'",
+      "file": ".github/workflows/bugbot-verdict.yml",
+      "find": "                   \"Comment 'bugbot run' on the PR, or re-run this job once it has finished.\"\n              exit 1",
+      "replace": "                   \"Comment 'bugbot run' on the PR, or re-run this job once it has finished.\"\n              exit 0"
+    },
+    {
       "id": "slug-guesses-a-non-github-remote",
       "guards": "A non-GitHub remote returns null rather than a plausible-looking slug that would send API calls somewhere they cannot succeed.",
       "command": "node --test 'templates/verification-kit/test/githubSlug.test.mjs'",

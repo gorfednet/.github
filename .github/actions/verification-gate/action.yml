@@ -1,0 +1,89 @@
+name: verification-gate
+description: >-
+  Run the verification kit's checks against the calling repository. Projects
+  inherit this by upgrading the `uses:` line on their existing pr-check
+  workflow; nothing needs adding to the project's own workflow file.
+
+inputs:
+  kit:
+    description: Path to the vendored verification kit.
+    required: false
+    default: verification-kit
+  backlog:
+    description: Path to the project's backlog. Empty skips the backlog check.
+    required: false
+    default: docs/backlog.json
+  test-report:
+    description: >-
+      Playwright or Vitest JSON report to assert an executed count against.
+      Empty skips the assertion, which is only right for a project with no
+      tests — a Tier 1 project.
+    required: false
+    default: ""
+  min-tests:
+    description: Executed-test floor. Set it to what the job runs today.
+    required: false
+    default: "1"
+  rule-sources:
+    description: Space-separated roots to scan for rule citations.
+    required: false
+    default: "."
+
+runs:
+  using: composite
+  steps:
+    # Every step below carries `if: ${{ !cancelled() }}`.
+    #
+    # GitHub defaults a step to `success()`, so one failure switches off every
+    # check after it — and on the run that taught us this, the thing that
+    # failed was an artifact upload returning 403 for reasons unrelated to the
+    # tests, which skipped the assertion whose whole purpose was proving the
+    # job was not inert. A verification step ordered behind something that can
+    # fail for an unrelated reason is not a gate. See rule V18.
+
+    - name: Verification kit is present
+      if: ${{ !cancelled() }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        if [ ! -d "${{ inputs.kit }}" ]; then
+          echo "::error::No verification kit at ${{ inputs.kit }}."
+          echo "Install it: https://github.com/gorfednet/.github/tree/main/templates/verification-kit"
+          exit 1
+        fi
+        echo "kit: $(find '${{ inputs.kit }}' -type f | wc -l | tr -d ' ') file(s)"
+
+    # Fifteen copies of the same script drift apart one fix at a time, and
+    # every one of them keeps printing ticks. This is the only thing looking.
+    - name: Kit is current and unmodified
+      if: ${{ !cancelled() }}
+      shell: bash
+      run: node "${{ inputs.kit }}/bin/check-kit-drift.mjs" --kit "${{ inputs.kit }}"
+
+    - name: Rule citations resolve
+      if: ${{ !cancelled() }}
+      shell: bash
+      run: |
+        node "${{ inputs.kit }}/bin/check-rule-citations.mjs" \
+          $(for root in ${{ inputs.rule-sources }}; do printf -- '--source %s ' "$root"; done)
+
+    - name: No generated files tracked in git
+      if: ${{ !cancelled() }}
+      shell: bash
+      run: node "${{ inputs.kit }}/bin/check-tracked-artifacts.mjs"
+
+    - name: Backlog describes reality
+      if: ${{ !cancelled() && inputs.backlog != '' }}
+      shell: bash
+      run: node "${{ inputs.kit }}/bin/check-backlog.mjs" --file "${{ inputs.backlog }}"
+
+    # A fully-skipped suite exits 0, so only a count can tell a green job that
+    # ran everything from a green job that ran nothing.
+    - name: Assert the tests actually ran
+      if: ${{ !cancelled() && inputs.test-report != '' }}
+      shell: bash
+      run: |
+        node "${{ inputs.kit }}/bin/assert-tests-executed.mjs" \
+          --report "${{ inputs.test-report }}" \
+          --min "${{ inputs.min-tests }}" \
+          --label "${{ github.job }}"

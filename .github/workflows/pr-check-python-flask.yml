@@ -14,6 +14,28 @@ on:
         type: string
         default: "-v --tb=short"
 
+      verification-kit:
+        description: >-
+          Path to the vendored verification kit. Empty disables the gate,
+          which should only ever be a temporary state during adoption.
+        required: false
+        type: string
+        default: verification-kit
+      verification-backlog:
+        description: Path to the project's backlog. Empty skips that check.
+        required: false
+        type: string
+        default: docs/backlog.json
+      test-report:
+        description: Playwright or Vitest JSON report to assert a floor against.
+        required: false
+        type: string
+        default: ""
+      min-tests:
+        description: Executed-test floor. Set it to what the job runs today.
+        required: false
+        type: string
+        default: "1"
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -47,3 +69,15 @@ jobs:
           pip install -r requirements.txt -r requirements-dev.txt
       - name: Run pytest
         run: pytest ${{ inputs.pytest-args }}
+
+      # Every check the fleet shares, in one step so a fix reaches all of
+      # them. Runs last because it needs the test report, and `!cancelled()`
+      # inside the action so an earlier failure cannot switch it off (V18).
+      - name: Verification gate
+        if: ${{ !cancelled() && inputs.verification-kit != '' }}
+        uses: gorfednet/.github/.github/actions/verification-gate@main
+        with:
+          kit: ${{ inputs.verification-kit }}
+          backlog: ${{ inputs.verification-backlog }}
+          test-report: ${{ inputs.test-report }}
+          min-tests: ${{ inputs.min-tests }}
