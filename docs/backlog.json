@@ -1,0 +1,36 @@
+{
+  "$comment": "Fleet-level findings — things wrong with the shared layer, or with a project that has not adopted the kit and so has nowhere of its own to record them. A project's own bugs belong in its own backlog once it adopts. Held by verification-kit/bin/check-backlog.mjs.",
+  "entries": [
+    {
+      "id": "towit-broken-refs",
+      "title": "towit.io could not fetch from GitHub at all, and had been failing silently",
+      "status": "landed",
+      "assignee": "main-model",
+      "userSymptom": "Work that had already merged looked unmerged in the local checkout, and any agent or person working there would have been editing against a stale picture of the remote without being told.",
+      "evidence": "git fetch aborted with `fatal: bad object refs/remotes/origin/HEAD 2`. Five duplicate ref files under .git/refs/remotes/origin/ with a trailing ' 2' — the signature of a file-sync tool copying a directory it does not understand. Removing them restored the fetch, which then pulled d623370..a9f28a6 and showed the branch merged after all.",
+      "pr": 3,
+      "reviewBy": "2026-12-01",
+      "note": "Recorded rather than just fixed because the class matters: a checkout that cannot reach its remote does not fail loudly, it works from stale refs. That is rule V27 wearing different clothes. Worth checking whether other repos under a synced directory have the same artefacts."
+    },
+    {
+      "id": "towit-open-security-bump",
+      "title": "towit.io has an open Dependabot PR bumping requests from 2.6.0 to 2.34.2",
+      "status": "confirmed-bug",
+      "assignee": "human",
+      "userSymptom": "The site runs a Python HTTP client that is roughly a decade of releases behind, including security releases, on a repo whose owner had no way to see the PR because the local checkout could not fetch.",
+      "evidence": "gh pr list on gorfednet/TowIt: PR #3 'Bump requests from 2.6.0 to 2.34.2', OPEN since 2026-09-01. A second, #1 for oauthlib 0.7.2 to 3.3.1, was closed rather than merged.",
+      "reviewBy": "2026-10-15",
+      "note": "Needs a human decision: 2.6.0 to 2.34.2 is not a drop-in on a Flask app of that age. Sized, not guessed at."
+    },
+    {
+      "id": "fleet-adoption-outstanding",
+      "title": "Twelve of fourteen projects have the verification gate switched off",
+      "status": "confirmed-bug",
+      "assignee": "main-model",
+      "userSymptom": "A bug shipped by any of those twelve projects has nothing checking that the CI which passed actually examined anything, which is how the sixteen findings in the BinderCurve teardown stayed green for months.",
+      "evidence": "fleet.json: 12 projects at tier 0. Each already inherits a reusable pr-check workflow, so adoption is a one-line change plus the vendored kit.",
+      "reviewBy": "2026-11-01",
+      "note": "Deliberately staged: three pilots first, across the three archetypes that stress the kit differently, before the remaining nine."
+    }
+  ]
+}

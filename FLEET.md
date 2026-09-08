@@ -29,7 +29,7 @@ days stale fails the build until someone re-checks the tier or lowers it.
 
 | Project | Archetype | Tier | Owner | Verified | Notes |
 |---|---|---|---|---|---|
-| [gorfednet/.github](https://github.com/gorfednet/.github) | org-shared-ci | 3 | gorf | 2026-09-08 | Holds the canonical kit. Gated harder than the copies, because a template defect replicates fourteen times. _Exception:_ This is the source, not a consumer: the kit lives under templates/ and is not vendored into itself. Its backlog is this file. |
+| [gorfednet/.github](https://github.com/gorfednet/.github) | org-shared-ci | 3 | gorf | 2026-09-08 | Holds the canonical kit. Gated harder than the copies, because a template defect replicates fourteen times. _Exception:_ This is the source, not a consumer: the kit lives under templates/ and is not vendored into itself. Only the kit paths move; its backlog is at the standard location. |
 | [gorfednet/bindercurve.com](https://github.com/gorfednet/bindercurve.com) | react-spa-plus-api | 3 | gorf | 2026-09-08 | Origin of the kit. Keeps its own bespoke contracts alongside the shared ones; becomes a consumer of the shared copies rather than keeping duplicates. _Exception:_ Every check predates the kit and lives at its original path. Swapping to the vendored copies is tracked work, not a gap — until then the override points at the files that actually run. |
 | [gorfednet/4thcltr.com](https://github.com/gorfednet/4thcltr.com) | vite-spa | 0 | gorf | 2026-09-08 | Tier 3 pilot. Has Playwright across four shards, i18n and route checks — the closest thing to BinderCurve in the fleet. |
 | [gorfednet/anal0g.org](https://github.com/gorfednet/anal0g.org) | static-no-npm | 0 | gorf | 2026-09-08 |  |

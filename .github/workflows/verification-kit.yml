@@ -37,6 +37,14 @@ jobs:
         if: ${{ !cancelled() }}
         run: node --test --test-reporter=spec 'test/*.test.mjs'
 
+      - name: Fleet backlog describes reality
+        if: ${{ !cancelled() }}
+        run: node templates/verification-kit/bin/check-backlog.mjs --file docs/backlog.json
+
+      - name: FLEET.md matches the registry it is generated from
+        if: ${{ !cancelled() }}
+        run: node scripts/write-fleet-md.mjs --check
+
       # The fleet registry, asked of the repositories rather than taken at its
       # word. Needs a token, so it degrades to the schema-and-dates half on a
       # fork PR — loudly, via the flag's own output.
