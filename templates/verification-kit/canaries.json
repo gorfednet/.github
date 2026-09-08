@@ -120,6 +120,14 @@
       "file": "templates/verification-kit/lib/githubSlug.mjs",
       "find": "/github\\.com[:/]([^/]+)\\/(.+?)(?:\\.git)?\\/?$/",
       "replace": "/[:/]([^/]+)\\/(.+?)(?:\\.git)?\\/?$/"
+    },
+    {
+      "id": "fleet-check-reads-unauthorized-as-absent",
+      "guards": "A repository the credentials cannot open must not fall through to the absent branch. GitHub answers 404 both for a private repository the caller may not see and for a path that is genuinely missing, and conflating the two made the first online run of this check accuse a fully-adopted project of holding none of the kit. Rule V39.",
+      "command": "node --test 'test/fleetRegistry.test.mjs'",
+      "file": "scripts/check-fleet.mjs",
+      "find": "  if (!repoVisible(slug)) return 'unreadable'\n",
+      "replace": ""
     }
   ]
 }

@@ -45,19 +45,15 @@ jobs:
         if: ${{ !cancelled() }}
         run: node scripts/write-fleet-md.mjs --check
 
-      # The fleet registry, asked of the repositories rather than taken at its
-      # word. Needs a token, so it degrades to the schema-and-dates half on a
-      # fork PR — loudly, via the flag's own output.
-      - name: Fleet registry describes reality
+      # The fleet registry. The online half needs credentials that can read the
+      # other repositories, and `github.token` cannot: it is scoped to this one,
+      # so every private sibling answers 404 and — before V39 — that read as
+      # "has adopted nothing". Here it runs the schema-and-dates half and says
+      # so. The online half runs in fleet-audit.yml, which has the token and
+      # fails when it does not.
+      - name: Fleet registry is well-formed and no entry has gone stale
         if: ${{ !cancelled() }}
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          if [ "${{ github.event.pull_request.head.repo.fork }}" = "true" ]; then
-            node scripts/check-fleet.mjs --offline
-          else
-            node scripts/check-fleet.mjs
-          fi
+        run: node scripts/check-fleet.mjs --offline
 
       # Both suites parse YAML by regex, which is fine for asserting a step
       # carries an `if:` and useless for noticing the file stopped being valid

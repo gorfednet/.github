@@ -253,6 +253,18 @@ prevents the class, and say where you added it.** A fix that only repairs
 today's instance guarantees tomorrow's. That is how this document exists, and
 skipping the step once cost five hours of dark monitoring.
 
+**V39. A "not found" from an interface you may not be authorized for is not
+evidence of absence.** GitHub answers 404 for a private repository the caller
+cannot see, and 404 for a path that genuinely is not there. So does most of the
+web: S3, most REST APIs, and any DNS name behind a split horizon. A check that
+reads the second meaning into the first reports confident falsehoods precisely
+when its credentials are weakest — which is in CI, where a workflow's default
+token reaches only its own repository. Probe for the container before
+concluding anything about its contents, report the credentials problem once
+rather than once per lookup, and never let it fall through to the absent
+branch. The first run of the fleet check announced that BinderCurve had adopted
+none of the kit while all four files sat on its default branch.
+
 ## Provenance
 
 Every rule above was first written in
@@ -283,6 +295,7 @@ sounds like an opinion, because none of them are.
 | V17 | BC rule 37 | V36 | self-heal rule |
 | V18 | BC rule 36 | V37 | self-heal rule |
 | V19 | BC rule 19 | V38 | durable-plan rule |
+| — | — | V39 | fleet check, 2026-09-08 |
 
 Three BinderCurve rules are deliberately **not** shared, because they are true
 of that product rather than of verification: rules 23 and 33 concern

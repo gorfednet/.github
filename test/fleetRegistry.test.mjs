@@ -147,6 +147,31 @@ describe('fleet registry', () => {
   })
 
   /**
+   * V39, and the reason it exists. GitHub answers 404 for a private repository
+   * the caller cannot see and 404 for a path that is not there, so the first
+   * online run of this check reported four present files as missing and
+   * accused BinderCurve of having adopted nothing. Credentials that cannot
+   * open the repository must produce one credentials problem, not one
+   * confident falsehood per lookup.
+   */
+  it('blames the token, not the project, when it cannot see a repository', () => {
+    const result = spawnSync('node', [CHECK], {
+      encoding: 'utf8',
+      env: { ...process.env, GH_TOKEN: 'ghp_0000000000000000000000000000000000000000' },
+    })
+    assert.equal(result.status, 1)
+    assert.match(result.stderr, /cannot see 1 repository/)
+    assert.match(result.stderr, /means "cannot see", not "not there"/)
+    assert.doesNotMatch(
+      result.stderr,
+      /claims tier \d+ but has no/,
+      'an unreadable repository must never reach the absent branch',
+    )
+    // One message, not one per required artefact.
+    assert.match(result.stderr, /^\n✗ fleet registry: 1 problem\(s\)/)
+  })
+
+  /**
    * The org repo asks GitHub about its own default branch for every other
    * project, but must read the working tree for itself: otherwise the change
    * that adds a file and the entry claiming it can never be green at the same

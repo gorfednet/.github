@@ -80,13 +80,39 @@ function localSlug() {
 
 const HERE = localSlug()
 
+function gh(args) {
+  return execFileSync('gh', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+}
+
+/**
+ * Can the current credentials see this repository at all?
+ *
+ * The distinction is the whole point. GitHub answers 404 for a private
+ * repository the token cannot see, exactly as it answers 404 for a path that
+ * is not there — so a missing-file result is only meaningful once the
+ * repository itself has been shown to be readable. Skipping this probe is how
+ * the first run of this check announced that BinderCurve had adopted nothing:
+ * a workflow's default token is scoped to its own repository, every sibling
+ * came back 404, and four present files were reported absent.
+ */
+const visibility = new Map()
+function repoVisible(slug) {
+  if (!visibility.has(slug)) {
+    try {
+      gh(['api', `repos/${slug}`, '--jq', '.name'])
+      visibility.set(slug, true)
+    } catch {
+      visibility.set(slug, false)
+    }
+  }
+  return visibility.get(slug)
+}
+
 function repoHasFile(slug, path) {
   if (slug === HERE) return existsSync(path) ? 'present' : 'absent'
+  if (!repoVisible(slug)) return 'unreadable'
   try {
-    execFileSync('gh', ['api', `repos/${slug}/contents/${path}`, '--jq', '.sha'], {
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'pipe'],
-    })
+    gh(['api', `repos/${slug}/contents/${path}`, '--jq', '.sha'])
     return 'present'
   } catch (cause) {
     const message = String(cause.stderr ?? cause.message)
@@ -121,6 +147,7 @@ if (projects.length < 10) {
 const reverifyDays = doc.reverifyDays ?? 120
 const today = todayUtc()
 const seen = new Set()
+const unreadable = new Set()
 
 for (const project of projects) {
   const where = `${project.slug ?? '(no slug)'}`
@@ -192,6 +219,8 @@ for (const project of projects) {
           `${where}: claims tier ${project.tier} but has no ${path} — ${what} is required at tier ${tier}. ` +
             'Adopt it, or lower the tier.',
         )
+      } else if (state === 'unreadable') {
+        unreadable.add(project.slug)
       } else if (state === 'unknown') {
         problems.push(
           `${where}: could not read ${path} (not a 404). Reported rather than assumed, because ` +
@@ -200,6 +229,21 @@ for (const project of projects) {
       }
     }
   }
+}
+
+/**
+ * Repositories the credentials could not open are a credentials problem, and
+ * they are reported once rather than once per missing file — forty confident
+ * accusations are how a check trains its reader to skip the output.
+ */
+if (unreadable.size > 0) {
+  problems.push(
+    `cannot see ${unreadable.size} repositor${unreadable.size === 1 ? 'y' : 'ies'} ` +
+      `(${[...unreadable].sort().join(', ')}). These are private, and a workflow's default ` +
+      'GITHUB_TOKEN reaches only its own repository, so every lookup came back 404 — which ' +
+      'means "cannot see", not "not there". Supply a token with read access to the ' +
+      'organisation, or pass --offline and accept that no tier was verified.',
+  )
 }
 
 if (problems.length > 0) {
