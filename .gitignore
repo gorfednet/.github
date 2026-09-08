@@ -1,1 +1,5 @@
 .deploy-env
+
+# The mutation canary writes this before breaking a file and reverts from it on
+# the next start. It only exists mid-run, or after a run that was killed.
+.mutation-canary-dirty.json

@@ -1,0 +1,45 @@
+{
+  "$comment": "The kit's own canaries. A template that ships broken replicates across every project that copies it, so these run in CI on this repo.",
+  "canaries": [
+    {
+      "id": "backlog-accepts-vague-symptom",
+      "guards": "The backlog validator rejects a symptom too short to act on. Without this an entry can say 'broken' and still count as a tracked bug.",
+      "command": "node --test 'templates/verification-kit/test/backlogSchema.test.mjs'",
+      "file": "templates/verification-kit/lib/backlogSchema.mjs",
+      "find": "const MIN_PROSE = 20",
+      "replace": "const MIN_PROSE = 0"
+    },
+    {
+      "id": "backlog-lets-a-deferral-lapse",
+      "guards": "A dated deferral fails the build once it passes. Without this, 'revisit before the next release' becomes permanent by accident.",
+      "command": "node --test 'templates/verification-kit/test/backlogSchema.test.mjs'",
+      "file": "templates/verification-kit/lib/backlogSchema.mjs",
+      "find": "new Date(`${entry.reviewBy}T00:00:00Z`) < now",
+      "replace": "false"
+    },
+    {
+      "id": "bugbot-neutral-read-as-skipped",
+      "guards": "A neutral Bugbot conclusion carrying a completed-review summary is findings, not a skipped review. This is the exact defect that left five findings unread across three pull requests.",
+      "command": "node --test 'templates/verification-kit/test/bugbotConclusion.test.mjs'",
+      "file": "templates/verification-kit/lib/bugbotConclusion.mjs",
+      "find": "  if (!finished) {",
+      "replace": "  if (bugbot.conclusion === 'neutral') {"
+    },
+    {
+      "id": "bugbot-api-failure-reads-as-clean",
+      "guards": "A GitHub API failure resolves to undetermined, never to a pass. Collapsing errors to a benign state is how a detector reports green during an outage.",
+      "command": "node --test 'templates/verification-kit/test/bugbotConclusion.test.mjs'",
+      "file": "templates/verification-kit/lib/bugbotConclusion.mjs",
+      "find": "    return { state: 'undetermined', pr, detail: `could not read #${pr}: ${detail.error}` }",
+      "replace": "    return { state: 'clean', pr, detail: 'assumed fine' }"
+    },
+    {
+      "id": "slug-guesses-a-non-github-remote",
+      "guards": "A non-GitHub remote returns null rather than a plausible-looking slug that would send API calls somewhere they cannot succeed.",
+      "command": "node --test 'templates/verification-kit/test/githubSlug.test.mjs'",
+      "file": "templates/verification-kit/lib/githubSlug.mjs",
+      "find": "/github\\.com[:/]([^/]+)\\/(.+?)(?:\\.git)?\\/?$/",
+      "replace": "/[:/]([^/]+)\\/(.+?)(?:\\.git)?\\/?$/"
+    }
+  ]
+}

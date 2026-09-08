@@ -1,0 +1,64 @@
+name: verification-kit
+
+# A defect in this kit replicates into every project that copies it, so the
+# canonical copy is gated harder than the copies are.
+
+on:
+  pull_request:
+    paths:
+      - 'templates/verification-kit/**'
+      - '.github/workflows/verification-kit.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'templates/verification-kit/**'
+      - '.github/workflows/verification-kit.yml'
+
+jobs:
+  kit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Unit and behavioural tests
+        run: |
+          node --test --test-reporter=spec \
+            'templates/verification-kit/test/*.test.mjs'
+
+      # The suite above is itself a check, and a glob that stops matching would
+      # make it exit 0 having run nothing — the exact failure
+      # assert-tests-executed exists to catch. So count its own tests.
+      - name: Assert the kit's tests actually ran
+        if: ${{ !cancelled() }}
+        run: |
+          set -euo pipefail
+          count=$(node --test --test-reporter=tap \
+            'templates/verification-kit/test/*.test.mjs' \
+            | grep -c '^ *ok ' || true)
+          echo "executed $count assertions"
+          if [ "$count" -lt 40 ]; then
+            echo "::error::The kit's own suite executed $count tests, expected at least 40." \
+                 "A glob that matches nothing exits 0 having proven nothing."
+            exit 1
+          fi
+
+      # Every guard above is an assumption until it has been watched failing.
+      - name: Canaries — prove each guard can fail
+        if: ${{ !cancelled() }}
+        run: |
+          node templates/verification-kit/bin/mutation-canary.mjs \
+            --file templates/verification-kit/canaries.json
+
+      - name: The template backlog must satisfy the validator it ships with
+        if: ${{ !cancelled() }}
+        run: |
+          node templates/verification-kit/bin/check-backlog.mjs \
+            --file templates/verification-kit/templates/backlog.json
+
+      - name: No generated files tracked in this repo either
+        if: ${{ !cancelled() }}
+        run: node templates/verification-kit/bin/check-tracked-artifacts.mjs
