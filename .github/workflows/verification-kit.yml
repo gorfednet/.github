@@ -7,12 +7,14 @@ on:
   pull_request:
     paths:
       - 'templates/verification-kit/**'
-      - '.github/workflows/verification-kit.yml'
+      - 'test/**'
+      - '.github/**'
   push:
     branches: [main]
     paths:
       - 'templates/verification-kit/**'
-      - '.github/workflows/verification-kit.yml'
+      - 'test/**'
+      - '.github/**'
 
 jobs:
   kit:
@@ -28,6 +30,35 @@ jobs:
         run: |
           node --test --test-reporter=spec \
             'templates/verification-kit/test/*.test.mjs'
+
+      # Guards on this repository's own workflows. Every project inherits its
+      # CI from one of them, so a gap here is a gap in fifteen places.
+      - name: Org workflow guards
+        if: ${{ !cancelled() }}
+        run: node --test --test-reporter=spec 'test/*.test.mjs'
+
+      # Both suites parse YAML by regex, which is fine for asserting a step
+      # carries an `if:` and useless for noticing the file stopped being valid
+      # YAML. A workflow GitHub cannot parse does not fail — it does not run.
+      - name: Every workflow and action still parses as YAML
+        if: ${{ !cancelled() }}
+        run: |
+          set -euo pipefail
+          # Installed explicitly rather than assumed. A runner image that stops
+          # shipping PyYAML would turn this into an import error, which is at
+          # least loud — but "the check could not run" and "the check ran" are
+          # states worth keeping apart.
+          python3 -m pip install --quiet pyyaml
+          count=0
+          for file in .github/workflows/*.yml .github/actions/*/action.yml; do
+            python3 -c "import sys,yaml; yaml.safe_load(open(sys.argv[1]))" "$file"
+            count=$((count + 1))
+          done
+          echo "parsed $count file(s)"
+          if [ "$count" -lt 8 ]; then
+            echo "::error::Only $count workflow file(s) parsed; the glob has stopped matching."
+            exit 1
+          fi
 
       # The suite above is itself a check, and a glob that stops matching would
       # make it exit 0 having run nothing — the exact failure
@@ -77,4 +108,4 @@ jobs:
         if: ${{ !cancelled() }}
         run: |
           node templates/verification-kit/bin/check-rule-citations.mjs \
-            --source templates --source scripts
+            --source templates --source scripts --source test
