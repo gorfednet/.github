@@ -34,6 +34,22 @@
       "replace": "    return { state: 'clean', pr, detail: 'assumed fine' }"
     },
     {
+      "id": "rule-numbering-gap-goes-unnoticed",
+      "guards": "A gap or duplicate in a rule sequence fails the build. Nine branches merging at once once produced 21-24 missing and two rules both numbered 25, with registry entries citing rules that had moved.",
+      "command": "node --test 'templates/verification-kit/test/ruleCitations.test.mjs'",
+      "file": "templates/verification-kit/bin/check-rule-citations.mjs",
+      "find": "if (numbers.join(',') !== expected.join(',')) {",
+      "replace": "if (false) {"
+    },
+    {
+      "id": "rule-citations-pass-over-no-sources",
+      "guards": "A source glob matching nothing fails rather than certifying that every citation resolves. Every assertion in that check is vacuously true of an empty file list.",
+      "command": "node --test 'templates/verification-kit/test/ruleCitations.test.mjs'",
+      "file": "templates/verification-kit/bin/check-rule-citations.mjs",
+      "find": "if (sources.length === 0) {",
+      "replace": "if (false) {"
+    },
+    {
       "id": "slug-guesses-a-non-github-remote",
       "guards": "A non-GitHub remote returns null rather than a plausible-looking slug that would send API calls somewhere they cannot succeed.",
       "command": "node --test 'templates/verification-kit/test/githubSlug.test.mjs'",
