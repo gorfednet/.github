@@ -128,6 +128,14 @@
       "file": "scripts/check-fleet.mjs",
       "find": "  if (!repoVisible(slug)) return 'unreadable'\n",
       "replace": ""
+    },
+    {
+      "id": "offline-fleet-run-never-expires",
+      "guards": "The offline run verifies no claim against any repository, so it carries the deadline for the run that does. Removing the expiry leaves a check that cannot fail on adoption as the only one running, which is how a table of intentions keeps reading as authoritative.",
+      "command": "node --test 'test/fleetRegistry.test.mjs'",
+      "file": "scripts/check-fleet.mjs",
+      "find": "  } else if (today > new Date(`${graceUntil}T00:00:00Z`)) {",
+      "replace": "  } else if (false) {"
     }
   ]
 }

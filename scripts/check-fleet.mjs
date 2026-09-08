@@ -232,6 +232,35 @@ for (const project of projects) {
 }
 
 /**
+ * An offline run reads the registry back to itself. That is worth doing — the
+ * schema and the dates are real checks — but it verifies no claim against any
+ * repository, and a system whose only running check is the one that cannot
+ * fail on adoption is how a table of intentions keeps reading as authoritative.
+ *
+ * So the offline path carries the deadline for the online one. It warns until
+ * the grace date and fails after it, and the only ways past are to run the
+ * online half and move `onlineVerifiedAt`, or to consciously move the grace
+ * date — a decision someone makes, rather than a drift nobody notices.
+ */
+const graceUntil = doc.onlineGraceUntil
+const onlineAt = doc.onlineVerifiedAt ?? null
+if (offline) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(graceUntil ?? '')) {
+    problems.push(
+      'onlineGraceUntil must be a YYYY-MM-DD date. Without it an offline run is ' +
+        'an intention with no expiry.',
+    )
+  } else if (today > new Date(`${graceUntil}T00:00:00Z`)) {
+    const since = onlineAt ? `last done ${onlineAt}` : 'never done'
+    problems.push(
+      `no tier has been verified against a repository since ${graceUntil} (${since}). ` +
+        'Run `node scripts/check-fleet.mjs` with a token that can read the organisation ' +
+        'and move onlineVerifiedAt, or move onlineGraceUntil and own the deferral.',
+    )
+  }
+}
+
+/**
  * Repositories the credentials could not open are a credentials problem, and
  * they are reported once rather than once per missing file — forty confident
  * accusations are how a check trains its reader to skip the output.
@@ -254,6 +283,7 @@ if (problems.length > 0) {
 }
 
 const byTier = {}
+
 for (const p of projects) byTier[p.tier] = (byTier[p.tier] ?? 0) + 1
 const tally = Object.keys(byTier)
   .sort()
@@ -262,5 +292,9 @@ const tally = Object.keys(byTier)
 
 console.log(
   `✓ fleet: ${projects.length} project(s) (${tally})` +
-    (offline ? '\n  --offline: did NOT verify any claimed tier against its repository.' : ''),
+    (offline
+      ? '\n  --offline: did NOT verify any claimed tier against its repository.' +
+        `\n  Online verification ${onlineAt ? `last ran ${onlineAt}` : 'has never run'};` +
+        ` this run stops passing on ${graceUntil}.`
+      : ''),
 )

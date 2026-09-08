@@ -91,6 +91,46 @@ describe('fleet registry', () => {
     assert.match(result.stderr, /Re-check the tier and move the date, or lower the tier/)
   })
 
+  /**
+   * The offline run is the only one a pull request can perform, and it reads
+   * the registry back to itself. It therefore carries the deadline for the
+   * online half, so that "we will wire the token up later" expires on a date
+   * instead of quietly becoming the permanent arrangement.
+   */
+  describe('the deadline the offline run carries', () => {
+    const withRoot = (changes) => {
+      const doc = { ...structuredClone(REGISTRY), ...changes }
+      for (const key of Object.keys(changes)) {
+        if (changes[key] === undefined) delete doc[key]
+      }
+      const dir = mkdtempSync(join(tmpdir(), 'fleet-'))
+      temps.push(dir)
+      const path = join(dir, 'fleet.json')
+      writeFileSync(path, JSON.stringify(doc), 'utf8')
+      return path
+    }
+
+    it('fails once the grace date has passed, naming both ways out', () => {
+      const result = run(withRoot({ onlineGraceUntil: '2020-01-01' }))
+      assert.equal(result.status, 1)
+      assert.match(result.stderr, /no tier has been verified against a repository since/)
+      assert.match(result.stderr, /move onlineVerifiedAt, or move onlineGraceUntil/)
+    })
+
+    it('refuses an undated deferral', () => {
+      const result = run(withRoot({ onlineGraceUntil: undefined }))
+      assert.equal(result.status, 1)
+      assert.match(result.stderr, /an intention with no expiry/)
+    })
+
+    it('says when the online half last ran, and when this run stops passing', () => {
+      const result = spawnSync('node', [CHECK, '--offline'], { encoding: 'utf8' })
+      assert.equal(result.status, 0, result.stderr)
+      assert.match(result.stdout, /Online verification (has never run|last ran \d{4}-\d{2}-\d{2})/)
+      assert.match(result.stdout, /stops passing on \d{4}-\d{2}-\d{2}/)
+    })
+  })
+
   it('rejects a malformed verification date rather than ignoring it', () => {
     assert.match(run(withProject(0, { verifiedAt: 'recently' })).stderr, /YYYY-MM-DD/)
   })

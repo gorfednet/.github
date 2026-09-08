@@ -20,11 +20,12 @@ on:
     # adoption, and reverifyDays is 120.
     - cron: '0 7 * * 1'
   workflow_dispatch:
-  pull_request:
-    paths:
-      - 'fleet.json'
-      - 'scripts/check-fleet.mjs'
-      - '.github/workflows/fleet-audit.yml'
+# Deliberately not on pull_request. A pull request cannot be given the token
+# this job needs, so running it there would produce a guaranteed red on every
+# change — and a check that is always red is read as broken and ignored, taking
+# its real detections with it. The pressure to actually supply the token lives
+# in fleet.json's onlineGraceUntil instead, which the pull-request job enforces
+# and which is a date someone has to consciously move.
 
 permissions:
   contents: read
