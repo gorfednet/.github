@@ -1,0 +1,222 @@
+#!/usr/bin/env node
+/**
+ * The durable-plan rule, applied to the fleet itself.
+ *
+ * A registry of who has adopted what is a hand-maintained list, and a
+ * hand-maintained list that nothing verifies keeps reading as authoritative
+ * long after it stopped being true. This one is checked against the
+ * repositories rather than taken at its word: a project claiming a tier gets
+ * asked for the artefacts that tier requires.
+ *
+ * Usage:
+ *   node scripts/check-fleet.mjs [--offline] [--file fleet.json]
+ *
+ * `--offline` validates the schema and the dates and skips every repository
+ * lookup, and says so, because a run that checked nothing must not print the
+ * same output as one that checked everything.
+ */
+import { execFileSync } from 'node:child_process'
+import { existsSync, readFileSync } from 'node:fs'
+
+const ARCHETYPES = new Set([
+  'react-spa-plus-api',
+  'vite-spa',
+  'fullstack',
+  'python-flask',
+  'static-no-npm',
+  'static-make-python-esbuild',
+  'org-shared-ci',
+])
+
+/** What a repository must actually contain to be allowed to claim each tier. */
+const TIER_EVIDENCE = {
+  1: [
+    ['verification-kit/MANIFEST.json', 'the vendored kit'],
+    ['docs/backlog.json', 'a backlog'],
+  ],
+  2: [['verification-kit/bin/assert-tests-executed.mjs', 'the executed-count assertion']],
+  3: [['canaries.json', 'mutation canaries against its own gates']],
+}
+
+function parseArgs(argv) {
+  return {
+    offline: argv.includes('--offline'),
+    file: argv.includes('--file') ? argv[argv.indexOf('--file') + 1] : 'fleet.json',
+  }
+}
+
+function todayUtc() {
+  const now = new Date()
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()))
+}
+
+/**
+ * Does `path` exist on the repository's default branch?
+ *
+ * Returns a tri-state. An API failure must never collapse into "absent": that
+ * would report a project as under-equipped during an outage, and crying wolf
+ * is how a check gets switched off, taking its real detections with it.
+ */
+/**
+ * The slug of the checkout this is running in, so the repository holding the
+ * registry can be checked against the tree in front of us rather than against
+ * its own default branch.
+ *
+ * Without this the org repo always lags its own pull request by one merge: the
+ * change that adds a file and the entry claiming it can never be green at the
+ * same time, and the only ways out are to merge red or to weaken the check.
+ */
+function localSlug() {
+  try {
+    const remote = execFileSync('git', ['remote', 'get-url', 'origin'], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    }).trim()
+    return /github\.com[:/]([^/]+)\/(.+?)(?:\.git)?\/?$/.exec(remote)?.slice(1, 3).join('/') ?? null
+  } catch {
+    return null
+  }
+}
+
+const HERE = localSlug()
+
+function repoHasFile(slug, path) {
+  if (slug === HERE) return existsSync(path) ? 'present' : 'absent'
+  try {
+    execFileSync('gh', ['api', `repos/${slug}/contents/${path}`, '--jq', '.sha'], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    })
+    return 'present'
+  } catch (cause) {
+    const message = String(cause.stderr ?? cause.message)
+    if (/404|Not Found/i.test(message)) return 'absent'
+    return 'unknown'
+  }
+}
+
+const { offline, file } = parseArgs(process.argv.slice(2))
+
+let doc
+try {
+  doc = JSON.parse(readFileSync(file, 'utf8'))
+} catch (cause) {
+  console.error(`\n✗ check-fleet: cannot read ${file} (${cause.message})\n`)
+  process.exit(1)
+}
+
+const projects = doc.projects ?? []
+const problems = []
+
+// Fail closed: an empty registry would satisfy every per-project assertion
+// below by having none to make.
+if (projects.length < 10) {
+  console.error(
+    `\n✗ check-fleet: ${file} lists ${projects.length} project(s).\n` +
+      '  There are more than that. Every check below would pass over the gap.\n',
+  )
+  process.exit(1)
+}
+
+const reverifyDays = doc.reverifyDays ?? 120
+const today = todayUtc()
+const seen = new Set()
+
+for (const project of projects) {
+  const where = `${project.slug ?? '(no slug)'}`
+
+  if (typeof project.slug !== 'string' || !project.slug.includes('/')) {
+    problems.push(`${where}: slug must be owner/repo`)
+    continue
+  }
+  if (seen.has(project.slug)) problems.push(`${where}: listed twice`)
+  seen.add(project.slug)
+
+  if (!ARCHETYPES.has(project.archetype)) {
+    problems.push(`${where}: unknown archetype "${project.archetype}"`)
+  }
+  if (!Number.isInteger(project.tier) || project.tier < 0 || project.tier > 3) {
+    problems.push(`${where}: tier must be 0-3, got ${project.tier}`)
+    continue
+  }
+  if (typeof project.owner !== 'string' || project.owner === '') {
+    problems.push(`${where}: needs an owner. Unowned work is nobody's work.`)
+  }
+
+  // Deferral is fine; undated deferral becomes permanent by accident.
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(project.verifiedAt ?? '')) {
+    problems.push(`${where}: verifiedAt must be YYYY-MM-DD`)
+  } else {
+    const age = Math.floor((today - new Date(`${project.verifiedAt}T00:00:00Z`)) / 86_400_000)
+    if (age > reverifyDays) {
+      problems.push(
+        `${where}: last verified ${project.verifiedAt}, ${age} days ago (limit ${reverifyDays}). ` +
+          'Re-check the tier and move the date, or lower the tier.',
+      )
+    }
+  }
+
+  /**
+   * A project may satisfy a tier with a file in a different place — the org
+   * repo holds the canonical kit under `templates/`, and a project may have
+   * had its own equivalent since before the kit existed. The override moves
+   * the path; it does not waive the requirement, and it must say why, so the
+   * exception stays a decision someone made rather than a hole.
+   */
+  const overrides = project.evidencePaths ?? {}
+  if (Object.keys(overrides).length > 0 && !project.evidenceReason) {
+    problems.push(
+      `${where}: uses evidencePaths but gives no evidenceReason. An unexplained ` +
+        'exception is indistinguishable from a mistake.',
+    )
+  }
+  for (const key of Object.keys(overrides)) {
+    const known = Object.values(TIER_EVIDENCE).flat().some(([path]) => path === key)
+    if (!known) {
+      problems.push(
+        `${where}: evidencePaths overrides "${key}", which is not a tier requirement. ` +
+          'A stale override silently stops covering the thing it renamed.',
+      )
+    }
+  }
+
+  if (offline || project.tier === 0) continue
+
+  // The half that makes this a check rather than a table: ask the repository.
+  for (let tier = 1; tier <= project.tier; tier += 1) {
+    for (const [required, what] of TIER_EVIDENCE[tier] ?? []) {
+      const path = overrides[required] ?? required
+      const state = repoHasFile(project.slug, path)
+      if (state === 'absent') {
+        problems.push(
+          `${where}: claims tier ${project.tier} but has no ${path} — ${what} is required at tier ${tier}. ` +
+            'Adopt it, or lower the tier.',
+        )
+      } else if (state === 'unknown') {
+        problems.push(
+          `${where}: could not read ${path} (not a 404). Reported rather than assumed, because ` +
+            'a lookup that failed is not evidence of absence.',
+        )
+      }
+    }
+  }
+}
+
+if (problems.length > 0) {
+  console.error(`\n✗ fleet registry: ${problems.length} problem(s)\n`)
+  for (const problem of problems) console.error(`  - ${problem}`)
+  console.error('')
+  process.exit(1)
+}
+
+const byTier = {}
+for (const p of projects) byTier[p.tier] = (byTier[p.tier] ?? 0) + 1
+const tally = Object.keys(byTier)
+  .sort()
+  .map((t) => `tier ${t}: ${byTier[t]}`)
+  .join(', ')
+
+console.log(
+  `✓ fleet: ${projects.length} project(s) (${tally})` +
+    (offline ? '\n  --offline: did NOT verify any claimed tier against its repository.' : ''),
+)

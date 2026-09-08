@@ -36,11 +36,16 @@ on:
 
       verification-kit:
         description: >-
-          Path to the vendored verification kit. Empty disables the gate,
-          which should only ever be a temporary state during adoption.
+          Path to the vendored verification kit. Empty disables the gate.
+          The default is empty on purpose: all fourteen projects already
+          inherit these workflows, so a non-empty default would have turned
+          every one of them red on the day the gate landed, and a fleet-wide
+          red is indistinguishable from a fleet-wide outage. Adoption is
+          opt-in and per project; FLEET.md is what stops "not yet" becoming
+          permanent.
         required: false
         type: string
-        default: verification-kit
+        default: ""
       verification-backlog:
         description: Path to the project's backlog. Empty skips that check.
         required: false

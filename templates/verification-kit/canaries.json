@@ -90,6 +90,30 @@
       "replace": "                   \"Comment 'bugbot run' on the PR, or re-run this job once it has finished.\"\n              exit 0"
     },
     {
+      "id": "fleet-entry-never-goes-stale",
+      "guards": "A registry entry that has not been re-verified inside the window fails. Deferral is fine; undated deferral becomes permanent by accident, and a table of intentions keeps reading as authoritative.",
+      "command": "node --test 'test/fleetRegistry.test.mjs'",
+      "file": "scripts/check-fleet.mjs",
+      "find": "    if (age > reverifyDays) {",
+      "replace": "    if (false) {"
+    },
+    {
+      "id": "fleet-lookup-failure-reads-as-adopted",
+      "guards": "A repository lookup that failed for a reason other than 404 is reported, not treated as evidence either way. Collapsing it to 'absent' cries wolf during an outage; collapsing it to 'present' certifies a tier nobody checked.",
+      "command": "node --test 'test/*.test.mjs'",
+      "file": "scripts/check-fleet.mjs",
+      "find": "    return 'unknown'",
+      "replace": "    return 'present'"
+    },
+    {
+      "id": "fleet-md-drifts-from-the-registry",
+      "guards": "The readable fleet table cannot disagree with the checked one. A generated file nobody regenerates is a hand-maintained list wearing a disguise.",
+      "command": "node scripts/write-fleet-md.mjs --check",
+      "file": "fleet.json",
+      "find": "\"tier\": 3,\n      \"owner\": \"gorf\",\n      \"verifiedAt\": \"2026-09-08\",\n      \"note\": \"Origin of the kit.",
+      "replace": "\"tier\": 2,\n      \"owner\": \"gorf\",\n      \"verifiedAt\": \"2026-09-08\",\n      \"note\": \"Origin of the kit."
+    },
+    {
       "id": "slug-guesses-a-non-github-remote",
       "guards": "A non-GitHub remote returns null rather than a plausible-looking slug that would send API calls somewhere they cannot succeed.",
       "command": "node --test 'templates/verification-kit/test/githubSlug.test.mjs'",

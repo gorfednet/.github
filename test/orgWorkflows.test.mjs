@@ -46,6 +46,25 @@ describe('reusable pr-check workflows', () => {
         )
       })
 
+      /**
+       * All fourteen projects already inherit one of these workflows, so a
+       * non-empty default would have turned the whole fleet red on the day
+       * the gate landed — and a fleet-wide red is indistinguishable from a
+       * fleet-wide outage, which is how a gate gets switched off rather than
+       * adopted. Adoption is opt-in and per project.
+       *
+       * The opposite failure — "not yet" becoming permanent — is FLEET.md's
+       * job, not this default's.
+       */
+      it('defaults the gate to off, so adoption is a decision', () => {
+        const block = text.slice(text.indexOf('      verification-kit:'))
+        const lines = block.split('\n').slice(0, 14)
+        assert.ok(
+          lines.some((l) => l.trim() === 'default: ""'),
+          'verification-kit must default to empty; see FLEET.md for who has adopted',
+        )
+      })
+
       it('exposes the inputs a project needs to configure it', () => {
         for (const input of ['verification-kit:', 'verification-backlog:', 'test-report:', 'min-tests:']) {
           assert.ok(text.includes(`      ${input}`), `missing workflow input ${input}`)
