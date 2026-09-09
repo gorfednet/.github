@@ -19,10 +19,19 @@ on:
         type: string
         default: ""
       playwright-test-command:
-        description: Playwright test command
+        description: >-
+          Playwright test command. Defaults to the whole suite. It used to
+          default to `npx playwright test e2e/smoke.spec.ts`, which named one
+          file and silently ran only that: 4thcltr.com has twenty-four spec
+          files and inherited this default, so twenty-three of them had never
+          run in browser-compat, and gorfmusic.com's accessibility suite had
+          never run at all. Both jobs were green throughout, because a
+          selection that matches less than you think still passes what it
+          matched. Narrow it deliberately if you must, and pair it with
+          min-tests so the narrowing is visible.
         required: false
         type: string
-        default: npx playwright test e2e/smoke.spec.ts
+        default: npx playwright test
       min-tests:
         description: >-
           Executed-test floor per browser. Set it to what the job runs today,
