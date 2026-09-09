@@ -345,6 +345,25 @@ it through a symlink — reasoning about this one is how it survived review.
 Always red and always green are the same amount of information, and the first
 one gets switched off, taking the real failures with it.
 
+**V48. A job that finishes inside its timeout by seconds is green, and is a
+failure that has not happened yet.** Nothing reports it. The checks panel shows
+a pass, the duration is small grey text, and the first signal is a red X on an
+unrelated pull request — which then gets investigated as a regression in
+whatever that pull request happened to touch. `mutation-canary` ran 24:31,
+24:35 and exactly 25:00 against a 25-minute limit before it was cancelled one
+second after its last assertion passed; three green runs were the warning and
+there was nowhere for them to be read. Measure headroom against the declared
+limit (`check-ci-headroom`), and when it is thin, make the job faster or split
+it — raising the timeout buys the same interval again and hides the growth.
+
+**V49. A machine-readable reporter must be added to the human one, never
+substituted for it.** Asserting an executed-test floor needs a JSON report, and
+the natural edit is to change `--reporter` — after which a failing job prints a
+path to a file the workflow does not upload, and names no failing test. Whoever
+opens that log learns only that something broke. Caught twice in one week, in a
+Playwright smoke job and a Vitest gate, both while wiring the floor that the
+JSON was for. List both reporters.
+
 ## Provenance
 
 Every rule above was first written in

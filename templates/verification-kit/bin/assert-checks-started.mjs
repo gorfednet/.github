@@ -85,19 +85,49 @@ export function resolveStartupState(pr, repo, read, minRuns = 1) {
   const runs = read(`repos/${repo}/actions/runs?head_sha=${sha}&per_page=100`)
   if (!runs.ok) return { state: 'undetermined', detail: `could not list workflow runs: ${runs.error}` }
 
-  const list = runs.data?.workflow_runs ?? []
+  const all = runs.data?.workflow_runs ?? []
 
-  // `action_required` is the same shape wearing a different label: the run
-  // exists, produced no checks, and is waiting on somebody who does not know
-  // they are being waited on.
+  // Only the newest run per workflow counts. The recovery path this check
+  // exists to enable is "land the missing input, re-run" — and a re-run
+  // creates a new entry rather than replacing the old one, so judging every
+  // historical run leaves the pull request permanently red no matter what is
+  // fixed. A guard that cannot go green is one that gets ignored.
+  const newest = new Map()
+  for (const run of all) {
+    const key = run.workflow_id ?? run.name
+    const seen = newest.get(key)
+    const newer =
+      !seen ||
+      (run.run_number ?? 0) > (seen.run_number ?? 0) ||
+      ((run.run_number ?? 0) === (seen.run_number ?? 0) &&
+        (run.run_attempt ?? 0) > (seen.run_attempt ?? 0))
+    if (newer) newest.set(key, run)
+  }
+  const list = [...newest.values()]
+
+  // Three ways to produce no check runs, not one.
+  //
+  // `action_required` as a *conclusion* only appears once a run has finished.
+  // A run paused for approval sits at `status: waiting` with a null
+  // conclusion, which is the case V45 actually describes — it is blocked,
+  // there are no checks, and somebody is being waited on who does not know
+  // it. Reading conclusion alone let exactly that come back ok.
   const failed = list.filter(
-    (run) => run.conclusion === 'startup_failure' || run.conclusion === 'action_required',
+    (run) =>
+      run.conclusion === 'startup_failure' ||
+      run.conclusion === 'action_required' ||
+      run.status === 'waiting' ||
+      run.status === 'action_required',
   )
   if (failed.length > 0) {
     return {
       state: 'startup-failure',
       detail: `${failed.length} workflow run(s) never started`,
-      runs: failed.map((run) => ({ name: run.name, conclusion: run.conclusion, url: run.html_url })),
+      runs: failed.map((run) => ({
+        name: run.name,
+        conclusion: run.conclusion ?? `${run.status} (not finished)`,
+        url: run.html_url,
+      })),
     }
   }
 
