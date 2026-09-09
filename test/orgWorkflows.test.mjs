@@ -116,6 +116,19 @@ describe('verification-gate composite action', () => {
     )
   })
 
+  /**
+   * The kit vendors its own test suite into every project, and until this step
+   * existed no project ever ran it — assertions shipped as decoration, which
+   * reads as coverage to anyone who sees the directory. It also answers what
+   * the drift check cannot: whether the kit runs *here*, on this runner, in a
+   * repository that may have no npm at all.
+   */
+  it("runs the kit's own tests, with a floor under the count", () => {
+    assert.match(text, /The kit works in this repository/)
+    assert.match(text, /--test-reporter=tap/)
+    assert.match(text, /-lt 40/, 'a self-test step with no floor passes when the glob misses')
+  })
+
   it('runs each kit check by name, so a renamed script fails loudly', () => {
     for (const script of [
       'check-kit-drift.mjs',

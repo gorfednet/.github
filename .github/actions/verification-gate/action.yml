@@ -60,6 +60,26 @@ runs:
       shell: bash
       run: node "${{ inputs.kit }}/bin/check-kit-drift.mjs" --kit "${{ inputs.kit }}"
 
+    # The kit ships its own tests and, until this step, no consuming project
+    # ever ran them — seventy-six assertions vendored into a repository as
+    # decoration. They also answer a question the drift check cannot: whether
+    # the kit works *here*, on this runner, in a repository that may have no
+    # package.json and no npm at all. The floor is what separates that from a
+    # glob quietly matching nothing.
+    - name: The kit works in this repository
+      if: ${{ !cancelled() }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        count=$(node --test --test-reporter=tap "${{ inputs.kit }}/test/"*.test.mjs \
+          | grep -c '^ *ok ' || true)
+        echo "kit self-tests executed $count assertion(s)"
+        if [ "$count" -lt 40 ]; then
+          echo "::error::The kit's own suite executed $count tests, expected at least 40." \
+               "A glob that matches nothing exits 0 having proven nothing."
+          exit 1
+        fi
+
     - name: Rule citations resolve
       if: ${{ !cancelled() }}
       shell: bash
