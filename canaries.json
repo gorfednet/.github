@@ -1,0 +1,173 @@
+{
+  "$comment": "The kit's own canaries. A template that ships broken replicates across every project that copies it, so these run in CI on this repo.",
+  "canaries": [
+    {
+      "id": "backlog-accepts-vague-symptom",
+      "guards": "The backlog validator rejects a symptom too short to act on. Without this an entry can say 'broken' and still count as a tracked bug.",
+      "command": "node --test 'templates/verification-kit/test/backlogSchema.test.mjs'",
+      "file": "templates/verification-kit/lib/backlogSchema.mjs",
+      "find": "const MIN_PROSE = 20",
+      "replace": "const MIN_PROSE = 0"
+    },
+    {
+      "id": "backlog-lets-a-deferral-lapse",
+      "guards": "A dated deferral fails the build once it passes. Without this, 'revisit before the next release' becomes permanent by accident.",
+      "command": "node --test 'templates/verification-kit/test/backlogSchema.test.mjs'",
+      "file": "templates/verification-kit/lib/backlogSchema.mjs",
+      "find": "new Date(`${entry.reviewBy}T00:00:00Z`) < now",
+      "replace": "false"
+    },
+    {
+      "id": "bugbot-neutral-read-as-skipped",
+      "guards": "A neutral Bugbot conclusion carrying a completed-review summary is findings, not a skipped review. This is the exact defect that left five findings unread across three pull requests.",
+      "command": "node --test 'templates/verification-kit/test/bugbotConclusion.test.mjs'",
+      "file": "templates/verification-kit/lib/bugbotConclusion.mjs",
+      "find": "  if (!finished) {",
+      "replace": "  if (bugbot.conclusion === 'neutral') {"
+    },
+    {
+      "id": "bugbot-api-failure-reads-as-clean",
+      "guards": "A GitHub API failure resolves to undetermined, never to a pass. Collapsing errors to a benign state is how a detector reports green during an outage.",
+      "command": "node --test 'templates/verification-kit/test/bugbotConclusion.test.mjs'",
+      "file": "templates/verification-kit/lib/bugbotConclusion.mjs",
+      "find": "    return { state: 'undetermined', pr, detail: `could not read #${pr}: ${detail.error}` }",
+      "replace": "    return { state: 'clean', pr, detail: 'assumed fine' }"
+    },
+    {
+      "id": "rule-numbering-gap-goes-unnoticed",
+      "guards": "A gap or duplicate in a rule sequence fails the build. Nine branches merging at once once produced 21-24 missing and two rules both numbered 25, with registry entries citing rules that had moved.",
+      "command": "node --test 'templates/verification-kit/test/ruleCitations.test.mjs'",
+      "file": "templates/verification-kit/bin/check-rule-citations.mjs",
+      "find": "if (numbers.join(',') !== expected.join(',')) {",
+      "replace": "if (false) {"
+    },
+    {
+      "id": "rule-citations-pass-over-no-sources",
+      "guards": "A source glob matching nothing fails rather than certifying that every citation resolves. Every assertion in that check is vacuously true of an empty file list.",
+      "command": "node --test 'templates/verification-kit/test/ruleCitations.test.mjs'",
+      "file": "templates/verification-kit/bin/check-rule-citations.mjs",
+      "find": "if (sources.length === 0) {",
+      "replace": "if (false) {"
+    },
+    {
+      "id": "drift-check-passes-when-it-cannot-fetch",
+      "guards": "A staleness check that cannot reach the canonical manifest fails. Passing there would report 'current' during an outage — the silent-green shape the whole kit exists to find.",
+      "command": "node --test 'templates/verification-kit/test/kitDrift.test.mjs'",
+      "file": "templates/verification-kit/bin/check-kit-drift.mjs",
+      "find": "} catch (cause) {\n  die(\n    `check-kit-drift: could not read the canonical manifest",
+      "replace": "} catch (cause) {\n  canonical = { version: 'unknown', files: expected }\n  console.log(\n    `check-kit-drift: could not read the canonical manifest"
+    },
+    {
+      "id": "drift-check-ignores-a-local-edit",
+      "guards": "A kit file edited in a consuming project fails. Otherwise it is a fix fifteen projects will not get, and a divergence the next refresh silently overwrites.",
+      "command": "node --test 'templates/verification-kit/test/kitDrift.test.mjs'",
+      "file": "templates/verification-kit/bin/check-kit-drift.mjs",
+      "find": "  else if (hash(path) !== want) modified.push(rel)",
+      "replace": "  else if (false) modified.push(rel)"
+    },
+    {
+      "id": "reusable-workflow-skips-the-gate",
+      "guards": "A reusable pr-check workflow that does not run the verification gate fails. Otherwise the project that adopts it gets a green check over nothing checked.",
+      "command": "node --test 'test/*.test.mjs'",
+      "file": ".github/workflows/pr-check-static.yml",
+      "find": "        uses: gorfednet/.github/.github/actions/verification-gate@main",
+      "replace": "        run: echo skipping the gate"
+    },
+    {
+      "id": "gate-step-loses-its-cancelled-guard",
+      "guards": "A step in the verification gate without `if: !cancelled()` fails. GitHub defaults a step to success(), so an unrelated earlier failure switches the assertion off at exactly the moment it matters.",
+      "command": "node --test 'test/*.test.mjs'",
+      "file": ".github/actions/verification-gate/action.yml",
+      "find": "    - name: No generated files tracked in git\n      if: ${{ !cancelled() }}",
+      "replace": "    - name: No generated files tracked in git"
+    },
+    {
+      "id": "bugbot-timeout-reads-as-a-pass",
+      "guards": "A Bugbot verdict job that gives up waiting must fail. 'Did not finish in time' is not 'found nothing', and reporting it as a pass reproduces the exact defect the job was written to fix.",
+      "command": "node --test 'test/*.test.mjs'",
+      "file": ".github/workflows/bugbot-verdict.yml",
+      "find": "                   \"Comment 'bugbot run' on the PR, or re-run this job once it has finished.\"\n              exit 1",
+      "replace": "                   \"Comment 'bugbot run' on the PR, or re-run this job once it has finished.\"\n              exit 0"
+    },
+    {
+      "id": "fleet-entry-never-goes-stale",
+      "guards": "A registry entry that has not been re-verified inside the window fails. Deferral is fine; undated deferral becomes permanent by accident, and a table of intentions keeps reading as authoritative.",
+      "command": "node --test 'test/fleetRegistry.test.mjs'",
+      "file": "scripts/check-fleet.mjs",
+      "find": "    if (age > reverifyDays) {",
+      "replace": "    if (false) {"
+    },
+    {
+      "id": "fleet-lookup-failure-reads-as-adopted",
+      "guards": "A repository lookup that failed for a reason other than 404 is reported, not treated as evidence either way. Collapsing it to 'absent' cries wolf during an outage; collapsing it to 'present' certifies a tier nobody checked.",
+      "command": "node --test 'test/*.test.mjs'",
+      "file": "scripts/check-fleet.mjs",
+      "find": "    return 'unknown'",
+      "replace": "    return 'present'"
+    },
+    {
+      "id": "fleet-md-drifts-from-the-registry",
+      "guards": "The readable fleet table cannot disagree with the checked one. A generated file nobody regenerates is a hand-maintained list wearing a disguise.",
+      "command": "node scripts/write-fleet-md.mjs --check",
+      "file": "fleet.json",
+      "find": "\"tier\": 3,\n      \"owner\": \"gorf\",\n      \"verifiedAt\": \"2026-09-08\",\n      \"note\": \"Origin of the kit.",
+      "replace": "\"tier\": 2,\n      \"owner\": \"gorf\",\n      \"verifiedAt\": \"2026-09-08\",\n      \"note\": \"Origin of the kit."
+    },
+    {
+      "id": "slug-guesses-a-non-github-remote",
+      "guards": "A non-GitHub remote returns null rather than a plausible-looking slug that would send API calls somewhere they cannot succeed.",
+      "command": "node --test 'templates/verification-kit/test/githubSlug.test.mjs'",
+      "file": "templates/verification-kit/lib/githubSlug.mjs",
+      "find": "/github\\.com[:/]([^/]+)\\/(.+?)(?:\\.git)?\\/?$/",
+      "replace": "/[:/]([^/]+)\\/(.+?)(?:\\.git)?\\/?$/"
+    },
+    {
+      "id": "fleet-check-reads-unauthorized-as-absent",
+      "guards": "A repository the credentials cannot open must not fall through to the absent branch. GitHub answers 404 both for a private repository the caller may not see and for a path that is genuinely missing, and conflating the two made the first online run of this check accuse a fully-adopted project of holding none of the kit. Rule V39.",
+      "command": "node --test 'test/fleetRegistry.test.mjs'",
+      "file": "scripts/check-fleet.mjs",
+      "find": "  if (!repoVisible(slug)) return 'unreadable'\n",
+      "replace": ""
+    },
+    {
+      "id": "offline-fleet-run-never-expires",
+      "guards": "The offline run verifies no claim against any repository, so it carries the deadline for the run that does. Removing the expiry leaves a check that cannot fail on adoption as the only one running, which is how a table of intentions keeps reading as authoritative.",
+      "command": "node --test 'test/fleetRegistry.test.mjs'",
+      "file": "scripts/check-fleet.mjs",
+      "find": "    if (lapsed && onlineAge > reverifyDays) {",
+      "replace": "    if (false) {"
+    },
+    {
+      "id": "healthcheck-skips-a-missing-smoke-spec",
+      "guards": "Nine production sites are watched by one reusable workflow, whose Playwright step used to exit 0 when the spec file was absent. Renaming a spec silently ended live monitoring and printed a tick. Asking for the smoke and not having it must fail; not wanting it is run-playwright: false, which a reader can see in the caller.",
+      "command": "node --test 'test/orgWorkflows.test.mjs'",
+      "file": ".github/workflows/production-healthcheck.yml",
+      "find": "            echo \"::error::run-playwright is true but $spec does not exist.\" \\\n                 \"Point smoke-spec at the real file, or set run-playwright: false\" \\\n                 \"and accept that nothing is watching this site's behaviour.\"\n            exit 1",
+      "replace": "            echo \"no $spec; skipping\"\n            exit 0"
+    },
+    {
+      "id": "healthcheck-accepts-a-blank-200",
+      "guards": "A status code says a server answered, not that it served the site. The body size floor and the expected-text match are what separate a live site from a parking page, a CDN error page, or an empty 200 from a broken deploy.",
+      "command": "node --test 'test/orgWorkflows.test.mjs'",
+      "file": ".github/workflows/production-healthcheck.yml",
+      "find": "            if [ \"$bytes\" -lt \"$min_bytes\" ]; then",
+      "replace": "            if false; then"
+    },
+    {
+      "id": "gate-input-goes-nowhere",
+      "guards": "An input a project can set that the gate never receives. The configuration reads as applied and does nothing, which is worse than not offering it. source-dirs was added to the assertion and not to the generator that writes these workflows, so the script the test recommends produced a workflow that failed the test.",
+      "command": "node --test 'test/orgWorkflows.test.mjs'",
+      "file": ".github/workflows/pr-check-static.yml",
+      "find": "          source-dirs: ${{ inputs.source-dirs }}",
+      "replace": "          # source-dirs: dropped"
+    },
+    {
+      "id": "cli-entrypoint-silently-does-nothing",
+      "guards": "V46. The naive main-module idiom compares a resolved file URL to a raw argv path. Through a symlinked directory they differ, the CLI never runs, and the process exits 0 — a checker reporting success having checked nothing. It was in two of this kit binaries, including the one CI uses to verify the manifest.",
+      "command": "node --test 'templates/verification-kit/test/isMain.test.mjs'",
+      "file": "templates/verification-kit/lib/isMain.mjs",
+      "find": "    return realpathSync(fileURLToPath(importMetaUrl)) === realpathSync(invoked)",
+      "replace": "    return importMetaUrl === `file://${invoked}`"
+    }
+  ]
+}

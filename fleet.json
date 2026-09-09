@@ -1,0 +1,130 @@
+{
+  "$comment": "The fleet's plan of record. FLEET.md is generated from this; edit here. Held by scripts/check-fleet.mjs, which verifies each claimed tier against the repository rather than taking the entry's word for it.",
+  "tiers": {
+    "0": "Has not adopted. The gate is off in its workflow.",
+    "1": "Drift check, tracked-artifacts check, backlog, shared rules.",
+    "2": "Tier 1 plus an executed-count assertion wired to a real test report.",
+    "3": "Tier 2 plus mutation canaries against its own gates, and the Bugbot verdict job."
+  },
+  "reverifyDays": 120,
+  "$onlineComment": "When the tier claims below were last checked against the repositories themselves, rather than only read back off this file. Null means never. The offline run — the only one a pull request can perform, since its token cannot see a private sibling — warns until onlineGraceUntil and fails after it. Deferral is fine; undated deferral becomes permanent by accident, and this file's whole purpose is to not become fiction.",
+  "onlineVerifiedAt": null,
+  "onlineGraceUntil": "2026-10-15",
+  "projects": [
+    {
+      "slug": "gorfednet/bindercurve.com",
+      "archetype": "react-spa-plus-api",
+      "tier": 3,
+      "owner": "gorf",
+      "verifiedAt": "2026-09-08",
+      "note": "Origin of the kit. Keeps its own bespoke contracts alongside the shared ones; becomes a consumer of the shared copies rather than keeping duplicates.",
+      "evidenceReason": "Every check predates the kit and lives at its original path. Swapping to the vendored copies is tracked work, not a gap — until then the override points at the files that actually run.",
+      "evidencePaths": {
+        "verification-kit/MANIFEST.json": "scripts/deploy-check.ts",
+        "docs/backlog.json": "src/lib/planning/backlogRegistry.ts",
+        "verification-kit/bin/assert-tests-executed.mjs": "scripts/assert-tests-executed.mjs",
+        "canaries.json": "scripts/mutation-canary.json"
+      }
+    },
+    {
+      "slug": "gorfednet/4thcltr.com",
+      "archetype": "vite-spa",
+      "tier": 0,
+      "owner": "gorf",
+      "verifiedAt": "2026-09-08",
+      "note": "Tier 3 pilot. Has Playwright across four shards, i18n and route checks — the closest thing to BinderCurve in the fleet."
+    },
+    {
+      "slug": "gorfednet/gorfed.net",
+      "archetype": "static-make-python-esbuild",
+      "tier": 0,
+      "owner": "gorf",
+      "verifiedAt": "2026-09-08",
+      "note": "Tier 2 pilot. The awkward case: the build is Make plus Python plus esbuild and `npm test` is a placeholder that exits 1. Proves the kit works when the runner is not npm."
+    },
+    {
+      "slug": "gorfednet/subrythm.com",
+      "archetype": "static-no-npm",
+      "tier": 0,
+      "owner": "gorf",
+      "verifiedAt": "2026-09-08",
+      "note": "Tier 1 pilot. No package.json, no tests, 49 files. Proves the floor: if the kit needs npm here, the design is wrong."
+    },
+    {
+      "slug": "gorfednet/anal0g.org",
+      "archetype": "static-no-npm",
+      "tier": 0,
+      "owner": "gorf",
+      "verifiedAt": "2026-09-08"
+    },
+    {
+      "slug": "gorfednet/blackpixelrecords.com",
+      "archetype": "static-no-npm",
+      "tier": 0,
+      "owner": "gorf",
+      "verifiedAt": "2026-09-08"
+    },
+    {
+      "slug": "gorfednet/denseware.com",
+      "archetype": "vite-spa",
+      "tier": 0,
+      "owner": "gorf",
+      "verifiedAt": "2026-09-08"
+    },
+    {
+      "slug": "gorfednet/gorfmusic.com",
+      "archetype": "vite-spa",
+      "tier": 0,
+      "owner": "gorf",
+      "verifiedAt": "2026-09-08"
+    },
+    {
+      "slug": "gorfednet/promptboi.com",
+      "archetype": "fullstack",
+      "tier": 0,
+      "owner": "gorf",
+      "verifiedAt": "2026-09-08"
+    },
+    {
+      "slug": "gorfednet/rowanmcarthur.com",
+      "archetype": "static-no-npm",
+      "tier": 0,
+      "owner": "gorf",
+      "verifiedAt": "2026-09-08"
+    },
+    {
+      "slug": "gorfednet/ssatcy.com",
+      "archetype": "vite-spa",
+      "tier": 0,
+      "owner": "gorf",
+      "verifiedAt": "2026-09-08"
+    },
+    {
+      "slug": "gorfednet/TowIt",
+      "archetype": "python-flask",
+      "tier": 0,
+      "owner": "gorf",
+      "verifiedAt": "2026-09-08"
+    },
+    {
+      "slug": "gorfednet/wychwoodresort.com",
+      "archetype": "vite-spa",
+      "tier": 0,
+      "owner": "gorf",
+      "verifiedAt": "2026-09-08"
+    },
+    {
+      "slug": "gorfednet/.github",
+      "archetype": "org-shared-ci",
+      "tier": 3,
+      "owner": "gorf",
+      "verifiedAt": "2026-09-08",
+      "note": "Holds the canonical kit. Gated harder than the copies, because a template defect replicates fourteen times.",
+      "evidenceReason": "This is the source, not a consumer: the kit lives under templates/ and is not vendored into itself. Only the kit paths move; its backlog is at the standard location.",
+      "evidencePaths": {
+        "verification-kit/MANIFEST.json": "templates/verification-kit/MANIFEST.json",
+        "verification-kit/bin/assert-tests-executed.mjs": "templates/verification-kit/bin/assert-tests-executed.mjs"
+      }
+    }
+  ]
+}

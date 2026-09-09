@@ -1,0 +1,134 @@
+name: bugbot-verdict
+
+# Turn Bugbot's review into a verdict a person can read at a glance.
+#
+# In the GitHub checks panel a Bugbot `NEUTRAL` prints in the same bucket as a
+# clean pass, and Bugbot uses `NEUTRAL` for *reviewed, and found things*. On
+# 2026-09-08 that put five findings across three pull requests into the same
+# visual slot as "all clear", and all three were logged as never reviewed.
+#
+# So this job asks the question directly and answers it in three states:
+# reviewed-and-clean, reviewed-with-findings, and never-ran. Only the first
+# passes.
+
+on:
+  workflow_call:
+    inputs:
+      kit:
+        description: Path to the vendored verification kit.
+        required: false
+        type: string
+        default: verification-kit
+      wait-minutes:
+        description: >-
+          How long to wait for Bugbot to finish before giving up. Giving up is
+          reported as a failure, not as a pass — an unfinished review is not a
+          clean one.
+        required: false
+        type: number
+        default: 12
+
+# Both lookups below are API calls, and a repository using GitHub's restricted
+# default token gets `contents: read` and nothing else. Without these the calls
+# fail, the loop reads the failure as "no verdict yet", and the job spends
+# twelve minutes before blaming Bugbot for something the token did.
+permissions:
+  contents: read
+  pull-requests: read
+  checks: read
+  # For `actions/runs`, which the startup check reads. Declaring any
+  # `permissions:` block sets every scope not listed to `none`, so adding the
+  # step without this line gives it a 403 — and it correctly refuses to read a
+  # 403 as "nothing failed to start", which means it would have failed on
+  # every single run. A guard that is always red is a guard somebody switches
+  # off, and then the real one goes unnoticed too.
+  actions: read
+
+jobs:
+  verdict:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # A pull request number is the only thing this can ask about.
+    if: github.event_name == 'pull_request' || github.event_name == 'pull_request_target'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      # Only useful when this workflow lives in its own file: if it is a job
+      # inside the CI workflow that failed to start, it did not run either.
+      # Worth the four seconds regardless, because the failure it names is
+      # otherwise not visible anywhere a person looks (V45).
+      - name: Every workflow for this head actually started
+        if: ${{ !cancelled() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          KIT: ${{ inputs.kit }}
+        run: |
+          set -euo pipefail
+          if [ -f "$KIT/bin/assert-checks-started.mjs" ]; then
+            node "$KIT/bin/assert-checks-started.mjs" --pr "$PR"
+          else
+            echo "::warning::No assert-checks-started in $KIT; a workflow that failed to start would be invisible here."
+          fi
+
+      - name: Wait for a real Bugbot verdict
+        if: ${{ !cancelled() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          KIT: ${{ inputs.kit }}
+          WAIT_MINUTES: ${{ inputs.wait-minutes }}
+        run: |
+          set -uo pipefail
+
+          if [ ! -f "$KIT/bin/bugbot-review-status.mjs" ]; then
+            echo "::error::No verification kit at $KIT."
+            exit 1
+          fi
+
+          deadline=$(( $(date +%s) + WAIT_MINUTES * 60 ))
+          attempt=0
+
+          while :; do
+            attempt=$((attempt + 1))
+            output=$(node "$KIT/bin/bugbot-review-status.mjs" --pr "$PR" 2>&1)
+            status=$?
+            echo "$output"
+
+            # Clean review. The only passing state.
+            if [ "$status" -eq 0 ]; then
+              exit 0
+            fi
+
+            # Findings are a verdict, so stop immediately: waiting longer will
+            # not turn them into a pass, and a fast red is what gets read.
+            if echo "$output" | grep -q 'findings'; then
+              echo "::error::Bugbot reviewed PR #$PR and found something. Read the inline comments and triage."
+              exit 1
+            fi
+
+            # "Could not read the review state" is a different answer from
+            # "the review has not finished", and waiting does not improve it.
+            # Treating them alike meant a missing token scope, a truncated
+            # check-runs page or a plain API error all spent the full wait and
+            # then printed the wrong diagnosis: comment `bugbot run`, when
+            # Bugbot may well have finished and said nothing was wrong.
+            if echo "$output" | grep -q 'undetermined'; then
+              echo "::error::Could not read Bugbot's review state on PR #$PR." \
+                   "This is a lookup failure, not a pending review — check the token's" \
+                   "pull-requests and checks scopes before re-running."
+              exit 1
+            fi
+
+            if [ "$(date +%s)" -ge "$deadline" ]; then
+              # Fail closed. "Did not finish in time" is not "found nothing",
+              # and reporting it as a pass is the silent-green shape this repo
+              # exists to find.
+              echo "::error::No Bugbot verdict on PR #$PR after ${WAIT_MINUTES}m (${attempt} checks)." \
+                   "Comment 'bugbot run' on the PR, or re-run this job once it has finished."
+              exit 1
+            fi
+
+            echo "No verdict yet (attempt ${attempt}); waiting 60s."
+            sleep 60
+          done

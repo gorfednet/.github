@@ -50,6 +50,44 @@ Run the same guard locally (requires `rg`):
 bash scripts/no-smb-guard.sh <path>
 ```
 
+## Verification baseline
+
+Every project in the fleet runs the same checks against a green build, because
+a green build is the thing most likely to be lying. The rules are in
+[`docs/verification-rules.md`](docs/verification-rules.md) as `V1`…`V38`; the
+checks that enforce them are in
+[`templates/verification-kit/`](templates/verification-kit/), and the case file
+behind every rule is bindercurve.com's `docs/audit/verification-teardown.md`.
+
+Three layers:
+
+1. **Machine-wide** Cursor rules and skills, so an agent applies the standing
+   loop in a repository that has adopted nothing yet.
+2. **This repository.** The canonical kit, the shared rules, the
+   `verification-gate` composite action, and `bugbot-verdict.yml`.
+3. **Each project**, which copies the kit and runs `check-kit-drift.mjs` so its
+   copy cannot quietly fall behind.
+
+A project adopts the whole thing by upgrading the `uses:` line on its existing
+`pr-check-*` workflow. The gate is inherited; nothing is added to the project's
+own workflow file. Point it at a test report to get the executed-count
+assertion:
+
+```yaml
+uses: gorfednet/.github/.github/workflows/pr-check-vite-spa.yml@main
+with:
+  test-report: test-results/results.json
+  min-tests: "24"
+```
+
+Set `verification-kit: ""` to disable the gate. That should only ever be a
+temporary state during adoption, and the fleet registry records which projects
+are in it.
+
+Adoption is tiered, because a static site with no `package.json` cannot run
+what BinderCurve runs. The kit is plain node with no dependencies for exactly
+that reason.
+
 ## Pull requests and Cursor Bugbot
 
 Feature work on portfolio sites is a **branch + GitHub PR** so Cursor Bugbot and the reusable `pr-check-*` workflows run. Do not push feature commits straight to `main`.

@@ -23,6 +23,23 @@ on:
         required: false
         type: string
         default: npx playwright test e2e/smoke.spec.ts
+      min-tests:
+        description: >-
+          Executed-test floor per browser. Set it to what the job runs today,
+          minus nothing: a floor comfortably under the real count tolerates
+          exactly the decay it exists to catch. The default of 1 only rules
+          out the empty run.
+        required: false
+        type: string
+        default: "1"
+      verification-kit:
+        description: >-
+          Path to the vendored kit, used for the executed-count assertion.
+          Empty falls back to an inline count, which is weaker but still
+          refuses an empty run.
+        required: false
+        type: string
+        default: ""
 
 jobs:
   compat:
@@ -41,10 +58,50 @@ jobs:
         run: ${{ inputs.build-command }}
       - uses: gorfednet/.github/.github/actions/setup-playwright@main
       - name: Playwright smoke (${{ matrix.browser }})
-        run: ${{ inputs.playwright-test-command }} --project=${{ matrix.browser }}
+        run: >-
+          ${{ inputs.playwright-test-command }} --project=${{ matrix.browser }}
+          --reporter=list,json
         env:
           CI: true
           PLAYWRIGHT_WORKERS: 1
+          # Off stdout, so `list` still prints something a person can read when
+          # a browser fails. A report only a machine sees is no use at 2am.
+          PLAYWRIGHT_JSON_OUTPUT_NAME: compat-${{ matrix.browser }}.json
+
+      # Three browsers, and until now nothing checked that any of them ran a
+      # test. The spec selection is a command string supplied by the caller, so
+      # a path that stops matching produces three green jobs in about forty
+      # seconds — and cross-browser coverage is exactly the kind that nobody
+      # reproduces by hand before shipping.
+      - name: Assert ${{ matrix.browser }} actually ran the specs
+        if: ${{ !cancelled() }}
+        run: |
+          set -euo pipefail
+          report="compat-${{ matrix.browser }}.json"
+          if [ -n "${{ inputs.verification-kit }}" ]; then
+            node "${{ inputs.verification-kit }}/bin/assert-tests-executed.mjs" \
+              --report "$report" --min "${{ inputs.min-tests }}" \
+              --label "compat ${{ matrix.browser }}"
+          else
+            # Non-skipped results, not specs: a fully skipped suite is the
+            # condition this exists to catch, and counting specs would pass it.
+            count=$(node -e "
+              const r = require('./$report');
+              const walk = (s) => s.reduce((n, x) =>
+                n
+                + (x.specs ?? []).reduce((m, spec) =>
+                    m + (spec.tests ?? []).filter((t) => t.status !== 'skipped').length, 0)
+                + walk(x.suites ?? []), 0);
+              console.log(walk(r.suites ?? []));
+            ")
+            echo "${{ matrix.browser }} executed $count test(s)"
+            if [ "$count" -lt "${{ inputs.min-tests }}" ]; then
+              echo "::error::${{ matrix.browser }} executed $count test(s)," \
+                   "expected at least ${{ inputs.min-tests }}. A selection that" \
+                   "matches nothing exits 0 having proven nothing."
+              exit 1
+            fi
+          fi
 
   compat-success:
     runs-on: ubuntu-latest

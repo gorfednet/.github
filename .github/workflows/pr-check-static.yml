@@ -19,6 +19,42 @@ on:
         type: string
         default: "index.html"
 
+      verification-kit:
+        description: >-
+          Path to the vendored verification kit. Empty disables the gate.
+          The default is empty on purpose: all fourteen projects already
+          inherit these workflows, so a non-empty default would have turned
+          every one of them red on the day the gate landed, and a fleet-wide
+          red is indistinguishable from a fleet-wide outage. Adoption is
+          opt-in and per project; FLEET.md is what stops "not yet" becoming
+          permanent.
+        required: false
+        type: string
+        default: ""
+      verification-backlog:
+        description: Path to the project's backlog. Empty skips that check.
+        required: false
+        type: string
+        default: docs/backlog.json
+      test-report:
+        description: Playwright or Vitest JSON report to assert a floor against.
+        required: false
+        type: string
+        default: ""
+      min-tests:
+        description: Executed-test floor. Set it to what the job runs today.
+        required: false
+        type: string
+        default: "1"
+      source-dirs:
+        description: >-
+          Space-separated directories that look generated but hold hand-written
+          code here. `build/` is output nearly everywhere and is where
+          gorfed.net keeps its Python build scripts, so the kit's list cannot
+          simply drop it. Each one is printed on every run.
+        required: false
+        type: string
+        default: ""
 jobs:
   check:
     runs-on: ubuntu-latest
@@ -42,3 +78,16 @@ jobs:
             test -f "$rel" || { echo "Missing file: $rel"; exit 1; }
             echo "OK: $rel"
           done
+
+      # Every check the fleet shares, in one step so a fix reaches all of
+      # them. Runs last because it needs the test report, and `!cancelled()`
+      # inside the action so an earlier failure cannot switch it off (V18).
+      - name: Verification gate
+        if: ${{ !cancelled() && inputs.verification-kit != '' }}
+        uses: gorfednet/.github/.github/actions/verification-gate@main
+        with:
+          kit: ${{ inputs.verification-kit }}
+          backlog: ${{ inputs.verification-backlog }}
+          test-report: ${{ inputs.test-report }}
+          min-tests: ${{ inputs.min-tests }}
+          source-dirs: ${{ inputs.source-dirs }}

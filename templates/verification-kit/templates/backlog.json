@@ -1,0 +1,17 @@
+{
+  "$schema": "../lib/backlogSchema.mjs",
+  "$comment": "Copy to docs/backlog.json. An entry with no describable user symptom is a preference, not a bug; make it compete on those terms. Delete emptyReason once the first entry lands.",
+  "emptyReason": "Kit newly installed; first triage pass has not run yet.",
+  "entries": [
+    {
+      "$comment": "Delete this example. Keeping it is how a template becomes fiction.",
+      "id": "example-entry",
+      "title": "One line a stranger could act on six weeks from now",
+      "status": "suspected",
+      "assignee": "main-model",
+      "userSymptom": "What the person using the site sees, in their words, not the stack trace.",
+      "evidence": "src/thing.ts:42, a run URL, or a measurement. Not a hunch.",
+      "reviewBy": "2026-12-31"
+    }
+  ]
+}

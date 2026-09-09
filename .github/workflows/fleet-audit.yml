@@ -1,0 +1,62 @@
+# The half of the fleet check that has to leave this repository.
+#
+# `check-fleet.mjs --offline` runs on every pull request, but it only reads the
+# registry: schema, owners, and whether an entry has gone stale. Asking each
+# project whether it actually holds the artefacts its tier claims needs a token
+# that can read the organisation, and a workflow's default GITHUB_TOKEN cannot
+# — it reaches only the repository it runs in (V39).
+#
+# So this job wants FLEET_READ_TOKEN, a fine-grained PAT with read-only Contents
+# and Metadata across gorfednet. It deliberately has no fallback. A missing
+# token means no tier has been verified against any repository, and a registry
+# nobody verifies is the fiction this whole system exists to prevent — so it
+# goes red and says which secret to add, rather than passing green having
+# checked nothing.
+name: fleet-audit
+
+on:
+  schedule:
+    # Mondays, 07:00 UTC. Weekly is enough: the registry moves at the pace of
+    # adoption, and reverifyDays is 120.
+    - cron: '0 7 * * 1'
+  workflow_dispatch:
+# Deliberately not on pull_request. A pull request cannot be given the token
+# this job needs, so running it there would produce a guaranteed red on every
+# change — and a check that is always red is read as broken and ignored, taking
+# its real detections with it. The pressure to actually supply the token lives
+# in fleet.json's onlineGraceUntil instead, which the pull-request job enforces
+# and which is a date someone has to consciously move.
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # Named before it is used, so the failure reads as a missing secret rather
+      # than as a fleet-wide adoption collapse.
+      - name: A cross-repository token is present
+        if: ${{ !cancelled() }}
+        env:
+          TOKEN: ${{ secrets.FLEET_READ_TOKEN }}
+        run: |
+          if [ -z "${TOKEN}" ]; then
+            echo "::error::FLEET_READ_TOKEN is not set. Without it this job can" \
+                 "only re-read the registry to itself, which verifies nothing." \
+                 "Add a fine-grained PAT with read-only Contents + Metadata on" \
+                 "gorfednet as the repository secret FLEET_READ_TOKEN."
+            exit 1
+          fi
+
+      - name: Every claimed tier is backed by the repository that claims it
+        if: ${{ !cancelled() }}
+        env:
+          GH_TOKEN: ${{ secrets.FLEET_READ_TOKEN }}
+        run: node scripts/check-fleet.mjs
