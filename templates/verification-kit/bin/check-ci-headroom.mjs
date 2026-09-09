@@ -53,19 +53,26 @@ function parseArgs(argv) {
 }
 
 /**
- * Declared `timeout-minutes`, by job name, across every workflow file.
+ * Every job that declares a `timeout-minutes`, grouped by workflow file.
+ *
+ * Grouped rather than flattened because two workflows both declaring a job
+ * called `check` are two different jobs with two different limits, and a
+ * single name-keyed map silently keeps whichever file was read last. The
+ * duration then gets measured against another workflow's timeout, which is a
+ * wrong answer delivered with complete confidence.
  *
  * Parsed with a regex rather than a YAML library because the kit runs on plain
  * node with no dependencies. That is a real limitation and it fails in the
- * safe direction: a job whose timeout cannot be read is reported as unknown,
- * never as having headroom.
+ * safe direction: a job whose timeout cannot be read is absent from this map,
+ * never present with a guess.
  *
  * @param {string} dir
- * @returns {Map<string, number>} job id or name → minutes
+ * @param {Set<string>|null} files restrict to these workflow filenames
+ * @returns {Map<string, {id: string, name: string|null, timeout: number}[]>}
  */
 export function declaredTimeouts(dir = WORKFLOWS, files = null) {
-  const timeouts = new Map()
-  if (!existsSync(dir)) return timeouts
+  const byFile = new Map()
+  if (!existsSync(dir)) return byFile
 
   for (const file of readdirSync(dir)) {
     if (!file.endsWith('.yml') && !file.endsWith('.yaml')) continue
@@ -73,36 +80,29 @@ export function declaredTimeouts(dir = WORKFLOWS, files = null) {
     // that cannot appear on this branch — tag-triggered releases, staging —
     // out of the denominator. Counting them makes coverage look bad for a
     // reason nobody can act on, and a threshold nobody can meet is one
-    // somebody lowers to zero.
+    // somebody sets to zero.
     if (files && !files.has(file)) continue
 
-    const lines = readFileSync(join(dir, file), 'utf8').split('\n')
+    const jobs = []
 
-    // Two passes' worth of state per job, because `name:` can appear either
-    // side of `timeout-minutes:`. The first version wrote the display name as
-    // it was read, before the timeout line, so every named job registered a
-    // timeout of zero and was then skipped as unreadable — silently dropping
-    // exactly the jobs someone cared enough about to name.
-    let job = null
+    // Each job is accumulated and emitted at its boundary, because `name:` can
+    // appear either side of `timeout-minutes:`. Writing the name as it was
+    // read is what made every *named* job register a timeout of zero in the
+    // first version, and then be discarded as unreadable — dropping precisely
+    // the jobs somebody cared enough about to name.
     let pending = null
     const flush = () => {
-      if (!pending || pending.timeout === null) return
-      // A templated name (`e2e-${{ matrix.browser }}`) never equals what the
-      // API reports, so keying on it guarantees a miss. The job id does match
-      // the matrix legs once their suffix is stripped.
-      const templated = pending.name?.includes('${{')
-      timeouts.set(templated || !pending.name ? pending.id : pending.name, pending.timeout)
+      if (pending && pending.timeout !== null) jobs.push(pending)
     }
 
-    for (const line of lines) {
+    for (const line of readFileSync(join(dir, file), 'utf8').split('\n')) {
       const header = line.match(/^ {2}([A-Za-z0-9_-]+):\s*$/)
       if (header) {
         flush()
-        job = header[1]
-        pending = { id: job, name: null, timeout: null }
+        pending = { id: header[1], name: null, timeout: null }
         continue
       }
-      if (!job || !pending) continue
+      if (!pending) continue
 
       const named = line.match(/^ {4}name:\s*(\S.*?)\s*$/)
       if (named) pending.name = named[1].replace(/^["']|["']$/g, '')
@@ -111,24 +111,96 @@ export function declaredTimeouts(dir = WORKFLOWS, files = null) {
       if (timeout) pending.timeout = Number.parseInt(timeout[1], 10)
     }
     flush()
+
+    if (jobs.length > 0) byFile.set(file, jobs)
   }
-  return timeouts
+  return byFile
 }
 
 /**
- * The worst observed duration per job name, in minutes.
+ * Find the declared job a reported job name came from.
+ *
+ * GitHub renders a job name three ways:
+ *
+ *   - no `name:`          → the job id, plus ` (leg)` for a matrix
+ *   - a literal `name:`   → that string, plus ` (leg)` for a matrix
+ *   - a templated `name:` → the *interpolated* result, e.g. `e2e-chromium`
+ *
+ * The third is why stripping a trailing parenthesis is not enough on its own.
+ * `e2e-${{ matrix.browser }}` appears nowhere in the API output, and the job
+ * id `e2e` is not reported either, so neither string can be joined on. Turning
+ * the template into a pattern is the only match that works — without it every
+ * matrix job in the repository quietly has no known timeout, which is to say
+ * the check ignores the jobs most likely to be slow.
+ *
+ * @param {string} reported name as the API gives it
+ * @param {{id: string, name: string|null, timeout: number}[]} declared
+ */
+export function matchJob(reported, declared) {
+  const bare = reported.replace(/\s*\([^)]*\)\s*$/, '')
+
+  for (const job of declared) {
+    if (job.name && !job.name.includes('${{')) {
+      if (job.name === reported || job.name === bare) return job
+    } else if (!job.name && (job.id === reported || job.id === bare)) {
+      return job
+    }
+  }
+
+  // Templates last. A pattern is the loosest thing here, so an exact hit on
+  // some other job in the same file has to win over it.
+  for (const job of declared) {
+    if (!job.name?.includes('${{')) continue
+    const pattern = new RegExp(
+      `^${job.name
+        .split(/\$\{\{[^}]*\}\}/)
+        .map((literal) => literal.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+        .join('.*')}$`,
+    )
+    if (pattern.test(reported) || pattern.test(bare)) return job
+  }
+
+  return null
+}
+
+/**
+ * The worst observed duration per job, in minutes, keyed by workflow file and
+ * job name.
  *
  * Worst rather than mean: the mean of a job that occasionally doubles is
  * comfortable, and the doubling is the whole question.
+ *
+ * Keyed by file because a job called `check` in two workflows is two jobs, and
+ * every matrix leg is folded onto the declaration it came from rather than on
+ * a guess about its name.
+ *
+ * @param {{name: string, workflow: string, started_at: string, completed_at: string}[]} runs
+ * @param {Map<string, {id: string, name: string|null, timeout: number}[]>} declared
+ * @returns {Map<string, {file: string, job: string, minutes: number, limit: number}>}
  */
-export function worstDurations(runs) {
+export function worstDurations(runs, declared) {
   const worst = new Map()
+
   for (const job of runs) {
     if (!job.started_at || !job.completed_at) continue
+
+    const inFile = declared.get(job.workflow)
+    if (!inFile) continue
+
+    const match = matchJob(job.name, inFile)
+    if (!match) continue
+
     const minutes = (new Date(job.completed_at) - new Date(job.started_at)) / 60000
-    // Matrix jobs are `name (1)`, `name (2)`; they share one timeout.
-    const name = job.name.replace(/\s*\([^)]*\)\s*$/, '')
-    if (!worst.has(name) || worst.get(name) < minutes) worst.set(name, minutes)
+    const key = `${job.workflow}#${match.name ?? match.id}`
+    const seen = worst.get(key)
+    if (!seen || seen.minutes < minutes) {
+      worst.set(key, {
+        file: job.workflow,
+        job: match.name ?? match.id,
+        minutes,
+        limit: match.timeout,
+      })
+    }
   }
   return worst
 }
@@ -136,15 +208,14 @@ export function worstDurations(runs) {
 /**
  * @returns {{level: 'ok'|'warn'|'fail', job: string, used: number, limit: number}[]}
  */
-export function assess(worst, timeouts, { warn, fail }) {
+export function assess(worst, { warn, fail }) {
   const findings = []
-  for (const [job, minutes] of worst) {
-    const limit = timeouts.get(job)
-    if (!limit) continue
+  for (const { file, job, minutes, limit } of worst.values()) {
     const ratio = minutes / limit
     findings.push({
       level: ratio >= fail ? 'fail' : ratio >= warn ? 'warn' : 'ok',
-      job,
+      job: `${file} / ${job}`,
+      key: `${file}#${job}`,
       used: minutes,
       limit,
       ratio,
@@ -168,13 +239,19 @@ export function assess(worst, timeouts, { warn, fail }) {
  *
  * @returns {{seen: number, declared: number, ratio: number, missing: string[]}}
  */
-export function coverage(findings, timeouts) {
-  const seen = new Set(findings.map((f) => f.job))
-  const missing = [...timeouts.keys()].filter((job) => !seen.has(job))
+export function coverage(findings, declared) {
+  const seen = new Set(findings.map((f) => f.key))
+
+  const all = []
+  for (const [file, jobs] of declared) {
+    for (const job of jobs) all.push({ key: `${file}#${job.name ?? job.id}`, label: `${file} / ${job.name ?? job.id}` })
+  }
+
+  const missing = all.filter((job) => !seen.has(job.key)).map((job) => job.label)
   return {
     seen: seen.size,
-    declared: timeouts.size,
-    ratio: timeouts.size === 0 ? 0 : seen.size / timeouts.size,
+    declared: all.length,
+    ratio: all.length === 0 ? 0 : seen.size / all.length,
     missing,
   }
 }
@@ -217,8 +294,15 @@ if (isMain(import.meta.url)) {
   const observed = new Set(runs.map((run) => run.path?.split('/').pop()).filter(Boolean))
   const timeouts = declaredTimeouts(WORKFLOWS, observed)
 
-  const jobs = runs.flatMap((run) => gh(`repos/${repo}/actions/runs/${run.id}/jobs`).jobs)
-  const findings = assess(worstDurations(jobs), timeouts, args)
+  // Each job is tagged with the workflow file it came from, because the join
+  // back to a declared timeout is per file: `check` in two workflows is two
+  // jobs with two limits.
+  const jobs = runs.flatMap((run) => {
+    const workflow = run.path?.split('/').pop()
+    return gh(`repos/${repo}/actions/runs/${run.id}/jobs`).jobs.map((job) => ({ ...job, workflow }))
+  })
+
+  const findings = assess(worstDurations(jobs, timeouts), args)
 
   // Before any verdict: was enough of the repository actually looked at?
   const seen = coverage(findings, timeouts)

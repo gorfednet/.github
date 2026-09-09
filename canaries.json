@@ -174,7 +174,7 @@
       "guards": "V48's checker giving a verdict without a denominator. Its first version printed a green tick having measured six jobs in a repository that declares forty, reporting 'all under 75% of their timeout' while examining none of the ones anyone worried about.",
       "command": "node --test 'templates/verification-kit/test/ciHeadroom.test.mjs'",
       "file": "templates/verification-kit/bin/check-ci-headroom.mjs",
-      "find": "    ratio: timeouts.size === 0 ? 0 : seen.size / timeouts.size,",
+      "find": "    ratio: all.length === 0 ? 0 : seen.size / all.length,",
       "replace": "    ratio: 1,"
     }
   ]
