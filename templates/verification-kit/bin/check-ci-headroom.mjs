@@ -72,6 +72,26 @@ function parseArgs(argv) {
  */
 export function declaredTimeouts(dir = WORKFLOWS, files = null) {
   const byFile = new Map()
+  for (const [file, jobs] of parseJobs(dir, files)) {
+    const timed = jobs.filter((job) => job.timeout !== null)
+    if (timed.length > 0) byFile.set(file, timed)
+  }
+  return byFile
+}
+
+/**
+ * Every job in every workflow, whether or not it declares a timeout.
+ *
+ * Kept separate from `declaredTimeouts` because two questions need different
+ * answers from the same parse. "What are the limits?" wants only timed jobs;
+ * "is this repository allowed to have no limits?" needs to see the untimed
+ * ones, and answering it from the filtered list is how an unbounded job hides
+ * behind a delegating neighbour.
+ *
+ * @returns {Map<string, {id: string, name: string|null, timeout: number|null, delegates: boolean}[]>}
+ */
+export function parseJobs(dir = WORKFLOWS, files = null) {
+  const byFile = new Map()
   if (!existsSync(dir)) return byFile
 
   for (const file of readdirSync(dir)) {
@@ -90,16 +110,29 @@ export function declaredTimeouts(dir = WORKFLOWS, files = null) {
     // read is what made every *named* job register a timeout of zero in the
     // first version, and then be discarded as unreadable — dropping precisely
     // the jobs somebody cared enough about to name.
+    let inJobs = false
     let pending = null
     const flush = () => {
-      if (pending && pending.timeout !== null) jobs.push(pending)
+      if (pending) jobs.push(pending)
     }
 
     for (const line of readFileSync(join(dir, file), 'utf8').split('\n')) {
+      // Two-space keys also live under `on:` and `permissions:`. Nothing there
+      // carries a `timeout-minutes`, so this was harmless until the day
+      // something did, and then it would have been a job invented out of a
+      // trigger block.
+      if (/^[A-Za-z0-9_-]+:/.test(line)) {
+        flush()
+        pending = null
+        inJobs = line.startsWith('jobs:')
+        continue
+      }
+      if (!inJobs) continue
+
       const header = line.match(/^ {2}([A-Za-z0-9_-]+):\s*$/)
       if (header) {
         flush()
-        pending = { id: header[1], name: null, timeout: null }
+        pending = { id: header[1], name: null, timeout: null, delegates: false }
         continue
       }
       if (!pending) continue
@@ -109,6 +142,10 @@ export function declaredTimeouts(dir = WORKFLOWS, files = null) {
 
       const timeout = line.match(/^ {4}timeout-minutes:\s*(\d+)/)
       if (timeout) pending.timeout = Number.parseInt(timeout[1], 10)
+
+      // A job that calls a reusable workflow inherits the callee's limit, and
+      // GitHub rejects `timeout-minutes` next to `uses:`.
+      if (/^ {4}uses:/.test(line)) pending.delegates = true
     }
     flush()
 
@@ -289,13 +326,72 @@ function gh(path) {
   }
 }
 
+/**
+ * Every job of a run, not the first thirty of them.
+ *
+ * The jobs endpoint pages at 30 by default. Reading one page and treating it
+ * as the whole run drops exactly the jobs this check exists to watch — matrix
+ * legs are what push a run past thirty, and a slow leg on page two would have
+ * been invisible while `coverage` still counted the declaration as seen from
+ * page one. A green verdict over a truncated sample.
+ *
+ * `total_count` is checked against what was collected, so a page that goes
+ * missing is an error rather than a smaller number.
+ */
+export function allJobs(repo, runId, read = gh) {
+  const jobs = []
+  let total = null
+
+  for (let page = 1; page <= 20; page += 1) {
+    const body = read(`repos/${repo}/actions/runs/${runId}/jobs?per_page=100&page=${page}`)
+    total ??= body.total_count
+    const batch = body.jobs ?? []
+    jobs.push(...batch)
+    if (batch.length === 0 || (total !== null && jobs.length >= total)) break
+  }
+
+  if (total !== null && jobs.length < total) {
+    throw new Error(
+      `run ${runId} reports ${total} job(s) and only ${jobs.length} could be read. ` +
+        'A verdict over part of a run is a verdict over nothing in particular.',
+    )
+  }
+  return jobs
+}
+
 if (isMain(import.meta.url)) {
   const args = parseArgs(process.argv.slice(2))
   const repo = args.repo ?? currentRepoSlug()
 
   if (declaredTimeouts().size === 0) {
-    console.error(`✗ no timeout-minutes found under ${WORKFLOWS}.`)
-    console.error('  A job with no declared timeout runs until GitHub kills it at six hours.')
+    // A caller-only repository — where *every* job is `uses:` a reusable
+    // workflow — legitimately declares no timeouts, because they live in the
+    // callee. Reporting that as a fault is a false alarm, and a check that
+    // cries wolf at a correctly configured project is one that project turns
+    // off.
+    //
+    // Every, not any. Asking whether some job delegates lets a single
+    // reusable-workflow call excuse an unbounded job sitting next to it, which
+    // is the exact fault this branch is supposed to be distinguishing from.
+    const all = [...parseJobs().values()].flat()
+    const unbounded = all.filter((job) => !job.delegates)
+
+    if (all.length > 0 && unbounded.length === 0) {
+      console.log(
+        `✓ ci-headroom: all ${all.length} job(s) here delegate to a reusable workflow,\n` +
+          '  so their timeouts are declared upstream. Run this in the repository\n' +
+          '  that owns those workflows to measure them.',
+      )
+      process.exit(0)
+    }
+
+    console.error(`\n✗ ci-headroom: no timeout-minutes under ${WORKFLOWS}.\n`)
+    for (const job of unbounded) console.error(`  unbounded  ${job.name ?? job.id}`)
+    console.error(
+      '\n  A job with no declared timeout runs until GitHub kills it at six\n' +
+        '  hours, and the failure mode is a bill and a queue rather than a red\n' +
+        '  check, so nobody finds out (shared rule V48).\n',
+    )
     process.exit(1)
   }
 
@@ -315,10 +411,16 @@ if (isMain(import.meta.url)) {
   // Each job is tagged with the workflow file it came from, because the join
   // back to a declared timeout is per file: `check` in two workflows is two
   // jobs with two limits.
-  const jobs = runs.flatMap((run) => {
-    const workflow = run.path?.split('/').pop()
-    return gh(`repos/${repo}/actions/runs/${run.id}/jobs`).jobs.map((job) => ({ ...job, workflow }))
-  })
+  let jobs
+  try {
+    jobs = runs.flatMap((run) => {
+      const workflow = run.path?.split('/').pop()
+      return allJobs(repo, run.id).map((job) => ({ ...job, workflow }))
+    })
+  } catch (cause) {
+    console.error(`✗ check-ci-headroom: ${cause.message}`)
+    process.exit(1)
+  }
 
   const findings = assess(worstDurations(jobs, timeouts), args)
 

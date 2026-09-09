@@ -364,6 +364,16 @@ opens that log learns only that something broke. Caught twice in one week, in a
 Playwright smoke job and a Vitest gate, both while wiring the floor that the
 JSON was for. List both reporters.
 
+**V50. A paginated API read without pagination is a sample presented as a
+census.** GitHub defaults to 30 items and says so only in `total_count`, which
+nothing forces you to read — so the code looks complete, the result looks
+complete, and the missing rows are systematically the interesting ones: matrix
+legs are exactly what pushes a run past thirty, and the slow leg is exactly
+what a headroom check exists to find. Worse, a coverage count computed from
+page one still reports the job as *seen*. Page every list endpoint a check
+depends on, and compare what you collected against the count the API gave you
+— a short read is an error, not a smaller answer.
+
 ## Provenance
 
 Every rule above was first written in

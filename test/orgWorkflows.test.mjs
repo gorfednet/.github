@@ -261,3 +261,64 @@ describe('bugbot-verdict workflow', () => {
     assert.match(text, /if \[ "\$status" -eq 0 \]/)
   })
 })
+
+/**
+ * A job with no `timeout-minutes` runs until GitHub kills it at six hours.
+ *
+ * Nobody notices, because the failure mode is a bill and a queue rather than a
+ * red check — and in this repository a missing timeout is inherited by every
+ * project that calls the workflow. `compat-success` was unbounded and six
+ * repos were calling it.
+ *
+ * Found by the headroom check (V48) reporting "no timeout-minutes found",
+ * which was meant as a diagnostic and turned out to be a finding.
+ */
+describe('every job is bounded', () => {
+  for (const file of readdirSync(WORKFLOWS).filter((f) => f.endsWith('.yml'))) {
+    const text = readFileSync(join(WORKFLOWS, file), 'utf8')
+
+    it(`${file} declares a timeout on every job it runs itself`, () => {
+      const unbounded = []
+
+      // Only inside `jobs:`. Two-space keys also appear under `on:` and
+      // `permissions:`, and counting `pull_request:` as an unbounded job
+      // reports every workflow in the repository as broken — which is how
+      // this assertion first behaved, and a check that fails on everything
+      // gets deleted rather than read.
+      let inJobs = false
+      let job = null
+      let body = []
+
+      const check = () => {
+        if (!job) return
+        const joined = body.join('\n')
+        // A job that delegates with `uses:` inherits the callee's timeout, and
+        // GitHub rejects `timeout-minutes` alongside it.
+        if (/^ {4}uses:/m.test(joined)) return
+        if (!/^ {4}timeout-minutes:/m.test(joined)) unbounded.push(job)
+      }
+
+      for (const line of text.split('\n')) {
+        if (/^[A-Za-z0-9_-]+:/.test(line)) {
+          check()
+          job = null
+          inJobs = line.startsWith('jobs:')
+          continue
+        }
+        if (!inJobs) continue
+
+        const header = line.match(/^ {2}([A-Za-z0-9_-]+):\s*$/)
+        if (header) {
+          check()
+          job = header[1]
+          body = []
+        } else if (job) {
+          body.push(line)
+        }
+      }
+      check()
+
+      assert.deepEqual(unbounded, [], `unbounded job(s) in ${file}: ${unbounded.join(', ')}`)
+    })
+  }
+})

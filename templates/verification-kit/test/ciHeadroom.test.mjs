@@ -8,6 +8,8 @@ import {
   matchJob,
   worstDurations,
   assess,
+  allJobs,
+  parseJobs,
   coverage,
 } from '../bin/check-ci-headroom.mjs'
 
@@ -76,6 +78,29 @@ describe('declaredTimeouts', () => {
 
   it('returns an empty map for a directory that is not there', () => {
     assert.equal(declaredTimeouts(join(tmpdir(), 'no-such-dir-here')).size, 0)
+  })
+
+  it('does not mistake a trigger or permission block for a job', () => {
+    // `on:` and `permissions:` also have two-space keys. Nothing under them
+    // carries a `timeout-minutes` today, which made this harmless right up
+    // until something did.
+    const found = parse({
+      'ci.yml': [
+        'on:',
+        '  pull_request:',
+        '  schedule:',
+        'permissions:',
+        '  contents: read',
+        'jobs:',
+        '  check:',
+        '    timeout-minutes: 25',
+        '',
+      ].join('\n'),
+    })
+    assert.deepEqual(
+      found.get('ci.yml').map((job) => job.id),
+      ['check'],
+    )
   })
 })
 
@@ -234,6 +259,99 @@ describe('assess', () => {
       ['b', { file: 'ci.yml', job: 'b', minutes: 24, limit: 25 }],
     ])
     assert.equal(assess(worst, thresholds)[0].job, 'ci.yml / b')
+  })
+})
+
+describe('parseJobs', () => {
+  const parseAll = (files) => {
+    const dir = mkdtempSync(join(tmpdir(), 'headroom-'))
+    mkdirSync(join(dir, 'wf'))
+    for (const [name, body] of Object.entries(files)) writeFileSync(join(dir, 'wf', name), body)
+    const found = parseJobs(join(dir, 'wf'))
+    rmSync(dir, { recursive: true, force: true })
+    return found
+  }
+
+  it('reports untimed jobs too, which declaredTimeouts cannot', () => {
+    const jobs = parseAll({ 'ci.yml': 'jobs:\n  quick:\n    runs-on: ubuntu-latest\n' }).get('ci.yml')
+    assert.equal(jobs.length, 1)
+    assert.equal(jobs[0].timeout, null)
+    assert.equal(jobs[0].delegates, false)
+  })
+
+  it('marks a job that calls a reusable workflow', () => {
+    const jobs = parseAll({
+      'ci.yml': 'jobs:\n  call:\n    uses: org/.github/.github/workflows/x.yml@main\n',
+    }).get('ci.yml')
+    assert.equal(jobs[0].delegates, true)
+  })
+
+  it('does not let one delegating job vouch for an unbounded neighbour', () => {
+    // The finding. Asking whether *some* job delegates lets a single reusable
+    // call excuse the untimed job beside it — which is precisely the fault the
+    // caller-only branch is supposed to be telling apart.
+    const jobs = parseAll({
+      'ci.yml': [
+        'jobs:',
+        '  call:',
+        '    uses: org/.github/.github/workflows/x.yml@main',
+        '  local:',
+        '    runs-on: ubuntu-latest',
+        '',
+      ].join('\n'),
+    }).get('ci.yml')
+
+    assert.deepEqual(
+      jobs.filter((job) => !job.delegates).map((job) => job.id),
+      ['local'],
+    )
+  })
+})
+
+describe('allJobs', () => {
+  /** A fake endpoint holding `count` jobs, paging like GitHub's does. */
+  const api = (count, { lie = 0 } = {}) => {
+    const calls = []
+    const read = (path) => {
+      calls.push(path)
+      // `[?&]` matters: a bare /page=(\d+)/ finds the 100 inside `per_page=100`.
+      const page = Number(path.match(/[?&]page=(\d+)/)[1])
+      const per = Number(path.match(/per_page=(\d+)/)[1])
+      const slice = Array.from({ length: count }, (_, i) => ({ name: `job-${i}` })).slice(
+        (page - 1) * per,
+        page * per,
+      )
+      return { total_count: count + lie, jobs: slice }
+    }
+    return { read, calls }
+  }
+
+  it('collects a run that fits on one page', () => {
+    const { read } = api(21)
+    assert.equal(allJobs('o/r', 1, read).length, 21)
+  })
+
+  it('collects every page of a run that does not', () => {
+    // The finding. GitHub pages at 30 by default and says so only in
+    // `total_count`, which nothing forces a caller to read — so the code looks
+    // complete and the rows that go missing are systematically the interesting
+    // ones. Matrix legs are what push a run past thirty, and the slow leg is
+    // what a headroom check exists to find.
+    const { read, calls } = api(240)
+    assert.equal(allJobs('o/r', 1, read).length, 240)
+    assert.ok(calls.length >= 3, 'stopped before reading every page')
+    assert.ok(calls.every((path) => path.includes('per_page=100')))
+  })
+
+  it('throws rather than returning a short read', () => {
+    // A page that goes missing is an error, not a smaller answer.
+    const { read } = api(50, { lie: 10 })
+    assert.throws(() => allJobs('o/r', 1, read), /only 50 could be read/)
+  })
+
+  it('stops on an empty page instead of spinning', () => {
+    const read = () => ({ total_count: 999, jobs: [] })
+    assert.throws(() => allJobs('o/r', 1, read), /only 0 could be read/)
   })
 })
 

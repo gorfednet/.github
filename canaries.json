@@ -51,7 +51,7 @@
     },
     {
       "id": "drift-check-passes-when-it-cannot-fetch",
-      "guards": "A staleness check that cannot reach the canonical manifest fails. Passing there would report 'current' during an outage \u2014 the silent-green shape the whole kit exists to find.",
+      "guards": "A staleness check that cannot reach the canonical manifest fails. Passing there would report 'current' during an outage — the silent-green shape the whole kit exists to find.",
       "command": "node --test 'templates/verification-kit/test/kitDrift.test.mjs'",
       "file": "templates/verification-kit/bin/check-kit-drift.mjs",
       "find": "} catch (cause) {\n  die(\n    `check-kit-drift: could not read the canonical manifest",
@@ -163,7 +163,7 @@
     },
     {
       "id": "cli-entrypoint-silently-does-nothing",
-      "guards": "V46. The naive main-module idiom compares a resolved file URL to a raw argv path. Through a symlinked directory they differ, the CLI never runs, and the process exits 0 \u2014 a checker reporting success having checked nothing. It was in two of this kit binaries, including the one CI uses to verify the manifest.",
+      "guards": "V46. The naive main-module idiom compares a resolved file URL to a raw argv path. Through a symlinked directory they differ, the CLI never runs, and the process exits 0 — a checker reporting success having checked nothing. It was in two of this kit binaries, including the one CI uses to verify the manifest.",
       "command": "node --test 'templates/verification-kit/test/isMain.test.mjs'",
       "file": "templates/verification-kit/lib/isMain.mjs",
       "find": "    return realpathSync(fileURLToPath(importMetaUrl)) === realpathSync(invoked)",
@@ -176,6 +176,14 @@
       "file": "templates/verification-kit/bin/check-ci-headroom.mjs",
       "find": "    ratio: all.length === 0 ? 0 : seen.size / all.length,",
       "replace": "    ratio: 1,"
+    },
+    {
+      "id": "headroom-reads-one-page-of-jobs",
+      "guards": "V50. The jobs endpoint pages at 30 and reports the truth only in total_count. Reading page one and calling it the run drops exactly the jobs this check exists to watch, since matrix legs are what push a run past thirty — and coverage still counts the declaration as seen from page one, so the verdict is green over a truncated sample.",
+      "command": "node --test 'templates/verification-kit/test/ciHeadroom.test.mjs'",
+      "file": "templates/verification-kit/bin/check-ci-headroom.mjs",
+      "find": "    if (batch.length === 0 || (total !== null && jobs.length >= total)) break",
+      "replace": "    break"
     }
   ]
 }
