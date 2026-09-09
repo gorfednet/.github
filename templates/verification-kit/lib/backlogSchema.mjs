@@ -31,6 +31,13 @@ const MIN_PROSE = 20
 
 const REQUIRED_PROSE = ['title', 'userSymptom', 'evidence']
 
+/**
+ * The id carried by the entry in `templates/backlog.json`. Exported so the
+ * template and the check that rejects it cannot drift apart into a placeholder
+ * nothing recognises (V24).
+ */
+export const PLACEHOLDER_ID = 'example-entry'
+
 /** Today at day resolution, so a `reviewBy` of today has not yet lapsed. */
 export function todayUtc(now = new Date()) {
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()))
@@ -67,6 +74,26 @@ export function validateBacklog(doc, options = {}) {
   const seen = new Set()
   for (const [index, entry] of entries.entries()) {
     const where = entry?.id ? `entry "${entry.id}"` : `entry #${index + 1}`
+
+    /*
+     * The template's own example satisfies every rule below — it has an id, a
+     * long enough symptom, evidence-shaped text and a review date, because it
+     * was written to demonstrate them. So a project that copies the template
+     * and never edits it gets a green backlog check describing a bug that does
+     * not exist, which is worse than no backlog: an empty one at least has to
+     * say `emptyReason` out loud.
+     *
+     * Match the placeholder itself rather than trying to detect prose quality.
+     * There is exactly one string to look for and it is not a plausible id.
+     */
+    if (entry?.id === PLACEHOLDER_ID) {
+      problems.push(
+        `${where} is still the template's example. Delete it, or replace it with ` +
+          'something real — a copied placeholder passes every other check here ' +
+          'and reports a bug nobody has.',
+      )
+      continue
+    }
 
     if (entry === null || typeof entry !== 'object' || Array.isArray(entry)) {
       problems.push(`${where} is not an object`)
