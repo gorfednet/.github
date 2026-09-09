@@ -46,6 +46,24 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
+      # Only useful when this workflow lives in its own file: if it is a job
+      # inside the CI workflow that failed to start, it did not run either.
+      # Worth the four seconds regardless, because the failure it names is
+      # otherwise not visible anywhere a person looks (V45).
+      - name: Every workflow for this head actually started
+        if: ${{ !cancelled() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          KIT: ${{ inputs.kit }}
+        run: |
+          set -euo pipefail
+          if [ -f "$KIT/bin/assert-checks-started.mjs" ]; then
+            node "$KIT/bin/assert-checks-started.mjs" --pr "$PR"
+          else
+            echo "::warning::No assert-checks-started in $KIT; a workflow that failed to start would be invisible here."
+          fi
+
       - name: Wait for a real Bugbot verdict
         if: ${{ !cancelled() }}
         env:

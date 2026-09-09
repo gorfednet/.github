@@ -317,6 +317,17 @@ since failing CI on somebody else's outage is how a check gets switched off,
 but it must annotate loudly: a run that checked nothing must not read like one
 that checked everything.
 
+**V45. A workflow that fails to start is invisible in the checks panel.** Not
+red, not pending — absent. A run with conclusion `startup_failure` produces no
+check runs, and `gh pr checks` lists check runs, so a pull request whose entire
+CI failed to launch is indistinguishable from one with no CI configured. Three
+pilot pull requests hit this simultaneously: each passed an input to a reusable
+workflow that did not have it yet, each failed in about a second, and each
+showed one Bugbot line and looked ready to merge. No gate inside the workflow
+can catch it, because the workflow never ran — it has to be asserted from
+outside, against the head commit, which is what `assert-checks-started` does.
+`action_required` is the same shape with a different label.
+
 ## Provenance
 
 Every rule above was first written in
