@@ -1,6 +1,4 @@
 import { strict as assert } from 'node:assert'
-import { readFileSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
 import { describe, it } from 'node:test'
 import { PLACEHOLDER_ID, validateBacklog } from '../lib/backlogSchema.mjs'
 
@@ -87,16 +85,16 @@ describe('validateBacklog', () => {
       assert.ok(problems.some((p) => /still the template's example/.test(p)), problems.join('\n'))
     })
 
-    it('is the id the shipped template actually uses', () => {
-      // Otherwise the check looks for a placeholder that no longer exists and
-      // the template sails through it (V24).
-      const path = fileURLToPath(new URL('../templates/backlog.json', import.meta.url))
-      const shipped = JSON.parse(readFileSync(path, 'utf8'))
-      assert.deepEqual(
-        shipped.entries.map((e) => e.id),
-        [PLACEHOLDER_ID],
-      )
-    })
+    // The companion assertion — that the shipped templates/backlog.json
+    // actually uses this id — lives in the organisation repository's own
+    // suite, not here. templates/ is deliberately outside the manifest,
+    // because a project edits its copy and it would read as drift forever, so
+    // a vendored kit has no templates/ directory and this test failed with
+    // ENOENT in three repositories at once the moment v0.22.0 landed.
+    //
+    // Making it skip when the file is absent was the tempting fix and the
+    // wrong one: it would then skip in the one place it needs to run, the
+    // canonical repository being the only place that has the file.
   })
 
   it('rejects an unparseable review date', () => {
