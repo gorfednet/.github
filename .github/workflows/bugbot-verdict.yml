@@ -28,6 +28,15 @@ on:
         type: number
         default: 12
 
+# Both lookups below are API calls, and a repository using GitHub's restricted
+# default token gets `contents: read` and nothing else. Without these the calls
+# fail, the loop reads the failure as "no verdict yet", and the job spends
+# twelve minutes before blaming Bugbot for something the token did.
+permissions:
+  contents: read
+  pull-requests: read
+  checks: read
+
 jobs:
   verdict:
     runs-on: ubuntu-latest
@@ -70,6 +79,19 @@ jobs:
             # not turn them into a pass, and a fast red is what gets read.
             if echo "$output" | grep -q 'findings'; then
               echo "::error::Bugbot reviewed PR #$PR and found something. Read the inline comments and triage."
+              exit 1
+            fi
+
+            # "Could not read the review state" is a different answer from
+            # "the review has not finished", and waiting does not improve it.
+            # Treating them alike meant a missing token scope, a truncated
+            # check-runs page or a plain API error all spent the full wait and
+            # then printed the wrong diagnosis: comment `bugbot run`, when
+            # Bugbot may well have finished and said nothing was wrong.
+            if echo "$output" | grep -q 'undetermined'; then
+              echo "::error::Could not read Bugbot's review state on PR #$PR." \
+                   "This is a lookup failure, not a pending review — check the token's" \
+                   "pull-requests and checks scopes before re-running."
               exit 1
             fi
 

@@ -71,8 +71,21 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
-        count=$(node --test --test-reporter=tap "${{ inputs.kit }}/test/"*.test.mjs \
-          | grep -c '^ *ok ' || true)
+        # Two separate questions, and piping into `grep -c` answers only the
+        # second. `node --test | grep` reports grep's status, so a suite where
+        # everything failed still exits 0 as long as enough `ok` lines came
+        # out of it — and `|| true` on top would swallow even a crash. Run it
+        # once to a file, check that it passed, then count what it ran.
+        report=$(mktemp)
+        status=0
+        node --test --test-reporter=tap "${{ inputs.kit }}/test/"*.test.mjs \
+          | tee "$report" || status=$?
+        if [ "$status" -ne 0 ]; then
+          echo "::error::The vendored kit's own tests fail in this repository." \
+               "The checks below are running on a kit that does not work here."
+          exit 1
+        fi
+        count=$(grep -c '^ *ok ' "$report" || true)
         echo "kit self-tests executed $count assertion(s)"
         if [ "$count" -lt 40 ]; then
           echo "::error::The kit's own suite executed $count tests, expected at least 40." \

@@ -3,18 +3,17 @@ name: verification-kit
 # A defect in this kit replicates into every project that copies it, so the
 # canonical copy is gated harder than the copies are.
 
+# No `paths:` filter, deliberately. It had one, and the filter is itself a
+# selection that fails open: `fleet.json`, `FLEET.md`, `docs/verification-rules.md`
+# and `scripts/` were all outside it, so a bad tier claim, a drifted FLEET.md or
+# a gap in the rule numbering cited from fifteen repositories could merge
+# without ever meeting the check written to catch it. A path filter saves
+# seconds on a repository whose whole suite runs in under thirty of them, and
+# costs a class of silent miss. The job is cheap; run it on everything.
 on:
   pull_request:
-    paths:
-      - 'templates/verification-kit/**'
-      - 'test/**'
-      - '.github/**'
   push:
     branches: [main]
-    paths:
-      - 'templates/verification-kit/**'
-      - 'test/**'
-      - '.github/**'
 
 jobs:
   kit:

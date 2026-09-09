@@ -149,7 +149,13 @@ jobs:
                  "and accept that nothing is watching this site's behaviour."
             exit 1
           fi
-          npx playwright test "$spec" --project=chromium --reporter=json > pw-live.json
+          # `--reporter=list,json` rather than json alone: with only the JSON
+          # reporter and stdout redirected, a failed live smoke leaves nothing
+          # human-readable in the log, and the report is not uploaded — so the
+          # person opening the run to find out what broke finds an empty page.
+          # PLAYWRIGHT_JSON_OUTPUT_NAME keeps the machine copy off stdout.
+          PLAYWRIGHT_JSON_OUTPUT_NAME=pw-live.json \
+            npx playwright test "$spec" --project=chromium --reporter=list,json
         env:
           CI: true
           PLAYWRIGHT_BASE_URL: ${{ inputs.site-url }}
@@ -165,10 +171,16 @@ jobs:
             node verification-kit/bin/assert-tests-executed.mjs \
               --report pw-live.json --min 1 --label live-smoke
           else
+            # Counting specs would count skipped ones, and a fully skipped
+            # suite is exactly the condition this step exists to catch — most
+            # of the fleet has no kit yet, so this fallback is what they get.
             count=$(node -e "
               const r = require('./pw-live.json');
               const walk = (s) => s.reduce((n, x) =>
-                n + (x.specs?.length ?? 0) + walk(x.suites ?? []), 0);
+                n
+                + (x.specs ?? []).reduce((m, spec) =>
+                    m + (spec.tests ?? []).filter((t) => t.status !== 'skipped').length, 0)
+                + walk(x.suites ?? []), 0);
               console.log(walk(r.suites ?? []));
             ")
             echo "live smoke executed $count spec(s)"

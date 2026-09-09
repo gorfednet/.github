@@ -16,7 +16,7 @@
  * same output as one that checked everything.
  */
 import { execFileSync } from 'node:child_process'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 
 const ARCHETYPES = new Set([
   'react-spa-plus-api',
@@ -41,6 +41,7 @@ const TIER_EVIDENCE = {
 function parseArgs(argv) {
   return {
     offline: argv.includes('--offline'),
+    record: argv.includes('--record'),
     file: argv.includes('--file') ? argv[argv.indexOf('--file') + 1] : 'fleet.json',
   }
 }
@@ -121,7 +122,7 @@ function repoHasFile(slug, path) {
   }
 }
 
-const { offline, file } = parseArgs(process.argv.slice(2))
+const { offline, file, record } = parseArgs(process.argv.slice(2))
 
 let doc
 try {
@@ -250,13 +251,34 @@ if (offline) {
       'onlineGraceUntil must be a YYYY-MM-DD date. Without it an offline run is ' +
         'an intention with no expiry.',
     )
-  } else if (today > new Date(`${graceUntil}T00:00:00Z`)) {
-    const since = onlineAt ? `last done ${onlineAt}` : 'never done'
-    problems.push(
-      `no tier has been verified against a repository since ${graceUntil} (${since}). ` +
-        'Run `node scripts/check-fleet.mjs` with a token that can read the organisation ' +
-        'and move onlineVerifiedAt, or move onlineGraceUntil and own the deferral.',
-    )
+  } else if (onlineAt !== null && !/^\d{4}-\d{2}-\d{2}$/.test(onlineAt)) {
+    problems.push(`onlineVerifiedAt must be a YYYY-MM-DD date or null, got ${onlineAt}`)
+  } else {
+    /**
+     * The deadline is on the *online* run, so a recent online run is what
+     * lifts it — measured the same way every other entry is, against
+     * reverifyDays. The first version of this compared only the grace date and
+     * ignored onlineVerifiedAt entirely, which made the error message a lie:
+     * it named recording a successful audit as a way out, and recording one
+     * changed nothing. Every pull request would have stayed red after
+     * 2026-10-15 no matter how well the weekly audit was doing.
+     */
+    const onlineAge = onlineAt
+      ? Math.floor((today - new Date(`${onlineAt}T00:00:00Z`)) / 86_400_000)
+      : Infinity
+    const lapsed = today > new Date(`${graceUntil}T00:00:00Z`)
+    if (lapsed && onlineAge > reverifyDays) {
+      const since =
+        onlineAt === null
+          ? 'it has never run'
+          : `the last one was ${onlineAt}, ${onlineAge} days ago (limit ${reverifyDays})`
+      problems.push(
+        `no tier has been verified against a repository: ${since}, and the grace ` +
+          `period ended ${graceUntil}. Run \`node scripts/check-fleet.mjs\` with a token ` +
+          'that can read the organisation and set onlineVerifiedAt to today, or move ' +
+          'onlineGraceUntil and own the deferral.',
+      )
+    }
   }
 }
 
@@ -280,6 +302,28 @@ if (problems.length > 0) {
   for (const problem of problems) console.error(`  - ${problem}`)
   console.error('')
   process.exit(1)
+}
+
+/**
+ * A successful online run is the only thing that lifts the deadline, so there
+ * has to be a way to record one that is not "remember to edit the JSON". The
+ * flag is explicit rather than automatic: writing the date is a claim, and a
+ * claim made silently by a script is how the registry would rot back into the
+ * fiction this whole file exists to prevent.
+ */
+if (!offline && record) {
+  const today10 = today.toISOString().slice(0, 10)
+  const source = readFileSync(file, 'utf8')
+  const updated = source.replace(
+    /("onlineVerifiedAt":\s*)(null|"\d{4}-\d{2}-\d{2}")/,
+    `$1"${today10}"`,
+  )
+  if (updated === source) {
+    console.error('\n✗ check-fleet --record: no onlineVerifiedAt field to update.\n')
+    process.exit(1)
+  }
+  writeFileSync(file, updated, 'utf8')
+  console.log(`  recorded onlineVerifiedAt: ${today10} in ${file}`)
 }
 
 const byTier = {}

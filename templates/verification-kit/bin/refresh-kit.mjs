@@ -11,10 +11,26 @@
  *   node verification-kit/bin/refresh-kit.mjs [--kit verification-kit] [--dry-run]
  */
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, writeFileSync, readFileSync, existsSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync, rmSync, statSync } from 'node:fs'
+import { dirname, join, relative, sep } from 'node:path'
 
 const RAW = 'https://raw.githubusercontent.com/gorfednet/.github/main/templates/verification-kit'
+
+/** Every file in the vendored kit except the manifest and the starters. */
+function kitFiles(root) {
+  const found = []
+  const walk = (dir) => {
+    for (const entry of readdirSync(dir).sort()) {
+      const path = join(dir, entry)
+      const rel = relative(root, path).split(sep).join('/')
+      if (rel === 'MANIFEST.json' || rel === 'templates') continue
+      if (statSync(path).isDirectory()) walk(path)
+      else found.push(rel)
+    }
+  }
+  walk(root)
+  return found
+}
 
 function parseArgs(argv) {
   const args = { kit: 'verification-kit', dryRun: false }
@@ -51,9 +67,20 @@ if (files.length === 0) {
   process.exit(1)
 }
 
-const before = existsSync(join(kit, 'MANIFEST.json'))
-  ? JSON.parse(readFileSync(join(kit, 'MANIFEST.json'), 'utf8')).version
-  : 'none'
+/**
+ * The local manifest is read for one thing: printing which version is being
+ * replaced. An unreadable one is precisely the case `check-kit-drift` prints
+ * this command for, so letting a parse error throw here made the named remedy
+ * unable to repair the failure it was named for. Cosmetic input, cosmetic
+ * failure.
+ */
+let before = 'none'
+try {
+  const local = join(kit, 'MANIFEST.json')
+  if (existsSync(local)) before = JSON.parse(readFileSync(local, 'utf8')).version ?? 'unreadable'
+} catch {
+  before = 'unreadable'
+}
 
 if (dryRun) {
   console.log(`refresh-kit --dry-run: would write ${files.length} file(s), v${before} → v${manifest.version}`)
@@ -68,8 +95,23 @@ for (const rel of files) {
 }
 writeFileSync(join(kit, 'MANIFEST.json'), `${JSON.stringify(manifest, null, 2)}\n`, 'utf8')
 
+/**
+ * Writing the new files is only half a refresh. A file upstream has deleted
+ * stays on disk, and `check-kit-drift` then reports it as `not upstream` — and
+ * prints this command as the fix, which has already run. Following the printed
+ * remedy has to be able to reach green, or the remedy is decoration.
+ */
+const removed = []
+for (const rel of kitFiles(kit)) {
+  if (rel in (manifest.files ?? {})) continue
+  rmSync(join(kit, rel), { force: true })
+  removed.push(rel)
+}
+
 console.log(
-  `✓ refresh-kit: ${files.length} file(s) written to ${kit}/, v${before} → v${manifest.version}\n` +
-    '  Read the diff before committing. A kit change usually means a new class of bug\n' +
+  `✓ refresh-kit: ${files.length} file(s) written to ${kit}/, v${before} → v${manifest.version}` +
+    (removed.length > 0 ? `\n  removed ${removed.length} file(s) upstream no longer ships:` : '') +
+    removed.map((rel) => `\n    ${kit}/${rel}`).join('') +
+    '\n  Read the diff before committing. A kit change usually means a new class of bug\n' +
     '  was found elsewhere in the fleet.',
 )

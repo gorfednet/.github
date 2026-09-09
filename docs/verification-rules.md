@@ -265,6 +265,15 @@ rather than once per lookup, and never let it fall through to the absent
 branch. The first run of the fleet check announced that BinderCurve had adopted
 none of the kit while all four files sat on its default branch.
 
+**V40. A guard proven by a broken program is not proven.** Mutation testing
+only means something when the mutant is a valid program that behaves badly. An
+edit that leaves the file unparseable fails the command for a reason unrelated
+to the guard — deleting the test entirely would produce the same red — so the
+canary certifies nothing while reading as certification. The same trap catches
+any negative test whose setup can fail: assert that the failure you observed is
+the failure you asked for. `mutation-canary` now runs `node --check` on the
+mutant before trusting its verdict.
+
 ## Provenance
 
 Every rule above was first written in
@@ -296,6 +305,7 @@ sounds like an opinion, because none of them are.
 | V18 | BC rule 36 | V37 | self-heal rule |
 | V19 | BC rule 19 | V38 | durable-plan rule |
 | — | — | V39 | fleet check, 2026-09-08 |
+| — | — | V40 | canary review, 2026-09-08 |
 
 Three BinderCurve rules are deliberately **not** shared, because they are true
 of that product rather than of verification: rules 23 and 33 concern

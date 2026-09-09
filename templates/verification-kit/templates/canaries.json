@@ -6,8 +6,8 @@
       "guards": "The backlog validator rejects a symptom written in implementation terms rather than in the user's. An entry nobody can act on six weeks from now is the failure mode of every plan of record.",
       "command": "node --test 'verification-kit/test/backlogSchema.test.mjs'",
       "file": "verification-kit/lib/backlogSchema.mjs",
-      "find": "userSymptom",
-      "replace": "userSymptomDisabled"
+      "find": "value.trim().length < MIN_PROSE",
+      "replace": "value.trim().length < 0"
     },
     {
       "id": "drift-check-passes-when-it-cannot-fetch",
@@ -15,7 +15,7 @@
       "command": "node --test 'verification-kit/test/kitDrift.test.mjs'",
       "file": "verification-kit/bin/check-kit-drift.mjs",
       "find": "} catch (cause) {\n  die(\n    `check-kit-drift: could not read the canonical manifest",
-      "replace": "} catch (cause) {\n  console.log('could not fetch; assuming current')\n  process.exit(0)\n  die(\n    `check-kit-drift: could not read the canonical manifest"
+      "replace": "} catch (cause) {\n  canonical = { version: 'unknown', files: expected }\n  console.log(\n    `check-kit-drift: could not read the canonical manifest"
     }
   ]
 }

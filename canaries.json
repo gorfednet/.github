@@ -55,7 +55,7 @@
       "command": "node --test 'templates/verification-kit/test/kitDrift.test.mjs'",
       "file": "templates/verification-kit/bin/check-kit-drift.mjs",
       "find": "} catch (cause) {\n  die(\n    `check-kit-drift: could not read the canonical manifest",
-      "replace": "} catch (cause) {\n  canonical = { version: 'unknown', files: expected }\n  void `check-kit-drift: could not read the canonical manifest"
+      "replace": "} catch (cause) {\n  canonical = { version: 'unknown', files: expected }\n  console.log(\n    `check-kit-drift: could not read the canonical manifest"
     },
     {
       "id": "drift-check-ignores-a-local-edit",
@@ -134,8 +134,8 @@
       "guards": "The offline run verifies no claim against any repository, so it carries the deadline for the run that does. Removing the expiry leaves a check that cannot fail on adoption as the only one running, which is how a table of intentions keeps reading as authoritative.",
       "command": "node --test 'test/fleetRegistry.test.mjs'",
       "file": "scripts/check-fleet.mjs",
-      "find": "  } else if (today > new Date(`${graceUntil}T00:00:00Z`)) {",
-      "replace": "  } else if (false) {"
+      "find": "    if (lapsed && onlineAge > reverifyDays) {",
+      "replace": "    if (false) {"
     },
     {
       "id": "healthcheck-skips-a-missing-smoke-spec",

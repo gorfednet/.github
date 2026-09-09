@@ -111,10 +111,40 @@ describe('fleet registry', () => {
     }
 
     it('fails once the grace date has passed, naming both ways out', () => {
-      const result = run(withRoot({ onlineGraceUntil: '2020-01-01' }))
+      const result = run(withRoot({ onlineGraceUntil: '2020-01-01', onlineVerifiedAt: null }))
       assert.equal(result.status, 1)
-      assert.match(result.stderr, /no tier has been verified against a repository since/)
-      assert.match(result.stderr, /move onlineVerifiedAt, or move onlineGraceUntil/)
+      assert.match(result.stderr, /no tier has been verified against a repository/)
+      assert.match(result.stderr, /it has never run/)
+      assert.match(result.stderr, /set onlineVerifiedAt to today, or move onlineGraceUntil/)
+    })
+
+    /**
+     * The first version of this compared only the grace date and never looked
+     * at onlineVerifiedAt, which made its own error message untrue: it named
+     * recording a successful audit as the way out, and recording one changed
+     * nothing. Every pull request would have been red from the grace date
+     * onward however well the weekly audit was doing — and a check that stays
+     * red whatever you do is one people route around.
+     */
+    it('a recent online run lifts the deadline, as the message promises', () => {
+      const recent = new Date(Date.now() - 3 * 86_400_000).toISOString().slice(0, 10)
+      const result = run(withRoot({ onlineGraceUntil: '2020-01-01', onlineVerifiedAt: recent }))
+      assert.equal(result.status, 0, result.stderr)
+      assert.match(result.stdout, new RegExp(`last ran ${recent}`))
+    })
+
+    // ...and an old one does not. The online half is held to reverifyDays like
+    // every other claim in the file.
+    it('an online run older than reverifyDays does not', () => {
+      const result = run(withRoot({ onlineGraceUntil: '2020-01-01', onlineVerifiedAt: '2021-01-01' }))
+      assert.equal(result.status, 1)
+      assert.match(result.stderr, /the last one was 2021-01-01, \d+ days ago \(limit 120\)/)
+    })
+
+    it('rejects a malformed online date rather than reading it as never', () => {
+      const result = run(withRoot({ onlineVerifiedAt: 'last week' }))
+      assert.equal(result.status, 1)
+      assert.match(result.stderr, /onlineVerifiedAt must be a YYYY-MM-DD date or null/)
     })
 
     it('refuses an undated deferral', () => {

@@ -1,5 +1,5 @@
 {
-  "version": "0.5.0",
+  "version": "0.7.0",
   "files": {
     "README.md": "6a4f37821c51fb46f4495dd25a5fa1788647597787b47d41c22da44bf5835d50",
     "bin/assert-tests-executed.mjs": "f41b8862289bfb25af9171df8c17c788efd9231984dbc02e34d4fce17822dd5b",
@@ -8,8 +8,8 @@
     "bin/check-kit-drift.mjs": "1a0cd10540c502b80db3b4189f5b0f9bec46c09f2319aa20534225cf72293378",
     "bin/check-rule-citations.mjs": "aae3f2e58a632e615ad07d2f10063751b2e222e7a246eb73b630f23ba32900cc",
     "bin/check-tracked-artifacts.mjs": "cb6a0ea982dbd98f3ac9e33ad50fad1197844513de496e646659e583d289bfe7",
-    "bin/mutation-canary.mjs": "6c8b8f091838feb20b67c5c033d2e794d741061c00912ad1ba372adde0a6c582",
-    "bin/refresh-kit.mjs": "7189f0c09fbab8fbf1b21f1eb34c196eceb7b28d1eb6e315894ce5a11cd90958",
+    "bin/mutation-canary.mjs": "fafb50a15854c5273e262915baaef4b63328ccb5b631f4a5f3341c0915d0b6e6",
+    "bin/refresh-kit.mjs": "bee5cc2e6d03dc99fb9178bbb9fe856bd226ab29b31243412d6885e631a34075",
     "bin/write-manifest.mjs": "92af2d645a8a587a1d9daff6c20bb1fac2008a4d59d22e6ff47fe7ac8380726d",
     "lib/backlogSchema.mjs": "60b2fe78d7d07694d474494e6f76ae96b095cbe6ad528b6a90c8e67ab9acca7f",
     "lib/bugbotConclusion.mjs": "e7ed1d0c208eb07d1116971974ef10aa95b4cb1c9eca8d1a5c4ceaad628bf5a1",

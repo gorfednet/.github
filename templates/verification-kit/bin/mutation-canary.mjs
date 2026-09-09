@@ -51,8 +51,19 @@ function parseArgs(argv) {
   return args
 }
 
+/**
+ * Restore a mutated file, and say so when it did not work.
+ *
+ * This tool deliberately writes known-bad code into the working tree, so the
+ * restore is the only thing standing between a canary run and a repository
+ * left holding a defect on purpose. Ignoring `git checkout`'s exit status
+ * meant a failed restore was indistinguishable from a successful one — and the
+ * caller then deleted the crash record, which is the only note the next run
+ * would have had to undo it.
+ */
 function revert(file) {
-  spawnSync('git', ['checkout', '--', file], { stdio: 'inherit' })
+  const result = spawnSync('git', ['checkout', '--', file], { stdio: 'inherit' })
+  return result.status === 0
 }
 
 function recoverAbandonedRun() {
@@ -61,18 +72,45 @@ function recoverAbandonedRun() {
   try {
     record = JSON.parse(readFileSync(DIRTY_RECORD, 'utf8'))
   } catch {
-    rmSync(DIRTY_RECORD, { force: true })
-    return
+    console.error(
+      `\n✗ ${DIRTY_RECORD} exists but cannot be parsed, so a previous run left a ` +
+        'known-bad edit somewhere and this one cannot tell where.\n\n' +
+        '  Check `git status`, restore by hand, then delete that file.\n',
+    )
+    process.exit(1)
   }
+  const stuck = []
   for (const file of record.files ?? []) {
     console.warn(`[mutation-canary] recovering abandoned mutation in ${file}`)
-    revert(file)
+    if (!revert(file)) stuck.push(file)
+  }
+  if (stuck.length > 0) {
+    console.error(
+      `\n✗ could not restore ${stuck.join(', ')} from a previous run.\n\n` +
+        `  ${DIRTY_RECORD} is being kept so the next run tries again. Do not delete\n` +
+        '  it until `git status` is clean — it is the only record of what was edited.\n',
+    )
+    process.exit(1)
   }
   rmSync(DIRTY_RECORD, { force: true })
 }
 
+/**
+ * A `git status` that failed tells us nothing about the tree, and answering
+ * "clean" to a question that could not be asked is how this tool would come to
+ * overwrite work it was supposed to refuse to touch.
+ */
 function isClean(file) {
   const status = spawnSync('git', ['status', '--porcelain', '--', file], { encoding: 'utf8' })
+  if (status.status !== 0) {
+    console.error(
+      `\n✗ could not read git status for ${file} ` +
+        `(${(status.stderr ?? '').trim() || `exit ${status.status}`}).\n\n` +
+        '  Refusing to mutate a file whose state is unknown: this tool writes\n' +
+        '  known-bad code and relies on git to put it back.\n',
+    )
+    process.exit(1)
+  }
   return (status.stdout ?? '').trim() === ''
 }
 
@@ -142,11 +180,46 @@ for (const canary of selected) {
 
   let caught = false
   try {
+    /**
+     * A mutation that leaves the file unparseable is red for a reason that has
+     * nothing to do with the guard. The command fails, the canary reports
+     * "caught", and the whole exercise certifies a guard that may not exist —
+     * deleting the test entirely would produce the same green tick. So the
+     * mutated source has to still be a program before its behaviour means
+     * anything.
+     */
+    if (/\.(mjs|cjs|js)$/.test(file)) {
+      const parse = spawnSync('node', ['--check', file], { encoding: 'utf8' })
+      if (parse.status !== 0) {
+        console.error(
+          `  ✗ INVALID CANARY — the edit leaves ${file} unparseable.\n` +
+            `    ${(parse.stderr ?? '').split('\n').find((l) => l.includes('Error')) ?? ''}\n` +
+            '    A syntax error fails the command for the wrong reason, so this proves\n' +
+            '    nothing about the guard. Make the mutation a valid program that behaves\n' +
+            '    badly, not a broken one.',
+        )
+        failures += 1
+        continue
+      }
+    }
     const result = spawnSync(command, { shell: true, stdio: 'pipe', encoding: 'utf8' })
     caught = result.status !== 0
   } finally {
-    revert(file)
-    rmSync(DIRTY_RECORD, { force: true })
+    // The record is deleted only once the file is genuinely back. Deleting it
+    // regardless threw away the one note that would let the next run undo a
+    // restore that did not happen, leaving a deliberate defect on disk with
+    // nothing pointing at it.
+    if (revert(file)) {
+      rmSync(DIRTY_RECORD, { force: true })
+    } else {
+      console.error(
+        `\n✗ could not restore ${file} after mutating it.\n\n` +
+          `  The known-bad edit is still on disk. ${DIRTY_RECORD} has been kept so the\n` +
+          '  next run retries; restore by hand if that does not work, and do not commit\n' +
+          '  until `git status` is clean.\n',
+      )
+      process.exit(1)
+    }
   }
 
   if (caught) {
