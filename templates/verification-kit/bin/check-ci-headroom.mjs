@@ -72,6 +72,26 @@ function parseArgs(argv) {
  */
 export function declaredTimeouts(dir = WORKFLOWS, files = null) {
   const byFile = new Map()
+  for (const [file, jobs] of parseJobs(dir, files)) {
+    const timed = jobs.filter((job) => job.timeout !== null)
+    if (timed.length > 0) byFile.set(file, timed)
+  }
+  return byFile
+}
+
+/**
+ * Every job in every workflow, whether or not it declares a timeout.
+ *
+ * Kept separate from `declaredTimeouts` because two questions need different
+ * answers from the same parse. "What are the limits?" wants only timed jobs;
+ * "is this repository allowed to have no limits?" needs to see the untimed
+ * ones, and answering it from the filtered list is how an unbounded job hides
+ * behind a delegating neighbour.
+ *
+ * @returns {Map<string, {id: string, name: string|null, timeout: number|null, delegates: boolean}[]>}
+ */
+export function parseJobs(dir = WORKFLOWS, files = null) {
+  const byFile = new Map()
   if (!existsSync(dir)) return byFile
 
   for (const file of readdirSync(dir)) {
@@ -93,7 +113,7 @@ export function declaredTimeouts(dir = WORKFLOWS, files = null) {
     let inJobs = false
     let pending = null
     const flush = () => {
-      if (pending && pending.timeout !== null) jobs.push(pending)
+      if (pending) jobs.push(pending)
     }
 
     for (const line of readFileSync(join(dir, file), 'utf8').split('\n')) {
@@ -112,7 +132,7 @@ export function declaredTimeouts(dir = WORKFLOWS, files = null) {
       const header = line.match(/^ {2}([A-Za-z0-9_-]+):\s*$/)
       if (header) {
         flush()
-        pending = { id: header[1], name: null, timeout: null }
+        pending = { id: header[1], name: null, timeout: null, delegates: false }
         continue
       }
       if (!pending) continue
@@ -122,6 +142,10 @@ export function declaredTimeouts(dir = WORKFLOWS, files = null) {
 
       const timeout = line.match(/^ {4}timeout-minutes:\s*(\d+)/)
       if (timeout) pending.timeout = Number.parseInt(timeout[1], 10)
+
+      // A job that calls a reusable workflow inherits the callee's limit, and
+      // GitHub rejects `timeout-minutes` next to `uses:`.
+      if (/^ {4}uses:/.test(line)) pending.delegates = true
     }
     flush()
 
@@ -340,30 +364,34 @@ if (isMain(import.meta.url)) {
   const repo = args.repo ?? currentRepoSlug()
 
   if (declaredTimeouts().size === 0) {
-    // A caller-only repository — every job is `uses:` a reusable workflow —
-    // legitimately declares no timeouts, because they live in the callee.
-    // Reporting that as "no timeouts found" is a false alarm, and a check
-    // that cries wolf on a correctly configured project is one that project
-    // turns off. Distinguish it from the real fault, which is a job that runs
-    // here and is unbounded.
-    const delegates = existsSync(WORKFLOWS)
-      ? readdirSync(WORKFLOWS)
-          .filter((f) => f.endsWith('.yml') || f.endsWith('.yaml'))
-          .some((f) => /^ {4}uses:/m.test(readFileSync(join(WORKFLOWS, f), 'utf8')))
-      : false
+    // A caller-only repository — where *every* job is `uses:` a reusable
+    // workflow — legitimately declares no timeouts, because they live in the
+    // callee. Reporting that as a fault is a false alarm, and a check that
+    // cries wolf at a correctly configured project is one that project turns
+    // off.
+    //
+    // Every, not any. Asking whether some job delegates lets a single
+    // reusable-workflow call excuse an unbounded job sitting next to it, which
+    // is the exact fault this branch is supposed to be distinguishing from.
+    const all = [...parseJobs().values()].flat()
+    const unbounded = all.filter((job) => !job.delegates)
 
-    if (delegates) {
+    if (all.length > 0 && unbounded.length === 0) {
       console.log(
-        '✓ ci-headroom: every job here delegates to a reusable workflow, so its\n' +
-          '  timeout is declared upstream. Run this in the repository that owns\n' +
-          '  those workflows to measure them.',
+        `✓ ci-headroom: all ${all.length} job(s) here delegate to a reusable workflow,\n` +
+          '  so their timeouts are declared upstream. Run this in the repository\n' +
+          '  that owns those workflows to measure them.',
       )
       process.exit(0)
     }
 
-    console.error(`✗ no timeout-minutes found under ${WORKFLOWS}.`)
-    console.error('  A job with no declared timeout runs until GitHub kills it at six hours,')
-    console.error('  and the failure mode is a bill and a queue rather than a red check.')
+    console.error(`\n✗ ci-headroom: no timeout-minutes under ${WORKFLOWS}.\n`)
+    for (const job of unbounded) console.error(`  unbounded  ${job.name ?? job.id}`)
+    console.error(
+      '\n  A job with no declared timeout runs until GitHub kills it at six\n' +
+        '  hours, and the failure mode is a bill and a queue rather than a red\n' +
+        '  check, so nobody finds out (shared rule V48).\n',
+    )
     process.exit(1)
   }
 

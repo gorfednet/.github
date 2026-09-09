@@ -9,6 +9,7 @@ import {
   worstDurations,
   assess,
   allJobs,
+  parseJobs,
   coverage,
 } from '../bin/check-ci-headroom.mjs'
 
@@ -258,6 +259,52 @@ describe('assess', () => {
       ['b', { file: 'ci.yml', job: 'b', minutes: 24, limit: 25 }],
     ])
     assert.equal(assess(worst, thresholds)[0].job, 'ci.yml / b')
+  })
+})
+
+describe('parseJobs', () => {
+  const parseAll = (files) => {
+    const dir = mkdtempSync(join(tmpdir(), 'headroom-'))
+    mkdirSync(join(dir, 'wf'))
+    for (const [name, body] of Object.entries(files)) writeFileSync(join(dir, 'wf', name), body)
+    const found = parseJobs(join(dir, 'wf'))
+    rmSync(dir, { recursive: true, force: true })
+    return found
+  }
+
+  it('reports untimed jobs too, which declaredTimeouts cannot', () => {
+    const jobs = parseAll({ 'ci.yml': 'jobs:\n  quick:\n    runs-on: ubuntu-latest\n' }).get('ci.yml')
+    assert.equal(jobs.length, 1)
+    assert.equal(jobs[0].timeout, null)
+    assert.equal(jobs[0].delegates, false)
+  })
+
+  it('marks a job that calls a reusable workflow', () => {
+    const jobs = parseAll({
+      'ci.yml': 'jobs:\n  call:\n    uses: org/.github/.github/workflows/x.yml@main\n',
+    }).get('ci.yml')
+    assert.equal(jobs[0].delegates, true)
+  })
+
+  it('does not let one delegating job vouch for an unbounded neighbour', () => {
+    // The finding. Asking whether *some* job delegates lets a single reusable
+    // call excuse the untimed job beside it — which is precisely the fault the
+    // caller-only branch is supposed to be telling apart.
+    const jobs = parseAll({
+      'ci.yml': [
+        'jobs:',
+        '  call:',
+        '    uses: org/.github/.github/workflows/x.yml@main',
+        '  local:',
+        '    runs-on: ubuntu-latest',
+        '',
+      ].join('\n'),
+    }).get('ci.yml')
+
+    assert.deepEqual(
+      jobs.filter((job) => !job.delegates).map((job) => job.id),
+      ['local'],
+    )
   })
 })
 
