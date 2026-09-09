@@ -25,6 +25,7 @@ an ignore rule that did not cover them.
 |---|---|
 | `bin/assert-tests-executed.mjs` | A test job reporting success while executing zero tests. Reads Playwright and Vitest JSON. |
 | `bin/bugbot-review-status.mjs` | Merging on a Bugbot `NEUTRAL` that actually means *reviewed, and found things*. Also answers "what is about to be tagged that nobody reviewed?" with `--since`. |
+| `bin/check-ci-headroom.mjs` | A job quietly growing into its `timeout-minutes`. Green until it is not, and then it lands on an unrelated PR. |
 | `bin/assert-checks-started.mjs` | A pull request whose CI failed to *start*. That produces no check runs, so `gh pr checks` shows nothing at all and it reads as a repo with no CI. |
 | `bin/check-backlog.mjs` | The plan of record decaying into prose nobody validates. |
 | `bin/check-rule-citations.mjs` | A code comment citing a rule number that has moved, or no longer exists. |

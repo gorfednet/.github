@@ -51,7 +51,7 @@
     },
     {
       "id": "drift-check-passes-when-it-cannot-fetch",
-      "guards": "A staleness check that cannot reach the canonical manifest fails. Passing there would report 'current' during an outage — the silent-green shape the whole kit exists to find.",
+      "guards": "A staleness check that cannot reach the canonical manifest fails. Passing there would report 'current' during an outage \u2014 the silent-green shape the whole kit exists to find.",
       "command": "node --test 'templates/verification-kit/test/kitDrift.test.mjs'",
       "file": "templates/verification-kit/bin/check-kit-drift.mjs",
       "find": "} catch (cause) {\n  die(\n    `check-kit-drift: could not read the canonical manifest",
@@ -163,11 +163,19 @@
     },
     {
       "id": "cli-entrypoint-silently-does-nothing",
-      "guards": "V46. The naive main-module idiom compares a resolved file URL to a raw argv path. Through a symlinked directory they differ, the CLI never runs, and the process exits 0 — a checker reporting success having checked nothing. It was in two of this kit binaries, including the one CI uses to verify the manifest.",
+      "guards": "V46. The naive main-module idiom compares a resolved file URL to a raw argv path. Through a symlinked directory they differ, the CLI never runs, and the process exits 0 \u2014 a checker reporting success having checked nothing. It was in two of this kit binaries, including the one CI uses to verify the manifest.",
       "command": "node --test 'templates/verification-kit/test/isMain.test.mjs'",
       "file": "templates/verification-kit/lib/isMain.mjs",
       "find": "    return realpathSync(fileURLToPath(importMetaUrl)) === realpathSync(invoked)",
       "replace": "    return importMetaUrl === `file://${invoked}`"
+    },
+    {
+      "id": "headroom-verdict-over-a-fraction",
+      "guards": "V48's checker giving a verdict without a denominator. Its first version printed a green tick having measured six jobs in a repository that declares forty, reporting 'all under 75% of their timeout' while examining none of the ones anyone worried about.",
+      "command": "node --test 'templates/verification-kit/test/ciHeadroom.test.mjs'",
+      "file": "templates/verification-kit/bin/check-ci-headroom.mjs",
+      "find": "    ratio: timeouts.size === 0 ? 0 : seen.size / timeouts.size,",
+      "replace": "    ratio: 1,"
     }
   ]
 }
