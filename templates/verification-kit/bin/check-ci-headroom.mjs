@@ -147,20 +147,38 @@ export function matchJob(reported, declared) {
     }
   }
 
-  // Templates last. A pattern is the loosest thing here, so an exact hit on
-  // some other job in the same file has to win over it.
+  // Templates last, and by specificity rather than by file order. A pattern is
+  // the loosest thing here, so an exact hit on some other job in the same file
+  // has to win over it, and between two patterns the one with more literal
+  // text is the better claim.
+  let best = null
+  let bestAnchor = 0
+
   for (const job of declared) {
     if (!job.name?.includes('${{')) continue
-    const pattern = new RegExp(
-      `^${job.name
-        .split(/\$\{\{[^}]*\}\}/)
-        .map((literal) => literal.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
-        .join('.*')}$`,
-    )
-    if (pattern.test(reported) || pattern.test(bare)) return job
+
+    const literals = job.name
+      .split(/\$\{\{[^}]*\}\}/)
+      .map((literal) => literal.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+
+    // A name that is nothing but an expression — `name: ${{ matrix.suite }}` —
+    // compiles to `^.*$` and would claim every other job in the file, scoring
+    // their durations against this job's limit. There is no honest join for
+    // it, so it is left unmatched and shows up as missing coverage, which is
+    // visible and true rather than invisible and wrong.
+    const anchor = literals.join('').length
+    if (anchor === 0) continue
+
+    const pattern = new RegExp(`^${literals.join('.*')}$`)
+    if (!pattern.test(reported) && !pattern.test(bare)) continue
+
+    if (anchor > bestAnchor) {
+      best = job
+      bestAnchor = anchor
+    }
   }
 
-  return null
+  return best
 }
 
 /**

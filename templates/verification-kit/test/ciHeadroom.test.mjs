@@ -124,6 +124,27 @@ describe('matchJob', () => {
     const one = [{ id: 'x', name: 'lint-${{ matrix.node }}', timeout: 5 }]
     assert.equal(matchJob('typecheck-20', one), null)
   })
+
+  it('refuses a name that is nothing but an expression', () => {
+    // `name: ${{ matrix.suite }}` compiles to `^.*$` and would claim every
+    // other job in the file, scoring their durations against its limit. There
+    // is no honest join for it, so it goes unmatched and turns up as missing
+    // coverage — visible and true, rather than invisible and wrong.
+    const greedy = [
+      { id: 'dynamic', name: '${{ matrix.suite }}', timeout: 5 },
+      { id: 'slow', name: null, timeout: 90 },
+    ]
+    assert.equal(matchJob('anything-at-all', greedy), null)
+    assert.equal(matchJob('slow', greedy).timeout, 90)
+  })
+
+  it('prefers the more specific of two templates that both fit', () => {
+    const two = [
+      { id: 'broad', name: 'e2e-${{ matrix.x }}', timeout: 90 },
+      { id: 'narrow', name: 'e2e-webkit-${{ matrix.shard }}', timeout: 15 },
+    ]
+    assert.equal(matchJob('e2e-webkit-3', two).id, 'narrow')
+  })
 })
 
 describe('worstDurations', () => {
