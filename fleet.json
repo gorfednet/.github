@@ -8,7 +8,7 @@
   },
   "reverifyDays": 120,
   "$onlineComment": "When the tier claims below were last checked against the repositories themselves, rather than only read back off this file. Null means never. The offline run — the only one a pull request can perform, since its token cannot see a private sibling — warns until onlineGraceUntil and fails after it. Deferral is fine; undated deferral becomes permanent by accident, and this file's whole purpose is to not become fiction.",
-  "onlineVerifiedAt": null,
+  "onlineVerifiedAt": "2026-09-09",
   "onlineGraceUntil": "2026-10-15",
   "projects": [
     {
