@@ -59,6 +59,43 @@ export function classifyBugbotRun(bugbot) {
 }
 
 /**
+ * Resolve one commit to a review state, given an injected GitHub reader.
+ *
+ * `read` returns `{ ok: true, data }` or `{ ok: false, error }`. That
+ * distinction is the whole point of this function existing separately from the
+ * script. The first version collapsed every `gh api` failure to `null`, and a
+ * failed pull-request lookup then read as "this commit has no pull request" —
+ * a state the script treats as benign. An expired token, a rate limit, or a
+ * GitHub outage therefore printed "All pull requests reviewed" and exited 0.
+ *
+ * That is the same silent-green shape the script was written to detect,
+ * reproduced inside the detector. Bugbot caught it on bindercurve.com#170.
+ *
+ * The check-run lookup already failed closed, but closed in the wrong words:
+ * an API error was reported as "Bugbot never ran", which is a diagnosis rather
+ * than an unknown, and a wrong diagnosis stops the next person looking. Errors
+ * now say they are errors.
+ *
+ * @param {string} sha
+ * @param {string} repo
+ * @param {(path: string) => {ok: true, data: unknown} | {ok: false, error: string}} read
+ * @returns {{state: 'clean'|'findings'|'not-run'|'no-pr'|'undetermined', pr?: number, detail: string}}
+ */
+export function resolveCommitReview(sha, repo, read) {
+  const pulls = read(`repos/${repo}/commits/${sha}/pulls`)
+  if (!pulls.ok) {
+    return { state: 'undetermined', detail: `could not list pull requests: ${pulls.error}` }
+  }
+
+  const pr = Array.isArray(pulls.data) ? pulls.data[0]?.number : undefined
+  if (!pr) {
+    return { state: 'no-pr', detail: 'no pull request' }
+  }
+
+  return resolvePullRequestReview(pr, repo, read)
+}
+
+/**
  * Resolve one pull request to a review state, given an injected GitHub reader.
  *
  * `read` returns `{ ok: true, data }` or `{ ok: false, error }`. That

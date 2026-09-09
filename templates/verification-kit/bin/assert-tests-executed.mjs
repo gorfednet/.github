@@ -15,7 +15,8 @@
  * so the next inert job announces itself instead of going quiet.
  *
  * Usage:
- *   node scripts/assert-tests-executed.mjs --report <json> --min <n> [--label <text>]
+ *   node .../assert-tests-executed.mjs --report <json> --min <n> [--label <text>]
+ *                                      [--hint <repo-specific pointer>]
  *
  * Accepts Playwright JSON (`suites`) and Vitest JSON (`testResults`).
  */
@@ -29,6 +30,7 @@ function parseArgs(argv) {
     if (flag === '--report') args.report = value
     else if (flag === '--min') args.min = Number.parseInt(value ?? '', 10)
     else if (flag === '--label') args.label = value
+    else if (flag === '--hint') args.localHint = value
     else continue
     i += 1
   }
@@ -40,7 +42,7 @@ function fail(message) {
   process.exit(1)
 }
 
-const { report, min, label } = parseArgs(process.argv.slice(2))
+const { report, min, label, localHint } = parseArgs(process.argv.slice(2))
 
 if (!report) fail('assert-tests-executed: --report <json report> is required')
 if (!Number.isFinite(min) || min < 1) {
@@ -112,7 +114,11 @@ if (counts.executed < min) {
   fail(
     `${label} executed ${counts.executed} test(s) but at least ${min} were expected.\n` +
       `  ${summary}\n\n` +
-      `  A job that runs nothing must not report success. ${hint}`,
+      `  A job that runs nothing must not report success. ${hint}` +
+      // The general advice above is where to look; a project knows the exact
+      // file. Passing it in beats forking this script for one sentence, which
+      // is how a shared file stops being shared.
+      (localHint ? `\n\n  In this repository: ${localHint}` : ''),
   )
 }
 

@@ -1,6 +1,10 @@
 import { strict as assert } from 'node:assert'
 import { describe, it } from 'node:test'
-import { classifyBugbotRun, resolvePullRequestReview } from '../lib/bugbotConclusion.mjs'
+import {
+  classifyBugbotRun,
+  resolveCommitReview,
+  resolvePullRequestReview,
+} from '../lib/bugbotConclusion.mjs'
 
 describe('classifyBugbotRun', () => {
   it('reads a success conclusion as clean', () => {
@@ -99,5 +103,54 @@ describe('resolvePullRequestReview', () => {
   it('reports undetermined when the pull request has no head sha', () => {
     const read = reader({ [`repos/${repo}/pulls/7`]: {} })
     assert.equal(resolvePullRequestReview(7, repo, read).state, 'undetermined')
+  })
+})
+
+describe('resolveCommitReview', () => {
+  function reader(map) {
+    return (path) =>
+      path in map ? { ok: true, data: map[path] } : { ok: false, error: `no stub for ${path}` }
+  }
+
+  const repo = 'gorfednet/example'
+  const cleanRuns = {
+    total_count: 1,
+    check_runs: [
+      {
+        name: 'Cursor Bugbot',
+        conclusion: 'success',
+        output: { summary: 'Bugbot completed review - no issues found! ✅' },
+      },
+    ],
+  }
+
+  it('goes through the pull request head, not the commit on main', () => {
+    // A squash merge gives main a different SHA, and check runs attach to the
+    // pull request head. Asking about the main commit directly returns nothing,
+    // which reads as "never reviewed" for every commit in the release.
+    const read = reader({
+      [`repos/${repo}/commits/squashed/pulls`]: [{ number: 12 }],
+      [`repos/${repo}/pulls/12`]: { head: { sha: 'prhead' } },
+      [`repos/${repo}/commits/prhead/check-runs?per_page=100`]: cleanRuns,
+    })
+    const result = resolveCommitReview('squashed', repo, read)
+    assert.equal(result.state, 'clean')
+    assert.equal(result.pr, 12)
+  })
+
+  it('names a commit with no pull request rather than passing over it', () => {
+    const read = reader({ [`repos/${repo}/commits/direct/pulls`]: [] })
+    assert.equal(resolveCommitReview('direct', repo, read).state, 'no-pr')
+  })
+
+  it('reports a failed pull-request lookup as undetermined, never as no-pr', () => {
+    // The bug this guards: collapsing an API failure to an empty list made an
+    // expired token read as "this commit has no pull request", which the
+    // caller treats as benign. The detector then printed "all reviewed" during
+    // an outage — the exact silent green it exists to catch.
+    const read = () => ({ ok: false, error: 'HTTP 401: Bad credentials' })
+    const result = resolveCommitReview('any', repo, read)
+    assert.equal(result.state, 'undetermined')
+    assert.match(result.detail, /401/)
   })
 })
