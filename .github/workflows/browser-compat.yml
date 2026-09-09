@@ -20,15 +20,23 @@ on:
         default: ""
       playwright-test-command:
         description: >-
-          Playwright test command. Defaults to the whole suite. It used to
-          default to `npx playwright test e2e/smoke.spec.ts`, which named one
-          file and silently ran only that: 4thcltr.com has twenty-four spec
-          files and inherited this default, so twenty-three of them had never
-          run in browser-compat, and gorfmusic.com's accessibility suite had
-          never run at all. Both jobs were green throughout, because a
-          selection that matches less than you think still passes what it
-          matched. Narrow it deliberately if you must, and pair it with
-          min-tests so the narrowing is visible.
+          Playwright test command. Defaults to the whole suite.
+
+          It used to default to `npx playwright test e2e/smoke.spec.ts`, which
+          names one file and silently runs only that. gorfmusic.com inherited
+          it with two spec files, so its entire accessibility suite — axe
+          scans, skip link, keyboard focus, form control contrast — had never
+          run in CI, and the job was green throughout, because a selection that
+          matches less than you think still passes what it matched.
+
+          (An earlier version of this note also named 4thcltr.com and its
+          twenty-four specs. That was wrong: it does not call this workflow at
+          all, it runs its own sharded e2e job. Left corrected rather than
+          deleted, because a rule justified by an example that does not hold is
+          worse than one with no example.)
+
+          Narrow it deliberately if you must, and pair it with min-tests so the
+          narrowing is visible.
         required: false
         type: string
         default: npx playwright test
