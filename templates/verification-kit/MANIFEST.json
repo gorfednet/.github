@@ -1,5 +1,5 @@
 {
-  "version": "0.21.0",
+  "version": "0.22.0",
   "files": {
     "README.md": "8d5eebca11a9c95013db003979136add2ce2923e5d8db2f5362867a55be6f561",
     "bin/assert-checks-started.mjs": "160573859b58680650cf21b7003777337b799c018315a27b0951a9b5e925ece2",
@@ -13,11 +13,11 @@
     "bin/mutation-canary.mjs": "fafb50a15854c5273e262915baaef4b63328ccb5b631f4a5f3341c0915d0b6e6",
     "bin/refresh-kit.mjs": "2e2a2f2efbf38d85fb04c3c2888453c3643267fedb80608517ecc69ab517a4b9",
     "bin/write-manifest.mjs": "f65d73c8989c78927682a2dad4f38038d782b4002b1811373f687d092dcc73f9",
-    "lib/backlogSchema.mjs": "60b2fe78d7d07694d474494e6f76ae96b095cbe6ad528b6a90c8e67ab9acca7f",
+    "lib/backlogSchema.mjs": "260c11ed6e7e960b8aee4e7127d96e02c4f793c6b3e72b348dc01eedf6221fa6",
     "lib/bugbotConclusion.mjs": "5f70a24237f8108841c68454237b34761fbc2d06ebe22ec1c5b6f62573a54a1a",
     "lib/githubSlug.mjs": "ae603437ff1b6370606f1a5be6c8d58ed1cfa30f301b5643e2d82c4083766caf",
     "lib/isMain.mjs": "bd3c354d760cb4bbceb2a022d36ae86a903db69865180c58c42d807c74a5fdb4",
-    "test/backlogSchema.test.mjs": "a4602ae046bb0c8b4c120bb1cfa845de70cbe27da3c634c1ecc58601cf46b089",
+    "test/backlogSchema.test.mjs": "e0ecf833b80a97937dd1358b54afe042a386c82038043a196252ddfea893ea40",
     "test/bugbotConclusion.test.mjs": "90c981ee31d30037c1e21f41b26b4140b2fa0131946a8708cdf7a06119d3c169",
     "test/checksStarted.test.mjs": "a1483848c2653df36101233ace3124cf862cf93d459b798d6c1f4a68c0bdc81d",
     "test/ciHeadroom.test.mjs": "ac98365444068dab9a18a35878f5937640a1c507558ed8049083e8bb08409175",

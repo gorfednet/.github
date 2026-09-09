@@ -1,6 +1,8 @@
 import { strict as assert } from 'node:assert'
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import { describe, it } from 'node:test'
-import { validateBacklog } from '../lib/backlogSchema.mjs'
+import { PLACEHOLDER_ID, validateBacklog } from '../lib/backlogSchema.mjs'
 
 const PROSE = 'a sentence long enough to clear the twenty character floor'
 
@@ -70,6 +72,31 @@ describe('validateBacklog', () => {
   it('rejects a pull request attached to work that has not started', () => {
     const problems = validateBacklog({ entries: [entry({ status: 'suspected', pr: 12 })] })
     assert.ok(problems.some((p) => /names pull request #12/.test(p)))
+  })
+
+  /*
+   * The template's example clears every other rule in this file, because it
+   * was written to demonstrate them. Installing the kit and never editing the
+   * backlog therefore produced a green check describing a bug nobody has —
+   * found while rolling the kit out to anal0g.org, before it reached the
+   * remaining repositories.
+   */
+  describe('the template placeholder', () => {
+    it('is rejected even though it satisfies every other rule', () => {
+      const problems = validateBacklog({ entries: [entry({ id: PLACEHOLDER_ID })] })
+      assert.ok(problems.some((p) => /still the template's example/.test(p)), problems.join('\n'))
+    })
+
+    it('is the id the shipped template actually uses', () => {
+      // Otherwise the check looks for a placeholder that no longer exists and
+      // the template sails through it (V24).
+      const path = fileURLToPath(new URL('../templates/backlog.json', import.meta.url))
+      const shipped = JSON.parse(readFileSync(path, 'utf8'))
+      assert.deepEqual(
+        shipped.entries.map((e) => e.id),
+        [PLACEHOLDER_ID],
+      )
+    })
   })
 
   it('rejects an unparseable review date', () => {

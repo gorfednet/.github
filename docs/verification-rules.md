@@ -388,6 +388,37 @@ waiver was granted for reaches zero. Say so, name both sides, and make removing
 it the cheap move. An exception nothing can retire is a permanent hole with a
 comment on it.
 
+**V52. A template that satisfies its own gate ships as fiction.** Scaffolding
+is written to demonstrate the rules, so it necessarily passes them: the example
+backlog entry had an id, a symptom over the length floor, evidence-shaped text
+and a review date, and a project that copied it and never looked again got a
+green backlog check describing a bug nobody has. That is worse than an empty
+backlog, which at least has to say `emptyReason` out loud. The same shape put
+the organisation's own canary list into the kit as every project's starter set.
+So make the placeholder detectable and reject it by name, export the marker
+from one place so the template and the check cannot drift apart, and assert
+that the shipped template is the thing the check looks for. The default state
+of a newly installed check is *incomplete*, never *passing*.
+
+**V53. A deny-list of what not to publish is wrong the moment you add a file.**
+Every static site here shipped with an rsync exclude list naming the things to
+withhold, and every one of them was silently wrong within a day of the
+verification kit landing: `verification-kit/` and `docs/` were not on any list,
+so all of them were queued to go to the public web — the tooling, each
+project's backlog, the fleet's own rules. On gorfed.net they were already
+staged in `dist/`, waiting for the next deploy. Four repositories, one shape,
+and it fails in the dangerous direction: the unlisted path is *published*, not
+withheld, so the mistake is invisible from the repository and visible only to
+whoever browses the site. Inline in a Makefile or a deploy script the list is
+worse still, because nothing can read it back to check it. So put the rules in
+a file the tooling can also read (`.deployignore` + `--exclude-from`), and
+assert the *output*: dry-run the transfer, fail on any repo-only path, name the
+files a visitor must be able to fetch, and set a floor on the count — because
+nothing forbidden is in an empty deploy either, and a check that cannot tell
+those apart will call the empty one clean. Better yet, invert it: stage an
+allow-list into a clean directory and ship that, which is why
+rowanmcarthur.com was the one site immune to this.
+
 ## Provenance
 
 Every rule above was first written in
@@ -421,6 +452,7 @@ sounds like an opinion, because none of them are.
 | — | — | V39 | fleet check, 2026-09-08 |
 | — | — | V40 | canary review, 2026-09-08 |
 | — | — | V41–V51 | fleet rollout, 2026-09-08 |
+| — | — | V52–V53 | fleet rollout, 2026-09-09 |
 
 Three BinderCurve rules are deliberately **not** shared, because they are true
 of that product rather than of verification: rules 23 and 33 concern

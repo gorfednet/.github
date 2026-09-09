@@ -110,11 +110,32 @@ jobs:
           node templates/verification-kit/bin/mutation-canary.mjs \
             --file canaries.json
 
-      - name: The template backlog must satisfy the validator it ships with
+      # This step used to require the opposite, and the requirement was wrong:
+      # a template that satisfies its own gate is one a project can copy,
+      # never edit, and get a green check describing a bug nobody has (V52).
+      #
+      # So the template must be structurally valid — it is still parsed, and
+      # every other rule still applies to it — and must be rejected for being
+      # the placeholder. The unit tests cover the first half; this covers the
+      # second, and would notice if the two ever drifted apart.
+      - name: The template backlog must be rejected for being the template
         if: ${{ !cancelled() }}
         run: |
-          node templates/verification-kit/bin/check-backlog.mjs \
-            --file templates/verification-kit/templates/backlog.json
+          set -uo pipefail
+          output=$(node templates/verification-kit/bin/check-backlog.mjs \
+            --file templates/verification-kit/templates/backlog.json 2>&1) && status=0 || status=$?
+          echo "$output"
+          if [ "$status" -eq 0 ]; then
+            echo "::error::The shipped template passes its own validator. A project" \
+                 "that copies it and never edits it would get a green backlog check" \
+                 "for a bug nobody has."
+            exit 1
+          fi
+          if ! grep -q "still the template's example" <<<"$output"; then
+            echo "::error::The template was rejected, but not for being the template." \
+                 "That is a different failure and it is hiding this check."
+            exit 1
+          fi
 
       - name: No generated files tracked in this repo either
         if: ${{ !cancelled() }}
