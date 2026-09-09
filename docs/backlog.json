@@ -41,6 +41,28 @@
       "evidence": "fleet.json: 12 projects at tier 0. Each already inherits a reusable pr-check workflow, so adoption is a one-line change plus the vendored kit.",
       "reviewBy": "2026-11-01",
       "note": "Deliberately staged: three pilots first, across the three archetypes that stress the kit differently, before the remaining nine."
+    },
+    {
+      "id": "unbounded-jobs-in-shared-workflows",
+      "title": "Three jobs in the org repo could run for six hours, one of them inherited by six projects",
+      "status": "in-review",
+      "assignee": "main-model",
+      "userSymptom": "A hung CI job would have kept a runner busy for six hours and billed for it, with no red check to say so — the projects calling browser-compat.yml would just have seen a check that never finished.",
+      "evidence": "check-ci-headroom reported \"no timeout-minutes found\" on gorfed.net and subrythm.com. Auditing the workflows those repos call found compat-success (browser-compat.yml, 6 callers), audit (fleet-audit.yml) and kit (verification-kit.yml) with no timeout-minutes. GitHub kills an untimed job at six hours.",
+      "pr": 5,
+      "reviewBy": "2026-12-01",
+      "note": "Fixed and guarded: test/orgWorkflows.test.mjs now requires a timeout on every job that does not delegate with uses:. Guard observed failing by deleting the new timeout from verification-kit.yml."
+    },
+    {
+      "id": "headroom-blind-to-matrix-jobs",
+      "title": "The headroom check could not see a matrix job at all",
+      "status": "in-review",
+      "assignee": "main-model",
+      "userSymptom": "A slow matrix job — the kind most likely to be near its limit — would never have been reported, and the check would still have printed a green tick.",
+      "evidence": "On bindercurve.com, coverage was 38% of declared jobs. GitHub reports the interpolated name (e2e-chromium-1) for a templated name:, which matches neither the template nor the job id, so no matrix job ever joined to its timeout. Two workflows both declaring a job named 'check' also collapsed into one map entry, measuring one against the other's limit.",
+      "pr": 4,
+      "reviewBy": "2026-12-01",
+      "note": "matchJob turns the template into a pattern, requires at least one literal character so a name that is only an expression cannot claim every job, and resolves by specificity. Coverage went 38% -> over the 80% floor."
     }
   ]
 }
