@@ -388,6 +388,18 @@ waiver was granted for reaches zero. Say so, name both sides, and make removing
 it the cheap move. An exception nothing can retire is a permanent hole with a
 comment on it.
 
+**V52. A template that satisfies its own gate ships as fiction.** Scaffolding
+is written to demonstrate the rules, so it necessarily passes them: the example
+backlog entry had an id, a symptom over the length floor, evidence-shaped text
+and a review date, and a project that copied it and never looked again got a
+green backlog check describing a bug nobody has. That is worse than an empty
+backlog, which at least has to say `emptyReason` out loud. The same shape put
+the organisation's own canary list into the kit as every project's starter set.
+So make the placeholder detectable and reject it by name, export the marker
+from one place so the template and the check cannot drift apart, and assert
+that the shipped template is the thing the check looks for. The default state
+of a newly installed check is *incomplete*, never *passing*.
+
 ## Provenance
 
 Every rule above was first written in
