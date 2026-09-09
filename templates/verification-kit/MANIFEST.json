@@ -1,11 +1,11 @@
 {
-  "version": "0.9.0",
+  "version": "0.10.0",
   "files": {
     "README.md": "6a4f37821c51fb46f4495dd25a5fa1788647597787b47d41c22da44bf5835d50",
     "bin/assert-tests-executed.mjs": "560d16cb6e00da463a2b523f7abd5058da5a0e029801b70fea8ef45d6e8d2911",
     "bin/bugbot-review-status.mjs": "466df275d47ebadb46840af76a188241b08db49ab06443c0874d108d6d4f0dad",
     "bin/check-backlog.mjs": "cf67fca26485e230b1b3216068cd9f7f5130a95ca2c323f39c63038423ca3a5c",
-    "bin/check-kit-drift.mjs": "1a0cd10540c502b80db3b4189f5b0f9bec46c09f2319aa20534225cf72293378",
+    "bin/check-kit-drift.mjs": "b8e674f86206c2ddb30364e1354bd53475f385d5c8444aebeddf84333ec639a6",
     "bin/check-rule-citations.mjs": "aae3f2e58a632e615ad07d2f10063751b2e222e7a246eb73b630f23ba32900cc",
     "bin/check-tracked-artifacts.mjs": "ef4a8e1d674c2d883db4e37781167c9fab1f6a3b0461b16d0a4b067cd1dc6e9c",
     "bin/mutation-canary.mjs": "fafb50a15854c5273e262915baaef4b63328ccb5b631f4a5f3341c0915d0b6e6",

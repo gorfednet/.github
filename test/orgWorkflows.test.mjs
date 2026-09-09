@@ -15,6 +15,10 @@ import { strict as assert } from 'node:assert'
 import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, it } from 'node:test'
+import {
+  GATE_ARGUMENTS,
+  VERIFICATION_INPUT_NAMES,
+} from '../scripts/lib/verificationInputs.mjs'
 
 const WORKFLOWS = '.github/workflows'
 const ACTIONS = '.github/actions'
@@ -65,20 +69,26 @@ describe('reusable pr-check workflows', () => {
         )
       })
 
+      // Read from the same module the generator writes from. When these were
+      // two lists, `source-dirs` was added here and not there, so the script
+      // this test tells authors to run produced a workflow that failed this
+      // test. V24: put the derivation where the second instance can reach it.
       it('exposes the inputs a project needs to configure it', () => {
-        for (const input of [
-          'verification-kit:',
-          'verification-backlog:',
-          'test-report:',
-          'min-tests:',
-          // Without this a project whose source lives under a directory the
-          // kit treats as output cannot adopt at all — the artifact check
-          // fails on hand-written code and the only ways out are to weaken
-          // the check for everyone or not to adopt. gorfed.net is that
-          // project, and it is why the input exists.
-          'source-dirs:',
-        ]) {
-          assert.ok(text.includes(`      ${input}`), `missing workflow input ${input}`)
+        assert.ok(VERIFICATION_INPUT_NAMES.length >= 5, 'the input list is suspiciously short')
+        for (const input of VERIFICATION_INPUT_NAMES) {
+          assert.ok(text.includes(`      ${input}:`), `missing workflow input ${input}`)
+        }
+      })
+
+      it('forwards every input to the gate, not just the ones it started with', () => {
+        // An input a project can set and the gate never receives is worse
+        // than no input: the configuration reads as applied.
+        const step = text.slice(text.indexOf('- name: Verification gate'))
+        for (const [input, key] of Object.entries(GATE_ARGUMENTS)) {
+          assert.ok(
+            step.includes(`${key}: \${{ inputs.${input} }}`),
+            `the gate step drops ${input}; a project setting it would see no effect`,
+          )
         }
       })
 

@@ -274,6 +274,49 @@ any negative test whose setup can fail: assert that the failure you observed is
 the failure you asked for. `mutation-canary` now runs `node --check` on the
 mutant before trusting its verdict.
 
+## Adoption — the rule nobody adopts is not a rule
+
+The four below came out of piloting this kit on real projects, where the
+failure was never that a check was wrong. It was that a correct check made
+adoption impossible, or invisible, or optional forever.
+
+**V41. A shared check a project cannot satisfy will not be adopted, and the
+project is what loses.** The artifact check flags `build/`, which is output in
+almost every repository and is where gorfed.net keeps its Python build
+scripts. As written it failed on hand-written code, and the only ways out were
+to drop `build/` for all fifteen projects or to skip adoption. Neither is a
+choice anyone should have to make: give the exception a name, require it to be
+declared per project, print it on every run, and refuse a declaration that
+exempts nothing — because an exemption nobody sees is indistinguishable from
+the check not looking, and a misspelled one reads as protection.
+
+**V42. A default that turns the whole fleet red on merge day is
+indistinguishable from an outage.** Fourteen projects inherit these workflows.
+A gate defaulted on would have reddened every one of them the hour it landed,
+and a fleet-wide red teaches people to ignore the checks panel — permanently,
+and faster than any single flaky test. Adoption is opt-in and per project. The
+protection against "not yet" becoming "never" is a registry with dates, not a
+default that forces the issue.
+
+**V43. The conventional entry point must tell the truth.** gorfed.net's `npm
+test` was the npm-init placeholder — `echo "Error: no test specified" && exit
+1` — in a repository with a structural suite, eight verifiers and 342
+Playwright tests. Every person and every tool that reaches for the standard
+command first was told there is nothing here. Fix it at the cause by pointing
+it at the real suite; deleting it leaves the same question unanswered for the
+next person to ask.
+
+**V44. Being told no is not the same as not being heard.** V39 covers the case
+where you may not be authorized to look. This is its sibling: a 404 from a
+service you *did* reach is a definitive answer about the thing you asked for,
+and routing it through the same branch as a timeout converts a real finding
+into a skip. gorfed.net's font-pin check did exactly that, so a withdrawn
+Google Fonts stylesheet — a flash of unstyled text for every visitor — would
+have printed "skipped" and exited 0. Genuine unreachability may still skip,
+since failing CI on somebody else's outage is how a check gets switched off,
+but it must annotate loudly: a run that checked nothing must not read like one
+that checked everything.
+
 ## Provenance
 
 Every rule above was first written in

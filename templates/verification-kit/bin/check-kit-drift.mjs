@@ -24,8 +24,6 @@ import { join, relative, sep } from 'node:path'
 
 const CANONICAL =
   'https://raw.githubusercontent.com/gorfednet/.github/main/templates/verification-kit/MANIFEST.json'
-const REFRESH = 'node verification-kit/bin/refresh-kit.mjs'
-
 const NOT_TRACKED = new Set(['MANIFEST.json'])
 const NOT_TRACKED_DIRS = new Set(['templates'])
 
@@ -61,6 +59,13 @@ function die(message) {
 }
 
 const { kit, offline } = parseArgs(process.argv.slice(2))
+
+// Built from the kit path actually in use, not the default. Every message
+// below hands somebody a command to paste at the moment they are least
+// inclined to check it, and a command that fails because it names the wrong
+// directory teaches them the tool is unreliable rather than that their kit
+// lives somewhere else.
+const REFRESH = `node ${kit}/bin/refresh-kit.mjs${kit === 'verification-kit' ? '' : ` --kit ${kit}`}`
 
 if (!existsSync(kit)) die(`check-kit-drift: no kit at ${kit}. Pass --kit, or install it.`)
 
