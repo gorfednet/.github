@@ -77,6 +77,29 @@ describe('declaredTimeouts', () => {
   it('returns an empty map for a directory that is not there', () => {
     assert.equal(declaredTimeouts(join(tmpdir(), 'no-such-dir-here')).size, 0)
   })
+
+  it('does not mistake a trigger or permission block for a job', () => {
+    // `on:` and `permissions:` also have two-space keys. Nothing under them
+    // carries a `timeout-minutes` today, which made this harmless right up
+    // until something did.
+    const found = parse({
+      'ci.yml': [
+        'on:',
+        '  pull_request:',
+        '  schedule:',
+        'permissions:',
+        '  contents: read',
+        'jobs:',
+        '  check:',
+        '    timeout-minutes: 25',
+        '',
+      ].join('\n'),
+    })
+    assert.deepEqual(
+      found.get('ci.yml').map((job) => job.id),
+      ['check'],
+    )
+  })
 })
 
 describe('matchJob', () => {

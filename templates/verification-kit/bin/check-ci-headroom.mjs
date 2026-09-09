@@ -90,12 +90,25 @@ export function declaredTimeouts(dir = WORKFLOWS, files = null) {
     // read is what made every *named* job register a timeout of zero in the
     // first version, and then be discarded as unreadable — dropping precisely
     // the jobs somebody cared enough about to name.
+    let inJobs = false
     let pending = null
     const flush = () => {
       if (pending && pending.timeout !== null) jobs.push(pending)
     }
 
     for (const line of readFileSync(join(dir, file), 'utf8').split('\n')) {
+      // Two-space keys also live under `on:` and `permissions:`. Nothing there
+      // carries a `timeout-minutes`, so this was harmless until the day
+      // something did, and then it would have been a job invented out of a
+      // trigger block.
+      if (/^[A-Za-z0-9_-]+:/.test(line)) {
+        flush()
+        pending = null
+        inJobs = line.startsWith('jobs:')
+        continue
+      }
+      if (!inJobs) continue
+
       const header = line.match(/^ {2}([A-Za-z0-9_-]+):\s*$/)
       if (header) {
         flush()
@@ -294,8 +307,30 @@ if (isMain(import.meta.url)) {
   const repo = args.repo ?? currentRepoSlug()
 
   if (declaredTimeouts().size === 0) {
+    // A caller-only repository — every job is `uses:` a reusable workflow —
+    // legitimately declares no timeouts, because they live in the callee.
+    // Reporting that as "no timeouts found" is a false alarm, and a check
+    // that cries wolf on a correctly configured project is one that project
+    // turns off. Distinguish it from the real fault, which is a job that runs
+    // here and is unbounded.
+    const delegates = existsSync(WORKFLOWS)
+      ? readdirSync(WORKFLOWS)
+          .filter((f) => f.endsWith('.yml') || f.endsWith('.yaml'))
+          .some((f) => /^ {4}uses:/m.test(readFileSync(join(WORKFLOWS, f), 'utf8')))
+      : false
+
+    if (delegates) {
+      console.log(
+        '✓ ci-headroom: every job here delegates to a reusable workflow, so its\n' +
+          '  timeout is declared upstream. Run this in the repository that owns\n' +
+          '  those workflows to measure them.',
+      )
+      process.exit(0)
+    }
+
     console.error(`✗ no timeout-minutes found under ${WORKFLOWS}.`)
-    console.error('  A job with no declared timeout runs until GitHub kills it at six hours.')
+    console.error('  A job with no declared timeout runs until GitHub kills it at six hours,')
+    console.error('  and the failure mode is a bill and a queue rather than a red check.')
     process.exit(1)
   }
 
