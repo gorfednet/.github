@@ -160,6 +160,14 @@
       "file": ".github/workflows/pr-check-static.yml",
       "find": "          source-dirs: ${{ inputs.source-dirs }}",
       "replace": "          # source-dirs: dropped"
+    },
+    {
+      "id": "cli-entrypoint-silently-does-nothing",
+      "guards": "V46. The naive main-module idiom compares a resolved file URL to a raw argv path. Through a symlinked directory they differ, the CLI never runs, and the process exits 0 — a checker reporting success having checked nothing. It was in two of this kit binaries, including the one CI uses to verify the manifest.",
+      "command": "node --test 'templates/verification-kit/test/isMain.test.mjs'",
+      "file": "templates/verification-kit/lib/isMain.mjs",
+      "find": "    return realpathSync(fileURLToPath(importMetaUrl)) === realpathSync(invoked)",
+      "replace": "    return importMetaUrl === `file://${invoked}`"
     }
   ]
 }

@@ -17,6 +17,7 @@ import { createHash } from 'node:crypto'
 import { readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs'
 import { join, relative, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { isMain } from '../lib/isMain.mjs'
 
 const KIT_ROOT = fileURLToPath(new URL('..', import.meta.url))
 const MANIFEST = join(KIT_ROOT, 'MANIFEST.json')
@@ -62,7 +63,7 @@ export function buildManifest(root = KIT_ROOT, version) {
   return { version, files }
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (isMain(import.meta.url)) {
   const checkOnly = process.argv.includes('--check')
 
   let previous = { version: '0.0.0', files: {} }

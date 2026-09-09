@@ -328,6 +328,23 @@ can catch it, because the workflow never ran — it has to be asserted from
 outside, against the head commit, which is what `assert-checks-started` does.
 `action_required` is the same shape with a different label.
 
+**V46. `import.meta.url === "file://" + process.argv[1]` is wrong, and wrong
+silently.** `import.meta.url` is a fully resolved file URL — realpath applied,
+characters percent-encoded. `process.argv[1]` is close to what was typed. They
+agree for a plain absolute path and disagree the moment a symlink, a space or a
+non-ASCII character appears, and when they disagree the module loads, runs no
+CLI, and **exits 0**. A checker invoked through a symlinked directory therefore
+reports success having checked nothing. Two of this kit's own binaries had it,
+including the one that verifies the manifest in CI. Compare realpaths, and test
+it through a symlink — reasoning about this one is how it survived review.
+
+**V47. Declaring `permissions:` sets every scope you did not list to
+`none`.** Adding a step that reads a new API to a workflow with an existing
+`permissions:` block gives it a 403, and a well-built check refuses to read a
+403 as good news — so the guard fails on every run from the moment it lands.
+Always red and always green are the same amount of information, and the first
+one gets switched off, taking the real failures with it.
+
 ## Provenance
 
 Every rule above was first written in

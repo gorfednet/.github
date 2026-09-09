@@ -36,6 +36,13 @@ permissions:
   contents: read
   pull-requests: read
   checks: read
+  # For `actions/runs`, which the startup check reads. Declaring any
+  # `permissions:` block sets every scope not listed to `none`, so adding the
+  # step without this line gives it a 403 — and it correctly refuses to read a
+  # 403 as "nothing failed to start", which means it would have failed on
+  # every single run. A guard that is always red is a guard somebody switches
+  # off, and then the real one goes unnoticed too.
+  actions: read
 
 jobs:
   verdict:

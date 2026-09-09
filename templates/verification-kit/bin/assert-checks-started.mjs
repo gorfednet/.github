@@ -31,6 +31,7 @@
  */
 import { execFileSync } from 'node:child_process'
 import { currentRepoSlug } from '../lib/githubSlug.mjs'
+import { isMain } from '../lib/isMain.mjs'
 
 function parseArgs(argv) {
   const args = { minRuns: 1 }
@@ -113,7 +114,7 @@ export function resolveStartupState(pr, repo, read, minRuns = 1) {
   return { state: 'ok', detail: `${list.length} workflow run(s), all started` }
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (isMain(import.meta.url)) {
   const { pr, repo: repoOverride, minRuns } = parseArgs(process.argv.slice(2))
 
   if (!Number.isFinite(pr) || pr < 1) {
