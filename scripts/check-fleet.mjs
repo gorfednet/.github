@@ -228,6 +228,24 @@ for (const project of projects) {
             'a lookup that failed is not evidence of absence.',
         )
       }
+
+      /*
+       * An override survives the reason it was written for. BinderCurve kept
+       * one pointing at scripts/assert-tests-executed.mjs for weeks after
+       * adopting the vendored copy, and it was only noticed because the local
+       * file was eventually deleted and the lookup went absent. Had both
+       * existed, nothing would ever have said so.
+       *
+       * So when the canonical path is present too, the exception has expired:
+       * say it, name both paths, and make removing it the cheap move.
+       */
+      if (path !== required && state === 'present' && repoHasFile(project.slug, required) === 'present') {
+        problems.push(
+          `${where}: overrides ${required} to ${path}, but ${required} is present now. ` +
+            'The exception has outlived its reason — drop the override so the ' +
+            'canonical path is what gets checked.',
+        )
+      }
     }
   }
 }

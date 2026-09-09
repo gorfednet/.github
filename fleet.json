@@ -18,11 +18,9 @@
       "owner": "gorf",
       "verifiedAt": "2026-09-08",
       "note": "Origin of the kit. Keeps its own bespoke contracts alongside the shared ones; becomes a consumer of the shared copies rather than keeping duplicates.",
-      "evidenceReason": "Every check predates the kit and lives at its original path. Swapping to the vendored copies is tracked work, not a gap — until then the override points at the files that actually run.",
+      "evidenceReason": "Consumes the vendored kit at the canonical paths since #191. Two artefacts stay bespoke: the backlog is a typed TS registry rather than JSON because its tests type-check the entries, and the canary list is keyed to this repo own gates.",
       "evidencePaths": {
-        "verification-kit/MANIFEST.json": "scripts/deploy-check.ts",
         "docs/backlog.json": "src/lib/planning/backlogRegistry.ts",
-        "verification-kit/bin/assert-tests-executed.mjs": "scripts/assert-tests-executed.mjs",
         "canaries.json": "scripts/mutation-canary.json"
       }
     },
@@ -37,7 +35,7 @@
     {
       "slug": "gorfednet/gorfed.net",
       "archetype": "static-make-python-esbuild",
-      "tier": 0,
+      "tier": 2,
       "owner": "gorf",
       "verifiedAt": "2026-09-08",
       "note": "Tier 2 pilot. The awkward case: the build is Make plus Python plus esbuild and `npm test` is a placeholder that exits 1. Proves the kit works when the runner is not npm."
@@ -45,7 +43,7 @@
     {
       "slug": "gorfednet/subrythm.com",
       "archetype": "static-no-npm",
-      "tier": 0,
+      "tier": 1,
       "owner": "gorf",
       "verifiedAt": "2026-09-08",
       "note": "Tier 1 pilot. No package.json, no tests, 49 files. Proves the floor: if the kit needs npm here, the design is wrong."
