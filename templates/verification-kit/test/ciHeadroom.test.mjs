@@ -8,6 +8,7 @@ import {
   matchJob,
   worstDurations,
   assess,
+  allJobs,
   coverage,
 } from '../bin/check-ci-headroom.mjs'
 
@@ -257,6 +258,53 @@ describe('assess', () => {
       ['b', { file: 'ci.yml', job: 'b', minutes: 24, limit: 25 }],
     ])
     assert.equal(assess(worst, thresholds)[0].job, 'ci.yml / b')
+  })
+})
+
+describe('allJobs', () => {
+  /** A fake endpoint holding `count` jobs, paging like GitHub's does. */
+  const api = (count, { lie = 0 } = {}) => {
+    const calls = []
+    const read = (path) => {
+      calls.push(path)
+      // `[?&]` matters: a bare /page=(\d+)/ finds the 100 inside `per_page=100`.
+      const page = Number(path.match(/[?&]page=(\d+)/)[1])
+      const per = Number(path.match(/per_page=(\d+)/)[1])
+      const slice = Array.from({ length: count }, (_, i) => ({ name: `job-${i}` })).slice(
+        (page - 1) * per,
+        page * per,
+      )
+      return { total_count: count + lie, jobs: slice }
+    }
+    return { read, calls }
+  }
+
+  it('collects a run that fits on one page', () => {
+    const { read } = api(21)
+    assert.equal(allJobs('o/r', 1, read).length, 21)
+  })
+
+  it('collects every page of a run that does not', () => {
+    // The finding. GitHub pages at 30 by default and says so only in
+    // `total_count`, which nothing forces a caller to read — so the code looks
+    // complete and the rows that go missing are systematically the interesting
+    // ones. Matrix legs are what push a run past thirty, and the slow leg is
+    // what a headroom check exists to find.
+    const { read, calls } = api(240)
+    assert.equal(allJobs('o/r', 1, read).length, 240)
+    assert.ok(calls.length >= 3, 'stopped before reading every page')
+    assert.ok(calls.every((path) => path.includes('per_page=100')))
+  })
+
+  it('throws rather than returning a short read', () => {
+    // A page that goes missing is an error, not a smaller answer.
+    const { read } = api(50, { lie: 10 })
+    assert.throws(() => allJobs('o/r', 1, read), /only 50 could be read/)
+  })
+
+  it('stops on an empty page instead of spinning', () => {
+    const read = () => ({ total_count: 999, jobs: [] })
+    assert.throws(() => allJobs('o/r', 1, read), /only 0 could be read/)
   })
 })
 

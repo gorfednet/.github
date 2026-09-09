@@ -302,6 +302,39 @@ function gh(path) {
   }
 }
 
+/**
+ * Every job of a run, not the first thirty of them.
+ *
+ * The jobs endpoint pages at 30 by default. Reading one page and treating it
+ * as the whole run drops exactly the jobs this check exists to watch — matrix
+ * legs are what push a run past thirty, and a slow leg on page two would have
+ * been invisible while `coverage` still counted the declaration as seen from
+ * page one. A green verdict over a truncated sample.
+ *
+ * `total_count` is checked against what was collected, so a page that goes
+ * missing is an error rather than a smaller number.
+ */
+export function allJobs(repo, runId, read = gh) {
+  const jobs = []
+  let total = null
+
+  for (let page = 1; page <= 20; page += 1) {
+    const body = read(`repos/${repo}/actions/runs/${runId}/jobs?per_page=100&page=${page}`)
+    total ??= body.total_count
+    const batch = body.jobs ?? []
+    jobs.push(...batch)
+    if (batch.length === 0 || (total !== null && jobs.length >= total)) break
+  }
+
+  if (total !== null && jobs.length < total) {
+    throw new Error(
+      `run ${runId} reports ${total} job(s) and only ${jobs.length} could be read. ` +
+        'A verdict over part of a run is a verdict over nothing in particular.',
+    )
+  }
+  return jobs
+}
+
 if (isMain(import.meta.url)) {
   const args = parseArgs(process.argv.slice(2))
   const repo = args.repo ?? currentRepoSlug()
@@ -350,10 +383,16 @@ if (isMain(import.meta.url)) {
   // Each job is tagged with the workflow file it came from, because the join
   // back to a declared timeout is per file: `check` in two workflows is two
   // jobs with two limits.
-  const jobs = runs.flatMap((run) => {
-    const workflow = run.path?.split('/').pop()
-    return gh(`repos/${repo}/actions/runs/${run.id}/jobs`).jobs.map((job) => ({ ...job, workflow }))
-  })
+  let jobs
+  try {
+    jobs = runs.flatMap((run) => {
+      const workflow = run.path?.split('/').pop()
+      return allJobs(repo, run.id).map((job) => ({ ...job, workflow }))
+    })
+  } catch (cause) {
+    console.error(`✗ check-ci-headroom: ${cause.message}`)
+    process.exit(1)
+  }
 
   const findings = assess(worstDurations(jobs, timeouts), args)
 
