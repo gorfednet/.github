@@ -374,6 +374,20 @@ page one still reports the job as *seen*. Page every list endpoint a check
 depends on, and compare what you collected against the count the API gave you
 — a short read is an error, not a smaller answer.
 
+**V51. An exemption must be able to expire on its own.** Every honest check
+grows exceptions: this project keeps its backlog somewhere else, that one is
+allowed to be slow for now. The exception is written when it is true, and then
+the project fixes the underlying thing and nobody goes back. BinderCurve's
+fleet entry redirected the executed-count evidence to a local script for weeks
+after it adopted the vendored copy, and that was only noticed because the local
+file was eventually deleted and the lookup went absent — had both existed, the
+redirect would have quietly kept checking the wrong file forever. So write the
+exemption with the condition that ends it, and check that condition: when the
+canonical path is present too, when the deadline passes, when the count the
+waiver was granted for reaches zero. Say so, name both sides, and make removing
+it the cheap move. An exception nothing can retire is a permanent hole with a
+comment on it.
+
 ## Provenance
 
 Every rule above was first written in
@@ -406,6 +420,7 @@ sounds like an opinion, because none of them are.
 | V19 | BC rule 19 | V38 | durable-plan rule |
 | — | — | V39 | fleet check, 2026-09-08 |
 | — | — | V40 | canary review, 2026-09-08 |
+| — | — | V41–V51 | fleet rollout, 2026-09-08 |
 
 Three BinderCurve rules are deliberately **not** shared, because they are true
 of that product rather than of verification: rules 23 and 33 concern

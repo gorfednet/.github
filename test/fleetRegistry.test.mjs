@@ -174,6 +174,49 @@ describe('fleet registry', () => {
       assert.match(result.stderr, /gives no evidenceReason/)
     })
 
+    /*
+     * The expired exception. This repository is the one project the online
+     * half can inspect without a token — `repoHasFile` reads the working tree
+     * for its own slug — so the override branch is exercised for real rather
+     * than against a stub of it.
+     *
+     * Everything else drops to tier 0 so the run makes no network call.
+     */
+    const onlyHere = (changes) => {
+      const doc = structuredClone(REGISTRY)
+      for (const project of doc.projects) {
+        if (project.slug === 'gorfednet/.github') Object.assign(project, changes)
+        else project.tier = 0
+      }
+      const dir = mkdtempSync(join(tmpdir(), 'fleet-'))
+      temps.push(dir)
+      const path = join(dir, 'fleet.json')
+      writeFileSync(path, JSON.stringify(doc), 'utf8')
+      return path
+    }
+
+    it('flags an override whose canonical path has since appeared', () => {
+      // Both sides present: docs/backlog.json is where the requirement points
+      // and canaries.json is real too, so the redirect buys nothing.
+      const result = run(
+        onlyHere({
+          tier: 1,
+          evidencePaths: { 'docs/backlog.json': 'canaries.json' },
+          evidenceReason: 'fixture',
+        }),
+        [],
+      )
+      assert.equal(result.status, 1, result.stdout)
+      assert.match(result.stderr, /outlived its reason/)
+    })
+
+    it('leaves a still-needed override alone', () => {
+      // The real one: the kit lives under templates/ here and is not vendored
+      // into itself, so the canonical path is genuinely absent.
+      const result = run(onlyHere({ tier: 1 }), [])
+      assert.equal(result.status, 0, result.stderr)
+    })
+
     it('rejects an override of something that is not a tier requirement', () => {
       const doc = structuredClone(REGISTRY.projects[0].evidencePaths)
       const result = run(withProject(0, { evidencePaths: { ...doc, 'docs/nope.md': 'x' } }))
@@ -225,12 +268,19 @@ describe('fleet registry', () => {
    * confident falsehood per lookup.
    */
   it('blames the token, not the project, when it cannot see a repository', () => {
+    // Derived, not typed. This count is every adopted project bar this one,
+    // so it goes up on each rollout merge — written as a literal, the test
+    // would turn red on the next adoption and say nothing about the token.
+    const remote = REGISTRY.projects.filter((p) => p.tier > 0 && p.slug !== 'gorfednet/.github')
+    const expected = remote.length === 1 ? '1 repository' : `${remote.length} repositories`
+
     const result = spawnSync('node', [CHECK], {
       encoding: 'utf8',
       env: { ...process.env, GH_TOKEN: 'ghp_0000000000000000000000000000000000000000' },
     })
     assert.equal(result.status, 1)
-    assert.match(result.stderr, /cannot see 1 repository/)
+    assert.ok(remote.length > 0, 'no adopted remote project left to make the lookup')
+    assert.match(result.stderr, new RegExp(`cannot see ${expected}`))
     assert.match(result.stderr, /means "cannot see", not "not there"/)
     assert.doesNotMatch(
       result.stderr,
