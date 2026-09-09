@@ -66,7 +66,18 @@ describe('reusable pr-check workflows', () => {
       })
 
       it('exposes the inputs a project needs to configure it', () => {
-        for (const input of ['verification-kit:', 'verification-backlog:', 'test-report:', 'min-tests:']) {
+        for (const input of [
+          'verification-kit:',
+          'verification-backlog:',
+          'test-report:',
+          'min-tests:',
+          // Without this a project whose source lives under a directory the
+          // kit treats as output cannot adopt at all — the artifact check
+          // fails on hand-written code and the only ways out are to weaken
+          // the check for everyone or not to adopt. gorfed.net is that
+          // project, and it is why the input exists.
+          'source-dirs:',
+        ]) {
           assert.ok(text.includes(`      ${input}`), `missing workflow input ${input}`)
         }
       })

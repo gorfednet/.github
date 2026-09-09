@@ -28,6 +28,14 @@ inputs:
     description: Space-separated roots to scan for rule citations.
     required: false
     default: "."
+  source-dirs:
+    description: >-
+      Space-separated directories that look generated but hold hand-written
+      code in this repository. `build/` is output nearly everywhere and is
+      where gorfed.net keeps its Python build scripts. Each one is printed on
+      every run, so the exception stays visible.
+    required: false
+    default: ""
 
 runs:
   using: composite
@@ -103,7 +111,9 @@ runs:
     - name: No generated files tracked in git
       if: ${{ !cancelled() }}
       shell: bash
-      run: node "${{ inputs.kit }}/bin/check-tracked-artifacts.mjs"
+      run: |
+        node "${{ inputs.kit }}/bin/check-tracked-artifacts.mjs" \
+          $(for dir in ${{ inputs.source-dirs }}; do printf -- '--source %s ' "$dir"; done)
 
     - name: Backlog describes reality
       if: ${{ !cancelled() && inputs.backlog != '' }}

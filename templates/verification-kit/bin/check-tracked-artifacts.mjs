@@ -14,6 +14,13 @@
  *
  * Usage:
  *   node verification-kit/bin/check-tracked-artifacts.mjs [--min-files <n>]
+ *                                                         [--source <dir> ...]
+ *
+ * `--source` says a directory on the list below holds hand-written code in
+ * this repository. `build/` is output almost everywhere and is where gorfed.net
+ * keeps its Python build scripts, so the list cannot simply drop it. Each
+ * allowance is printed on every run, because an exception nobody sees is
+ * indistinguishable from the check not looking.
  */
 import { execFileSync } from 'node:child_process'
 
@@ -37,17 +44,33 @@ function parseArgs(argv) {
   // clears it. The point of the floor is to catch `git ls-files` returning
   // nothing — a broken invocation, or being run outside a repository — not to
   // assert a repository is large.
-  const args = { minFiles: 5 }
+  const args = { minFiles: 5, source: [] }
   for (let i = 0; i < argv.length; i += 1) {
     if (argv[i] === '--min-files') {
       args.minFiles = Number.parseInt(argv[i + 1] ?? '', 10)
+      i += 1
+    } else if (argv[i] === '--source') {
+      const dir = argv[i + 1] ?? ''
+      args.source.push(dir.endsWith('/') ? dir : `${dir}/`)
       i += 1
     }
   }
   return args
 }
 
-const { minFiles } = parseArgs(process.argv.slice(2))
+const { minFiles, source } = parseArgs(process.argv.slice(2))
+
+// An allowance for something that was never on the list is a typo that reads
+// as protection, so it is refused rather than ignored.
+const unknown = source.filter((dir) => !NEVER_TRACKED.includes(dir))
+if (unknown.length > 0) {
+  console.error(
+    `\n✗ check-tracked-artifacts: --source ${unknown.join(', ')} names ` +
+      'a path this check never flags anyway.\n  Drop the flag: it is exempting ' +
+      'nothing, and reads as though it were.\n',
+  )
+  process.exit(1)
+}
 
 let tracked
 try {
@@ -75,6 +98,7 @@ if (tracked.length < minFiles) {
 
 const offenders = []
 for (const prefix of NEVER_TRACKED) {
+  if (source.includes(prefix)) continue
   const hits = tracked.filter((file) => file === prefix.slice(0, -1) || file.startsWith(prefix))
   if (hits.length > 0) {
     offenders.push({ prefix, count: hits.length, sample: hits.slice(0, 5) })
@@ -92,4 +116,9 @@ if (offenders.length > 0) {
   process.exit(1)
 }
 
-console.log(`✓ tracked files: ${tracked.length}, none under generated paths`)
+console.log(
+  `✓ tracked files: ${tracked.length}, none under generated paths` +
+    (source.length > 0
+      ? `\n  not checked, declared as source here: ${source.join(', ')}`
+      : ''),
+)
