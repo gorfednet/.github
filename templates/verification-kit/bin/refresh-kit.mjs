@@ -83,8 +83,17 @@ try {
 }
 
 if (dryRun) {
-  console.log(`refresh-kit --dry-run: would write ${files.length} file(s), v${before} → v${manifest.version}`)
-  for (const rel of files) console.log(`  ${kit}/${rel}`)
+  // A preview that omits the deletions is worse than no preview: it reads as
+  // "this only adds things" immediately before a run that removes a file. The
+  // whole reason to offer --dry-run is the destructive half.
+  const wouldRemove = kitFiles(kit).filter((rel) => !(rel in (manifest.files ?? {})))
+
+  console.log(
+    `refresh-kit --dry-run: v${before} → v${manifest.version}, ` +
+      `${files.length} file(s) written, ${wouldRemove.length} removed`,
+  )
+  for (const rel of files) console.log(`  write   ${kit}/${rel}`)
+  for (const rel of wouldRemove) console.log(`  REMOVE  ${kit}/${rel}`)
   process.exit(0)
 }
 
