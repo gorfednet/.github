@@ -26,7 +26,7 @@ const CANONICAL =
   'https://raw.githubusercontent.com/gorfednet/.github/main/templates/verification-kit/MANIFEST.json'
 const REFRESH = 'node verification-kit/bin/refresh-kit.mjs'
 
-const NOT_TRACKED = new Set(['MANIFEST.json', 'canaries.json'])
+const NOT_TRACKED = new Set(['MANIFEST.json'])
 const NOT_TRACKED_DIRS = new Set(['templates'])
 
 function parseArgs(argv) {

@@ -22,13 +22,17 @@ const KIT_ROOT = fileURLToPath(new URL('..', import.meta.url))
 const MANIFEST = join(KIT_ROOT, 'MANIFEST.json')
 
 /**
- * The manifest describes itself out, and describes out the files a consuming
- * project is expected to edit. `canaries.json` is the obvious one: a project's
- * canaries are its own, and holding them to a canonical hash would mean either
- * every project ships the fleet's canaries or every project is permanently in
- * drift. Neither is a check.
+ * The manifest describes out itself, and the `templates/` starters a project
+ * copies and then edits.
+ *
+ * Nothing else. A project's own canaries live at the repository root, outside
+ * this directory, because the kit directory having one writable slot is what
+ * let this repository's canary manifest ride along inside the copied tree — a
+ * consuming project vendored nineteen canaries against files it did not have,
+ * and the drift check waved it through as expected-to-differ. Anything found
+ * in here that the manifest does not name is now drift.
  */
-const NOT_TRACKED = new Set(['MANIFEST.json', 'canaries.json'])
+const NOT_TRACKED = new Set(['MANIFEST.json'])
 const NOT_TRACKED_DIRS = new Set(['templates'])
 
 export function kitFiles(root = KIT_ROOT) {

@@ -17,8 +17,33 @@ on:
         required: false
         type: string
         default: "22"
+      expect-text:
+        description: >-
+          A string that must appear in the body of the FIRST health path.
+          A status code says a server answered, not that it served the site:
+          a parking page, a CDN error page and a blank 200 all pass a code
+          check. Empty falls back to the size floor below, which is weaker.
+        required: false
+        type: string
+        default: ""
+      min-bytes:
+        description: >-
+          Smallest acceptable body for each health path. Catches the blank-200
+          case when no expect-text is given.
+        required: false
+        type: string
+        default: "512"
+      smoke-spec:
+        description: Playwright spec to run against the live site.
+        required: false
+        type: string
+        default: e2e/smoke.spec.ts
       run-playwright:
-        description: Run Playwright smoke against live URL
+        description: >-
+          Run Playwright smoke against live URL. When true the spec must
+          exist — a missing spec fails rather than being skipped, because a
+          monitor that prints a tick for a file it could not find is worse
+          than no monitor. Projects with no spec pass false and say so.
         required: false
         type: boolean
         default: true
@@ -29,21 +54,77 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      # A status code tells you a server answered. It does not tell you the
+      # site is there: a parking page, a CDN error page, an empty 200 and a
+      # redirect to somebody else's domain all satisfy `code < 400`. Each path
+      # is fetched, kept, and inspected.
       - name: HTTP health checks
+        env:
+          EXPECT_TEXT: ${{ inputs.expect-text }}
         run: |
           set -euo pipefail
           base="${{ inputs.site-url }}"
+          host="$(printf '%s' "$base" | sed -E 's#^https?://##; s#/.*##')"
+          min_bytes="${{ inputs.min-bytes }}"
           IFS=',' read -ra paths <<< "${{ inputs.health-paths }}"
+
+          if [ "${#paths[@]}" -eq 0 ]; then
+            echo "::error::No health paths. A loop over nothing passes."
+            exit 1
+          fi
+
+          checked=0
           for path in "${paths[@]}"; do
             path="$(echo "$path" | xargs)"
+            [ -n "$path" ] || continue
             url="${base}${path}"
-            code="$(curl -sS -o /dev/null -w '%{http_code}' -L --max-time 30 "$url")"
-            echo "$url → HTTP $code"
+            body="$(mktemp)"
+            read -r code final < <(curl -sS -o "$body" \
+              -w '%{http_code} %{url_effective}' -L --max-time 30 "$url")
+            bytes="$(wc -c < "$body" | tr -d ' ')"
+            echo "$url → HTTP $code, ${bytes} bytes, settled at $final"
+
             if [[ "$code" -lt 200 || "$code" -ge 400 ]]; then
-              echo "::error::Health check failed for $url (HTTP $code)"
+              echo "::error::$url returned HTTP $code"
               exit 1
             fi
+
+            # A redirect off the origin is how a lapsed domain keeps answering
+            # 200 from a registrar's parking page.
+            final_host="$(printf '%s' "$final" | sed -E 's#^https?://##; s#/.*##')"
+            if [ "$final_host" != "$host" ]; then
+              echo "::error::$url redirected to $final_host, off $host."
+              exit 1
+            fi
+
+            if [ "$bytes" -lt "$min_bytes" ]; then
+              echo "::error::$url returned $bytes bytes, under the $min_bytes floor." \
+                   "An empty 200 is the shape of a broken deploy."
+              exit 1
+            fi
+
+            if [ "$checked" -eq 0 ] && [ -n "${EXPECT_TEXT}" ]; then
+              if ! grep -qF -- "${EXPECT_TEXT}" "$body"; then
+                echo "::error::$url did not contain the expected text." \
+                     "The server answered; it did not serve this site."
+                exit 1
+              fi
+              echo "  body contains the expected text"
+            fi
+
+            rm -f "$body"
+            checked=$((checked + 1))
           done
+
+          echo "checked $checked path(s)"
+          if [ "$checked" -eq 0 ]; then
+            echo "::error::Zero paths checked. This job proved nothing."
+            exit 1
+          fi
+          if [ -z "${EXPECT_TEXT}" ]; then
+            echo "::warning::No expect-text given, so this run verified size" \
+                 "and origin but never looked at the content."
+          fi
       - name: Setup Node for Playwright
         if: inputs.run-playwright
         uses: gorfednet/.github/.github/actions/setup-node@main
@@ -51,14 +132,48 @@ jobs:
           node-version: ${{ inputs.node-version }}
       - uses: gorfednet/.github/.github/actions/setup-playwright@main
         if: inputs.run-playwright
+      # This step used to `exit 0` when the spec file was absent, printing
+      # "skipping" into a green job. Renaming a spec, or moving it into a
+      # subdirectory, therefore silently ended live monitoring for a project
+      # that still believed it had it. Asking for the smoke and not having it
+      # is now a failure; not wanting it is `run-playwright: false`, which is a
+      # decision somebody made and can be read off the caller's workflow.
       - name: Playwright live smoke
-        if: inputs.run-playwright
+        if: ${{ !cancelled() && inputs.run-playwright }}
         run: |
-          if [[ ! -f e2e/smoke.spec.ts ]]; then
-            echo "No e2e/smoke.spec.ts; skipping Playwright live smoke"
-            exit 0
+          set -euo pipefail
+          spec="${{ inputs.smoke-spec }}"
+          if [[ ! -f "$spec" ]]; then
+            echo "::error::run-playwright is true but $spec does not exist." \
+                 "Point smoke-spec at the real file, or set run-playwright: false" \
+                 "and accept that nothing is watching this site's behaviour."
+            exit 1
           fi
-          npx playwright test e2e/smoke.spec.ts --project=chromium
+          npx playwright test "$spec" --project=chromium --reporter=json > pw-live.json
         env:
           CI: true
           PLAYWRIGHT_BASE_URL: ${{ inputs.site-url }}
+
+      # A suite where every test is filtered out exits 0. Only a count
+      # distinguishes a green run that checked the site from a green run that
+      # checked nothing.
+      - name: Assert the live smoke actually ran
+        if: ${{ !cancelled() && inputs.run-playwright }}
+        run: |
+          set -euo pipefail
+          if [ -f verification-kit/bin/assert-tests-executed.mjs ]; then
+            node verification-kit/bin/assert-tests-executed.mjs \
+              --report pw-live.json --min 1 --label live-smoke
+          else
+            count=$(node -e "
+              const r = require('./pw-live.json');
+              const walk = (s) => s.reduce((n, x) =>
+                n + (x.specs?.length ?? 0) + walk(x.suites ?? []), 0);
+              console.log(walk(r.suites ?? []));
+            ")
+            echo "live smoke executed $count spec(s)"
+            [ "$count" -ge 1 ] || {
+              echo "::error::The live smoke executed no specs."
+              exit 1
+            }
+          fi

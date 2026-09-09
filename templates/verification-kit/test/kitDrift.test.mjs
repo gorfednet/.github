@@ -114,6 +114,26 @@ describe('check-kit-drift', () => {
     })
   })
 
+  /**
+   * The kit directory is copied wholesale, so anything sitting in it travels.
+   * This repository's own canary manifest lived there, and the first project
+   * to adopt vendored nineteen canaries against files it does not have. The
+   * drift check said nothing, because that filename was on an
+   * expected-to-differ list. There is no such list any more, and this is the
+   * case that keeps it that way.
+   */
+  it('flags a file that rode along in the copied directory', () => {
+    const dir = project({})
+    writeFileSync(
+      join(dir, 'verification-kit', 'canaries.json'),
+      JSON.stringify({ canaries: [{ id: 'from-another-repo', file: 'scripts/nope.mjs' }] }),
+      'utf8',
+    )
+    const result = run(dir, ['--offline'])
+    assert.equal(result.status, 1, result.stdout)
+    assert.match(result.stderr, /not upstream {2}verification-kit\/canaries\.json/)
+  })
+
   describe('staleness', () => {
     const files = { 'bin/a.mjs': 'a\n', 'lib/b.mjs': 'b\n' }
     const current = { version: '1.0.0', files: Object.fromEntries(Object.entries(files).map(([r, c]) => [r, sha(c)])) }
@@ -223,10 +243,17 @@ describe('write-manifest --check', () => {
       assert.ok(tracked.includes(required), `manifest does not track ${required}`)
     }
 
-    // canaries.json is a project's own, so holding it to a canonical hash
-    // would put every project in permanent drift. Assert that exclusion is
-    // deliberate rather than an oversight that quietly widens.
-    assert.ok(!tracked.includes('canaries.json'))
+    /**
+     * Exactly one exclusion, and it is a directory of starters a project is
+     * meant to copy out and edit. The kit directory holds no writable slot of
+     * its own: it had one, `canaries.json`, and the org's nineteen canaries
+     * rode along inside the copied tree into a project that has none of the
+     * files they mutate — with the drift check calling it expected-to-differ.
+     */
     assert.ok(!tracked.some((f) => f.startsWith('templates/')))
+    assert.ok(
+      !tracked.includes('canaries.json'),
+      'a project\'s canaries belong at the repository root, not inside the kit',
+    )
   })
 })

@@ -136,6 +136,22 @@
       "file": "scripts/check-fleet.mjs",
       "find": "  } else if (today > new Date(`${graceUntil}T00:00:00Z`)) {",
       "replace": "  } else if (false) {"
+    },
+    {
+      "id": "healthcheck-skips-a-missing-smoke-spec",
+      "guards": "Nine production sites are watched by one reusable workflow, whose Playwright step used to exit 0 when the spec file was absent. Renaming a spec silently ended live monitoring and printed a tick. Asking for the smoke and not having it must fail; not wanting it is run-playwright: false, which a reader can see in the caller.",
+      "command": "node --test 'test/orgWorkflows.test.mjs'",
+      "file": ".github/workflows/production-healthcheck.yml",
+      "find": "            echo \"::error::run-playwright is true but $spec does not exist.\" \\\n                 \"Point smoke-spec at the real file, or set run-playwright: false\" \\\n                 \"and accept that nothing is watching this site's behaviour.\"\n            exit 1",
+      "replace": "            echo \"no $spec; skipping\"\n            exit 0"
+    },
+    {
+      "id": "healthcheck-accepts-a-blank-200",
+      "guards": "A status code says a server answered, not that it served the site. The body size floor and the expected-text match are what separate a live site from a parking page, a CDN error page, or an empty 200 from a broken deploy.",
+      "command": "node --test 'test/orgWorkflows.test.mjs'",
+      "file": ".github/workflows/production-healthcheck.yml",
+      "find": "            if [ \"$bytes\" -lt \"$min_bytes\" ]; then",
+      "replace": "            if false; then"
     }
   ]
 }

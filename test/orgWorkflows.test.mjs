@@ -136,6 +136,69 @@ describe('verification-gate composite action', () => {
   })
 })
 
+/**
+ * Nine sites are watched by this one file, and a monitor is the last thing
+ * that should be taken on trust: when it fails silently nobody finds out until
+ * a person happens to load the site. Three of its shapes were exactly that.
+ */
+describe('production-healthcheck workflow', () => {
+  const text = readFileSync(join(WORKFLOWS, 'production-healthcheck.yml'), 'utf8')
+
+  /**
+   * The worst of the three. The step read `if [[ ! -f e2e/smoke.spec.ts ]];
+   * then echo "skipping"; exit 0; fi`, so renaming or moving a spec ended live
+   * monitoring for that project and printed a tick while doing it. Five
+   * projects had run-playwright at its default of true.
+   */
+  it('fails when asked for a live smoke it cannot find', () => {
+    const step = text.slice(text.indexOf('- name: Playwright live smoke'))
+    assert.match(step, /does not exist/)
+    assert.match(step, /exit 1/)
+    assert.doesNotMatch(
+      step.slice(0, step.indexOf('npx playwright')),
+      /exit 0/,
+      'a missing spec must fail; opting out is run-playwright: false',
+    )
+  })
+
+  it('counts what the live smoke executed, since a filtered suite exits 0', () => {
+    assert.match(text, /Assert the live smoke actually ran/)
+    assert.match(text, /executed no specs|assert-tests-executed\.mjs/)
+  })
+
+  /**
+   * A status code says a server answered. A parking page, a CDN error page and
+   * a blank 200 all answer.
+   */
+  it('looks at the body, not only the status code', () => {
+    const step = text.slice(text.indexOf('- name: HTTP health checks'))
+    // The comparison itself, not the error message next to it: a message can
+    // sit under a condition that no longer runs, and read as a check.
+    assert.match(
+      step,
+      /if \[ "\$bytes" -lt "\$min_bytes" \]/,
+      'the size floor must be an executed comparison',
+    )
+    assert.match(step, /grep -qF/, 'expect-text must actually be matched against the body')
+    assert.match(step, /An empty 200 is the shape of a broken deploy/)
+  })
+
+  it('rejects a redirect that leaves the origin', () => {
+    assert.match(text, /off \$host/)
+    assert.match(text, /final_host/)
+  })
+
+  // curl -L plus a for-loop over an empty string is a job that passes having
+  // fetched nothing at all.
+  it('fails rather than passing when it checked zero paths', () => {
+    assert.match(text, /Zero paths checked. This job proved nothing/)
+  })
+
+  it('says out loud when it never inspected any content', () => {
+    assert.match(text, /::warning::No expect-text given/)
+  })
+})
+
 describe('bugbot-verdict workflow', () => {
   const text = readFileSync(join(WORKFLOWS, 'bugbot-verdict.yml'), 'utf8')
 

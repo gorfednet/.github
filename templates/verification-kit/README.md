@@ -40,8 +40,15 @@ fleet has nothing to install with.
 ```sh
 cp -R templates/verification-kit ./verification-kit
 cp verification-kit/templates/backlog.json docs/backlog.json
-cp docs/verification-rules.md docs/verification-rules.md   # from gorfednet/.github
+cp verification-kit/templates/canaries.json ./canaries.json   # tier 3 only
+cp docs/verification-rules.md docs/verification-rules.md      # from gorfednet/.github
 ```
+
+The kit directory is **only** canonical files plus `templates/`. Your backlog
+and your canaries live outside it, at the paths above. This is not tidiness:
+the kit is copied wholesale, so anything you leave inside it travels to the
+next project that adopts. It has happened once already, which is why
+`check-kit-drift` now reports any unmanifested file in there as drift.
 
 ## Rules, and adding your own
 
@@ -130,7 +137,7 @@ to `.gitignore`.
 
 ```sh
 node --test 'verification-kit/test/*.test.mjs'
-node verification-kit/bin/mutation-canary.mjs --file verification-kit/canaries.json
+node verification-kit/bin/mutation-canary.mjs --file canaries.json
 ```
 
 A defect in a template replicates into every project that copied it, so this

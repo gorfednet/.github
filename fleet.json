@@ -123,8 +123,7 @@
       "evidenceReason": "This is the source, not a consumer: the kit lives under templates/ and is not vendored into itself. Only the kit paths move; its backlog is at the standard location.",
       "evidencePaths": {
         "verification-kit/MANIFEST.json": "templates/verification-kit/MANIFEST.json",
-        "verification-kit/bin/assert-tests-executed.mjs": "templates/verification-kit/bin/assert-tests-executed.mjs",
-        "canaries.json": "templates/verification-kit/canaries.json"
+        "verification-kit/bin/assert-tests-executed.mjs": "templates/verification-kit/bin/assert-tests-executed.mjs"
       }
     }
   ]

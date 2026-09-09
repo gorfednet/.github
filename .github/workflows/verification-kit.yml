@@ -108,7 +108,7 @@ jobs:
         if: ${{ !cancelled() }}
         run: |
           node templates/verification-kit/bin/mutation-canary.mjs \
-            --file templates/verification-kit/canaries.json
+            --file canaries.json
 
       - name: The template backlog must satisfy the validator it ships with
         if: ${{ !cancelled() }}

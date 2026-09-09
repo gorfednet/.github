@@ -1,0 +1,21 @@
+{
+  "$comment": "Copy to canaries.json at the REPOSITORY ROOT, not into the kit directory — anything left inside verification-kit/ travels to the next project that copies it, and the drift check will flag it. Each entry breaks one thing on purpose and asserts a specific command notices. Delete the examples; a canary that has never been watched failing is decoration.",
+  "canaries": [
+    {
+      "id": "backlog-accepts-a-vague-symptom",
+      "guards": "The backlog validator rejects a symptom written in implementation terms rather than in the user's. An entry nobody can act on six weeks from now is the failure mode of every plan of record.",
+      "command": "node --test 'verification-kit/test/backlogSchema.test.mjs'",
+      "file": "verification-kit/lib/backlogSchema.mjs",
+      "find": "userSymptom",
+      "replace": "userSymptomDisabled"
+    },
+    {
+      "id": "drift-check-passes-when-it-cannot-fetch",
+      "guards": "A staleness check that passes when it cannot reach the source reports 'current' during an outage, which is the silent green this kit exists to find.",
+      "command": "node --test 'verification-kit/test/kitDrift.test.mjs'",
+      "file": "verification-kit/bin/check-kit-drift.mjs",
+      "find": "} catch (cause) {\n  die(\n    `check-kit-drift: could not read the canonical manifest",
+      "replace": "} catch (cause) {\n  console.log('could not fetch; assuming current')\n  process.exit(0)\n  die(\n    `check-kit-drift: could not read the canonical manifest"
+    }
+  ]
+}
