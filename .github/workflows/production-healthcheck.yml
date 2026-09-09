@@ -74,13 +74,20 @@ jobs:
           fi
 
           checked=0
+          matched=0
           for path in "${paths[@]}"; do
             path="$(echo "$path" | xargs)"
             [ -n "$path" ] || continue
             url="${base}${path}"
             body="$(mktemp)"
-            read -r code final < <(curl -sS -o "$body" \
-              -w '%{http_code} %{url_effective}' -L --max-time 30 "$url")
+            # content_type comes from this request, not a second HEAD. A HEAD
+            # can disagree with the GET that actually filled $body, and one
+            # that fails takes the whole job down under `set -euo pipefail` —
+            # so the extra request could both skip real HTML and match an asset
+            # against markup it never contained.
+            read -r code final ctype < <(curl -sS -o "$body" \
+              -w '%{http_code} %{url_effective} %{content_type}' -L --max-time 30 "$url")
+            ctype="$(printf '%s' "$ctype" | tr '[:upper:]' '[:lower:]')"
             bytes="$(wc -c < "$body" | tr -d ' ')"
             echo "$url → HTTP $code, ${bytes} bytes, settled at $final"
 
@@ -103,22 +110,49 @@ jobs:
               exit 1
             fi
 
-            if [ "$checked" -eq 0 ] && [ -n "${EXPECT_TEXT}" ]; then
-              if ! grep -qF -- "${EXPECT_TEXT}" "$body"; then
-                echo "::error::$url did not contain the expected text." \
-                     "The server answered; it did not serve this site."
-                exit 1
-              fi
-              echo "  body contains the expected text"
+            # The content match used to run on the first path only, which made
+            # every other path a status-and-size check. A route whose
+            # server-side fallback has gone missing, and which therefore serves
+            # the application shell instead of its own page, answers 200 at a
+            # healthy size — so the one failure a multi-path monitor exists to
+            # catch was the one it could not see. Found on gorfmusic.com, where
+            # five of six listed paths were unverified beyond their length.
+            #
+            # It now runs on every HTML response. Not every response: callers
+            # legitimately list stylesheets and scripts, and a phrase from the
+            # markup is not in those. Content-Type decides, so the rule is
+            # "everything that claims to be a page must look like this site"
+            # rather than a guess from the path.
+            if [ -n "${EXPECT_TEXT}" ]; then
+              case "$ctype" in
+                text/html*)
+                  if ! grep -qF -- "${EXPECT_TEXT}" "$body"; then
+                    echo "::error::$url did not contain the expected text." \
+                         "The server answered; it did not serve this page."
+                    exit 1
+                  fi
+                  echo "  body contains the expected text"
+                  matched=$((matched + 1))
+                  ;;
+                *) echo "  not HTML ($ctype), content match skipped" ;;
+              esac
             fi
 
             rm -f "$body"
             checked=$((checked + 1))
           done
 
-          echo "checked $checked path(s)"
+          echo "checked $checked path(s), content-matched $matched"
           if [ "$checked" -eq 0 ]; then
             echo "::error::Zero paths checked. This job proved nothing."
+            exit 1
+          fi
+          # An expect-text that matched nothing is an expect-text that is not
+          # running, and it reads identically in the log to one that passed.
+          if [ -n "${EXPECT_TEXT}" ] && [ "$matched" -eq 0 ]; then
+            echo "::error::expect-text was given but no path returned HTML," \
+                 "so the content match never ran. Either the paths are all" \
+                 "assets, or the server is not serving HTML where it should."
             exit 1
           fi
           if [ -z "${EXPECT_TEXT}" ]; then
