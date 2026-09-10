@@ -249,6 +249,26 @@ describe('production-healthcheck workflow', () => {
       assert.match(step, /not the\n?\s*#?\s*same as being withheld|same as being withheld/)
     })
 
+    /**
+     * The first version wrote `curl ... -w '%{http_code}' || echo 000`. But
+     * `-w` already prints 000 on failure, so the fallback appended a second
+     * one, `$code` became "000\n000", the numeric comparison errored on a
+     * non-number, the elif fell through, and an unreachable host was reported
+     * as *withheld*. A false pass in the one branch written to prevent it.
+     */
+    it('never lets a non-numeric status reach the numeric comparison', () => {
+      assert.doesNotMatch(
+        step,
+        /\|\|\s*echo\s*000/,
+        'curl -w already prints 000 on failure; appending another makes $code a non-number',
+      )
+      assert.match(
+        step,
+        /\[0-9\]\[0-9\]\[0-9\]\)/,
+        'expected a three-digit case guard normalising anything else to 000',
+      )
+    })
+
     it('fails rather than ticks when the list parses to nothing', () => {
       assert.match(step, /probed" -eq 0/)
       assert.match(step, /parsed to nothing/)

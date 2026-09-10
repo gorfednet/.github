@@ -192,7 +192,18 @@ jobs:
             # No -L. A redirect away from a forbidden path is the server
             # declining to serve it, which is the outcome being asked for;
             # following it would report on wherever it landed instead.
-            code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 30 "$url" || echo 000)"
+            # `-w '%{http_code}'` already prints 000 when the request fails, so
+            # `|| echo 000` appended a second one and made $code "000\n000".
+            # That is not a number, so the -lt test below errored, the elif fell
+            # through, and an unreachable host was reported as withheld — a
+            # false pass in the one branch written to prevent exactly that.
+            # Anything that is not three digits is normalised before it can
+            # reach a numeric comparison.
+            code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 30 "$url" || true)"
+            case "$code" in
+              [0-9][0-9][0-9]) ;;
+              *) code="000" ;;
+            esac
             probed=$((probed + 1))
             if [ "$code" = "000" ]; then
               echo "::error::$url could not be reached at all. That is not the" \
