@@ -222,6 +222,73 @@ describe('production-healthcheck workflow', () => {
   })
 
   /**
+   * The publish-set checks assert what a deploy *sends*. Nothing asserted what
+   * the server already holds, and rsync will not clear it: `--delete` protects
+   * excluded files on the receiver, so adding a path to .deployignore stops the
+   * re-upload and guarantees the copy already there stays forever. Measured on
+   * a local pair of directories — `--delete` left the excluded file, only
+   * `--delete-excluded` removed it. anal0g.org has been serving
+   * nginx-routes.conf and LICENSE on exactly that mechanism.
+   */
+  describe('the forbidden-path probe', () => {
+    const step = text.slice(text.indexOf('- name: Paths that must not be public'))
+
+    it('treats anything under 400 as a leak', () => {
+      assert.match(step, /-lt 400/)
+      assert.match(step, /is public \(HTTP/)
+    })
+
+    it('does not follow redirects, so it reports on the path asked about', () => {
+      const curl = /curl [^\n]*forbidden|curl -sS -o \/dev\/null -w '%\{http_code\}'[^\n]*/.exec(step)
+      assert.ok(curl, 'expected a curl in the forbidden-path step')
+      assert.doesNotMatch(curl[0], / -L\b/)
+    })
+
+    it('refuses to read an unreachable host as a withheld file', () => {
+      assert.match(step, /000/)
+      assert.match(step, /not the\n?\s*#?\s*same as being withheld|same as being withheld/)
+    })
+
+    /**
+     * The first version wrote `curl ... -w '%{http_code}' || echo 000`. But
+     * `-w` already prints 000 on failure, so the fallback appended a second
+     * one, `$code` became "000\n000", the numeric comparison errored on a
+     * non-number, the elif fell through, and an unreachable host was reported
+     * as *withheld*. A false pass in the one branch written to prevent it.
+     */
+    it('never lets a non-numeric status reach the numeric comparison', () => {
+      // Comments stripped first. The comment above the fix quotes the broken
+      // expression in order to explain it, and matching that is how this
+      // assertion failed against the corrected file — the same trap the
+      // citation checker documents about its own prose.
+      const code = step
+        .split('\n')
+        .filter((line) => !/^\s*#/.test(line))
+        .join('\n')
+
+      assert.doesNotMatch(
+        code,
+        /\|\|\s*echo\s*000/,
+        'curl -w already prints 000 on failure; appending another makes $code a non-number',
+      )
+      assert.match(
+        step,
+        /\[0-9\]\[0-9\]\[0-9\]\)/,
+        'expected a three-digit case guard normalising anything else to 000',
+      )
+    })
+
+    it('fails rather than ticks when the list parses to nothing', () => {
+      assert.match(step, /probed" -eq 0/)
+      assert.match(step, /parsed to nothing/)
+    })
+
+    it('is skippable only by leaving the input empty, never by an earlier failure', () => {
+      assert.match(step, /if: \$\{\{ !cancelled\(\) && inputs\.forbid-paths != '' \}\}/)
+    })
+  })
+
+  /**
    * A status code says a server answered. A parking page, a CDN error page and
    * a blank 200 all answer.
    */

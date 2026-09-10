@@ -435,6 +435,24 @@ assertion, and the workflows all read (V24), and derive the assertion from the
 is unreachable — because an enumerated copy of that list is the thing that went
 stale in the first place (V23).
 
+**V55. Excluding a file from a deploy does not remove the copy already there.**
+V53 said to assert the deploy's output, and four sites duly got a publish-set
+check. Every one of them then "fixed" a real leak by adding the path to
+`.deployignore` — which is the opposite of a fix. `rsync --delete` deliberately
+*protects* excluded files on the receiver; measured on a local pair of
+directories, `--delete` left the excluded file untouched and only
+`--delete-excluded` removed it. So the exclusion stops the re-upload and
+guarantees the copy already on the server stays there permanently, while the
+repository now reads as though the matter were handled. anal0g.org served
+`nginx-routes.conf` and `LICENSE` on exactly that mechanism, and both were still
+answering 200 after the exclusion landed. Two consequences. Fixing a leak takes
+a *removal* — `--delete-excluded` if the served directory holds nothing the
+deploy does not produce, an explicit named removal if it might — and no
+repository-side check can confirm it, because the evidence only exists on the
+server. Assert it where it can be observed: a live probe of the forbidden paths,
+failing on anything under 400, and treating an unreachable host as unknown
+rather than as withheld.
+
 ## Provenance
 
 Every rule above was first written in
