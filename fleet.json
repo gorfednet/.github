@@ -8,7 +8,7 @@
   },
   "reverifyDays": 120,
   "$onlineComment": "When the tier claims below were last checked against the repositories themselves, rather than only read back off this file. Null means never. The offline run — the only one a pull request can perform, since its token cannot see a private sibling — warns until onlineGraceUntil and fails after it. Deferral is fine; undated deferral becomes permanent by accident, and this file's whole purpose is to not become fiction.",
-  "onlineVerifiedAt": "2026-09-09",
+  "onlineVerifiedAt": "2026-09-10",
   "onlineGraceUntil": "2026-10-15",
   "projects": [
     {
@@ -27,96 +27,105 @@
     {
       "slug": "gorfednet/4thcltr.com",
       "archetype": "vite-spa",
-      "tier": 0,
+      "tier": 3,
       "owner": "gorf",
-      "verifiedAt": "2026-09-08",
-      "note": "Tier 3 pilot. Has Playwright across four shards, i18n and route checks — the closest thing to BinderCurve in the fleet."
+      "verifiedAt": "2026-09-10",
+      "note": "Tier 3 pilot, adopted in #60. Playwright across four shards with its own e2e spec registry, mutation canaries, and the Bugbot verdict job. Does not call the shared browser-compat workflow — it runs a sharded e2e job of its own, which is why the fleet-wide browser-compat default only silently truncated other repositories' suites."
     },
     {
       "slug": "gorfednet/gorfed.net",
       "archetype": "static-make-python-esbuild",
       "tier": 2,
       "owner": "gorf",
-      "verifiedAt": "2026-09-08",
-      "note": "Tier 2 pilot. The awkward case: the build is Make plus Python plus esbuild and `npm test` is a placeholder that exits 1. Proves the kit works when the runner is not npm."
+      "verifiedAt": "2026-09-10",
+      "note": "Tier 2 pilot, adopted in #39. The awkward case: the build is Make plus Python plus esbuild and `npm test` is a placeholder that exits 1. Proves the kit works when the runner is not npm. Carries an open confirmed bug — its anti-spam submit floor fails intermittently after a prerender."
     },
     {
       "slug": "gorfednet/subrythm.com",
       "archetype": "static-no-npm",
       "tier": 1,
       "owner": "gorf",
-      "verifiedAt": "2026-09-08",
-      "note": "Tier 1 pilot. No package.json, no tests, 49 files. Proves the floor: if the kit needs npm here, the design is wrong."
+      "verifiedAt": "2026-09-10",
+      "note": "Tier 1 pilot, adopted in #3. No package.json, no tests, 49 files. Proves the floor: if the kit needs npm here, the design is wrong. Publish-set verification inverted to an extension allow-list."
     },
     {
       "slug": "gorfednet/anal0g.org",
       "archetype": "static-no-npm",
-      "tier": 0,
+      "tier": 1,
       "owner": "gorf",
-      "verifiedAt": "2026-09-08"
+      "verifiedAt": "2026-09-10",
+      "note": "No test suite, so tier 1 is its ceiling until it has one. Its publish-set check found two files live on the public site that were never meant to be served — nginx-routes.conf and LICENSE — within seconds of being written. Removing them needs a deploy, not just the .deployignore commit."
     },
     {
       "slug": "gorfednet/blackpixelrecords.com",
       "archetype": "static-no-npm",
-      "tier": 0,
+      "tier": 1,
       "owner": "gorf",
-      "verifiedAt": "2026-09-08"
+      "verifiedAt": "2026-09-10",
+      "note": "No test suite, so tier 1 is its ceiling. Publish-set verification inverted to an extension allow-list."
     },
     {
       "slug": "gorfednet/denseware.com",
       "archetype": "vite-spa",
-      "tier": 0,
+      "tier": 2,
       "owner": "gorf",
-      "verifiedAt": "2026-09-08"
+      "verifiedAt": "2026-09-10",
+      "note": "Executed-count floor wired through the shared browser-compat job."
     },
     {
       "slug": "gorfednet/gorfmusic.com",
       "archetype": "vite-spa",
-      "tier": 0,
+      "tier": 2,
       "owner": "gorf",
-      "verifiedAt": "2026-09-08"
+      "verifiedAt": "2026-09-10",
+      "note": "Its whole accessibility suite — axe scans, skip link, keyboard focus, contrast — had never run in CI, because browser-compat defaulted to naming one spec file. Carries an open confirmed bug: production answers on four URLs per page, with client-side redirects where server-side 301s are asserted."
     },
     {
       "slug": "gorfednet/promptboi.com",
       "archetype": "fullstack",
-      "tier": 0,
+      "tier": 2,
       "owner": "gorf",
-      "verifiedAt": "2026-09-08"
+      "verifiedAt": "2026-09-10",
+      "note": "Its security audit had never executed once: the npm script invoked the wrong interpreter, and `npm audit` was suppressed with `|| true`. Behind it, 32 advisories including 8 critical, and zero security headers served in production — both open in its backlog."
     },
     {
       "slug": "gorfednet/rowanmcarthur.com",
       "archetype": "static-no-npm",
-      "tier": 0,
+      "tier": 1,
       "owner": "gorf",
-      "verifiedAt": "2026-09-08"
+      "verifiedAt": "2026-09-10",
+      "note": "No test suite, so tier 1 is its ceiling. The one site already immune to the deny-list publishing defect, because it stages an allow-list into a clean directory and ships that."
     },
     {
       "slug": "gorfednet/ssatcy.com",
       "archetype": "vite-spa",
-      "tier": 0,
+      "tier": 2,
       "owner": "gorf",
-      "verifiedAt": "2026-09-08"
+      "verifiedAt": "2026-09-10",
+      "note": "Sixteen cross-browser tests were failing and had been merged over. Cause was its own meta CSP, not a browser: `upgrade-insecure-requests` in a meta element broke the http preview server. Serves zero security headers in production — `_headers` is a Netlify convention and the site is on Cloudflare — and `frame-ancestors` is ignored in a meta element, so it is framable. Both open in its backlog."
     },
     {
       "slug": "gorfednet/TowIt",
       "archetype": "python-flask",
-      "tier": 0,
+      "tier": 1,
       "owner": "gorf",
-      "verifiedAt": "2026-09-08"
+      "verifiedAt": "2026-09-10",
+      "note": "Tier 1 rather than 2 on purpose. Its 49 tests do have an executed-count floor, but pytest emits neither a Playwright nor a Vitest JSON report, so the floor lives in a pytest_collection_modifyitems hook in tests/conftest.py rather than in the shared assertion. Claiming tier 2 would describe a wiring that is not there. First repository to need rule-sources scoped, because it vendors a bundled AngularJS."
     },
     {
       "slug": "gorfednet/wychwoodresort.com",
       "archetype": "vite-spa",
-      "tier": 0,
+      "tier": 2,
       "owner": "gorf",
-      "verifiedAt": "2026-09-08"
+      "verifiedAt": "2026-09-10",
+      "note": "Executed-count floor wired through browser-compat. Its unit suite needed a second, local floor: `node --test` with a shell glob exits 0 when the glob matches nothing, and that suite is one of only two gates on a pull request. No production monitor exists here at all — open in its backlog."
     },
     {
       "slug": "gorfednet/.github",
       "archetype": "org-shared-ci",
       "tier": 3,
       "owner": "gorf",
-      "verifiedAt": "2026-09-08",
+      "verifiedAt": "2026-09-10",
       "note": "Holds the canonical kit. Gated harder than the copies, because a template defect replicates fourteen times.",
       "evidenceReason": "This is the source, not a consumer: the kit lives under templates/ and is not vendored into itself. Only the kit paths move; its backlog is at the standard location.",
       "evidencePaths": {

@@ -83,6 +83,16 @@
       "evidence": "check-rule-citations.mjs skips .venv but not venv, which is the commoner name and is present unignored at towit.io's root — so the walk descends into a whole third-party site-packages tree. Separately, its citation pattern allows any whitespace including newlines between the word and the number, so a wrapped line in a minified bundle reads as a citation: towit.io's vendored AngularJS produced a citation of a rule numbered zero.",
       "reviewBy": "2026-11-01",
       "note": "Adding vendored paths to the kit's skip list is the wrong fix, since it weakens the check everywhere for one repository's layout — PR #13 exposed rule-sources so a project can scope its own scan instead (V54). Still worth adding venv beside .venv, and worth deciding whether the whitespace class should exclude newlines; a citation genuinely wrapped across two lines of prose is plausible, so measure before tightening."
+    },
+    {
+      "id": "tier-2-evidence-proves-nothing",
+      "title": "A project can claim tier 2 without any executed-count assertion running",
+      "status": "confirmed-bug",
+      "assignee": "main-model",
+      "userSymptom": "FLEET.md is the one place to read what each project is actually protected by. Tier 2 says an executed-count assertion is wired to a real test report, and the registry check will confirm that claim for any project that has merely vendored the kit — so the column can overstate protection while the check that guards it stays green.",
+      "evidence": "TIER_EVIDENCE[2] in scripts/check-fleet.mjs asks for verification-kit/bin/assert-tests-executed.mjs, which ships in every copy of the kit and is therefore present in every tier-1 project. Six projects now claim tier 2; the online run confirmed all six against a file that proves nothing about wiring. Presence read as behaviour, which is the class V20 names.",
+      "reviewBy": "2026-11-01",
+      "note": "Real evidence is in the caller: fetch .github/workflows/*.yml and require the pr-check job to pass a non-empty test-report together with a min-tests above the default of 1. The check already fetches file contents over the API, so this is a content assertion rather than new machinery. It has to keep its tri-state — an API failure must not read as absent. Note the honest awkwardness this exposes: TowIt has a real floor of 49 that no shared assertion can see, because pytest emits no JSON report either check could read, and it is recorded at tier 1 for that reason."
     }
   ]
 }
