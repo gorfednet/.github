@@ -50,6 +50,21 @@ export const VERIFICATION_INPUTS = {
         type: string
         default: "1"`,
 
+  'rule-sources': `      rule-sources:
+        description: >-
+          Space-separated roots to scan for rule citations. Defaults to the
+          whole tree, which is right until a project vendors third-party code:
+          towit.io ships a bundled AngularJS whose wrapped lines read as a
+          citation of a rule numbered zero, which no editing of a third-party
+          library can fix.
+
+          The gate action has always had this input. No caller exposed it, so
+          no project could set it — an input nothing can reach is the same as
+          no input at all (rule V54).
+        required: false
+        type: string
+        default: "."`,
+
   'source-dirs': `      source-dirs:
         description: >-
           Space-separated directories that look generated but hold hand-written
@@ -73,7 +88,41 @@ export const GATE_ARGUMENTS = {
   'verification-backlog': 'backlog',
   'test-report': 'test-report',
   'min-tests': 'min-tests',
+  'rule-sources': 'rule-sources',
   'source-dirs': 'source-dirs',
+}
+
+/**
+ * Every input the composite action declares, read from the action itself.
+ *
+ * This list used to be implicit in the one above, and that is how
+ * `rule-sources` came to exist on the action while no reusable workflow
+ * exposed it: the action grew an input, the pass-through map did not, and
+ * because the action defaults it to `.` nothing ever failed. Twelve projects
+ * inherited an option none of them could set, and towit.io could not scope its
+ * citation scan away from a vendored AngularJS bundle without an org change.
+ *
+ * Derived rather than enumerated (V23), so the next input added to the action
+ * fails this repository's own tests until a caller can reach it.
+ */
+export function actionInputNames(actionYaml) {
+  const inputsSection = /^inputs:\n([\s\S]*?)^(?:runs|outputs|branding):/m.exec(actionYaml)
+  if (inputsSection === null) {
+    throw new Error(
+      'could not find an `inputs:` section in the verification-gate action. ' +
+        'Returning an empty list here would make every assertion over it pass.',
+    )
+  }
+  const names = [...inputsSection[1].matchAll(/^ {2}([a-z][a-z0-9-]*):$/gm)].map(
+    (match) => match[1],
+  )
+  if (names.length === 0) {
+    throw new Error(
+      'read no input names from the verification-gate action. The YAML shape ' +
+        'changed, so this is a parse failure rather than an action with no inputs.',
+    )
+  }
+  return names
 }
 
 /** The full `inputs:` fragment, in declaration order. */

@@ -18,6 +18,7 @@ import { describe, it } from 'node:test'
 import {
   GATE_ARGUMENTS,
   VERIFICATION_INPUT_NAMES,
+  actionInputNames,
 } from '../scripts/lib/verificationInputs.mjs'
 
 const WORKFLOWS = '.github/workflows'
@@ -108,6 +109,26 @@ describe('verification-gate composite action', () => {
 
   it('is a composite action, so it can be dropped into any job', () => {
     assert.match(text, /using: composite/)
+  })
+
+  /**
+   * The failure this catches is quiet in the worst way: the action grows an
+   * input with a sensible default, no reusable workflow passes it through, and
+   * because the default is sensible nothing ever goes red. The option reads as
+   * configurable in the action's own documentation while no project can set
+   * it. `rule-sources` sat like that across twelve adopting projects.
+   */
+  it('every input it declares can be set by a caller', () => {
+    const declared = actionInputNames(text)
+    const reachable = new Set(Object.values(GATE_ARGUMENTS))
+    const unreachable = declared.filter((name) => !reachable.has(name))
+    assert.deepEqual(
+      unreachable,
+      [],
+      `the action declares ${unreachable.join(', ')}, which no reusable workflow ` +
+        'passes through, so no project can set it. Add it to VERIFICATION_INPUTS ' +
+        'and GATE_ARGUMENTS in scripts/lib/verificationInputs.mjs.',
+    )
   })
 
   /**

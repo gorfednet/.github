@@ -63,6 +63,26 @@
       "pr": 4,
       "reviewBy": "2026-12-01",
       "note": "matchJob turns the template into a pattern, requires at least one literal character so a name that is only an expression cannot claim every job, and resolves by specificity. Coverage went 38% -> over the 80% floor."
+    },
+    {
+      "id": "backlog-status-never-checked-against-github",
+      "title": "An in-review entry stays in-review forever after its PR merges",
+      "status": "confirmed-bug",
+      "assignee": "main-model",
+      "userSymptom": "The backlog is meant to be the one place you can read to know what is actually open. Every entry marked in-review keeps reading as in flight after its pull request merges, so the list overstates what is outstanding and understates what shipped — which is the exact failure a committed registry exists to prevent.",
+      "evidence": "check-backlog.mjs requires an in-review or landed entry to name a pull request, and never asks GitHub what became of it. Confirmed by grep: nothing in verification-kit/lib/backlogSchema.mjs touches gh or the API. Twelve adopted repositories now carry entries in that state, wychwoodresort.com's two from the moment PR #4 merged.",
+      "reviewBy": "2026-11-01",
+      "note": "The check has to keep working offline and in a fresh clone, so this cannot be unconditional. An opt-in --verify-prs used by the CI gate, where gh and a token are present, fails closed when the API is reachable and disagrees, and skips with a counted, printed reason when it is not. Batch it with the venv entry below into one kit version rather than re-vendoring twelve repositories twice."
+    },
+    {
+      "id": "citation-scan-walks-untracked-third-party",
+      "title": "The citation check reads code the project did not write",
+      "status": "confirmed-bug",
+      "assignee": "main-model",
+      "userSymptom": "A project can be told it cites a rule that does not exist, by a file it did not write and cannot edit. That reads as a broken check rather than a finding, and the response it invites is to switch the check off.",
+      "evidence": "check-rule-citations.mjs skips .venv but not venv, which is the commoner name and is present unignored at towit.io's root — so the walk descends into a whole third-party site-packages tree. Separately, its citation pattern allows any whitespace including newlines between the word and the number, so a wrapped line in a minified bundle reads as a citation: towit.io's vendored AngularJS produced a citation of a rule numbered zero.",
+      "reviewBy": "2026-11-01",
+      "note": "Adding vendored paths to the kit's skip list is the wrong fix, since it weakens the check everywhere for one repository's layout — PR #13 exposed rule-sources so a project can scope its own scan instead (V54). Still worth adding venv beside .venv, and worth deciding whether the whitespace class should exclude newlines; a citation genuinely wrapped across two lines of prose is plausible, so measure before tightening."
     }
   ]
 }

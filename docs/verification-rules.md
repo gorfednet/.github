@@ -419,6 +419,22 @@ those apart will call the empty one clean. Better yet, invert it: stage an
 allow-list into a clean directory and ship that, which is why
 rowanmcarthur.com was the one site immune to this.
 
+**V54. An option no caller can set is not an option.**
+The shared verification gate declared a `rule-sources` input, documented it,
+and defaulted it to the whole tree. Not one of the five reusable workflows
+passed it through, so across twelve adopting projects there was no way to set
+it — and because the default was sensible, nothing ever failed to say so. It
+surfaced only when towit.io's vendored AngularJS bundle produced a citation of
+"rule 0" from a wrapped line, a false positive fixable in exactly one place
+that no project could reach. The tempting fix at that point is the wrong one:
+loosen the matcher, or add the vendored path to the kit's skip list, both of
+which weaken the check everywhere to work around plumbing. Two habits prevent
+the class. Keep the pass-through map in one module the generator, the
+assertion, and the workflows all read (V24), and derive the assertion from the
+*inner* interface — read the action's declared inputs and fail when one of them
+is unreachable — because an enumerated copy of that list is the thing that went
+stale in the first place (V23).
+
 ## Provenance
 
 Every rule above was first written in

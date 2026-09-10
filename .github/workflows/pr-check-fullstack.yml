@@ -72,6 +72,20 @@ on:
         required: false
         type: string
         default: "1"
+      rule-sources:
+        description: >-
+          Space-separated roots to scan for rule citations. Defaults to the
+          whole tree, which is right until a project vendors third-party code:
+          towit.io ships a bundled AngularJS whose wrapped lines read as a
+          citation of a rule numbered zero, which no editing of a third-party
+          library can fix.
+
+          The gate action has always had this input. No caller exposed it, so
+          no project could set it — an input nothing can reach is the same as
+          no input at all (rule V54).
+        required: false
+        type: string
+        default: "."
       source-dirs:
         description: >-
           Space-separated directories that look generated but hold hand-written
@@ -129,4 +143,5 @@ jobs:
           backlog: ${{ inputs.verification-backlog }}
           test-report: ${{ inputs.test-report }}
           min-tests: ${{ inputs.min-tests }}
+          rule-sources: ${{ inputs.rule-sources }}
           source-dirs: ${{ inputs.source-dirs }}
