@@ -378,4 +378,29 @@ describe('coverage', () => {
   it('is zero, not NaN, when nothing is declared', () => {
     assert.equal(coverage([], new Map()).ratio, 0)
   })
+
+  /**
+   * Zero declared is an empty denominator, not 0% coverage, and the two need
+   * different handling. The runner conflated them and told a correctly
+   * configured repository "measured 0 of 0 declared job(s) (0%), floor 80%" —
+   * a percentage test over nothing.
+   *
+   * It happens when the sampled runs exercised no workflow that declares a
+   * timeout: main CI delegates every job to a reusable workflow, while a
+   * release workflow that does declare limits never ran on this branch. The
+   * caller-only exemption cannot cover it, because that requires no declared
+   * timeouts anywhere and those files have them.
+   *
+   * `declared` is what the runner must branch on, so it is asserted separately
+   * from the ratio — a caller reading only the ratio cannot tell the two apart.
+   */
+  it('distinguishes an empty denominator from measuring none of many', () => {
+    const nothingDeclared = coverage([], new Map())
+    const noneOfMany = coverage([], declared)
+
+    assert.equal(nothingDeclared.ratio, noneOfMany.ratio, 'both ratios are 0')
+    assert.equal(nothingDeclared.declared, 0)
+    assert.equal(noneOfMany.declared, 3)
+    assert.deepEqual(nothingDeclared.missing, [])
+  })
 })

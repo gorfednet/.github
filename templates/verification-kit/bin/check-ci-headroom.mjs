@@ -426,6 +426,39 @@ if (isMain(import.meta.url)) {
 
   // Before any verdict: was enough of the repository actually looked at?
   const seen = coverage(findings, timeouts)
+
+  // An empty denominator is not 0% coverage, and reporting it as "measured 0 of
+  // 0 declared job(s) (0%)" told a correctly configured repository that it had
+  // failed a percentage test over nothing. It happens whenever the sampled runs
+  // exercised no workflow that declares a timeout: main CI delegates every job
+  // to a reusable workflow, while a release or staging workflow that does
+  // declare limits simply did not run on this branch. The caller-only exemption
+  // above cannot cover it, because that requires *no* declared timeouts
+  // anywhere, and those files have them.
+  //
+  // Still a failure — there are limits here and this run measured none of them —
+  // but the message has to name what was not measured and how to reach it,
+  // because the fix is a different branch or a longer sample, not a code change.
+  if (seen.declared === 0) {
+    const declaresButUnobserved = [...declaredTimeouts().keys()].filter(
+      (file) => !observed.has(file),
+    )
+    console.error(
+      `\n✗ ci-headroom: the last ${runs.length} successful run(s) on ` +
+        `${args.branch} exercised no workflow that declares a timeout.\n`,
+    )
+    if (declaresButUnobserved.length > 0) {
+      console.error('  Declared but never run in this sample:')
+      for (const file of declaresButUnobserved) console.error(`    ${file}`)
+    }
+    console.error(
+      '\n  Nothing was measured, so there is no verdict to give — which is not\n' +
+        '  the same as a pass. Raise --runs, or point --branch at a branch where\n' +
+        '  those workflows run (a tag-triggered release will not appear here).\n',
+    )
+    process.exit(1)
+  }
+
   if (seen.ratio < args.coverage) {
     console.error(
       `\n✗ ci-headroom: measured ${seen.seen} of ${seen.declared} declared job(s) ` +
