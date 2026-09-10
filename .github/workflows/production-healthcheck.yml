@@ -33,6 +33,20 @@ on:
         required: false
         type: string
         default: "512"
+      forbid-paths:
+        description: >-
+          Comma-separated paths that must NOT be publicly fetchable. Anything
+          answering below 400 fails the run.
+
+          The publish-set checks assert what a deploy sends. They cannot see
+          what is already sitting on the server, and rsync will not remove it:
+          `--delete` deliberately protects excluded files on the receiver, so
+          adding a path to .deployignore stops it being re-uploaded and
+          guarantees it stays forever. anal0g.org has been serving
+          nginx-routes.conf and LICENSE that way. Only a live probe catches it.
+        required: false
+        type: string
+        default: ""
       smoke-spec:
         description: Playwright spec to run against the live site.
         required: false
@@ -159,6 +173,47 @@ jobs:
             echo "::warning::No expect-text given, so this run verified size" \
                  "and origin but never looked at the content."
           fi
+      # Files the site must not serve. Deliberately a separate step: a leak is
+      # not an outage, and a maintainer reading a red run should see which of
+      # the two it is without opening the log.
+      - name: Paths that must not be public
+        if: ${{ !cancelled() && inputs.forbid-paths != '' }}
+        run: |
+          set -euo pipefail
+          base="${{ inputs.site-url }}"
+          IFS=',' read -ra forbidden <<< "${{ inputs.forbid-paths }}"
+
+          probed=0
+          leaked=0
+          for path in "${forbidden[@]}"; do
+            path="$(printf '%s' "$path" | tr -d '[:space:]')"
+            [ -z "$path" ] && continue
+            url="${base}${path}"
+            # No -L. A redirect away from a forbidden path is the server
+            # declining to serve it, which is the outcome being asked for;
+            # following it would report on wherever it landed instead.
+            code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 30 "$url" || echo 000)"
+            probed=$((probed + 1))
+            if [ "$code" = "000" ]; then
+              echo "::error::$url could not be reached at all. That is not the" \
+                   "same as being withheld, and this check will not call it one."
+              leaked=$((leaked + 1))
+            elif [ "$code" -lt 400 ]; then
+              echo "::error::$url is public (HTTP $code) and must not be."
+              leaked=$((leaked + 1))
+            else
+              echo "  withheld: $path (HTTP $code)"
+            fi
+          done
+
+          # forbid-paths given but nothing probed means the list was whitespace
+          # or commas, and the step would otherwise print a tick over it.
+          if [ "$probed" -eq 0 ]; then
+            echo "::error::forbid-paths was given but parsed to nothing."
+            exit 1
+          fi
+          echo "probed $probed forbidden path(s), $leaked still public"
+          [ "$leaked" -eq 0 ]
       - name: Setup Node for Playwright
         if: inputs.run-playwright
         uses: gorfednet/.github/.github/actions/setup-node@main

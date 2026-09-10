@@ -26,9 +26,30 @@ import { join, extname } from 'node:path'
 
 const SOURCE_EXTENSIONS = new Set(['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.py', '.sh'])
 const SKIP_DIRECTORIES = new Set([
-  'node_modules', '.git', 'dist', 'build', 'coverage', '.venv', '__pycache__',
-  'test-results', 'playwright-report', '.tmp', 'tmp',
+  'node_modules', '.git', 'dist', 'build', 'coverage', '.venv', 'venv',
+  '__pycache__', 'test-results', 'playwright-report', '.tmp', 'tmp',
 ])
+
+/**
+ * Is this a directory of somebody else's code?
+ *
+ * Named directories were not enough twice over. `venv` — the commoner spelling,
+ * and the one sitting unignored at towit.io's root — was missing beside
+ * `.venv`, so the walk descended into a whole site-packages tree. Worse, CI
+ * checks `gorfednet/.github` out to `.gorfednet-github` *inside* the workspace,
+ * because actions/checkout refuses a path outside it. Every project therefore
+ * scanned the org repository's own source, and the moment a shared rule was
+ * added there, every project whose vendored rules document was one version
+ * behind failed on a citation in a file it does not own. That is a fleet-wide
+ * red caused by writing a rule.
+ *
+ * So: any dot-directory is tooling rather than project source. That covers the
+ * checkout, .cursor, .venv and whatever the next one is called, which is the
+ * point — an enumerated list is what failed here twice.
+ */
+function isForeignDirectory(name) {
+  return SKIP_DIRECTORIES.has(name) || name.startsWith('.')
+}
 
 function parseArgs(argv) {
   const args = {
@@ -45,6 +66,14 @@ function parseArgs(argv) {
   return args
 }
 
+/**
+ * Every directory this run declined to read, so the skip is reported rather
+ * than assumed. Broadening the rule to all dot-directories takes `.githooks`
+ * with it, and a check that quietly stops looking at a place citations could
+ * live is the shape of defect this kit exists to find.
+ */
+const skipped = new Set()
+
 function walk(dir, found = []) {
   let entries
   try {
@@ -53,7 +82,6 @@ function walk(dir, found = []) {
     return found
   }
   for (const entry of entries) {
-    if (SKIP_DIRECTORIES.has(entry)) continue
     const path = join(dir, entry)
     let stats
     try {
@@ -61,8 +89,15 @@ function walk(dir, found = []) {
     } catch {
       continue
     }
-    if (stats.isDirectory()) walk(path, found)
-    else if (SOURCE_EXTENSIONS.has(extname(entry))) found.push(path)
+    if (stats.isDirectory()) {
+      if (isForeignDirectory(entry)) {
+        skipped.add(path)
+        continue
+      }
+      walk(path, found)
+    } else if (SOURCE_EXTENSIONS.has(extname(entry))) {
+      found.push(path)
+    }
   }
   return found
 }
@@ -204,3 +239,9 @@ console.log(
     (localPrefix ? `, ${localNumbers.length} local (${localPrefix}-)` : '') +
     `; every citation in ${sources.length} source file(s) resolves`,
 )
+
+if (skipped.size > 0) {
+  console.log(
+    `  not read (${skipped.size}): ${[...skipped].sort().join(', ')}`,
+  )
+}
