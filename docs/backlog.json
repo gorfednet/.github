@@ -93,6 +93,16 @@
       "evidence": "TIER_EVIDENCE[2] in scripts/check-fleet.mjs asks for verification-kit/bin/assert-tests-executed.mjs, which ships in every copy of the kit and is therefore present in every tier-1 project. Six projects now claim tier 2; the online run confirmed all six against a file that proves nothing about wiring. Presence read as behaviour, which is the class V20 names.",
       "reviewBy": "2026-11-01",
       "note": "Real evidence is in the caller: fetch .github/workflows/*.yml and require the pr-check job to pass a non-empty test-report together with a min-tests above the default of 1. The check already fetches file contents over the API, so this is a content assertion rather than new machinery. It has to keep its tri-state — an API failure must not read as absent. Note the honest awkwardness this exposes: TowIt has a real floor of 49 that no shared assertion can see, because pytest emits no JSON report either check could read, and it is recorded at tier 1 for that reason."
+    },
+    {
+      "id": "drift-gate-treats-behind-as-broken",
+      "title": "Improving the shared kit turns every project red until thirteen pull requests land",
+      "status": "confirmed-bug",
+      "assignee": "human",
+      "userSymptom": "Fixing one bug in the kit means opening, reviewing and merging thirteen mechanical pull requests, and until the last one lands every other project's CI is red for a reason that has nothing to do with its own code. Measured twice in one night: v0.25.0 and v0.26.0 each cost thirteen.",
+      "evidence": "check-kit-drift.mjs fails when a vendored copy does not match the canonical manifest, without distinguishing the two ways that happens. A copy that is *behind* is intact and self-consistent; a copy that has been *edited locally* is a fork pretending to be the shared kit. Only the second is a defect, and the first is the ordinary state of a fleet between an upstream fix and its rollout. Both currently exit 1 with the same instruction.",
+      "reviewBy": "2026-10-15",
+      "note": "The fix is a judgement call about how much staleness is tolerable, which is why it is assigned to a person rather than taken tonight. The shape that seems right: compare the vendored version against canonical and fail only on local modification or on being more than one minor version behind, warning in between, so a project can merge its own work the day an upstream fix lands and pick the refresh up on its own schedule. That must not become an excuse for a copy drifting for months — a dated ceiling, per the deferral rule, not an open-ended warning. Worth weighing against the alternative of not vendoring at all: a git submodule or an npm package would make the version a single edit, at the cost of the property that made vendoring attractive, which is that every check runs on plain node with nothing installed."
     }
   ]
 }
