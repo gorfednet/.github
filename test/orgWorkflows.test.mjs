@@ -257,8 +257,17 @@ describe('production-healthcheck workflow', () => {
      * as *withheld*. A false pass in the one branch written to prevent it.
      */
     it('never lets a non-numeric status reach the numeric comparison', () => {
+      // Comments stripped first. The comment above the fix quotes the broken
+      // expression in order to explain it, and matching that is how this
+      // assertion failed against the corrected file — the same trap the
+      // citation checker documents about its own prose.
+      const code = step
+        .split('\n')
+        .filter((line) => !/^\s*#/.test(line))
+        .join('\n')
+
       assert.doesNotMatch(
-        step,
+        code,
         /\|\|\s*echo\s*000/,
         'curl -w already prints 000 on failure; appending another makes $code a non-number',
       )
