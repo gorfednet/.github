@@ -18,22 +18,54 @@
 
 export const FLOOR_ABOVE = 1
 
+const unquote = (value) => value.trim().replace(/^(["'])(.*)\1$/, '$2').trim()
+const indentOf = (line) => /^[ \t]*/.exec(line)[0].length
+
 /**
- * `min-tests: "73"` alongside a non-empty `test-report:` in the same tree.
+ * Does this line still belong to a mapping that began at `indent`?
  *
- * `test-report: ""` has to read as absent, not as a value: it is what a caller
- * writes when it intends to skip the step, and the shared gate treats it that
- * way. So the value is unquoted before it is judged rather than pattern-matched
- * in place.
+ * Blank lines do; a line indented at least as far does; anything shallower has
+ * closed the mapping. This is what scopes the pair below to one `with:` block
+ * rather than to a whole repository's worth of workflows.
+ */
+const sameBlock = (line, indent) => line.trim() === '' || indentOf(line) >= indent
+
+/**
+ * A non-empty `test-report:` and a `min-tests:` above the default, **in the same
+ * mapping**.
+ *
+ * Reading the first of each independently out of the joined text is wrong in
+ * both directions, and both shapes exist in this fleet. An earlier
+ * `test-report: ""` — which is how a caller writes "skip this step" — hides a
+ * real pair further down, reporting a protected repository as unprotected. And a
+ * report in one job pairs with a floor in another, certifying a repository where
+ * no single step runs both. A check that can be wrong in the reassuring
+ * direction is the kind this one was written to replace.
  */
 export function wiredViaSharedWorkflow(text) {
-  const report = /^[ \t]*test-report:[ \t]*(.*)$/m.exec(text)
-  const floor = /^[ \t]*min-tests:[ \t]*["']?(\d+)/m.exec(text)
-  if (!report || !floor) return null
-  const path = report[1].trim().replace(/^(["'])(.*)\1$/, '$2').trim()
-  if (path === '') return null
-  const value = Number(floor[1])
-  return value > FLOOR_ABOVE ? { how: `min-tests ${value} against ${path}` } : null
+  const lines = text.split('\n')
+
+  for (let i = 0; i < lines.length; i += 1) {
+    const declared = /^([ \t]*)test-report:[ \t]*(.*)$/.exec(lines[i])
+    if (declared === null) continue
+
+    const report = unquote(declared[2])
+    if (report === '') continue
+
+    const indent = declared[1].length
+    let start = i
+    let end = i
+    while (start > 0 && sameBlock(lines[start - 1], indent)) start -= 1
+    while (end < lines.length - 1 && sameBlock(lines[end + 1], indent)) end += 1
+
+    const floor = /^[ \t]*min-tests:[ \t]*["']?(\d+)/m.exec(lines.slice(start, end + 1).join('\n'))
+    if (floor === null) continue
+
+    const value = Number(floor[1])
+    if (value > FLOOR_ABOVE) return { how: `min-tests ${value} against ${report}` }
+  }
+
+  return null
 }
 
 /**
@@ -50,6 +82,15 @@ export function wiredDirectly(text) {
   return lowest === null ? null : { how: `assert-tests-executed --min ${lowest}` }
 }
 
-export function tierTwoWiring(text) {
-  return wiredViaSharedWorkflow(text) ?? wiredDirectly(text)
+/**
+ * Takes the workflow files one at a time, not their concatenation. A mapping
+ * cannot span two files, and treating the join as one document is how a pair
+ * matched across them.
+ */
+export function tierTwoWiring(texts) {
+  for (const text of Array.isArray(texts) ? texts : [texts]) {
+    const wiring = wiredViaSharedWorkflow(text) ?? wiredDirectly(text)
+    if (wiring !== null) return wiring
+  }
+  return null
 }

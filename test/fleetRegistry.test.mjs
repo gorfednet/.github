@@ -280,6 +280,50 @@ describe('fleet registry', () => {
       assert.equal(FLOOR_ABOVE, 1)
     })
 
+    /*
+     * Both directions of pairing the wrong two lines, and both shapes are real.
+     * `test-report: ""` is how a caller writes "skip this step", so taking the
+     * first of each independently reads a protected repository as unprotected;
+     * and pairing a report in one job with a floor in another certifies a
+     * repository where no single step runs both.
+     */
+    it('is not fooled by an earlier empty report above a real pair', () => {
+      const text = [
+        'jobs:',
+        '  quick:',
+        '    uses: x/y@main',
+        '    with:',
+        '      test-report: ""',
+        '  full:',
+        '    uses: x/y@main',
+        '    with:',
+        '      test-report: reports/test.json',
+        '      min-tests: "96"',
+      ].join('\n')
+      assert.match(tierTwoWiring(text).how, /min-tests 96 against reports\/test\.json/)
+    })
+
+    it('refuses a report in one job paired with a floor in another', () => {
+      const text = [
+        'jobs:',
+        '  a:',
+        '    uses: x/y@main',
+        '    with:',
+        '      test-report: reports/test.json',
+        '  b:',
+        '    uses: x/y@main',
+        '    with:',
+        '      min-tests: "96"',
+      ].join('\n')
+      assert.equal(tierTwoWiring(text), null)
+    })
+
+    it('refuses a pair split across two workflow files', () => {
+      const withReport = 'jobs:\n  a:\n    with:\n      test-report: reports/test.json\n'
+      const withFloor = 'jobs:\n  b:\n    with:\n      min-tests: "96"\n'
+      assert.equal(tierTwoWiring([withReport, withFloor]), null)
+    })
+
     it('accepts the binary called directly, and reports the weakest floor', () => {
       const text = [
         'run: node verification-kit/bin/assert-tests-executed.mjs --report a.json --min 280',

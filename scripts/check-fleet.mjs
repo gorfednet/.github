@@ -375,7 +375,7 @@ for (const project of projects) {
               'that has stopped describing the repository is worse than none.',
           )
         }
-      } else if (tierTwoWiring(workflows.text) === null) {
+      } else if (tierTwoWiring([...workflows.byPath.values()]) === null) {
         problems.push(
           `${where}: claims tier ${project.tier}, and no workflow enforces an executed-test ` +
             `floor above ${FLOOR_ABOVE}. The shared gate runs the assertion only when ` +

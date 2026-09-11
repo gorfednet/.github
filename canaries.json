@@ -232,6 +232,14 @@
       "file": "templates/verification-kit/bin/write-manifest.mjs",
       "find": "if (process.argv.includes('--version'))",
       "replace": "if (false)"
+    },
+    {
+      "id": "tier-two-pair-matches-across-blocks",
+      "guards": "The tier-2 wiring check pairs a report and a floor within one mapping. Without the scoping it takes the first of each from the joined workflows, so an earlier empty report hides a real pair and a report in one job certifies a floor in another.",
+      "command": "node --test 'test/fleetRegistry.test.mjs'",
+      "file": "scripts/tier-two-wiring.mjs",
+      "find": "const sameBlock = (line, indent) => line.trim() === '' || indentOf(line) >= indent",
+      "replace": "const sameBlock = () => true"
     }
   ]
 }
