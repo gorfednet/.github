@@ -8,11 +8,24 @@
  * a time, every one of them still printing ticks, and the copy that matters
  * least is the one everybody reads.
  *
- * Two different problems, reported differently, because the fixes differ:
+ * Three different problems, reported differently, because the fixes differ and
+ * because only two of them are anybody's fault:
  *
- *   locally modified  someone edited a copied file. Either upstream it or
- *                     move the change to a project-local script.
- *   stale             upstream moved. Refresh, and read what changed.
+ *   locally modified  someone edited a copied file. Fails. Either upstream it
+ *                     or move the change to a project-local script.
+ *   behind            upstream moved, by a patch or a single minor. Warns, and
+ *                     exits 0. Improving the kit costs one pull request per
+ *                     project in the fleet, so there is a window where most of
+ *                     them are behind by exactly one release. Failing every
+ *                     repository for the duration turns a shared improvement
+ *                     into thirteen red repositories, which is how a red mark
+ *                     stops meaning anything.
+ *   far behind        more than one minor, or a whole major. Fails. Two
+ *                     releases is no longer a roll in progress.
+ *
+ * The tolerance for "behind" has a date on it — see BEHIND_TOLERATED_UNTIL. An
+ * undated tolerance becomes permanent by accident, and this one is deliberately
+ * the kind of thing somebody has to renew rather than inherit.
  *
  * Usage:
  *   node verification-kit/bin/check-kit-drift.mjs [--kit verification-kit] [--offline]
@@ -26,6 +39,50 @@ const CANONICAL =
   'https://raw.githubusercontent.com/gorfednet/.github/main/templates/verification-kit/MANIFEST.json'
 const NOT_TRACKED = new Set(['MANIFEST.json'])
 const NOT_TRACKED_DIRS = new Set(['templates'])
+
+/*
+ * The date the one-minor grace expires, after which any staleness fails.
+ *
+ * Renewing this is a decision somebody makes in the open; drifting past it is
+ * not. If a fleet roll is genuinely still in flight when this lapses, move the
+ * date in a commit that says why — that is the whole point of it being here
+ * rather than being an unbounded "warn".
+ */
+const BEHIND_TOLERATED_UNTIL = '2026-12-15'
+
+/*
+ * A seam for the tests, which have to be able to stand on both sides of the
+ * date above. Absent — which is every real run — the real clock is used.
+ */
+function today() {
+  const override = process.env.KIT_DRIFT_TODAY
+  return override && override.trim() !== '' ? override.trim() : new Date().toISOString().slice(0, 10)
+}
+
+function parseVersion(text) {
+  const match = /^(\d+)\.(\d+)\.(\d+)$/.exec(String(text ?? '').trim())
+  if (!match) return null
+  return { major: Number(match[1]), minor: Number(match[2]), patch: Number(match[3]) }
+}
+
+/**
+ * How far the vendored copy is from canonical, by version alone. The file
+ * comparison says *whether* it differs; this says whether the difference is a
+ * roll in progress or neglect.
+ */
+function distance(vendored, canonical) {
+  if (canonical.major !== vendored.major) {
+    return canonical.major > vendored.major ? 'far-behind' : 'ahead'
+  }
+  if (canonical.minor !== vendored.minor) {
+    if (canonical.minor < vendored.minor) return 'ahead'
+    return canonical.minor - vendored.minor > 1 ? 'far-behind' : 'behind'
+  }
+  if (canonical.patch !== vendored.patch) {
+    return canonical.patch < vendored.patch ? 'ahead' : 'behind'
+  }
+  return 'same-version'
+}
 
 function parseArgs(argv) {
   const args = { kit: 'verification-kit', offline: false }
@@ -158,21 +215,89 @@ if (Object.keys(upstream).length === 0) {
 const stale = Object.keys(upstream).filter((f) => upstream[f] !== expected[f])
 const dropped = Object.keys(expected).filter((f) => !(f in upstream))
 
-if (stale.length > 0 || dropped.length > 0) {
-  const lines = [
-    ...stale.map((f) => `  ${f in expected ? 'changed upstream' : 'added upstream  '}  ${f}`),
-    ...dropped.map((f) => `  removed upstream  ${f}`),
-  ]
+if (stale.length === 0 && dropped.length === 0) {
+  console.log(
+    `✓ kit v${vendored.version}: ${present.length} file(s), matching canonical v${canonical.version}`,
+  )
+  process.exit(0)
+}
+
+const lines = [
+  ...stale.map((f) => `  ${f in expected ? 'changed upstream' : 'added upstream  '}  ${f}`),
+  ...dropped.map((f) => `  removed upstream  ${f}`),
+]
+const inventory = `${lines.join('\n')}\n\n  Refresh:\n    ${REFRESH}`
+
+// Distance is measured from versions, so an unreadable version on either side
+// means the question cannot be answered. That is a failure, not a warning: the
+// alternative is treating "unknown" as "probably fine", which is the shape this
+// kit exists to find.
+const vendoredVersion = parseVersion(vendored.version)
+const canonicalVersion = parseVersion(canonical.version)
+if (vendoredVersion === null || canonicalVersion === null) {
   die(
-    `check-kit-drift: kit is stale. Vendored v${vendored.version}, upstream v${canonical.version}.\n\n` +
-      `${lines.join('\n')}\n\n` +
-      '  Every one of these is a fix or a rule this project is not getting.\n\n' +
-      `  Refresh:\n    ${REFRESH}\n` +
-      '  Then read the diff — a kit change usually means a new class of bug was found\n' +
-      '  somewhere else in the fleet, and the reasoning is in the upstream commit.',
+    'check-kit-drift: kit differs from canonical and the distance cannot be measured.\n\n' +
+      `  vendored version  ${JSON.stringify(vendored.version)}\n` +
+      `  canonical version ${JSON.stringify(canonical.version)}\n\n` +
+      `${inventory}\n\n` +
+      '  One of these is not major.minor.patch, so there is no way to tell a roll in\n' +
+      '  progress from a copy two releases old. Reported as a failure rather than\n' +
+      '  guessed at.',
   )
 }
 
+const gap = distance(vendoredVersion, canonicalVersion)
+
+if (gap === 'same-version') {
+  die(
+    `check-kit-drift: kit differs from canonical while both claim v${vendored.version}.\n\n` +
+      `${inventory}\n\n` +
+      '  Two copies with the same version and different contents cannot both be that\n' +
+      '  version, so nothing downstream can tell stale from current — including this\n' +
+      '  check on its next run. Either the canonical kit changed without a version\n' +
+      '  bump, or this manifest was edited. Both are failures.',
+  )
+}
+
+if (gap === 'ahead') {
+  die(
+    `check-kit-drift: this kit is ahead of canonical. Vendored v${vendored.version}, upstream v${canonical.version}.\n\n` +
+      `${inventory}\n\n` +
+      '  A project cannot be the source of the kit. Whatever is here that upstream\n' +
+      '  does not have will be silently overwritten by the next refresh, so upstream it\n' +
+      '  to gorfednet/.github first.',
+  )
+}
+
+const graceExpired = today() > BEHIND_TOLERATED_UNTIL
+
+if (gap === 'far-behind' || graceExpired) {
+  const why =
+    gap === 'far-behind'
+      ? `  More than one minor release behind, which is no longer a roll in progress.\n`
+      : `  The one-release grace expired on ${BEHIND_TOLERATED_UNTIL} (today is ${today()}).\n` +
+        '  Refresh, or move that date in a commit that says why it still needs to stand.\n'
+  die(
+    `check-kit-drift: kit is stale. Vendored v${vendored.version}, upstream v${canonical.version}.\n\n` +
+      `${why}\n${inventory}\n\n` +
+      '  Every one of these is a fix or a rule this project is not getting. Read the\n' +
+      '  diff after refreshing — a kit change usually means a new class of bug was\n' +
+      '  found somewhere else in the fleet, and the reasoning is in the upstream commit.',
+  )
+}
+
+/*
+ * Behind by one release: a warning, and a loud one. Never the tick a current
+ * kit prints — the whole doctrine here is that a run which skipped or tolerated
+ * something must not look like a run that had nothing to tolerate.
+ */
+console.error(
+  `\n⚠ check-kit-drift: kit is behind. Vendored v${vendored.version}, upstream v${canonical.version}.\n\n` +
+    `${inventory}\n\n` +
+    `  Tolerated because it is within one release, until ${BEHIND_TOLERATED_UNTIL}. After\n` +
+    '  that this is a failure. Refreshing now is cheaper than refreshing thirteen\n' +
+    '  projects the week it lapses.\n',
+)
 console.log(
-  `✓ kit v${vendored.version}: ${present.length} file(s), matching canonical v${canonical.version}`,
+  `⚠ kit v${vendored.version}: ${present.length} file(s), one release behind canonical v${canonical.version}`,
 )

@@ -103,6 +103,16 @@
       "evidence": "check-kit-drift.mjs fails when a vendored copy does not match the canonical manifest, without distinguishing the two ways that happens. A copy that is *behind* is intact and self-consistent; a copy that has been *edited locally* is a fork pretending to be the shared kit. Only the second is a defect, and the first is the ordinary state of a fleet between an upstream fix and its rollout. Both currently exit 1 with the same instruction.",
       "reviewBy": "2026-10-15",
       "note": "The fix is a judgement call about how much staleness is tolerable, which is why it is assigned to a person rather than taken tonight. The shape that seems right: compare the vendored version against canonical and fail only on local modification or on being more than one minor version behind, warning in between, so a project can merge its own work the day an upstream fix lands and pick the refresh up on its own schedule. That must not become an excuse for a copy drifting for months — a dated ceiling, per the deferral rule, not an open-ended warning. Worth weighing against the alternative of not vendoring at all: a git submodule or an npm package would make the version a single edit, at the cost of the property that made vendoring attractive, which is that every check runs on plain node with nothing installed."
+    },
+    {
+      "id": "five-projects-run-tests-with-no-floor",
+      "title": "Five projects run a test suite in CI with nothing asserting how much of it ran",
+      "status": "confirmed-bug",
+      "assignee": "main-model",
+      "userSymptom": "A suite that silently stops running looks exactly like a suite that passes. On gorfed.net, denseware.com, gorfmusic.com, ssatcy.com and wychwoodresort.com a spec-selection mistake, a renamed directory or a crashed reporter would take the coverage away and leave the check green, because no step compares the number of tests that executed to anything.",
+      "evidence": "Each of the five calls the shared pr-check workflow with a min-tests value and no test-report. verification-gate/action.yml runs the assertion under 'if: inputs.test-report != ''', so the floor they configured has never executed once. Found by the tier-2 content assertion added in this change, which reported all five; their FLEET.md tier is corrected to 1 in the same commit, because the registry must not claim a protection that is not running.",
+      "reviewBy": "2026-10-15",
+      "note": "The fix per repo is to emit a JSON reporter alongside the existing run and pass it as test-report with a floor measured from a real green run, then raise the tier back to 2 in fleet.json and let the online audit confirm it. Doing that during the v0.27.0 roll keeps it to one PR per repository. wychwoodresort.com is out of scope for site work by the owner's instruction, so it stays at its true tier rather than being wired."
     }
   ]
 }

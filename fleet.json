@@ -35,7 +35,7 @@
     {
       "slug": "gorfednet/gorfed.net",
       "archetype": "static-make-python-esbuild",
-      "tier": 2,
+      "tier": 1,
       "owner": "gorf",
       "verifiedAt": "2026-09-10",
       "note": "Tier 2 pilot, adopted in #39. The awkward case: the build is Make plus Python plus esbuild and `npm test` is a placeholder that exits 1. Proves the kit works when the runner is not npm. Carries an open confirmed bug — its anti-spam submit floor fails intermittently after a prerender."
@@ -67,7 +67,7 @@
     {
       "slug": "gorfednet/denseware.com",
       "archetype": "vite-spa",
-      "tier": 2,
+      "tier": 1,
       "owner": "gorf",
       "verifiedAt": "2026-09-10",
       "note": "Executed-count floor wired through the shared browser-compat job."
@@ -75,7 +75,7 @@
     {
       "slug": "gorfednet/gorfmusic.com",
       "archetype": "vite-spa",
-      "tier": 2,
+      "tier": 1,
       "owner": "gorf",
       "verifiedAt": "2026-09-10",
       "note": "Its whole accessibility suite — axe scans, skip link, keyboard focus, contrast — had never run in CI, because browser-compat defaulted to naming one spec file. Carries an open confirmed bug: production answers on four URLs per page, with client-side redirects where server-side 301s are asserted."
@@ -99,7 +99,7 @@
     {
       "slug": "gorfednet/ssatcy.com",
       "archetype": "vite-spa",
-      "tier": 2,
+      "tier": 1,
       "owner": "gorf",
       "verifiedAt": "2026-09-10",
       "note": "Sixteen cross-browser tests were failing and had been merged over. Cause was its own meta CSP, not a browser: `upgrade-insecure-requests` in a meta element broke the http preview server. Serves zero security headers in production — `_headers` is a Netlify convention and the site is on Cloudflare — and `frame-ancestors` is ignored in a meta element, so it is framable. Both open in its backlog."
@@ -115,7 +115,7 @@
     {
       "slug": "gorfednet/wychwoodresort.com",
       "archetype": "vite-spa",
-      "tier": 2,
+      "tier": 1,
       "owner": "gorf",
       "verifiedAt": "2026-09-10",
       "note": "Executed-count floor wired through browser-compat. Its unit suite needed a second, local floor: `node --test` with a shell glob exits 0 when the glob matches nothing, and that suite is one of only two gates on a pull request. No production monitor exists here at all — open in its backlog."
@@ -131,6 +131,11 @@
       "evidencePaths": {
         "verification-kit/MANIFEST.json": "templates/verification-kit/MANIFEST.json",
         "verification-kit/bin/assert-tests-executed.mjs": "templates/verification-kit/bin/assert-tests-executed.mjs"
+      },
+      "tierTwoFloor": {
+        "workflow": ".github/workflows/verification-kit.yml",
+        "pattern": "-lt 50",
+        "reason": "This repository is the kit rather than a consumer of it, so it has no shared-workflow caller to pass test-report through. Its executed-count floor is the inline comparison on its own kit suite, and the pattern above is verified in the named workflow rather than taken on trust."
       }
     }
   ]

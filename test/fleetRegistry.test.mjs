@@ -16,9 +16,12 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { after, describe, it } from 'node:test'
 
+import { FLOOR_ABOVE, tierTwoWiring } from '../scripts/tier-two-wiring.mjs'
+
 const CHECK = resolve('scripts/check-fleet.mjs')
 const RENDER = resolve('scripts/write-fleet-md.mjs')
 const REGISTRY = JSON.parse(readFileSync('fleet.json', 'utf8'))
+const FLOOR = REGISTRY.projects.find((p) => p.slug === 'gorfednet/.github').tierTwoFloor
 const temps = []
 
 after(() => {
@@ -243,6 +246,112 @@ describe('fleet registry', () => {
     const result = run('/no/such/fleet.json')
     assert.equal(result.status, 1)
     assert.match(result.stderr, /cannot read/)
+  })
+
+  /**
+   * Tier 2 used to be evidenced by the presence of
+   * `verification-kit/bin/assert-tests-executed.mjs`, which every project that
+   * vendored the kit has. Five projects held the tier that way while passing
+   * `min-tests` to a shared gate that runs the assertion only when a report is
+   * also passed, so the floor they configured never ran once.
+   */
+  describe('what tier 2 is evidenced by', () => {
+    const caller = (body) => `jobs:\n  check:\n    uses: x/y@main\n    with:\n${body}`
+
+    it('accepts a floor passed with the report it measures', () => {
+      const wiring = tierTwoWiring(caller('      test-report: reports/test.json\n      min-tests: "73"\n'))
+      assert.match(wiring.how, /min-tests 73 against reports\/test\.json/)
+    })
+
+    // The exact shape of the five. The number is there; nothing reads it.
+    it('rejects a floor with no report to measure', () => {
+      assert.equal(tierTwoWiring(caller('      min-tests: "110"\n')), null)
+    })
+
+    it('rejects an empty report, quoted or bare', () => {
+      assert.equal(tierTwoWiring(caller('      test-report: ""\n      min-tests: "110"\n')), null)
+      assert.equal(tierTwoWiring(caller('      test-report:\n      min-tests: "110"\n')), null)
+    })
+
+    // A suite that ran one test is the condition the assertion exists to catch.
+    it('rejects a floor of exactly one', () => {
+      const text = caller('      test-report: reports/test.json\n      min-tests: "1"\n')
+      assert.equal(tierTwoWiring(text), null)
+      assert.equal(FLOOR_ABOVE, 1)
+    })
+
+    it('accepts the binary called directly, and reports the weakest floor', () => {
+      const text = [
+        'run: node verification-kit/bin/assert-tests-executed.mjs --report a.json --min 280',
+        'run: node verification-kit/bin/assert-tests-executed.mjs --report b.json --min 96',
+      ].join('\n')
+      assert.match(tierTwoWiring(text).how, /--min 96$/)
+    })
+
+    it('rejects the binary called with no floor, or with one', () => {
+      assert.equal(tierTwoWiring('run: node verification-kit/bin/assert-tests-executed.mjs --report a.json'), null)
+      assert.equal(
+        tierTwoWiring('run: node verification-kit/bin/assert-tests-executed.mjs --report a.json --min 1'),
+        null,
+      )
+    })
+
+    /*
+     * Vendoring the file is what used to count. It must now count for nothing
+     * on its own, or the replacement changes only the error message.
+     */
+    it('rejects a workflow that merely mentions the kit', () => {
+      assert.equal(tierTwoWiring('run: ls verification-kit/bin/assert-tests-executed.mjs\nrun: npm test'), null)
+    })
+
+    /*
+     * This repository is the one the online half can read from the working
+     * tree, so the branch runs for real here rather than against a stub.
+     */
+    const hereAtTierTwo = (changes) => {
+      const doc = structuredClone(REGISTRY)
+      for (const project of doc.projects) {
+        if (project.slug !== 'gorfednet/.github') project.tier = 0
+        else {
+          Object.assign(project, { tier: 2 }, changes)
+          for (const key of Object.keys(changes)) if (changes[key] === undefined) delete project[key]
+        }
+      }
+      const dir = mkdtempSync(join(tmpdir(), 'fleet-'))
+      temps.push(dir)
+      const path = join(dir, 'fleet.json')
+      writeFileSync(path, JSON.stringify(doc), 'utf8')
+      return path
+    }
+
+    it('names the inert-step trap rather than only the missing floor', () => {
+      const result = run(hereAtTierTwo({ tierTwoFloor: undefined }), [])
+      assert.equal(result.status, 1, result.stdout)
+      assert.match(result.stderr, /configures a step that never runs/)
+    })
+
+    it('honours a declared floor the named workflow really contains', () => {
+      assert.equal(run(hereAtTierTwo({}), []).status, 0)
+    })
+
+    it('rejects a declared floor whose pattern has left the workflow', () => {
+      const result = run(hereAtTierTwo({ tierTwoFloor: { ...FLOOR, pattern: 'gone from this file' } }), [])
+      assert.equal(result.status, 1)
+      assert.match(result.stderr, /no longer contains/)
+    })
+
+    it('rejects a declared floor pointing at a workflow that is not there', () => {
+      const result = run(hereAtTierTwo({ tierTwoFloor: { ...FLOOR, workflow: '.github/workflows/nope.yml' } }), [])
+      assert.equal(result.status, 1)
+      assert.match(result.stderr, /cannot be read/)
+    })
+
+    // An unexplained waiver is indistinguishable from a mistake.
+    it('requires a reason of substance', () => {
+      const result = run(hereAtTierTwo({ tierTwoFloor: { ...FLOOR, reason: 'because' } }), [])
+      assert.equal(result.status, 1)
+      assert.match(result.stderr, /needs workflow, pattern and a reason of substance/)
+    })
   })
 
   /**
