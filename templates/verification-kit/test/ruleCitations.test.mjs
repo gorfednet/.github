@@ -126,16 +126,25 @@ describe('check-rule-citations', () => {
    * A rulebook section number is not a citation, and a local prefix that is
    * purely numeric is not a prefix.
    */
+  /*
+   * The section number has to fall *outside* the sequence or this cannot fail.
+   * Written first with the real string — `comprehensive rules 1-2-1-1-1` — it
+   * passed with the guard removed, because dropping the lookahead makes the
+   * matcher capture the leading `1`, and rule 1 exists. Green for the wrong
+   * reason, caught by the canary rather than by review.
+   */
   it('does not read a rulebook section number as a citation', () => {
-    const dir = project({
-      source: '// (Digimon Card Game comprehensive rules 1-2-1-1-1 / glossary)\n',
-    })
+    const dir = project({ source: '// conforms to comprehensive rules 9-2-1 of the format\n' })
     const result = run(dir)
     assert.equal(result.status, 0, result.stderr)
 
     // The two-part form is the one that read as a prefixed citation.
-    const short = project({ source: '// see the tournament rules 1-2 for timing\n' })
+    const short = project({ source: '// see the tournament rules 9-2 for timing\n' })
     assert.equal(run(short).status, 0, run(short).stderr)
+
+    // And the real string from bindercurve, which is the reason any of this exists.
+    const real = project({ source: '// (Digimon Card Game comprehensive rules 1-2-1-1-1 / glossary)\n' })
+    assert.equal(run(real).status, 0, run(real).stderr)
   })
 
   /*

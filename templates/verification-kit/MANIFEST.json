@@ -26,6 +26,6 @@
     "test/isMain.test.mjs": "b5d00295d10a6cd30c4401ace15a13bf118f9f7a65623354c13c4ce3ed5f7989",
     "test/kitDrift.test.mjs": "8d48c91377c43bd2271eefaf1dcbee113d019a3bdca60e74d8aa1be77b5ec112",
     "test/mutationCanary.test.mjs": "eab9336a04ab9261a385cb6803c59b8bd5c412dc708560f05b752cbc6ea097ad",
-    "test/ruleCitations.test.mjs": "89344f6d6e25d7efa64dba77b14310f51e99fefa5b40d5cba66c1aa2a85a2513"
+    "test/ruleCitations.test.mjs": "723237bc5bbafe9bbafca3675bdb84657f5a40712bc8a02fe020a47b71db879e"
   }
 }
