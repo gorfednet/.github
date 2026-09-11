@@ -272,6 +272,14 @@
       "file": "templates/verification-kit/bin/check-kit-drift.mjs",
       "find": "if (gap !== 'ahead') {",
       "replace": "if (false) {"
+    },
+    {
+      "id": "verify-prs-has-no-exemption-for-its-own-pr",
+      "guards": "The entry describing the pull request under review is exempt when written as landed, and refused when written as in-review. Without this there is no honest status for that entry: in-review is false the moment it merges and landed is false while it is open, so the default branch goes red after every merge and the gate stops being one.",
+      "command": "node --test 'templates/verification-kit/test/cli.test.mjs'",
+      "file": "templates/verification-kit/bin/check-backlog.mjs",
+      "find": "entry.pr !== currentPr,",
+      "replace": "true,"
     }
   ]
 }

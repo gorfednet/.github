@@ -50,6 +50,9 @@ jobs:
         if: ${{ !cancelled() }}
         env:
           GH_TOKEN: ${{ github.token }}
+        # GITHUB_REF is refs/pull/<n>/merge on a pull request build, which is
+        # where the checker reads the number from. Nothing to pass: on `main`
+        # there is no pull request under review and every entry is checked.
         run: |
           node templates/verification-kit/bin/check-backlog.mjs \
             --file docs/backlog.json --verify-prs --repo ${{ github.repository }}

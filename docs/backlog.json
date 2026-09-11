@@ -68,7 +68,7 @@
     {
       "id": "backlog-status-never-checked-against-github",
       "title": "An in-review entry stays in-review forever after its PR merges",
-      "status": "in-review",
+      "status": "landed",
       "assignee": "main-model",
       "userSymptom": "The backlog is meant to be the one place you can read to know what is actually open. Every entry marked in-review keeps reading as in flight after its pull request merges, so the list overstates what is outstanding and understates what shipped — which is the exact failure a committed registry exists to prevent.",
       "evidence": "check-backlog.mjs requires an in-review or landed entry to name a pull request, and never asks GitHub what became of it. Confirmed by grep: nothing in verification-kit/lib/backlogSchema.mjs touches gh or the API. Twelve adopted repositories now carry entries in that state, wychwoodresort.com's two from the moment PR #4 merged.",
@@ -79,7 +79,7 @@
     {
       "id": "citation-scan-walks-untracked-third-party",
       "title": "The citation check reads code the project did not write",
-      "status": "in-review",
+      "status": "landed",
       "assignee": "main-model",
       "userSymptom": "A project can be told it cites a rule that does not exist, by a file it did not write and cannot edit. That reads as a broken check rather than a finding, and the response it invites is to switch the check off.",
       "evidence": "check-rule-citations.mjs skips .venv but not venv, which is the commoner name and is present unignored at towit.io's root — so the walk descends into a whole third-party site-packages tree. Separately, its citation pattern allows any whitespace including newlines between the word and the number, so a wrapped line in a minified bundle reads as a citation: towit.io's vendored AngularJS produced a citation of a rule numbered zero.",
@@ -90,7 +90,7 @@
     {
       "id": "tier-2-evidence-proves-nothing",
       "title": "A project can claim tier 2 without any executed-count assertion running",
-      "status": "in-review",
+      "status": "landed",
       "assignee": "main-model",
       "userSymptom": "FLEET.md is the one place to read what each project is actually protected by. Tier 2 says an executed-count assertion is wired to a real test report, and the registry check will confirm that claim for any project that has merely vendored the kit — so the column can overstate protection while the check that guards it stays green.",
       "evidence": "TIER_EVIDENCE[2] in scripts/check-fleet.mjs asks for verification-kit/bin/assert-tests-executed.mjs, which ships in every copy of the kit and is therefore present in every tier-1 project. Six projects now claim tier 2; the online run confirmed all six against a file that proves nothing about wiring. Presence read as behaviour, which is the class V20 names.",
@@ -101,7 +101,7 @@
     {
       "id": "drift-gate-treats-behind-as-broken",
       "title": "Improving the shared kit turns every project red until thirteen pull requests land",
-      "status": "in-review",
+      "status": "landed",
       "assignee": "human",
       "userSymptom": "Fixing one bug in the kit means opening, reviewing and merging thirteen mechanical pull requests, and until the last one lands every other project's CI is red for a reason that has nothing to do with its own code. Measured twice in one night: v0.25.0 and v0.26.0 each cost thirteen.",
       "evidence": "check-kit-drift.mjs fails when a vendored copy does not match the canonical manifest, without distinguishing the two ways that happens. A copy that is *behind* is intact and self-consistent; a copy that has been *edited locally* is a fork pretending to be the shared kit. Only the second is a defect, and the first is the ordinary state of a fleet between an upstream fix and its rollout. Both currently exit 1 with the same instruction.",
@@ -112,7 +112,7 @@
     {
       "id": "five-projects-run-tests-with-no-floor",
       "title": "Five projects run a test suite in CI with nothing asserting how much of it ran",
-      "status": "in-review",
+      "status": "landed",
       "assignee": "main-model",
       "userSymptom": "A suite that silently stops running looks exactly like a suite that passes. On gorfed.net, denseware.com, gorfmusic.com, ssatcy.com and wychwoodresort.com a spec-selection mistake, a renamed directory or a crashed reporter would take the coverage away and leave the check green, because no step compares the number of tests that executed to anything.",
       "evidence": "Each of the five calls the shared pr-check workflow with a min-tests value and no test-report. verification-gate/action.yml runs the assertion under 'if: inputs.test-report != ''', so the floor they configured has never executed once. Found by the tier-2 content assertion added in this change, which reported all five; their FLEET.md tier is corrected to 1 in the same commit, because the registry must not claim a protection that is not running.",
@@ -123,7 +123,7 @@
     {
       "id": "drift-read-its-authority-through-a-cdn",
       "title": "Two consumers failed as \"ahead of canonical\" three minutes after a release, because the check read a cached manifest",
-      "status": "in-review",
+      "status": "landed",
       "assignee": "main-model",
       "pr": 19,
       "userSymptom": "A red build with a message saying something impossible: that a site is ahead of the kit it vendors. Nobody can act on that, and the next red one gets less attention.",
@@ -133,7 +133,7 @@
     {
       "id": "two-matchers-fired-on-their-legitimate-neighbour",
       "title": "The flake detector reported expected failures, and the citation matcher read a rulebook section as a rule number",
-      "status": "in-review",
+      "status": "landed",
       "assignee": "main-model",
       "pr": 19,
       "userSymptom": "Two checks reporting things that are not true. A suite with a test.fail() case would be described as intermittent, and with a --max-flaky budget would fail over tests behaving exactly as written; a comment naming a Digimon rulebook section would be reported as citing a rule that does not exist.",

@@ -20,7 +20,7 @@ import { validateBacklog } from '../lib/backlogSchema.mjs'
 import { currentRepoSlug } from '../lib/githubSlug.mjs'
 
 function parseArgs(argv) {
-  const args = { file: 'docs/backlog.json', verifyPrs: false, repo: undefined }
+  const args = { file: 'docs/backlog.json', verifyPrs: false, repo: undefined, currentPr: undefined }
   for (let i = 0; i < argv.length; i += 1) {
     if (argv[i] === '--file') {
       args.file = argv[i + 1]
@@ -30,9 +30,38 @@ function parseArgs(argv) {
     } else if (argv[i] === '--repo') {
       args.repo = argv[i + 1]
       i += 1
+    } else if (argv[i] === '--current-pr') {
+      args.currentPr = Number(argv[i + 1])
+      i += 1
     }
   }
   return args
+}
+
+/**
+ * The pull request under review, whose own entry cannot be checked yet.
+ *
+ * An entry describing the change being reviewed has no honest status: whichever
+ * way it is written, one build disagrees. `in-review` is false the moment it
+ * merges, and `landed` is false while it is open. Without an exemption the
+ * default branch goes red after every merge until somebody opens a follow-up
+ * saying a thing landed that everyone can see landed — and a gate that is
+ * routinely red for a reason nobody acts on stops being a gate.
+ *
+ * So: write `landed` with your own pull request number. It is exempt on its own
+ * build and strict everywhere after. Writing `in-review` about the pull request
+ * you are opening fails *here*, where the person who can fix it is looking,
+ * rather than on somebody else's build after the merge.
+ *
+ * This arrived in the kit the hard way. bindercurve.com learned it across five
+ * pull requests, and the shared checker shipped without it — so the release that
+ * added --verify-prs turned this repository's own `main` red the moment it
+ * merged, in exactly the shape the option exists to catch.
+ */
+function currentPrNumber(explicit) {
+  if (Number.isInteger(explicit)) return explicit
+  const match = /^refs\/pull\/(\d+)\//.exec(process.env.GITHUB_REF ?? '')
+  return match ? Number(match[1]) : undefined
 }
 
 /**
@@ -117,9 +146,33 @@ console.log(`✓ ${file}: ${entries.length} entr${entries.length === 1 ? 'y' : '
 
 if (!verifyPrs) process.exit(0)
 
+const currentPr = currentPrNumber(args.currentPr)
+
+/*
+ * The one form that cannot survive its own merge is refused outright, before
+ * any network call, so it fails on the pull request that introduces it.
+ */
+const selfReferencing = entries.filter(
+  (entry) => entry.pr === currentPr && entry.status === 'in-review',
+)
+if (currentPr !== undefined && selfReferencing.length > 0) {
+  console.error(`\n✗ ${file}: ${selfReferencing.length} entr(y/ies) about #${currentPr} itself:\n`)
+  for (const entry of selfReferencing) {
+    console.error(`  - entry "${entry.id}" is in-review about #${currentPr}, the pull request under review`)
+  }
+  console.error(
+    '\n  That is green here and red on the default branch the moment it merges, in a\n' +
+      '  build belonging to whoever pushed next. Write landed instead: it is exempt on\n' +
+      '  this build and checked everywhere after.\n',
+  )
+  process.exit(1)
+}
+
 const claims = entries.filter(
   (entry) =>
-    (entry.status === 'in-review' || entry.status === 'landed') && Number.isInteger(entry.pr),
+    (entry.status === 'in-review' || entry.status === 'landed') &&
+    Number.isInteger(entry.pr) &&
+    entry.pr !== currentPr,
 )
 
 /*
@@ -127,8 +180,14 @@ const claims = entries.filter(
  * read like a run that verified everything, which is the failure mode this
  * whole option is a response to.
  */
+const exempt = entries.filter((entry) => entry.pr === currentPr && entry.status === 'landed').length
+const exemptNote =
+  exempt > 0 ? ` (${exempt} exempt as the entry for #${currentPr}, the pull request under review)` : ''
+
 if (claims.length === 0) {
-  console.log('  --verify-prs: 0 entries name a pull request, so nothing was verified.')
+  console.log(
+    `  --verify-prs: 0 entries name a pull request to check${exemptNote}, so nothing was verified.`,
+  )
   process.exit(0)
 }
 
@@ -201,7 +260,7 @@ if (mismatches.length > 0) {
 }
 
 console.log(
-  `  --verify-prs: ${verified} of ${claims.length} pull request(s) agree with their entry.`,
+  `  --verify-prs: ${verified} of ${claims.length} pull request(s) agree with their entry${exemptNote}.`,
 )
 if (unresolved.length > 0) {
   console.log(`  ${unresolved.length} could not be checked, and are not counted as agreeing:`)

@@ -479,6 +479,18 @@ would have turned every consumer's routine refresh into the failure reserved for
 a wide gap. A release version has to be settable by the release, so it takes
 `--version` now.
 
+A backlog status is the same shape, and the release that added `--verify-prs`
+proved it by turning this repository's own `main` red at the moment it merged.
+The entry describing the change under review has no status that is true on both
+sides of its own merge: `in-review` is false the moment it merges, and `landed`
+is false while it is open. Without an exemption the default branch is red after
+every merge until somebody opens a follow-up saying a thing landed that everyone
+can see landed. So one form is exempt on its own build and strict everywhere
+after — write `landed` with your own pull request number — and the other is
+refused *on the pull request that introduces it*, where the person who can fix it
+is looking, rather than on the build of whoever pushed next. bindercurve.com
+learned this across five pull requests and the shared checker shipped without it.
+
 **V57. Configuration in the wrong layer reads exactly like configuration.**
 Five projects passed `min-tests: "110"` to the shared gate and no
 `test-report`. The gate runs its assertion under
