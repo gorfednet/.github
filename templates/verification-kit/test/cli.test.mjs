@@ -4,9 +4,9 @@
  */
 import { strict as assert } from 'node:assert'
 import { spawnSync } from 'node:child_process'
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { delimiter, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { after, describe, it } from 'node:test'
 
@@ -60,6 +60,76 @@ describe('assert-tests-executed', () => {
     const report = writeReport(playwright(['failed', 'passed']))
     const result = runCli('assert-tests-executed.mjs', ['--report', report, '--min', '2'])
     assert.equal(result.status, 0, result.stderr)
+  })
+
+  /*
+   * A retry that passes. Playwright exits 0, the aggregate line says
+   * "flaky: 1", and the name of the test is nowhere — so an intermittent
+   * failure is visible only to somebody who downloads the JSON report and
+   * reads `retry` fields. The fixture below is the shape a real run produces,
+   * taken from one built on purpose: status "flaky", one failed attempt then a
+   * passed one.
+   */
+  const flakyReport = (title = 'holds the anchor') => ({
+    suites: [
+      {
+        specs: [
+          {
+            file: 'e2e/regenerate-scroll.spec.ts',
+            title,
+            tests: [{ status: 'flaky', results: [{ retry: 0, status: 'failed' }, { retry: 1, status: 'passed' }] }],
+          },
+        ],
+      },
+    ],
+  })
+
+  it('names the test that only passed on a retry', () => {
+    const report = writeReport(flakyReport())
+    const result = runCli('assert-tests-executed.mjs', ['--report', report, '--min', '1'])
+    assert.equal(result.status, 0, result.stderr)
+    assert.match(result.stderr, /passed only on a retry/)
+    assert.match(result.stderr, /regenerate-scroll\.spec\.ts › holds the anchor \(failed then passed\)/)
+  })
+
+  it('says nothing about retries when there were none', () => {
+    const report = writeReport(playwright(['passed', 'passed']))
+    const result = runCli('assert-tests-executed.mjs', ['--report', report, '--min', '2'])
+    assert.equal(result.status, 0, result.stderr)
+    assert.doesNotMatch(result.stderr, /retry/)
+  })
+
+  // A budget is enforceable only if exceeding it is a failure.
+  it('fails once a declared retry budget is exceeded, and passes within it', () => {
+    const report = writeReport(flakyReport())
+    const over = runCli('assert-tests-executed.mjs', ['--report', report, '--min', '1', '--max-flaky', '0'])
+    assert.equal(over.status, 1)
+    assert.match(over.stderr, /budget is 0/)
+    assert.match(over.stderr, /regenerate-scroll\.spec\.ts › holds the anchor/)
+
+    const within = runCli('assert-tests-executed.mjs', ['--report', report, '--min', '1', '--max-flaky', '1'])
+    assert.equal(within.status, 0, within.stderr)
+  })
+
+  // A test that failed every attempt is a failure, not a retry to report.
+  it('does not report a test that never passed as having needed a retry', () => {
+    const report = writeReport({
+      suites: [
+        {
+          specs: [
+            {
+              file: 'e2e/broken.spec.ts',
+              title: 'always fails',
+              tests: [
+                { status: 'unexpected', results: [{ retry: 0, status: 'failed' }, { retry: 1, status: 'failed' }] },
+              ],
+            },
+          ],
+        },
+      ],
+    })
+    const result = runCli('assert-tests-executed.mjs', ['--report', report, '--min', '1'])
+    assert.doesNotMatch(result.stderr, /passed only on a retry/)
   })
 
   it('reads Vitest reports as well as Playwright ones', () => {
@@ -200,5 +270,157 @@ describe('check-backlog', () => {
     const result = runCli('check-backlog.mjs', [], tempDir())
     assert.equal(result.status, 1)
     assert.match(result.stderr, /cannot read/)
+  })
+
+  /**
+   * `--verify-prs`, which asks GitHub whether the statuses are still true.
+   *
+   * Driven through a stub `gh` on PATH rather than a mocked module, so what runs
+   * is the real `gh api` path with a different `gh`. The stub answers by
+   * filename, one per API path, and anything it was not given a file for exits
+   * like `gh` does on a 404.
+   */
+  describe('--verify-prs', () => {
+    function entry(overrides) {
+      return {
+        id: 'x',
+        title: PROSE,
+        status: 'in-review',
+        assignee: 'main-model',
+        userSymptom: PROSE,
+        evidence: PROSE,
+        pr: 7,
+        ...overrides,
+      }
+    }
+
+    function stubGh(dir, responses, { transportFailure = false } = {}) {
+      const binDir = join(dir, 'stub-bin')
+      mkdirSync(binDir, { recursive: true })
+      const replies = join(dir, 'replies')
+      mkdirSync(replies, { recursive: true })
+      for (const [path, body] of Object.entries(responses)) {
+        writeFileSync(join(replies, path.replaceAll('/', '_')), JSON.stringify(body), 'utf8')
+      }
+      const script = transportFailure
+        ? '#!/bin/sh\necho "dial tcp: lookup api.github.com: no such host" >&2\nexit 1\n'
+        : `#!/bin/sh
+# $1 is "api", $2 the path.
+file="${replies}/$(echo "$2" | tr '/' '_')"
+if [ -f "$file" ]; then cat "$file"; exit 0; fi
+echo "gh: Not Found (HTTP 404)" >&2
+exit 1
+`
+      const path = join(binDir, 'gh')
+      writeFileSync(path, script, 'utf8')
+      chmodSync(path, 0o755)
+      return { PATH: `${binDir}${delimiter}${process.env.PATH}` }
+    }
+
+    function runVerify(dir, env) {
+      return spawnSync('node', [bin('check-backlog.mjs'), '--verify-prs', '--repo', 'o/r'], {
+        cwd: dir,
+        encoding: 'utf8',
+        env: { ...process.env, ...env },
+      })
+    }
+
+    it('passes when an in-review entry names an open pull request', () => {
+      const dir = backlogAt({ entries: [entry({})] })
+      const env = stubGh(dir, {
+        'repos/o/r': { full_name: 'o/r' },
+        'repos/o/r/pulls/7': { state: 'open', merged: false },
+      })
+      const result = runVerify(dir, env)
+      assert.equal(result.status, 0, result.stderr)
+      assert.match(result.stdout, /1 of 1 pull request\(s\) agree/)
+    })
+
+    // The case that motivated the option: two entries in this repository's own
+    // backlog claimed in-review for pull requests that had merged.
+    it('fails when an in-review entry names a merged pull request', () => {
+      const dir = backlogAt({ entries: [entry({})] })
+      const env = stubGh(dir, {
+        'repos/o/r': { full_name: 'o/r' },
+        'repos/o/r/pulls/7': { state: 'closed', merged: true, merged_at: '2026-09-01T00:00:00Z' },
+      })
+      const result = runVerify(dir, env)
+      assert.equal(result.status, 1)
+      assert.match(result.stderr, /in-review but PR #7 is merged/)
+    })
+
+    it('fails when a landed entry names a pull request that is still open', () => {
+      const dir = backlogAt({ entries: [entry({ status: 'landed' })] })
+      const env = stubGh(dir, {
+        'repos/o/r': { full_name: 'o/r' },
+        'repos/o/r/pulls/7': { state: 'open', merged: false },
+      })
+      const result = runVerify(dir, env)
+      assert.equal(result.status, 1)
+      assert.match(result.stderr, /landed but PR #7 is open, not merged/)
+    })
+
+    it('fails when an in-review entry names a pull request closed without merging', () => {
+      const dir = backlogAt({ entries: [entry({})] })
+      const env = stubGh(dir, {
+        'repos/o/r': { full_name: 'o/r' },
+        'repos/o/r/pulls/7': { state: 'closed', merged: false },
+      })
+      const result = runVerify(dir, env)
+      assert.equal(result.status, 1)
+      assert.match(result.stderr, /closed without merging/)
+    })
+
+    /*
+     * A 404 on the pull request means the same thing as a token that cannot see
+     * the repository, so the repository is probed first. With that probe
+     * answered, a missing pull request is a real disagreement.
+     */
+    it('fails when the entry names a pull request that does not exist', () => {
+      const dir = backlogAt({ entries: [entry({ pr: 9999 })] })
+      const env = stubGh(dir, { 'repos/o/r': { full_name: 'o/r' } })
+      const result = runVerify(dir, env)
+      assert.equal(result.status, 1)
+      assert.match(result.stderr, /names PR #9999, which does not exist/)
+    })
+
+    // And the same 404 with the repository itself unreadable is a skip, not a
+    // verdict — the distinction the probe exists to draw.
+    it('skips, counted, when the repository itself cannot be read', () => {
+      const dir = backlogAt({ entries: [entry({})] })
+      const env = stubGh(dir, {})
+      const result = runVerify(dir, env)
+      assert.equal(result.status, 0, result.stderr)
+      assert.match(result.stdout, /SKIPPED all 1 entry/)
+      assert.match(result.stdout, /GitHub unreachable/)
+    })
+
+    it('skips, counted, when GitHub is unreachable', () => {
+      const dir = backlogAt({ entries: [entry({})] })
+      const env = stubGh(dir, {}, { transportFailure: true })
+      const result = runVerify(dir, env)
+      assert.equal(result.status, 0, result.stderr)
+      assert.match(result.stdout, /SKIPPED all 1 entry/)
+      assert.match(result.stdout, /no such host/)
+    })
+
+    // Opt-in: the schema half must keep working for a project that never turns
+    // this on, and for one running with no network at all.
+    it('does not touch GitHub unless asked', () => {
+      const dir = backlogAt({ entries: [entry({})] })
+      const env = stubGh(dir, {}, { transportFailure: true })
+      const result = runCli('check-backlog.mjs', [], dir)
+      assert.equal(result.status, 0, result.stderr)
+      assert.doesNotMatch(result.stdout, /verify-prs/)
+      void env
+    })
+
+    it('says so when no entry names a pull request', () => {
+      const dir = backlogAt({ entries: [entry({ status: 'confirmed-bug', pr: undefined })] })
+      const env = stubGh(dir, { 'repos/o/r': { full_name: 'o/r' } })
+      const result = runVerify(dir, env)
+      assert.equal(result.status, 0, result.stderr)
+      assert.match(result.stdout, /0 entries name a pull request/)
+    })
   })
 })

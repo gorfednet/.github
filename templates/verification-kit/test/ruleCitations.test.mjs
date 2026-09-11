@@ -103,6 +103,28 @@ describe('check-rule-citations', () => {
     assert.equal(run(dir).status, 1)
   })
 
+  /*
+   * A citation is written on one line. What `\s` additionally matched was a
+   * sentence ending in "rules" followed by a line starting with a number — an
+   * ordinary shape in a comment or a numbered list, and one that would be
+   * reported as a dangling citation of whatever that number happened to be.
+   */
+  it('does not read a number on the next line as a citation', () => {
+    // A template literal of prose, which is how this kit writes its own
+    // messages: the line break is whitespace and nothing else, so `\s+` reads
+    // "rules" and the "9" below it as one citation.
+    const dir = project({
+      source: 'export const help = `\n  This project has its own rules\n  9 of them, at present\n`\n',
+    })
+    const result = run(dir)
+    assert.equal(result.status, 0, result.stderr)
+  })
+
+  it('still reads a citation separated by a tab', () => {
+    const dir = project({ source: '// see rule\tV9\n' })
+    assert.equal(run(dir).status, 1)
+  })
+
   it('accepts the citation forms that appear in real comments', () => {
     const dir = project({
       source: [cite('V1', 'teardown rule'), cite('V2', 'class rule'), cite('V3', 'rules')].join('\n'),

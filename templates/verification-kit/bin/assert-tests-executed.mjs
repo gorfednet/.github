@@ -17,6 +17,7 @@
  * Usage:
  *   node .../assert-tests-executed.mjs --report <json> --min <n> [--label <text>]
  *                                      [--hint <repo-specific pointer>]
+ *                                      [--max-flaky <n>]
  *
  * Accepts Playwright JSON (`suites`) and Vitest JSON (`testResults`).
  */
@@ -31,6 +32,7 @@ function parseArgs(argv) {
     else if (flag === '--min') args.min = Number.parseInt(value ?? '', 10)
     else if (flag === '--label') args.label = value
     else if (flag === '--hint') args.localHint = value
+    else if (flag === '--max-flaky') args.maxFlaky = Number.parseInt(value ?? '', 10)
     else continue
     i += 1
   }
@@ -42,7 +44,7 @@ function fail(message) {
   process.exit(1)
 }
 
-const { report, min, label, localHint } = parseArgs(process.argv.slice(2))
+const { report, min, label, localHint, maxFlaky } = parseArgs(process.argv.slice(2))
 
 if (!report) fail('assert-tests-executed: --report <json report> is required')
 if (!Number.isFinite(min) || min < 1) {
@@ -77,6 +79,27 @@ function tallyPlaywright(node, counts) {
       if (status === 'skipped') counts.skipped += 1
       else counts.executed += 1
       counts.byStatus[status] = (counts.byStatus[status] ?? 0) + 1
+
+      /*
+       * A test that failed and passed on a retry. Playwright exits 0 for these
+       * and the aggregate line reads "flaky: 1", which says a count and not a
+       * name — so the one thing needed to act on it, which test, is the one
+       * thing not printed. A run of gorfed.net's suite sat in that state for
+       * weeks: green every time, and the failing assertion only findable by
+       * downloading the JSON report and reading `retry` fields by hand.
+       *
+       * The attempt list is the evidence. `results` holds one entry per attempt,
+       * so a name plus "failed then passed" is enough to go and look.
+       */
+      const attempts = testCase.results ?? []
+      if (status === 'flaky' || attempts.filter((a) => a.status === 'failed').length > 0) {
+        if (status !== 'unexpected') {
+          counts.retried.push({
+            name: `${spec.file ?? node.file ?? '?'} › ${spec.title ?? '?'}`,
+            attempts: attempts.map((a) => a.status ?? 'unknown'),
+          })
+        }
+      }
     }
   }
   for (const child of node.suites ?? []) tallyPlaywright(child, counts)
@@ -95,7 +118,7 @@ function tallyVitest(reportJson, counts) {
   }
 }
 
-const counts = { executed: 0, skipped: 0, byStatus: {} }
+const counts = { executed: 0, skipped: 0, byStatus: {}, retried: [] }
 if (isVitestReport(parsed)) tallyVitest(parsed, counts)
 else {
   for (const suite of parsed.suites ?? []) tallyPlaywright(suite, counts)
@@ -132,6 +155,33 @@ if (isVitestReport(parsed) && parsed.snapshot?.unchecked > 0) {
       `  ${keys}\n\n` +
       `  Obsolete snapshots lock code that no longer exists. Remove them with\n` +
       `  \`vitest run -u\` on the owning file, or delete the orphan keys by hand.`,
+  )
+}
+
+/*
+ * Retries, named. A budget is a decision a repository makes out loud, so
+ * exceeding one fails; without `--max-flaky` this only reports, because turning
+ * every retry into a red build across the fleet is a separate decision from
+ * being able to see them.
+ */
+if (counts.retried.length > 0) {
+  const named = counts.retried
+    .map(({ name, attempts }) => `  - ${name} (${attempts.join(' then ')})`)
+    .join('\n')
+
+  if (Number.isFinite(maxFlaky) && counts.retried.length > maxFlaky) {
+    fail(
+      `${label}: ${counts.retried.length} test(s) needed a retry, budget is ${maxFlaky}.\n${named}\n\n` +
+        '  A retry that passes is not a pass; it is an intermittent failure the\n' +
+        '  exit code hides. Fix the race, or raise the budget in the same change\n' +
+        '  that explains why.',
+    )
+  }
+
+  console.error(
+    `\n⚠ ${label}: ${counts.retried.length} test(s) passed only on a retry.\n${named}\n\n` +
+      '  Reported by name because the exit code is 0 and the summary line gives a\n' +
+      '  count. Pass --max-flaky <n> to make a budget enforceable.\n',
   )
 }
 

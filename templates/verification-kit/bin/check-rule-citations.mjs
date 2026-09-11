@@ -180,7 +180,14 @@ if (sources.length === 0) {
 // because `Comprehensive Rules v1.1` is a game's rulebook version and not a
 // citation of V1. That near-miss was live in this file — the check written to
 // enforce "prove your matcher rejects a near-miss", failing to.
-const CITATION = /\b(?:teardown |class |verification )?rules?\s+((?:[A-Z0-9]+-)?\d+|V\d+)\b(?!\.\d)/gi
+//
+// The gap is spaces and tabs, not `\s`. A citation is written on one line; what
+// `\s` additionally matches is a sentence that happens to end in "rules"
+// followed by a line beginning with a number, which is an ordinary shape in a
+// comment or a numbered list. Measured before narrowing it: 100 citations across
+// seventeen checkouts, none of them spanning a line break, so this costs nothing
+// and closes a class of false citation that has already been hit three times.
+const CITATION = /\b(?:teardown |class |verification )?rules?[ \t]+((?:[A-Z0-9]+-)?\d+|V\d+)\b(?!\.\d)/gi
 
 for (const file of sources) {
   let text

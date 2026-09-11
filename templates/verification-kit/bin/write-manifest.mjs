@@ -101,9 +101,25 @@ if (isMain(import.meta.url)) {
     process.exit(1)
   }
 
-  // A content change consumers have to notice is a version bump, so the drift
-  // check can say "you are two versions behind" rather than only "different".
-  if (changed) {
+  /*
+   * A content change consumers have to notice is a version bump, so the drift
+   * check can say "you are two versions behind" rather than only "different".
+   *
+   * `--version` exists because the automatic bump is per *run*, not per release,
+   * and one change is often written over several runs. Three runs while
+   * finishing v0.27.0 published v0.29.0, and that is not cosmetic: the drift
+   * checker fails rather than warns once a consumer is more than one minor
+   * behind, so an accidental double bump turns every project's routine refresh
+   * into a red build.
+   */
+  const explicit = process.argv[process.argv.indexOf('--version') + 1]
+  if (process.argv.includes('--version')) {
+    if (!/^\d+\.\d+\.\d+$/.test(explicit ?? '')) {
+      console.error('\n✗ --version needs a MAJOR.MINOR.PATCH value.\n')
+      process.exit(1)
+    }
+    built.version = explicit
+  } else if (changed) {
     const [major, minor, patch] = String(previous.version ?? '0.0.0').split('.').map(Number)
     built.version = `${major || 0}.${(minor || 0) + 1}.${patch || 0}`
   }

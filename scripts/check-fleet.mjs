@@ -16,7 +16,10 @@
  * same output as one that checked everything.
  */
 import { execFileSync } from 'node:child_process'
-import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
+
+import { FLOOR_ABOVE, tierTwoWiring } from './tier-two-wiring.mjs'
 
 const ARCHETYPES = new Set([
   'react-spa-plus-api',
@@ -37,6 +40,10 @@ const TIER_EVIDENCE = {
   2: [['verification-kit/bin/assert-tests-executed.mjs', 'the executed-count assertion']],
   3: [['canaries.json', 'mutation canaries against its own gates']],
 }
+
+// Tier 2's real requirement, and why a filename could not express it, are in
+// scripts/tier-two-wiring.mjs — kept there so the matchers can be tested
+// directly rather than only through a run that needs an organisation token.
 
 function parseArgs(argv) {
   return {
@@ -107,6 +114,67 @@ function repoVisible(slug) {
     }
   }
   return visibility.get(slug)
+}
+
+/**
+ * Every workflow file in the repository, tri-state like `repoHasFile`.
+ *
+ * `text` is the join, because "does anything here enforce a floor" is a
+ * question about the repository rather than about one file. `byPath` keeps them
+ * separate, because a declared waiver names the workflow it trusts, and a
+ * waiver verified against the join would pass while pointing at a file that
+ * does not exist.
+ */
+const workflowCache = new Map()
+function repoWorkflows(slug) {
+  if (workflowCache.has(slug)) return workflowCache.get(slug)
+  const result = readWorkflows(slug)
+  workflowCache.set(slug, result)
+  return result
+}
+
+const nothing = (state) => ({ state, text: '', byPath: new Map() })
+const found = (byPath) => ({
+  state: 'present',
+  byPath,
+  text: [...byPath.values()].join('\n'),
+})
+
+function readWorkflows(slug) {
+  const dir = '.github/workflows'
+  if (slug === HERE) {
+    if (!existsSync(dir)) return nothing('absent')
+    const names = readdirSync(dir).filter((name) => /\.ya?ml$/.test(name))
+    if (names.length === 0) return nothing('absent')
+    return found(new Map(names.map((name) => [`${dir}/${name}`, readFileSync(join(dir, name), 'utf8')])))
+  }
+  if (!repoVisible(slug)) return nothing('unreadable')
+
+  let listing
+  try {
+    listing = JSON.parse(gh(['api', `repos/${slug}/contents/${dir}`]))
+  } catch (cause) {
+    const message = String(cause.stderr ?? cause.message)
+    return nothing(/404|Not Found/i.test(message) ? 'absent' : 'unknown')
+  }
+
+  const paths = (Array.isArray(listing) ? listing : [])
+    .filter((item) => item.type === 'file' && /\.ya?ml$/.test(item.name ?? ''))
+    .map((item) => item.path)
+  if (paths.length === 0) return nothing('absent')
+
+  const byPath = new Map()
+  for (const path of paths) {
+    try {
+      const encoded = JSON.parse(gh(['api', `repos/${slug}/contents/${path}`])).content ?? ''
+      byPath.set(path, Buffer.from(encoded, 'base64').toString('utf8'))
+    } catch {
+      // One unreadable workflow among several would otherwise let the join look
+      // complete while missing the file that had the wiring in it.
+      return nothing('unknown')
+    }
+  }
+  return found(byPath)
 }
 
 function repoHasFile(slug, path) {
@@ -208,6 +276,27 @@ for (const project of projects) {
     }
   }
 
+  /*
+   * A declared inline floor, for a repository that enforces the count in shell
+   * rather than through the kit — the org repo counts its own kit assertions
+   * with `-lt 50`. Declared *and* verified: the pattern is looked for in the
+   * named file, so a waiver cannot outlive the thing it describes.
+   */
+  const declaredFloor = project.tierTwoFloor
+  if (declaredFloor !== undefined) {
+    if (
+      typeof declaredFloor.workflow !== 'string' ||
+      typeof declaredFloor.pattern !== 'string' ||
+      typeof declaredFloor.reason !== 'string' ||
+      declaredFloor.reason.length < 20
+    ) {
+      problems.push(
+        `${where}: tierTwoFloor needs workflow, pattern and a reason of substance. ` +
+          'An unexplained waiver is indistinguishable from a mistake.',
+      )
+    }
+  }
+
   if (offline || project.tier === 0) continue
 
   // The half that makes this a check rather than a table: ask the repository.
@@ -244,6 +333,54 @@ for (const project of projects) {
           `${where}: overrides ${required} to ${path}, but ${required} is present now. ` +
             'The exception has outlived its reason — drop the override so the ' +
             'canonical path is what gets checked.',
+        )
+      }
+    }
+
+    /*
+     * Tier 2's real question, asked of the workflows rather than of a filename
+     * that every kit consumer has.
+     */
+    if (tier === 2) {
+      const workflows = repoWorkflows(project.slug)
+      if (workflows.state === 'unreadable') {
+        unreadable.add(project.slug)
+      } else if (workflows.state === 'unknown') {
+        problems.push(
+          `${where}: could not read .github/workflows (not a 404). Reported rather than assumed.`,
+        )
+      } else if (workflows.state === 'absent') {
+        problems.push(
+          `${where}: claims tier ${project.tier} but has no workflows, so nothing enforces an ` +
+            'executed-test floor. Wire one, or lower the tier.',
+        )
+      } else if (declaredFloor !== undefined) {
+        /*
+         * A declared floor decides the question on its own, and is checked
+         * against the file it names rather than against the join — a waiver
+         * verified against every workflow at once would keep passing while
+         * pointing at a file somebody deleted.
+         */
+        const named = workflows.byPath.get(declaredFloor.workflow)
+        if (named === undefined) {
+          problems.push(
+            `${where}: tierTwoFloor names ${declaredFloor.workflow}, which cannot be read. ` +
+              'A waiver pointing at a file that is not there waives the requirement and ' +
+              'checks nothing.',
+          )
+        } else if (!named.includes(declaredFloor.pattern)) {
+          problems.push(
+            `${where}: tierTwoFloor claims ${declaredFloor.workflow} enforces ` +
+              `"${declaredFloor.pattern}", and that file no longer contains it. A waiver ` +
+              'that has stopped describing the repository is worse than none.',
+          )
+        }
+      } else if (tierTwoWiring([...workflows.byPath.values()]) === null) {
+        problems.push(
+          `${where}: claims tier ${project.tier}, and no workflow enforces an executed-test ` +
+            `floor above ${FLOOR_ABOVE}. The shared gate runs the assertion only when ` +
+            'test-report is set, so min-tests on its own configures a step that never runs. ' +
+            'Pass a report with a measured floor, or lower the tier.',
         )
       }
     }

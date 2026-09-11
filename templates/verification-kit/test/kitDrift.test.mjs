@@ -9,7 +9,7 @@
  */
 import { strict as assert } from 'node:assert'
 import { spawnSync } from 'node:child_process'
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync, readFileSync } from 'node:fs'
+import { chmodSync, cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync, readFileSync } from 'node:fs'
 import { createHash } from 'node:crypto'
 import { tmpdir } from 'node:os'
 import { delimiter, join } from 'node:path'
@@ -145,23 +145,124 @@ describe('check-kit-drift', () => {
       assert.match(result.stdout, /matching canonical v1\.0\.0/)
     })
 
-    it('fails when upstream changed a file, naming the file and both versions', () => {
+    it('warns when upstream changed a file one release ago, naming the file and both versions', () => {
       const dir = project({
         upstream: { version: '1.1.0', files: { ...current.files, 'bin/a.mjs': sha('a\n// fixed upstream\n') } },
       })
       const result = run(dir, [], stubCurl(dir))
-      assert.equal(result.status, 1)
+      assert.equal(result.status, 0, result.stderr)
       assert.match(result.stderr, /Vendored v1\.0\.0, upstream v1\.1\.0/)
       assert.match(result.stderr, /changed upstream\s+bin\/a\.mjs/)
     })
 
-    it('fails when upstream added a check this project is not getting', () => {
+    it('warns rather than fails, but never with the tick a current kit prints', () => {
+      const dir = project({
+        upstream: { version: '1.1.0', files: { ...current.files, 'bin/a.mjs': sha('a\n// fixed upstream\n') } },
+      })
+      const result = run(dir, [], stubCurl(dir))
+      assert.equal(result.status, 0, result.stderr)
+      assert.match(result.stdout, /one release behind canonical v1\.1\.0/)
+      assert.doesNotMatch(result.stdout, /^✓/m)
+      // The tolerance is dated in the output, not just in the source.
+      assert.match(result.stderr, /until \d{4}-\d{2}-\d{2}/)
+    })
+
+    it('warns when upstream added a check this project is not getting', () => {
       const dir = project({
         upstream: { version: '1.1.0', files: { ...current.files, 'bin/new-check.mjs': sha('new\n') } },
       })
       const result = run(dir, [], stubCurl(dir))
-      assert.equal(result.status, 1)
+      assert.equal(result.status, 0, result.stderr)
       assert.match(result.stderr, /added upstream\s+bin\/new-check\.mjs/)
+    })
+
+    it('warns on a patch behind', () => {
+      const dir = project({
+        upstream: { version: '1.0.1', files: { ...current.files, 'bin/a.mjs': sha('a\n// patched\n') } },
+      })
+      const result = run(dir, [], stubCurl(dir))
+      assert.equal(result.status, 0, result.stderr)
+      assert.match(result.stdout, /one release behind/)
+    })
+
+    /*
+     * The other half of the tri-state. One release behind is a roll in
+     * progress; two is a project nobody came back to.
+     */
+    it('fails at more than one minor behind', () => {
+      const dir = project({
+        upstream: { version: '1.2.0', files: { ...current.files, 'bin/a.mjs': sha('a\n// two releases on\n') } },
+      })
+      const result = run(dir, [], stubCurl(dir))
+      assert.equal(result.status, 1)
+      assert.match(result.stderr, /More than one minor release behind/)
+      assert.match(result.stderr, /changed upstream\s+bin\/a\.mjs/)
+    })
+
+    it('fails a whole major behind', () => {
+      const dir = project({
+        upstream: { version: '2.0.0', files: { ...current.files, 'bin/a.mjs': sha('a\n// next major\n') } },
+      })
+      const result = run(dir, [], stubCurl(dir))
+      assert.equal(result.status, 1)
+      assert.match(result.stderr, /kit is stale/)
+    })
+
+    /*
+     * An undated tolerance becomes permanent by accident. The date is the
+     * mechanism, so it is tested on both sides of itself: the case above runs
+     * on the real clock, and this one steps over the ceiling.
+     */
+    it('fails once the one-release grace has expired', () => {
+      const dir = project({
+        upstream: { version: '1.1.0', files: { ...current.files, 'bin/a.mjs': sha('a\n// fixed upstream\n') } },
+      })
+      const result = run(dir, [], { ...stubCurl(dir), KIT_DRIFT_TODAY: '2099-01-01' })
+      assert.equal(result.status, 1)
+      assert.match(result.stderr, /grace expired on \d{4}-\d{2}-\d{2}/)
+      assert.match(result.stderr, /today is 2099-01-01/)
+    })
+
+    it('still warns while the grace stands', () => {
+      const dir = project({
+        upstream: { version: '1.1.0', files: { ...current.files, 'bin/a.mjs': sha('a\n// fixed upstream\n') } },
+      })
+      const result = run(dir, [], { ...stubCurl(dir), KIT_DRIFT_TODAY: '2000-01-01' })
+      assert.equal(result.status, 0, result.stderr)
+    })
+
+    /*
+     * Same version, different contents: nothing downstream can tell stale from
+     * current, including this check on its next run.
+     */
+    it('fails when both sides claim the same version but differ', () => {
+      const dir = project({
+        upstream: { version: '1.0.0', files: { ...current.files, 'bin/a.mjs': sha('a\n// silently changed\n') } },
+      })
+      const result = run(dir, [], stubCurl(dir))
+      assert.equal(result.status, 1)
+      assert.match(result.stderr, /both claim v1\.0\.0/)
+    })
+
+    it('fails when the vendored copy is ahead of canonical', () => {
+      const dir = project({
+        version: '1.1.0',
+        upstream: { version: '1.0.0', files: { ...current.files, 'bin/a.mjs': sha('a\n// older upstream\n') } },
+      })
+      const result = run(dir, [], stubCurl(dir))
+      assert.equal(result.status, 1)
+      assert.match(result.stderr, /ahead of canonical/)
+    })
+
+    // Distance is measured from versions, so an unreadable one means the
+    // question cannot be answered — which is a failure, not a shrug.
+    it('fails when a version is not major.minor.patch', () => {
+      const dir = project({
+        upstream: { version: 'latest', files: { ...current.files, 'bin/a.mjs': sha('a\n// who knows\n') } },
+      })
+      const result = run(dir, [], stubCurl(dir))
+      assert.equal(result.status, 1)
+      assert.match(result.stderr, /distance cannot be measured/)
     })
 
     // The property the plan asked for by name. A staleness check that passes
@@ -220,6 +321,50 @@ describe('write-manifest --check', () => {
   it('agrees with the kit as committed', () => {
     const result = spawnSync('node', [WRITER, '--check'], { encoding: 'utf8' })
     assert.equal(result.status, 0, result.stderr)
+  })
+
+  /*
+   * The automatic bump counts runs, not releases. Finishing v0.27.0 over three
+   * runs published v0.29.0 — and with the drift checker failing above one minor
+   * behind, that difference is the difference between every consumer warning and
+   * every consumer red.
+   */
+  /*
+   * The writer resolves the kit from its own location, so these run against a
+   * copy. Writing to the real manifest from a test would leave the working tree
+   * changed by having run the suite.
+   */
+  const writerCopy = () => {
+    const dir = mkdtempSync(join(tmpdir(), 'writer-'))
+    workspaces.push(dir)
+    cpSync(fileURLToPath(new URL('..', import.meta.url)), dir, { recursive: true })
+    return join(dir, 'bin', 'write-manifest.mjs')
+  }
+
+  it('takes an explicit release version', () => {
+    const result = spawnSync('node', [writerCopy(), '--version', '9.9.9'], { encoding: 'utf8' })
+    assert.equal(result.status, 0, result.stderr)
+    assert.match(result.stdout, /at v9\.9\.9/)
+  })
+
+  it('refuses a version that is not MAJOR.MINOR.PATCH', () => {
+    for (const bad of ['v1.2.3', '1.2', 'next']) {
+      const result = spawnSync('node', [writerCopy(), '--version', bad], { encoding: 'utf8' })
+      assert.equal(result.status, 1, `expected refusal of ${bad}`)
+      assert.match(result.stderr, /MAJOR\.MINOR\.PATCH/)
+    }
+  })
+
+  // Without an explicit version the bump counts runs, which is what made the
+  // flag necessary.
+  it('bumps the minor once per run when content changed', () => {
+    const writer = writerCopy()
+    writeFileSync(join(writer, '..', 'nudge.mjs'), '// one\n', 'utf8')
+    const first = spawnSync('node', [writer], { encoding: 'utf8' })
+    assert.match(first.stdout, /at v0\.28\.0/)
+    writeFileSync(join(writer, '..', 'nudge.mjs'), '// two\n', 'utf8')
+    const second = spawnSync('node', [writer], { encoding: 'utf8' })
+    assert.match(second.stdout, /at v0\.29\.0/)
   })
 
   it('is not vacuous: the manifest it checks lists every bin and lib file', () => {
