@@ -322,6 +322,14 @@
       "replace": ""
     },
     {
+      "id": "deploy-hides-a-failed-transfer",
+      "guards": "A failed rsync is the function's answer, whatever the steps after it would report. A caller writing `nas_ssh_rsync_to … || handle` disables errexit inside the function, so without an explicit status the live check's 200 became the verdict on a deploy that transferred nothing — found by pointing anal0g's prune at a source path that does not exist and watching it exit 0.",
+      "command": "bash scripts/test-nas-ssh-deploy.sh",
+      "file": "scripts/nas-ssh-deploy.sh",
+      "find": "  if [[ \"${status}\" -ne 0 ]]; then\n    echo \"rsync exited ${status}. Not repairing permissions and not checking the\" \\\n      \"site, because neither would describe this deploy.\" >&2\n    return \"${status}\"\n  fi\n",
+      "replace": ""
+    },
+    {
       "id": "deploy-treats-any-answer-as-serving",
       "guards": "The post-deploy live check accepts a 200 or a redirect and nothing else. Widened to any answer at all, a 500 from the site reads as a successful deploy — which is how eleven sites came to be deployed with nothing asking whether they still served.",
       "command": "bash scripts/test-nas-ssh-deploy.sh",

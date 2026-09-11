@@ -251,6 +251,26 @@ if nas_ssh_rsync example.test "${source_dir}/" >/dev/null 2>&1; then
   fail "a deploy whose site does not serve must not report success"
 fi
 
+# A failed transfer must be the answer, whatever the steps after it would say.
+# A caller writing `nas_ssh_rsync_to … || handle` disables errexit inside the
+# function, so without an explicit status the live check's 200 became the
+# verdict on a deploy that transferred nothing. Found by pointing a real prune
+# at a source path that does not exist and watching it report success.
+STUB_HTTP_STATUS=200
+rsync() {
+  captured_arguments=("$@")
+  return 23
+}
+: > "${curl_log}"
+if nas_ssh_rsync example.test "${source_dir}/" >/dev/null 2>&1; then
+  fail "a failed rsync must not report success just because the site still serves"
+fi
+[[ "$(curl_calls)" -eq 0 ]] ||
+  fail "a failed transfer must not be followed by a live check; the site's state says nothing about it"
+rsync() {
+  captured_arguments=("$@")
+}
+
 unset -f curl sleep
 
 echo "NAS SSH deploy permission contract tests passed."

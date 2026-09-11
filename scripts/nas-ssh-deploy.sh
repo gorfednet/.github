@@ -174,12 +174,24 @@ nas_ssh_rsync_to() {
   done < <(nas_ssh_rsync_remote_options)
   # Apply the safety options after caller flags so a legacy -a cannot
   # re-enable permission, owner, or group preservation.
+  #
+  # rsync's status is captured rather than left to `set -e`, because a caller
+  # that writes `nas_ssh_rsync_to … || handle_failure` disables errexit inside
+  # this function: the transfer's failure then stops nothing, and the steps
+  # after it decide what the function returns. A deploy whose transfer failed
+  # was reporting the live check's 200 as its own result.
+  local status=0
   if [[ "${#caller_args[@]}" -gt 0 ]]; then
     rsync "${caller_args[@]}" "${rsync_options[@]}" -e "${rsync_shell}" \
-      "${source_path}" "${remote_target}"
+      "${source_path}" "${remote_target}" || status=$?
   else
     rsync "${rsync_options[@]}" -e "${rsync_shell}" \
-      "${source_path}" "${remote_target}"
+      "${source_path}" "${remote_target}" || status=$?
+  fi
+  if [[ "${status}" -ne 0 ]]; then
+    echo "rsync exited ${status}. Not repairing permissions and not checking the" \
+      "site, because neither would describe this deploy." >&2
+    return "${status}"
   fi
   nas_ssh_ensure_readable_files "${remote_target}"
 
