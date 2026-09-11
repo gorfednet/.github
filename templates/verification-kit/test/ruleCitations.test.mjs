@@ -126,16 +126,48 @@ describe('check-rule-citations', () => {
    * A rulebook section number is not a citation, and a local prefix that is
    * purely numeric is not a prefix.
    */
+  /*
+   * The section number has to fall *outside* the sequence or this cannot fail.
+   * Written first with the real string — `comprehensive rules 1-2-1-1-1` — it
+   * passed with the guard removed, because dropping the lookahead makes the
+   * matcher capture the leading `1`, and rule 1 exists. Green for the wrong
+   * reason, caught by the canary rather than by review.
+   */
   it('does not read a rulebook section number as a citation', () => {
-    const dir = project({
-      source: '// (Digimon Card Game comprehensive rules 1-2-1-1-1 / glossary)\n',
-    })
+    const dir = project({ source: '// conforms to comprehensive rules 9-2-1 of the format\n' })
     const result = run(dir)
     assert.equal(result.status, 0, result.stderr)
 
     // The two-part form is the one that read as a prefixed citation.
-    const short = project({ source: '// see the tournament rules 1-2 for timing\n' })
+    const short = project({ source: '// see the tournament rules 9-2 for timing\n' })
     assert.equal(run(short).status, 0, run(short).stderr)
+
+    // And the real string from bindercurve, which is the reason any of this exists.
+    const real = project({ source: '// (Digimon Card Game comprehensive rules 1-2-1-1-1 / glossary)\n' })
+    assert.equal(run(real).status, 0, run(real).stderr)
+  })
+
+  /*
+   * Found in towit.io's two vendored copies of AngularJS, in a library comment
+   * about pluralization. Every sequence starts at 1, so a number beginning with
+   * 0 is prose by definition — and this repository's check is not wired there,
+   * so it was a false failure waiting for whoever wired it first, exactly as the
+   * rulebook-section case was in bindercurve.
+   */
+  it('does not read a zero as a citation, because there is no rule zero', () => {
+    const dir = project({
+      source: '// we added three explicit number rules 0, 1 and 2\n',
+    })
+    const result = run(dir)
+    assert.equal(result.status, 0, result.stderr)
+  })
+
+  it('still reads a two-digit citation, which the narrowing must not break', () => {
+    const dir = project({ shared: sharedDoc(12), source: `${cite('V12')}\n` })
+    assert.equal(run(dir).status, 0, run(dir).stderr)
+
+    const past = project({ shared: sharedDoc(12), source: `${cite('V40')}\n` })
+    assert.equal(run(past).status, 1)
   })
 
   // Narrowing the prefix must not stop it matching a real one. Built with
