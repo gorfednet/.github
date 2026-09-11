@@ -99,8 +99,15 @@ jobs:
             # that fails takes the whole job down under `set -euo pipefail` —
             # so the extra request could both skip real HTML and match an asset
             # against markup it never contained.
+            # The \n is load-bearing. `read` returns non-zero at EOF without a
+            # newline even though it has already assigned all three variables,
+            # and under `set -euo pipefail` that ends the step before the echo
+            # below — so the log showed the script and then "exit code 1" with
+            # no output of its own. It took live monitoring for all nine sites
+            # down from the day it landed: green 2026-09-07, failing on every
+            # site 2026-09-11, with nothing scheduled in between to say so.
             read -r code final ctype < <(curl -sS -o "$body" \
-              -w '%{http_code} %{url_effective} %{content_type}' -L --max-time 30 "$url")
+              -w '%{http_code} %{url_effective} %{content_type}\n' -L --max-time 30 "$url")
             ctype="$(printf '%s' "$ctype" | tr '[:upper:]' '[:lower:]')"
             bytes="$(wc -c < "$body" | tr -d ' ')"
             echo "$url → HTTP $code, ${bytes} bytes, settled at $final"
@@ -225,13 +232,19 @@ jobs:
           fi
           echo "probed $probed forbidden path(s), $leaked still public"
           [ "$leaked" -eq 0 ]
+      # `!cancelled()` on these two, matching the steps that need them. Without
+      # it a failure in the HTTP checks skipped the install while the smoke below
+      # still ran — it carries `!cancelled()` — so the run's second error was
+      # "Cannot find package '@playwright/test'", which describes nothing that
+      # is wrong with the repository and buries the failure that actually
+      # happened. Either the smoke runs with its dependencies or it does not run.
       - name: Setup Node for Playwright
-        if: inputs.run-playwright
+        if: ${{ !cancelled() && inputs.run-playwright }}
         uses: gorfednet/.github/.github/actions/setup-node@main
         with:
           node-version: ${{ inputs.node-version }}
       - uses: gorfednet/.github/.github/actions/setup-playwright@main
-        if: inputs.run-playwright
+        if: ${{ !cancelled() && inputs.run-playwright }}
       # This step used to `exit 0` when the spec file was absent, printing
       # "skipping" into a green job. Renaming a spec, or moving it into a
       # subdirectory, therefore silently ended live monitoring for a project

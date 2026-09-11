@@ -298,6 +298,22 @@
       "replace": "\\d+|V\\d+"
     },
     {
+      "id": "healthcheck-read-without-a-newline",
+      "guards": "The monitor's curl format ends with a newline. Without it `read` reports failure at EOF though it has assigned every variable, and under set -e the step dies before printing the URL it was checking — which took live monitoring for all nine sites down between 2026-09-07 and 2026-09-11 while looking like an infrastructure hiccup (V63).",
+      "command": "node --test 'test/orgWorkflows.test.mjs'",
+      "file": ".github/workflows/production-healthcheck.yml",
+      "find": "%{content_type}\\n'",
+      "replace": "%{content_type}'"
+    },
+    {
+      "id": "healthcheck-setup-skipped-after-a-failure",
+      "guards": "Playwright's install runs under the same condition as the smoke that needs it. Mismatched, an earlier failure skips the install while the smoke proceeds, and the run's error becomes a missing npm package rather than the fault that occurred.",
+      "command": "node --test 'test/orgWorkflows.test.mjs'",
+      "file": ".github/workflows/production-healthcheck.yml",
+      "find": "      - name: Setup Node for Playwright\n        if: ${{ !cancelled() && inputs.run-playwright }}",
+      "replace": "      - name: Setup Node for Playwright\n        if: inputs.run-playwright"
+    },
+    {
       "id": "deploy-renames-over-the-target",
       "guards": "The shared deploy writes into the existing inode. Without --inplace rsync renames a temp file over the target, and over the CIFS mount that serves these sites the container keeps a handle to the deleted inode: every request for that path then returns 500 until the container is restarted. It does not expire, and a reload does not clear it (V63).",
       "command": "bash scripts/test-nas-ssh-deploy.sh",
