@@ -262,7 +262,7 @@
       "guards": "A rulebook section number such as comprehensive rules 1-2-1-1-1 is not read as citing local rule 1-2. A project prefix has a letter in it; a run of digits separated by hyphens is prose.",
       "command": "node --test 'templates/verification-kit/test/ruleCitations.test.mjs'",
       "file": "templates/verification-kit/bin/check-rule-citations.mjs",
-      "find": "((?:[A-Z][A-Z0-9]*-)?\\d+|V\\d+)",
+      "find": "((?:[A-Z0-9]*[A-Z][A-Z0-9]*-)?\\d+|V\\d+)",
       "replace": "((?:[A-Z0-9]+-)?\\d+|V\\d+)"
     },
     {
