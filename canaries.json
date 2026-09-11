@@ -184,6 +184,54 @@
       "file": "templates/verification-kit/bin/check-ci-headroom.mjs",
       "find": "    if (batch.length === 0 || (total !== null && jobs.length >= total)) break",
       "replace": "    break"
+    },
+    {
+      "id": "drift-behind-stops-warning",
+      "guards": "The drift checker warns and exits 0 one release behind, rather than failing. Without this the commonest situation is a red build, the fleet reads the red as noise, and a locally modified kit hides inside it.",
+      "command": "node --test 'templates/verification-kit/test/kitDrift.test.mjs'",
+      "file": "templates/verification-kit/bin/check-kit-drift.mjs",
+      "find": "if (gap === 'far-behind' || graceExpired)",
+      "replace": "if (true)"
+    },
+    {
+      "id": "drift-tolerance-never-expires",
+      "guards": "The tolerance for being behind expires on a date. Without this an undated leniency becomes permanent by accident and the fail-above-one-minor half never fires.",
+      "command": "node --test 'templates/verification-kit/test/kitDrift.test.mjs'",
+      "file": "templates/verification-kit/bin/check-kit-drift.mjs",
+      "find": "const BEHIND_TOLERATED_UNTIL = '2026-12-15'",
+      "replace": "const BEHIND_TOLERATED_UNTIL = '9999-12-31'"
+    },
+    {
+      "id": "verify-prs-passes-when-github-disagrees",
+      "guards": "check-backlog --verify-prs fails when an entry and its pull request disagree. Without this the plan of record can claim in-review against a merged PR indefinitely, which six entries across the fleet did.",
+      "command": "node --test 'templates/verification-kit/test/cli.test.mjs'",
+      "file": "templates/verification-kit/bin/check-backlog.mjs",
+      "find": "if (mismatches.length > 0)",
+      "replace": "if (false)"
+    },
+    {
+      "id": "retries-reported-without-a-name",
+      "guards": "assert-tests-executed names each test that only passed on a retry. Without this the run prints a count, exits 0, and the failing test is findable only by reading the JSON report by hand.",
+      "command": "node --test 'templates/verification-kit/test/cli.test.mjs'",
+      "file": "templates/verification-kit/bin/assert-tests-executed.mjs",
+      "find": "if (counts.retried.length > 0)",
+      "replace": "if (false)"
+    },
+    {
+      "id": "citation-matcher-spans-lines",
+      "guards": "A citation is a number on the same line as the word rule. Without this a sentence ending in 'rules' above a line starting with a digit is reported as a dangling citation, and the repair is to weaken the checker.",
+      "command": "node --test 'templates/verification-kit/test/ruleCitations.test.mjs'",
+      "file": "templates/verification-kit/bin/check-rule-citations.mjs",
+      "find": "rules?[ \\t]+((?:",
+      "replace": "rules?\\s+((?:"
+    },
+    {
+      "id": "release-version-cannot-be-set",
+      "guards": "The manifest writer takes an explicit release version. Without it the bump counts runs, and two runs in one change put every consumer more than one minor behind, which now fails rather than warns.",
+      "command": "node --test 'templates/verification-kit/test/kitDrift.test.mjs'",
+      "file": "templates/verification-kit/bin/write-manifest.mjs",
+      "find": "if (process.argv.includes('--version'))",
+      "replace": "if (false)"
     }
   ]
 }
