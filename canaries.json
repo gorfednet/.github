@@ -296,6 +296,46 @@
       "file": "templates/verification-kit/bin/check-rule-citations.mjs",
       "find": "[1-9]\\d*|V[1-9]\\d*",
       "replace": "\\d+|V\\d+"
+    },
+    {
+      "id": "deploy-renames-over-the-target",
+      "guards": "The shared deploy writes into the existing inode. Without --inplace rsync renames a temp file over the target, and over the CIFS mount that serves these sites the container keeps a handle to the deleted inode: every request for that path then returns 500 until the container is restarted. It does not expire, and a reload does not clear it (V63).",
+      "command": "bash scripts/test-nas-ssh-deploy.sh",
+      "file": "scripts/nas-ssh-deploy.sh",
+      "find": "    --inplace \\\n",
+      "replace": ""
+    },
+    {
+      "id": "deploy-treats-any-answer-as-serving",
+      "guards": "The post-deploy live check accepts a 200 or a redirect and nothing else. Widened to any answer at all, a 500 from the site reads as a successful deploy — which is how eleven sites came to be deployed with nothing asking whether they still served.",
+      "command": "bash scripts/test-nas-ssh-deploy.sh",
+      "file": "scripts/nas-ssh-deploy.sh",
+      "find": "[[ \"${status}\" =~ ^(200|30[128])$ ]]",
+      "replace": "[[ -n \"${status}\" ]]"
+    },
+    {
+      "id": "deploy-live-check-never-runs",
+      "guards": "Deploying a fleet domain fetches the site by itself. A verification each repository has to opt into is one that some repository will not have, and this fleet has ten deploy scripts.",
+      "command": "bash scripts/test-nas-ssh-deploy.sh",
+      "file": "scripts/nas-ssh-deploy.sh",
+      "find": "    nas_ssh_verify_live \"${url}\"",
+      "replace": "    :"
+    },
+    {
+      "id": "deploy-live-check-swallows-its-verdict",
+      "guards": "A site that does not serve fails the deploy. Returning success from the check leaves the operator's last line reading \"Deploy complete\", which is the precise shape of the outage this rule came from.",
+      "command": "bash scripts/test-nas-ssh-deploy.sh",
+      "file": "scripts/nas-ssh-deploy.sh",
+      "find": "  return 1\n}",
+      "replace": "  return 0\n}"
+    },
+    {
+      "id": "deploy-probes-a-url-no-visitor-uses",
+      "guards": "The live URL is read from fleet.json rather than guessed from the directory name, so a staging target like bindercurve.com-dev is not probed at a hostname nobody serves and then reported as a broken deploy.",
+      "command": "bash scripts/test-nas-ssh-deploy.sh",
+      "file": "scripts/nas-ssh-deploy.sh",
+      "find": "  grep -q \"\\\"slug\\\": \\\"[^\\\"/]*/${site_dir}\\\"\" \"${fleet_file}\" || return 0",
+      "replace": "  :"
     }
   ]
 }
