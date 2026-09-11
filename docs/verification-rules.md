@@ -563,7 +563,7 @@ failed were the only two in thirteen that run this check at all. A check that
 most consumers never invoke has no failure mode to speak of, silent or
 otherwise, and the fleet had been reading its absence as health.
 
-**V63. A deploy that does not fetch the site has not finished.**
+**V61. A deploy that does not fetch the site has not finished.**
 Eleven sites in this fleet were deployed by an rsync that reported success and
 stopped there. Nothing asked whether the site still served, so the last thing
 the operator saw was always "Deploy complete". The first deploy run after the
@@ -622,14 +622,24 @@ sounds like an opinion, because none of them are.
 | — | — | V41–V51 | fleet rollout, 2026-09-08 |
 | — | — | V52–V53 | fleet rollout, 2026-09-09 |
 | — | — | V54–V60 | fleet self-heal, 2026-09-10 |
-| — | — | V63 | fleet deploy round, 2026-09-11 |
+| — | — | V61 | fleet deploy round, 2026-09-11 |
 
-The shared list skips V61 and V62. Both were written the same day in
-BinderCurve's own numbered list — where a check looks being part of what it
-asserts, and a subagent's factual claim being a lead rather than a finding — and
-until they are promoted here those two numbers mean that and nothing else.
-Reusing them for a fleet rule would make a citation say different things in
-different repositories, which is the one thing a numbered rule must not do.
+This number was nearly given up. BinderCurve had two rules of its own written
+into `V61` and `V62` — where a check looks being part of what it asserts, and a
+subagent's factual claim being a lead — so a fleet rule numbered `V61` looked
+like it would make one citation mean two different things in two repositories.
+The first attempt therefore started at `V63` and explained the gap, and
+`check-rule-citations.mjs` rejected it: this sequence is gapless by contract,
+and it is gapless precisely so that nobody has to read prose to know whether
+`V62` exists.
+
+Those two rules were in the wrong namespace, not in the way. Local rules take a
+project prefix — `BC-1`, `4C-1` — exactly so a project can add a rule without
+asking the fleet for a number, and the shared document says so in its own
+opening section. Writing them as `V61` and `V62` claimed two numbers in an
+interface BinderCurve does not own, and the next shared rule was always going to
+collide. They move to `docs/verification-rules.local.md` there; this document
+keeps `V61`, and the shared sequence stays append-only and gapless.
 
 Three BinderCurve rules are deliberately **not** shared, because they are true
 of that product rather than of verification: rules 23 and 33 concern
