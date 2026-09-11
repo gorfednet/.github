@@ -146,6 +146,25 @@ describe('check-rule-citations', () => {
     assert.equal(result.status, 1)
   })
 
+  /*
+   * 4thcltr.com's prefix is `4C`, so a prefix may contain a letter without
+   * beginning with one. Requiring a leading letter skipped its citations
+   * entirely, which is the worse of the two errors: a false positive sends
+   * somebody to look, and a silently skipped citation reports that everything
+   * resolves. Bugbot caught it on the release.
+   */
+  it('resolves a prefix that starts with a digit, as one real project does', () => {
+    const local = '**4C-1. Local one.** Because.\n\n**4C-2. Local two.** Because.\n'
+    const resolves = project({ local, source: `${cite('4C-2')}\n` })
+    assert.equal(run(resolves).status, 0, run(resolves).stderr)
+
+    // And still catches one past the end, which is the whole point of matching it.
+    const dangling = project({ local, source: `${cite('4C-9')}\n` })
+    const result = run(dangling)
+    assert.equal(result.status, 1)
+    assert.match(result.stderr, /ends at 4C-2/)
+  })
+
   it('still reads a citation separated by a tab', () => {
     const dir = project({ source: '// see rule\tV9\n' })
     assert.equal(run(dir).status, 1)

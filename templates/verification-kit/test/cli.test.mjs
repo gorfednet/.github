@@ -374,11 +374,20 @@ exit 1
       return { PATH: `${binDir}${delimiter}${process.env.PATH}` }
     }
 
+    /*
+     * GITHUB_REF is cleared unless a case sets it. The checker reads the pull
+     * request under review from that variable, and this suite runs inside every
+     * consumer's gate — so inheriting it means a pull request numbered 7 exempts
+     * the fixture numbered 7 and the kit's own tests fail while the checker is
+     * behaving exactly as written. Bugbot caught it; it is the same class as the
+     * rule about reproducing CI's invocation rather than the command, arriving
+     * from the other direction.
+     */
     function runVerify(dir, env) {
       return spawnSync('node', [bin('check-backlog.mjs'), '--verify-prs', '--repo', 'o/r'], {
         cwd: dir,
         encoding: 'utf8',
-        env: { ...process.env, ...env },
+        env: { ...process.env, GITHUB_REF: '', ...env },
       })
     }
 
@@ -428,6 +437,30 @@ exit 1
         )
         assert.equal(result.status, 0, result.stderr)
         assert.match(result.stdout, /1 exempt as the entry for #7/)
+      })
+
+      /*
+       * The suite must not care which pull request it happens to be running on.
+       * Every consumer runs these tests in its own gate, so an ambient
+       * GITHUB_REF naming the fixture's number would exempt the fixture and fail
+       * the kit's self-tests on any pull request numbered 7.
+       */
+      it('does not inherit the pull request the suite itself runs on', () => {
+        const previous = process.env.GITHUB_REF
+        process.env.GITHUB_REF = 'refs/pull/7/merge'
+        try {
+          const dir = backlogAt({ entries: [entry({})] })
+          const env = stubGh(dir, {
+            'repos/o/r': { full_name: 'o/r' },
+            'repos/o/r/pulls/7': { state: 'open', merged: false },
+          })
+          const result = runVerify(dir, env)
+          assert.equal(result.status, 0, result.stderr)
+          assert.match(result.stdout, /1 of 1 pull request\(s\) agree/)
+        } finally {
+          if (previous === undefined) delete process.env.GITHUB_REF
+          else process.env.GITHUB_REF = previous
+        }
       })
 
       // The exemption is for one pull request, not for the concept of one.

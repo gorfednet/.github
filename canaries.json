@@ -280,6 +280,14 @@
       "file": "templates/verification-kit/bin/check-backlog.mjs",
       "find": "entry.pr !== currentPr,",
       "replace": "true,"
+    },
+    {
+      "id": "citation-prefix-must-start-with-a-letter",
+      "guards": "A local prefix may contain a letter without beginning with one. 4thcltr.com uses 4C, so requiring a leading letter skipped its citations entirely — reporting that every citation resolves, which is the worse of the two directions a coverage matcher can fail in.",
+      "command": "node --test 'templates/verification-kit/test/ruleCitations.test.mjs'",
+      "file": "templates/verification-kit/bin/check-rule-citations.mjs",
+      "find": "(?:[A-Z0-9]*[A-Z][A-Z0-9]*-)?",
+      "replace": "(?:[A-Z][A-Z0-9]*-)?"
     }
   ]
 }
