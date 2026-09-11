@@ -188,6 +188,14 @@ if (sources.length === 0) {
 // seventeen checkouts, none of them spanning a line break, so this costs nothing
 // and closes a class of false citation that has already been hit three times.
 //
+// There is no rule zero. Every sequence here starts at 1, so a number that
+// begins with 0 is prose by definition — which is what towit.io's two vendored
+// copies of AngularJS turned out to contain: "we added three explicit number
+// rules 0, 1 and 2", in a library comment about pluralization. That check is not
+// wired there, so like bindercurve's rulebook section it was a false failure
+// waiting for whoever wired it first. Second instance of that shape, which is
+// what makes it worth fixing in the pattern rather than per repository.
+//
 // A local prefix must *contain* a letter — not begin with one. 4thcltr.com's
 // prefix is `4C`, documented in the README and accepted by the local-rule header
 // parser, so requiring a leading letter stopped matching its citations
@@ -203,7 +211,7 @@ if (sources.length === 0) {
 // above, found the same way — by running the checker somewhere it had never
 // been run rather than by reasoning about the pattern.
 const CITATION =
-  /\b(?:teardown |class |verification )?rules?[ \t]+((?:[A-Z0-9]*[A-Z][A-Z0-9]*-)?\d+|V\d+)\b(?!\.\d)(?!-\d)/gi
+  /\b(?:teardown |class |verification )?rules?[ \t]+((?:[A-Z0-9]*[A-Z][A-Z0-9]*-)?[1-9]\d*|V[1-9]\d*)\b(?!\.\d)(?!-\d)/gi
 
 for (const file of sources) {
   let text

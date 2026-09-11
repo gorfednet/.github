@@ -92,7 +92,18 @@ asserting that something is broken — as intermittent, and shipped to nine
 repositories before Bugbot said so on all nine at once. A rule-citation matcher
 whose project prefix accepted digits read `comprehensive rules 1-2-1-1-1`, a
 game's rulebook section, as citing local rule `1-2`. Both were found by running
-the check somewhere it had never run, not by rereading the pattern.
+the check somewhere it had never run, not by rereading the pattern. A third of
+the same shape: `we added three explicit number rules 0, 1 and 2`, from a
+vendored AngularJS comment about pluralization, read as citing rule `0` — and no
+sequence starts at zero, so that number was never a citation.
+
+Note what the fixes have in common. Each one *narrowed* the matcher, and the
+narrowing for the rulebook section immediately broke a real prefix — 4thcltr's
+`4C-`, which contains a letter without beginning with one — so the citations of
+one project stopped being read at all while the check still reported that every
+citation resolved. Tightening a matcher is a change of behaviour in both
+directions, and the positive case has to be retested every time the negative one
+is fixed.
 
 **V11. Scan for the value, not the syntax that usually surrounds it.** A check
 keyed to one spelling of a call site measures that spelling, not the property.

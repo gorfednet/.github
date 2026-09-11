@@ -138,6 +138,29 @@ describe('check-rule-citations', () => {
     assert.equal(run(short).status, 0, run(short).stderr)
   })
 
+  /*
+   * Found in towit.io's two vendored copies of AngularJS, in a library comment
+   * about pluralization. Every sequence starts at 1, so a number beginning with
+   * 0 is prose by definition — and this repository's check is not wired there,
+   * so it was a false failure waiting for whoever wired it first, exactly as the
+   * rulebook-section case was in bindercurve.
+   */
+  it('does not read a zero as a citation, because there is no rule zero', () => {
+    const dir = project({
+      source: '// we added three explicit number rules 0, 1 and 2\n',
+    })
+    const result = run(dir)
+    assert.equal(result.status, 0, result.stderr)
+  })
+
+  it('still reads a two-digit citation, which the narrowing must not break', () => {
+    const dir = project({ shared: sharedDoc(12), source: `${cite('V12')}\n` })
+    assert.equal(run(dir).status, 0, run(dir).stderr)
+
+    const past = project({ shared: sharedDoc(12), source: `${cite('V40')}\n` })
+    assert.equal(run(past).status, 1)
+  })
+
   // Narrowing the prefix must not stop it matching a real one. Built with
   // cite() for the reason that helper exists.
   it('still catches a prefixed citation, which has a letter in it', () => {

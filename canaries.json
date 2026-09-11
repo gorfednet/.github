@@ -288,6 +288,14 @@
       "file": "templates/verification-kit/bin/check-rule-citations.mjs",
       "find": "(?:[A-Z0-9]*[A-Z][A-Z0-9]*-)?",
       "replace": "(?:[A-Z][A-Z0-9]*-)?"
+    },
+    {
+      "id": "citation-reads-a-zero-as-a-rule",
+      "guards": "A number beginning with zero is not a citation, because no sequence starts at zero. towit.io vendors two copies of AngularJS whose pluralization comment says \"three explicit number rules 0, 1 and 2\", and the check is not wired there — so it was a false failure waiting for whoever wired it first.",
+      "command": "node --test 'templates/verification-kit/test/ruleCitations.test.mjs'",
+      "file": "templates/verification-kit/bin/check-rule-citations.mjs",
+      "find": "[1-9]\\d*|V[1-9]\\d*",
+      "replace": "\\d+|V\\d+"
     }
   ]
 }

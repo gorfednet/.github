@@ -139,6 +139,15 @@
       "userSymptom": "Two checks reporting things that are not true. A suite with a test.fail() case would be described as intermittent, and with a --max-flaky budget would fail over tests behaving exactly as written; a comment naming a Digimon rulebook section would be reported as citing a rule that does not exist.",
       "evidence": "Bugbot found the first on nine consumer pull requests simultaneously: assert-tests-executed counted any failed attempt as a retry, and Playwright marks test.fail() as expected with a failed attempt. The same line also missed timedOut-then-passed, the commonest intermittent shape there is. The second was found by running check-rule-citations against bindercurve.com, where it is vendored and wired to nothing: the prefix class [A-Z0-9]+ accepted a bare digit, so \"comprehensive rules 1-2-1-1-1\" read as local rule 1-2. Both are V10 instances and are recorded there as evidence rather than as new numbers. Three cases watched failing first, three canaries.",
       "note": "Neither was found by rereading the pattern. One came from an outside reviewer, the other from running the check in a repository that had never run it, which is the argument for both."
+    },
+    {
+      "id": "citation-matcher-read-a-zero-as-a-rule",
+      "title": "A vendored AngularJS comment about pluralization read as citing rule 0",
+      "status": "landed",
+      "assignee": "main-model",
+      "pr": 20,
+      "userSymptom": "A check reporting a rule that does not exist, in a file nobody here wrote. towit.io does not wire this check, so like bindercurve’s rulebook section it was a false failure waiting for whoever wired it first — and the reasonable conclusion on seeing it would be that the check is noise.",
+      "evidence": "Reported by the batch that rolled v0.27.0: towit-admin/static/js/angular/angular.js and its angularjs twin, \"we added three explicit number rules 0, 1 and 2\". No sequence starts at zero, so a number beginning with 0 is prose by definition; the matcher now reads [1-9]\\d* in all three alternatives. Watched failing first, canary citation-reads-a-zero-as-a-rule, and verified against the real towit.io tree that produced it: 91 source files, every citation resolves. Third instance of V10 in two releases, which is why it is recorded there with the note that narrowing a matcher changes behaviour in both directions — the previous narrowing broke 4thcltr’s real 4C- prefix."
     }
   ]
 }
