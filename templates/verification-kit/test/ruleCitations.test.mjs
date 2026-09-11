@@ -120,6 +120,32 @@ describe('check-rule-citations', () => {
     assert.equal(result.status, 0, result.stderr)
   })
 
+  /*
+   * Found the same way as the version-number case above, by running the checker
+   * against bindercurve.com — which turned out to vendor it and never run it.
+   * A rulebook section number is not a citation, and a local prefix that is
+   * purely numeric is not a prefix.
+   */
+  it('does not read a rulebook section number as a citation', () => {
+    const dir = project({
+      source: '// (Digimon Card Game comprehensive rules 1-2-1-1-1 / glossary)\n',
+    })
+    const result = run(dir)
+    assert.equal(result.status, 0, result.stderr)
+
+    // The two-part form is the one that read as a prefixed citation.
+    const short = project({ source: '// see the tournament rules 1-2 for timing\n' })
+    assert.equal(run(short).status, 0, run(short).stderr)
+  })
+
+  // Narrowing the prefix must not stop it matching a real one. Built with
+  // cite() for the reason that helper exists.
+  it('still catches a prefixed citation, which has a letter in it', () => {
+    const dir = project({ source: `${cite('ZQ-1')}\n` })
+    const result = run(dir)
+    assert.equal(result.status, 1)
+  })
+
   it('still reads a citation separated by a tab', () => {
     const dir = project({ source: '// see rule\tV9\n' })
     assert.equal(run(dir).status, 1)

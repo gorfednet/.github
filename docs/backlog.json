@@ -119,6 +119,26 @@
       "reviewBy": "2026-10-15",
       "note": "The fix per repo is to emit a JSON reporter alongside the existing run and pass it as test-report with a floor measured from a real green run, then raise the tier back to 2 in fleet.json and let the online audit confirm it. Doing that during the v0.27.0 roll keeps it to one PR per repository. wychwoodresort.com is out of scope for site work by the owner's instruction, so it stays at its true tier rather than being wired.",
       "pr": 18
+    },
+    {
+      "id": "drift-read-its-authority-through-a-cdn",
+      "title": "Two consumers failed as \"ahead of canonical\" three minutes after a release, because the check read a cached manifest",
+      "status": "in-review",
+      "assignee": "main-model",
+      "pr": 19,
+      "userSymptom": "A red build with a message saying something impossible: that a site is ahead of the kit it vendors. Nobody can act on that, and the next red one gets less attention.",
+      "evidence": "v0.27.0 merged at 03:49:36Z. subrythm.com and blackpixelrecords.com ran at 03:52:32Z and 03:52:52Z and read v0.26.0 from raw.githubusercontent.com, which is CDN-cached for minutes, while the API and the CDN both read 0.27.0 by the time it was checked by hand. distance() correctly called the vendored copy ahead and the check correctly treated that as fatal; the input was wrong. Fixed by confirming an impossible answer against an uncached API read before acting on it, and failing when that read cannot be obtained. Three cases, watched failing first, plus canary drift-believes-a-cached-read. Recorded as V60.",
+      "note": "These two were the only repositories of thirteen that run check-kit-drift at all, so the fleet had been reading the absence of this check as health. Wiring it everywhere is part of the v0.28.0 roll."
+    },
+    {
+      "id": "two-matchers-fired-on-their-legitimate-neighbour",
+      "title": "The flake detector reported expected failures, and the citation matcher read a rulebook section as a rule number",
+      "status": "in-review",
+      "assignee": "main-model",
+      "pr": 19,
+      "userSymptom": "Two checks reporting things that are not true. A suite with a test.fail() case would be described as intermittent, and with a --max-flaky budget would fail over tests behaving exactly as written; a comment naming a Digimon rulebook section would be reported as citing a rule that does not exist.",
+      "evidence": "Bugbot found the first on nine consumer pull requests simultaneously: assert-tests-executed counted any failed attempt as a retry, and Playwright marks test.fail() as expected with a failed attempt. The same line also missed timedOut-then-passed, the commonest intermittent shape there is. The second was found by running check-rule-citations against bindercurve.com, where it is vendored and wired to nothing: the prefix class [A-Z0-9]+ accepted a bare digit, so \"comprehensive rules 1-2-1-1-1\" read as local rule 1-2. Both are V10 instances and are recorded there as evidence rather than as new numbers. Three cases watched failing first, three canaries.",
+      "note": "Neither was found by rereading the pattern. One came from an outside reviewer, the other from running the check in a repository that had never run it, which is the argument for both."
     }
   ]
 }

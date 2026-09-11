@@ -187,7 +187,16 @@ if (sources.length === 0) {
 // comment or a numbered list. Measured before narrowing it: 100 citations across
 // seventeen checkouts, none of them spanning a line break, so this costs nothing
 // and closes a class of false citation that has already been hit three times.
-const CITATION = /\b(?:teardown |class |verification )?rules?[ \t]+((?:[A-Z0-9]+-)?\d+|V\d+)\b(?!\.\d)/gi
+//
+// A local prefix must contain a letter, and a citation may not be followed by
+// `-<digit>` any more than by `.<digit>`. Both come from one line of
+// bindercurve: `Digimon Card Game comprehensive rules 1-2-1-1-1`, a game's
+// rulebook section, which read as citing local rule `1-2` because the prefix
+// class accepted a bare digit. Same near-miss family as the rulebook *version*
+// above, found the same way — by running the checker somewhere it had never
+// been run rather than by reasoning about the pattern.
+const CITATION =
+  /\b(?:teardown |class |verification )?rules?[ \t]+((?:[A-Z][A-Z0-9]*-)?\d+|V\d+)\b(?!\.\d)(?!-\d)/gi
 
 for (const file of sources) {
   let text

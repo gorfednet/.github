@@ -99,6 +99,63 @@ describe('assert-tests-executed', () => {
     assert.doesNotMatch(result.stderr, /retry/)
   })
 
+  /*
+   * `test.fail()` — a test asserting that something is broken. Playwright marks
+   * it `expected` with a failed attempt, and the first version of this counted
+   * any failed attempt as a retry, so it reported a passing suite as flaky and a
+   * repository with a budget of 0 would have gone red over tests behaving as
+   * written. Bugbot found this on nine consumer pull requests simultaneously.
+   */
+  it('does not report an expected failure as having needed a retry', () => {
+    const report = writeReport({
+      suites: [
+        {
+          specs: [
+            {
+              file: 'e2e/known-broken.spec.ts',
+              title: 'documents the bug',
+              tests: [{ status: 'expected', results: [{ retry: 0, status: 'failed' }] }],
+            },
+          ],
+        },
+      ],
+    })
+    const result = runCli('assert-tests-executed.mjs', ['--report', report, '--min', '1'])
+    assert.equal(result.status, 0, result.stderr)
+    assert.doesNotMatch(result.stderr, /retry/)
+
+    // And a declared budget of zero must not be spent on it.
+    const budgeted = runCli('assert-tests-executed.mjs', [
+      '--report', report, '--min', '1', '--max-flaky', '0',
+    ])
+    assert.equal(budgeted.status, 0, budgeted.stderr)
+  })
+
+  // The commonest intermittent shape there is, and the first version missed it.
+  it('names a test that timed out and passed on the retry', () => {
+    const report = writeReport({
+      suites: [
+        {
+          specs: [
+            {
+              file: 'e2e/slow.spec.ts',
+              title: 'waits for fonts',
+              tests: [
+                {
+                  status: 'expected',
+                  results: [{ retry: 0, status: 'timedOut' }, { retry: 1, status: 'passed' }],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    })
+    const result = runCli('assert-tests-executed.mjs', ['--report', report, '--min', '1'])
+    assert.equal(result.status, 0, result.stderr)
+    assert.match(result.stderr, /slow\.spec\.ts › waits for fonts \(timedOut then passed\)/)
+  })
+
   // A budget is enforceable only if exceeding it is a failure.
   it('fails once a declared retry budget is exceeded, and passes within it', () => {
     const report = writeReport(flakyReport())

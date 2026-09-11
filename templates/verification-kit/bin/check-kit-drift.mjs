@@ -35,8 +35,26 @@ import { execFileSync } from 'node:child_process'
 import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs'
 import { join, relative, sep } from 'node:path'
 
-const CANONICAL =
-  'https://raw.githubusercontent.com/gorfednet/.github/main/templates/verification-kit/MANIFEST.json'
+const CANONICAL_PATH = 'templates/verification-kit/MANIFEST.json'
+const CANONICAL = `https://raw.githubusercontent.com/gorfednet/.github/main/${CANONICAL_PATH}`
+
+/*
+ * The same file, read through the API rather than the CDN.
+ *
+ * raw.githubusercontent is cached for minutes, so a consumer that checks just
+ * after a release reads the *previous* canonical version and concludes the
+ * vendored copy is ahead of upstream — which this check treats as a hard
+ * failure, because a project cannot be the source of the kit. Two repositories
+ * failed exactly that way three minutes after v0.27.0 merged: canonical said
+ * 0.27.0, the CDN still served 0.26.0, and the only two consumers that run this
+ * check were the only two that noticed.
+ *
+ * A check that goes red for a reason unrelated to what it guards is how people
+ * learn to ignore it, so the impossible-looking answer gets a second, uncached
+ * read before it is believed. Only on that path, so the API's unauthenticated
+ * rate limit is not spent on ordinary runs.
+ */
+const CANONICAL_UNCACHED = `https://api.github.com/repos/gorfednet/.github/contents/${CANONICAL_PATH}?ref=main`
 const NOT_TRACKED = new Set(['MANIFEST.json'])
 const NOT_TRACKED_DIRS = new Set(['templates'])
 
@@ -188,13 +206,18 @@ if (offline) {
 
 // 2. Staleness. Fail closed: a fetch that did not happen tells us nothing, and
 //    "could not check" must never print as "up to date".
+function readManifest(url, extraArgs = []) {
+  const body = execFileSync(
+    'curl',
+    ['-fsSL', '--max-time', '20', '-H', 'Cache-Control: no-cache', ...extraArgs, url],
+    { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] },
+  )
+  return JSON.parse(body)
+}
+
 let canonical
 try {
-  const body = execFileSync('curl', ['-fsSL', '--max-time', '20', CANONICAL], {
-    encoding: 'utf8',
-    stdio: ['ignore', 'pipe', 'pipe'],
-  })
-  canonical = JSON.parse(body)
+  canonical = readManifest(CANONICAL)
 } catch (cause) {
   die(
     `check-kit-drift: could not read the canonical manifest (${cause.message}).\n\n` +
@@ -246,7 +269,56 @@ if (vendoredVersion === null || canonicalVersion === null) {
   )
 }
 
-const gap = distance(vendoredVersion, canonicalVersion)
+let gap = distance(vendoredVersion, canonicalVersion)
+
+/*
+ * "Ahead of canonical" is impossible for a consumer, so before failing on it,
+ * check whether the CDN simply had not caught up. See CANONICAL_UNCACHED.
+ */
+if (gap === 'ahead') {
+  let authoritative
+  try {
+    authoritative = readManifest(CANONICAL_UNCACHED, ['-H', 'Accept: application/vnd.github.raw'])
+  } catch (cause) {
+    die(
+      `check-kit-drift: kit reads as ahead of canonical (vendored v${vendored.version}, upstream v${canonical.version}), and that could not be confirmed (${cause.message}).\n\n` +
+        `  cached   ${CANONICAL}\n` +
+        `  uncached ${CANONICAL_UNCACHED}\n\n` +
+        `${inventory}\n\n` +
+        '  The first URL is CDN-cached for minutes, so this answer is the expected one\n' +
+        '  shortly after a release and cannot be acted on until the second read agrees.\n' +
+        '  Failing rather than guessing: believing the cached read would call a current\n' +
+        '  kit an impossible one, and ignoring it would hide a genuinely edited manifest.',
+    )
+  }
+
+  const confirmed = parseVersion(authoritative.version)
+  if (confirmed === null) {
+    die(
+      'check-kit-drift: the uncached canonical manifest has no readable version.\n\n' +
+        `  version ${JSON.stringify(authoritative.version)}\n  ${CANONICAL_UNCACHED}`,
+    )
+  }
+
+  const cachedVersion = canonical.version
+  canonical = authoritative
+  gap = distance(vendoredVersion, confirmed)
+  if (gap !== 'ahead') {
+    /*
+     * Recomputed against the authoritative read, so the file inventory above was
+     * built from a stale manifest and would name the wrong files. Re-running is
+     * cheaper and more honest than reporting a comparison against a version this
+     * check has just decided not to trust.
+     */
+    console.error(
+      `\n⚠ check-kit-drift: the cached canonical manifest was stale (v${cachedVersion} now reads v${authoritative.version}).\n\n` +
+        '  Re-run to compare against it. This is normal within a few minutes of a kit\n' +
+        '  release and is reported rather than passed over, because a check that quietly\n' +
+        '  changes which source it trusted is one nobody can reason about later.\n',
+    )
+    process.exit(0)
+  }
+}
 
 if (gap === 'same-version') {
   die(
