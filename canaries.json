@@ -259,11 +259,11 @@
     },
     {
       "id": "citation-prefix-accepts-a-bare-digit",
-      "guards": "A rulebook section number such as comprehensive rules 1-2-1-1-1 is not read as citing local rule 1-2. A project prefix has a letter in it; a run of digits separated by hyphens is prose.",
+      "guards": "A rulebook section number such as comprehensive rules 1-2-1-1-1 is not read as citing local rule 1-2. A citation may no more be followed by -<digit> than by .<digit>, both being section numbers rather than rules. Anchored on that lookahead pair rather than on the whole pattern, because an anchor spanning the entire regex is invalidated by every narrowing — twice so far.",
       "command": "node --test 'templates/verification-kit/test/ruleCitations.test.mjs'",
       "file": "templates/verification-kit/bin/check-rule-citations.mjs",
-      "find": "((?:[A-Z0-9]*[A-Z][A-Z0-9]*-)?\\d+|V\\d+)",
-      "replace": "((?:[A-Z0-9]+-)?\\d+|V\\d+)"
+      "find": "(?!\\.\\d)(?!-\\d)",
+      "replace": "(?!\\.\\d)"
     },
     {
       "id": "drift-believes-a-cached-read",
