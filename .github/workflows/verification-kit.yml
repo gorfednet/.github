@@ -41,6 +41,19 @@ jobs:
         if: ${{ !cancelled() }}
         run: node templates/verification-kit/bin/check-backlog.mjs --file docs/backlog.json
 
+      # And describes reality *on GitHub*. The schema check above cannot tell an
+      # entry citing a merged pull request from one citing an open one, and two
+      # entries here sat at in-review for weeks after their work merged. The
+      # default token reads this repository's own pull requests, which is all
+      # this needs — the siblings are fleet-audit.yml's problem.
+      - name: Every backlog entry agrees with its pull request
+        if: ${{ !cancelled() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          node templates/verification-kit/bin/check-backlog.mjs \
+            --file docs/backlog.json --verify-prs --repo ${{ github.repository }}
+
       - name: FLEET.md matches the registry it is generated from
         if: ${{ !cancelled() }}
         run: node scripts/write-fleet-md.mjs --check

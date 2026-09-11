@@ -34,85 +34,91 @@
     },
     {
       "id": "fleet-adoption-outstanding",
-      "title": "Twelve of fourteen projects have the verification gate switched off",
-      "status": "confirmed-bug",
+      "title": "Twelve of fourteen projects had the verification gate switched off",
+      "status": "landed",
       "assignee": "main-model",
       "userSymptom": "A bug shipped by any of those twelve projects has nothing checking that the CI which passed actually examined anything, which is how the sixteen findings in the BinderCurve teardown stayed green for months.",
       "evidence": "fleet.json: 12 projects at tier 0. Each already inherits a reusable pr-check workflow, so adoption is a one-line change plus the vendored kit.",
       "reviewBy": "2026-11-01",
-      "note": "Deliberately staged: three pilots first, across the three archetypes that stress the kit differently, before the remaining nine."
+      "note": "Landed in #14 and the rollout around it; fleet.json now holds no project at tier 0. The entry claimed twelve at tier 0 for weeks after that stopped being true, which is the class --verify-prs catches for pull requests and nothing catches for a count. What remains is not adoption but five projects claiming a tier whose floor never ran — tracked separately as five-projects-run-tests-with-no-floor.",
+      "pr": 14
     },
     {
       "id": "unbounded-jobs-in-shared-workflows",
       "title": "Three jobs in the org repo could run for six hours, one of them inherited by six projects",
-      "status": "in-review",
+      "status": "landed",
       "assignee": "main-model",
       "userSymptom": "A hung CI job would have kept a runner busy for six hours and billed for it, with no red check to say so — the projects calling browser-compat.yml would just have seen a check that never finished.",
       "evidence": "check-ci-headroom reported \"no timeout-minutes found\" on gorfed.net and subrythm.com. Auditing the workflows those repos call found compat-success (browser-compat.yml, 6 callers), audit (fleet-audit.yml) and kit (verification-kit.yml) with no timeout-minutes. GitHub kills an untimed job at six hours.",
       "pr": 5,
       "reviewBy": "2026-12-01",
-      "note": "Fixed and guarded: test/orgWorkflows.test.mjs now requires a timeout on every job that does not delegate with uses:. Guard observed failing by deleting the new timeout from verification-kit.yml."
+      "note": "Fixed and guarded: test/orgWorkflows.test.mjs now requires a timeout on every job that does not delegate with uses:. Guard observed failing by deleting the new timeout from verification-kit.yml. Marked landed 2026-09-10, on the reconciliation --verify-prs now performs: the entry had read in-review since the pull request merged, which is the state that check was written for."
     },
     {
       "id": "headroom-blind-to-matrix-jobs",
       "title": "The headroom check could not see a matrix job at all",
-      "status": "in-review",
+      "status": "landed",
       "assignee": "main-model",
       "userSymptom": "A slow matrix job — the kind most likely to be near its limit — would never have been reported, and the check would still have printed a green tick.",
       "evidence": "On bindercurve.com, coverage was 38% of declared jobs. GitHub reports the interpolated name (e2e-chromium-1) for a templated name:, which matches neither the template nor the job id, so no matrix job ever joined to its timeout. Two workflows both declaring a job named 'check' also collapsed into one map entry, measuring one against the other's limit.",
       "pr": 4,
       "reviewBy": "2026-12-01",
-      "note": "matchJob turns the template into a pattern, requires at least one literal character so a name that is only an expression cannot claim every job, and resolves by specificity. Coverage went 38% -> over the 80% floor."
+      "note": "matchJob turns the template into a pattern, requires at least one literal character so a name that is only an expression cannot claim every job, and resolves by specificity. Coverage went 38% -> over the 80% floor. Marked landed 2026-09-10, on the reconciliation --verify-prs now performs: the entry had read in-review since the pull request merged, which is the state that check was written for."
     },
     {
       "id": "backlog-status-never-checked-against-github",
       "title": "An in-review entry stays in-review forever after its PR merges",
-      "status": "confirmed-bug",
+      "status": "in-review",
       "assignee": "main-model",
       "userSymptom": "The backlog is meant to be the one place you can read to know what is actually open. Every entry marked in-review keeps reading as in flight after its pull request merges, so the list overstates what is outstanding and understates what shipped — which is the exact failure a committed registry exists to prevent.",
       "evidence": "check-backlog.mjs requires an in-review or landed entry to name a pull request, and never asks GitHub what became of it. Confirmed by grep: nothing in verification-kit/lib/backlogSchema.mjs touches gh or the API. Twelve adopted repositories now carry entries in that state, wychwoodresort.com's two from the moment PR #4 merged.",
       "reviewBy": "2026-11-01",
-      "note": "The check has to keep working offline and in a fresh clone, so this cannot be unconditional. An opt-in --verify-prs used by the CI gate, where gh and a token are present, fails closed when the API is reachable and disagrees, and skips with a counted, printed reason when it is not. Batch it with the venv entry below into one kit version rather than re-vendoring twelve repositories twice."
+      "note": "The check has to keep working offline and in a fresh clone, so this cannot be unconditional. An opt-in --verify-prs used by the CI gate, where gh and a token are present, fails closed when the API is reachable and disagrees, and skips with a counted, printed reason when it is not. Batch it with the venv entry below into one kit version rather than re-vendoring twelve repositories twice.",
+      "pr": 18
     },
     {
       "id": "citation-scan-walks-untracked-third-party",
       "title": "The citation check reads code the project did not write",
-      "status": "confirmed-bug",
+      "status": "in-review",
       "assignee": "main-model",
       "userSymptom": "A project can be told it cites a rule that does not exist, by a file it did not write and cannot edit. That reads as a broken check rather than a finding, and the response it invites is to switch the check off.",
       "evidence": "check-rule-citations.mjs skips .venv but not venv, which is the commoner name and is present unignored at towit.io's root — so the walk descends into a whole third-party site-packages tree. Separately, its citation pattern allows any whitespace including newlines between the word and the number, so a wrapped line in a minified bundle reads as a citation: towit.io's vendored AngularJS produced a citation of a rule numbered zero.",
       "reviewBy": "2026-11-01",
-      "note": "Adding vendored paths to the kit's skip list is the wrong fix, since it weakens the check everywhere for one repository's layout — PR #13 exposed rule-sources so a project can scope its own scan instead (V54). Still worth adding venv beside .venv, and worth deciding whether the whitespace class should exclude newlines; a citation genuinely wrapped across two lines of prose is plausible, so measure before tightening."
+      "note": "Adding vendored paths to the kit's skip list is the wrong fix, since it weakens the check everywhere for one repository's layout — PR #13 exposed rule-sources so a project can scope its own scan instead (V54). Still worth adding venv beside .venv, and worth deciding whether the whitespace class should exclude newlines; a citation genuinely wrapped across two lines of prose is plausible, so measure before tightening.",
+      "pr": 18
     },
     {
       "id": "tier-2-evidence-proves-nothing",
       "title": "A project can claim tier 2 without any executed-count assertion running",
-      "status": "confirmed-bug",
+      "status": "in-review",
       "assignee": "main-model",
       "userSymptom": "FLEET.md is the one place to read what each project is actually protected by. Tier 2 says an executed-count assertion is wired to a real test report, and the registry check will confirm that claim for any project that has merely vendored the kit — so the column can overstate protection while the check that guards it stays green.",
       "evidence": "TIER_EVIDENCE[2] in scripts/check-fleet.mjs asks for verification-kit/bin/assert-tests-executed.mjs, which ships in every copy of the kit and is therefore present in every tier-1 project. Six projects now claim tier 2; the online run confirmed all six against a file that proves nothing about wiring. Presence read as behaviour, which is the class V20 names.",
       "reviewBy": "2026-11-01",
-      "note": "Real evidence is in the caller: fetch .github/workflows/*.yml and require the pr-check job to pass a non-empty test-report together with a min-tests above the default of 1. The check already fetches file contents over the API, so this is a content assertion rather than new machinery. It has to keep its tri-state — an API failure must not read as absent. Note the honest awkwardness this exposes: TowIt has a real floor of 49 that no shared assertion can see, because pytest emits no JSON report either check could read, and it is recorded at tier 1 for that reason."
+      "note": "Real evidence is in the caller: fetch .github/workflows/*.yml and require the pr-check job to pass a non-empty test-report together with a min-tests above the default of 1. The check already fetches file contents over the API, so this is a content assertion rather than new machinery. It has to keep its tri-state — an API failure must not read as absent. Note the honest awkwardness this exposes: TowIt has a real floor of 49 that no shared assertion can see, because pytest emits no JSON report either check could read, and it is recorded at tier 1 for that reason.",
+      "pr": 18
     },
     {
       "id": "drift-gate-treats-behind-as-broken",
       "title": "Improving the shared kit turns every project red until thirteen pull requests land",
-      "status": "confirmed-bug",
+      "status": "in-review",
       "assignee": "human",
       "userSymptom": "Fixing one bug in the kit means opening, reviewing and merging thirteen mechanical pull requests, and until the last one lands every other project's CI is red for a reason that has nothing to do with its own code. Measured twice in one night: v0.25.0 and v0.26.0 each cost thirteen.",
       "evidence": "check-kit-drift.mjs fails when a vendored copy does not match the canonical manifest, without distinguishing the two ways that happens. A copy that is *behind* is intact and self-consistent; a copy that has been *edited locally* is a fork pretending to be the shared kit. Only the second is a defect, and the first is the ordinary state of a fleet between an upstream fix and its rollout. Both currently exit 1 with the same instruction.",
       "reviewBy": "2026-10-15",
-      "note": "The fix is a judgement call about how much staleness is tolerable, which is why it is assigned to a person rather than taken tonight. The shape that seems right: compare the vendored version against canonical and fail only on local modification or on being more than one minor version behind, warning in between, so a project can merge its own work the day an upstream fix lands and pick the refresh up on its own schedule. That must not become an excuse for a copy drifting for months — a dated ceiling, per the deferral rule, not an open-ended warning. Worth weighing against the alternative of not vendoring at all: a git submodule or an npm package would make the version a single edit, at the cost of the property that made vendoring attractive, which is that every check runs on plain node with nothing installed."
+      "note": "The fix is a judgement call about how much staleness is tolerable, which is why it is assigned to a person rather than taken tonight. The shape that seems right: compare the vendored version against canonical and fail only on local modification or on being more than one minor version behind, warning in between, so a project can merge its own work the day an upstream fix lands and pick the refresh up on its own schedule. That must not become an excuse for a copy drifting for months — a dated ceiling, per the deferral rule, not an open-ended warning. Worth weighing against the alternative of not vendoring at all: a git submodule or an npm package would make the version a single edit, at the cost of the property that made vendoring attractive, which is that every check runs on plain node with nothing installed.",
+      "pr": 18
     },
     {
       "id": "five-projects-run-tests-with-no-floor",
       "title": "Five projects run a test suite in CI with nothing asserting how much of it ran",
-      "status": "confirmed-bug",
+      "status": "in-review",
       "assignee": "main-model",
       "userSymptom": "A suite that silently stops running looks exactly like a suite that passes. On gorfed.net, denseware.com, gorfmusic.com, ssatcy.com and wychwoodresort.com a spec-selection mistake, a renamed directory or a crashed reporter would take the coverage away and leave the check green, because no step compares the number of tests that executed to anything.",
       "evidence": "Each of the five calls the shared pr-check workflow with a min-tests value and no test-report. verification-gate/action.yml runs the assertion under 'if: inputs.test-report != ''', so the floor they configured has never executed once. Found by the tier-2 content assertion added in this change, which reported all five; their FLEET.md tier is corrected to 1 in the same commit, because the registry must not claim a protection that is not running.",
       "reviewBy": "2026-10-15",
-      "note": "The fix per repo is to emit a JSON reporter alongside the existing run and pass it as test-report with a floor measured from a real green run, then raise the tier back to 2 in fleet.json and let the online audit confirm it. Doing that during the v0.27.0 roll keeps it to one PR per repository. wychwoodresort.com is out of scope for site work by the owner's instruction, so it stays at its true tier rather than being wired."
+      "note": "The fix per repo is to emit a JSON reporter alongside the existing run and pass it as test-report with a floor measured from a real green run, then raise the tier back to 2 in fleet.json and let the online audit confirm it. Doing that during the v0.27.0 roll keeps it to one PR per repository. wychwoodresort.com is out of scope for site work by the owner's instruction, so it stays at its true tier rather than being wired.",
+      "pr": 18
     }
   ]
 }
