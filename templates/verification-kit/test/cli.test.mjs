@@ -99,6 +99,63 @@ describe('assert-tests-executed', () => {
     assert.doesNotMatch(result.stderr, /retry/)
   })
 
+  /*
+   * `test.fail()` — a test asserting that something is broken. Playwright marks
+   * it `expected` with a failed attempt, and the first version of this counted
+   * any failed attempt as a retry, so it reported a passing suite as flaky and a
+   * repository with a budget of 0 would have gone red over tests behaving as
+   * written. Bugbot found this on nine consumer pull requests simultaneously.
+   */
+  it('does not report an expected failure as having needed a retry', () => {
+    const report = writeReport({
+      suites: [
+        {
+          specs: [
+            {
+              file: 'e2e/known-broken.spec.ts',
+              title: 'documents the bug',
+              tests: [{ status: 'expected', results: [{ retry: 0, status: 'failed' }] }],
+            },
+          ],
+        },
+      ],
+    })
+    const result = runCli('assert-tests-executed.mjs', ['--report', report, '--min', '1'])
+    assert.equal(result.status, 0, result.stderr)
+    assert.doesNotMatch(result.stderr, /retry/)
+
+    // And a declared budget of zero must not be spent on it.
+    const budgeted = runCli('assert-tests-executed.mjs', [
+      '--report', report, '--min', '1', '--max-flaky', '0',
+    ])
+    assert.equal(budgeted.status, 0, budgeted.stderr)
+  })
+
+  // The commonest intermittent shape there is, and the first version missed it.
+  it('names a test that timed out and passed on the retry', () => {
+    const report = writeReport({
+      suites: [
+        {
+          specs: [
+            {
+              file: 'e2e/slow.spec.ts',
+              title: 'waits for fonts',
+              tests: [
+                {
+                  status: 'expected',
+                  results: [{ retry: 0, status: 'timedOut' }, { retry: 1, status: 'passed' }],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    })
+    const result = runCli('assert-tests-executed.mjs', ['--report', report, '--min', '1'])
+    assert.equal(result.status, 0, result.stderr)
+    assert.match(result.stderr, /slow\.spec\.ts › waits for fonts \(timedOut then passed\)/)
+  })
+
   // A budget is enforceable only if exceeding it is a failure.
   it('fails once a declared retry budget is exceeded, and passes within it', () => {
     const report = writeReport(flakyReport())
@@ -317,11 +374,20 @@ exit 1
       return { PATH: `${binDir}${delimiter}${process.env.PATH}` }
     }
 
+    /*
+     * GITHUB_REF is cleared unless a case sets it. The checker reads the pull
+     * request under review from that variable, and this suite runs inside every
+     * consumer's gate — so inheriting it means a pull request numbered 7 exempts
+     * the fixture numbered 7 and the kit's own tests fail while the checker is
+     * behaving exactly as written. Bugbot caught it; it is the same class as the
+     * rule about reproducing CI's invocation rather than the command, arriving
+     * from the other direction.
+     */
     function runVerify(dir, env) {
       return spawnSync('node', [bin('check-backlog.mjs'), '--verify-prs', '--repo', 'o/r'], {
         cwd: dir,
         encoding: 'utf8',
-        env: { ...process.env, ...env },
+        env: { ...process.env, GITHUB_REF: '', ...env },
       })
     }
 
@@ -334,6 +400,80 @@ exit 1
       const result = runVerify(dir, env)
       assert.equal(result.status, 0, result.stderr)
       assert.match(result.stdout, /1 of 1 pull request\(s\) agree/)
+    })
+
+    /*
+     * The entry describing the pull request being reviewed. There is no status
+     * that is true on both sides of its own merge, so one form is exempt and the
+     * other is refused where the author can see it. Learned by shipping the
+     * option without this and turning the kit repository's own main red.
+     */
+    describe('the entry for the pull request under review', () => {
+      it('exempts a landed entry naming the pull request under review', () => {
+        const dir = backlogAt({ entries: [entry({ status: 'landed' })] })
+        const env = stubGh(dir, { 'repos/o/r': { full_name: 'o/r' } })
+        const result = runVerify(dir, { ...env, GITHUB_REF: 'refs/pull/7/merge' })
+        assert.equal(result.status, 0, result.stderr)
+        // And says so, rather than reading like a run that checked it.
+        assert.match(result.stdout, /1 exempt as the entry for #7/)
+      })
+
+      it('refuses an in-review entry naming the pull request under review', () => {
+        const dir = backlogAt({ entries: [entry({})] })
+        const env = stubGh(dir, { 'repos/o/r': { full_name: 'o/r' } })
+        const result = runVerify(dir, { ...env, GITHUB_REF: 'refs/pull/7/merge' })
+        assert.equal(result.status, 1)
+        assert.match(result.stderr, /in-review about #7, the pull request under review/)
+        assert.match(result.stderr, /Write landed instead/)
+      })
+
+      it('takes the number explicitly, for callers with no GITHUB_REF', () => {
+        const dir = backlogAt({ entries: [entry({ status: 'landed' })] })
+        const env = stubGh(dir, { 'repos/o/r': { full_name: 'o/r' } })
+        const result = spawnSync(
+          'node',
+          [bin('check-backlog.mjs'), '--verify-prs', '--repo', 'o/r', '--current-pr', '7'],
+          { cwd: dir, encoding: 'utf8', env: { ...process.env, ...env } },
+        )
+        assert.equal(result.status, 0, result.stderr)
+        assert.match(result.stdout, /1 exempt as the entry for #7/)
+      })
+
+      /*
+       * The suite must not care which pull request it happens to be running on.
+       * Every consumer runs these tests in its own gate, so an ambient
+       * GITHUB_REF naming the fixture's number would exempt the fixture and fail
+       * the kit's self-tests on any pull request numbered 7.
+       */
+      it('does not inherit the pull request the suite itself runs on', () => {
+        const previous = process.env.GITHUB_REF
+        process.env.GITHUB_REF = 'refs/pull/7/merge'
+        try {
+          const dir = backlogAt({ entries: [entry({})] })
+          const env = stubGh(dir, {
+            'repos/o/r': { full_name: 'o/r' },
+            'repos/o/r/pulls/7': { state: 'open', merged: false },
+          })
+          const result = runVerify(dir, env)
+          assert.equal(result.status, 0, result.stderr)
+          assert.match(result.stdout, /1 of 1 pull request\(s\) agree/)
+        } finally {
+          if (previous === undefined) delete process.env.GITHUB_REF
+          else process.env.GITHUB_REF = previous
+        }
+      })
+
+      // The exemption is for one pull request, not for the concept of one.
+      it('still checks a landed entry naming a different pull request', () => {
+        const dir = backlogAt({ entries: [entry({ status: 'landed', pr: 4 })] })
+        const env = stubGh(dir, {
+          'repos/o/r': { full_name: 'o/r' },
+          'repos/o/r/pulls/4': { state: 'open', merged: false },
+        })
+        const result = runVerify(dir, { ...env, GITHUB_REF: 'refs/pull/7/merge' })
+        assert.equal(result.status, 1)
+        assert.match(result.stderr, /is landed but PR #4 is open/)
+      })
     })
 
     // The case that motivated the option: two entries in this repository's own

@@ -85,6 +85,15 @@ that is too loose reports coverage that does not exist and nobody ever does. So
 the negative case is the one that has to be written down. A positive test alone
 is not evidence.
 
+The near-miss is rarely exotic; it is usually the legitimate neighbour of the
+thing being detected, which is why it survives review. A flake detector that
+looked for "an attempt that failed" reported every `test.fail()` case — a test
+asserting that something is broken — as intermittent, and shipped to nine
+repositories before Bugbot said so on all nine at once. A rule-citation matcher
+whose project prefix accepted digits read `comprehensive rules 1-2-1-1-1`, a
+game's rulebook section, as citing local rule `1-2`. Both were found by running
+the check somewhere it had never run, not by rereading the pattern.
+
 **V11. Scan for the value, not the syntax that usually surrounds it.** A check
 keyed to one spelling of a call site measures that spelling, not the property.
 Two instances: a key scan matching `key: "…"` saw none of the keys composed as
@@ -470,6 +479,18 @@ would have turned every consumer's routine refresh into the failure reserved for
 a wide gap. A release version has to be settable by the release, so it takes
 `--version` now.
 
+A backlog status is the same shape, and the release that added `--verify-prs`
+proved it by turning this repository's own `main` red at the moment it merged.
+The entry describing the change under review has no status that is true on both
+sides of its own merge: `in-review` is false the moment it merges, and `landed`
+is false while it is open. Without an exemption the default branch is red after
+every merge until somebody opens a follow-up saying a thing landed that everyone
+can see landed. So one form is exempt on its own build and strict everywhere
+after — write `landed` with your own pull request number — and the other is
+refused *on the pull request that introduces it*, where the person who can fix it
+is looking, rather than on the build of whoever pushed next. bindercurve.com
+learned this across five pull requests and the shared checker shipped without it.
+
 **V57. Configuration in the wrong layer reads exactly like configuration.**
 Five projects passed `min-tests: "110"` to the shared gate and no
 `test-report`. The gate runs its assertion under
@@ -509,6 +530,28 @@ frame-count guard in the first spec is the reason this was caught rather than
 believed — an assertion counting bad frames is satisfied by never having
 sampled, so it checked that it had sampled first, and that is what went red.
 
+**V60. A check that reads its authority through a cache reports the cache.**
+The kit-drift check compared each vendored copy against a manifest on
+`raw.githubusercontent.com`, which is CDN-cached for minutes. Three minutes
+after v0.27.0 was published, two consumers read the previous version and
+concluded their own copy was *ahead* of canonical — which the check treats as a
+hard failure, correctly, since a consumer cannot be the source of the kit. The
+answer was impossible and the check believed it.
+
+What makes this worth a number rather than a patch is the lesson it teaches.
+Every red build trains somebody: a check that goes red for a reason unrelated to
+what it guards teaches that the check is noise, and that lesson survives long
+after the cache expires. So an impossible answer gets a second, uncached read
+before it is acted on, and failing to obtain one is still a failure — believing
+the cached read calls a current kit impossible, and ignoring it hides a
+genuinely edited manifest. Fetch the authority from an uncached path, or
+re-confirm before reporting; do not widen the check to accommodate a stale read.
+
+The same release showed the other half of the shape: the two repositories that
+failed were the only two in thirteen that run this check at all. A check that
+most consumers never invoke has no failure mode to speak of, silent or
+otherwise, and the fleet had been reading its absence as health.
+
 ## Provenance
 
 Every rule above was first written in
@@ -543,6 +586,7 @@ sounds like an opinion, because none of them are.
 | — | — | V40 | canary review, 2026-09-08 |
 | — | — | V41–V51 | fleet rollout, 2026-09-08 |
 | — | — | V52–V53 | fleet rollout, 2026-09-09 |
+| — | — | V54–V60 | fleet self-heal, 2026-09-10 |
 
 Three BinderCurve rules are deliberately **not** shared, because they are true
 of that product rather than of verification: rules 23 and 33 concern

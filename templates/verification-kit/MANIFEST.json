@@ -1,14 +1,14 @@
 {
-  "version": "0.27.0",
+  "version": "0.28.0",
   "files": {
     "README.md": "f6a9f0f6b5f12b1a3d746ee19fa805c7e3ed87c2319740f372589da18a77a8d8",
     "bin/assert-checks-started.mjs": "160573859b58680650cf21b7003777337b799c018315a27b0951a9b5e925ece2",
-    "bin/assert-tests-executed.mjs": "ee352c04754485828b64e1f8f8c905878728ea43feae7e18c4e2c71b2c34b06f",
+    "bin/assert-tests-executed.mjs": "0c51a19cb8fa467bd8bf98fbbabb1e349cbe28ce125095fe302039e47f8db6fd",
     "bin/bugbot-review-status.mjs": "466df275d47ebadb46840af76a188241b08db49ab06443c0874d108d6d4f0dad",
-    "bin/check-backlog.mjs": "24e72710bd007ae7959699a59d442799388338994347851617744fa99b028154",
+    "bin/check-backlog.mjs": "341ac2d7e61dcfb0e932aa450e287dc679f6c49304b4cadc0cd91f163b0061bc",
     "bin/check-ci-headroom.mjs": "c53c6278d2f98326495e58a31c3886ca4d6d2aa49d3bbb56143f9756b314f240",
-    "bin/check-kit-drift.mjs": "96f1132d81d6017759741e206bd0018bf934f711104f516ea8b8058346707ed1",
-    "bin/check-rule-citations.mjs": "5a502d1c1dc6f6f4aab16a50b815971013b37cff5ab9e3cda3f74b2e78e6b777",
+    "bin/check-kit-drift.mjs": "f780c9409353997aea0c896f4faa6533523d1d9f73c5fcdb3a1129398babf234",
+    "bin/check-rule-citations.mjs": "c314f01f62a4a19a30ba495e3a25660df0368425bcebc7c3ed5a6a66eb5e1382",
     "bin/check-tracked-artifacts.mjs": "ef4a8e1d674c2d883db4e37781167c9fab1f6a3b0461b16d0a4b067cd1dc6e9c",
     "bin/mutation-canary.mjs": "fafb50a15854c5273e262915baaef4b63328ccb5b631f4a5f3341c0915d0b6e6",
     "bin/refresh-kit.mjs": "2e2a2f2efbf38d85fb04c3c2888453c3643267fedb80608517ecc69ab517a4b9",
@@ -21,11 +21,11 @@
     "test/bugbotConclusion.test.mjs": "90c981ee31d30037c1e21f41b26b4140b2fa0131946a8708cdf7a06119d3c169",
     "test/checksStarted.test.mjs": "a1483848c2653df36101233ace3124cf862cf93d459b798d6c1f4a68c0bdc81d",
     "test/ciHeadroom.test.mjs": "0de9f0e90cdc1fa1a79dcae28f68689502e52acd0aed7bd5cef1d064b6aca96b",
-    "test/cli.test.mjs": "cc82fcd298d973da12da49e64f60e60e38fd785c4bf8637943d0765a68fc65ab",
+    "test/cli.test.mjs": "a54536da8fa569a0aaf1809e6942bc0c1e8ca47569b80772c8d2ad512931e1cd",
     "test/githubSlug.test.mjs": "578c78a4c2c3c6726f1c6be7ee13532d909e6e6de19d18ac6bbaa9ef52bb5b4f",
     "test/isMain.test.mjs": "b5d00295d10a6cd30c4401ace15a13bf118f9f7a65623354c13c4ce3ed5f7989",
-    "test/kitDrift.test.mjs": "2b663f017495ac52690a813e6964672783a5c40ada8e08aad002312336ffd787",
+    "test/kitDrift.test.mjs": "8d48c91377c43bd2271eefaf1dcbee113d019a3bdca60e74d8aa1be77b5ec112",
     "test/mutationCanary.test.mjs": "eab9336a04ab9261a385cb6803c59b8bd5c412dc708560f05b752cbc6ea097ad",
-    "test/ruleCitations.test.mjs": "52380994cb73bbc43aaa711e6c43ba6713a8161016fa90dc1651c98965a94947"
+    "test/ruleCitations.test.mjs": "17fe77b31e1f7c1907675599d2c40bab7a87b1548de1aa47a836721eef76d844"
   }
 }

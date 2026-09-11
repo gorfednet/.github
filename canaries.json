@@ -240,6 +240,54 @@
       "file": "scripts/tier-two-wiring.mjs",
       "find": "const sameBlock = (line, indent) => line.trim() === '' || indentOf(line) >= indent",
       "replace": "const sameBlock = () => true"
+    },
+    {
+      "id": "flake-detector-fires-on-expected-failure",
+      "guards": "A test.fail() case — one asserting something is broken — is not reported as an intermittent failure. Counting any failed attempt as a retry made this check invent flakiness, and a repository with a budget of 0 would go red over tests behaving exactly as written.",
+      "command": "node --test 'templates/verification-kit/test/cli.test.mjs'",
+      "file": "templates/verification-kit/bin/assert-tests-executed.mjs",
+      "find": "if (status === 'flaky' || (failedEarlier && finalAttempt?.status === 'passed')) {",
+      "replace": "if (status === 'flaky' || failedEarlier || finalAttempt?.status === 'failed') {"
+    },
+    {
+      "id": "retry-detector-ignores-a-timeout",
+      "guards": "A test that timed out and passed on the retry is named. The commonest intermittent shape there is, and the first version of the detector looked only for the literal status failed.",
+      "command": "node --test 'templates/verification-kit/test/cli.test.mjs'",
+      "file": "templates/verification-kit/bin/assert-tests-executed.mjs",
+      "find": "attempt.status === 'failed' || attempt.status === 'timedOut'",
+      "replace": "attempt.status === 'failed'"
+    },
+    {
+      "id": "citation-prefix-accepts-a-bare-digit",
+      "guards": "A rulebook section number such as comprehensive rules 1-2-1-1-1 is not read as citing local rule 1-2. A project prefix has a letter in it; a run of digits separated by hyphens is prose.",
+      "command": "node --test 'templates/verification-kit/test/ruleCitations.test.mjs'",
+      "file": "templates/verification-kit/bin/check-rule-citations.mjs",
+      "find": "((?:[A-Z0-9]*[A-Z][A-Z0-9]*-)?\\d+|V\\d+)",
+      "replace": "((?:[A-Z0-9]+-)?\\d+|V\\d+)"
+    },
+    {
+      "id": "drift-believes-a-cached-read",
+      "guards": "An impossible answer — a consumer ahead of canonical — is confirmed against an uncached read before it fails the build. Two repositories went red three minutes after a release because the CDN had not caught up, and a check that reddens for a reason unrelated to what it guards teaches that the check is noise.",
+      "command": "node --test 'templates/verification-kit/test/kitDrift.test.mjs'",
+      "file": "templates/verification-kit/bin/check-kit-drift.mjs",
+      "find": "if (gap !== 'ahead') {",
+      "replace": "if (false) {"
+    },
+    {
+      "id": "verify-prs-has-no-exemption-for-its-own-pr",
+      "guards": "The entry describing the pull request under review is exempt when written as landed, and refused when written as in-review. Without this there is no honest status for that entry: in-review is false the moment it merges and landed is false while it is open, so the default branch goes red after every merge and the gate stops being one.",
+      "command": "node --test 'templates/verification-kit/test/cli.test.mjs'",
+      "file": "templates/verification-kit/bin/check-backlog.mjs",
+      "find": "entry.pr !== currentPr,",
+      "replace": "true,"
+    },
+    {
+      "id": "citation-prefix-must-start-with-a-letter",
+      "guards": "A local prefix may contain a letter without beginning with one. 4thcltr.com uses 4C, so requiring a leading letter skipped its citations entirely — reporting that every citation resolves, which is the worse of the two directions a coverage matcher can fail in.",
+      "command": "node --test 'templates/verification-kit/test/ruleCitations.test.mjs'",
+      "file": "templates/verification-kit/bin/check-rule-citations.mjs",
+      "find": "(?:[A-Z0-9]*[A-Z][A-Z0-9]*-)?",
+      "replace": "(?:[A-Z][A-Z0-9]*-)?"
     }
   ]
 }

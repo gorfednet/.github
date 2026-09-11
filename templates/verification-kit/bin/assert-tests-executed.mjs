@@ -92,13 +92,29 @@ function tallyPlaywright(node, counts) {
        * so a name plus "failed then passed" is enough to go and look.
        */
       const attempts = testCase.results ?? []
-      if (status === 'flaky' || attempts.filter((a) => a.status === 'failed').length > 0) {
-        if (status !== 'unexpected') {
-          counts.retried.push({
-            name: `${spec.file ?? node.file ?? '?'} › ${spec.title ?? '?'}`,
-            attempts: attempts.map((a) => a.status ?? 'unknown'),
-          })
-        }
+
+      /*
+       * A retry that *passed*, which is the narrow thing the exit code hides —
+       * not merely "an attempt failed". Playwright marks a `test.fail()` case
+       * `expected` with a failed attempt, so counting any failed attempt makes
+       * this check report intermittency that does not exist, and a repository
+       * with a `--max-flaky` budget would go red over tests behaving exactly as
+       * written. Bugbot found that on nine consumer pull requests at once.
+       *
+       * The evidence for a retry is an earlier attempt that failed or timed out
+       * and a final attempt that passed. `timedOut` matters as much as `failed`
+       * and the first version of this missed it, which would have hidden the
+       * most common intermittent shape there is.
+       */
+      const finalAttempt = attempts[attempts.length - 1]
+      const failedEarlier = attempts
+        .slice(0, -1)
+        .some((attempt) => attempt.status === 'failed' || attempt.status === 'timedOut')
+      if (status === 'flaky' || (failedEarlier && finalAttempt?.status === 'passed')) {
+        counts.retried.push({
+          name: `${spec.file ?? node.file ?? '?'} › ${spec.title ?? '?'}`,
+          attempts: attempts.map((a) => a.status ?? 'unknown'),
+        })
       }
     }
   }

@@ -62,6 +62,34 @@ function stubCurl(dir, { fail = false } = {}) {
   return { PATH: `${binDir}${delimiter}${process.env.PATH}` }
 }
 
+/*
+ * The same, except that the API URL — the uncached second opinion — answers
+ * differently from the CDN. This is the shape of the real incident: canonical
+ * had already moved, raw.githubusercontent had not caught up.
+ */
+function stubCurlStaleCdn(dir, { uncached, fail = false } = {}) {
+  const binDir = join(dir, 'stub-bin')
+  mkdirSync(binDir, { recursive: true })
+  if (uncached !== undefined) {
+    writeFileSync(join(dir, 'uncached.json'), JSON.stringify(uncached), 'utf8')
+  }
+  const onApi = fail
+    ? 'echo "curl: (22) The requested URL returned error: 403" >&2; exit 22'
+    : `cat "${join(dir, 'uncached.json')}"; exit 0`
+  const script = `#!/bin/sh
+for arg in "$@"; do
+  case "$arg" in
+    *api.github.com*) ${onApi} ;;
+  esac
+done
+cat "${join(dir, 'canonical.json')}"
+`
+  const path = join(binDir, 'curl')
+  writeFileSync(path, script, 'utf8')
+  chmodSync(path, 0o755)
+  return { PATH: `${binDir}${delimiter}${process.env.PATH}` }
+}
+
 function run(dir, args = [], env = {}) {
   return spawnSync('node', [CHECKER, ...args], {
     cwd: dir,
@@ -254,6 +282,52 @@ describe('check-kit-drift', () => {
       assert.match(result.stderr, /ahead of canonical/)
     })
 
+    /*
+     * The incident this pair exists for. Three minutes after v0.27.0 merged,
+     * two consumers failed with "ahead of canonical": raw.githubusercontent is
+     * cached for minutes and still served the previous version. The only two
+     * repositories in the fleet that run this check were the only two that saw
+     * it, which is the wrong lesson to teach about a check.
+     */
+    it('does not fail on being ahead when only the cached read said so', () => {
+      const dir = project({
+        version: '1.1.0',
+        upstream: { version: '1.0.0', files: { 'bin/a.mjs': sha('a\n// older upstream\n') } },
+      })
+      const result = run(dir, [], stubCurlStaleCdn(dir, {
+        uncached: { version: '1.1.0', files: { 'bin/a.mjs': sha('a\n'), 'lib/b.mjs': sha('b\n') } },
+      }))
+      assert.equal(result.status, 0, result.stderr)
+      assert.match(result.stderr, /cached canonical manifest was stale/)
+      assert.match(result.stderr, /v1\.0\.0 now reads v1\.1\.0/)
+      // And it must not print the tick that a confirmed-current kit prints.
+      assert.doesNotMatch(result.stdout, /matching canonical/)
+    })
+
+    it('still fails on being ahead once the uncached read agrees', () => {
+      const dir = project({
+        version: '1.1.0',
+        upstream: { version: '1.0.0', files: { 'bin/a.mjs': sha('a\n// older upstream\n') } },
+      })
+      const result = run(dir, [], stubCurlStaleCdn(dir, {
+        uncached: { version: '1.0.0', files: { 'bin/a.mjs': sha('a\n// older upstream\n') } },
+      }))
+      assert.equal(result.status, 1)
+      assert.match(result.stderr, /ahead of canonical/)
+    })
+
+    // Fail closed: an unconfirmable impossible answer is not a pass.
+    it('fails when the second opinion cannot be read at all', () => {
+      const dir = project({
+        version: '1.1.0',
+        upstream: { version: '1.0.0', files: { 'bin/a.mjs': sha('a\n// older upstream\n') } },
+      })
+      const result = run(dir, [], stubCurlStaleCdn(dir, { fail: true }))
+      assert.equal(result.status, 1)
+      assert.match(result.stderr, /could not be confirmed/)
+      assert.match(result.stderr, /CDN-cached/)
+    })
+
     // Distance is measured from versions, so an unreadable one means the
     // question cannot be answered — which is a failure, not a shrug.
     it('fails when a version is not major.minor.patch', () => {
@@ -359,12 +433,24 @@ describe('write-manifest --check', () => {
   // flag necessary.
   it('bumps the minor once per run when content changed', () => {
     const writer = writerCopy()
+
+    /*
+     * Derived from the manifest rather than written down. Hard-coding the two
+     * expected versions made this test fail on the next release for a reason
+     * that had nothing to do with what it asserts — one bump per run — which is
+     * the same lesson as V60 in miniature: a test that reddens for an unrelated
+     * reason teaches that the suite is noise.
+     */
+    const at = (n) => new RegExp(`at v0\\.${n}\\.0`)
+    const { version } = JSON.parse(readFileSync(join(writer, '..', '..', 'MANIFEST.json'), 'utf8'))
+    const minor = Number(/^\d+\.(\d+)\./.exec(version)[1])
+
     writeFileSync(join(writer, '..', 'nudge.mjs'), '// one\n', 'utf8')
     const first = spawnSync('node', [writer], { encoding: 'utf8' })
-    assert.match(first.stdout, /at v0\.28\.0/)
+    assert.match(first.stdout, at(minor + 1))
     writeFileSync(join(writer, '..', 'nudge.mjs'), '// two\n', 'utf8')
     const second = spawnSync('node', [writer], { encoding: 'utf8' })
-    assert.match(second.stdout, /at v0\.29\.0/)
+    assert.match(second.stdout, at(minor + 2))
   })
 
   it('is not vacuous: the manifest it checks lists every bin and lib file', () => {
