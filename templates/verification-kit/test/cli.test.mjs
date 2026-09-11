@@ -62,6 +62,76 @@ describe('assert-tests-executed', () => {
     assert.equal(result.status, 0, result.stderr)
   })
 
+  /*
+   * A retry that passes. Playwright exits 0, the aggregate line says
+   * "flaky: 1", and the name of the test is nowhere — so an intermittent
+   * failure is visible only to somebody who downloads the JSON report and
+   * reads `retry` fields. The fixture below is the shape a real run produces,
+   * taken from one built on purpose: status "flaky", one failed attempt then a
+   * passed one.
+   */
+  const flakyReport = (title = 'holds the anchor') => ({
+    suites: [
+      {
+        specs: [
+          {
+            file: 'e2e/regenerate-scroll.spec.ts',
+            title,
+            tests: [{ status: 'flaky', results: [{ retry: 0, status: 'failed' }, { retry: 1, status: 'passed' }] }],
+          },
+        ],
+      },
+    ],
+  })
+
+  it('names the test that only passed on a retry', () => {
+    const report = writeReport(flakyReport())
+    const result = runCli('assert-tests-executed.mjs', ['--report', report, '--min', '1'])
+    assert.equal(result.status, 0, result.stderr)
+    assert.match(result.stderr, /passed only on a retry/)
+    assert.match(result.stderr, /regenerate-scroll\.spec\.ts › holds the anchor \(failed then passed\)/)
+  })
+
+  it('says nothing about retries when there were none', () => {
+    const report = writeReport(playwright(['passed', 'passed']))
+    const result = runCli('assert-tests-executed.mjs', ['--report', report, '--min', '2'])
+    assert.equal(result.status, 0, result.stderr)
+    assert.doesNotMatch(result.stderr, /retry/)
+  })
+
+  // A budget is enforceable only if exceeding it is a failure.
+  it('fails once a declared retry budget is exceeded, and passes within it', () => {
+    const report = writeReport(flakyReport())
+    const over = runCli('assert-tests-executed.mjs', ['--report', report, '--min', '1', '--max-flaky', '0'])
+    assert.equal(over.status, 1)
+    assert.match(over.stderr, /budget is 0/)
+    assert.match(over.stderr, /regenerate-scroll\.spec\.ts › holds the anchor/)
+
+    const within = runCli('assert-tests-executed.mjs', ['--report', report, '--min', '1', '--max-flaky', '1'])
+    assert.equal(within.status, 0, within.stderr)
+  })
+
+  // A test that failed every attempt is a failure, not a retry to report.
+  it('does not report a test that never passed as having needed a retry', () => {
+    const report = writeReport({
+      suites: [
+        {
+          specs: [
+            {
+              file: 'e2e/broken.spec.ts',
+              title: 'always fails',
+              tests: [
+                { status: 'unexpected', results: [{ retry: 0, status: 'failed' }, { retry: 1, status: 'failed' }] },
+              ],
+            },
+          ],
+        },
+      ],
+    })
+    const result = runCli('assert-tests-executed.mjs', ['--report', report, '--min', '1'])
+    assert.doesNotMatch(result.stderr, /passed only on a retry/)
+  })
+
   it('reads Vitest reports as well as Playwright ones', () => {
     const report = writeReport({
       numTotalTests: 10,

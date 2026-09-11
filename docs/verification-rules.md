@@ -453,6 +453,62 @@ server. Assert it where it can be observed: a live probe of the forbidden paths,
 failing on anything under 400, and treating an unreachable host as unknown
 rather than as withheld.
 
+**V56. One verdict for two situations means both get the wrong response.**
+The kit's drift checker had a single failure for "you edited the vendored copy"
+and "canonical moved on since you vendored", which need opposite responses —
+one is a repair, the other is a routine refresh. Because the second is far
+commoner, the fleet learned to read the checker's red as noise, which is
+precisely the state in which the first goes unnoticed. Split the verdict along
+the response: fail on local modification, warn and exit 0 one release behind,
+fail again once the gap is wide enough to matter. Then the leniency needs a
+date, or it becomes permanent by accident (V51) — this one expires 2026-12-15,
+and the checker reads an override so the expiry is reachable from a test rather
+than only from the calendar. Splitting the verdict then puts weight on the
+number it splits on: the manifest writer bumped the minor version once per *run*,
+and finishing this change over three runs published two extra minors, which
+would have turned every consumer's routine refresh into the failure reserved for
+a wide gap. A release version has to be settable by the release, so it takes
+`--version` now.
+
+**V57. Configuration in the wrong layer reads exactly like configuration.**
+Five projects passed `min-tests: "110"` to the shared gate and no
+`test-report`. The gate runs its assertion under
+`if: inputs.test-report != ''`, so the floor they had configured never executed
+once — and the number sat in the workflow where a reviewer looks for a floor,
+which is worse than its absence. The registry meanwhile evidenced tier 2 by the
+presence of `verification-kit/bin/assert-tests-executed.mjs`, a file every
+consumer of the kit has, so the claim was confirmed for all six by a check that
+distinguished nothing (V20). Two lessons. Evidence must be a property only the
+working configuration has — read the caller's workflow and require the report
+*and* a floor above the default — and a conditional step in a shared action
+should say out loud when it declines to run, because a silent skip is
+indistinguishable from a pass.
+
+**V58. A retry that passes is an intermittent failure the exit code hides.**
+Playwright exits 0 when a test fails and passes on a retry, and prints
+`flaky: 1` — a count with no name, so the one fact needed to act on it is the
+one fact absent. A gorfed.net run sat green for weeks on exactly that, findable
+only by downloading the JSON report and reading `retry` fields by hand. Report
+retried tests by name from whatever already parses the report, and make a
+budget enforceable rather than implicit: without a declared number the honest
+default is to report, because turning every retry red across a fleet is a
+separate decision from being able to see them.
+
+**V59. A test that passes against the unfixed code is not coverage.**
+Two findings on 4thcltr.com's scroll anchor were correct as code — a late
+correction guarded on a flag that was always set, and a correction inheriting
+`scroll-behavior: smooth` — and both were fixed. Two specs were then written for
+them, one sampling drift across the reflow and one delaying
+`fonts.googleapis.com` by 1200ms, and both passed against the unfixed build:
+instrumentation showed the large correction lands inside the two-frame window
+where instant is already forced, and the one outside it is a pixel. Deleting
+both was the right move. A defensive fix with the measurement written into the
+comment is honest; the same fix with a test that cannot fail is worse than
+having neither, because the test is what future readers will trust. The
+frame-count guard in the first spec is the reason this was caught rather than
+believed — an assertion counting bad frames is satisfied by never having
+sampled, so it checked that it had sampled first, and that is what went red.
+
 ## Provenance
 
 Every rule above was first written in

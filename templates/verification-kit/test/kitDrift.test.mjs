@@ -9,7 +9,7 @@
  */
 import { strict as assert } from 'node:assert'
 import { spawnSync } from 'node:child_process'
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync, readFileSync } from 'node:fs'
+import { chmodSync, cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync, readFileSync } from 'node:fs'
 import { createHash } from 'node:crypto'
 import { tmpdir } from 'node:os'
 import { delimiter, join } from 'node:path'
@@ -321,6 +321,50 @@ describe('write-manifest --check', () => {
   it('agrees with the kit as committed', () => {
     const result = spawnSync('node', [WRITER, '--check'], { encoding: 'utf8' })
     assert.equal(result.status, 0, result.stderr)
+  })
+
+  /*
+   * The automatic bump counts runs, not releases. Finishing v0.27.0 over three
+   * runs published v0.29.0 — and with the drift checker failing above one minor
+   * behind, that difference is the difference between every consumer warning and
+   * every consumer red.
+   */
+  /*
+   * The writer resolves the kit from its own location, so these run against a
+   * copy. Writing to the real manifest from a test would leave the working tree
+   * changed by having run the suite.
+   */
+  const writerCopy = () => {
+    const dir = mkdtempSync(join(tmpdir(), 'writer-'))
+    workspaces.push(dir)
+    cpSync(fileURLToPath(new URL('..', import.meta.url)), dir, { recursive: true })
+    return join(dir, 'bin', 'write-manifest.mjs')
+  }
+
+  it('takes an explicit release version', () => {
+    const result = spawnSync('node', [writerCopy(), '--version', '9.9.9'], { encoding: 'utf8' })
+    assert.equal(result.status, 0, result.stderr)
+    assert.match(result.stdout, /at v9\.9\.9/)
+  })
+
+  it('refuses a version that is not MAJOR.MINOR.PATCH', () => {
+    for (const bad of ['v1.2.3', '1.2', 'next']) {
+      const result = spawnSync('node', [writerCopy(), '--version', bad], { encoding: 'utf8' })
+      assert.equal(result.status, 1, `expected refusal of ${bad}`)
+      assert.match(result.stderr, /MAJOR\.MINOR\.PATCH/)
+    }
+  })
+
+  // Without an explicit version the bump counts runs, which is what made the
+  // flag necessary.
+  it('bumps the minor once per run when content changed', () => {
+    const writer = writerCopy()
+    writeFileSync(join(writer, '..', 'nudge.mjs'), '// one\n', 'utf8')
+    const first = spawnSync('node', [writer], { encoding: 'utf8' })
+    assert.match(first.stdout, /at v0\.28\.0/)
+    writeFileSync(join(writer, '..', 'nudge.mjs'), '// two\n', 'utf8')
+    const second = spawnSync('node', [writer], { encoding: 'utf8' })
+    assert.match(second.stdout, /at v0\.29\.0/)
   })
 
   it('is not vacuous: the manifest it checks lists every bin and lib file', () => {

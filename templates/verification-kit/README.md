@@ -66,7 +66,19 @@ be true of a second project, add a `V` entry that cites it; the local rule
 stays where it is so its citations keep resolving.
 
 `check-rule-citations.mjs` holds both sequences gapless and every citation
-resolvable.
+resolvable. A citation is a number on the same line as the word "rule", so
+prose that ends a sentence in "rules" above a line beginning with a digit is not
+one.
+
+## Backlog
+
+`check-backlog.mjs` validates the schema and the dates. Pass `--verify-prs`
+where a token is available and it also asks GitHub whether each entry is true:
+an entry saying `in-review` against a merged pull request, `landed` against an
+open one, or either against a number that does not exist. It needs `--repo
+owner/name`, distinguishes a missing pull request from a repository the token
+cannot see, and when GitHub is unreachable it says how many entries it skipped
+rather than passing quietly.
 
 Then, in CI, after whatever step produces a test report:
 
@@ -79,7 +91,13 @@ Then, in CI, after whatever step produces a test report:
 ```
 
 Pick `--min` from what the job runs today, minus nothing. A floor set below the
-real count tolerates exactly the silent decay it is meant to catch.
+real count tolerates exactly the silent decay it is meant to catch. A floor of
+`1` is not a floor: it is satisfied by the one test that still runs.
+
+If the report is Playwright's, this also names any test that failed and passed
+on a retry, which the exit code hides and the summary reduces to a count
+(rule 58). Add `--max-flaky <n>` to make that a budget the job enforces rather
+than a line somebody has to read.
 
 ## Staying current
 
@@ -93,12 +111,16 @@ node verification-kit/bin/check-kit-drift.mjs   # in CI, on every run
 node verification-kit/bin/refresh-kit.mjs       # what a drift failure tells you to run
 ```
 
-It reports two different problems, because the fixes differ. **Edited here**
-means someone changed a copied file: upstream it, or move the change into a
-project-local script outside `verification-kit/`. **Stale** means upstream
-moved, and every named file is a fix or a rule this project is not getting —
-read the upstream commit, because a kit change usually means a new class of bug
-was found somewhere else in the fleet.
+It reports three different situations, because the responses differ
+(rule 56). **Edited here** means someone changed a copied file, and **fails**:
+upstream it, or move the change into a project-local script outside
+`verification-kit/`. **One release behind** **warns and exits 0** — every named
+file is a fix or a rule this project is not getting, so read the upstream commit,
+but a routine refresh should not stop unrelated work. **More than one minor
+release behind** fails again, and so does being behind at all once the tolerance
+expires on 2026-12-15, because an undated leniency becomes permanent by accident.
+Being *ahead* of canonical fails too: it means the kit was edited here and
+version-bumped, which the hash comparison alone would read as staleness.
 
 Local integrity is checked without a network. Staleness needs one, and **fails
 closed** when it cannot reach the canonical manifest: a check that reports
