@@ -162,6 +162,26 @@ nas_ssh_rsync_to() {
   if [[ "$#" -gt 1 ]]; then
     caller_args=("${@:1:$#-1}")
   fi
+  # rsync refuses --partial-dir together with --inplace, and this helper always
+  # adds --inplace, so a caller passing one gets a usage error and a deploy that
+  # sends nothing. ssatcy.com's own rsync had that pair, and the flag conflict
+  # was the whole failure: every deploy from that repository would have stopped
+  # before transferring a byte. Saying so here costs one line and saves reading
+  # rsync's message and guessing which side added the other flag.
+  local caller_arg
+  for caller_arg in ${caller_args[@]+"${caller_args[@]}"}; do
+    case "${caller_arg}" in
+      --partial-dir | --partial-dir=*)
+        cat >&2 <<EOF
+${caller_arg} cannot be used here: this helper always passes --inplace, and rsync
+rejects that combination outright, so the deploy would fail before sending
+anything. --inplace makes a partial directory redundant — an interrupted
+transfer resumes into the same file. Remove the flag.
+EOF
+        return 2
+        ;;
+    esac
+  done
   local rsync_shell
   rsync_shell="$(nas_ssh_rsync_shell)"
   local rsync_options=()

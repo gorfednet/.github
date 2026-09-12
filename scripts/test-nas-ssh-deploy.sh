@@ -271,6 +271,23 @@ rsync() {
   captured_arguments=("$@")
 }
 
+# The flag pair rsync refuses. ssatcy.com's own transport passed --partial-dir,
+# and adding --inplace there stopped its deploys before a byte moved: rsync
+# rejects the combination as a usage error. A caller passing it here must be told
+# which flag to remove, not left reading rsync's message and guessing which side
+# added the other one.
+captured_arguments=()
+if nas_ssh_rsync_to "dev@host:/websites/example" -rlt --partial-dir=.rsync-partial \
+    "${source_dir}/" >/dev/null 2>&1; then
+  fail "--partial-dir with the helper's --inplace must be refused; rsync rejects the pair and the deploy sends nothing"
+fi
+[[ "${#captured_arguments[@]}" -eq 0 ]] ||
+  fail "the conflicting flags must be caught before rsync runs, not after"
+conflict_message="$(nas_ssh_rsync_to "dev@host:/websites/example" -rlt --partial-dir \
+  "${source_dir}/" 2>&1 || true)"
+[[ "${conflict_message}" == *"--inplace"* && "${conflict_message}" == *"Remove the flag"* ]] ||
+  fail "the refusal must name --inplace as the reason and say what to do: ${conflict_message}"
+
 unset -f curl sleep
 
 echo "NAS SSH deploy permission contract tests passed."
