@@ -16,6 +16,19 @@ import { fileURLToPath } from 'node:url'
 
 const GUARD = join(dirname(fileURLToPath(import.meta.url)), '..', 'scripts', 'no-smb-guard.sh')
 
+// Named rather than skipped. The guard shells out to ripgrep and exits 2 without it,
+// so every case below would fail as `2 !== 1` and read as broken behaviour instead of
+// a missing tool — which is exactly what happened on the runner, whose image does not
+// ship ripgrep and whose job did not install it. A skip here would have been worse:
+// the suite would have gone green having tested nothing.
+if (spawnSync('rg', ['--version']).status !== 0) {
+  throw new Error(
+    'ripgrep is required to test the share-mount guard, which shells out to it. ' +
+      'Install it in the workflow (see .github/workflows/verification-kit.yml) ' +
+      'rather than skipping these cases.',
+  )
+}
+
 function scan(files) {
   const root = mkdtempSync(join(tmpdir(), 'smb-guard-'))
   try {

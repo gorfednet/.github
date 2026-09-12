@@ -26,6 +26,22 @@ jobs:
         with:
           node-version: '22'
 
+      # The share-mount guard shells out to ripgrep, so its behavioural test cannot
+      # run without it and reports the guard's "rg required" exit instead of the
+      # behaviour under test. The composite action installs ripgrep for consumers;
+      # this job runs the same guard directly and needs it too. Same shape as
+      # .github/actions/no-smb-guard: the index refresh may be partially bad
+      # (the runner image ships a Chrome source this build has no use for), the
+      # install may not.
+      - name: Install ripgrep
+        run: |
+          set -euo pipefail
+          if ! command -v rg >/dev/null 2>&1; then
+            sudo apt-get update -qq || echo "apt-get update reported errors; continuing"
+            sudo apt-get install -y -qq ripgrep
+          fi
+          rg --version | head -1
+
       - name: Unit and behavioural tests
         run: |
           node --test --test-reporter=spec \
