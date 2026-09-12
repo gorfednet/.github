@@ -370,6 +370,30 @@
       "replace": "  :"
     },
     {
+      "id": "shared-rules-document-goes-unhashed",
+      "guards": "The drift check compares the shared documents the kit distributes from outside its own directory. Without it nothing hashed docs/verification-rules.md at all: bindercurve.com's copy held two rules canonical did not have — numbered in the shared sequence, which the next fleet rule then collided with — and was missing paragraphs canonical did have, while its drift check printed a tick.",
+      "command": "node --test 'templates/verification-kit/test/kitDrift.test.mjs'",
+      "file": "templates/verification-kit/bin/check-kit-drift.mjs",
+      "find": "  if (companionProblems.length > 0 && vendored.version === canonical.version) {",
+      "replace": "  if (false && companionProblems.length > 0 && vendored.version === canonical.version) {"
+    },
+    {
+      "id": "refresh-leaves-the-shared-document-behind",
+      "guards": "refresh-kit writes the shared documents as well as the kit files. It is the remedy every drift message prints, so a refresh that only writes kit files leaves the failure it was named for in place — a remedy that cannot reach green is decoration.",
+      "command": "node --test 'templates/verification-kit/test/kitDrift.test.mjs'",
+      "file": "templates/verification-kit/bin/refresh-kit.mjs",
+      "find": "  writeFileSync(target, fetchText(`${RAW_ROOT}/${rel}`), 'utf8')",
+      "replace": "  void target"
+    },
+    {
+      "id": "manifest-omits-a-shared-document",
+      "guards": "write-manifest refuses to write a manifest that omits a named shared document. Omitting one silently is a document the whole fleet stops comparing, and the omission looks exactly like having nothing to compare.",
+      "command": "node --test 'templates/verification-kit/test/kitDrift.test.mjs'",
+      "file": "templates/verification-kit/bin/write-manifest.mjs",
+      "find": "    if (!existsSync(path)) {\n      // Fail rather than omit.",
+      "replace": "    if (!existsSync(path)) { continue } else if (false) {\n      // Fail rather than omit."
+    },
+    {
       "id": "citations-repoint-when-a-local-list-appears",
       "guards": "A bare `rule 12` cites the shared document whether or not the project also keeps local rules. When it addressed whichever list the project numbered its own rules in, adopting a local prefix silently rewrote every citation already in the repository: bindercurve.com added two local rules and 34 citations across six files stopped resolving in one commit.",
       "command": "node --test 'templates/verification-kit/test/ruleCitations.test.mjs'",
