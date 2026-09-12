@@ -173,6 +173,77 @@ describe('check-kit-drift', () => {
       assert.match(result.stdout, /matching canonical v1\.0\.0/)
     })
 
+    /*
+     * The shared rules document. It is distributed by the kit, cited from code in
+     * every project, and lived outside the kit directory — so the manifest never
+     * named it and nothing compared it. bindercurve.com's copy held two rules
+     * canonical did not have, numbered in the shared sequence it does not own, and
+     * the drift check printed a tick throughout.
+     */
+    describe('shared documents outside the kit directory', () => {
+      const rules = '# Verification rules\n\n**V1. A rule.** Because it broke once.\n'
+      const withCompanion = { ...current, companions: { 'docs/verification-rules.md': sha(rules) } }
+
+      const withRules = (contents) => {
+        const dir = project({ upstream: withCompanion })
+        mkdirSync(join(dir, 'docs'), { recursive: true })
+        if (contents !== null) writeFileSync(join(dir, 'docs/verification-rules.md'), contents, 'utf8')
+        return dir
+      }
+
+      it('passes and says so when the copy matches canonical', () => {
+        const dir = withRules(rules)
+        const result = run(dir, [], stubCurl(dir))
+        assert.equal(result.status, 0, result.stderr)
+        assert.match(result.stdout, /1 shared document\(s\), matching canonical v1\.0\.0/)
+      })
+
+      it('fails when this project has edited it, at the same version', () => {
+        const dir = withRules(`${rules}\n**V2. A rule this project gave itself.** Because.\n`)
+        const result = run(dir, [], stubCurl(dir))
+        assert.equal(result.status, 1)
+        assert.match(result.stderr, /differs here\s+docs\/verification-rules\.md/)
+        // And it says where a project's own rules belong instead.
+        assert.match(result.stderr, /verification-rules\.local\.md/)
+        assert.match(result.stderr, /refresh-kit\.mjs/)
+      })
+
+      it('fails when the project does not have it at all', () => {
+        const dir = withRules(null)
+        const result = run(dir, [], stubCurl(dir))
+        assert.equal(result.status, 1)
+        assert.match(result.stderr, /missing\s+docs\/verification-rules\.md/)
+      })
+
+      /*
+       * While a roll is in flight most of the fleet is one release behind, and
+       * every one of those copies differs for a legitimate reason. Failing them
+       * here would turn a shared improvement into thirteen red repositories, which
+       * is the same reasoning that makes a one-minor version gap a warning.
+       */
+      it('tolerates a difference while the kit is a release behind', () => {
+        const dir = project({
+          upstream: {
+            version: '1.1.0',
+            files: { ...current.files, 'bin/a.mjs': sha('a\n// fixed upstream\n') },
+            companions: { 'docs/verification-rules.md': sha(`${rules}\n**V2. Added upstream.** Because.\n`) },
+          },
+        })
+        mkdirSync(join(dir, 'docs'), { recursive: true })
+        writeFileSync(join(dir, 'docs/verification-rules.md'), rules, 'utf8')
+        const result = run(dir, [], stubCurl(dir))
+        assert.equal(result.status, 0, result.stderr)
+        assert.match(result.stderr, /Vendored v1\.0\.0, upstream v1\.1\.0/)
+      })
+
+      it('does not claim to have compared them offline', () => {
+        const dir = withRules(rules)
+        const result = run(dir, ['--offline'])
+        assert.equal(result.status, 0, result.stderr)
+        assert.match(result.stdout, /did NOT compare the/)
+      })
+    })
+
     it('warns when upstream changed a file one release ago, naming the file and both versions', () => {
       const dir = project({
         upstream: { version: '1.1.0', files: { ...current.files, 'bin/a.mjs': sha('a\n// fixed upstream\n') } },
@@ -387,6 +458,75 @@ describe('check-kit-drift', () => {
   })
 })
 
+/*
+ * refresh-kit is the remedy every message above prints, and until now nothing
+ * ran it — its behaviour was asserted only as a string in somebody else's error
+ * text. A remedy that cannot reach green is decoration, and that is exactly what
+ * it would have become when the drift check started comparing shared documents:
+ * it wrote kit files only, so following the printed advice would have left the
+ * failure in place.
+ */
+describe('refresh-kit', () => {
+  const REFRESHER = fileURLToPath(new URL('../bin/refresh-kit.mjs', import.meta.url))
+  const PREFIX = 'https://raw.githubusercontent.com/gorfednet/.github/main/'
+
+  /** A stub curl that serves an upstream tree by URL path. */
+  function upstreamTree(dir, tree) {
+    const raw = join(dir, 'raw')
+    for (const [rel, contents] of Object.entries(tree)) {
+      const path = join(raw, rel)
+      mkdirSync(join(path, '..'), { recursive: true })
+      writeFileSync(path, contents, 'utf8')
+    }
+    const binDir = join(dir, 'stub-bin')
+    mkdirSync(binDir, { recursive: true })
+    const script = `#!/bin/sh
+for arg in "$@"; do
+  case "$arg" in
+    ${PREFIX}*) rest=\${arg#${PREFIX}}; cat "${raw}/$rest" || exit 22 ;;
+  esac
+done
+`
+    const path = join(binDir, 'curl')
+    writeFileSync(path, script, 'utf8')
+    chmodSync(path, 0o755)
+    return { PATH: `${binDir}${delimiter}${process.env.PATH}` }
+  }
+
+  it('writes the shared documents as well as the kit, so the printed remedy reaches green', () => {
+    const rules = '# Verification rules\n\n**V1. A rule.** Because it broke once.\n'
+    const fixed = 'a\n// fixed upstream\n'
+    const upstream = {
+      version: '2.0.0',
+      files: { 'bin/a.mjs': sha(fixed), 'lib/b.mjs': sha('b\n') },
+      companions: { 'docs/verification-rules.md': sha(rules) },
+    }
+
+    const dir = project({ upstream })
+    const env = upstreamTree(dir, {
+      'templates/verification-kit/MANIFEST.json': JSON.stringify(upstream),
+      'templates/verification-kit/bin/a.mjs': fixed,
+      'templates/verification-kit/lib/b.mjs': 'b\n',
+      'docs/verification-rules.md': rules,
+    })
+
+    const refreshed = spawnSync('node', [REFRESHER], { cwd: dir, encoding: 'utf8', env: { ...process.env, ...env } })
+    assert.equal(refreshed.status, 0, refreshed.stderr)
+    assert.match(refreshed.stdout, /1 shared document\(s\)/)
+    assert.equal(readFileSync(join(dir, 'verification-kit/bin/a.mjs'), 'utf8'), fixed)
+    assert.equal(
+      readFileSync(join(dir, 'docs/verification-rules.md'), 'utf8'),
+      rules,
+      'the shared rules document must be written; the drift check compares it and prints this command as the fix',
+    )
+
+    // The property that matters: after following the remedy, the check passes.
+    const after = run(dir, [], stubCurl(dir))
+    assert.equal(after.status, 0, after.stderr)
+    assert.match(after.stdout, /matching canonical v2\.0\.0/)
+  })
+})
+
 describe('write-manifest --check', () => {
   const WRITER = fileURLToPath(new URL('../bin/write-manifest.mjs', import.meta.url))
 
@@ -407,13 +547,54 @@ describe('write-manifest --check', () => {
    * The writer resolves the kit from its own location, so these run against a
    * copy. Writing to the real manifest from a test would leave the working tree
    * changed by having run the suite.
+   *
+   * The copy is laid out as the canonical repository is — kit under templates/,
+   * shared documents at the repository root — because the writer now hashes those
+   * documents too and refuses to omit one. That refusal is deliberate: a
+   * companion silently dropped from the manifest is a document the whole fleet
+   * stops comparing, and the omission looks exactly like having nothing to
+   * compare.
    */
-  const writerCopy = () => {
+  const writerCopy = ({ companion = '# Verification rules\n\n**V1. A rule.** Because.\n' } = {}) => {
     const dir = mkdtempSync(join(tmpdir(), 'writer-'))
     workspaces.push(dir)
-    cpSync(fileURLToPath(new URL('..', import.meta.url)), dir, { recursive: true })
-    return join(dir, 'bin', 'write-manifest.mjs')
+    const kit = join(dir, 'templates', 'verification-kit')
+    mkdirSync(join(dir, 'templates'), { recursive: true })
+    cpSync(fileURLToPath(new URL('..', import.meta.url)), kit, { recursive: true })
+    if (companion !== null) {
+      mkdirSync(join(dir, 'docs'), { recursive: true })
+      writeFileSync(join(dir, 'docs/verification-rules.md'), companion, 'utf8')
+    }
+    return join(kit, 'bin', 'write-manifest.mjs')
   }
+
+  it('refuses to write a manifest that omits a shared document', () => {
+    const result = spawnSync('node', [writerCopy({ companion: null })], { encoding: 'utf8' })
+    assert.equal(result.status, 1)
+    assert.match(result.stderr, /named as a shared document but is not at/)
+  })
+
+  it('records the shared document alongside the kit files', () => {
+    const writer = writerCopy()
+    const result = spawnSync('node', [writer, '--version', '9.9.9'], { encoding: 'utf8' })
+    assert.equal(result.status, 0, result.stderr)
+    const manifest = JSON.parse(readFileSync(join(writer, '../../MANIFEST.json'), 'utf8'))
+    assert.deepEqual(Object.keys(manifest.companions ?? {}), ['docs/verification-rules.md'])
+  })
+
+  // A rule added upstream with no version bump reads to every consumer as two
+  // copies claiming one version, which is a failure none of them caused.
+  it('treats a changed shared document as a change consumers must act on', () => {
+    const writer = writerCopy()
+    spawnSync('node', [writer, '--version', '1.0.0'], { encoding: 'utf8' })
+    writeFileSync(
+      join(writer, '../../../../docs/verification-rules.md'),
+      '# Verification rules\n\n**V1. A rule.** Because.\n\n**V2. Another.** Because.\n',
+      'utf8',
+    )
+    const result = spawnSync('node', [writer, '--check'], { encoding: 'utf8' })
+    assert.equal(result.status, 1, 'a changed shared document must make the manifest out of date')
+  })
 
   it('takes an explicit release version', () => {
     const result = spawnSync('node', [writerCopy(), '--version', '9.9.9'], { encoding: 'utf8' })

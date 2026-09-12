@@ -14,7 +14,8 @@ import { execFileSync } from 'node:child_process'
 import { mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync, rmSync, statSync } from 'node:fs'
 import { dirname, join, relative, sep } from 'node:path'
 
-const RAW = 'https://raw.githubusercontent.com/gorfednet/.github/main/templates/verification-kit'
+const RAW_ROOT = 'https://raw.githubusercontent.com/gorfednet/.github/main'
+const RAW = `${RAW_ROOT}/templates/verification-kit`
 
 /** Every file in the vendored kit except the manifest and the starters. */
 function kitFiles(root) {
@@ -93,6 +94,7 @@ if (dryRun) {
       `${files.length} file(s) written, ${wouldRemove.length} removed`,
   )
   for (const rel of files) console.log(`  write   ${kit}/${rel}`)
+  for (const rel of Object.keys(manifest.companions ?? {})) console.log(`  write   ${rel}`)
   for (const rel of wouldRemove) console.log(`  REMOVE  ${kit}/${rel}`)
   process.exit(0)
 }
@@ -102,6 +104,21 @@ for (const rel of files) {
   mkdirSync(dirname(target), { recursive: true })
   writeFileSync(target, fetchText(`${RAW}/${rel}`), 'utf8')
 }
+
+/*
+ * Shared documents the kit distributes from outside its own directory — the
+ * rules document being the one. They come from the repository root upstream, not
+ * from the kit path, and they land at the same path here. `check-kit-drift` now
+ * compares them, so a refresh that skipped them would leave the printed remedy
+ * unable to reach green, which makes the remedy decoration.
+ */
+const companions = Object.keys(manifest.companions ?? {})
+for (const rel of companions) {
+  const target = join(kit, '..', rel)
+  mkdirSync(dirname(target), { recursive: true })
+  writeFileSync(target, fetchText(`${RAW_ROOT}/${rel}`), 'utf8')
+}
+
 writeFileSync(join(kit, 'MANIFEST.json'), `${JSON.stringify(manifest, null, 2)}\n`, 'utf8')
 
 /**
@@ -118,7 +135,9 @@ for (const rel of kitFiles(kit)) {
 }
 
 console.log(
-  `✓ refresh-kit: ${files.length} file(s) written to ${kit}/, v${before} → v${manifest.version}` +
+  `✓ refresh-kit: ${files.length} file(s) written to ${kit}/` +
+    (companions.length > 0 ? ` and ${companions.length} shared document(s)` : '') +
+    `, v${before} → v${manifest.version}` +
     (removed.length > 0 ? `\n  removed ${removed.length} file(s) upstream no longer ships:` : '') +
     removed.map((rel) => `\n    ${kit}/${rel}`).join('') +
     '\n  Read the diff before committing. A kit change usually means a new class of bug\n' +
