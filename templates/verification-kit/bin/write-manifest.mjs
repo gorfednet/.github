@@ -14,7 +14,7 @@
  * of date, which is how CI stops a kit change from merging without one.
  */
 import { createHash } from 'node:crypto'
-import { readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs'
 import { join, relative, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { isMain } from '../lib/isMain.mjs'
@@ -35,6 +35,19 @@ const MANIFEST = join(KIT_ROOT, 'MANIFEST.json')
  */
 const NOT_TRACKED = new Set(['MANIFEST.json'])
 const NOT_TRACKED_DIRS = new Set(['templates'])
+
+/*
+ * Files the kit distributes that do not live inside the kit directory, relative
+ * to the repository root.
+ *
+ * `docs/verification-rules.md` is the shared rules document, cited from code in
+ * every project, and the manifest never named it because it is not a kit file.
+ * So nothing compared it, and one project's copy carried two rules canonical did
+ * not have — numbered in the shared sequence, which the next fleet rule then
+ * collided with — while its drift check printed a tick.
+ */
+const COMPANIONS = ['docs/verification-rules.md']
+const REPO_ROOT = join(KIT_ROOT, '..', '..')
 
 export function kitFiles(root = KIT_ROOT) {
   const found = []
@@ -57,10 +70,25 @@ export function hashFile(path) {
   return createHash('sha256').update(readFileSync(path)).digest('hex')
 }
 
-export function buildManifest(root = KIT_ROOT, version) {
+export function buildManifest(root = KIT_ROOT, version, repoRoot = REPO_ROOT) {
   const files = {}
   for (const rel of kitFiles(root)) files[rel] = hashFile(join(root, rel))
-  return { version, files }
+  const companions = {}
+  for (const rel of COMPANIONS) {
+    const path = join(repoRoot, rel)
+    if (!existsSync(path)) {
+      // Fail rather than omit. A companion silently dropped from the manifest is
+      // a document the whole fleet stops comparing, and the omission looks
+      // exactly like a fleet that has nothing to compare.
+      throw new Error(
+        `write-manifest: ${rel} is named as a shared document but is not at ${path}. ` +
+          'Either it moved, in which case update COMPANIONS, or this is not being run ' +
+          'from gorfednet/.github.',
+      )
+    }
+    companions[rel] = hashFile(path)
+  }
+  return { version, files, companions }
 }
 
 if (isMain(import.meta.url)) {
@@ -77,8 +105,15 @@ if (isMain(import.meta.url)) {
   }
 
   const built = buildManifest(KIT_ROOT, previous.version)
+  // A companion's content changing is a change consumers must act on, exactly
+  // like a kit file's: the shared rules document is the thing they cite from
+  // code. Leaving it out of this comparison would have let a rule be added
+  // upstream with no version bump, which the drift check reads as two copies
+  // claiming one version — a failure in every consumer, for a reason none of
+  // them caused.
   const changed =
-    JSON.stringify(built.files) !== JSON.stringify(previous.files ?? {})
+    JSON.stringify(built.files) !== JSON.stringify(previous.files ?? {}) ||
+    JSON.stringify(built.companions) !== JSON.stringify(previous.companions ?? {})
 
   if (checkOnly) {
     if (!changed) {

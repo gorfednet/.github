@@ -59,6 +59,23 @@ const NOT_TRACKED = new Set(['MANIFEST.json'])
 const NOT_TRACKED_DIRS = new Set(['templates'])
 
 /*
+ * Files the kit distributes that do not live inside the kit directory.
+ *
+ * `docs/verification-rules.md` is the shared rules document. It calls itself an
+ * interface in its own first paragraph, it is cited from code in every project,
+ * and until now nothing hashed it — it is not a kit file, so the manifest never
+ * named it and the drift check never looked. bindercurve.com's copy had two
+ * rules the canonical document did not have and was missing paragraphs the
+ * canonical document did, for an unknown length of time, while its drift check
+ * printed a tick. The two extra rules had claimed `V61` and `V62` in a sequence
+ * the project does not own, so the next fleet rule collided with them.
+ *
+ * Its path is relative to the project root, meaning the directory that contains
+ * the kit.
+ */
+const COMPANIONS = ['docs/verification-rules.md']
+
+/*
  * The date the one-minor grace expires, after which any staleness fails.
  *
  * Renewing this is a decision somebody makes in the open; drifting past it is
@@ -199,7 +216,8 @@ if (offline) {
   // half must not print the same tick as one that did it.
   console.log(
     `✓ kit v${vendored.version}: ${present.length} file(s) match the vendored manifest.\n` +
-      '  --offline: did NOT check whether upstream has moved.',
+      '  --offline: did NOT check whether upstream has moved, and did NOT compare the\n' +
+      '  shared documents the kit distributes from outside its directory.',
   )
   process.exit(0)
 }
@@ -239,8 +257,51 @@ const stale = Object.keys(upstream).filter((f) => upstream[f] !== expected[f])
 const dropped = Object.keys(expected).filter((f) => !(f in upstream))
 
 if (stale.length === 0 && dropped.length === 0) {
+  /*
+   * The kit files agree. Now the files the kit distributes from outside its own
+   * directory, which is the half that had no check at all.
+   *
+   * Only compared when the versions match. While a roll is in flight most of the
+   * fleet is one release behind and every one of those copies differs from
+   * canonical for a legitimate reason; failing them here would reintroduce the
+   * thirteen-red-repositories problem the version grace exists to avoid. Once
+   * the versions agree, a difference is either a local edit or an upstream change
+   * that shipped without a bump, and both are failures for the same reason two
+   * copies claiming one version cannot both be it.
+   */
+  const companions = canonical.companions ?? {}
+  const companionProblems = []
+  for (const [rel, want] of Object.entries(companions)) {
+    const path = join(kit, '..', rel)
+    if (!existsSync(path)) companionProblems.push(`  missing       ${rel}`)
+    else if (hash(path) !== want) companionProblems.push(`  differs here  ${rel}`)
+  }
+
+  if (companionProblems.length > 0 && vendored.version === canonical.version) {
+    die(
+      `check-kit-drift: this project's copy of a shared document does not match canonical v${canonical.version}.\n\n` +
+        `${companionProblems.join('\n')}\n\n` +
+        '  These are distributed by the kit but live outside its directory, so nothing\n' +
+        '  hashed them until now — which is how one project came to hold two rules the\n' +
+        '  shared document did not have, numbered in a sequence it does not own, while\n' +
+        '  this check printed a tick.\n\n' +
+        '  A project adds its own rules to docs/verification-rules.local.md, with its own\n' +
+        `  prefix. To take the canonical copy:\n    ${REFRESH}`,
+    )
+  }
+
+  const companionNote =
+    Object.keys(companions).length === 0
+      ? '\n  Canonical names no shared documents, so none were compared.'
+      : companionProblems.length === 0
+        ? ` and ${Object.keys(companions).length} shared document(s)`
+        : '\n  Shared documents differ, tolerated only because this kit is a release behind.'
+
   console.log(
-    `✓ kit v${vendored.version}: ${present.length} file(s), matching canonical v${canonical.version}`,
+    `✓ kit v${vendored.version}: ${present.length} file(s)` +
+      (companionProblems.length === 0 && Object.keys(companions).length > 0
+        ? `${companionNote}, matching canonical v${canonical.version}`
+        : `, matching canonical v${canonical.version}${companionNote}`),
   )
   process.exit(0)
 }

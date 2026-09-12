@@ -2,6 +2,14 @@
   "$comment": "The kit's own canaries. A template that ships broken replicates across every project that copies it, so these run in CI on this repo.",
   "canaries": [
     {
+      "id": "share-guard-excused-all-prose-instead-of-one-document",
+      "guards": "The tempting repair when the shared rules document tripped the share-mount guard was to stop scanning markdown. Prose is in scope on purpose: a README telling someone to mount a share is a deploy path even though it cannot execute. Only the fleet's own rules document, identical in every repository and incapable of carrying a project's deploy instructions, is excused.",
+      "command": "node --test 'test/noSmbGuard.test.mjs'",
+      "file": "scripts/no-smb-guard.sh",
+      "find": "  --glob '!docs/verification-rules.md'\n  --glob '!**/docs/verification-rules.md'",
+      "replace": "  --glob '!**/*.md'"
+    },
+    {
       "id": "backlog-accepts-vague-symptom",
       "guards": "The backlog validator rejects a symptom too short to act on. Without this an entry can say 'broken' and still count as a tracked bug.",
       "command": "node --test 'templates/verification-kit/test/backlogSchema.test.mjs'",
@@ -368,6 +376,30 @@
       "file": "scripts/nas-ssh-deploy.sh",
       "find": "  grep -q \"\\\"slug\\\": \\\"[^\\\"/]*/${site_dir}\\\"\" \"${fleet_file}\" || return 0",
       "replace": "  :"
+    },
+    {
+      "id": "shared-rules-document-goes-unhashed",
+      "guards": "The drift check compares the shared documents the kit distributes from outside its own directory. Without it nothing hashed docs/verification-rules.md at all: bindercurve.com's copy held two rules canonical did not have — numbered in the shared sequence, which the next fleet rule then collided with — and was missing paragraphs canonical did have, while its drift check printed a tick.",
+      "command": "node --test 'templates/verification-kit/test/kitDrift.test.mjs'",
+      "file": "templates/verification-kit/bin/check-kit-drift.mjs",
+      "find": "  if (companionProblems.length > 0 && vendored.version === canonical.version) {",
+      "replace": "  if (false && companionProblems.length > 0 && vendored.version === canonical.version) {"
+    },
+    {
+      "id": "refresh-leaves-the-shared-document-behind",
+      "guards": "refresh-kit writes the shared documents as well as the kit files. It is the remedy every drift message prints, so a refresh that only writes kit files leaves the failure it was named for in place — a remedy that cannot reach green is decoration.",
+      "command": "node --test 'templates/verification-kit/test/kitDrift.test.mjs'",
+      "file": "templates/verification-kit/bin/refresh-kit.mjs",
+      "find": "  writeFileSync(target, fetchText(`${RAW_ROOT}/${rel}`), 'utf8')",
+      "replace": "  void target"
+    },
+    {
+      "id": "manifest-omits-a-shared-document",
+      "guards": "write-manifest refuses to write a manifest that omits a named shared document. Omitting one silently is a document the whole fleet stops comparing, and the omission looks exactly like having nothing to compare.",
+      "command": "node --test 'templates/verification-kit/test/kitDrift.test.mjs'",
+      "file": "templates/verification-kit/bin/write-manifest.mjs",
+      "find": "    if (!existsSync(path)) {\n      // Fail rather than omit.",
+      "replace": "    if (!existsSync(path)) { continue } else if (false) {\n      // Fail rather than omit."
     },
     {
       "id": "citations-repoint-when-a-local-list-appears",
