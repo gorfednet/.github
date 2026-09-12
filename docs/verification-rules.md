@@ -26,6 +26,13 @@ being true of more than one project. Until then it is local, and promoting it
 later means adding a `V` entry that cites the local one — the local rule stays
 where it is so its existing citations keep resolving.
 
+A bare `rule 12` cites **this** document. A local rule is always named with its
+prefix, so adopting a local list cannot change what the citations already in a
+repository mean — which it did once: bindercurve.com added its first two local
+rules and 34 citations across six files stopped resolving in the same commit,
+because a bare number used to address whichever list the project numbered its own
+rules in.
+
 `verification-kit/bin/check-rule-citations.mjs` enforces both sequences and
 fails on a citation naming a rule that does not exist.
 
@@ -587,6 +594,26 @@ cannot change is worse than none, because it is quoted. And `gorfed.net`'s
 script already *printed* the diagnosis, as advice, for anyone who read the last
 four lines of a successful deploy. Advice is not a gate.
 
+**V62. Adding a namespace re-points every reference that predates it.**
+A citation checker read a bare `rule 36` against "whichever sequence this project
+numbers its own rules in". bindercurve.com had two rules mis-written into the
+shared document, moved them to a local list where they belonged, and 34 citations
+across six files stopped resolving in that one commit — every bare number in the
+repository silently changed which document it addressed.
+
+It was loud only because the numbers were large. Had the local list been the
+longer of the two, those citations would have gone on resolving, at unrelated
+rules, and a cross-reference that reads as verified would have been wrong with
+nothing to say so. The same shape appears wherever a default is inferred from
+what exists rather than declared: an import that resolves differently once a
+local module appears, a config key that falls back to a section somebody later
+adds, a bare tag that meant one registry until a second was configured.
+
+So when a lookup has a default, fix its target rather than deriving it from
+repository state, and give the other target an explicit spelling — here a local
+rule is always named with its prefix. Then adding the second namespace changes
+nothing that already existed, which is the property being protected.
+
 ## Provenance
 
 Every rule above was first written in
@@ -622,7 +649,7 @@ sounds like an opinion, because none of them are.
 | — | — | V41–V51 | fleet rollout, 2026-09-08 |
 | — | — | V52–V53 | fleet rollout, 2026-09-09 |
 | — | — | V54–V60 | fleet self-heal, 2026-09-10 |
-| — | — | V61 | fleet deploy round, 2026-09-11 |
+| — | — | V61–V62 | fleet deploy round, 2026-09-11 |
 
 This number was nearly given up. BinderCurve had two rules of its own written
 into `V61` and `V62` — where a check looks being part of what it asserts, and a

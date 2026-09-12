@@ -299,7 +299,7 @@
     },
     {
       "id": "healthcheck-read-without-a-newline",
-      "guards": "The monitor's curl format ends with a newline. Without it `read` reports failure at EOF though it has assigned every variable, and under set -e the step dies before printing the URL it was checking — which took live monitoring for all nine sites down between 2026-09-07 and 2026-09-11 while looking like an infrastructure hiccup (V63).",
+      "guards": "The monitor's curl format ends with a newline. Without it `read` reports failure at EOF though it has assigned every variable, and under set -e the step dies before printing the URL it was checking — which took live monitoring for all nine sites down between 2026-09-07 and 2026-09-11 while looking like an infrastructure hiccup (V61).",
       "command": "node --test 'test/orgWorkflows.test.mjs'",
       "file": ".github/workflows/production-healthcheck.yml",
       "find": "%{content_type}\\n'",
@@ -315,7 +315,7 @@
     },
     {
       "id": "deploy-renames-over-the-target",
-      "guards": "The shared deploy writes into the existing inode. Without --inplace rsync renames a temp file over the target, and over the CIFS mount that serves these sites the container keeps a handle to the deleted inode: every request for that path then returns 500 until the container is restarted. It does not expire, and a reload does not clear it (V63).",
+      "guards": "The shared deploy writes into the existing inode. Without --inplace rsync renames a temp file over the target, and over the CIFS mount that serves these sites the container keeps a handle to the deleted inode: every request for that path then returns 500 until the container is restarted. It does not expire, and a reload does not clear it (V61).",
       "command": "bash scripts/test-nas-ssh-deploy.sh",
       "file": "scripts/nas-ssh-deploy.sh",
       "find": "    --inplace \\\n",
@@ -360,6 +360,14 @@
       "file": "scripts/nas-ssh-deploy.sh",
       "find": "  grep -q \"\\\"slug\\\": \\\"[^\\\"/]*/${site_dir}\\\"\" \"${fleet_file}\" || return 0",
       "replace": "  :"
+    },
+    {
+      "id": "citations-repoint-when-a-local-list-appears",
+      "guards": "A bare `rule 12` cites the shared document whether or not the project also keeps local rules. When it addressed whichever list the project numbered its own rules in, adopting a local prefix silently rewrote every citation already in the repository: bindercurve.com added two local rules and 34 citations across six files stopped resolving in one commit.",
+      "command": "node --test 'templates/verification-kit/test/ruleCitations.test.mjs'",
+      "file": "templates/verification-kit/bin/check-rule-citations.mjs",
+      "find": "    const cited = Number(raw)\n    if (cited < 1 || cited > sharedNumbers.length) {",
+      "replace": "    const cited = Number(raw)\n    const ceiling = localNumbers.length > 0 ? localNumbers.length : sharedNumbers.length\n    if (cited < 1 || cited > ceiling) {"
     }
   ]
 }

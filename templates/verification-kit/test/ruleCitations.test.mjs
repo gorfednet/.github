@@ -57,6 +57,36 @@ describe('check-rule-citations', () => {
     assert.match(result.stdout, /3 shared/)
   })
 
+  // Adopting a local list must not change what the citations already in the
+  // repository mean. bindercurve.com added its first two local rules and 34
+  // existing citations across six files stopped resolving in one commit, because
+  // a bare number used to address whichever list the project numbered its own
+  // rules in. Loud there only because the numbers were large; a project whose
+  // local list outgrew its citations would have had them silently re-point.
+  it('reads a bare citation against the shared list even when local rules exist', () => {
+    const dir = project({
+      shared: sharedDoc(40),
+      local: '**BC-1. One.** Because.\n\n**BC-2. Two.** Because.\n',
+      source: `${cite('36')}, written long before the local list existed\n`,
+    })
+    const result = run(dir)
+    assert.equal(result.status, 0, result.stderr)
+    assert.match(result.stdout, /40 shared, 2 local \(BC-\)/)
+  })
+
+  it('still fails a bare citation past the end of the shared list', () => {
+    const dir = project({
+      shared: sharedDoc(3),
+      local: '**BC-1. One.** Because.\n',
+      source: `${cite('9')}\n`,
+    })
+    const result = run(dir)
+    assert.equal(result.status, 1)
+    assert.match(result.stderr, /cites rule 9, but docs\/verification-rules\.md ends at V3/)
+    // And it says how to name a local rule, since that is the likely intent.
+    assert.match(result.stderr, /BC-9, never bare/)
+  })
+
   // The failure that prompted the original: nine branches merged, the list
   // reached 20 then 25, and two rules shared a number.
   it('fails on a gap in the shared sequence', () => {
