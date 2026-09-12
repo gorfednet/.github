@@ -322,6 +322,14 @@
       "replace": ""
     },
     {
+      "id": "deploy-accepts-a-flag-rsync-refuses",
+      "guards": "A caller passing --partial-dir is refused before rsync runs, because this helper always passes --inplace and rsync rejects that pair as a usage error. ssatcy.com's own transport had --partial-dir, and adding --inplace there stopped every deploy from that repository before a byte moved.",
+      "command": "bash scripts/test-nas-ssh-deploy.sh",
+      "file": "scripts/nas-ssh-deploy.sh",
+      "find": "      --partial-dir | --partial-dir=*)",
+      "replace": "      --this-flag-does-not-exist)"
+    },
+    {
       "id": "deploy-hides-a-failed-transfer",
       "guards": "A failed rsync is the function's answer, whatever the steps after it would report. A caller writing `nas_ssh_rsync_to … || handle` disables errexit inside the function, so without an explicit status the live check's 200 became the verdict on a deploy that transferred nothing — found by pointing anal0g's prune at a source path that does not exist and watching it exit 0.",
       "command": "bash scripts/test-nas-ssh-deploy.sh",
