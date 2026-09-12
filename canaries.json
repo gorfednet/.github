@@ -2,6 +2,14 @@
   "$comment": "The kit's own canaries. A template that ships broken replicates across every project that copies it, so these run in CI on this repo.",
   "canaries": [
     {
+      "id": "share-guard-excused-all-prose-instead-of-one-document",
+      "guards": "The tempting repair when the shared rules document tripped the share-mount guard was to stop scanning markdown. Prose is in scope on purpose: a README telling someone to mount a share is a deploy path even though it cannot execute. Only the fleet's own rules document, identical in every repository and incapable of carrying a project's deploy instructions, is excused.",
+      "command": "node --test 'test/noSmbGuard.test.mjs'",
+      "file": "scripts/no-smb-guard.sh",
+      "find": "  --glob '!docs/verification-rules.md'\n  --glob '!**/docs/verification-rules.md'",
+      "replace": "  --glob '!**/*.md'"
+    },
+    {
       "id": "backlog-accepts-vague-symptom",
       "guards": "The backlog validator rejects a symptom too short to act on. Without this an entry can say 'broken' and still count as a tracked bug.",
       "command": "node --test 'templates/verification-kit/test/backlogSchema.test.mjs'",

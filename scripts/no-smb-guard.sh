@@ -22,8 +22,24 @@ EXCLUDE_DIRS=(
   --glob '!package-lock.json'
   --glob '!**/package-lock.json'
   --glob '!**/no-smb-guard.sh'
+  # This guard's own test, for the same reason the guard skips itself: the cases
+  # that prove it still catches a mount have to contain one.
+  --glob '!**/noSmbGuard.test.mjs'
   # CI sparse-checks this repo into the caller workspace to run this script.
   --glob '!.gorfednet-github/**'
+  # The shared rules document, which is where the fleet writes down why these
+  # paths are forbidden. Rule V61 exists because a deploy over the CIFS mount
+  # left the serving container holding a stale file handle and every request
+  # returning 500 — and naming the mechanism is the whole value of the rule. The
+  # word appearing there made seven repositories fail this guard the moment they
+  # vendored the current document: a check reporting its own rulebook.
+  #
+  # Scoped rather than softened. The pattern still covers every file that can
+  # enact a deploy, including any other prose that gives someone a mount command,
+  # because this document is identical in every repository and cannot contain a
+  # project's own deploy instructions.
+  --glob '!docs/verification-rules.md'
+  --glob '!**/docs/verification-rules.md'
 )
 
 if ! command -v rg >/dev/null 2>&1; then
