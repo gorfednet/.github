@@ -26,6 +26,13 @@ being true of more than one project. Until then it is local, and promoting it
 later means adding a `V` entry that cites the local one — the local rule stays
 where it is so its existing citations keep resolving.
 
+A bare `rule 12` cites **this** document. A local rule is always named with its
+prefix, so adopting a local list cannot change what the citations already in a
+repository mean — which it did once: bindercurve.com added its first two local
+rules and 34 citations across six files stopped resolving in the same commit,
+because a bare number used to address whichever list the project numbered its own
+rules in.
+
 `verification-kit/bin/check-rule-citations.mjs` enforces both sequences and
 fails on a citation naming a rule that does not exist.
 

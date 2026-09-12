@@ -15,6 +15,10 @@
  *   V1..Vn        docs/verification-rules.md — shared, append-only
  *   PREFIX-1..m   docs/verification-rules.local.md — this project's own
  *
+ * A bare `rule 12` cites the shared document. A local rule is always named with
+ * its prefix, so that adding a local list cannot change what existing citations
+ * mean.
+ *
  * Usage:
  *   node verification-kit/bin/check-rule-citations.mjs \
  *     [--shared docs/verification-rules.md] \
@@ -246,14 +250,28 @@ for (const file of sources) {
       }
       continue
     }
-    // A bare number cites whichever sequence this project numbers its own
-    // rules in. Projects that never adopted a prefix keep citing bare numbers
-    // against the shared document.
+    // A bare number cites the shared document, whether or not this project also
+    // keeps local rules.
+    //
+    // It used to cite "whichever sequence this project numbers its own rules
+    // in", which made adopting a local prefix a silent rewrite of every citation
+    // already in the repository. bindercurve.com added its first two local rules
+    // and 34 existing citations across six files stopped resolving in one
+    // commit: `rule 36` had meant the shared list for months and now addressed a
+    // two-entry file. The failure was loud there only because the numbers were
+    // large. A project whose local list grew past its citations would have had
+    // them quietly re-point at unrelated rules instead, which is the same defect
+    // reading as health.
+    //
+    // A local rule can only be named with its prefix anyway — that is what the
+    // prefix is for — so nothing needs the bare form, and giving it one fixed
+    // meaning is what lets a citation keep meaning what it meant.
     const cited = Number(raw)
-    const ceiling = localNumbers.length > 0 ? localNumbers.length : sharedNumbers.length
-    const against = localNumbers.length > 0 ? local : shared
-    if (cited < 1 || cited > ceiling) {
-      problems.push(`${file}: cites rule ${cited}, but ${against} ends at ${ceiling}`)
+    if (cited < 1 || cited > sharedNumbers.length) {
+      problems.push(
+        `${file}: cites rule ${cited}, but ${shared} ends at V${sharedNumbers.length}` +
+          (localPrefix ? `. A local rule is cited as ${localPrefix}-${cited}, never bare.` : ''),
+      )
     }
   }
 }
