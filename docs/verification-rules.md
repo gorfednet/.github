@@ -563,6 +563,30 @@ failed were the only two in thirteen that run this check at all. A check that
 most consumers never invoke has no failure mode to speak of, silent or
 otherwise, and the fleet had been reading its absence as health.
 
+**V61. A deploy that does not fetch the site has not finished.**
+Eleven sites in this fleet were deployed by an rsync that reported success and
+stopped there. Nothing asked whether the site still served, so the last thing
+the operator saw was always "Deploy complete". The first deploy run after the
+audit put `rowanmcarthur.com` on a hard 500 for four minutes, and the only
+reason anyone noticed is that a person happened to curl it afterwards.
+
+The cause is worth knowing because it is invisible from the repository. rsync's
+default is to write a temp file and rename it over the target; over the CIFS
+mount that reaches the serving container, the rename gives the file a new
+server-side inode, and the container's cached handle keeps pointing at the
+deleted one. Every request for that path then returns 500 with `Stale file
+handle`. It does not expire, and `nginx -s reload` does not clear it — only
+restarting the container does. So the failure is permanent, silent, and caused by
+the deploy itself. `--inplace` avoids the condition; fetching the site afterwards
+is what stops the next unknown cause from lasting until a visitor complains.
+
+Two smaller traps sat next to it. `subrythm.com` published a `deploy-marker.txt`
+that was in `.deployignore`, so the live copy could never update and read as
+three months stale while the site was in fact current — an evidence file that
+cannot change is worse than none, because it is quoted. And `gorfed.net`'s
+script already *printed* the diagnosis, as advice, for anyone who read the last
+four lines of a successful deploy. Advice is not a gate.
+
 ## Provenance
 
 Every rule above was first written in
@@ -598,6 +622,24 @@ sounds like an opinion, because none of them are.
 | — | — | V41–V51 | fleet rollout, 2026-09-08 |
 | — | — | V52–V53 | fleet rollout, 2026-09-09 |
 | — | — | V54–V60 | fleet self-heal, 2026-09-10 |
+| — | — | V61 | fleet deploy round, 2026-09-11 |
+
+This number was nearly given up. BinderCurve had two rules of its own written
+into `V61` and `V62` — where a check looks being part of what it asserts, and a
+subagent's factual claim being a lead — so a fleet rule numbered `V61` looked
+like it would make one citation mean two different things in two repositories.
+The first attempt therefore started at `V63` and explained the gap, and
+`check-rule-citations.mjs` rejected it: this sequence is gapless by contract,
+and it is gapless precisely so that nobody has to read prose to know whether
+`V62` exists.
+
+Those two rules were in the wrong namespace, not in the way. Local rules take a
+project prefix — `BC-1`, `4C-1` — exactly so a project can add a rule without
+asking the fleet for a number, and the shared document says so in its own
+opening section. Writing them as `V61` and `V62` claimed two numbers in an
+interface BinderCurve does not own, and the next shared rule was always going to
+collide. They move to `docs/verification-rules.local.md` there; this document
+keeps `V61`, and the shared sequence stays append-only and gapless.
 
 Three BinderCurve rules are deliberately **not** shared, because they are true
 of that product rather than of verification: rules 23 and 33 concern

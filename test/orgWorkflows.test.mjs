@@ -222,6 +222,63 @@ describe('production-healthcheck workflow', () => {
   })
 
   /**
+   * A step that runs after a failure needs its setup to run too. The install
+   * steps were plain `if: inputs.run-playwright`, so a failed HTTP check
+   * skipped them while the smoke — which carries `!cancelled()` — went ahead
+   * and died on "Cannot find package '@playwright/test'". That error describes
+   * nothing wrong with the repository and buries the failure that happened.
+   */
+  it('installs Playwright under the same condition as the step that uses it', () => {
+    const smoke = /- name: Playwright live smoke\n\s*if: ([^\n]+)/.exec(text)
+    assert.ok(smoke, 'expected a Playwright live smoke step with a condition')
+    const setupConditions = [
+      /- name: Setup Node for Playwright\n\s*if: ([^\n]+)/.exec(text),
+      /actions\/setup-playwright@main\n\s*if: ([^\n]+)/.exec(text),
+    ]
+    for (const setup of setupConditions) {
+      assert.ok(setup, 'expected a condition on each Playwright setup step')
+      assert.equal(
+        setup[1].trim(),
+        smoke[1].trim(),
+        'setup must survive an earlier failure exactly as far as the smoke does,' +
+          ' or the run reports a missing package instead of the real fault',
+      )
+    }
+  })
+
+  /**
+   * `read` returns non-zero when it reaches EOF without a newline, even though
+   * it has already assigned every variable. Under `set -euo pipefail` that ends
+   * the step — before the loop prints the URL it was checking, so the log shows
+   * the echoed script and then "exit code 1" with no output of its own.
+   *
+   * curl's `-w` format emits exactly what it is given and nothing more. This
+   * one was written without a trailing newline, and it took live monitoring for
+   * all nine sites down from the day it landed: green on 2026-09-07, failing on
+   * every one on 2026-09-11, with the next scheduled run four days away. The
+   * monitor that would have caught that evening's 500 could not run.
+   *
+   * Asserted for every `read`-fed curl in the file rather than the one known
+   * line, because the next one will be written the same way.
+   */
+  it('every curl whose output feeds read ends its format with a newline', () => {
+    const reads = [...text.matchAll(/read -r [^\n]*<\s*<\(\s*curl\b([\s\S]*?)\)\s*$/gm)]
+    assert.ok(
+      reads.length >= 1,
+      'no read-from-curl found; this assertion has stopped reading what it names',
+    )
+    for (const [, invocation] of reads) {
+      const format = /-w\s+'([^']*)'/.exec(invocation)
+      assert.ok(format, `no -w format in: ${invocation.trim()}`)
+      assert.ok(
+        format[1].endsWith('\\n'),
+        `curl -w '${format[1]}' feeds a read but emits no trailing newline, so read` +
+          ' reports failure at EOF and set -e ends the step before it prints anything',
+      )
+    }
+  })
+
+  /**
    * The publish-set checks assert what a deploy *sends*. Nothing asserted what
    * the server already holds, and rsync will not clear it: `--delete` protects
    * excluded files on the receiver, so adding a path to .deployignore stops the

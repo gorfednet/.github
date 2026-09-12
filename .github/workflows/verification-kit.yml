@@ -37,6 +37,14 @@ jobs:
         if: ${{ !cancelled() }}
         run: node --test --test-reporter=spec 'test/*.test.mjs'
 
+      # The shared deploy helper's own suite, which nothing ran until now. Every
+      # static site in the fleet sources this script from a sibling checkout, so
+      # a regression in it takes all of them down at once — and it had a test
+      # file the whole time that no workflow invoked.
+      - name: Shared NAS deploy helper contract
+        if: ${{ !cancelled() }}
+        run: bash scripts/test-nas-ssh-deploy.sh
+
       - name: Fleet backlog describes reality
         if: ${{ !cancelled() }}
         run: node templates/verification-kit/bin/check-backlog.mjs --file docs/backlog.json

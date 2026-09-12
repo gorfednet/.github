@@ -69,10 +69,24 @@ nas_ssh_preflight() {
   echo "NAS SSH preflight ok."
 }
 
+# `--inplace` is not an optimisation here, it is what keeps the site up.
+#
+# The websites volume reaches the serving nginx as a CIFS bind mount. rsync's
+# default is to write a temp file and rename it over the target, which gives the
+# file a new server-side inode; the container's cached handle then points at the
+# deleted one and every request for that path returns 500 with "Stale file
+# handle". It does not expire, and `nginx -s reload` does not clear it — only
+# restarting the container does. Writing into the existing inode avoids the
+# whole condition.
+#
+# The trade is atomicity: an interrupted transfer leaves a partially written
+# file rather than the previous version. For static sites that is a torn asset
+# until the next deploy, against an outage that lasts until someone notices.
 nas_ssh_rsync_transfer_options() {
   printf '%s\n' \
     -rltvz \
     --delete \
+    --inplace \
     --no-perms \
     --no-owner \
     --no-group \
@@ -94,6 +108,46 @@ nas_ssh_ensure_readable_files() {
   local ssh_cmd=(ssh $(nas_ssh_options) "${NAS_SSH_USER}@${NAS_SSH_HOST}")
   "${ssh_cmd[@]}" \
     "find '${remote_path}' -type d -user '${NAS_SSH_USER}' ! -perm -005 -exec chmod a+rx {} +; find '${remote_path}' -type f -user '${NAS_SSH_USER}' ! -perm -004 -exec chmod a+r {} +"
+}
+
+# The live URL for a site directory, or nothing when the directory is not a
+# fleet domain. Read from fleet.json rather than guessed, so staging paths like
+# `bindercurve.com-dev` — which no visitor reaches by that name — are skipped
+# instead of probed and reported as broken.
+nas_ssh_site_url() {
+  local site_dir="${1:?site dir required}"
+  local fleet_file="${NAS_FLEET_FILE:-${BASH_SOURCE[0]%/*}/../fleet.json}"
+  [[ -f "${fleet_file}" ]] || return 0
+  grep -q "\"slug\": \"[^\"/]*/${site_dir}\"" "${fleet_file}" || return 0
+  printf 'https://%s/' "${site_dir}"
+}
+
+# Fetch the site after a deploy and fail when it does not serve. Every deploy in
+# this fleet was hand-run with no check that the result was reachable, which is
+# how a stale-handle 500 could sit on a live site indefinitely: rsync reports
+# success, and success is the last thing the operator sees.
+nas_ssh_verify_live() {
+  local url="${1:?url required}"
+  local attempt status
+  for attempt in 1 2 3; do
+    status="$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "${url}" || echo 000)"
+    [[ "${status}" =~ ^(200|30[128])$ ]] && {
+      echo "Live check ok: ${url} (${status})"
+      return 0
+    }
+    sleep 3
+  done
+  cat >&2 <<EOF
+Deploy finished but the site does not serve: ${url} returned ${status}.
+
+The files are on the NAS; something in front of them is broken. A 500 here is
+almost always a stale CIFS handle in the serving container, which clears with:
+
+  ssh dapyllil 'docker restart nginx'
+
+Then re-run this deploy so the check passes on its own.
+EOF
+  return 1
 }
 
 nas_ssh_rsync_to() {
@@ -120,14 +174,37 @@ nas_ssh_rsync_to() {
   done < <(nas_ssh_rsync_remote_options)
   # Apply the safety options after caller flags so a legacy -a cannot
   # re-enable permission, owner, or group preservation.
+  #
+  # rsync's status is captured rather than left to `set -e`, because a caller
+  # that writes `nas_ssh_rsync_to … || handle_failure` disables errexit inside
+  # this function: the transfer's failure then stops nothing, and the steps
+  # after it decide what the function returns. A deploy whose transfer failed
+  # was reporting the live check's 200 as its own result.
+  local status=0
   if [[ "${#caller_args[@]}" -gt 0 ]]; then
     rsync "${caller_args[@]}" "${rsync_options[@]}" -e "${rsync_shell}" \
-      "${source_path}" "${remote_target}"
+      "${source_path}" "${remote_target}" || status=$?
   else
     rsync "${rsync_options[@]}" -e "${rsync_shell}" \
-      "${source_path}" "${remote_target}"
+      "${source_path}" "${remote_target}" || status=$?
+  fi
+  if [[ "${status}" -ne 0 ]]; then
+    echo "rsync exited ${status}. Not repairing permissions and not checking the" \
+      "site, because neither would describe this deploy." >&2
+    return "${status}"
   fi
   nas_ssh_ensure_readable_files "${remote_target}"
+
+  # Automatic, because a verification step each repo has to opt into is one that
+  # some repo will not have. Derived from the target path so no caller changes.
+  local site_dir="${remote_target#*:}"
+  site_dir="${site_dir%/}"
+  site_dir="${site_dir##*/}"
+  local url
+  url="$(nas_ssh_site_url "${site_dir}")"
+  if [[ -n "${url}" && "${NAS_SKIP_LIVE_CHECK:-0}" != "1" ]]; then
+    nas_ssh_verify_live "${url}"
+  fi
 }
 
 nas_ssh_rsync() {
