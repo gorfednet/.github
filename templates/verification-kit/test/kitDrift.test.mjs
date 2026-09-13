@@ -244,6 +244,52 @@ describe('check-kit-drift', () => {
       })
     })
 
+    /*
+     * The version is the answer to "am I current", and matching hashes are not that
+     * answer. The checker used to print its tick and exit as soon as the file hashes
+     * agreed, before comparing versions at all — so every consumer of a release that
+     * changed only the shared documents was hash-clean, version-behind, and reported
+     * as current, indefinitely, including past the grace date that exists to stop
+     * exactly that. A check whose failure mode is silence, inside the tool built to
+     * find that shape elsewhere. Found by Bugbot on a consumer's pull request.
+     */
+    describe('a version gap with no file differences at all', () => {
+      it('warns rather than passing clean when one release behind', () => {
+        const dir = project({ upstream: { ...current, version: '1.1.0' } })
+        const result = run(dir, [], stubCurl(dir))
+        assert.equal(result.status, 0, result.stderr)
+        assert.match(result.stderr, /Vendored v1\.0\.0, upstream v1\.1\.0/)
+        assert.match(result.stderr, /No kit file differs/)
+        // And it must not read like a current kit to anyone scanning stdout.
+        assert.doesNotMatch(result.stdout, /^✓/m)
+        assert.match(result.stdout, /identical to,? ?one release behind canonical v1\.1\.0/)
+      })
+
+      it('fails when more than one minor behind, hashes notwithstanding', () => {
+        const dir = project({ upstream: { ...current, version: '1.3.0' } })
+        const result = run(dir, [], stubCurl(dir))
+        assert.equal(result.status, 1, result.stdout)
+        assert.match(result.stderr, /kit is stale/)
+        assert.match(result.stderr, /No kit file differs/)
+      })
+
+      it('fails on a major gap, hashes notwithstanding', () => {
+        const dir = project({ upstream: { ...current, version: '2.0.0' } })
+        const result = run(dir, [], stubCurl(dir))
+        assert.equal(result.status, 1, result.stdout)
+        assert.match(result.stderr, /kit is stale/)
+      })
+
+      it('still passes clean when the versions agree', () => {
+        // The case this ordering must not break: same version, same hashes, one tick.
+        const dir = project({ upstream: current })
+        const result = run(dir, [], stubCurl(dir))
+        assert.equal(result.status, 0, result.stderr)
+        assert.match(result.stdout, /matching canonical v1\.0\.0/)
+        assert.doesNotMatch(result.stderr, /behind/)
+      })
+    })
+
     it('warns when upstream changed a file one release ago, naming the file and both versions', () => {
       const dir = project({
         upstream: { version: '1.1.0', files: { ...current.files, 'bin/a.mjs': sha('a\n// fixed upstream\n') } },
