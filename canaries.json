@@ -59,7 +59,7 @@
     },
     {
       "id": "drift-check-passes-when-it-cannot-fetch",
-      "guards": "A staleness check that cannot reach the canonical manifest fails. Passing there would report 'current' during an outage — the silent-green shape the whole kit exists to find.",
+      "guards": "A staleness check that cannot reach the canonical manifest fails. Passing there would report 'current' during an outage \u2014 the silent-green shape the whole kit exists to find.",
       "command": "node --test 'templates/verification-kit/test/kitDrift.test.mjs'",
       "file": "templates/verification-kit/bin/check-kit-drift.mjs",
       "find": "} catch (cause) {\n  die(\n    `check-kit-drift: could not read the canonical manifest",
@@ -171,7 +171,7 @@
     },
     {
       "id": "cli-entrypoint-silently-does-nothing",
-      "guards": "V46. The naive main-module idiom compares a resolved file URL to a raw argv path. Through a symlinked directory they differ, the CLI never runs, and the process exits 0 — a checker reporting success having checked nothing. It was in two of this kit binaries, including the one CI uses to verify the manifest.",
+      "guards": "V46. The naive main-module idiom compares a resolved file URL to a raw argv path. Through a symlinked directory they differ, the CLI never runs, and the process exits 0 \u2014 a checker reporting success having checked nothing. It was in two of this kit binaries, including the one CI uses to verify the manifest.",
       "command": "node --test 'templates/verification-kit/test/isMain.test.mjs'",
       "file": "templates/verification-kit/lib/isMain.mjs",
       "find": "    return realpathSync(fileURLToPath(importMetaUrl)) === realpathSync(invoked)",
@@ -187,7 +187,7 @@
     },
     {
       "id": "headroom-reads-one-page-of-jobs",
-      "guards": "V50. The jobs endpoint pages at 30 and reports the truth only in total_count. Reading page one and calling it the run drops exactly the jobs this check exists to watch, since matrix legs are what push a run past thirty — and coverage still counts the declaration as seen from page one, so the verdict is green over a truncated sample.",
+      "guards": "V50. The jobs endpoint pages at 30 and reports the truth only in total_count. Reading page one and calling it the run drops exactly the jobs this check exists to watch, since matrix legs are what push a run past thirty \u2014 and coverage still counts the declaration as seen from page one, so the verdict is green over a truncated sample.",
       "command": "node --test 'templates/verification-kit/test/ciHeadroom.test.mjs'",
       "file": "templates/verification-kit/bin/check-ci-headroom.mjs",
       "find": "    if (batch.length === 0 || (total !== null && jobs.length >= total)) break",
@@ -251,7 +251,7 @@
     },
     {
       "id": "flake-detector-fires-on-expected-failure",
-      "guards": "A test.fail() case — one asserting something is broken — is not reported as an intermittent failure. Counting any failed attempt as a retry made this check invent flakiness, and a repository with a budget of 0 would go red over tests behaving exactly as written.",
+      "guards": "A test.fail() case \u2014 one asserting something is broken \u2014 is not reported as an intermittent failure. Counting any failed attempt as a retry made this check invent flakiness, and a repository with a budget of 0 would go red over tests behaving exactly as written.",
       "command": "node --test 'templates/verification-kit/test/cli.test.mjs'",
       "file": "templates/verification-kit/bin/assert-tests-executed.mjs",
       "find": "if (status === 'flaky' || (failedEarlier && finalAttempt?.status === 'passed')) {",
@@ -267,7 +267,7 @@
     },
     {
       "id": "citation-prefix-accepts-a-bare-digit",
-      "guards": "A rulebook section number such as comprehensive rules 1-2-1-1-1 is not read as citing local rule 1-2. A citation may no more be followed by -<digit> than by .<digit>, both being section numbers rather than rules. Anchored on that lookahead pair rather than on the whole pattern, because an anchor spanning the entire regex is invalidated by every narrowing — twice so far.",
+      "guards": "A rulebook section number such as comprehensive rules 1-2-1-1-1 is not read as citing local rule 1-2. A citation may no more be followed by -<digit> than by .<digit>, both being section numbers rather than rules. Anchored on that lookahead pair rather than on the whole pattern, because an anchor spanning the entire regex is invalidated by every narrowing \u2014 twice so far.",
       "command": "node --test 'templates/verification-kit/test/ruleCitations.test.mjs'",
       "file": "templates/verification-kit/bin/check-rule-citations.mjs",
       "find": "(?!\\.\\d)(?!-\\d)",
@@ -275,7 +275,7 @@
     },
     {
       "id": "drift-believes-a-cached-read",
-      "guards": "An impossible answer — a consumer ahead of canonical — is confirmed against an uncached read before it fails the build. Two repositories went red three minutes after a release because the CDN had not caught up, and a check that reddens for a reason unrelated to what it guards teaches that the check is noise.",
+      "guards": "An impossible answer \u2014 a consumer ahead of canonical \u2014 is confirmed against an uncached read before it fails the build. Two repositories went red three minutes after a release because the CDN had not caught up, and a check that reddens for a reason unrelated to what it guards teaches that the check is noise.",
       "command": "node --test 'templates/verification-kit/test/kitDrift.test.mjs'",
       "file": "templates/verification-kit/bin/check-kit-drift.mjs",
       "find": "if (gap !== 'ahead') {",
@@ -291,7 +291,7 @@
     },
     {
       "id": "citation-prefix-must-start-with-a-letter",
-      "guards": "A local prefix may contain a letter without beginning with one. 4thcltr.com uses 4C, so requiring a leading letter skipped its citations entirely — reporting that every citation resolves, which is the worse of the two directions a coverage matcher can fail in.",
+      "guards": "A local prefix may contain a letter without beginning with one. 4thcltr.com uses 4C, so requiring a leading letter skipped its citations entirely \u2014 reporting that every citation resolves, which is the worse of the two directions a coverage matcher can fail in.",
       "command": "node --test 'templates/verification-kit/test/ruleCitations.test.mjs'",
       "file": "templates/verification-kit/bin/check-rule-citations.mjs",
       "find": "(?:[A-Z0-9]*[A-Z][A-Z0-9]*-)?",
@@ -299,7 +299,7 @@
     },
     {
       "id": "citation-reads-a-zero-as-a-rule",
-      "guards": "A number beginning with zero is not a citation, because no sequence starts at zero. towit.io vendors two copies of AngularJS whose pluralization comment says \"three explicit number rules 0, 1 and 2\", and the check is not wired there — so it was a false failure waiting for whoever wired it first.",
+      "guards": "A number beginning with zero is not a citation, because no sequence starts at zero. towit.io vendors two copies of AngularJS whose pluralization comment says \"three explicit number rules 0, 1 and 2\", and the check is not wired there \u2014 so it was a false failure waiting for whoever wired it first.",
       "command": "node --test 'templates/verification-kit/test/ruleCitations.test.mjs'",
       "file": "templates/verification-kit/bin/check-rule-citations.mjs",
       "find": "[1-9]\\d*|V[1-9]\\d*",
@@ -307,7 +307,7 @@
     },
     {
       "id": "healthcheck-read-without-a-newline",
-      "guards": "The monitor's curl format ends with a newline. Without it `read` reports failure at EOF though it has assigned every variable, and under set -e the step dies before printing the URL it was checking — which took live monitoring for all nine sites down between 2026-09-07 and 2026-09-11 while looking like an infrastructure hiccup (V61).",
+      "guards": "The monitor's curl format ends with a newline. Without it `read` reports failure at EOF though it has assigned every variable, and under set -e the step dies before printing the URL it was checking \u2014 which took live monitoring for all nine sites down between 2026-09-07 and 2026-09-11 while looking like an infrastructure hiccup (V61).",
       "command": "node --test 'test/orgWorkflows.test.mjs'",
       "file": ".github/workflows/production-healthcheck.yml",
       "find": "%{content_type}\\n'",
@@ -339,7 +339,7 @@
     },
     {
       "id": "deploy-hides-a-failed-transfer",
-      "guards": "A failed rsync is the function's answer, whatever the steps after it would report. A caller writing `nas_ssh_rsync_to … || handle` disables errexit inside the function, so without an explicit status the live check's 200 became the verdict on a deploy that transferred nothing — found by pointing anal0g's prune at a source path that does not exist and watching it exit 0.",
+      "guards": "A failed rsync is the function's answer, whatever the steps after it would report. A caller writing `nas_ssh_rsync_to \u2026 || handle` disables errexit inside the function, so without an explicit status the live check's 200 became the verdict on a deploy that transferred nothing \u2014 found by pointing anal0g's prune at a source path that does not exist and watching it exit 0.",
       "command": "bash scripts/test-nas-ssh-deploy.sh",
       "file": "scripts/nas-ssh-deploy.sh",
       "find": "  if [[ \"${status}\" -ne 0 ]]; then\n    echo \"rsync exited ${status}. Not repairing permissions and not checking the\" \\\n      \"site, because neither would describe this deploy.\" >&2\n    return \"${status}\"\n  fi\n",
@@ -347,7 +347,7 @@
     },
     {
       "id": "deploy-treats-any-answer-as-serving",
-      "guards": "The post-deploy live check accepts a 200 or a redirect and nothing else. Widened to any answer at all, a 500 from the site reads as a successful deploy — which is how eleven sites came to be deployed with nothing asking whether they still served.",
+      "guards": "The post-deploy live check accepts a 200 or a redirect and nothing else. Widened to any answer at all, a 500 from the site reads as a successful deploy \u2014 which is how eleven sites came to be deployed with nothing asking whether they still served.",
       "command": "bash scripts/test-nas-ssh-deploy.sh",
       "file": "scripts/nas-ssh-deploy.sh",
       "find": "[[ \"${status}\" =~ ^(200|30[128])$ ]]",
@@ -379,15 +379,23 @@
     },
     {
       "id": "shared-rules-document-goes-unhashed",
-      "guards": "The drift check compares the shared documents the kit distributes from outside its own directory. Without it nothing hashed docs/verification-rules.md at all: bindercurve.com's copy held two rules canonical did not have — numbered in the shared sequence, which the next fleet rule then collided with — and was missing paragraphs canonical did have, while its drift check printed a tick.",
+      "guards": "The drift check compares the shared documents the kit distributes from outside its own directory. Without it nothing hashed docs/verification-rules.md at all: bindercurve.com's copy held two rules canonical did not have \u2014 numbered in the shared sequence, which the next fleet rule then collided with \u2014 and was missing paragraphs canonical did have, while its drift check printed a tick.",
       "command": "node --test 'templates/verification-kit/test/kitDrift.test.mjs'",
       "file": "templates/verification-kit/bin/check-kit-drift.mjs",
-      "find": "  if (companionProblems.length > 0 && vendored.version === canonical.version) {",
-      "replace": "  if (false && companionProblems.length > 0 && vendored.version === canonical.version) {"
+      "find": "  if (companionProblems.length > 0) {",
+      "replace": "  if (false && companionProblems.length > 0) {"
+    },
+    {
+      "id": "drift-check-believes-hashes-over-versions",
+      "guards": "The drift check compares versions before accepting matching hashes as current. Without that ordering it exited on the hashes alone, so the behind, far-behind and grace-date logic never ran: a release that changed only the shared documents left every consumer hash-clean, version-behind, and reported as up to date indefinitely \u2014 a check that could not fail, inside the tool built to find that shape elsewhere.",
+      "command": "node --test 'templates/verification-kit/test/kitDrift.test.mjs'",
+      "file": "templates/verification-kit/bin/check-kit-drift.mjs",
+      "find": "if (filesAgree && vendored.version === canonical.version) {",
+      "replace": "if (filesAgree) {"
     },
     {
       "id": "refresh-leaves-the-shared-document-behind",
-      "guards": "refresh-kit writes the shared documents as well as the kit files. It is the remedy every drift message prints, so a refresh that only writes kit files leaves the failure it was named for in place — a remedy that cannot reach green is decoration.",
+      "guards": "refresh-kit writes the shared documents as well as the kit files. It is the remedy every drift message prints, so a refresh that only writes kit files leaves the failure it was named for in place \u2014 a remedy that cannot reach green is decoration.",
       "command": "node --test 'templates/verification-kit/test/kitDrift.test.mjs'",
       "file": "templates/verification-kit/bin/refresh-kit.mjs",
       "find": "  writeFileSync(target, fetchText(`${RAW_ROOT}/${rel}`), 'utf8')",

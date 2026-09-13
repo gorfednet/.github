@@ -256,7 +256,23 @@ if (Object.keys(upstream).length === 0) {
 const stale = Object.keys(upstream).filter((f) => upstream[f] !== expected[f])
 const dropped = Object.keys(expected).filter((f) => !(f in upstream))
 
-if (stale.length === 0 && dropped.length === 0) {
+const filesAgree = stale.length === 0 && dropped.length === 0
+
+/*
+ * Matching hashes are not the same answer as being current, and this block used to
+ * treat them as one: it printed its tick and exited before any version comparison,
+ * so the behind, far-behind and BEHIND_TOLERATED_UNTIL logic below was unreachable
+ * whenever the binaries happened to agree. A rules-only release changes
+ * docs/verification-rules.md and the manifest version and nothing else, so every
+ * consumer of it was hash-clean, version-behind, and reported as current — past the
+ * grace date that exists to prevent exactly that. A check that cannot fail, in the
+ * tool whose job is detecting the same shape elsewhere. Found by Bugbot on a
+ * consumer's pull request, not by this repository.
+ *
+ * With the versions apart the run now falls through to the version machinery, which
+ * warns within one release and fails beyond it, hashes notwithstanding.
+ */
+if (filesAgree && vendored.version === canonical.version) {
   /*
    * The kit files agree. Now the files the kit distributes from outside its own
    * directory, which is the half that had no check at all.
@@ -277,7 +293,8 @@ if (stale.length === 0 && dropped.length === 0) {
     else if (hash(path) !== want) companionProblems.push(`  differs here  ${rel}`)
   }
 
-  if (companionProblems.length > 0 && vendored.version === canonical.version) {
+  // Reaching here already means the versions agree; see the condition above.
+  if (companionProblems.length > 0) {
     die(
       `check-kit-drift: this project's copy of a shared document does not match canonical v${canonical.version}.\n\n` +
         `${companionProblems.join('\n')}\n\n` +
@@ -293,9 +310,7 @@ if (stale.length === 0 && dropped.length === 0) {
   const companionNote =
     Object.keys(companions).length === 0
       ? '\n  Canonical names no shared documents, so none were compared.'
-      : companionProblems.length === 0
-        ? ` and ${Object.keys(companions).length} shared document(s)`
-        : '\n  Shared documents differ, tolerated only because this kit is a release behind.'
+      : ` and ${Object.keys(companions).length} shared document(s)`
 
   console.log(
     `✓ kit v${vendored.version}: ${present.length} file(s)` +
@@ -310,7 +325,13 @@ const lines = [
   ...stale.map((f) => `  ${f in expected ? 'changed upstream' : 'added upstream  '}  ${f}`),
   ...dropped.map((f) => `  removed upstream  ${f}`),
 ]
-const inventory = `${lines.join('\n')}\n\n  Refresh:\n    ${REFRESH}`
+const inventory = filesAgree
+  ? '  No kit file differs. The manifest version does, which is what a release that\n' +
+    '  changed only the shared documents looks like from in here — the rules this\n' +
+    '  project is meant to be following moved and these binaries did not have to.\n' +
+    '  The shared documents were not compared, because that comparison is only\n' +
+    `  meaningful once the versions agree.\n\n  Refresh:\n    ${REFRESH}`
+  : `${lines.join('\n')}\n\n  Refresh:\n    ${REFRESH}`
 
 // Distance is measured from versions, so an unreadable version on either side
 // means the question cannot be answered. That is a failure, not a warning: the
@@ -382,6 +403,7 @@ if (gap === 'ahead') {
 }
 
 if (gap === 'same-version') {
+  // Only reachable with differing files: equal versions and equal hashes exited above.
   die(
     `check-kit-drift: kit differs from canonical while both claim v${vendored.version}.\n\n` +
       `${inventory}\n\n` +
@@ -432,5 +454,5 @@ console.error(
     '  projects the week it lapses.\n',
 )
 console.log(
-  `⚠ kit v${vendored.version}: ${present.length} file(s), one release behind canonical v${canonical.version}`,
+  `⚠ kit v${vendored.version}: ${present.length} file(s)${filesAgree ? ' identical to' : ','} one release behind canonical v${canonical.version}`,
 )
