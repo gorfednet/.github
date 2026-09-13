@@ -135,9 +135,25 @@ export function resolveStartupState(pr, repo, read, minRuns = 1) {
   // checks panel. Fail closed: a repository with no workflows should not be
   // running this check at all.
   if (list.length < minRuns) {
+    /*
+     * Name the cause when the API already knows it. A `pull_request` event runs
+     * against the *merge* commit, so a branch that conflicts with its base has no
+     * merge ref to run against and GitHub dispatches nothing — no queued run, no
+     * check, no error anywhere. Closing and reopening the pull request does not help,
+     * which is what sends you looking for a broken trigger or a path filter.
+     *
+     * Seen on #217: two workflows, both active, GitHub Actions operational, and four
+     * minutes of waiting before `mergeStateStatus` was read and said `DIRTY`. A
+     * rebase produced both runs within a minute. The old message listed the two
+     * causes it knew and this was neither, which sent the reader to the workflow
+     * files — a diagnosis worse than none, because it was specific and wrong.
+     */
+    const mergeable = pull.data?.mergeable
+    const conflicting = mergeable === false
     return {
       state: 'no-runs',
       detail: `${list.length} workflow run(s) for ${sha.slice(0, 8)}, expected at least ${minRuns}`,
+      conflicting,
     }
   }
 
@@ -182,8 +198,15 @@ if (isMain(import.meta.url)) {
   if (result.state === 'no-runs') {
     console.error(
       `\n✗ #${pr}: ${result.detail}\n\n` +
-        '  No workflow ran against this head at all. Either nothing is triggered\n' +
-        '  by `pull_request`, or a path filter excluded every changed file.\n',
+        (result.conflicting
+          ? '  This branch conflicts with its base, so there is no merge commit for a\n' +
+            '  `pull_request` workflow to run against and GitHub dispatched nothing at\n' +
+            '  all — no queued run, no check, no error. Rebase or merge the base in,\n' +
+            '  push, and the runs appear. Reopening the pull request does not help.\n'
+          : '  No workflow ran against this head at all. Either nothing is triggered\n' +
+            '  by `pull_request`, a path filter excluded every changed file, or the\n' +
+            '  branch conflicts with its base (check `mergeStateStatus`; a missing\n' +
+            '  merge ref dispatches nothing).\n'),
     )
     process.exit(1)
   }

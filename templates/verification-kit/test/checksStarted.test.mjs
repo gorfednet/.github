@@ -113,7 +113,35 @@ describe('resolveStartupState', () => {
       [head]: { head: { sha: 'abc' } },
       [runsFor('abc')]: { workflow_runs: [] },
     })
-    assert.equal(resolveStartupState(7, repo, read).state, 'no-runs')
+    const result = resolveStartupState(7, repo, read)
+    assert.equal(result.state, 'no-runs')
+    assert.equal(result.conflicting, false)
+  })
+
+  it('names a conflicting base as the reason nothing was dispatched', () => {
+    // A `pull_request` event runs against the merge commit, so a branch that
+    // conflicts with its base has nothing to run against and GitHub dispatches
+    // no run at all — not queued, not failed, absent. #217 sat like that for
+    // four minutes while the workflows were checked for a broken trigger,
+    // because the old message named the two causes it knew and this was
+    // neither. Closing and reopening the PR does not help; a rebase does.
+    const read = reader({
+      [head]: { head: { sha: 'abc' }, mergeable: false },
+      [runsFor('abc')]: { workflow_runs: [] },
+    })
+    const result = resolveStartupState(7, repo, read)
+    assert.equal(result.state, 'no-runs')
+    assert.equal(result.conflicting, true)
+  })
+
+  it('does not claim a conflict when GitHub has not computed mergeability yet', () => {
+    // `mergeable` is null while the merge ref is still being computed. Guessing
+    // "conflict" there would send the reader to rebase a branch that is fine.
+    const read = reader({
+      [head]: { head: { sha: 'abc' }, mergeable: null },
+      [runsFor('abc')]: { workflow_runs: [] },
+    })
+    assert.equal(resolveStartupState(7, repo, read).conflicting, false)
   })
 
   it('reports an unreadable API as undetermined, never as ok', () => {
