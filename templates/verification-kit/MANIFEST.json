@@ -1,5 +1,5 @@
 {
-  "version": "0.32.0",
+  "version": "0.33.0",
   "files": {
     "README.md": "f6a9f0f6b5f12b1a3d746ee19fa805c7e3ed87c2319740f372589da18a77a8d8",
     "bin/assert-checks-started.mjs": "5420eebfcad1eb06bd963a3f34c893ce3596f8ba1b52dcb7429d83ec9084e102",
@@ -12,7 +12,7 @@
     "bin/check-tracked-artifacts.mjs": "ef4a8e1d674c2d883db4e37781167c9fab1f6a3b0461b16d0a4b067cd1dc6e9c",
     "bin/mutation-canary.mjs": "fafb50a15854c5273e262915baaef4b63328ccb5b631f4a5f3341c0915d0b6e6",
     "bin/refresh-kit.mjs": "6339bd5fc239433a5a41a6136c9cace7bee146bf4bcfad52ad20aa916f339f0a",
-    "bin/write-manifest.mjs": "8f6b5c1704a18167a9b26890e9fc4b414aa40b45bd61f5991c05318f4c40dfba",
+    "bin/write-manifest.mjs": "8e49328da24a843fb00c25a5855f5bc81628501fa7b0a49646bc0eb489e825cb",
     "lib/backlogSchema.mjs": "260c11ed6e7e960b8aee4e7127d96e02c4f793c6b3e72b348dc01eedf6221fa6",
     "lib/bugbotConclusion.mjs": "5f70a24237f8108841c68454237b34761fbc2d06ebe22ec1c5b6f62573a54a1a",
     "lib/githubSlug.mjs": "ae603437ff1b6370606f1a5be6c8d58ed1cfa30f301b5643e2d82c4083766caf",
@@ -24,7 +24,7 @@
     "test/cli.test.mjs": "a54536da8fa569a0aaf1809e6942bc0c1e8ca47569b80772c8d2ad512931e1cd",
     "test/githubSlug.test.mjs": "578c78a4c2c3c6726f1c6be7ee13532d909e6e6de19d18ac6bbaa9ef52bb5b4f",
     "test/isMain.test.mjs": "b5d00295d10a6cd30c4401ace15a13bf118f9f7a65623354c13c4ce3ed5f7989",
-    "test/kitDrift.test.mjs": "5792ac6dc4665874cbe8df1321b535ef728bc8e997730fc28db36b1a45bbc733",
+    "test/kitDrift.test.mjs": "93ed3f60108f69e74741a1ad6f167f82e77a0cd4585ead6409e2f43db6da5e57",
     "test/mutationCanary.test.mjs": "eab9336a04ab9261a385cb6803c59b8bd5c412dc708560f05b752cbc6ea097ad",
     "test/ruleCitations.test.mjs": "adca35331c0a5b6b6b62ff5c51aa4e7229bba09f4b9420d152fb45f9c98821ba"
   },

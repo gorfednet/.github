@@ -538,6 +538,32 @@ describe('write-manifest --check', () => {
   })
 
   /*
+   * The same run, in the layout fifteen projects actually have: kit directly
+   * under the project root rather than under `templates/`. The v0.31.0 companion
+   * work resolved the root with one `../..`, which fits only the canonical
+   * layout, so this exact invocation threw in every consuming project — looking
+   * for `docs/verification-rules.md` in the directory *above* the project. It
+   * could not be seen from here, because from here the formula is right.
+   */
+  it('runs in a consuming project, where the kit is not under templates/', () => {
+    const root = mkdtempSync(join(tmpdir(), 'kit-consumer-'))
+    const kit = join(root, 'verification-kit')
+    cpSync(fileURLToPath(new URL('..', import.meta.url)), kit, { recursive: true })
+    mkdirSync(join(root, 'docs'), { recursive: true })
+    writeFileSync(join(root, 'docs', 'verification-rules.md'), '# rules\n', 'utf8')
+
+    const result = spawnSync('node', [join(kit, 'bin', 'write-manifest.mjs'), '--check'], {
+      encoding: 'utf8',
+    })
+
+    // The hashes will not match — the companion here is a stub — so the verdict
+    // is "out of date", not a crash. What is asserted is that it reached a
+    // verdict at all instead of throwing on a path outside the project.
+    assert.doesNotMatch(result.stderr, /is named as a shared document but is not at/)
+    assert.match(`${result.stdout}${result.stderr}`, /MANIFEST\.json (is out of date|matches)/)
+  })
+
+  /*
    * The automatic bump counts runs, not releases. Finishing v0.27.0 over three
    * runs published v0.29.0 — and with the drift checker failing above one minor
    * behind, that difference is the difference between every consumer warning and
