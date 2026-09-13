@@ -15,7 +15,7 @@
  */
 import { createHash } from 'node:crypto'
 import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs'
-import { join, relative, sep } from 'node:path'
+import { basename, join, relative, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { isMain } from '../lib/isMain.mjs'
 
@@ -47,7 +47,27 @@ const NOT_TRACKED_DIRS = new Set(['templates'])
  * collided with — while its drift check printed a tick.
  */
 const COMPANIONS = ['docs/verification-rules.md']
-const REPO_ROOT = join(KIT_ROOT, '..', '..')
+
+/**
+ * The repository root, for the two layouts this file ever runs in.
+ *
+ * Canonically the kit sits at `templates/verification-kit/`, so the root is two
+ * levels up. In a consuming project it sits at `verification-kit/`, so it is one.
+ * A single `../..` fits only the first, and the v0.31.0 companion work shipped
+ * with it — so `write-manifest --check`, which the kit's own test suite runs,
+ * threw in every consuming project, looking for `docs/verification-rules.md` in
+ * the directory *above* the project. Upstream CI could not see it: there, the
+ * formula is correct.
+ *
+ * Decided by layout rather than by a flag, because a flag is a thing fifteen
+ * projects have to pass correctly and this is knowable from the path.
+ */
+export function resolveRepoRoot(kitRoot = KIT_ROOT) {
+  const parent = join(kitRoot, '..')
+  return basename(parent) === 'templates' ? join(parent, '..') : parent
+}
+
+const REPO_ROOT = resolveRepoRoot()
 
 export function kitFiles(root = KIT_ROOT) {
   const found = []
@@ -70,7 +90,7 @@ export function hashFile(path) {
   return createHash('sha256').update(readFileSync(path)).digest('hex')
 }
 
-export function buildManifest(root = KIT_ROOT, version, repoRoot = REPO_ROOT) {
+export function buildManifest(root = KIT_ROOT, version, repoRoot = resolveRepoRoot(root)) {
   const files = {}
   for (const rel of kitFiles(root)) files[rel] = hashFile(join(root, rel))
   const companions = {}
@@ -155,8 +175,12 @@ if (isMain(import.meta.url)) {
     }
     built.version = explicit
   } else if (changed) {
-    const [major, minor, patch] = String(previous.version ?? '0.0.0').split('.').map(Number)
-    built.version = `${major || 0}.${(minor || 0) + 1}.${patch || 0}`
+    // Patch resets. Carrying it forward meant one hand-set patch release poisoned
+    // every later automatic bump — v0.32.1 became v0.33.1 — and the suite's own
+    // "one bump per run" test expects the `.0` the rest of the fleet reads in
+    // every version string it has ever seen.
+    const [major, minor] = String(previous.version ?? '0.0.0').split('.').map(Number)
+    built.version = `${major || 0}.${(minor || 0) + 1}.0`
   }
 
   writeFileSync(MANIFEST, `${JSON.stringify(built, null, 2)}\n`, 'utf8')
