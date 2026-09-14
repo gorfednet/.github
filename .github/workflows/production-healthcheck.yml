@@ -65,6 +65,36 @@ on:
         required: false
         type: string
         default: ""
+      expect-og-image:
+        description: >-
+          When true, the og:image the live page advertises is fetched and its
+          bytes are inspected — format, real pixel size, served Content-Type,
+          weight, and agreement with the page's own og:image:width/height.
+
+          This is the half of the social-card fix no repository check can see.
+          check-og-image.mjs opens the file in the publish set, which is the
+          right question for a pull request; between that file and a scraper sits
+          a cache, and this fleet's vhost serves images with `expires 1y` and
+          `Cache-Control: immutable`. So a card replaced under its old name is
+          green in the repository, green in the build, and stale at the URL for
+          up to a year. ssatcy.com and 4thcltr.com were both live in that state.
+
+          A declared size the URL does not serve is the signature.
+        required: false
+        type: boolean
+        default: false
+      og-pages:
+        description: >-
+          Comma-separated page paths whose card to fetch. Deliberately not
+          health-paths, which legitimately lists stylesheets and scripts.
+        required: false
+        type: string
+        default: "/"
+      og-max-bytes:
+        description: Largest acceptable card, in bytes.
+        required: false
+        type: string
+        default: "300000"
       expect-sitemap:
         description: >-
           When true, robots.txt must name a Sitemap: whose URL actually
@@ -348,6 +378,52 @@ jobs:
             fi
             echo "  sitemap resolves: $sitemap"
           done
+
+      # The live half of the social-card fix. Its companion is check-og-image.mjs,
+      # which asserts the bytes in the publish set; this asserts the bytes at the
+      # URL, and the two disagree exactly when a cache is serving a previous card.
+      - name: The card a scraper receives is the card this page declares
+        if: ${{ !cancelled() && inputs.expect-og-image }}
+        run: |
+          set -euo pipefail
+          checker=verification-kit/bin/check-live-og-image.mjs
+
+          # Asking for this and not having the kit is a failure, not a skip. The
+          # Playwright step above carries the same rule for the same reason: a
+          # monitor that prints a tick for a file it could not find is worse than
+          # no monitor, because it is read as coverage.
+          if [ ! -f "$checker" ]; then
+            echo "::error::expect-og-image is true but $checker is not vendored." \
+                 "Refresh the verification kit, or set expect-og-image: false and" \
+                 "accept that nothing is checking the live card."
+            exit 1
+          fi
+
+          args=()
+          count=0
+          IFS=',' read -ra listed <<< "${{ inputs.og-pages }}"
+          for path in "${listed[@]}"; do
+            path="$(printf '%s' "$path" | xargs)"
+            [ -n "$path" ] || continue
+            args+=(--page "$path")
+            count=$((count + 1))
+          done
+
+          # og-pages given but parsed to nothing would otherwise run the checker
+          # over its own default and print a tick for a list that is not a list.
+          if [ "$count" -eq 0 ]; then
+            echo "::error::og-pages was given but parsed to nothing."
+            exit 1
+          fi
+
+          # The floor is the number of paths asked for, so a page silently
+          # dropped between here and the checker fails rather than shrinking the
+          # run. The checker refuses to go below it.
+          node "$checker" \
+            --site-url "${{ inputs.site-url }}" \
+            "${args[@]}" \
+            --min-pages "$count" \
+            --max-bytes "${{ inputs.og-max-bytes }}"
       # `!cancelled()` on these two, matching the steps that need them. Without
       # it a failure in the HTTP checks skipped the install while the smoke below
       # still ran — it carries `!cancelled()` — so the run's second error was

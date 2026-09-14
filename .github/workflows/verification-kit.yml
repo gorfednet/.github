@@ -129,8 +129,14 @@ jobs:
             'templates/verification-kit/test/*.test.mjs' \
             | grep -c '^ *ok ' || true)
           echo "executed $count assertions"
-          if [ "$count" -lt 50 ]; then
-            echo "::error::The kit's own suite executed $count tests, expected at least 50." \
+          # Raised from 50 to 250 when v0.37.0 took the suite to 292. The floor
+          # is meant to catch a glob that stopped matching, and at 50 it would
+          # have passed with five of the sixteen test files deleted — a floor
+          # that far under the real count is a number, not a gate. The consumer
+          # gate in actions/verification-gate/action.yml already asks 250, so
+          # this brings the kit's own runner up to what it demands of others.
+          if [ "$count" -lt 250 ]; then
+            echo "::error::The kit's own suite executed $count tests, expected at least 250." \
                  "A glob that matches nothing exits 0 having proven nothing."
             exit 1
           fi

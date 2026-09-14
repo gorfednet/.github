@@ -112,6 +112,31 @@ citation resolved. Tightening a matcher is a change of behaviour in both
 directions, and the positive case has to be retested every time the negative one
 is fixed.
 
+A fourth instance carries the sharpest version of the lesson, because a test
+protected it. `check-page-metadata` reported that rowanmcarthur.com's `og:image`
+carried an HTML entity that would drop its crop parameters. The predicate was
+`/&amp;|&#38;|%26amp%3B/.test(raw)` over the raw attribute — and `&amp;` is simply
+how `&` is written in an attribute, so it flagged every correctly escaped
+multi-parameter URL there is. Its own docstring described the right test, "an
+entity surviving one decode", and the code never decoded.
+
+What kept it alive was a case in the suite asserting exactly the wrong thing. The
+checker and the test agreed, the suite was green, and the finding was carried into
+a plan and into a delegated task as established fact. It was settled by fetching
+the URL: the crop applies and the card is 1200x630. **A case watched failing
+proves the assertion runs. It does not prove the assertion is right** — and a
+matcher's near-miss test is worth nothing if the near-miss was written by whoever
+held the wrong belief. When a check reports a defect in something you did not
+write, the cheap confirmation is to observe the thing itself, not to reread the
+pattern or the test.
+
+The correct predicate decodes once and then looks for a survivor, which also
+required making `decodeEntities` a single pass: a chain of `.replace()` calls
+turns `&amp;lt;` into `<`, so a value escaped once and a value escaped twice come
+out identical, and the one distinction the caller needs is destroyed before it can
+be measured. Percent-encoded `%26amp%3B` stays a failure, because no HTML decode
+touches it.
+
 **V11. Scan for the value, not the syntax that usually surrounds it.** A check
 keyed to one spelling of a call site measures that spelling, not the property.
 Two instances: a key scan matching `key: "…"` saw none of the keys composed as

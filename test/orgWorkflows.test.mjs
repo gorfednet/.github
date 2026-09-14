@@ -238,6 +238,95 @@ describe('production-healthcheck workflow', () => {
   })
 
   /**
+   * The floor on this repository's own suite was unguarded, which is why it
+   * stayed at 50 while the suite grew to 292 — nothing compared the two, so the
+   * number kept reading as a gate long after it had stopped being one. It would
+   * have passed with five of sixteen test files deleted.
+   *
+   * Guarded here the same way the consumer gate's floor is guarded, and stated as
+   * a lower bound on the floor rather than an exact value so raising it stays
+   * easy and lowering it has to come past this assertion.
+   */
+  it('holds its own suite to a floor near the real count', () => {
+    const kit = readFileSync(join(WORKFLOWS, 'verification-kit.yml'), 'utf8')
+    const floor = /-lt (\d+) \]; then\n\s*echo "::error::The kit's own suite/.exec(kit)
+    assert.ok(floor, "no floor found on the kit's own self-test count")
+    assert.ok(
+      Number(floor[1]) >= 250,
+      `the kit's self-test floor is ${floor[1]}; the suite executes far more than that, ` +
+        'so a floor this low passes with most of it deleted',
+    )
+  })
+
+  /**
+   * The live card check, guarded the same way the pr-check gate's checks are and
+   * for the reason recorded there: a workflow can name a script in a comment or
+   * quote it in an error message while never running it, and the assertion that
+   * only searched for the filename stayed green when the invocation was replaced
+   * with an echo. A line beginning with `node` is the narrowest subject that can
+   * actually run one.
+   */
+  describe('live og:image check', () => {
+    const step = text.slice(text.indexOf('- name: The card a scraper receives'))
+
+    it('is wired into this workflow at all', () => {
+      assert.notEqual(
+        text.indexOf('- name: The card a scraper receives'),
+        -1,
+        'the step is gone, so nothing fetches the live card',
+      )
+    })
+
+    /**
+     * Two halves, because this step reaches the script through a variable and
+     * neither half is sufficient. Searching for the filename passes over a
+     * comment or an `::error::` message that quotes it — the mutation that kept
+     * the pr-check version of this assertion green. Searching for a bare `node`
+     * line passes over one running something else entirely. So: the variable is
+     * bound to this script, and a line beginning with `node` runs that variable.
+     */
+    it('invokes the checker rather than mentioning it', () => {
+      assert.match(
+        step,
+        /^\s*checker=verification-kit\/bin\/check-live-og-image\.mjs\s*$/m,
+        'nothing binds the checker path to check-live-og-image.mjs',
+      )
+      const invoked = step
+        .split('\n')
+        .some((line) => /^\s*node\s/.test(line) && line.includes('"$checker"'))
+      assert.ok(invoked, 'no line starting with node runs "$checker"')
+    })
+
+    /**
+     * Same rule as the Playwright smoke: asking for a check and not having its
+     * script is a failure, never a skip. Opting out is `expect-og-image: false`,
+     * which is a decision readable off the caller's workflow rather than a tick
+     * printed over a file that was not there.
+     */
+    it('fails when the kit it needs is absent rather than skipping', () => {
+      const beforeInvocation = step.slice(0, step.indexOf('node "$checker"'))
+      assert.match(beforeInvocation, /is not vendored/)
+      assert.match(beforeInvocation, /exit 1/)
+      assert.doesNotMatch(
+        beforeInvocation,
+        /exit 0/,
+        'a missing checker must fail; opting out is expect-og-image: false',
+      )
+    })
+
+    /**
+     * The floor is what stops the run shrinking in silence. A comma list that
+     * parsed to one path, or a checker invoked with no --page at all, would
+     * otherwise print a tick over less than was asked for — the shape every
+     * anti-vacuous floor in this kit exists for.
+     */
+    it('gives the checker a floor equal to the paths it was asked for', () => {
+      assert.match(step, /--min-pages "\$count"/)
+      assert.match(step, /parsed to nothing/)
+    })
+  })
+
+  /**
    * A step that runs after a failure needs its setup to run too. The install
    * steps were plain `if: inputs.run-playwright`, so a failed HTTP check
    * skipped them while the smoke — which carries `!cancelled()` — went ahead
