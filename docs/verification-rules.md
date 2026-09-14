@@ -924,6 +924,34 @@ absent, fail with the sentence that tells the reader what to install. An honest
 failure costs less than a path that resolves for one person, because the borrowed
 copy also compiles the borrower's source against a version it never chose.
 
+**A check that reads the index cannot see itself until it is staged.** This one
+was validated against eleven repositories and reported clean. It was clean —
+`git ls-files` does not list untracked files, and the checker's own file was
+untracked at the time, as were its fixtures, which are made of the strings it
+looks for. The commit that landed it made the org repository fail on its own
+pattern definitions, and every consumer that refreshed inherited that.
+
+The consequence is the part worth remembering. Two adopting repositories answered
+the failure by waiving `/Users/gorf/` outright and merged with a green tick — the
+check switched off, still reporting. **An unsatisfiable check does not get
+removed, it gets waived**, and a waiver wide enough to escape it is wider than the
+defect it was meant to permit. When a gate fails on something that cannot honestly
+be changed, the subject is wrong, not the tolerance.
+
+The kit is now out of scope for the scan, and safely rather than conveniently:
+`check-kit-drift` asserts the vendored copy matches upstream byte for byte, so
+nothing can be smuggled into that directory without failing a different gate
+first. A test pins the exclusion to `verification-kit/` and proves a directory
+merely named like it is still scanned.
+
+And the missing gate was one level up: the org repository ran three of its own
+checkers against itself from a hand-maintained list of steps, and the fourth was
+never added. `scripts/lib/selfAppliedCheckers.mjs` now fails the build when a
+checker is neither wired in nor excluded with a stated reason, and — because a
+registry agreeing with a workflow that does not run the step is the same claim one
+level removed — it also runs the checker rather than grepping the YAML for its
+name.
+
 ## Provenance
 
 Every rule above was first written in
