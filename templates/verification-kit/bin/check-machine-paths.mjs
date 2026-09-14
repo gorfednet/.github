@@ -104,6 +104,30 @@ const COMMENT_START = /^\s*(?:\/\/|#|\*|\/\*|<!--|;|--)/
  */
 const PROSE_FILE = /\.(?:md|markdown)$/i
 
+/*
+ * The kit is not the project's source, and it must be out of scope for two
+ * reasons rather than one.
+ *
+ * The plain one: this checker's own patterns and its test fixtures are made of
+ * the strings it looks for. Vendored into a project, `verification-kit/test/`
+ * carries a dozen deliberate `/Users/...` paths, and a check that failed on them
+ * would fail in every adopting repository on the day it arrived — which is what
+ * happened. Two repositories' pull requests answered it by waiving `/Users/gorf/`
+ * outright, and a waiver that broad turns the check off while leaving it green.
+ * A check that cannot be satisfied honestly gets satisfied dishonestly.
+ *
+ * The one that makes the exclusion safe rather than convenient: nothing here is
+ * the project's to write. check-kit-drift asserts the vendored copy matches
+ * upstream byte for byte, so code cannot be smuggled into this directory without
+ * failing that gate first, and upstream's copy is scanned by the kit's own suite
+ * — including a case asserting this exclusion is scoped to the kit and not
+ * general.
+ *
+ * Matches `verification-kit/` at any depth, which covers a consumer's vendored
+ * copy and the canonical `templates/verification-kit/` in the org repository.
+ */
+const KIT_PATH = /(?:^|\/)verification-kit\//
+
 function isBinary(buffer) {
   const window = buffer.subarray(0, 8000)
   return window.includes(0)
@@ -144,7 +168,7 @@ const problems = []
 let scanned = 0
 
 for (const file of files) {
-  if (PROSE_FILE.test(file)) continue
+  if (PROSE_FILE.test(file) || KIT_PATH.test(file)) continue
   let buffer
   try {
     buffer = readFileSync(join(root, file))

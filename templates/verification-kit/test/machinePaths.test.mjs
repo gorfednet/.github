@@ -139,6 +139,43 @@ describe('check-machine-paths', () => {
     assert.match(result.stdout, /1 tracked text file/)
   })
 
+  it('does not scan the vendored kit, whose fixtures are made of what it looks for', () => {
+    /*
+     * The case this check shipped without, and the omission was invisible for a
+     * specific reason: it reads the git index, and I validated it across the
+     * fleet while its own file was still untracked. `git ls-files` cannot see
+     * what is not staged, so it never saw itself until the commit landed — after
+     * which it failed on its own pattern definitions and on every one of these
+     * fixtures, in this repository and in each consumer that refreshed.
+     *
+     * Two pull requests answered that by waiving /Users/gorf/ outright, which
+     * turns the check off and leaves it green. A check that cannot be satisfied
+     * honestly gets satisfied dishonestly, so the subject is what had to change.
+     */
+    const dir = repo({
+      'verification-kit/bin/check-machine-paths.mjs': "  re: /\\/Users\\/[^/\\s]+\\//,\n",
+      'verification-kit/test/machinePaths.test.mjs':
+        "      'scripts/x.mjs': \"const p = '/Users/gorf/Documents/Apps/www/other/node_modules/sharp'\",\n",
+      'src/app.mjs': 'export const x = 1\n',
+    })
+    const result = run(dir)
+    assert.equal(result.status, 0, result.stderr)
+    assert.match(result.stdout, /1 tracked text file/)
+  })
+
+  it('excludes the kit and nothing that merely resembles it', () => {
+    // Otherwise the exclusion is a hole rather than a boundary: a directory named
+    // for the kit is not the kit, and the drift check is what makes the real one
+    // safe to skip.
+    const dir = repo({
+      'my-verification-kit-notes/setup.mjs': "const p = '/Users/gorf/x'\n",
+      'verification-kit-extras/setup.mjs': "const p = '/Users/gorf/x'\n",
+    })
+    const result = run(dir)
+    assert.equal(result.status, 1)
+    assert.match(result.stderr, /2 machine-specific path/)
+  })
+
   it('still flags a path after code on the same line as a trailing comment', () => {
     // The conservative direction: prose is an allowance for whole lines only.
     const dir = repo({
