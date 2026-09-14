@@ -148,6 +148,28 @@
       "pr": 20,
       "userSymptom": "A check reporting a rule that does not exist, in a file nobody here wrote. towit.io does not wire this check, so like bindercurve’s rulebook section it was a false failure waiting for whoever wired it first — and the reasonable conclusion on seeing it would be that the check is noise.",
       "evidence": "Reported by the batch that rolled v0.27.0: towit-admin/static/js/angular/angular.js and its angularjs twin, \"we added three explicit number rules 0, 1 and 2\". No sequence starts at zero, so a number beginning with 0 is prose by definition; the matcher now reads [1-9]\\d* in all three alternatives. Watched failing first, canary citation-reads-a-zero-as-a-rule, and verified against the real towit.io tree that produced it: 91 source files, every citation resolves. Third instance of V10 in two releases, which is why it is recorded there with the note that narrowing a matcher changes behaviour in both directions — the previous narrowing broke 4thcltr’s real 4C- prefix."
+    },
+    {
+      "id": "metadata-gate-flagged-correct-markup",
+      "title": "The metadata gate reported a defect in a URL that was written correctly",
+      "status": "in-review",
+      "assignee": "main-model",
+      "pr": 32,
+      "userSymptom": "A red check naming a bug that is not there, on a page whose social card works. The reasonable response is to go and 'fix' correct markup, which is what nearly happened: the finding was carried into a plan and into a delegated task as established fact, and an agent was briefed to expect the failure and repair it.",
+      "evidence": "check-page-metadata.mjs: `const doubleEscaped = (raw) => /&amp;|&#38;|%26amp%3B/i.test(raw)` tested the raw attribute. `&amp;` is how `&` is written in an attribute value, so every correctly escaped multi-parameter URL failed. Its own docstring named the right test, 'an entity surviving one decode', and the code never decoded. Settled by fetching rowanmcarthur.com's og:image with the new live checker: the crop applies and the image is 1200x630.",
+      "reviewBy": "2026-12-01",
+      "note": "Fixed by decoding once and looking for a survivor, which required decodeEntities to become a single pass - a chain of replaces turns `&amp;lt;` into `<`, so escaped-once and escaped-twice come out identical and the distinction the caller needs is gone before it can be measured. Recorded as a fourth V10 instance. The part that generalises is not the pattern but the protection: a case in the suite asserted the same wrong thing, so checker and test confirmed each other and the suite stayed green. A case watched failing proves the assertion runs, not that it is right - and a near-miss test written by whoever held the wrong belief is worth nothing. When a check reports a defect in something you did not write, observe the thing itself."
+    },
+    {
+      "id": "card-replaced-under-a-cached-name",
+      "title": "A social card can be fixed in the repository and stay broken on the internet for a year",
+      "status": "in-review",
+      "assignee": "main-model",
+      "pr": 32,
+      "userSymptom": "Sharing a link keeps showing the old, wrong card long after it was fixed and deployed, and every check says the site is correct. Nobody can find the fault, because there is no fault left in the repository.",
+      "evidence": "The vhost template on dapyllil serves image, css and js extensions with `expires 1y` and `add_header Cache-Control \"public, immutable\"`. Confirmed live: `cache-control: public, max-age=31536000, immutable` on favicon.svg across five hosts. ssatcy.com/og-image.png and 4thcltr.com/og-image.png both already existed under that header, one of them jpeg bytes at 768x1024. check-og-image reads the publish set, so a card replaced under its old name is green in the repository, green in the build and stale at the URL.",
+      "reviewBy": "2026-12-01",
+      "note": "Two halves. Structurally, a new card lands at a new URL rather than overwriting the old name - 4thcltr.com already does this with `?v=3` and is the pattern to copy. Verification-wise, check-live-og-image.mjs fetches the page, reads the og:image a scraper would read, fetches that, and compares the served bytes against the page's own declared dimensions; a declared size the URL does not serve is the staleness signature. It also reports an immutable Cache-Control as a note, so the next person replacing a card is told why it will not reach anyone. The class is general: any check that reads the artefact a build produced cannot see what a cache in front of it is still serving."
     }
   ]
 }
