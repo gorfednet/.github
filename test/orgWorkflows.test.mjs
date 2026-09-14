@@ -171,7 +171,20 @@ describe('verification-gate composite action', () => {
     assert.match(text, /-lt 250/, 'a self-test step with no floor passes when the glob misses')
   })
 
+  // V5: an unanchored contains on an identifier, converted to a behaviour
+  // assertion. `text.includes(script)` was satisfied by any mention anywhere —
+  // a comment, or an `::error::` message quoting the filename it had just
+  // failed to run. It passed only because the comments above name these
+  // scripts without the `.mjs` suffix, which is luck, not a guard. Replacing
+  // the check-og-image invocation with `echo "::error::check-og-image.mjs ..."`
+  // kept the old assertion green. A line that starts with `node` is the
+  // narrowest subject that can actually run one.
   it('runs each kit check by name, so a renamed script fails loudly', () => {
+    const invokes = (script) =>
+      text
+        .split('\n')
+        .some((line) => /^\s*(run:\s*)?node\s/.test(line) && line.includes(`/bin/${script}"`))
+
     for (const script of [
       'check-kit-drift.mjs',
       'check-rule-citations.mjs',
@@ -182,7 +195,7 @@ describe('verification-gate composite action', () => {
       'check-backlog.mjs',
       'assert-tests-executed.mjs',
     ]) {
-      assert.ok(text.includes(script), `the gate never runs ${script}`)
+      assert.ok(invokes(script), `the gate never runs ${script}`)
     }
   })
 
