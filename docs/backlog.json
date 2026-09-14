@@ -152,7 +152,7 @@
     {
       "id": "metadata-gate-flagged-correct-markup",
       "title": "The metadata gate reported a defect in a URL that was written correctly",
-      "status": "in-review",
+      "status": "landed",
       "assignee": "main-model",
       "pr": 32,
       "userSymptom": "A red check naming a bug that is not there, on a page whose social card works. The reasonable response is to go and 'fix' correct markup, which is what nearly happened: the finding was carried into a plan and into a delegated task as established fact, and an agent was briefed to expect the failure and repair it.",
@@ -163,18 +163,18 @@
     {
       "id": "card-replaced-under-a-cached-name",
       "title": "A social card can be fixed in the repository and stay broken on the internet for a year",
-      "status": "in-review",
+      "status": "landed",
       "assignee": "main-model",
       "pr": 32,
       "userSymptom": "Sharing a link keeps showing the old, wrong card long after it was fixed and deployed, and every check says the site is correct. Nobody can find the fault, because there is no fault left in the repository.",
       "evidence": "The vhost template on dapyllil serves image, css and js extensions with `expires 1y` and `add_header Cache-Control \"public, immutable\"`. Confirmed live: `cache-control: public, max-age=31536000, immutable` on favicon.svg across five hosts. ssatcy.com/og-image.png and 4thcltr.com/og-image.png both already existed under that header, one of them jpeg bytes at 768x1024. check-og-image reads the publish set, so a card replaced under its old name is green in the repository, green in the build and stale at the URL.",
       "reviewBy": "2026-12-01",
-      "note": "Two halves. Structurally, a new card lands at a new URL rather than overwriting the old name - 4thcltr.com already does this with `?v=3` and is the pattern to copy. Verification-wise, check-live-og-image.mjs fetches the page, reads the og:image a scraper would read, fetches that, and compares the served bytes against the page's own declared dimensions; a declared size the URL does not serve is the staleness signature. It also reports an immutable Cache-Control as a note, so the next person replacing a card is told why it will not reach anyone. The class is general: any check that reads the artefact a build produced cannot see what a cache in front of it is still serving."
+      "note": "Two halves, and this pull request is only the second of them. Structurally, a new card lands at a new URL rather than overwriting the old name - 4thcltr.com already does this with `?v=3` and is the pattern to copy. Verification-wise, check-live-og-image.mjs fetches the page, reads the og:image a scraper would read, fetches that, and compares the served bytes against the page's own declared dimensions; a declared size the URL does not serve is the staleness signature. It also reports an immutable Cache-Control as a note, so the next person replacing a card is told why it will not reach anyone. The class is general: any check that reads the artefact a build produced cannot see what a cache in front of it is still serving. Structural half outstanding per site: see cards-at-overwritable-urls."
     },
     {
       "id": "guard-failed-on-its-own-explanation",
       "title": "A guard blocked a repository for documenting why it obeys the guard",
-      "status": "in-review",
+      "status": "landed",
       "assignee": "main-model",
       "pr": 32,
       "userSymptom": "A pull request red on a check naming a file that does nothing wrong, and the check cannot be satisfied by any wording - the deploy script explains in a comment why it does NOT use the forbidden mount, and saying so is what trips it. The only ways out are to delete the explanation or to ignore the check.",
@@ -185,13 +185,23 @@
     {
       "id": "gate-buried-the-cause-it-outlived",
       "title": "The check designed not to be silenced became the loudest noise in the log",
-      "status": "in-review",
+      "status": "landed",
       "assignee": "main-model",
       "pr": 32,
       "userSymptom": "A failed run whose log is eighteen missing-file errors, every one of them real, none of them the reason. The actual failure is a screen and a half higher and reads as unrelated, so the diagnosis goes to the loud true errors first.",
       "evidence": "ssatcy.com run: the share-mount guard failed, Build was skipped, and check-page-metadata, check-og-image and check-error-pages each reported ENOENT for every page and file they wanted in a dist/ that had never been produced. V18 puts !cancelled() on every gate step deliberately, so this is the cost of a correct decision rather than a bug in it.",
       "reviewBy": "2026-12-01",
       "note": "Recorded as V70. Fixed with a precondition step in the verification-gate action that fails once when a root it was told to read is absent or empty, and names the likely cause - look for the first failed or skipped step; if Build did not run, that is why. It does not skip: a genuinely missing publish set is still a failure, now a legible one. Guarded by five cases that execute the step’s extracted shell rather than matching its text, since the question is what the script decides; five mutations watched red, including one that renamed the step, which proves the extraction helper throws instead of handing every case an empty script."
+    },
+    {
+      "id": "cards-at-overwritable-urls",
+      "title": "Most sites still declare a social card at a URL that cannot be replaced",
+      "status": "confirmed-bug",
+      "assignee": "main-model",
+      "userSymptom": "A social card fixed and deployed keeps showing the old image when a link is shared, with nothing in the repository left to fix.",
+      "evidence": "The vhost serves \\.(png|svg|css|js|...)$ with expires 1y and Cache-Control: public, immutable - confirmed live, max-age=31536000. Any card at a fixed name inherits that, so replacing it in place reaches nobody for up to a year. ssatcy.com is fixed: scripts/generate-og-image.mjs writes og-card-<hash12>.png and rewrites index.html and _headers, so the URL changes exactly when the pixels do. 4thcltr.com/og-image.png is live under the same header and is the next one. The remaining sites are getting a first card, so their URL is new either way - the risk is the SECOND card.",
+      "reviewBy": "2026-11-15",
+      "note": "check-live-og-image.mjs catches the symptom after a deploy by comparing the bytes the og:image URL serves against the dimensions the page declares, and notes an immutable Cache-Control so the next person is told why a replacement will not reach anyone. That is detection. Prevention is the content-addressed name, which needs doing per site; ssatcy.com is the pattern to copy."
     }
   ]
 }
