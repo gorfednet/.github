@@ -1,5 +1,5 @@
 {
-  "version": "0.37.0",
+  "version": "0.38.0",
   "files": {
     "README.md": "f6a9f0f6b5f12b1a3d746ee19fa805c7e3ed87c2319740f372589da18a77a8d8",
     "bin/assert-checks-started.mjs": "5420eebfcad1eb06bd963a3f34c893ce3596f8ba1b52dcb7429d83ec9084e102",
@@ -41,6 +41,6 @@
     "test/ruleCitations.test.mjs": "adca35331c0a5b6b6b62ff5c51aa4e7229bba09f4b9420d152fb45f9c98821ba"
   },
   "companions": {
-    "docs/verification-rules.md": "b70ff9924e7c028992b2bfbe9f2b9bdc8dc183ac2a3356a847398ae0a704bdfe"
+    "docs/verification-rules.md": "771491ba6c15c64e7bacf0b9225d3307e3f0310b99b189ce027a0f23e3c76055"
   }
 }

@@ -92,4 +92,69 @@ describe('no-smb-guard', () => {
     })
     assert.equal(code, 1, output)
   })
+
+  /**
+   * The exclusion for the shared rules document treated the problem as one
+   * file's, and it is not. ssatcy.com's deploy script explains, in a comment, why
+   * it does not deploy over the mount — and the guard failed on the explanation.
+   * That blocked the pull request, and because the verification gate carries
+   * `!cancelled()` the skipped build then produced eighteen ENOENT errors that
+   * buried the one real failure.
+   *
+   * There is no way to write that comment without tripping a guard that reads the
+   * word, so a repository could not document its own deploy reasoning. The line
+   * is now drawn at what a line can actually do: a comment cannot mount
+   * anything, while a share path or a mount command is copy-pasteable wherever
+   * it appears — including inside a comment.
+   */
+  it('passes on a comment explaining why the mount is avoided', () => {
+    const { code, output } = scan({
+      'scripts/deploy-ssh.sh':
+        '#!/usr/bin/env bash\n' +
+        '# rsync renames a temp copy over the target. Over the CIFS mount that reaches\n' +
+        '# the serving container that orphans its file handle, so this deploys by ssh.\n' +
+        'rsync -e ssh -a dist/ deploy@host:/srv/site/\n',
+    })
+    assert.equal(code, 0, output)
+  })
+
+  it('passes on the same explanation in a JavaScript, Python or HTML comment', () => {
+    const { code, output } = scan({
+      'scripts/deploy.mjs': '// Not over the CIFS mount: see the deploy notes.\n',
+      'scripts/stage.py': '# Historically this used a CIFS share; it does not now.\n',
+      'docs/notes.md': '<!-- the CIFS mount is why this is ssh-only -->\n',
+    })
+    assert.equal(code, 0, output)
+  })
+
+  /*
+   * The other direction, which is what makes the allowance safe. Narrowing a
+   * matcher changes behaviour both ways (V10), so everything the comment
+   * allowance must NOT let through gets its own case.
+   */
+  it('still fails a mount command even when it sits in a comment', () => {
+    const { code, output } = scan({
+      'scripts/deploy.sh': '# mount -t cifs //nas/websites /mnt/x  # the old way\n',
+    })
+    assert.equal(code, 1, output)
+    assert.match(output, /scripts\/deploy\.sh/)
+  })
+
+  it('still fails a share path in a comment, which is copy-pasteable', () => {
+    const { code, output } = scan({
+      'scripts/deploy.sh': '# was: rsync -a dist/ /Volumes/websites/example/\n',
+    })
+    assert.equal(code, 1, output)
+  })
+
+  it('still fails an smb:// URL in a comment', () => {
+    const { code } = scan({ 'README.md': '<!-- open smb://gorfednas/websites -->\n' })
+    assert.equal(code, 1)
+  })
+
+  it('still fails the bare word on a line that is not a comment', () => {
+    // An assignment, an argument, a variable name: anything the shell executes.
+    const { code, output } = scan({ 'scripts/deploy.sh': 'TARGET_FS=cifs\n' })
+    assert.equal(code, 1, output)
+  })
 })
