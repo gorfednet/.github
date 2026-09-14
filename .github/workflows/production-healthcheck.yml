@@ -47,6 +47,35 @@ on:
         required: false
         type: string
         default: ""
+      error-page-marker:
+        description: >-
+          A string from this site's own 404 page. When set, a made-up URL is
+          fetched and must answer HTTP 404 *and* contain this marker.
+
+          Both halves are load-bearing and neither is enough alone. Ten sites in
+          this fleet shipped no custom error page for their whole existence and
+          every check passed, because a repository can only see whether a
+          404.html file exists — not whether nginx was ever told to serve it
+          (`error_page 404 /404.html;`). A file in the docroot that the server
+          never reaches for is exactly as useful as no file.
+
+          The status half matters separately: an SPA fallback that answers 200
+          with the app shell on an unknown URL is a soft 404, which Google
+          treats as a duplicate of the homepage rather than a missing page.
+        required: false
+        type: string
+        default: ""
+      expect-sitemap:
+        description: >-
+          When true, robots.txt must name a Sitemap: whose URL actually
+          resolves. A robots.txt advertising a sitemap that 404s is worse than
+          one advertising nothing, and only a live fetch can tell — Cloudflare
+          appends its own managed content-signal policy to the origin file, so
+          what a crawler reads here is not byte-identical to what the repository
+          ships.
+        required: false
+        type: boolean
+        default: false
       smoke-spec:
         description: Playwright spec to run against the live site.
         required: false
@@ -232,6 +261,93 @@ jobs:
           fi
           echo "probed $probed forbidden path(s), $leaked still public"
           [ "$leaked" -eq 0 ]
+
+      # The half of the error-page fix that no repository check can see. The
+      # companion is check-error-pages.mjs, which asserts the file ships; this
+      # asserts the server serves it, and the two failures mean different things.
+      - name: A made-up URL gets this site's own 404
+        if: ${{ !cancelled() && inputs.error-page-marker != '' }}
+        run: |
+          set -euo pipefail
+          base="${{ inputs.site-url }}"
+          marker=${{ toJSON(inputs.error-page-marker) }}
+
+          # A path no site would route, with a random component so a previous
+          # run's cache entry cannot answer for this one.
+          url="${base}/verification-kit-absent-${RANDOM}${RANDOM}"
+          body="$(mktemp)"
+
+          # No -L: a redirect is its own answer and following it would report on
+          # wherever it landed. Status is read separately from the body so the
+          # two failures below can be told apart.
+          code="$(curl -sS -o "$body" -w '%{http_code}' --max-time 30 "$url" || true)"
+          case "$code" in
+            [0-9][0-9][0-9]) ;;
+            *) code="000" ;;
+          esac
+          bytes="$(wc -c < "$body" | tr -d '[:space:]')"
+          echo "$url → HTTP $code, ${bytes} bytes"
+
+          if [ "$code" = "000" ]; then
+            echo "::error::$url could not be reached at all, so nothing was proven" \
+                 "about the error page. That is an outage, not a 404."
+            exit 1
+          fi
+
+          if [ "$code" != "404" ]; then
+            echo "::error::$url answered HTTP $code, not 404." \
+                 "A 200 here is a soft 404: search engines read it as a duplicate" \
+                 "of the homepage rather than a missing page."
+            exit 1
+          fi
+
+          if ! grep -qF -- "$marker" "$body"; then
+            echo "::error::$url returned 404 but not this site's error page —" \
+                 "the marker was absent, so a reader is seeing the server default." \
+                 "The file shipping is not enough: nginx needs" \
+                 "'error_page 404 /404.html;' in this site's vhost."
+            echo "First 400 bytes of what was served:"
+            head -c 400 "$body" || true
+            exit 1
+          fi
+
+          echo "  branded 404 confirmed, marker present"
+
+      - name: robots.txt advertises a sitemap that resolves
+        if: ${{ !cancelled() && inputs.expect-sitemap }}
+        run: |
+          set -euo pipefail
+          base="${{ inputs.site-url }}"
+          robots="$(mktemp)"
+
+          code="$(curl -sS -o "$robots" -w '%{http_code}' -L --max-time 30 "${base}/robots.txt" || true)"
+          if [ "$code" != "200" ]; then
+            echo "::error::${base}/robots.txt answered HTTP $code."
+            exit 1
+          fi
+
+          # Ignore commented-out directives. promptboi.com carried
+          # "# Sitemap: https://promptboi.com/sitemap.xml" for months, which
+          # advertises nothing while reading, to a human skimming, as though it did.
+          mapfile -t sitemaps < <(grep -i '^[[:space:]]*Sitemap:' "$robots" | sed 's/^[[:space:]]*[Ss]itemap:[[:space:]]*//' | tr -d '\r')
+
+          if [ "${#sitemaps[@]}" -eq 0 ]; then
+            echo "::error::robots.txt names no Sitemap: directive." \
+                 "A commented-out one does not count."
+            exit 1
+          fi
+
+          for sitemap in "${sitemaps[@]}"; do
+            [ -z "$sitemap" ] && continue
+            scode="$(curl -sS -o /dev/null -w '%{http_code}' -L --max-time 30 "$sitemap" || true)"
+            if [ "$scode" != "200" ]; then
+              echo "::error::robots.txt advertises $sitemap, which answered HTTP $scode." \
+                   "A sitemap that does not resolve is worse than none: crawlers" \
+                   "retry it and log the error against the site."
+              exit 1
+            fi
+            echo "  sitemap resolves: $sitemap"
+          done
       # `!cancelled()` on these two, matching the steps that need them. Without
       # it a failure in the HTTP checks skipped the install while the smoke below
       # still ran — it carries `!cancelled()` — so the run's second error was

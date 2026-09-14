@@ -614,6 +614,98 @@ repository state, and give the other target an explicit spelling — here a loca
 rule is always named with its prefix. Then adding the second namespace changes
 nothing that already existed, which is the property being protected.
 
+## Presentation — the check read the label, not the artefact
+
+**V63. A file's name and its declared size are claims about it; only its bytes
+are evidence.** ssatcy.com shipped `public/og-image.png` containing JPEG data at
+768x1024. promptboi.com declared `og:image:width=1200` and `og:image:height=630`
+over a file that is 1006x1006. Both passed every check in the fleet for months,
+because the checks asked whether the tag was present and whether the file
+existed — and both were. Neither asked the file what it was.
+
+The generalisation is not about images. Wherever a declaration and an artefact
+can disagree, a check that reads the declaration verifies the declaration.
+Content-Length that nothing measures, a `version` field nothing compares to a
+tag, a MIME type nothing sniffs, a checksum recorded next to the file it was
+supposed to be taken from. In each case the failure is silent and reads as a
+pass, because the two halves are only ever compared by whatever consumes them
+downstream — a scraper, a browser, a package manager — which does not report back.
+
+So when a check exists because two things must agree, it must open both. Reading
+one of them and reporting a tick describes nothing.
+
+**V64. A site checked at its homepage is a site unchecked.** ssatcy.com serves
+one built HTML shell for all seven of its routes. Every route therefore emitted
+`<link rel="canonical" href="https://ssatcy.com/">`, telling search engines that
+`/bio`, `/music`, `/film`, `/games`, `/live`, `/gallery` and `/contact` were all
+duplicates of the homepage. Six pages could not rank, and the homepage — the one
+page anybody spot-checks, and the only one the monitor fetched — was correct
+throughout.
+
+A per-page property cannot be verified by sampling, because the sample that gets
+taken is always the page that works. Worse, the defect here is only visible
+*across* pages: each canonical is individually well-formed, absolute and
+on-domain. Nothing is wrong with any one of them. The fault is that two pages
+claim one URL, which no single-page assertion can express.
+
+So enumerate the set and assert the relationships in it — uniqueness, coverage,
+disjointness — rather than checking a representative and generalising. Related
+to V23: a property that holds *between* items belongs to the list, not to any
+item in it.
+
+**V65. Configuration committed for a server the site does not run on reads as
+protection and provides none.** denseware.com, ssatcy.com and gorfed.net each
+ship an `.htaccess` with SPA-fallback rewrites and security headers. All three
+are served by an nginx container, where `/.htaccess` returns 403 from the
+dotfile deny rule. Not one of those directives has ever applied. ssatcy.com also
+carries a `_headers` file, which is a Netlify convention, on a host that is not
+Netlify.
+
+This is worse than missing config, because the file answers the question. A
+reviewer asking "does this site set a Content-Security-Policy?" finds a file
+that says it does. The audit stops there, and the header was never sent.
+
+So a config file is only evidence when something proves the server reads it.
+Assert the *effect* against the running service — a header on a real response, a
+rewrite on a real URL — or delete the file. A committed config for a stack the
+project does not run is a claim with no mechanism, and it will be believed.
+
+**V66. When a fix has a repository half and a server half, the repository half
+alone is not the fix.** Ten live sites in this fleet served nginx's built-in
+`404 Not Found` page for their entire existence. Adding `404.html` to each
+docroot changes nothing on its own: nginx does not serve it without
+`error_page 404 /404.html;` in that site's vhost, and the vhosts live on the
+serving host, in no repository at all.
+
+The trap is that the repository half is the testable half, so it is the half
+that gets a check — and then a green check attests to a fix that is not in
+effect. The same shape covers a migration committed but not run, a cron entry
+added to a repository nothing deploys, a secret documented in an example file
+and never set, a DNS record described in a README.
+
+So when a change spans a boundary the repository cannot see across, the gate has
+to cross it too: probe the running system for the effect. Split the failures, so
+"the file is missing" and "the server was never told" say different things —
+they need different people to do different work.
+
+**V67. An escaped URL that is valid markup can still be a broken URL.**
+rowanmcarthur.com set `og:image` to an Unsplash URL whose query separators were
+written `&amp;`. That is *correct* HTML escaping for an attribute, so no
+validator objected and the markup was well-formed. But the author had escaped a
+URL that was already escaped, so the URL a scraper received had parameters named
+`amp;fit` and `amp;w`. The crop was silently ignored and the card fetched a
+2333x2333 original — 880 KB where 1200x630 was asked for.
+
+Double-escaping never fails loudly. It produces a value that parses, transmits
+and renders, and is simply not the value intended. The tell is an entity that
+survives one round of decoding, which is cheap to test for and almost never
+tested for.
+
+So when a check reads a URL out of markup, decode it once and then assert on the
+result — an entity still present afterwards means the value was escaped twice.
+The same applies to a shell argument quoted twice, a JSON string encoded twice,
+and a path escaped once by a framework and again by hand.
+
 ## Provenance
 
 Every rule above was first written in
@@ -650,6 +742,7 @@ sounds like an opinion, because none of them are.
 | — | — | V52–V53 | fleet rollout, 2026-09-09 |
 | — | — | V54–V60 | fleet self-heal, 2026-09-10 |
 | — | — | V61–V62 | fleet deploy round, 2026-09-11 |
+| — | — | V63–V67 | fleet metadata and error pages, 2026-09-14 |
 
 This number was nearly given up. BinderCurve had two rules of its own written
 into `V61` and `V62` — where a check looks being part of what it asserts, and a
