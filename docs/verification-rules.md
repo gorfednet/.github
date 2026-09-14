@@ -952,6 +952,37 @@ registry agreeing with a workflow that does not run the step is the same claim o
 level removed — it also runs the checker rather than grepping the YAML for its
 name.
 
+**V74. Switching a project off changes what the record must say, not only what
+runs.** Two projects were stood down because they are not going live: triggers
+reduced to `workflow_dispatch`, dependabot removed. That part is a scope
+decision and needs no defending. The hazard is the registry it leaves behind.
+Both were listed at tier 1, and tier 1 is a claim about wiring — a drift check,
+a tracked-artifacts check, a backlog, all firing on a pull request. With the
+triggers off, none of it fires, so the entries would have gone on contributing
+to the fleet's coverage count while asserting nothing. Nine of ten looks like
+nine of ten whether or not two of them are asleep.
+
+Tier 0 already meant exactly this state — "has not adopted; the gate is off in
+its workflow" — so dormancy belongs there rather than as an exemption bolted to
+a tier that no longer describes anything. The counts then tell the truth on
+their own: `tier 0: 2, tier 1: 8`.
+
+The second half is the date. `dormantUntil` is required, must parse, and fails
+the fleet check once it passes; a `dormantReason` must say what was switched off
+and how to bring it back. Both projects' `note` fields also had to be rewritten,
+because they still opened with "Tier 1 rather than 2 on purpose" — a sentence the
+tier beside it now contradicted, and the kind of stale prose that reads as
+current for a year. Six mutations were watched red: a lapsed date accepted, an
+undated stand-down accepted, an unexplained one accepted, a dormant project
+still claiming a tier, a dormant project still pressed to re-verify, and every
+project treated as dormant.
+
+Note what this deliberately is not. No assertion was deleted, no floor lowered,
+no failing check made to pass. When the reason to stop checking is "this is out
+of scope for now", the honest move is to say so at the registry level with a date
+on it — not to quietly loosen the checks and leave them looking like they still
+cover something.
+
 ## Provenance
 
 Every rule above was first written in
