@@ -122,28 +122,107 @@ nas_ssh_site_url() {
   printf 'https://%s/' "${site_dir}"
 }
 
-# Fetch the site after a deploy and fail when it does not serve. Every deploy in
-# this fleet was hand-run with no check that the result was reachable, which is
-# how a stale-handle 500 could sit on a live site indefinitely: rsync reports
-# success, and success is the last thing the operator sees.
+# Restart the serving container so it sees what was just published.
+#
+# nginx does not mount the CIFS share; inside the container /proc/mounts shows
+# `/run/host_mark/... fakeowner ro`, Synology's ownership-remapping layer over
+# the host's mount. That layer caches an existing inode's metadata and never
+# revalidates it, so a file rewritten under a name it has already served stays
+# stale indefinitely — measured stable across 30s and observed three days old.
+# A new FILENAME resolves fine, which is why hashed assets and content-addressed
+# cards always looked healthy and hid this.
+#
+# `nginx -s reload` does not clear it and `sendfile off` does not either; both
+# were tried and neither changed a byte. A container restart is the only lever.
+# It is ~7s and touches only the eleven static vhosts: bindercurve production
+# does not route through this container and bindercurve dev has its own on :3010.
+nas_ssh_refresh_origin() {
+  local host="${NAS_ORIGIN_SSH:-dapyllil}"
+  local container="${NAS_ORIGIN_CONTAINER:-nginx}"
+  if ! ssh -o ConnectTimeout=20 -o BatchMode=yes "${host}" \
+    "docker restart ${container}" </dev/null >/dev/null 2>&1; then
+    cat >&2 <<EOF
+Could not restart ${container} on ${host}.
+
+Publishing succeeded, so the files are in place, but the serving container may
+still be showing the previous release. Restart it by hand and re-run the live
+check:
+
+  ssh ${host} 'docker restart ${container}'
+EOF
+    return 1
+  fi
+  # nginx needs a moment to bind before the content check fetches through it.
+  sleep 6
+  echo "Refreshed the serving container so it can see this release."
+}
+
+# Fetch the site after a deploy and fail when what it serves is not what was
+# published. A status code is not enough, and believing that it was is what let
+# this fleet deploy into a void: five sites in a row printed `Live check ok
+# (200)` while serving the PREVIOUS release, because the container's view of the
+# share was stale (see nas_ssh_refresh_origin). A green tick over the exact
+# failure it exists to catch is worse than no check.
+#
+# Pass the local file that was published at the URL's path and this compares
+# them byte for byte. Without it, only reachability is asserted, and the caller
+# is told so rather than being left with a tick that means less than it looks.
 nas_ssh_verify_live() {
   local url="${1:?url required}"
-  local attempt status
+  local local_artefact="${2:-}"
+  local attempt status body
+  body="$(mktemp)"
   for attempt in 1 2 3; do
-    status="$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "${url}" || echo 000)"
-    [[ "${status}" =~ ^(200|30[128])$ ]] && {
-      echo "Live check ok: ${url} (${status})"
-      return 0
-    }
+    status="$(curl -s -o "${body}" -w '%{http_code}' --max-time 20 "${url}" || echo 000)"
+    if [[ "${status}" =~ ^(200|30[128])$ ]]; then
+      if [[ -z "${local_artefact}" ]]; then
+        rm -f "${body}"
+        echo "Live check: ${url} is reachable (${status}). CONTENT NOT VERIFIED —" \
+          "pass the published file as the second argument to compare bytes."
+        return 0
+      fi
+      if [[ ! -f "${local_artefact}" ]]; then
+        rm -f "${body}"
+        echo "Live check cannot compare: ${local_artefact} does not exist." >&2
+        return 1
+      fi
+      local want got
+      want="$(shasum -a 256 <"${local_artefact}" | cut -d' ' -f1)"
+      got="$(shasum -a 256 <"${body}" | cut -d' ' -f1)"
+      if [[ "${want}" == "${got}" ]]; then
+        rm -f "${body}"
+        echo "Live check ok: ${url} serves this release (${status}," \
+          "$(wc -c <"${local_artefact}" | tr -d ' ') bytes, sha ${want:0:12})."
+        return 0
+      fi
+      cat >&2 <<EOF
+Deploy finished and ${url} returns ${status}, but it is NOT serving this release.
+
+  published  $(wc -c <"${local_artefact}" | tr -d ' ') bytes  sha ${want:0:12}  (${local_artefact})
+  served     $(wc -c <"${body}" | tr -d ' ') bytes  sha ${got:0:12}
+
+This is the failure a status-only check cannot see, and it is the normal outcome
+of rewriting a file under a name the serving container has already served. Run:
+
+  ssh ${NAS_ORIGIN_SSH:-dapyllil} 'docker restart ${NAS_ORIGIN_CONTAINER:-nginx}'
+
+then re-run this deploy. If it still disagrees, the bytes on the NAS are wrong
+and the problem is upstream of the serving container.
+EOF
+      rm -f "${body}"
+      return 1
+    fi
     sleep 3
   done
+  rm -f "${body}"
   cat >&2 <<EOF
 Deploy finished but the site does not serve: ${url} returned ${status}.
 
 The files are on the NAS; something in front of them is broken. A 500 here is
-almost always a stale CIFS handle in the serving container, which clears with:
+almost always the serving container holding a handle on a replaced inode, which
+clears with:
 
-  ssh dapyllil 'docker restart nginx'
+  ssh ${NAS_ORIGIN_SSH:-dapyllil} 'docker restart ${NAS_ORIGIN_CONTAINER:-nginx}'
 
 Then re-run this deploy so the check passes on its own.
 EOF
@@ -223,7 +302,20 @@ EOF
   local url
   url="$(nas_ssh_site_url "${site_dir}")"
   if [[ -n "${url}" && "${NAS_SKIP_LIVE_CHECK:-0}" != "1" ]]; then
-    nas_ssh_verify_live "${url}"
+    # The container must be made to see this release before anything fetches
+    # through it, or the check measures the previous one. Ordered, not optional.
+    if [[ "${NAS_SKIP_ORIGIN_REFRESH:-0}" != "1" ]]; then
+      nas_ssh_refresh_origin || return 1
+    fi
+    # Compare bytes when the source held the file this URL serves. A sub-path
+    # phase (assets/ alone, say) has no index.html, and rather than inventing a
+    # comparison the check says out loud that it made none.
+    local artefact="${source_path%/}/index.html"
+    if [[ -f "${artefact}" ]]; then
+      nas_ssh_verify_live "${url}" "${artefact}"
+    else
+      nas_ssh_verify_live "${url}"
+    fi
   fi
 }
 
