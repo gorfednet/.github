@@ -73,6 +73,16 @@ inputs:
       default because a Tier 1 holding page has nothing to describe.
     required: false
     default: "false"
+  allow-machine-paths:
+    description: >-
+      Space-separated substrings waiving a deliberate absolute path from
+      check-machine-paths (V73). The waiver lives here, in the caller's config,
+      rather than as a marker inside the file it excuses — a reader auditing what
+      this repository is allowed to hardcode should not have to grep for it.
+      denseware.com is the fleet's only user: an Apache AuthUserFile path in a
+      2009 webalizer archive that nginx never reads.
+    required: false
+    default: ""
   error-page-root:
     description: >-
       Directory that should contain 404.html and 500.html. Empty skips the
@@ -264,6 +274,42 @@ runs:
         node "${{ inputs.kit }}/bin/check-error-pages.mjs" \
           --root "${{ inputs.error-page-root }}" \
           $(for marker in ${{ inputs.error-page-markers }}; do printf -- '--expect-text %s ' "$marker"; done)
+
+    # Unconditional, unlike the checks above it. This one needs no configuration
+    # to be meaningful — every repository has a git index — and the defect it
+    # catches is one CI can only report by accident: a script that resolves a
+    # dependency from a sibling checkout fails on the runner if something happens
+    # to run it, and stays invisible if nothing does. Two of the three instances
+    # in this fleet were in the second category.
+    - name: Paths are derived, not named
+      if: ${{ !cancelled() }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        checker="${{ inputs.kit }}/bin/check-machine-paths.mjs"
+        # A dated grace window, not an indefinite tolerance. This checker arrives
+        # in kit 0.40.0, and the drift gate permits one minor behind, so a
+        # repository sitting on 0.39.0 passes drift and has no such file. Making
+        # its absence fatal on day one would turn ten repositories red at once,
+        # and a fleet-wide red is indistinguishable from a fleet-wide outage.
+        #
+        # So it is loud immediately and fatal from the date below, whatever anyone
+        # remembers. Undated deferral is what becomes permanent by accident; the
+        # fix in the meantime is one command, printed here.
+        grace="${MACHINE_PATHS_GRACE_UNTIL:-20261015}"
+        today="${MACHINE_PATHS_TODAY:-$(date -u +%Y%m%d)}"
+        if [ ! -f "$checker" ]; then
+          echo "check-machine-paths.mjs is absent from ${{ inputs.kit }} (V73)."
+          echo "Refresh the vendored kit: node ${{ inputs.kit }}/bin/refresh-kit.mjs"
+          if [ "$today" -ge "$grace" ]; then
+            echo "The grace window for this closed on $grace. Failing."
+            exit 1
+          fi
+          echo "Not fatal until $grace."
+          exit 0
+        fi
+        node "$checker" \
+          $(for allow in ${{ inputs.allow-machine-paths }}; do printf -- '--allow %s ' "$allow"; done)
 
     - name: Backlog describes reality
       if: ${{ !cancelled() && inputs.backlog != '' }}

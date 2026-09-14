@@ -140,6 +140,16 @@ export const VERIFICATION_INPUTS = {
         required: false
         type: string
         default: ""`,
+
+  'allow-machine-paths': `      allow-machine-paths:
+        description: >-
+          Space-separated substrings waiving a deliberate absolute path from
+          check-machine-paths (V73). The waiver belongs in the caller's config
+          rather than as a marker inside the file it excuses, so that auditing
+          what a repository is allowed to hardcode does not require a grep.
+        required: false
+        type: string
+        default: ""`,
 }
 
 /** The input names, for assertions that only care about presence. */
@@ -163,6 +173,7 @@ export const GATE_ARGUMENTS = {
   'require-jsonld': 'require-jsonld',
   'error-page-root': 'error-page-root',
   'error-page-markers': 'error-page-markers',
+  'allow-machine-paths': 'allow-machine-paths',
 }
 
 /**

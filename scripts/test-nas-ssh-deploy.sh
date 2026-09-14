@@ -143,8 +143,18 @@ STUB_HTTP_STATUS=200
 # pass while asserting nothing.
 curl_log="${tmp_dir}/curl-calls"
 : > "${curl_log}"
+# The stub honours -o because the live check now compares the BODY against the
+# published file. A stub that only returned a status could not exercise the
+# verdict that matters — which is the same blindness the real check had.
+STUB_HTTP_BODY=''
 curl() {
   printf 'called\n' >> "${curl_log}"
+  local previous='' argument out=''
+  for argument in "$@"; do
+    [[ "${previous}" == "-o" ]] && out="${argument}"
+    previous="${argument}"
+  done
+  [[ -n "${out}" ]] && printf '%s' "${STUB_HTTP_BODY}" > "${out}"
   printf '%s' "${STUB_HTTP_STATUS}"
 }
 curl_calls() {
@@ -154,6 +164,11 @@ SECONDS_SLEPT=0
 sleep() {
   SECONDS_SLEPT=$((SECONDS_SLEPT + ${1:-0}))
 }
+
+# Off by default here so the container restart's own ssh call does not overwrite
+# the ssh arguments the permission tests below inspect. The ordering test turns
+# it back on deliberately, which is the only place its behaviour is asserted.
+NAS_SKIP_ORIGIN_REFRESH=1
 
 NAS_SSH_USER=test-user
 NAS_SSH_HOST=test-host
@@ -208,10 +223,57 @@ no_perms_index="$(argument_index --no-perms "${captured_arguments[@]}")"
 # live site by itself, because a check each repository has to opt into is one
 # some repository will not have.
 STUB_HTTP_STATUS=200
+NAS_SKIP_ORIGIN_REFRESH=1
 : > "${curl_log}"
 nas_ssh_rsync example.test "${source_dir}/" >/dev/null
 [[ "$(curl_calls)" -gt 0 ]] ||
   fail "deploying a fleet domain must check the live site without the caller asking"
+
+# The wiring that matters: a deploy of a directory holding index.html must
+# compare its bytes, not merely reach the URL. Five deploys printed a green tick
+# without this, every one of them serving the previous release.
+printf '<!doctype html><title>wired</title>' > "${source_dir}/index.html"
+STUB_HTTP_BODY='<!doctype html><title>a different release</title>'
+if nas_ssh_rsync example.test "${source_dir}/" >/dev/null 2>"${tmp_dir}/wired.err"; then
+  fail "a deploy whose site serves other bytes must fail without the caller asking"
+fi
+grep -q 'NOT serving this release' "${tmp_dir}/wired.err" ||
+  fail "the automatic check must be the content one, not the status one"
+
+STUB_HTTP_BODY='<!doctype html><title>wired</title>'
+nas_ssh_rsync example.test "${source_dir}/" >/dev/null ||
+  fail "a deploy whose site serves exactly what was sent must pass"
+rm -f "${source_dir}/index.html"
+
+# A phase that uploads only a sub-path has no index.html to compare, and must
+# say so rather than inventing a comparison or failing a legitimate deploy.
+STUB_HTTP_BODY='anything'
+nas_ssh_rsync example.test "${source_dir}/" > "${tmp_dir}/subpath.out" ||
+  fail "a source directory without index.html must still deploy"
+grep -q 'CONTENT NOT VERIFIED' "${tmp_dir}/subpath.out" ||
+  fail "a deploy that compared nothing must say so"
+
+# The refresh is ordered before the fetch, because a fetch through a container
+# that has not been refreshed measures the previous release.
+refresh_order="${tmp_dir}/order"
+: > "${refresh_order}"
+nas_ssh_refresh_origin() { printf 'refresh\n' >> "${refresh_order}"; }
+nas_ssh_verify_live() { printf 'verify\n' >> "${refresh_order}"; }
+NAS_SKIP_ORIGIN_REFRESH=0
+nas_ssh_rsync example.test "${source_dir}/" >/dev/null
+[[ "$(tr '\n' ' ' < "${refresh_order}")" == "refresh verify " ]] ||
+  fail "the origin must be refreshed BEFORE the live check, got: $(tr '\n' ' ' < "${refresh_order}")"
+
+# A refresh that fails must stop the deploy reporting success, because the
+# files are in place and the visitor is still being served the old ones.
+nas_ssh_refresh_origin() { return 1; }
+if nas_ssh_rsync example.test "${source_dir}/" >/dev/null 2>&1; then
+  fail "a deploy whose origin refresh failed must not report success"
+fi
+unset -f nas_ssh_refresh_origin nas_ssh_verify_live
+source "${SCRIPT_DIR}/nas-ssh-deploy.sh"
+NAS_SKIP_ORIGIN_REFRESH=1
+STUB_HTTP_BODY=''
 
 : > "${curl_log}"
 nas_ssh_rsync example.test-dev "${source_dir}/" >/dev/null
@@ -244,6 +306,48 @@ fi
 STUB_HTTP_STATUS=301
 nas_ssh_verify_live https://example.test/ >/dev/null ||
   fail "a redirect at the root is how several of these sites answer and must pass"
+
+# Five deploys in a row printed "Live check ok (200)" while serving the previous
+# release, because the serving container's view of the share was stale. A status
+# code cannot see that. These cases pin the comparison that can.
+published="${tmp_dir}/published-index.html"
+printf '<!doctype html><title>this release</title>' > "${published}"
+
+STUB_HTTP_STATUS=200
+STUB_HTTP_BODY='<!doctype html><title>this release</title>'
+nas_ssh_verify_live https://example.test/ "${published}" >/dev/null ||
+  fail "a site serving exactly what was published must pass"
+
+STUB_HTTP_STATUS=200
+STUB_HTTP_BODY='<!doctype html><title>the PREVIOUS release</title>'
+if nas_ssh_verify_live https://example.test/ "${published}" \
+  >/dev/null 2>"${tmp_dir}/stale.err"; then
+  fail "a 200 serving the previous release must FAIL - this is the whole defect"
+fi
+grep -q 'NOT serving this release' "${tmp_dir}/stale.err" ||
+  fail "the failure must say the site is not serving this release"
+grep -q 'docker restart' "${tmp_dir}/stale.err" ||
+  fail "the failure must name the recovery command"
+grep -q 'published' "${tmp_dir}/stale.err" && grep -q 'served' "${tmp_dir}/stale.err" ||
+  fail "the failure must show both sides it compared, not just complain"
+
+# A caller that forgets the artefact must be told its tick means less, rather
+# than being handed the same green line as a verified deploy.
+STUB_HTTP_STATUS=200
+STUB_HTTP_BODY='anything at all'
+nas_ssh_verify_live https://example.test/ > "${tmp_dir}/unverified.out" ||
+  fail "reachability alone must still pass, for callers that pass no artefact"
+grep -q 'CONTENT NOT VERIFIED' "${tmp_dir}/unverified.out" ||
+  fail "a reachability-only check must say so instead of claiming a verified deploy"
+
+# Naming a file that is not there is an operator error, and passing it would
+# report a verified deploy on the strength of a comparison never made.
+STUB_HTTP_STATUS=200
+if nas_ssh_verify_live https://example.test/ "${tmp_dir}/does-not-exist.html" \
+  >/dev/null 2>&1; then
+  fail "an artefact that does not exist must fail, not skip the comparison"
+fi
+STUB_HTTP_BODY=''
 
 # A deploy that fails its live check must fail loudly rather than returning 0.
 STUB_HTTP_STATUS=500

@@ -202,6 +202,36 @@
       "evidence": "The vhost serves \\.(png|svg|css|js|...)$ with expires 1y and Cache-Control: public, immutable - confirmed live, max-age=31536000. Any card at a fixed name inherits that, so replacing it in place reaches nobody for up to a year. ssatcy.com is fixed: scripts/generate-og-image.mjs writes og-card-<hash12>.png and rewrites index.html and _headers, so the URL changes exactly when the pixels do. 4thcltr.com/og-image.png is live under the same header and is the next one. The remaining sites are getting a first card, so their URL is new either way - the risk is the SECOND card.",
       "reviewBy": "2026-11-15",
       "note": "check-live-og-image.mjs catches the symptom after a deploy by comparing the bytes the og:image URL serves against the dimensions the page declares, and notes an immutable Cache-Control so the next person is told why a replacement will not reach anyone. That is detection. Prevention is the content-addressed name, which needs doing per site; ssatcy.com is the pattern to copy."
+    },
+    {
+      "id": "publish-the-server-never-saw",
+      "title": "Every deploy to the ten NAS sites reached the filesystem and not the visitor",
+      "status": "confirmed-bug",
+      "assignee": "main-model",
+      "userSymptom": "I deployed the fix, every check passed, the file on the server is right - and the live page is still the old one, or the whole site returns 500.",
+      "evidence": "2026-09-14. Confirmed on SIX sites, not one. The container does not mount the CIFS share: /proc/mounts inside it shows `/run/host_mark/mnt/gorfednas ... fakeowner ro`, Synology's ownership-remapping layer over the host mount. That layer caches an existing inode's metadata and never revalidates - measured stable across 30s, observed three days stale. The host mounts the share cache=loose,actimeo=1 and sees writes at once, so host-side checks cannot see the defect. ssatcy served 3967 of a 5134-byte index.html, cut mid-JSON-LD, bundle tags never sent, app unable to boot. Then five more deploys, every script reporting `Live check ok (200)`, every one serving the PREVIOUS release: subrythm 8212 vs 7311, gorfmusic 6132 vs 5065, gorfed.net 19816 vs 18579, promptboi 5054 vs 4374, rowanmcarthur 6010 vs 5750. One `docker restart nginx` made all six agree, and all six then verified publicly with correct bytes and branded 404s. `nginx -s reload` does NOT clear it and `sendfile off` does NOT either - both tried, neither changed a byte. New FILENAMES resolve correctly, which is why hashed assets and content-addressed cards looked healthy and hid this for days. Renaming over the target instead returned 500 on 400 of 400 requests until a restart, so both publish strategies fail in opposite directions. V71.",
+      "reviewBy": "2026-10-15",
+      "note": "TWO fixes, and they are independent. (1) DETECTION, no permission needed and worth doing regardless: five of five deploy scripts assert only a status code, so they printed a green tick over the exact failure they exist to catch. They must compare the artefact against what the URL returns - ssatcy's bundle diff is the pattern, and it is the only check that caught this. (2) ROOT CAUSE, needs the owner: either stop routing the container's webroot through Synology's fakeowner layer (bind the CIFS mount directly, or serve from local disk), or restart the nginx container as the last step of every deploy - proven to work, ~7s, but bindercurve shares that container. Until one is chosen, no deploy to these sites is trustworthy without a public content check afterwards."
+    },
+    {
+      "id": "build-rewrites-tracked-files",
+      "title": "A build that edits its own inputs makes every later step depend on local history",
+      "status": "confirmed-bug",
+      "assignee": "main-model",
+      "userSymptom": "CI fails on a commit that passes on my machine, and the failure names a file I did not touch.",
+      "evidence": "gorfmusic.com PR #24: `mutation-canary: 4/5 caught` in CI, 5/5 locally, same commit. Cause chain: `npm run build` ran the card generator, whose filename hashed the rendered PNG, so CI's libvips produced a different name; the generator rewrote src/app/seo/siteMeta.ts to match; the tree went dirty; the canary that guards that file refused to mutate it. Fixed in gorfmusic by hashing the SVG source plus render settings and moving the build onto a `--check` mode that fails instead of writing. Watched red on three mutations, green on restore, and `git status --porcelain` is empty after a full build. V72.",
+      "reviewBy": "2026-10-31",
+      "note": "The generalisable gate is one step in the shared pr-check workflows: run the build, then `git diff --exit-code`. It is deliberately NOT added yet - six repos hashed rendered output (4thcltr, anal0g, blackpixelrecords, denseware, gorfmusic, ssatcy) and adding the gate first would red-line five of them at once, which is the inherited-failure mistake. Order: land the per-repo fixes, then add the shared step, then prove it by reverting one repo. Same sequencing as shared-healthcheck-strictness."
+    },
+    {
+      "id": "paths-named-not-derived",
+      "title": "A script that names a location instead of deriving one runs on exactly one machine",
+      "status": "confirmed-bug",
+      "assignee": "main-model",
+      "userSymptom": "A check passes on my laptop and fails in CI saying it cannot find sharp, and regenerating an asset fails with a path I do not recognise.",
+      "evidence": "anal0g.org PR #13 CI: `Cannot find module '/home/runner/work/anal0g.org/ssatcy.com/node_modules/sharp'` — scripts/generate-og-image.mjs resolved its renderer from a sibling checkout. blackpixelrecords.com had the absolute form in two scripts (generate-og-image.mjs, generate-favicons.mjs) with an absolute path under a developer home directory committed, and it had never failed because check:og-card was defined in package.json and the Makefile and invoked by nothing CI runs — now in its verify-command. denseware.com/scripts/build-new-hero.py read from a .cursor/projects path whose workspace was renamed, so it could not run anywhere; it takes DENSEWARE_HERO_ASSETS now and says so. Closed by verification-kit/bin/check-machine-paths.mjs at kit 0.40.0: 13 tests, 8 mutations watched red. V73.",
+      "reviewBy": "2026-10-15",
+      "note": "Two things the check had to get right, both proven by test. It scans the git index rather than the working tree, because build output is full of absolute paths nobody wrote. And it ignores comment lines, because the comments explaining this defect quote the paths that caused it — V69's split. Its first fleet run produced the V10 shape immediately: businesswire.com/news/home/20180227005360/ is a URL with a segment called home, and correct press links in gorfed.net and 4thcltr.com were flagged, so an absolute path must be anchored to the start of a path. OUTSTANDING: the gate step in verification-gate/action.yml is loud but not fatal when a repo's vendored kit lacks the checker, because the drift gate permits one minor behind and failing ten repos at once is indistinguishable from an outage. The window closes 2026-10-15 by date, not by anyone remembering — MACHINE_PATHS_GRACE_UNTIL in the step, asserted on both sides in test/orgWorkflows.test.mjs. Refresh all ten vendored kits to 0.40.0 before then."
     }
   ]
 }
