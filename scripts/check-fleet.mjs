@@ -239,10 +239,54 @@ for (const project of projects) {
     problems.push(`${where}: needs an owner. Unowned work is nobody's work.`)
   }
 
+  /**
+   * A project can be stood down: not going live, so its workflow triggers are
+   * off and nothing runs. That is tier 0's existing meaning — "the gate is off
+   * in its workflow" — so dormancy is recorded there rather than as an
+   * exemption bolted onto a tier that describes wiring which no longer fires.
+   * A dormant project left at tier 1 would keep counting toward the fleet's
+   * coverage while asserting nothing, which is the failure this registry is for.
+   *
+   * The date is the point. Standing something down is a reasonable decision;
+   * standing it down until further notice is how it becomes permanent without
+   * anyone choosing that. When the date lapses the fleet check fails, so
+   * continuing has to be decided again.
+   */
+  const dormant = project.dormantUntil !== undefined
+  if (dormant) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(project.dormantUntil)) {
+      problems.push(
+        `${where}: dormantUntil must be YYYY-MM-DD. Without a date this is not a ` +
+          'deferral, it is an exit.',
+      )
+    } else if (today > new Date(`${project.dormantUntil}T00:00:00Z`)) {
+      problems.push(
+        `${where}: dormant until ${project.dormantUntil}, which has passed. ` +
+          'Restore its workflow triggers and re-tier it, or move the date and own ' +
+          'the deferral.',
+      )
+    }
+    if ((project.dormantReason ?? '').length < 40) {
+      problems.push(
+        `${where}: dormantUntil needs a dormantReason saying what was switched off ` +
+          'and why. An unexplained stand-down reads as an oversight later.',
+      )
+    }
+    if (project.tier !== 0) {
+      problems.push(
+        `${where}: dormant but claims tier ${project.tier}. A tier describes wiring ` +
+          'that fires; this project runs on request only, so tier 0 is the honest ' +
+          'record and keeps it out of the coverage counts.',
+      )
+    }
+  }
+
   // Deferral is fine; undated deferral becomes permanent by accident.
   if (!/^\d{4}-\d{2}-\d{2}$/.test(project.verifiedAt ?? '')) {
     problems.push(`${where}: verifiedAt must be YYYY-MM-DD`)
-  } else {
+  } else if (!dormant) {
+    // A dormant project has no runs to go stale: pressing it to re-verify would
+    // only invite moving a date to describe a check that is switched off.
     const age = Math.floor((today - new Date(`${project.verifiedAt}T00:00:00Z`)) / 86_400_000)
     if (age > reverifyDays) {
       problems.push(

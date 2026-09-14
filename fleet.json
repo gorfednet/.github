@@ -107,18 +107,22 @@
     {
       "slug": "gorfednet/TowIt",
       "archetype": "python-flask",
-      "tier": 1,
+      "tier": 0,
       "owner": "gorf",
       "verifiedAt": "2026-09-10",
-      "note": "Tier 1 rather than 2 on purpose. Its 49 tests do have an executed-count floor, but pytest emits neither a Playwright nor a Vitest JSON report, so the floor lives in a pytest_collection_modifyitems hook in tests/conftest.py rather than in the shared assertion. Claiming tier 2 would describe a wiring that is not there. First repository to need rule-sources scoped, because it vendors a bundled AngularJS."
+      "note": "DORMANT until 2027-03-14 — triggers are workflow_dispatch only and dependabot is removed, so tier 0 is the honest record: the gate is off in its workflow. Kept for revival: its 49 tests do have an executed-count floor, but pytest emits neither a Playwright nor a Vitest JSON report, so the floor lives in a pytest_collection_modifyitems hook in tests/conftest.py rather than in the shared assertion — which is why it was tier 1 and not 2 while it ran. Also the first repository to need rule-sources scoped, because it vendors a bundled AngularJS.",
+      "dormantUntil": "2027-03-14",
+      "dormantReason": "Stood down 2026-09-14: not going live in the near term. Workflow triggers reduced to workflow_dispatch and dependabot removed, so nothing runs on a pull request and no bumps arrive. Dependabot had been proposing versions inside towit-admin/requirements.txt, a 2015-era Python 2 pin set nothing installs and no gate can validate. Restore the pull_request and push triggers to revive; the vendored kit will need a refresh first."
     },
     {
       "slug": "gorfednet/wychwoodresort.com",
       "archetype": "vite-spa",
-      "tier": 1,
+      "tier": 0,
       "owner": "gorf",
       "verifiedAt": "2026-09-10",
-      "note": "Executed-count floor wired through browser-compat. Its unit suite needed a second, local floor: `node --test` with a shell glob exits 0 when the glob matches nothing, and that suite is one of only two gates on a pull request. No production monitor exists here at all — open in its backlog."
+      "note": "DORMANT until 2027-03-14 — triggers are workflow_dispatch only and dependabot is removed, so tier 0 is the honest record: the gate is off in its workflow. Kept for revival: its executed-count floor was wired through browser-compat, and its unit suite needed a second local floor because node --test with a shell glob exits 0 when the glob matches nothing. It never had a production monitor at all, which is still open in its backlog.",
+      "dormantUntil": "2027-03-14",
+      "dormantReason": "Stood down 2026-09-14: not going live in the near term. Workflow triggers reduced to workflow_dispatch and dependabot removed, so the full vite-spa gate no longer runs per pull request on a site nobody can visit. Restore the pull_request and push triggers to revive; the vendored kit is six minors behind so drift will fail until refreshed."
     },
     {
       "slug": "gorfednet/.github",
@@ -134,8 +138,8 @@
       },
       "tierTwoFloor": {
         "workflow": ".github/workflows/verification-kit.yml",
-      "pattern": "-lt 250",
-      "reason": "This repository is the kit rather than a consumer of it, so it has no shared-workflow caller to pass test-report through. Its executed-count floor is the inline comparison on its own kit suite, and the pattern above is verified in the named workflow rather than taken on trust. Raised from 50 to 250 at kit v0.37.0: the suite had grown to 292 executed assertions, so a floor of 50 would have passed with five of sixteen test files deleted. This waiver caught the edit that raised it, which is the behaviour it exists for."
+        "pattern": "-lt 250",
+        "reason": "This repository is the kit rather than a consumer of it, so it has no shared-workflow caller to pass test-report through. Its executed-count floor is the inline comparison on its own kit suite, and the pattern above is verified in the named workflow rather than taken on trust. Raised from 50 to 250 at kit v0.37.0: the suite had grown to 292 executed assertions, so a floor of 50 would have passed with five of sixteen test files deleted. This waiver caught the edit that raised it, which is the behaviour it exists for."
       }
     }
   ]

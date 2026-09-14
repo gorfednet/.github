@@ -16,7 +16,7 @@ embarrassing place to skip the gate.
 - **Tier 2** — Tier 1 plus an executed-count assertion wired to a real test report.
 - **Tier 3** — Tier 2 plus mutation canaries against its own gates, and the Bugbot verdict job.
 
-Currently 10 at tier 1, 1 at tier 2, 3 at tier 3.
+Currently 2 at tier 0, 8 at tier 1, 1 at tier 2, 3 at tier 3.
 
 Adoption is opt-in per project. Every project already inherits one of the
 reusable `pr-check-*` workflows, so the gate defaults to **off**: a non-empty
@@ -41,8 +41,8 @@ days stale fails the build until someone re-checks the tier or lowers it.
 | [gorfednet/rowanmcarthur.com](https://github.com/gorfednet/rowanmcarthur.com) | static-no-npm | 1 | gorf | 2026-09-10 | No test suite, so tier 1 is its ceiling. The one site already immune to the deny-list publishing defect, because it stages an allow-list into a clean directory and ships that. |
 | [gorfednet/ssatcy.com](https://github.com/gorfednet/ssatcy.com) | vite-spa | 1 | gorf | 2026-09-10 | Sixteen cross-browser tests were failing and had been merged over. Cause was its own meta CSP, not a browser: `upgrade-insecure-requests` in a meta element broke the http preview server. Serves zero security headers in production — `_headers` is a Netlify convention and the site is on Cloudflare — and `frame-ancestors` is ignored in a meta element, so it is framable. Both open in its backlog. |
 | [gorfednet/subrythm.com](https://github.com/gorfednet/subrythm.com) | static-no-npm | 1 | gorf | 2026-09-10 | Tier 1 pilot, adopted in #3. No package.json, no tests, 49 files. Proves the floor: if the kit needs npm here, the design is wrong. Publish-set verification inverted to an extension allow-list. |
-| [gorfednet/TowIt](https://github.com/gorfednet/TowIt) | python-flask | 1 | gorf | 2026-09-10 | Tier 1 rather than 2 on purpose. Its 49 tests do have an executed-count floor, but pytest emits neither a Playwright nor a Vitest JSON report, so the floor lives in a pytest_collection_modifyitems hook in tests/conftest.py rather than in the shared assertion. Claiming tier 2 would describe a wiring that is not there. First repository to need rule-sources scoped, because it vendors a bundled AngularJS. |
-| [gorfednet/wychwoodresort.com](https://github.com/gorfednet/wychwoodresort.com) | vite-spa | 1 | gorf | 2026-09-10 | Executed-count floor wired through browser-compat. Its unit suite needed a second, local floor: `node --test` with a shell glob exits 0 when the glob matches nothing, and that suite is one of only two gates on a pull request. No production monitor exists here at all — open in its backlog. |
+| [gorfednet/TowIt](https://github.com/gorfednet/TowIt) | python-flask | 0 | gorf | 2026-09-10 | DORMANT until 2027-03-14 — triggers are workflow_dispatch only and dependabot is removed, so tier 0 is the honest record: the gate is off in its workflow. Kept for revival: its 49 tests do have an executed-count floor, but pytest emits neither a Playwright nor a Vitest JSON report, so the floor lives in a pytest_collection_modifyitems hook in tests/conftest.py rather than in the shared assertion — which is why it was tier 1 and not 2 while it ran. Also the first repository to need rule-sources scoped, because it vendors a bundled AngularJS. |
+| [gorfednet/wychwoodresort.com](https://github.com/gorfednet/wychwoodresort.com) | vite-spa | 0 | gorf | 2026-09-10 | DORMANT until 2027-03-14 — triggers are workflow_dispatch only and dependabot is removed, so tier 0 is the honest record: the gate is off in its workflow. Kept for revival: its executed-count floor was wired through browser-compat, and its unit suite needed a second local floor because node --test with a shell glob exits 0 when the glob matches nothing. It never had a production monitor at all, which is still open in its backlog. |
 
 ## Adopting
 

@@ -466,3 +466,67 @@ describe('FLEET.md', () => {
     assert.match(readFileSync('FLEET.md', 'utf8'), /^<!-- Generated from fleet\.json/)
   })
 })
+
+/**
+ * Standing a project down is a legitimate decision: not going live, so its
+ * workflow triggers come off and nothing runs. The risk is not the decision, it
+ * is the record. A dormant project left at its old tier keeps counting toward
+ * the fleet's coverage while asserting nothing, and a stand-down with no date
+ * becomes permanent because nobody revisits it.
+ *
+ * The index used below is looked up rather than typed, because a fixture keyed
+ * to a position silently starts testing a different project when the registry
+ * is reordered.
+ */
+describe('a project stood down', () => {
+  const DORMANT = REGISTRY.projects.findIndex((p) => p.dormantUntil !== undefined)
+  const LIVE = REGISTRY.projects.findIndex((p) => p.tier === 1 && p.dormantUntil === undefined)
+  const REASON = 'x'.repeat(60)
+
+  it('is accepted when it is dated, explained and recorded at tier 0', () => {
+    assert.notEqual(DORMANT, -1, 'the registry should contain a dormant project to exercise')
+    const result = run(withProject(DORMANT, {}))
+    assert.equal(result.status, 0, result.stderr)
+  })
+
+  it('fails once the date it was deferred to has passed', () => {
+    const result = run(withProject(DORMANT, { dormantUntil: '2020-01-01' }))
+    assert.equal(result.status, 1)
+    assert.match(result.stderr, /dormant until 2020-01-01, which has passed/)
+  })
+
+  it('fails when the stand-down carries no date at all', () => {
+    const result = run(withProject(DORMANT, { dormantUntil: 'soon' }))
+    assert.equal(result.status, 1)
+    assert.match(result.stderr, /dormantUntil must be YYYY-MM-DD/)
+  })
+
+  it('fails when nothing says what was switched off', () => {
+    const result = run(withProject(DORMANT, { dormantReason: 'n/a' }))
+    assert.equal(result.status, 1)
+    assert.match(result.stderr, /needs a dormantReason/)
+  })
+
+  it('fails when it still claims a tier, because a tier describes wiring that fires', () => {
+    const result = run(withProject(DORMANT, { tier: 2 }))
+    assert.equal(result.status, 1)
+    assert.match(result.stderr, /dormant but claims tier 2/)
+  })
+
+  it('stops pressing it to re-verify, since there are no runs to go stale', () => {
+    const result = run(withProject(DORMANT, { verifiedAt: '2019-01-01' }))
+    assert.equal(result.status, 0, result.stderr)
+  })
+
+  it('still presses a live project whose verification has gone stale', () => {
+    assert.notEqual(LIVE, -1, 'the registry should contain a live tier-1 project')
+    const result = run(withProject(LIVE, { verifiedAt: '2019-01-01' }))
+    assert.equal(result.status, 1)
+    assert.match(result.stderr, /last verified 2019-01-01/)
+  })
+
+  it('keeps dormant projects out of the tier counts it reports', () => {
+    const result = run(withProject(DORMANT, {}))
+    assert.match(result.stdout, /tier 0: [1-9]/)
+  })
+})
