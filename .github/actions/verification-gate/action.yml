@@ -36,6 +36,58 @@ inputs:
       every run, so the exception stays visible.
     required: false
     default: ""
+  site-url:
+    description: >-
+      Production base URL, no trailing slash. Required by the metadata and
+      og:image checks, which have to know what "on this site" means before they
+      can tell an absolute local URL from a third-party hotlink. Empty skips
+      both, which is right only for a project that ships no HTML.
+    required: false
+    default: ""
+  metadata-pages:
+    description: >-
+      Space-separated HTML files to check, one per route the site actually
+      serves — not just the homepage.
+
+      ssatcy.com is why this is a list. It builds one shell for seven routes, so
+      six of its pages emitted the homepage's canonical and could not rank,
+      while every homepage-level check in the fleet passed. A representative
+      page is not a sample of a per-page property; it is the page that works.
+    required: false
+    default: ""
+  publish-root:
+    description: >-
+      Directory the site's URL paths resolve against on disk, so an og:image URL
+      can be turned back into bytes to open. Usually `dist` or `public`.
+    required: false
+    default: ""
+  og-max-bytes:
+    description: >-
+      Ceiling for the social card image. denseware.com pointed og:image at a
+      3840x4557 background weighing 2.1 MB; some scrapers give up first.
+    required: false
+    default: "300000"
+  require-jsonld:
+    description: >-
+      When "true", every checked page must carry a JSON-LD block. Off by
+      default because a Tier 1 holding page has nothing to describe.
+    required: false
+    default: "false"
+  error-page-root:
+    description: >-
+      Directory that should contain 404.html and 500.html. Empty skips the
+      check. This is only the repository half — the server half is the live
+      probe in production-healthcheck, because a 404.html nginx was never told
+      to serve is exactly as useful as no file (V66).
+    required: false
+    default: ""
+  error-page-markers:
+    description: >-
+      Space-separated strings from this site's own design that must appear in
+      each error page. Without one, "the file exists" is the whole assertion,
+      and a placeholder added to turn a check green satisfies it.
+    required: false
+    default: ""
 
 runs:
   using: composite
@@ -95,8 +147,14 @@ runs:
         fi
         count=$(grep -c '^ *ok ' "$report" || true)
         echo "kit self-tests executed $count assertion(s)"
-        if [ "$count" -lt 40 ]; then
-          echo "::error::The kit's own suite executed $count tests, expected at least 40." \
+        # Raised from 40 to 250 in the change that added check-page-metadata,
+        # check-og-image and check-error-pages with 43 tests between them.
+        # Measured on that commit: 266 `ok` lines. The floor is not the count —
+        # it is far enough below it to tolerate a skip and far enough above the
+        # old value that dropping one of the three new suites cannot pass.
+        # A floor that stays put while the suite grows stops being a floor.
+        if [ "$count" -lt 250 ]; then
+          echo "::error::The kit's own suite executed $count tests, expected at least 250." \
                "A glob that matches nothing exits 0 having proven nothing."
           exit 1
         fi
@@ -114,6 +172,64 @@ runs:
       run: |
         node "${{ inputs.kit }}/bin/check-tracked-artifacts.mjs" \
           $(for dir in ${{ inputs.source-dirs }}; do printf -- '--source %s ' "$dir"; done)
+
+    # Both of these need --site-url and a page list. A caller that supplies one
+    # and not the other has half-wired the gate, which is worse than not wiring
+    # it: the run goes green having skipped the check silently. So the mismatch
+    # is a failure rather than a skip.
+    - name: Metadata and social-card inputs agree
+      if: ${{ !cancelled() }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        url="${{ inputs.site-url }}"
+        pages="${{ inputs.metadata-pages }}"
+        root="${{ inputs.publish-root }}"
+        if [ -n "$pages" ] && [ -z "$url" ]; then
+          echo "::error::metadata-pages is set but site-url is not, so the" \
+               "metadata and og:image checks were skipped. Set site-url."
+          exit 1
+        fi
+        if [ -n "$url" ] && [ -z "$pages" ]; then
+          echo "::error::site-url is set but metadata-pages is empty, so the" \
+               "metadata check has nothing to read and would pass over zero pages."
+          exit 1
+        fi
+        if [ -n "$pages" ] && [ -z "$root" ]; then
+          echo "::error::metadata-pages is set but publish-root is not, so no" \
+               "og:image could be resolved to bytes. Set publish-root."
+          exit 1
+        fi
+
+    - name: Page metadata is per-page and correct
+      if: ${{ !cancelled() && inputs.metadata-pages != '' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        node "${{ inputs.kit }}/bin/check-page-metadata.mjs" \
+          --site-url "${{ inputs.site-url }}" \
+          ${{ inputs.require-jsonld == 'true' && '--require-jsonld' || '' }} \
+          $(for page in ${{ inputs.metadata-pages }}; do printf -- '--page %s ' "$page"; done)
+
+    - name: The social card is the image it says it is
+      if: ${{ !cancelled() && inputs.metadata-pages != '' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        node "${{ inputs.kit }}/bin/check-og-image.mjs" \
+          --site-url "${{ inputs.site-url }}" \
+          --root "${{ inputs.publish-root }}" \
+          --max-bytes "${{ inputs.og-max-bytes }}" \
+          $(for page in ${{ inputs.metadata-pages }}; do printf -- '--page %s ' "$page"; done)
+
+    - name: Error pages ship with the site
+      if: ${{ !cancelled() && inputs.error-page-root != '' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        node "${{ inputs.kit }}/bin/check-error-pages.mjs" \
+          --root "${{ inputs.error-page-root }}" \
+          $(for marker in ${{ inputs.error-page-markers }}; do printf -- '--expect-text %s ' "$marker"; done)
 
     - name: Backlog describes reality
       if: ${{ !cancelled() && inputs.backlog != '' }}
