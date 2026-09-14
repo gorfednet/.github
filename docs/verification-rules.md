@@ -265,6 +265,53 @@ path — and `.tmp/` is the one the toolchain writes to. 548 cache blobs reached
 `main` past a human review and a bot review, because a wall of binary files is
 exactly what review scrolls past.
 
+**V71. Writing the file is not publishing it. Ask the serving process what it
+sees.** Ten sites are served by an nginx container that bind-mounts a CIFS
+share. The deploy uploaded a corrected `index.html`, every local check passed,
+the file on the host was byte-for-byte right — and visitors received 3967 bytes
+of a 5134-byte page, cut off mid-JSON-LD, with the bundle tags that follow it
+never sent. The page could not boot. Inside the container the same path was a
+5134-byte file's worth of stale inode reporting 3967 bytes and a modification
+time three days old. New *filenames* resolved correctly, which is why the
+content-addressed card and the hashed assets looked fine and hid the problem;
+only rewrites of an existing name were invisible.
+
+Both available publish strategies fail on that mount, in opposite directions.
+`rsync --inplace` keeps the inode and the container keeps serving the old
+length — silent, indefinite, and green everywhere. Renaming a temp file over the
+target gives the file a new server-side inode and the container holds a handle on
+the deleted one: 400 of 400 requests returned 500 until the container was
+restarted. An earlier session chose `--inplace` to escape the 500s and, in doing
+so, traded a loud failure for a silent one. That trade is almost always wrong,
+and it is worth naming as a decision rather than a fix.
+
+The check that caught it already existed and was not believed: the deploy's own
+origin verification compares the bundles the build produced against the bundles
+the live URL returns, and it failed with `Received: ` empty. That is what a
+correct detector of this looks like — fetch through the real serving path and
+compare against the artefact, because nothing about the host's filesystem can
+see the defect. Read such a failure as evidence about production, not as a
+broken deploy step.
+
+**V72. An address computed from a renderer's output is not an address of the
+content.** Six sites name their social card `og-card-<hash>.png`, where the hash
+was taken over the rendered PNG. PNG bytes depend on the libvips build that
+produced them, so CI derived a different name from identical artwork, and since
+the card step ran inside `npm run build`, the build rewrote tracked source to
+match. The tree went dirty mid-run and the next mutation canary refused to
+mutate the file it guards — `4/5 caught`, green locally and red in CI on the same
+commit. The visible symptom was three steps away from the cause.
+
+Hash the *inputs*: the source artwork and the render settings. Then the same
+artwork yields the same URL on every machine, which is the whole point of a
+content address, and a toolchain upgrade does not silently republish the card.
+
+The wider rule is the one the canary stumbled into: **a build must not rewrite
+tracked files.** A generator belongs in a `--check` mode during the build, which
+fails and tells you to re-run it, and in write mode only when a human asks. Any
+build that edits its own inputs makes every subsequent step's starting state
+depend on how recently someone ran it locally.
+
 ## Judgement — the parts no check replaces
 
 **V31. A gate proves the edit compiles, not that it was the right edit.**

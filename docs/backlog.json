@@ -202,6 +202,26 @@
       "evidence": "The vhost serves \\.(png|svg|css|js|...)$ with expires 1y and Cache-Control: public, immutable - confirmed live, max-age=31536000. Any card at a fixed name inherits that, so replacing it in place reaches nobody for up to a year. ssatcy.com is fixed: scripts/generate-og-image.mjs writes og-card-<hash12>.png and rewrites index.html and _headers, so the URL changes exactly when the pixels do. 4thcltr.com/og-image.png is live under the same header and is the next one. The remaining sites are getting a first card, so their URL is new either way - the risk is the SECOND card.",
       "reviewBy": "2026-11-15",
       "note": "check-live-og-image.mjs catches the symptom after a deploy by comparing the bytes the og:image URL serves against the dimensions the page declares, and notes an immutable Cache-Control so the next person is told why a replacement will not reach anyone. That is detection. Prevention is the content-addressed name, which needs doing per site; ssatcy.com is the pattern to copy."
+    },
+    {
+      "id": "publish-the-server-never-saw",
+      "title": "A deploy can be correct on the host and invisible to visitors",
+      "status": "confirmed-bug",
+      "assignee": "main-model",
+      "userSymptom": "I deployed the fix, every check passed, the file on the server is right - and the live page is still the old one, or the whole site returns 500.",
+      "evidence": "ssatcy.com, 2026-09-14. Host held a correct 5134-byte index.html; the nginx container's view of the same path was a stale inode reporting 3967 bytes with an mtime three days old, so visitors received the page cut off mid-JSON-LD with the bundle tags never sent and the app unable to boot. Fleet probe (host stat vs `docker exec nginx stat`) found only this file diverged. New filenames resolve correctly, which is why hashed assets and the content-addressed card looked fine and hid it. Both publish strategies fail on this CIFS bind mount: `rsync --inplace` keeps the inode and the container serves the old length indefinitely (silent); renaming over the target orphans the container's handle and returned 500 on 400 of 400 requests until `docker restart nginx` (loud). Mitigated for now by the restart plus a re-deploy verified green. V71.",
+      "reviewBy": "2026-10-15",
+      "note": "The detector already existed and was not believed: scripts/verify-production.mjs compares the bundles the build produced against the bundles the live URL returns, and it failed with an empty `Received:`. Trust it. Root cause is unresolved - the durable options are CIFS mount options that force revalidation (actimeo=0 or cache=none, which needs a remount and a container restart, and affects bindercurve on the same nginx), or serving from local disk instead of the share. Both are infrastructure decisions for the owner. Until one is taken, every deploy to these ten sites must be verified through the public URL, not the filesystem."
+    },
+    {
+      "id": "build-rewrites-tracked-files",
+      "title": "A build that edits its own inputs makes every later step depend on local history",
+      "status": "in-progress",
+      "assignee": "main-model",
+      "userSymptom": "CI fails on a commit that passes on my machine, and the failure names a file I did not touch.",
+      "evidence": "gorfmusic.com PR #24: `mutation-canary: 4/5 caught` in CI, 5/5 locally, same commit. Cause chain: `npm run build` ran the card generator, whose filename hashed the rendered PNG, so CI's libvips produced a different name; the generator rewrote src/app/seo/siteMeta.ts to match; the tree went dirty; the canary that guards that file refused to mutate it. Fixed in gorfmusic by hashing the SVG source plus render settings and moving the build onto a `--check` mode that fails instead of writing. Watched red on three mutations, green on restore, and `git status --porcelain` is empty after a full build. V72.",
+      "reviewBy": "2026-10-31",
+      "note": "The generalisable gate is one step in the shared pr-check workflows: run the build, then `git diff --exit-code`. It is deliberately NOT added yet - six repos hashed rendered output (4thcltr, anal0g, blackpixelrecords, denseware, gorfmusic, ssatcy) and adding the gate first would red-line five of them at once, which is the inherited-failure mistake. Order: land the per-repo fixes, then add the shared step, then prove it by reverting one repo. Same sequencing as shared-healthcheck-strictness."
     }
   ]
 }
