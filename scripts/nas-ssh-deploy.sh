@@ -310,12 +310,15 @@ EOF
     # Compare bytes when the source held the file this URL serves. A sub-path
     # phase (assets/ alone, say) has no index.html, and rather than inventing a
     # comparison the check says out loud that it made none.
+    #
+    # One call site, deliberately. Writing this as an if/else gave the canary for
+    # "the live check never runs" two lines to match, and it refused to mutate an
+    # ambiguous anchor — correctly, since removing one of two calls is not the
+    # edit the canary describes. An empty second argument already means "no
+    # artefact" inside the function, so the branch was never needed.
     local artefact="${source_path%/}/index.html"
-    if [[ -f "${artefact}" ]]; then
-      nas_ssh_verify_live "${url}" "${artefact}"
-    else
-      nas_ssh_verify_live "${url}"
-    fi
+    [[ -f "${artefact}" ]] || artefact=""
+    nas_ssh_verify_live "${url}" "${artefact}"
   fi
 }
 

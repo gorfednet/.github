@@ -265,72 +265,6 @@ path — and `.tmp/` is the one the toolchain writes to. 548 cache blobs reached
 `main` past a human review and a bot review, because a wall of binary files is
 exactly what review scrolls past.
 
-**V71. Writing the file is not publishing it. Ask the serving process what it
-sees.** Ten sites are served by an nginx container that bind-mounts a CIFS
-share. The deploy uploaded a corrected `index.html`, every local check passed,
-the file on the host was byte-for-byte right — and visitors received 3967 bytes
-of a 5134-byte page, cut off mid-JSON-LD, with the bundle tags that follow it
-never sent. The page could not boot. Inside the container the same path was a
-5134-byte file's worth of stale inode reporting 3967 bytes and a modification
-time three days old. New *filenames* resolved correctly, which is why the
-content-addressed card and the hashed assets looked fine and hid the problem;
-only rewrites of an existing name were invisible.
-
-Both available publish strategies fail on that mount, in opposite directions.
-`rsync --inplace` keeps the inode and the container keeps serving the old
-length — silent, indefinite, and green everywhere. Renaming a temp file over the
-target gives the file a new server-side inode and the container holds a handle on
-the deleted one: 400 of 400 requests returned 500 until the container was
-restarted. An earlier session chose `--inplace` to escape the 500s and, in doing
-so, traded a loud failure for a silent one. That trade is almost always wrong,
-and it is worth naming as a decision rather than a fix.
-
-The mechanism is worth naming exactly, because it decides which fixes are even
-available. The host mounts the share `cifs ... cache=loose,actimeo=1` and sees
-writes immediately. The container does **not** mount that share; `/proc/mounts`
-inside it shows `/run/host_mark/mnt/gorfednas ... fakeowner ro`, a Synology
-ownership-remapping layer over the host's mount. That layer caches an existing
-inode's metadata and does not revalidate it — measured stable across thirty
-seconds, and observed three days stale. Only restarting the container clears it.
-`nginx -s reload` does not, and `sendfile off` does not; both were tried and
-neither changed a byte.
-
-The blast radius was the whole fleet, not one file. After deploying five sites
-whose scripts all reported `Live check ok (200)`, every one of the five was
-serving the previous release: `subrythm 8212→7311, gorfmusic 6132→5065,
-gorfed.net 19816→18579, promptboi 5054→4374, rowanmcarthur 6010→5750`. One
-container restart made all five agree. Every deploy to these sites had been
-landing on the filesystem and reaching nobody.
-
-Which makes the second half of the rule the important one: **a live check that
-asserts only a status code cannot detect this.** Five scripts fetched `/`, saw
-`200`, and reported success while serving stale bytes — a green tick over the
-exact failure it was written to catch. The check that did catch it compares the
-artefact against what the URL returns: ssatcy's deploy diffs the bundles the
-build produced against the bundles the live page declares, and failed with
-`Received: ` empty. Fetch through the real serving path and compare *content*.
-And read such a failure as evidence about production, not as a broken deploy
-step — it was disbelieved once already.
-
-**V72. An address computed from a renderer's output is not an address of the
-content.** Six sites name their social card `og-card-<hash>.png`, where the hash
-was taken over the rendered PNG. PNG bytes depend on the libvips build that
-produced them, so CI derived a different name from identical artwork, and since
-the card step ran inside `npm run build`, the build rewrote tracked source to
-match. The tree went dirty mid-run and the next mutation canary refused to
-mutate the file it guards — `4/5 caught`, green locally and red in CI on the same
-commit. The visible symptom was three steps away from the cause.
-
-Hash the *inputs*: the source artwork and the render settings. Then the same
-artwork yields the same URL on every machine, which is the whole point of a
-content address, and a toolchain upgrade does not silently republish the card.
-
-The wider rule is the one the canary stumbled into: **a build must not rewrite
-tracked files.** A generator belongs in a `--check` mode during the build, which
-fails and tells you to re-run it, and in write mode only when a human asks. Any
-build that edits its own inputs makes every subsequent step's starting state
-depend on how recently someone ran it locally.
-
 ## Judgement — the parts no check replaces
 
 **V31. A gate proves the edit compiles, not that it was the right edit.**
@@ -885,6 +819,110 @@ Generally, any assertion that deliberately runs after a failure needs a
 distinction between *the thing is wrong* and *the thing was never made*. Without
 it, the guard that was designed not to be silenced becomes the loudest source of
 noise in the log.
+
+**V71. Writing the file is not publishing it. Ask the serving process what it
+sees.** Ten sites are served by an nginx container that bind-mounts a CIFS
+share. The deploy uploaded a corrected `index.html`, every local check passed,
+the file on the host was byte-for-byte right — and visitors received 3967 bytes
+of a 5134-byte page, cut off mid-JSON-LD, with the bundle tags that follow it
+never sent. The page could not boot. Inside the container the same path was a
+5134-byte file's worth of stale inode reporting 3967 bytes and a modification
+time three days old. New *filenames* resolved correctly, which is why the
+content-addressed card and the hashed assets looked fine and hid the problem;
+only rewrites of an existing name were invisible.
+
+Both available publish strategies fail on that mount, in opposite directions.
+`rsync --inplace` keeps the inode and the container keeps serving the old
+length — silent, indefinite, and green everywhere. Renaming a temp file over the
+target gives the file a new server-side inode and the container holds a handle on
+the deleted one: 400 of 400 requests returned 500 until the container was
+restarted. An earlier session chose `--inplace` to escape the 500s and, in doing
+so, traded a loud failure for a silent one. That trade is almost always wrong,
+and it is worth naming as a decision rather than a fix.
+
+The mechanism is worth naming exactly, because it decides which fixes are even
+available. The host mounts the share `cifs ... cache=loose,actimeo=1` and sees
+writes immediately. The container does **not** mount that share; `/proc/mounts`
+inside it shows `/run/host_mark/mnt/gorfednas ... fakeowner ro`, a Synology
+ownership-remapping layer over the host's mount. That layer caches an existing
+inode's metadata and does not revalidate it — measured stable across thirty
+seconds, and observed three days stale. Only restarting the container clears it.
+`nginx -s reload` does not, and `sendfile off` does not; both were tried and
+neither changed a byte.
+
+The blast radius was the whole fleet, not one file. After deploying five sites
+whose scripts all reported `Live check ok (200)`, every one of the five was
+serving the previous release: `subrythm 8212→7311, gorfmusic 6132→5065,
+gorfed.net 19816→18579, promptboi 5054→4374, rowanmcarthur 6010→5750`. One
+container restart made all five agree. Every deploy to these sites had been
+landing on the filesystem and reaching nobody.
+
+Which makes the second half of the rule the important one: **a live check that
+asserts only a status code cannot detect this.** Five scripts fetched `/`, saw
+`200`, and reported success while serving stale bytes — a green tick over the
+exact failure it was written to catch. The check that did catch it compares the
+artefact against what the URL returns: ssatcy's deploy diffs the bundles the
+build produced against the bundles the live page declares, and failed with
+`Received: ` empty. Fetch through the real serving path and compare *content*.
+And read such a failure as evidence about production, not as a broken deploy
+step — it was disbelieved once already.
+
+**V72. An address computed from a renderer's output is not an address of the
+content.** Six sites name their social card `og-card-<hash>.png`, where the hash
+was taken over the rendered PNG. PNG bytes depend on the libvips build that
+produced them, so CI derived a different name from identical artwork, and since
+the card step ran inside `npm run build`, the build rewrote tracked source to
+match. The tree went dirty mid-run and the next mutation canary refused to
+mutate the file it guards — `4/5 caught`, green locally and red in CI on the same
+commit. The visible symptom was three steps away from the cause.
+
+Hash the *inputs*: the source artwork and the render settings. Then the same
+artwork yields the same URL on every machine, which is the whole point of a
+content address, and a toolchain upgrade does not silently republish the card.
+
+The wider rule is the one the canary stumbled into: **a build must not rewrite
+tracked files.** A generator belongs in a `--check` mode during the build, which
+fails and tells you to re-run it, and in write mode only when a human asks. Any
+build that edits its own inputs makes every subsequent step's starting state
+depend on how recently someone ran it locally.
+
+**V73. A dependency resolved from a sibling checkout is a machine, not a
+fallback.** anal0g.org's card generator loaded its renderer from
+`path.resolve(root, '../ssatcy.com/node_modules/sharp')`, which works only where
+both repositories sit side by side. CI stated it in one line — `Cannot find
+module '/home/runner/work/anal0g.org/ssatcy.com/node_modules/sharp'`.
+blackpixelrecords.com had the absolute form of the same idea in two scripts, with
+a home directory committed to the repository, and it had never failed because the
+check that would have run it was defined in `package.json` and the `Makefile` and
+invoked by nothing CI runs. denseware.com's hero builder reads from a
+`.cursor/projects/` path whose workspace has since been renamed, so it cannot run
+anywhere at all, including the machine that wrote it — and the only reason the
+hero still exists is that its output is committed.
+
+Three shapes of one defect: source that names a location instead of deriving one.
+The first was caught by CI, the second could not be, the third is invisible until
+someone tries to regenerate an asset and finds they cannot. `check-machine-paths`
+closes the class, and two things about its subject are the interesting part.
+
+It scans the git index rather than the working tree, because build output and
+`node_modules` are full of absolute paths nobody wrote and scanning them would
+bury the three lines that matter. And it ignores comment lines, because the
+comments explaining this very defect quote the paths that caused it — a check
+that could not tell code from prose would forbid its own documentation. That is
+V69's split again: what matters is not whether the string is present but whether
+anything executes it.
+
+Its first run across the fleet also produced the V10 shape immediately, in two
+repositories at once: `businesswire.com/news/home/20180227005360/en/...` is a URL
+with a path segment called `home`, and shipped press links in gorfed.net and
+4thcltr.com were flagged as machine paths. An absolute path *begins* a path — it
+follows a quote, whitespace, an equals sign or the line start. A slash before it
+means an earlier segment owns it, and it is a URL.
+
+The corollary for the write path: when a renderer genuinely is required and
+absent, fail with the sentence that tells the reader what to install. An honest
+failure costs less than a path that resolves for one person, because the borrowed
+copy also compiles the borrower's source against a version it never chose.
 
 ## Provenance
 

@@ -216,12 +216,22 @@
     {
       "id": "build-rewrites-tracked-files",
       "title": "A build that edits its own inputs makes every later step depend on local history",
-      "status": "in-progress",
+      "status": "confirmed-bug",
       "assignee": "main-model",
       "userSymptom": "CI fails on a commit that passes on my machine, and the failure names a file I did not touch.",
       "evidence": "gorfmusic.com PR #24: `mutation-canary: 4/5 caught` in CI, 5/5 locally, same commit. Cause chain: `npm run build` ran the card generator, whose filename hashed the rendered PNG, so CI's libvips produced a different name; the generator rewrote src/app/seo/siteMeta.ts to match; the tree went dirty; the canary that guards that file refused to mutate it. Fixed in gorfmusic by hashing the SVG source plus render settings and moving the build onto a `--check` mode that fails instead of writing. Watched red on three mutations, green on restore, and `git status --porcelain` is empty after a full build. V72.",
       "reviewBy": "2026-10-31",
       "note": "The generalisable gate is one step in the shared pr-check workflows: run the build, then `git diff --exit-code`. It is deliberately NOT added yet - six repos hashed rendered output (4thcltr, anal0g, blackpixelrecords, denseware, gorfmusic, ssatcy) and adding the gate first would red-line five of them at once, which is the inherited-failure mistake. Order: land the per-repo fixes, then add the shared step, then prove it by reverting one repo. Same sequencing as shared-healthcheck-strictness."
+    },
+    {
+      "id": "paths-named-not-derived",
+      "title": "A script that names a location instead of deriving one runs on exactly one machine",
+      "status": "confirmed-bug",
+      "assignee": "main-model",
+      "userSymptom": "A check passes on my laptop and fails in CI saying it cannot find sharp, and regenerating an asset fails with a path I do not recognise.",
+      "evidence": "anal0g.org PR #13 CI: `Cannot find module '/home/runner/work/anal0g.org/ssatcy.com/node_modules/sharp'` — scripts/generate-og-image.mjs resolved its renderer from a sibling checkout. blackpixelrecords.com had the absolute form in two scripts (generate-og-image.mjs, generate-favicons.mjs) with an absolute path under a developer home directory committed, and it had never failed because check:og-card was defined in package.json and the Makefile and invoked by nothing CI runs — now in its verify-command. denseware.com/scripts/build-new-hero.py read from a .cursor/projects path whose workspace was renamed, so it could not run anywhere; it takes DENSEWARE_HERO_ASSETS now and says so. Closed by verification-kit/bin/check-machine-paths.mjs at kit 0.40.0: 13 tests, 8 mutations watched red. V73.",
+      "reviewBy": "2026-10-15",
+      "note": "Two things the check had to get right, both proven by test. It scans the git index rather than the working tree, because build output is full of absolute paths nobody wrote. And it ignores comment lines, because the comments explaining this defect quote the paths that caused it — V69's split. Its first fleet run produced the V10 shape immediately: businesswire.com/news/home/20180227005360/ is a URL with a segment called home, and correct press links in gorfed.net and 4thcltr.com were flagged, so an absolute path must be anchored to the start of a path. OUTSTANDING: the gate step in verification-gate/action.yml is loud but not fatal when a repo's vendored kit lacks the checker, because the drift gate permits one minor behind and failing ten repos at once is indistinguishable from an outage. The window closes 2026-10-15 by date, not by anyone remembering — MACHINE_PATHS_GRACE_UNTIL in the step, asserted on both sides in test/orgWorkflows.test.mjs. Refresh all ten vendored kits to 0.40.0 before then."
     }
   ]
 }

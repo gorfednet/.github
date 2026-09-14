@@ -148,6 +148,15 @@ on:
         required: false
         type: string
         default: ""
+      allow-machine-paths:
+        description: >-
+          Space-separated substrings waiving a deliberate absolute path from
+          check-machine-paths (V73). The waiver belongs in the caller's config
+          rather than as a marker inside the file it excuses, so that auditing
+          what a repository is allowed to hardcode does not require a grep.
+        required: false
+        type: string
+        default: ""
 jobs:
   check:
     runs-on: ubuntu-latest
@@ -215,3 +224,4 @@ jobs:
           require-jsonld: ${{ inputs.require-jsonld }}
           error-page-root: ${{ inputs.error-page-root }}
           error-page-markers: ${{ inputs.error-page-markers }}
+          allow-machine-paths: ${{ inputs.allow-machine-paths }}

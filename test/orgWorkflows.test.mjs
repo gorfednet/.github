@@ -13,7 +13,7 @@
  */
 import { strict as assert } from 'node:assert'
 import { spawnSync } from 'node:child_process'
-import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, it } from 'node:test'
@@ -188,6 +188,82 @@ describe('verification-gate composite action', () => {
    * one false positive in the share-mount guard into eighteen ENOENTs from
    * three checkers, every one of them true and none of them the cause.
    */
+  /**
+   * The grace window is the part worth testing, because it is the part that
+   * expires. Kit 0.40.0 introduces check-machine-paths and the drift gate permits
+   * one minor behind, so on the day this lands ten repositories have no such file
+   * — and failing them all at once produces a fleet-wide red, which reads exactly
+   * like a fleet-wide outage.
+   *
+   * The alternative to a date is a tolerance somebody has to remember to remove,
+   * and that is the shape that becomes permanent. Both sides of the boundary are
+   * asserted here so the expiry cannot be quietly widened without a test saying
+   * so.
+   */
+  describe('the machine-path step\u2019s dated grace window', () => {
+    const script = stepScript(text, 'Paths are derived, not named')
+
+    const runWith = ({ kit, today, allow = '' }) => {
+      const filled = script
+        .replaceAll('${{ inputs.kit }}', kit)
+        .replaceAll('${{ inputs.allow-machine-paths }}', allow)
+      const run = spawnSync('bash', ['-c', filled], {
+        encoding: 'utf8',
+        env: { ...process.env, MACHINE_PATHS_TODAY: today },
+      })
+      return { code: run.status, output: `${run.stdout}${run.stderr}` }
+    }
+
+    it('warns but passes while the window is open, naming the one command that fixes it', () => {
+      const { code, output } = runWith({ kit: join(tmpdir(), 'no-such-kit'), today: '20260914' })
+      assert.equal(code, 0, output)
+      assert.match(output, /refresh-kit\.mjs/)
+      assert.match(output, /Not fatal until 20261015/)
+    })
+
+    it('fails once the window closes, without anyone editing this file', () => {
+      const { code, output } = runWith({ kit: join(tmpdir(), 'no-such-kit'), today: '20261015' })
+      assert.equal(code, 1, output)
+      assert.match(output, /grace window for this closed/)
+    })
+
+    it('runs the real checker when the kit has it, rather than trusting the window', () => {
+      // The window must excuse an absent file and nothing else: a present checker
+      // that fails still fails, inside the window and out.
+      const kit = mkdtempSync(join(tmpdir(), 'gate-kit-'))
+      try {
+        mkdirSync(join(kit, 'bin'), { recursive: true })
+        writeFileSync(
+          join(kit, 'bin/check-machine-paths.mjs'),
+          'console.error("checker ran"); process.exit(1)\n',
+          'utf8',
+        )
+        const { code, output } = runWith({ kit, today: '20260101' })
+        assert.equal(code, 1, output)
+        assert.match(output, /checker ran/)
+      } finally {
+        rmSync(kit, { recursive: true, force: true })
+      }
+    })
+
+    it('passes each waiver through as a separate --allow argument', () => {
+      const kit = mkdtempSync(join(tmpdir(), 'gate-kit-allow-'))
+      try {
+        mkdirSync(join(kit, 'bin'), { recursive: true })
+        writeFileSync(
+          join(kit, 'bin/check-machine-paths.mjs'),
+          'console.log(process.argv.slice(2).join("|"))\n',
+          'utf8',
+        )
+        const { code, output } = runWith({ kit, today: '20260101', allow: 'one two' })
+        assert.equal(code, 0, output)
+        assert.match(output, /--allow\|one\|--allow\|two/)
+      } finally {
+        rmSync(kit, { recursive: true, force: true })
+      }
+    })
+  })
+
   describe('the publish-set precondition', () => {
     const script = stepScript(text, 'The publish set the gate was asked to read exists')
 
