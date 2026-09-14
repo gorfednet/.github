@@ -706,6 +706,38 @@ result — an entity still present afterwards means the value was escaped twice.
 The same applies to a shell argument quoted twice, a JSON string encoded twice,
 and a path escaped once by a framework and again by hand.
 
+**V68. A tool that updates itself decides what to do with the version being
+replaced.** `refresh-kit.mjs` is the remedy every drift failure prints, and one
+of the files it overwrites is itself. So the logic choosing what to fetch is
+always the *old* logic. When the kit gained `companions` — shared documents that
+live outside the kit directory — a refresh from any earlier version wrote every
+kit file and no companion, which left `check-kit-drift` red naming
+`docs/verification-rules.md` and printing, as the fix, the command that had just
+run.
+
+Two agents refreshing two different repositories each hit this and each escaped
+it by guessing that a second run might help. Neither guess was informed by
+anything the tool said, which is the definition of a remedy that is decoration —
+a thing this document already forbids twice, in a check's output rather than in
+a check's logic.
+
+The general shape is a bootstrap: any component that upgrades itself applies the
+superseded version's understanding of what an upgrade involves, and no amount of
+care in the new version reaches backwards. Version *n* cannot be taught about
+artifacts introduced in *n+1*. So the new version has to be given control before
+the run is called finished: detect that the tool on disk is no longer the tool
+that started, hand off to the replacement exactly once, and bound the handoff
+with a guard so two processes can never become a loop.
+
+This applies to a migration runner that migrates its own schema, an installer
+that installs a newer installer, and a lockfile updater that updates its own
+resolver. Note what is *not* fixed by this: the handoff only helps when the
+executing copy already contains it, so every consumer pinned to a version that
+predates the fix still needs two passes. A structural fix to a bootstrap is
+always forward-looking, and the current stragglers have to be driven through by
+hand — which is the honest thing to say in the plan rather than to discover
+per-repository.
+
 ## Provenance
 
 Every rule above was first written in
@@ -743,6 +775,7 @@ sounds like an opinion, because none of them are.
 | — | — | V54–V60 | fleet self-heal, 2026-09-10 |
 | — | — | V61–V62 | fleet deploy round, 2026-09-11 |
 | — | — | V63–V67 | fleet metadata and error pages, 2026-09-14 |
+| — | — | V68 | kit refresh bootstrap, 2026-09-14 |
 
 This number was nearly given up. BinderCurve had two rules of its own written
 into `V61` and `V62` — where a check looks being part of what it asserts, and a

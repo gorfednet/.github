@@ -10,12 +10,42 @@
  * Usage:
  *   node verification-kit/bin/refresh-kit.mjs [--kit verification-kit] [--dry-run]
  */
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawnSync } from 'node:child_process'
 import { mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync, rmSync, statSync } from 'node:fs'
 import { dirname, join, relative, sep } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
-const RAW_ROOT = 'https://raw.githubusercontent.com/gorfednet/.github/main'
+/*
+ * REFRESH_KIT_ORIGIN exists so the self-supersede handoff below can be tested
+ * against a fixture canonical instead of the real one. A test that cannot point
+ * this script at a canonical it controls can only assert that the handoff code
+ * is present, never that it runs — and a guard nobody has watched fail is
+ * decoration. Production never sets it.
+ */
+const RAW_ROOT = process.env.REFRESH_KIT_ORIGIN ?? 'https://raw.githubusercontent.com/gorfednet/.github/main'
 const RAW = `${RAW_ROOT}/templates/verification-kit`
+
+/*
+ * A refresh runs the copy of this script the project already vendors, and one
+ * of the files it overwrites is that copy. So the logic choosing what to write
+ * is always the *old* logic, and it cannot know about artifacts a later version
+ * learned to fetch. Refreshing a kit from before `companions` existed wrote
+ * every kit file but no shared document, left `check-kit-drift` red, and
+ * printed this command as the remedy — the command that had just run.
+ *
+ * Two agents refreshing two different repositories both found this the same
+ * way, by guessing that a second run might help. That is the remedy being
+ * decoration, which the comments further down already forbid. So when a
+ * refresh replaces this script, hand off to the replacement exactly once and
+ * let it finish the job. The env guard bounds it: the superseding run cannot
+ * itself re-exec, so a refresh is at most two processes, never a loop.
+ *
+ * V68. Note the handoff only helps a consumer whose vendored copy already has
+ * it, so every project pinned below this version still needs two passes.
+ */
+const SELF_PATH = fileURLToPath(import.meta.url)
+const SELF_AT_START = readFileSync(SELF_PATH, 'utf8')
+const SUPERSEDED = 'REFRESH_KIT_SUPERSEDED'
 
 /** Every file in the vendored kit except the manifest and the starters. */
 function kitFiles(root) {
@@ -132,6 +162,23 @@ for (const rel of kitFiles(kit)) {
   if (rel in (manifest.files ?? {})) continue
   rmSync(join(kit, rel), { force: true })
   removed.push(rel)
+}
+
+/*
+ * See SUPERSEDED above. Compare this script's source as it was when the process
+ * started against what now sits at the same path: if the refresh rewrote it,
+ * the run that just finished used superseded logic and has to defer.
+ */
+if (!process.env[SUPERSEDED] && readFileSync(SELF_PATH, 'utf8') !== SELF_AT_START) {
+  console.log(
+    `  refresh-kit: this script was itself replaced (v${before} → v${manifest.version}).\n` +
+      '  Re-running the new copy so one refresh is enough to reach green.',
+  )
+  const again = spawnSync(process.execPath, [SELF_PATH, ...process.argv.slice(2)], {
+    stdio: 'inherit',
+    env: { ...process.env, [SUPERSEDED]: '1' },
+  })
+  process.exit(again.status ?? 1)
 }
 
 console.log(
