@@ -64,6 +64,65 @@ on:
         required: false
         type: string
         default: ""
+      site-url:
+        description: >-
+          Production base URL, no trailing slash. Required by the metadata and
+          og:image checks, which have to know what "on this site" means before they
+          can tell an absolute local URL from a third-party hotlink. Empty skips
+          both, which is right only for a project that ships no HTML.
+        required: false
+        type: string
+        default: ""
+      metadata-pages:
+        description: >-
+          Space-separated HTML files to check, one per route the site actually
+          serves — not just the homepage.
+
+          ssatcy.com is why this is a list. It builds one shell for seven routes, so
+          six of its pages emitted the homepage's canonical and could not rank,
+          while every homepage-level check in the fleet passed. A representative
+          page is not a sample of a per-page property; it is the page that works.
+        required: false
+        type: string
+        default: ""
+      publish-root:
+        description: >-
+          Directory the site's URL paths resolve against on disk, so an og:image URL
+          can be turned back into bytes to open. Usually `dist` or `public`.
+        required: false
+        type: string
+        default: ""
+      og-max-bytes:
+        description: >-
+          Ceiling for the social card image. denseware.com pointed og:image at a
+          3840x4557 background weighing 2.1 MB; some scrapers give up first.
+        required: false
+        type: string
+        default: "300000"
+      require-jsonld:
+        description: >-
+          When "true", every checked page must carry a JSON-LD block. Off by
+          default because a Tier 1 holding page has nothing to describe.
+        required: false
+        type: string
+        default: "false"
+      error-page-root:
+        description: >-
+          Directory that should contain 404.html and 500.html. Empty skips the
+          check. This is only the repository half — the server half is the live
+          probe in production-healthcheck, because a 404.html nginx was never told
+          to serve is exactly as useful as no file (V66).
+        required: false
+        type: string
+        default: ""
+      error-page-markers:
+        description: >-
+          Space-separated strings from this site's own design that must appear in
+          each error page. Without one, "the file exists" is the whole assertion,
+          and a placeholder added to turn a check green satisfies it.
+        required: false
+        type: string
+        default: ""
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -111,3 +170,10 @@ jobs:
           min-tests: ${{ inputs.min-tests }}
           rule-sources: ${{ inputs.rule-sources }}
           source-dirs: ${{ inputs.source-dirs }}
+          site-url: ${{ inputs.site-url }}
+          metadata-pages: ${{ inputs.metadata-pages }}
+          publish-root: ${{ inputs.publish-root }}
+          og-max-bytes: ${{ inputs.og-max-bytes }}
+          require-jsonld: ${{ inputs.require-jsonld }}
+          error-page-root: ${{ inputs.error-page-root }}
+          error-page-markers: ${{ inputs.error-page-markers }}

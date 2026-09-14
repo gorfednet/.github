@@ -168,7 +168,7 @@ describe('verification-gate composite action', () => {
   it("runs the kit's own tests, with a floor under the count", () => {
     assert.match(text, /The kit works in this repository/)
     assert.match(text, /--test-reporter=tap/)
-    assert.match(text, /-lt 40/, 'a self-test step with no floor passes when the glob misses')
+    assert.match(text, /-lt 250/, 'a self-test step with no floor passes when the glob misses')
   })
 
   it('runs each kit check by name, so a renamed script fails loudly', () => {
@@ -176,6 +176,9 @@ describe('verification-gate composite action', () => {
       'check-kit-drift.mjs',
       'check-rule-citations.mjs',
       'check-tracked-artifacts.mjs',
+      'check-page-metadata.mjs',
+      'check-og-image.mjs',
+      'check-error-pages.mjs',
       'check-backlog.mjs',
       'assert-tests-executed.mjs',
     ]) {
