@@ -285,13 +285,32 @@ restarted. An earlier session chose `--inplace` to escape the 500s and, in doing
 so, traded a loud failure for a silent one. That trade is almost always wrong,
 and it is worth naming as a decision rather than a fix.
 
-The check that caught it already existed and was not believed: the deploy's own
-origin verification compares the bundles the build produced against the bundles
-the live URL returns, and it failed with `Received: ` empty. That is what a
-correct detector of this looks like — fetch through the real serving path and
-compare against the artefact, because nothing about the host's filesystem can
-see the defect. Read such a failure as evidence about production, not as a
-broken deploy step.
+The mechanism is worth naming exactly, because it decides which fixes are even
+available. The host mounts the share `cifs ... cache=loose,actimeo=1` and sees
+writes immediately. The container does **not** mount that share; `/proc/mounts`
+inside it shows `/run/host_mark/mnt/gorfednas ... fakeowner ro`, a Synology
+ownership-remapping layer over the host's mount. That layer caches an existing
+inode's metadata and does not revalidate it — measured stable across thirty
+seconds, and observed three days stale. Only restarting the container clears it.
+`nginx -s reload` does not, and `sendfile off` does not; both were tried and
+neither changed a byte.
+
+The blast radius was the whole fleet, not one file. After deploying five sites
+whose scripts all reported `Live check ok (200)`, every one of the five was
+serving the previous release: `subrythm 8212→7311, gorfmusic 6132→5065,
+gorfed.net 19816→18579, promptboi 5054→4374, rowanmcarthur 6010→5750`. One
+container restart made all five agree. Every deploy to these sites had been
+landing on the filesystem and reaching nobody.
+
+Which makes the second half of the rule the important one: **a live check that
+asserts only a status code cannot detect this.** Five scripts fetched `/`, saw
+`200`, and reported success while serving stale bytes — a green tick over the
+exact failure it was written to catch. The check that did catch it compares the
+artefact against what the URL returns: ssatcy's deploy diffs the bundles the
+build produced against the bundles the live page declares, and failed with
+`Received: ` empty. Fetch through the real serving path and compare *content*.
+And read such a failure as evidence about production, not as a broken deploy
+step — it was disbelieved once already.
 
 **V72. An address computed from a renderer's output is not an address of the
 content.** Six sites name their social card `og-card-<hash>.png`, where the hash
