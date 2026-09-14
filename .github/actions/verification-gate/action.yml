@@ -201,6 +201,40 @@ runs:
           exit 1
         fi
 
+    # `!cancelled()` on every check above is deliberate (V18): an earlier failure
+    # must not be able to switch the gate off. The cost is that when the failure
+    # was early enough to skip Build, the gate runs against a publish set that
+    # was never produced — and every page-shaped check then reports its own file
+    # as missing. ssatcy.com's run showed eighteen ENOENTs from three checkers,
+    # all of them true and none of them the cause, while the one real failure sat
+    # a screen and a half above them.
+    #
+    # So the gate says the one thing those eighteen lines could not: the
+    # directory is not there. It does not turn the checks off, because a
+    # genuinely missing publish set is still a failure — it names it once,
+    # accurately, and stops before the noise.
+    - name: The publish set the gate was asked to read exists
+      if: ${{ !cancelled() && (inputs.publish-root != '' || inputs.error-page-root != '') }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        for root in "${{ inputs.publish-root }}" "${{ inputs.error-page-root }}"; do
+          [ -n "$root" ] || continue
+          if [ ! -d "$root" ]; then
+            echo "::error::The gate was asked to read \"$root\" and there is no such" \
+                 "directory. Every check below it will report its own file missing," \
+                 "which is true and is not the cause. Look for the first failed or" \
+                 "skipped step in this job: if Build did not run, that is why."
+            exit 1
+          fi
+          if [ -z "$(find "$root" -type f -print -quit)" ]; then
+            echo "::error::The gate was asked to read \"$root\" and it contains no" \
+                 "files. A build that produced an empty directory fails here rather" \
+                 "than one check at a time."
+            exit 1
+          fi
+        done
+
     - name: Page metadata is per-page and correct
       if: ${{ !cancelled() && inputs.metadata-pages != '' }}
       shell: bash

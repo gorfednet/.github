@@ -148,6 +148,60 @@
       "pr": 20,
       "userSymptom": "A check reporting a rule that does not exist, in a file nobody here wrote. towit.io does not wire this check, so like bindercurve’s rulebook section it was a false failure waiting for whoever wired it first — and the reasonable conclusion on seeing it would be that the check is noise.",
       "evidence": "Reported by the batch that rolled v0.27.0: towit-admin/static/js/angular/angular.js and its angularjs twin, \"we added three explicit number rules 0, 1 and 2\". No sequence starts at zero, so a number beginning with 0 is prose by definition; the matcher now reads [1-9]\\d* in all three alternatives. Watched failing first, canary citation-reads-a-zero-as-a-rule, and verified against the real towit.io tree that produced it: 91 source files, every citation resolves. Third instance of V10 in two releases, which is why it is recorded there with the note that narrowing a matcher changes behaviour in both directions — the previous narrowing broke 4thcltr’s real 4C- prefix."
+    },
+    {
+      "id": "metadata-gate-flagged-correct-markup",
+      "title": "The metadata gate reported a defect in a URL that was written correctly",
+      "status": "landed",
+      "assignee": "main-model",
+      "pr": 32,
+      "userSymptom": "A red check naming a bug that is not there, on a page whose social card works. The reasonable response is to go and 'fix' correct markup, which is what nearly happened: the finding was carried into a plan and into a delegated task as established fact, and an agent was briefed to expect the failure and repair it.",
+      "evidence": "check-page-metadata.mjs: `const doubleEscaped = (raw) => /&amp;|&#38;|%26amp%3B/i.test(raw)` tested the raw attribute. `&amp;` is how `&` is written in an attribute value, so every correctly escaped multi-parameter URL failed. Its own docstring named the right test, 'an entity surviving one decode', and the code never decoded. Settled by fetching rowanmcarthur.com's og:image with the new live checker: the crop applies and the image is 1200x630.",
+      "reviewBy": "2026-12-01",
+      "note": "Fixed by decoding once and looking for a survivor, which required decodeEntities to become a single pass - a chain of replaces turns `&amp;lt;` into `<`, so escaped-once and escaped-twice come out identical and the distinction the caller needs is gone before it can be measured. Recorded as a fourth V10 instance. The part that generalises is not the pattern but the protection: a case in the suite asserted the same wrong thing, so checker and test confirmed each other and the suite stayed green. A case watched failing proves the assertion runs, not that it is right - and a near-miss test written by whoever held the wrong belief is worth nothing. When a check reports a defect in something you did not write, observe the thing itself."
+    },
+    {
+      "id": "card-replaced-under-a-cached-name",
+      "title": "A social card can be fixed in the repository and stay broken on the internet for a year",
+      "status": "landed",
+      "assignee": "main-model",
+      "pr": 32,
+      "userSymptom": "Sharing a link keeps showing the old, wrong card long after it was fixed and deployed, and every check says the site is correct. Nobody can find the fault, because there is no fault left in the repository.",
+      "evidence": "The vhost template on dapyllil serves image, css and js extensions with `expires 1y` and `add_header Cache-Control \"public, immutable\"`. Confirmed live: `cache-control: public, max-age=31536000, immutable` on favicon.svg across five hosts. ssatcy.com/og-image.png and 4thcltr.com/og-image.png both already existed under that header, one of them jpeg bytes at 768x1024. check-og-image reads the publish set, so a card replaced under its old name is green in the repository, green in the build and stale at the URL.",
+      "reviewBy": "2026-12-01",
+      "note": "Two halves, and this pull request is only the second of them. Structurally, a new card lands at a new URL rather than overwriting the old name - 4thcltr.com already does this with `?v=3` and is the pattern to copy. Verification-wise, check-live-og-image.mjs fetches the page, reads the og:image a scraper would read, fetches that, and compares the served bytes against the page's own declared dimensions; a declared size the URL does not serve is the staleness signature. It also reports an immutable Cache-Control as a note, so the next person replacing a card is told why it will not reach anyone. The class is general: any check that reads the artefact a build produced cannot see what a cache in front of it is still serving. Structural half outstanding per site: see cards-at-overwritable-urls."
+    },
+    {
+      "id": "guard-failed-on-its-own-explanation",
+      "title": "A guard blocked a repository for documenting why it obeys the guard",
+      "status": "landed",
+      "assignee": "main-model",
+      "pr": 32,
+      "userSymptom": "A pull request red on a check naming a file that does nothing wrong, and the check cannot be satisfied by any wording - the deploy script explains in a comment why it does NOT use the forbidden mount, and saying so is what trips it. The only ways out are to delete the explanation or to ignore the check.",
+      "evidence": "scripts/no-smb-guard.sh scanned one pattern, smb://|mount_smbfs|\\bcifs\\b|/Volumes/, over prose and code alike, with a single-file exclusion for docs/verification-rules.md. ssatcy.com CI, step No legacy share-mount deploy paths: matched a comment in its deploy script. Because that step precedes Build, the skipped build then gave the verification gate no dist/ to read and it emitted 18 ENOENTs under !cancelled().",
+      "reviewBy": "2026-12-01",
+      "note": "Split into two patterns. ACTIONABLE (smb://, mount_smbfs, mount -t cifs, /Volumes/) is copy-pasteable and fails anywhere including inside a comment; the bare filesystem word fails only on lines that are not comments. Four cases pin the directions the allowance must not open, and all were watched red under mutation. The deeper finding is V69: the awk filter added to drop comment lines was rejected by awk, printed nothing, and the guard reported a clean tree - a broken filter emits exactly what a clean scan emits, and the || true absorbing the scanner no-match status swallowed the difference. Its own new test caught that, before CI did. The filter is now fatal and exits 2, so a tooling fault cannot read as a pass or as a finding."
+    },
+    {
+      "id": "gate-buried-the-cause-it-outlived",
+      "title": "The check designed not to be silenced became the loudest noise in the log",
+      "status": "landed",
+      "assignee": "main-model",
+      "pr": 32,
+      "userSymptom": "A failed run whose log is eighteen missing-file errors, every one of them real, none of them the reason. The actual failure is a screen and a half higher and reads as unrelated, so the diagnosis goes to the loud true errors first.",
+      "evidence": "ssatcy.com run: the share-mount guard failed, Build was skipped, and check-page-metadata, check-og-image and check-error-pages each reported ENOENT for every page and file they wanted in a dist/ that had never been produced. V18 puts !cancelled() on every gate step deliberately, so this is the cost of a correct decision rather than a bug in it.",
+      "reviewBy": "2026-12-01",
+      "note": "Recorded as V70. Fixed with a precondition step in the verification-gate action that fails once when a root it was told to read is absent or empty, and names the likely cause - look for the first failed or skipped step; if Build did not run, that is why. It does not skip: a genuinely missing publish set is still a failure, now a legible one. Guarded by five cases that execute the step’s extracted shell rather than matching its text, since the question is what the script decides; five mutations watched red, including one that renamed the step, which proves the extraction helper throws instead of handing every case an empty script."
+    },
+    {
+      "id": "cards-at-overwritable-urls",
+      "title": "Most sites still declare a social card at a URL that cannot be replaced",
+      "status": "confirmed-bug",
+      "assignee": "main-model",
+      "userSymptom": "A social card fixed and deployed keeps showing the old image when a link is shared, with nothing in the repository left to fix.",
+      "evidence": "The vhost serves \\.(png|svg|css|js|...)$ with expires 1y and Cache-Control: public, immutable - confirmed live, max-age=31536000. Any card at a fixed name inherits that, so replacing it in place reaches nobody for up to a year. ssatcy.com is fixed: scripts/generate-og-image.mjs writes og-card-<hash12>.png and rewrites index.html and _headers, so the URL changes exactly when the pixels do. 4thcltr.com/og-image.png is live under the same header and is the next one. The remaining sites are getting a first card, so their URL is new either way - the risk is the SECOND card.",
+      "reviewBy": "2026-11-15",
+      "note": "check-live-og-image.mjs catches the symptom after a deploy by comparing the bytes the og:image URL serves against the dimensions the page declares, and notes an immutable Cache-Control so the next person is told why a replacement will not reach anyone. That is detection. Prevention is the content-addressed name, which needs doing per site; ssatcy.com is the pattern to copy."
     }
   ]
 }

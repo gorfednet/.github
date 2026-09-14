@@ -39,13 +39,25 @@ export function headOf(html) {
  * compares equal to the `&` a scraper will use, not to normalise arbitrary
  * markup.
  */
+const ENTITIES = {
+  amp: '&',
+  lt: '<',
+  gt: '>',
+  quot: '"',
+  apos: "'",
+  '#38': '&',
+  '#60': '<',
+  '#62': '>',
+  '#34': '"',
+  '#39': "'",
+}
+
 export function decodeEntities(value) {
-  return value
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
+  // One pass, not a chain of replaces. A chain decodes twice: `&amp;lt;` becomes
+  // `&lt;` on the first replace and `<` on the second, so a value escaped once
+  // and a value escaped twice come out identical — and telling those apart is
+  // the entire job of the caller that looks for a surviving entity.
+  return value.replace(/&(#?[a-z0-9]+);/gi, (whole, name) => ENTITIES[name.toLowerCase()] ?? whole)
 }
 
 function attr(tag, name) {

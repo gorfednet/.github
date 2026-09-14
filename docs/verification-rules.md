@@ -112,6 +112,31 @@ citation resolved. Tightening a matcher is a change of behaviour in both
 directions, and the positive case has to be retested every time the negative one
 is fixed.
 
+A fourth instance carries the sharpest version of the lesson, because a test
+protected it. `check-page-metadata` reported that rowanmcarthur.com's `og:image`
+carried an HTML entity that would drop its crop parameters. The predicate was
+`/&amp;|&#38;|%26amp%3B/.test(raw)` over the raw attribute — and `&amp;` is simply
+how `&` is written in an attribute, so it flagged every correctly escaped
+multi-parameter URL there is. Its own docstring described the right test, "an
+entity surviving one decode", and the code never decoded.
+
+What kept it alive was a case in the suite asserting exactly the wrong thing. The
+checker and the test agreed, the suite was green, and the finding was carried into
+a plan and into a delegated task as established fact. It was settled by fetching
+the URL: the crop applies and the card is 1200x630. **A case watched failing
+proves the assertion runs. It does not prove the assertion is right** — and a
+matcher's near-miss test is worth nothing if the near-miss was written by whoever
+held the wrong belief. When a check reports a defect in something you did not
+write, the cheap confirmation is to observe the thing itself, not to reread the
+pattern or the test.
+
+The correct predicate decodes once and then looks for a survivor, which also
+required making `decodeEntities` a single pass: a chain of `.replace()` calls
+turns `&amp;lt;` into `<`, so a value escaped once and a value escaped twice come
+out identical, and the one distinction the caller needs is destroyed before it can
+be measured. Percent-encoded `%26amp%3B` stays a failure, because no HTML decode
+touches it.
+
 **V11. Scan for the value, not the syntax that usually surrounds it.** A check
 keyed to one spelling of a call site measures that spelling, not the property.
 Two instances: a key scan matching `key: "…"` saw none of the keys composed as
@@ -737,6 +762,63 @@ predates the fix still needs two passes. A structural fix to a bootstrap is
 always forward-looking, and the current stragglers have to be driven through by
 hand — which is the honest thing to say in the plan rather than to discover
 per-repository.
+
+**V69. A filter that cannot run emits exactly what a clean scan emits.** The
+share-mount guard was narrowed so that the bare filesystem name in a *comment*
+stopped counting as a deploy path — prose cannot mount anything, and a repository
+could not otherwise document why it avoids the mount. The narrowing piped the
+scanner's matches through `awk` to drop comment lines.
+
+`awk` rejected the pattern. The `\*` needed for a literal asterisk was passed
+with `-v`, which processes escape sequences, so `awk` received a bare `*`,
+called the expression invalid, wrote to stderr and printed nothing. Nothing is
+also what a clean repository produces. The guard reported "OK: no legacy
+share-mount deploy references" over a tree it had not examined, and the message
+was true of the examination that never happened.
+
+This is not the pipefail rule. There the exit code was read from the wrong
+process; here the exit code was discarded on purpose, by a `|| true` that was
+correct for the case it was written for — a scanner exits non-zero when it
+matches nothing, and that must not fail the build. The same `|| true` then
+swallowed the difference between "matched nothing" and "could not look". Two
+conditions, one silence, and the tolerant one was chosen for both.
+
+So: absorb the no-match status at the scanner, where it is expected, and leave
+every downstream stage's status fatal, because downstream non-zero can only mean
+breakage. Distinguish it in the exit code too — this guard now exits 2 for a
+broken filter against 1 for a finding, so a tooling problem cannot be read as a
+clean run or as a violation. And when a check's job is to *remove* results,
+test the removal in both directions: the cases proving the comment allowance
+works were the ones that went green here, while the case proving the word is
+still caught in executable code went red and found the bug.
+
+The class is any transform between a check and its verdict: a `grep -v`
+exclusion, a `jq` projection, an allowlist subtraction, a diff filtered by path.
+Each one can fail in a way that looks like good news.
+
+**V70. A check that outlives an earlier failure must be able to say its input
+was never built.** V18 puts `!cancelled()` on every step of the verification
+gate so an earlier failure cannot switch the assertions off, and that is right.
+The cost showed up when the earlier failure was early enough to skip `Build`:
+the gate ran against a publish directory that had never been produced, and three
+checkers each reported every file they wanted as missing. Eighteen `ENOENT`
+lines, all true, none of them the cause, with the one real failure a screen and
+a half above them.
+
+Both halves of that run were defects and only one was in a checker. The other
+was legibility, and it is the expensive one — the true errors are what a reader
+believes, so they consume the diagnosis while the cause scrolls away.
+
+The fix is not to make the gate skip, which would return the hole V18 closed. It
+is a precondition that asks whether the inputs exist at all and fails once,
+naming the likely cause: if the directory the gate was told to read is not
+there, look for the first failed or skipped step. A missing publish set is still
+a failure — it is now a legible one.
+
+Generally, any assertion that deliberately runs after a failure needs a
+distinction between *the thing is wrong* and *the thing was never made*. Without
+it, the guard that was designed not to be silenced becomes the loudest source of
+noise in the log.
 
 ## Provenance
 

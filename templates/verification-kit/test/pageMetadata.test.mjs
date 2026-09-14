@@ -1,7 +1,13 @@
 /**
- * Every case here was watched failing before the checker was trusted, and the
- * two named ones are real: ssatcy.com's seven routes sharing one canonical, and
- * rowanmcarthur.com's `&amp;` inside an og:image query string.
+ * Every case here was watched failing before the checker was trusted.
+ *
+ * One of them was watched failing and was still wrong. ssatcy.com's seven routes
+ * sharing one canonical is real and is pinned below. rowanmcarthur.com's `&amp;`
+ * inside an og:image query string was not: `&amp;` is how `&` is written in an
+ * attribute, the crop applies, and the live card is 1200x630. A case asserting
+ * otherwise agreed with a checker that tested the raw attribute, so the pair
+ * confirmed each other for a release. Watching a case fail proves the assertion
+ * runs; it does not prove the assertion is right.
  */
 import { strict as assert } from 'node:assert'
 import { spawnSync } from 'node:child_process'
@@ -114,10 +120,52 @@ describe('check-page-metadata', () => {
     assert.match(result.stdout, /exempt from the canonical-collision check/)
   })
 
-  it('fails on an og:image URL carrying an HTML entity', () => {
-    // rowanmcarthur.com: &amp; in the query string, so the crop never applied.
+  /**
+   * These three replace a case that asserted the opposite, and getting it wrong
+   * cost more than leaving it out would have.
+   *
+   * `&amp;` is the correct way to write `&` in an attribute value. The original
+   * case claimed rowanmcarthur.com's `og:image` was broken by it and asserted a
+   * failure — so the checker was written to flag every correctly escaped query
+   * string, and the test agreed with it, and both were wrong together. Fetching
+   * the live URL settled it: the crop parameters do apply and the card is
+   * 1200x630, which no amount of rereading the pattern would have shown.
+   *
+   * The real defect is an entity that survives ONE decode, which is what an
+   * author gets by escaping an already-escaped string. So the predicate has to
+   * decode before it judges, and these cases pin both sides of that line.
+   */
+  it('accepts &amp; in an og:image query string, which is correct markup', () => {
     const { paths } = project({
       'index.html': goodPage({ ogImage: `${SITE}/og.png?w=1200&amp;h=630` }),
+    })
+    const result = run(paths)
+    assert.equal(result.status, 0, `correctly escaped markup was rejected: ${result.stderr}`)
+  })
+
+  it('accepts a numeric character reference for &, which is also correct', () => {
+    const { paths } = project({
+      'index.html': goodPage({ ogImage: `${SITE}/og.png?w=1200&#38;h=630` }),
+    })
+    const result = run(paths)
+    assert.equal(result.status, 0, `a numeric reference was rejected: ${result.stderr}`)
+  })
+
+  it('fails on an og:image URL that is escaped twice', () => {
+    // The genuine defect: one decode leaves "&amp;" in the URL, so the query
+    // separator a scraper sends is literally "&amp;" and the parameters are
+    // read as one parameter named "amp;h".
+    const { paths } = project({
+      'index.html': goodPage({ ogImage: `${SITE}/og.png?w=1200&amp;amp;h=630` }),
+    })
+    const result = run(paths)
+    assert.equal(result.status, 1)
+    assert.match(result.stderr, /HTML entity after decoding/)
+  })
+
+  it('fails on a percent-encoded entity, which no decode will fix', () => {
+    const { paths } = project({
+      'index.html': goodPage({ ogImage: `${SITE}/og.png?w=1200%26amp%3Bh=630` }),
     })
     const result = run(paths)
     assert.equal(result.status, 1)

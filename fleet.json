@@ -134,8 +134,8 @@
       },
       "tierTwoFloor": {
         "workflow": ".github/workflows/verification-kit.yml",
-        "pattern": "-lt 50",
-        "reason": "This repository is the kit rather than a consumer of it, so it has no shared-workflow caller to pass test-report through. Its executed-count floor is the inline comparison on its own kit suite, and the pattern above is verified in the named workflow rather than taken on trust."
+      "pattern": "-lt 250",
+      "reason": "This repository is the kit rather than a consumer of it, so it has no shared-workflow caller to pass test-report through. Its executed-count floor is the inline comparison on its own kit suite, and the pattern above is verified in the named workflow rather than taken on trust. Raised from 50 to 250 at kit v0.37.0: the suite had grown to 292 executed assertions, so a floor of 50 would have passed with five of sixteen test files deleted. This waiver caught the edit that raised it, which is the behaviour it exists for."
       }
     }
   ]

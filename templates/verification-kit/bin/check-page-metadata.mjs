@@ -26,7 +26,15 @@
  *                                   stubs and alternates. Printed on every run.
  */
 import { readFileSync } from 'node:fs'
-import { headOf, htmlLang, jsonLdTypes, linkValues, metaValues, titles } from '../lib/htmlHead.mjs'
+import {
+  decodeEntities,
+  headOf,
+  htmlLang,
+  jsonLdTypes,
+  linkValues,
+  metaValues,
+  titles,
+} from '../lib/htmlHead.mjs'
 
 function parseArgs(argv) {
   const args = { siteUrl: '', pages: [], minPages: 1, requireJsonLd: false, sharedCanonical: [] }
@@ -78,12 +86,24 @@ const descriptionSeen = new Map()
 /**
  * A URL that survived double-escaping.
  *
- * `&amp;` is correct *markup* for `&` in an attribute, and a browser resolves
- * it. But an author who wrote `&amp;` into the URL itself ships a URL whose
- * query separator is literally "&amp;" — which is how rowanmcarthur.com's crop
- * parameters were silently dropped. The tell is an entity surviving one decode.
+ * `&amp;` is correct *markup* for `&` in an attribute, and every scraper decodes
+ * it. The defect is an entity that is still there AFTER one decode, which is
+ * what escaping an already-escaped string produces: the query separator sent on
+ * the wire is literally "&amp;", so `&amp;h=630` arrives as a parameter named
+ * "amp;h".
+ *
+ * This function used to test the raw attribute, which flags every correctly
+ * escaped multi-parameter URL — and it was believed for a whole release because
+ * a test asserted the same wrong thing, and because rowanmcarthur.com's card was
+ * described as broken by it without anyone fetching the URL. It is not broken;
+ * the crop applies and the image is 1200x630. Another V10 instance: a matcher
+ * firing on its legitimate neighbour, found by running it against reality rather
+ * than by rereading the pattern.
+ *
+ * Percent-encoded stays in the list. `%26amp%3B` is a literal "&amp;" inside the
+ * URL that no HTML decode touches, so it is the real defect wearing an escape.
  */
-const doubleEscaped = (raw) => /&amp;|&#38;|%26amp%3B/i.test(raw)
+const doubleEscaped = (raw) => /&amp;|&#38;|%26amp%3B/i.test(decodeEntities(raw))
 
 const singleValue = (page, head, key, values, { required = true } = {}) => {
   if (values.length === 0) {

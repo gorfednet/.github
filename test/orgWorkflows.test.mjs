@@ -12,7 +12,9 @@
  * hand-maintained list of what to check is the thing that goes stale.
  */
 import { strict as assert } from 'node:assert'
-import { readFileSync, readdirSync } from 'node:fs'
+import { spawnSync } from 'node:child_process'
+import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, it } from 'node:test'
 import {
@@ -23,6 +25,40 @@ import {
 
 const WORKFLOWS = '.github/workflows'
 const ACTIONS = '.github/actions'
+
+/**
+ * The shell of one named step, so a test can run it instead of describing it.
+ *
+ * By indentation rather than a YAML parser, because this repository carries no
+ * dependencies and adding one to read a file it already reads as text would be
+ * a poor trade. Steps sit at four spaces, their keys at six, a block scalar's
+ * body at eight — so the body is every following line indented past the keys,
+ * and the first line that is not ends it.
+ *
+ * It throws on a missing step rather than returning empty. A helper that
+ * silently yields nothing when a step is renamed would hand every case below it
+ * an empty script to run, and an empty script exits 0.
+ */
+function stepScript(yaml, name) {
+  const at = yaml.indexOf(`- name: ${name}`)
+  if (at === -1) throw new Error(`no step named "${name}" — renamed, or removed`)
+  const lines = yaml.slice(at).split('\n')
+  const opens = lines.findIndex((line) => /^\s*run: \|/.test(line))
+  if (opens === -1) throw new Error(`step "${name}" has no run: | block`)
+
+  const body = []
+  for (const line of lines.slice(opens + 1)) {
+    if (line.trim() === '') {
+      body.push('')
+      continue
+    }
+    if (line.search(/\S/) < 8) break
+    body.push(line.slice(8))
+  }
+  const script = body.join('\n').trim()
+  if (script === '') throw new Error(`step "${name}" parsed to an empty script`)
+  return script
+}
 
 const reusableChecks = readdirSync(WORKFLOWS).filter(
   (file) => file.startsWith('pr-check-') && file.endsWith('.yml'),
@@ -138,6 +174,101 @@ describe('verification-gate composite action', () => {
    * them. Counting rather than sampling is the difference between a guard and
    * a spot check.
    */
+  /**
+   * These run the step's own shell rather than matching its text, which is a
+   * departure from the rest of this file and worth the extra machinery here.
+   * The step exists to turn one confusing failure into one clear one, and
+   * whether it does that is a question about what the script decides — a
+   * pattern match over the YAML would pass just as happily over a script that
+   * decided the opposite.
+   *
+   * What it is for: `!cancelled()` (V18) means an early failure cannot switch
+   * the gate off, so when the early failure is early enough to skip Build the
+   * gate reads a publish set that was never produced. ssatcy.com's run turned
+   * one false positive in the share-mount guard into eighteen ENOENTs from
+   * three checkers, every one of them true and none of them the cause.
+   */
+  describe('the publish-set precondition', () => {
+    const script = stepScript(text, 'The publish set the gate was asked to read exists')
+
+    const runWith = ({ publishRoot = '', errorPageRoot = '' }) => {
+      const filled = script
+        .replaceAll('${{ inputs.publish-root }}', publishRoot)
+        .replaceAll('${{ inputs.error-page-root }}', errorPageRoot)
+      const run = spawnSync('bash', ['-c', filled], { encoding: 'utf8' })
+      return { code: run.status, output: `${run.stdout}${run.stderr}` }
+    }
+
+    it('fails once, naming the skipped build, when the directory is absent', () => {
+      const { code, output } = runWith({ publishRoot: join(tmpdir(), 'gate-absent-dir') })
+      assert.equal(code, 1, output)
+      assert.match(output, /there is no such directory/)
+      assert.match(output, /if Build did not run, that is why/)
+      assert.equal(output.match(/::error::/g).length, 1, `expected one error, got: ${output}`)
+    })
+
+    it('fails when the directory exists but the build produced nothing', () => {
+      const empty = mkdtempSync(join(tmpdir(), 'gate-empty-'))
+      try {
+        const { code, output } = runWith({ publishRoot: empty })
+        assert.equal(code, 1, output)
+        assert.match(output, /contains no files/)
+      } finally {
+        rmSync(empty, { recursive: true, force: true })
+      }
+    })
+
+    it('passes over a real publish set, so it cannot block a healthy run', () => {
+      const built = mkdtempSync(join(tmpdir(), 'gate-built-'))
+      try {
+        writeFileSync(join(built, 'index.html'), '<!doctype html>', 'utf8')
+        const { code, output } = runWith({ publishRoot: built })
+        assert.equal(code, 0, output)
+      } finally {
+        rmSync(built, { recursive: true, force: true })
+      }
+    })
+
+    /**
+     * Both roots, because a caller can set either. Checking only the first
+     * would leave error-page-root reporting its absence one file at a time,
+     * which is the behaviour being replaced.
+     */
+    it('checks error-page-root too, not only publish-root', () => {
+      const built = mkdtempSync(join(tmpdir(), 'gate-built-'))
+      try {
+        writeFileSync(join(built, 'index.html'), '<!doctype html>', 'utf8')
+        const { code, output } = runWith({
+          publishRoot: built,
+          errorPageRoot: join(tmpdir(), 'gate-absent-errors'),
+        })
+        assert.equal(code, 1, output)
+        assert.match(output, /gate-absent-errors/)
+      } finally {
+        rmSync(built, { recursive: true, force: true })
+      }
+    })
+
+    it('does nothing when neither root was asked for', () => {
+      const { code, output } = runWith({})
+      assert.equal(code, 0, output)
+      assert.doesNotMatch(output, /::error::/)
+    })
+
+    /**
+     * The step must not be reachable only on the happy path, for the same
+     * reason every other step in this action carries `!cancelled()`: the run
+     * that most needs this message is the one where an earlier step already
+     * failed.
+     */
+    it('runs even after an earlier step failed', () => {
+      const step = text.slice(text.indexOf('- name: The publish set the gate was asked to read exists'))
+      const condition = /if: \$\{\{ ([^\n]+) \}\}/.exec(step)
+      assert.ok(condition, 'the step has no if:')
+      assert.match(condition[1], /!cancelled\(\)/)
+    })
+  })
+
   it('gives every step an if: that survives an earlier failure', () => {
     const steps = text.split('\n').filter((line) => /^    - name: /.test(line))
     assert.ok(steps.length >= 5, `parsed ${steps.length} steps, expected at least 5`)
@@ -235,6 +366,95 @@ describe('production-healthcheck workflow', () => {
   it('counts what the live smoke executed, since a filtered suite exits 0', () => {
     assert.match(text, /Assert the live smoke actually ran/)
     assert.match(text, /executed no specs|assert-tests-executed\.mjs/)
+  })
+
+  /**
+   * The floor on this repository's own suite was unguarded, which is why it
+   * stayed at 50 while the suite grew to 292 — nothing compared the two, so the
+   * number kept reading as a gate long after it had stopped being one. It would
+   * have passed with five of sixteen test files deleted.
+   *
+   * Guarded here the same way the consumer gate's floor is guarded, and stated as
+   * a lower bound on the floor rather than an exact value so raising it stays
+   * easy and lowering it has to come past this assertion.
+   */
+  it('holds its own suite to a floor near the real count', () => {
+    const kit = readFileSync(join(WORKFLOWS, 'verification-kit.yml'), 'utf8')
+    const floor = /-lt (\d+) \]; then\n\s*echo "::error::The kit's own suite/.exec(kit)
+    assert.ok(floor, "no floor found on the kit's own self-test count")
+    assert.ok(
+      Number(floor[1]) >= 250,
+      `the kit's self-test floor is ${floor[1]}; the suite executes far more than that, ` +
+        'so a floor this low passes with most of it deleted',
+    )
+  })
+
+  /**
+   * The live card check, guarded the same way the pr-check gate's checks are and
+   * for the reason recorded there: a workflow can name a script in a comment or
+   * quote it in an error message while never running it, and the assertion that
+   * only searched for the filename stayed green when the invocation was replaced
+   * with an echo. A line beginning with `node` is the narrowest subject that can
+   * actually run one.
+   */
+  describe('live og:image check', () => {
+    const step = text.slice(text.indexOf('- name: The card a scraper receives'))
+
+    it('is wired into this workflow at all', () => {
+      assert.notEqual(
+        text.indexOf('- name: The card a scraper receives'),
+        -1,
+        'the step is gone, so nothing fetches the live card',
+      )
+    })
+
+    /**
+     * Two halves, because this step reaches the script through a variable and
+     * neither half is sufficient. Searching for the filename passes over a
+     * comment or an `::error::` message that quotes it — the mutation that kept
+     * the pr-check version of this assertion green. Searching for a bare `node`
+     * line passes over one running something else entirely. So: the variable is
+     * bound to this script, and a line beginning with `node` runs that variable.
+     */
+    it('invokes the checker rather than mentioning it', () => {
+      assert.match(
+        step,
+        /^\s*checker=verification-kit\/bin\/check-live-og-image\.mjs\s*$/m,
+        'nothing binds the checker path to check-live-og-image.mjs',
+      )
+      const invoked = step
+        .split('\n')
+        .some((line) => /^\s*node\s/.test(line) && line.includes('"$checker"'))
+      assert.ok(invoked, 'no line starting with node runs "$checker"')
+    })
+
+    /**
+     * Same rule as the Playwright smoke: asking for a check and not having its
+     * script is a failure, never a skip. Opting out is `expect-og-image: false`,
+     * which is a decision readable off the caller's workflow rather than a tick
+     * printed over a file that was not there.
+     */
+    it('fails when the kit it needs is absent rather than skipping', () => {
+      const beforeInvocation = step.slice(0, step.indexOf('node "$checker"'))
+      assert.match(beforeInvocation, /is not vendored/)
+      assert.match(beforeInvocation, /exit 1/)
+      assert.doesNotMatch(
+        beforeInvocation,
+        /exit 0/,
+        'a missing checker must fail; opting out is expect-og-image: false',
+      )
+    })
+
+    /**
+     * The floor is what stops the run shrinking in silence. A comma list that
+     * parsed to one path, or a checker invoked with no --page at all, would
+     * otherwise print a tick over less than was asked for — the shape every
+     * anti-vacuous floor in this kit exists for.
+     */
+    it('gives the checker a floor equal to the paths it was asked for', () => {
+      assert.match(step, /--min-pages "\$count"/)
+      assert.match(step, /parsed to nothing/)
+    })
   })
 
   /**

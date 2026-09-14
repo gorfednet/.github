@@ -1,5 +1,5 @@
 {
-  "version": "0.36.0",
+  "version": "0.38.0",
   "files": {
     "README.md": "f6a9f0f6b5f12b1a3d746ee19fa805c7e3ed87c2319740f372589da18a77a8d8",
     "bin/assert-checks-started.mjs": "5420eebfcad1eb06bd963a3f34c893ce3596f8ba1b52dcb7429d83ec9084e102",
@@ -9,8 +9,9 @@
     "bin/check-ci-headroom.mjs": "c53c6278d2f98326495e58a31c3886ca4d6d2aa49d3bbb56143f9756b314f240",
     "bin/check-error-pages.mjs": "0d0a169f775b4c9cdec1895e115134fb4fce388ca4dcb01a7ebd86ab3e41b6d5",
     "bin/check-kit-drift.mjs": "f56282b9dfcf38783b0f6fadeb24256a5b2ebf37d7ccba748d306bc98be9b9ec",
+    "bin/check-live-og-image.mjs": "779a4068957968a9a1b844ee9ec36216eda7af5fba967a7a188d16e32d7d49ff",
     "bin/check-og-image.mjs": "52bfa44361eebecaa6518b9960d3634ab8336a9bfd1a10b9ac6e50cc484176d1",
-    "bin/check-page-metadata.mjs": "595f668a997935ed6e7302a7d7ef12544dc04bad09719777d4a7e245ec585974",
+    "bin/check-page-metadata.mjs": "f876e3fdfa5d3cc03e993bac8e351d4c4b54aa180a662b2752309c7d84e65998",
     "bin/check-rule-citations.mjs": "be89e3cc348acd56f4f8a99e817393b91bd3d0c46ff6a2a58d0669776ed0493f",
     "bin/check-tracked-artifacts.mjs": "ef4a8e1d674c2d883db4e37781167c9fab1f6a3b0461b16d0a4b067cd1dc6e9c",
     "bin/mutation-canary.mjs": "fafb50a15854c5273e262915baaef4b63328ccb5b631f4a5f3341c0915d0b6e6",
@@ -19,7 +20,7 @@
     "lib/backlogSchema.mjs": "260c11ed6e7e960b8aee4e7127d96e02c4f793c6b3e72b348dc01eedf6221fa6",
     "lib/bugbotConclusion.mjs": "5f70a24237f8108841c68454237b34761fbc2d06ebe22ec1c5b6f62573a54a1a",
     "lib/githubSlug.mjs": "ae603437ff1b6370606f1a5be6c8d58ed1cfa30f301b5643e2d82c4083766caf",
-    "lib/htmlHead.mjs": "7e12ddca6783c52da8f245903ce1f13b4758826cdf6041b077466061f472aa83",
+    "lib/htmlHead.mjs": "f4599c9209fc957f750e075c5742472a605516368272cb892ce5578139a115c6",
     "lib/imageMeta.mjs": "47c3e89005da729ed20a5d4e7013d2024489f9fd4c387ed2095640b16109d7e8",
     "lib/isMain.mjs": "bd3c354d760cb4bbceb2a022d36ae86a903db69865180c58c42d807c74a5fdb4",
     "test/backlogSchema.test.mjs": "18bdb331a9d88d294e7bfe8a8d85e428ebc0e23ec616e9c3c3d51cbcdf2f22b1",
@@ -32,13 +33,14 @@
     "test/imageMeta.test.mjs": "0969d4b5aff5efa6e7ea5ab918d5a58328d0ed13166fb1d488144b87939de40c",
     "test/isMain.test.mjs": "b5d00295d10a6cd30c4401ace15a13bf118f9f7a65623354c13c4ce3ed5f7989",
     "test/kitDrift.test.mjs": "e3d46233b058028a5e1c3c2456677f57b63755b15f3ee14f4cd39d0276e3b667",
+    "test/liveOgImage.test.mjs": "995cd5d86a8fd1cc1d857ad925d3d3ab4073fa9fddff675733f4f06d6ecb9ed6",
     "test/mutationCanary.test.mjs": "eab9336a04ab9261a385cb6803c59b8bd5c412dc708560f05b752cbc6ea097ad",
     "test/ogImage.test.mjs": "f4dc6f421b0cdc4b272371588ef5ba9f7b8d2cee02dba273f96d0dbcfb436c08",
-    "test/pageMetadata.test.mjs": "159e4725b3f0e7374b3a2476b2bf1526f959b40ec024161bee20466e88cda123",
+    "test/pageMetadata.test.mjs": "77a74d4b70019117dc88f782dd973cc4880e797954bfd33465871139dc0e7a32",
     "test/refreshKitHandoff.test.mjs": "58f2380adcc2829e66ddb9654d95441eb25de716af2574f1e2f741dbc5f34336",
     "test/ruleCitations.test.mjs": "adca35331c0a5b6b6b62ff5c51aa4e7229bba09f4b9420d152fb45f9c98821ba"
   },
   "companions": {
-    "docs/verification-rules.md": "58745231e7cacb15959198efd262463f588a58d6944315adfff262ccac8b4220"
+    "docs/verification-rules.md": "771491ba6c15c64e7bacf0b9225d3307e3f0310b99b189ce027a0f23e3c76055"
   }
 }
