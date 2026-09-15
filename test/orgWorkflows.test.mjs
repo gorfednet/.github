@@ -779,3 +779,243 @@ describe('every job is bounded', () => {
     })
   }
 })
+
+/**
+ * A sitemap answering 200 is an envelope, not a payload. This step used to check
+ * only that robots.txt named a sitemap which resolved, and promptboi.com passed
+ * it for months while advertising two URLs that returned 404 to a direct request
+ * — so crawlers were handed dead pages by a file the monitor called healthy.
+ *
+ * These cases run the step's own extracted shell against a stubbed origin, rather
+ * than asserting that the YAML contains some string. A test that greps the
+ * workflow for "loc" would pass against a step that parsed the sitemap and threw
+ * the result away.
+ */
+describe("the sitemap step's verdict on what a sitemap lists", () => {
+  const SCRIPT = stepScript(
+    readFileSync(join(WORKFLOWS, 'production-healthcheck.yml'), 'utf8'),
+    'robots.txt advertises a sitemap that resolves',
+  )
+
+  /**
+   * A curl that answers from a table, so a case can describe a real origin.
+   *
+   * It has to honour -L rather than accept and ignore it. The first version did
+   * ignore it, and the mutation that made the step follow redirects — which would
+   * make a 301 in a sitemap read as a 200 — passed against it. A stub blind to the
+   * flag cannot test a rule about the flag; that is the same blindness as the code.
+   */
+  function runStep({ robots, sitemap, codes, redirects = {} }) {
+    const dir = mkdtempSync(join(tmpdir(), 'sitemap-step-'))
+    const bin = join(dir, 'bin')
+    mkdirSync(bin)
+
+    const table = Object.entries(codes)
+      .map(([url, code]) => `${url}\t${code}`)
+      .join('\n')
+    writeFileSync(join(dir, 'codes.tsv'), `${table}\n`, 'utf8')
+    writeFileSync(
+      join(dir, 'redirects.tsv'),
+      `${Object.entries(redirects)
+        .map(([from, to]) => `${from}\t${to}`)
+        .join('\n')}\n`,
+      'utf8',
+    )
+    writeFileSync(join(dir, 'robots.txt'), robots, 'utf8')
+    writeFileSync(join(dir, 'sitemap.xml'), sitemap ?? '', 'utf8')
+
+    writeFileSync(
+      join(bin, 'curl'),
+      [
+        '#!/usr/bin/env bash',
+        'out=/dev/null; url=""; follow=0',
+        'while [ $# -gt 0 ]; do',
+        '  case "$1" in',
+        '    -o) out="$2"; shift 2 ;;',
+        '    -w|--max-time) shift 2 ;;',
+        '    -L) follow=1; shift ;;',
+        '    -sS|-s|-S) shift ;;',
+        '    *) url="$1"; shift ;;',
+        '  esac',
+        'done',
+        'lookup() { awk -F"\\t" -v u="$1" \'$1==u{print $2}\' "$2"; }',
+        'code="$(lookup "$url" "$DIR/codes.tsv")"',
+        '[ -z "$code" ] && code=404',
+        '# Follow only when asked, so the -L flag is a behaviour the test can see.',
+        'hops=0',
+        'while [ "$follow" -eq 1 ] && [ "$hops" -lt 5 ]; do',
+        '  case "$code" in 30[1278]) ;; *) break ;; esac',
+        '  target="$(lookup "$url" "$DIR/redirects.tsv")"',
+        '  [ -z "$target" ] && break',
+        '  url="$target"',
+        '  code="$(lookup "$url" "$DIR/codes.tsv")"',
+        '  [ -z "$code" ] && code=404',
+        '  hops=$((hops + 1))',
+        'done',
+        'if [ "$out" != "/dev/null" ]; then',
+        '  case "$url" in',
+        '    */robots.txt) cp "$DIR/robots.txt" "$out" ;;',
+        '    *sitemap.xml) cp "$DIR/sitemap.xml" "$out" ;;',
+        '    *) : > "$out" ;;',
+        '  esac',
+        'fi',
+        'printf "%s" "$code"',
+      ].join('\n'),
+      { encoding: 'utf8', mode: 0o755 },
+    )
+
+    const script = SCRIPT.replaceAll('${{ inputs.site-url }}', 'https://example.test')
+    try {
+      return spawnSync('bash', ['-c', script], {
+        encoding: 'utf8',
+        env: { ...process.env, DIR: dir, PATH: `${bin}:${process.env.PATH}` },
+      })
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  }
+
+  const ROBOTS = 'User-agent: *\nSitemap: https://example.test/sitemap.xml\n'
+  const loc = (...urls) =>
+    `<urlset>${urls.map((u) => `<url><loc>${u}</loc></url>`).join('')}</urlset>`
+
+  it('passes when every URL the sitemap lists answers 200 directly', () => {
+    const result = runStep({
+      robots: ROBOTS,
+      sitemap: loc('https://example.test/', 'https://example.test/about/'),
+      codes: {
+        'https://example.test/robots.txt': 200,
+        'https://example.test/sitemap.xml': 200,
+        'https://example.test/': 200,
+        'https://example.test/about/': 200,
+      },
+    })
+    assert.equal(result.status, 0, result.stdout + result.stderr)
+    assert.match(result.stdout, /2 URL\(s\) listed, all answering 200/)
+  })
+
+  it("fails on promptboi's real defect: the sitemap lists a URL that 404s", () => {
+    const result = runStep({
+      robots: ROBOTS,
+      sitemap: loc('https://example.test/', 'https://example.test/explorations'),
+      codes: {
+        'https://example.test/robots.txt': 200,
+        'https://example.test/sitemap.xml': 200,
+        'https://example.test/': 200,
+        'https://example.test/explorations': 404,
+      },
+    })
+    assert.equal(result.status, 1)
+    assert.match(result.stdout, /lists https:\/\/example\.test\/explorations, which answered HTTP 404/)
+  })
+
+  /**
+   * The redirect target is deliberately reachable. That is the whole point: if
+   * this step followed redirects, the 301 would resolve to a 200 and the case
+   * would pass, which is exactly the mutation being ruled out. A fixture whose
+   * target 404s would go red either way and prove nothing.
+   */
+  it("fails on 4thcltr's real defect: the sitemap lists a URL that 301s", () => {
+    const result = runStep({
+      robots: ROBOTS,
+      sitemap: loc('https://example.test/manifesto'),
+      codes: {
+        'https://example.test/robots.txt': 200,
+        'https://example.test/sitemap.xml': 200,
+        'https://example.test/manifesto': 301,
+        'https://example.test/manifesto/': 200,
+      },
+      redirects: { 'https://example.test/manifesto': 'https://example.test/manifesto/' },
+    })
+    assert.equal(result.status, 1)
+    assert.match(result.stdout, /answered HTTP 301/)
+  })
+
+  /**
+   * Reaches the final tally, which the per-sitemap emptiness check would
+   * otherwise make unreachable. "Sitemap:" with nothing after it satisfies the
+   * grep for a directive, so the count of directives is 1 and that assertion
+   * passes; the entry is then skipped as empty and no URL is ever checked.
+   */
+  it('fails when a Sitemap: directive has no value, so nothing is checked', () => {
+    const result = runStep({
+      robots: 'User-agent: *\nSitemap:\n',
+      codes: { 'https://example.test/robots.txt': 200 },
+    })
+    assert.equal(result.status, 1)
+    assert.match(result.stdout, /verified zero sitemap URLs/)
+  })
+
+  it('fails when the sitemap resolves but lists nothing at all', () => {
+    const result = runStep({
+      robots: ROBOTS,
+      sitemap: '<urlset></urlset>',
+      codes: {
+        'https://example.test/robots.txt': 200,
+        'https://example.test/sitemap.xml': 200,
+      },
+    })
+    assert.equal(result.status, 1)
+    assert.match(result.stdout, /contains no <loc> entries/)
+  })
+
+  it('still fails when robots.txt only comments a sitemap out', () => {
+    const result = runStep({
+      robots: '# Sitemap: https://example.test/sitemap.xml\n',
+      codes: { 'https://example.test/robots.txt': 200 },
+    })
+    assert.equal(result.status, 1)
+    assert.match(result.stdout, /names no Sitemap: directive/)
+  })
+
+  it('still fails when the sitemap itself does not resolve', () => {
+    const result = runStep({
+      robots: ROBOTS,
+      sitemap: loc('https://example.test/'),
+      codes: {
+        'https://example.test/robots.txt': 200,
+        'https://example.test/sitemap.xml': 404,
+      },
+    })
+    assert.equal(result.status, 1)
+    assert.match(result.stdout, /which answered HTTP 404/)
+  })
+})
+
+/**
+ * The anti-vacuous guard on the main health step had no test, which came to
+ * light when a mutation to it changed nothing anywhere. It is the guard standing
+ * between "this monitor checked the site" and "this monitor checked nothing and
+ * said so in green", so it is the last one that should have been taken on trust.
+ *
+ * It also does not work the way it reads. `IFS=',' read -ra paths <<< ""` yields
+ * a one-element array holding the empty string, so `${#paths[@]} -eq 0` never
+ * fires for an empty input; the guard that actually catches it is the `checked`
+ * tally after the loop has skipped every blank entry. This pins the one that
+ * bites rather than the one that looks like it does.
+ */
+describe("the health step's refusal to pass over nothing", () => {
+  const RAW = stepScript(
+    readFileSync(join(WORKFLOWS, 'production-healthcheck.yml'), 'utf8'),
+    'HTTP health checks',
+  )
+
+  const withPaths = (paths) =>
+    RAW.replaceAll('${{ inputs.site-url }}', 'https://example.test')
+      .replaceAll('${{ inputs.health-paths }}', paths)
+      .replaceAll('${{ inputs.min-bytes }}', '512')
+      .replaceAll('${{ inputs.expect-text }}', '')
+      .replaceAll('${{ inputs.forbid-paths }}', '')
+
+  it('fails rather than passing when health-paths is empty', () => {
+    const result = spawnSync('bash', ['-c', withPaths('')], { encoding: 'utf8' })
+    assert.equal(result.status, 1, `expected failure, got ${result.status}: ${result.stdout}`)
+    assert.match(result.stdout + result.stderr, /proved nothing|No health paths/)
+  })
+
+  it('fails when health-paths is only separators and whitespace', () => {
+    const result = spawnSync('bash', ['-c', withPaths(' , ,  ')], { encoding: 'utf8' })
+    assert.equal(result.status, 1, `expected failure, got ${result.status}: ${result.stdout}`)
+    assert.match(result.stdout + result.stderr, /proved nothing|No health paths/)
+  })
+})

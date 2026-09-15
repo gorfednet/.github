@@ -243,6 +243,38 @@
       "reviewBy": "2027-03-14",
       "note": "Their note fields had to be rewritten too. Both still opened with \"Tier 1 rather than 2 on purpose\", a sentence the tier beside it now contradicted, and that is stale prose which would have read as current for a year. The reverify pressure is deliberately lifted while dormant, because pressing a switched-off project to re-verify only invites moving a date to describe a check that does not run; the dormantUntil date carries the deferral instead. Recorded as V74. Nothing was weakened to get here: no assertion deleted, no floor lowered, no failing check made to pass.",
       "pr": 35
+    },
+    {
+      "id": "sitemap-checked-only-its-envelope",
+      "title": "The monitor called a sitemap healthy while it advertised dead pages",
+      "status": "landed",
+      "assignee": "main-model",
+      "userSymptom": "A visitor following a shared link to https://promptboi.com/explorations gets a 404, and search engines are being told to index that URL. The site itself produced the link: the app pushes /explorations and /about into the address bar as you navigate, so those are addresses people can bookmark and send to each other, and both are dead on arrival.",
+      "evidence": "promptboi.com/explorations and /about both returned HTTP 404 to a direct request while public/sitemap.xml listed them, and src/app/App.tsx lines 731-732 push those pathnames into history with lines 786-787 reading them back on load. The build emits no shell for either path and nginx serves try_files $uri $uri/ =404. The expect-sitemap step checked only that robots.txt named a sitemap which resolved, so the envelope was verified and the payload never was. It now fetches every <loc> and requires 200 deliberately without following redirects, because a sitemap is a list of canonical addresses: 4thcltr.com listed /manifesto, which 301s to /manifesto/. An empty sitemap and a run that verifies zero URLs both fail rather than reading as clean.",
+      "reviewBy": "2026-11-30",
+      "note": "Four mutations red, but only after two of them were first found blind, and both for the same reason: the subject of the guard rather than its assertion. The curl stub accepted and ignored -L, so a mutation making the step follow redirects passed against it - a stub blind to the flag cannot test a rule about the flag. And the final tally was unreachable while the per-sitemap emptiness check fired first, so it needed a case where a Sitemap: directive has no value. The per-site fixes are tracked separately; this entry is the gate.",
+      "pr": 36
+    },
+    {
+      "id": "guards-nobody-had-watched-fail",
+      "title": "The guard protecting every monitor from proving nothing had no test",
+      "status": "landed",
+      "assignee": "main-model",
+      "userSymptom": "Nobody sees this directly. It decides whether a green monitor means the site was checked or means nothing was checked and the job said so in green - which is what every other assertion in the fleet rests on.",
+      "evidence": "Mutating the HTTP health step's \"Zero paths checked. This job proved nothing.\" guard changed no test result, so it had never been executed by anything. Found by accident while mutating a different step. Two cases now run that step's extracted shell with health-paths empty and with only separators; the mutation is red. Pinning it also showed it does not work the way it reads: IFS=, read -ra paths <<< \"\" yields a one-element array holding the empty string, so the ${#paths[@]} -eq 0 guard never fires for an empty input and the protection that actually bites is the checked tally after blank entries are skipped.",
+      "reviewBy": "2026-11-30",
+      "note": "The same session also found the V69 shape in my own mutation harness: the helper did not read the patch step's exit status, so an anchor matching zero times, or matching an older step elsewhere in the file, produced exactly what a blind guard produces. One verdict was wrong for that reason - the anchor hit a different step 200 lines earlier. The helper now requires the anchor to match exactly once and aborts otherwise.",
+      "pr": 36
+    },
+    {
+      "id": "sitemap-rule-text-deferred-by-drift",
+      "title": "The rule for the sitemap class is written but cannot ship yet",
+      "status": "confirmed-bug",
+      "assignee": "main-model",
+      "userSymptom": "Nobody sees this on a site. The cost is that the next person to meet this class has the gate but not the explanation, so they can see what fails without seeing why it was added.",
+      "evidence": "docs/verification-rules.md is a hashed companion of the verification kit, so adding a rule to it forces a minor version bump. Canonical is at 0.42.0 and all ten live repos are at 0.41.0, which check-kit-drift treats as one minor behind and passes with a warning. A bump to 0.43.0 would make all ten more than one minor behind, which drift treats as far behind and fails, red-lining the whole fleet at once for a documentation change.",
+      "reviewBy": "2026-10-31",
+      "note": "Deliberately dated rather than left to be remembered. The sequence is: refresh the ten consumers to 0.42.0, then land the rule text as 0.43.0. The substance is not lost - it is recorded in the two entries above and in the comments in the step itself. This is the same constraint that already caught me once this session, when write-manifest.mjs bumped a version I had already bumped by hand and produced 0.43.0."
     }
   ]
 }

@@ -359,7 +359,14 @@ jobs:
           # Ignore commented-out directives. promptboi.com carried
           # "# Sitemap: https://promptboi.com/sitemap.xml" for months, which
           # advertises nothing while reading, to a human skimming, as though it did.
-          mapfile -t sitemaps < <(grep -i '^[[:space:]]*Sitemap:' "$robots" | sed 's/^[[:space:]]*[Ss]itemap:[[:space:]]*//' | tr -d '\r')
+          # A read loop rather than mapfile: mapfile is bash 4, and this script is
+          # also executed directly by test/orgWorkflows.test.mjs, which runs on
+          # whatever bash the machine has. A step whose shell no test can run is a
+          # step nobody has watched fail.
+          sitemaps=()
+          while IFS= read -r line; do
+            sitemaps+=("$line")
+          done < <(grep -i '^[[:space:]]*Sitemap:' "$robots" | sed 's/^[[:space:]]*[Ss]itemap:[[:space:]]*//' | tr -d '\r')
 
           if [ "${#sitemaps[@]}" -eq 0 ]; then
             echo "::error::robots.txt names no Sitemap: directive." \
@@ -367,9 +374,16 @@ jobs:
             exit 1
           fi
 
+          # Checking that the sitemap resolves says nothing about what it lists.
+          # promptboi.com advertised /explorations and /about while both returned
+          # 404 to a direct request, so crawlers were being handed two dead pages
+          # by a file this step reported as healthy. The URLs are the payload; the
+          # sitemap answering 200 is only the envelope.
+          checked=0
           for sitemap in "${sitemaps[@]}"; do
             [ -z "$sitemap" ] && continue
-            scode="$(curl -sS -o /dev/null -w '%{http_code}' -L --max-time 30 "$sitemap" || true)"
+            xml="$(mktemp)"
+            scode="$(curl -sS -o "$xml" -w '%{http_code}' -L --max-time 30 "$sitemap" || true)"
             if [ "$scode" != "200" ]; then
               echo "::error::robots.txt advertises $sitemap, which answered HTTP $scode." \
                    "A sitemap that does not resolve is worse than none: crawlers" \
@@ -377,7 +391,44 @@ jobs:
               exit 1
             fi
             echo "  sitemap resolves: $sitemap"
+
+            locs=()
+            while IFS= read -r line; do
+              locs+=("$line")
+            done < <(tr '>' '>\n' < "$xml" | grep -oE '<loc>[^<]+' | sed 's/<loc>//' | tr -d '\r' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+
+            # A sitemap listing nothing is not a passing sitemap. Without this the
+            # loop below would iterate zero times and report success, which is the
+            # same shape as a clean scan.
+            if [ "${#locs[@]}" -eq 0 ]; then
+              echo "::error::$sitemap contains no <loc> entries." \
+                   "An empty sitemap tells a crawler this site has no pages."
+              exit 1
+            fi
+
+            for loc in "${locs[@]}"; do
+              [ -z "$loc" ] && continue
+              # Deliberately NOT -L. A sitemap is a list of canonical addresses,
+              # so a 301 is a defect to report rather than a hop to follow:
+              # 4thcltr.com listed /manifesto, which redirects to /manifesto/.
+              lcode="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 30 "$loc" || true)"
+              if [ "$lcode" != "200" ]; then
+                echo "::error::$sitemap lists $loc, which answered HTTP $lcode" \
+                     "without following redirects. A sitemap must list the canonical" \
+                     "URL that serves the page: a 404 asks a crawler to index nothing," \
+                     "and a 301 asks it to index an address that is not the real one."
+                exit 1
+              fi
+              checked=$((checked + 1))
+            done
+            echo "  ${#locs[@]} URL(s) listed, all answering 200 directly"
           done
+
+          if [ "$checked" -eq 0 ]; then
+            echo "::error::verified zero sitemap URLs. Every assertion above passed" \
+                 "over an empty set, which proves nothing."
+            exit 1
+          fi
 
       # The live half of the social-card fix. Its companion is check-og-image.mjs,
       # which asserts the bytes in the publish set; this asserts the bytes at the
