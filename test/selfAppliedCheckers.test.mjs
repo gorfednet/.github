@@ -23,6 +23,22 @@ const BIN = 'templates/verification-kit/bin'
 const workflow = readFileSync('.github/workflows/verification-kit.yml', 'utf8')
 const checkers = readdirSync(BIN).filter((name) => name.endsWith('.mjs'))
 
+/**
+ * The exact arguments CI passes to check-machine-paths, taken from the workflow.
+ * Throws rather than returning an empty list if the invocation cannot be found:
+ * "no arguments" and "I could not read the step" would otherwise look identical,
+ * and the empty case is the one that quietly passes.
+ */
+function waivedInWorkflow() {
+  const line = workflow
+    .split('\n')
+    .find((l) => l.includes('check-machine-paths.mjs') && l.trimStart().startsWith('run:'))
+  if (!line) throw new Error('no run: line invokes check-machine-paths.mjs in verification-kit.yml')
+  const args = []
+  for (const [, value] of line.matchAll(/--allow\s+'([^']+)'/g)) args.push('--allow', value)
+  return args
+}
+
 describe('checkers this repository applies to itself', () => {
   it('classifies every checker the kit ships, so a new one forces the decision', () => {
     const classified = new Set([...SELF_APPLIED, ...Object.keys(NOT_APPLICABLE)])
@@ -76,8 +92,33 @@ describe('checkers this repository applies to itself', () => {
      * Running the checker rather than asserting a string appears in a workflow.
      * The wiring test above would have passed throughout the failure this file
      * exists because of.
+     *
+     * The waivers are read out of the workflow rather than restated here. A copy
+     * would let the test and the step disagree, and the test is the one that would
+     * be believed: it would keep passing with its own allowance while CI ran a
+     * different one.
      */
-    const result = spawnSync('node', [`${BIN}/check-machine-paths.mjs`], { encoding: 'utf8' })
+    const result = spawnSync('node', [`${BIN}/check-machine-paths.mjs`, ...waivedInWorkflow()], {
+      encoding: 'utf8',
+    })
     assert.equal(result.status, 0, `${result.stdout}${result.stderr}`)
+  })
+
+  it('waives nothing broad enough to switch the check off', () => {
+    /*
+     * Five of ten repositories once answered a failure in this checker by waiving
+     * /Users/gorf/ and ../ssatcy.com/node_modules — the two patterns it exists to
+     * find. A waiver naming the check's own reason for existing reads as
+     * authorised to the next person who hits the failure, so the shape is the
+     * defect regardless of what it currently suppresses.
+     */
+    const tooBroad = ['/Users/', '/home/', '/Users/gorf', '/home/gorf', 'node_modules']
+    for (const arg of waivedInWorkflow().filter((a) => a !== '--allow')) {
+      assert.ok(
+        !tooBroad.includes(arg.replace(/\/$/, '')),
+        `the waiver "${arg}" is broad enough to hide the class this checker exists to catch. ` +
+          'Name the specific file or directory instead.',
+      )
+    }
   })
 })

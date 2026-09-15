@@ -95,6 +95,15 @@ jobs:
         if: ${{ !cancelled() }}
         run: node scripts/check-fleet.mjs --offline
 
+      # The ten live nginx vhosts were unversioned. infra/nginx/vhosts/ records
+      # them, and this refuses the two ways a record like that goes wrong: edited
+      # as though it deployed something, or left past the point where it still
+      # describes the host. It cannot diff against the host — no route to
+      # Tailscale from a runner — so the deferral is dated instead.
+      - name: The vhost record has not been edited or gone stale
+        if: ${{ !cancelled() }}
+        run: node scripts/check-vhost-capture.mjs
+
       # Both suites parse YAML by regex, which is fine for asserting a step
       # carries an `if:` and useless for noticing the file stopped being valid
       # YAML. A workflow GitHub cannot parse does not fail — it does not run.
@@ -198,7 +207,14 @@ jobs:
       # here is neither wired in nor excluded with a reason.
       - name: Paths in this repo are derived, not named
         if: ${{ !cancelled() }}
-        run: node templates/verification-kit/bin/check-machine-paths.mjs
+        # The one waiver is infra/nginx/CAPTURE.json's sourcePath. It records where
+        # the live vhosts live on a remote host so the snapshot can be re-taken; it
+        # is data about another machine, not a location this repository resolves,
+        # which is the thing the check exists to catch. Waived by the specific
+        # directory rather than by /home/gorf/ — proven narrow: with this allowance
+        # in place a planted /home/gorf/scratch path elsewhere in the tree is still
+        # caught, whereas allowing /home/gorf/ hides it and leaves the check green.
+        run: node templates/verification-kit/bin/check-machine-paths.mjs --allow 'Docker/nginx/conf.d'
 
       # The shared rules are cited from fifteen repositories, so a gap or a
       # duplicate here dangles someone else's code comment.
