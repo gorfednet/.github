@@ -275,6 +275,47 @@
       "evidence": "docs/verification-rules.md is a hashed companion of the verification kit, so adding a rule to it forces a minor version bump. Canonical is at 0.42.0 and all ten live repos are at 0.41.0, which check-kit-drift treats as one minor behind and passes with a warning. A bump to 0.43.0 would make all ten more than one minor behind, which drift treats as far behind and fails, red-lining the whole fleet at once for a documentation change.",
       "reviewBy": "2026-10-31",
       "note": "Deliberately dated rather than left to be remembered. The sequence is: refresh the ten consumers to 0.42.0, then land the rule text as 0.43.0. The substance is not lost - it is recorded in the two entries above and in the comments in the step itself. This is the same constraint that already caught me once this session, when write-manifest.mjs bumped a version I had already bumped by hand and produced 0.43.0."
+    },
+    {
+      "id": "live-vhosts-were-unversioned",
+      "title": "The configuration serving all ten sites existed in exactly one place",
+      "status": "landed",
+      "assignee": "main-model",
+      "pr": 37,
+      "userSymptom": "A visitor sees nothing until it goes wrong, and then sees everything go wrong at once. The nginx configuration for all ten live sites existed only on the host, with no history and no copy. A bad edit, a lost disk or a mistaken overwrite would take down every site with nothing to restore from and no record of what the working version had been.",
+      "evidence": "The serving container bind-mounts its conf.d read-only from an unversioned host directory - the path is recorded in infra/nginx/CAPTURE.json rather than repeated here - and that directory had no .git. It also held backup tarballs and dated .bak files, the shape a directory takes when someone has been editing it carefully with no version control to help. All twelve loaded .conf files are now recorded in infra/nginx/vhosts/ with a per-file sha256 in CAPTURE.json. Scanned for secrets before committing: the only match was server_tokens off.",
+      "reviewBy": "2027-03-14",
+      "note": "The gate is deliberately not a diff against the host, because the host is reachable only over Tailscale and a runner has no route to it - and a check that cannot run reports the same green as one that passed. So it is a hash per file plus a dated recaptureBy. The hash is not protecting the bytes; it is stopping someone editing a config in the repo, watching CI pass, and believing production changed. Seven mutations red."
+    },
+    {
+      "id": "org-checkers-had-no-wiring-gate",
+      "title": "Nothing required the org's own checkers to be run by anything",
+      "status": "landed",
+      "assignee": "main-model",
+      "pr": 37,
+      "userSymptom": "Nobody sees this on a site. It decides whether a check in this repository is a check or just a file that looks like one.",
+      "evidence": "scripts/lib/selfAppliedCheckers.mjs was built earlier this session because a kit checker was added and never wired into this repo's CI. The identical hole was still open one level up for this repo's own scripts/check-*.mjs: no registry, no gate, and it merely happened that the only one that existed was invoked. Every scripts/check-*.mjs must now be named by a workflow AND exit 0 against this repository, because a workflow can name a script that fails the moment it runs. Two mutations red: the wired step reduced to an echo, and the checker itself made to fail.",
+      "reviewBy": "2026-12-31"
+    },
+    {
+      "id": "vhost-record-should-be-the-source",
+      "title": "The vhost copy is a record when it could be the configuration itself",
+      "status": "confirmed-bug",
+      "assignee": "main-model",
+      "userSymptom": "Nobody sees this directly. It is the difference between a config that cannot drift and one that is checked for drift on a timer, and it decides how much of the above stays necessary.",
+      "evidence": "This host already does it the better way for a different site. bindercurve-dev-nginx-1 mounts its configuration out of a git checkout: bindercurve.com-repo/infra/nginx/templates/bindercurve-dev.conf.template. Its tracked config IS its live config, so no snapshot, no hashes and no expiry are needed. Pointing the nginx container at a checkout the same way would make infra/nginx/vhosts/ the source of truth and delete the drift problem rather than dating it.",
+      "reviewBy": "2027-03-14",
+      "note": "Deliberately not folded into the capture change. It needs the container recreated, which is a production action on the thing serving all ten sites, and it should be its own change with its own verification rather than a step inside a bookkeeping commit. If it lands, most of check-vhost-capture.mjs can be deleted, which is the good outcome."
+    },
+    {
+      "id": "tracked-nginx-conf-describes-nothing",
+      "title": "4thcltr tracks an nginx config claiming TLS and headers the live server has not got",
+      "status": "confirmed-bug",
+      "assignee": "main-model",
+      "userSymptom": "It misleads whoever reads it next. Someone auditing security posture from the repository would conclude this site terminates TLS with HSTS and a set of security headers. The live server does none of that - it listens on port 80 only and Cloudflare terminates TLS in front of it - so the file describes protections that are not where it says they are.",
+      "evidence": "The captured live vhosts in infra/nginx/vhosts/ contain no listen 443, no HSTS and no security headers, and a test now asserts that and fails if a captured vhost ever claims 443. The nginx conf tracked inside the 4thcltr.com repository claims all three. Only one of the two can be true, and the captured one came off the running host.",
+      "reviewBy": "2026-11-30",
+      "note": "Not fixed in the same change because 4thcltr.com had concurrent work in flight and two writers in one clone is how uncommitted edits get silently stashed. The fix is either to delete the file or to make it say what it is - a proposal, or a record of a different layer - rather than reading as a description of this one."
     }
   ]
 }

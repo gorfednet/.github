@@ -1019,3 +1019,49 @@ describe("the health step's refusal to pass over nothing", () => {
     assert.match(result.stdout + result.stderr, /proved nothing|No health paths/)
   })
 })
+
+/**
+ * A checker that exists and runs nowhere is the defect this repository already
+ * fixed one level down: scripts/lib/selfAppliedCheckers.mjs exists because a kit
+ * checker was added and never wired into the org's own CI. The same hole was open
+ * for the org's own scripts/check-*.mjs, which had no registry and no gate — it
+ * simply happened that the one that existed was invoked.
+ *
+ * Asserting invocation by reading the YAML is the honest form here, because
+ * "wired" is a claim about the workflow. But it is not enough on its own: a
+ * workflow can name a script that fails the moment it runs. So each is also
+ * executed against this repository.
+ */
+describe("the org's own checkers are wired and pass", () => {
+  const checkers = readdirSync('scripts')
+    .filter((f) => f.startsWith('check-') && f.endsWith('.mjs'))
+    .sort()
+
+  const workflowText = readdirSync(WORKFLOWS)
+    .filter((f) => f.endsWith('.yml'))
+    .map((f) => readFileSync(join(WORKFLOWS, f), 'utf8'))
+    .join('\n')
+
+  it('finds checkers to check, rather than passing over an empty set', () => {
+    assert.ok(checkers.length >= 2, `expected several checkers, found ${checkers.join(', ')}`)
+  })
+
+  for (const checker of checkers) {
+    it(`${checker} is invoked by a workflow`, () => {
+      assert.ok(
+        workflowText.includes(`scripts/${checker}`),
+        `scripts/${checker} exists but no workflow runs it, so it asserts nothing`,
+      )
+    })
+
+    it(`${checker} passes against this repository`, () => {
+      // check-fleet's online half needs an organisation token; --offline is the
+      // half a pull request can run, and is what the workflow itself invokes.
+      const args = checker === 'check-fleet.mjs' ? ['--offline'] : []
+      const result = spawnSync('node', [join('scripts', checker), ...args], {
+        encoding: 'utf8',
+      })
+      assert.equal(result.status, 0, `${checker} failed here:\n${result.stdout}${result.stderr}`)
+    })
+  }
+})

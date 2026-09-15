@@ -1,0 +1,22 @@
+{
+  "$comment": "A snapshot of live nginx configuration, NOT a deploy source. Nothing reads this directory to configure anything. See infra/nginx/README.md before editing.",
+  "capturedAt": "2026-09-14",
+  "recaptureBy": "2027-03-14",
+  "host": "dapyllil",
+  "container": "nginx",
+  "sourcePath": "/home/gorf/Docker/nginx/conf.d",
+  "files": {
+    "00-http-redirect-map.conf": "86eab50d508404e1c733b2d7ab685fb4a6f8e2f1b1e30cdb87ce1d70d9c3e64f",
+    "4thcltr.com.conf": "e19f1a1498aea5bcc9876db17960263e739ffc928bf4e6e626963ebf5764293d",
+    "anal0g.org.conf": "5e78c6706c933278ece435a7a354d48a31805149e465ea6b5813570b27397b95",
+    "blackpixelrecords.com.conf": "0e0e505a501ab8a5b9435eb12cdda085a3d7a0cdf78daf525279aa71e34d8cf3",
+    "denseware.com.conf": "8a462bfcf712d884930d68948f5875959e16a482c74999b15f959d5f3b437f42",
+    "gorfed.net.conf": "3543250c9f7cad879bb2c76fa5f16b99160b86ae916512c04e10fa39da7f420e",
+    "gorfmusic.com.conf": "a08d4ef23d4d693aa9c9a86f145009517489b6db4b7ea7dcb5cdd775cdd542a4",
+    "promptboi.com.conf": "3010e2e58152cb6236b3f7ba29315285924893e323643895a368faf9472317b4",
+    "rowanmcarthur.com.conf": "77e092a0b57b21763945bc0f0c17ce73279f1e2d97ec8ac09d601822c239fdc1",
+    "spaceman.gorfed.net.conf": "6472e6a681f13e20a41e38f170dcd1cbda0c99cd133fe9e5c68e4cd3f1b20b73",
+    "ssatcy.com.conf": "693f65460b88ed6a1106c83094e56e19899c8c2ad73665fc2b42f53dcd1546b9",
+    "subrythm.com.conf": "43771f64928bc38365787b40952589cf20c92771a75b2eab05d30c6901b4ddc3"
+  }
+}
