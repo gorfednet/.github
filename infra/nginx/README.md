@@ -65,8 +65,13 @@ All ten site vhosts came from one template and differ only in `server_name` and
   blocked. `.webmanifest` is unaffected and probes 200.
 - `00-http-redirect-map.conf` defines the `$redirect_https` variable the vhosts
   use to 308 to https.
-- `spaceman.gorfed.net.conf` is not one of the ten sites and is not in the fleet
-  registry. Captured because it is loaded by the same container.
+- There was an eleventh vhost, `spaceman.gorfed.net.conf`, for a game that was
+  never part of the fleet. The game became MoonMan and moved to its own compose
+  project on 2026-09-18 (`moonman`, published on `:3020`, reached by the tunnel
+  directly — the arrangement described below). Its vhost was retired on the
+  host as `spaceman.gorfed.net.conf.retired-20260918` and is no longer loaded,
+  so it is no longer captured. This container has no MoonMan vhost: a MoonMan
+  hostname pointed at it would be answered by whichever site loads first.
 
 ## A better arrangement exists on this host already
 

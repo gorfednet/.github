@@ -1,7 +1,7 @@
 {
   "$comment": "A snapshot of live nginx configuration, NOT a deploy source. Nothing reads this directory to configure anything. See infra/nginx/README.md before editing.",
-  "capturedAt": "2026-09-14",
-  "recaptureBy": "2027-03-14",
+  "capturedAt": "2026-09-18",
+  "recaptureBy": "2027-03-18",
   "host": "dapyllil",
   "container": "nginx",
   "sourcePath": "/home/gorf/Docker/nginx/conf.d",
@@ -15,7 +15,6 @@
     "gorfmusic.com.conf": "a08d4ef23d4d693aa9c9a86f145009517489b6db4b7ea7dcb5cdd775cdd542a4",
     "promptboi.com.conf": "3010e2e58152cb6236b3f7ba29315285924893e323643895a368faf9472317b4",
     "rowanmcarthur.com.conf": "77e092a0b57b21763945bc0f0c17ce73279f1e2d97ec8ac09d601822c239fdc1",
-    "spaceman.gorfed.net.conf": "6472e6a681f13e20a41e38f170dcd1cbda0c99cd133fe9e5c68e4cd3f1b20b73",
     "ssatcy.com.conf": "693f65460b88ed6a1106c83094e56e19899c8c2ad73665fc2b42f53dcd1546b9",
     "subrythm.com.conf": "43771f64928bc38365787b40952589cf20c92771a75b2eab05d30c6901b4ddc3"
   }
