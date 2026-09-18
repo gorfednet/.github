@@ -78,14 +78,24 @@ describe('the live vhost capture', () => {
     )
   })
 
+  // The dates come from the manifest rather than being written here, so taking a
+  // fresh capture (which moves recaptureBy) cannot break these two by itself.
+  const renewBy = JSON.parse(readFileSync(MANIFEST, 'utf8')).recaptureBy
+  const dayAfterRenewal = new Date(Date.parse(`${renewBy}T00:00:00Z`) + 86_400_000)
+    .toISOString()
+    .slice(0, 10)
+
   it('fails once the renewal date has passed', () => {
-    const result = withCapture(() => {}, '2027-03-15')
+    const result = withCapture(() => {}, dayAfterRenewal)
     assert.equal(result.status, 1)
-    assert.match(result.stderr, /due for renewal on 2027-03-14, which has passed/)
+    assert.ok(
+      result.stderr.includes(`due for renewal on ${renewBy}, which has passed`),
+      `expected the failure to name the lapsed date, got:\n${result.stderr}`,
+    )
   })
 
   it('passes on the last day before renewal is due', () => {
-    const result = withCapture(() => {}, '2027-03-14')
+    const result = withCapture(() => {}, renewBy)
     assert.equal(result.status, 0, result.stderr)
   })
 
@@ -184,7 +194,7 @@ describe('the live vhost capture', () => {
   it('keeps the branded error pages wired on every site vhost', () => {
     const doc = JSON.parse(readFileSync(MANIFEST, 'utf8'))
     for (const name of Object.keys(doc.files)) {
-      if (name.startsWith('00-') || name.startsWith('spaceman')) continue
+      if (name.startsWith('00-')) continue
       const conf = readFileSync(join(DIR, name), 'utf8')
       assert.match(conf, /error_page 404 \/404\.html;/, `${name} lost its 404 directive`)
       assert.match(conf, /error_page 500 502 503 504 \/500\.html;/, `${name} lost its 5xx directive`)
