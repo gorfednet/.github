@@ -73,6 +73,15 @@ All ten site vhosts came from one template and differ only in `server_name` and
   so it is no longer captured. This container has no MoonMan vhost: a MoonMan
   hostname pointed at it would be answered by whichever site loads first.
 
+- **promptboi.com is the one vhost that proxies.** Since 2026-09-19 it has a
+  `location ^~ /api/` block to `promptboi-api:8080` — the feed archive, its own
+  compose project (`promptboi`) on this host, on the `gorf_default` network. The
+  upstream is set in a variable and resolved per request through Docker's DNS
+  (`resolver 127.0.0.11`), so nginx starts and the other sites serve even when
+  that container is down; `/api/` then answers 502. The block is added by
+  promptboi.com's `scripts/deploy-api.sh`, once, with a backup, `nginx -t` and a
+  reload; this file is the record of it.
+
 ## A better arrangement exists on this host already
 
 `bindercurve-dev-nginx-1` mounts its configuration **out of a git checkout**
