@@ -20,6 +20,7 @@ import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { FLOOR_ABOVE, tierTwoWiring } from './tier-two-wiring.mjs'
+import { MONITOR_CLASSES, assertMonitorWorkflow } from './monitor-class.mjs'
 
 const ARCHETYPES = new Set([
   'react-spa-plus-api',
@@ -29,6 +30,7 @@ const ARCHETYPES = new Set([
   'static-no-npm',
   'static-make-python-esbuild',
   'org-shared-ci',
+  'tool',
 ])
 
 /** What a repository must actually contain to be allowed to claim each tier. */
@@ -235,6 +237,22 @@ for (const project of projects) {
     problems.push(`${where}: tier must be 0-3, got ${project.tier}`)
     continue
   }
+  if (!Object.hasOwn(MONITOR_CLASSES, project.monitorClass)) {
+    problems.push(
+      `${where}: monitorClass must be one of ${Object.keys(MONITOR_CLASSES).join(', ')}` +
+        (project.monitorClass === undefined ? '' : `, got "${project.monitorClass}"`),
+    )
+  } else if (project.dormantUntil !== undefined && project.monitorClass !== 'dormant') {
+    problems.push(
+      `${where}: dormant but monitorClass is ${project.monitorClass}. ` +
+        'A stood-down project does not get a live monitor class.',
+    )
+  } else if (project.dormantUntil === undefined && project.monitorClass === 'dormant') {
+    problems.push(
+      `${where}: monitorClass dormant but has no dormantUntil. ` +
+        'Dormancy is a dated stand-down, not a label.',
+    )
+  }
   if (typeof project.owner !== 'string' || project.owner === '') {
     problems.push(`${where}: needs an owner. Unowned work is nobody's work.`)
   }
@@ -338,6 +356,27 @@ for (const project of projects) {
         `${where}: tierTwoFloor needs workflow, pattern and a reason of substance. ` +
           'An unexplained waiver is indistinguishable from a mistake.',
       )
+    }
+  }
+
+  // Playwright policy is a claim about a workflow. This repository is read
+  // from the working tree. Everyone else is asked only once they claim a
+  // tier, which is the same moment the rest of this check starts making
+  // network calls — dropping a project to tier 0 is how the tests avoid
+  // calling GitHub. A stood-down repo that turns Playwright back on is
+  // caught when its tier is raised, which is when the gate is supposed to
+  // start firing again.
+  if (project.slug === HERE || (!offline && project.tier > 0)) {
+    const workflows = repoWorkflows(project.slug)
+    if (workflows.state === 'unreadable') {
+      unreadable.add(project.slug)
+    } else if (workflows.state === 'unknown') {
+      problems.push(
+        `${where}: could not read .github/workflows (not a 404). Reported rather than assumed.`,
+      )
+    } else if (workflows.state === 'present' && Object.hasOwn(MONITOR_CLASSES, project.monitorClass)) {
+      const clash = assertMonitorWorkflow(project.monitorClass, workflows.byPath)
+      if (clash) problems.push(`${where}: ${clash}`)
     }
   }
 

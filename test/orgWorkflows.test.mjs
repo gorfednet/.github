@@ -672,6 +672,12 @@ describe('production-healthcheck workflow', () => {
     )
     assert.match(step, /grep -qF/, 'expect-text must actually be matched against the body')
     assert.match(step, /An empty 200 is the shape of a broken deploy/)
+    // The floor sits inside the HTML arm. A sitemap is not a page; applying
+    // the HTML budget to gorfed.net/sitemap.xml (512 bytes vs 2048) and
+    // denseware.com/robots.txt (67 vs 2500) is how those Monday runs went red.
+    const floorAt = step.indexOf('if [ "$bytes" -lt "$min_bytes" ]')
+    const htmlArmAt = step.indexOf('text/html*)')
+    assert.ok(htmlArmAt !== -1 && floorAt > htmlArmAt, 'min-bytes must run only on HTML')
   })
 
   it('rejects a redirect that leaves the origin', () => {
@@ -1017,6 +1023,111 @@ describe("the health step's refusal to pass over nothing", () => {
     const result = spawnSync('bash', ['-c', withPaths(' , ,  ')], { encoding: 'utf8' })
     assert.equal(result.status, 1, `expected failure, got ${result.status}: ${result.stdout}`)
     assert.match(result.stdout + result.stderr, /proved nothing|No health paths/)
+  })
+
+  /**
+   * A small sitemap is a healthy sitemap. The mutation this pins is moving the
+   * min-bytes comparison back above the Content-Type switch: that fails this
+   * case, which is exactly what failed gorfed.net on 2026-09-21.
+   */
+  function runSitemapFloor(script) {
+    const dir = mkdtempSync(join(tmpdir(), 'health-minbytes-'))
+    const bin = join(dir, 'bin')
+    mkdirSync(bin)
+    writeFileSync(join(dir, 'sitemap.xml'), '<urlset><url><loc>https://example.test/</loc></url></urlset>\n')
+    writeFileSync(
+      join(bin, 'curl'),
+      [
+        '#!/usr/bin/env bash',
+        'out=/dev/null; url=""',
+        'while [ $# -gt 0 ]; do',
+        '  case "$1" in',
+        '    -o) out="$2"; shift 2 ;;',
+        '    -w|--max-time) shift 2 ;;',
+        '    -L|-sS|-s|-S) shift ;;',
+        '    *) url="$1"; shift ;;',
+        '  esac',
+        'done',
+        'cp "$DIR/sitemap.xml" "$out"',
+        'printf "200 %s application/xml\\n" "$url"',
+      ].join('\n'),
+      { encoding: 'utf8', mode: 0o755 },
+    )
+    try {
+      return spawnSync('bash', ['-c', script], {
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          DIR: dir,
+          PATH: `${bin}:${process.env.PATH}`,
+          EXPECT_TEXT: '',
+        },
+      })
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  }
+
+  const sitemapScript = RAW.replaceAll('${{ inputs.site-url }}', 'https://example.test')
+    .replaceAll('${{ inputs.health-paths }}', '/sitemap.xml')
+    .replaceAll('${{ inputs.min-bytes }}', '2048')
+    .replaceAll('${{ inputs.expect-text }}', '')
+    .replaceAll('${{ inputs.forbid-paths }}', '')
+
+  it('does not apply the HTML byte floor to a small sitemap', () => {
+    const result = runSitemapFloor(sitemapScript)
+    assert.equal(result.status, 0, result.stdout + result.stderr)
+    assert.match(result.stdout, /size floor skipped/)
+  })
+
+  it('fails the gorfed.net 2026-09-21 shape when XML is treated as HTML-sized', () => {
+    const mutated = sitemapScript.replace(
+      'text/html*)',
+      'text/html*|application/xml*|text/xml*)',
+    )
+    const result = runSitemapFloor(mutated)
+    assert.equal(result.status, 1, `mutation should fail, got ${result.status}: ${result.stdout}`)
+    assert.match(result.stdout + result.stderr, /under the 2048 floor/)
+  })
+
+  it('still rejects an empty non-HTML body', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'health-empty-xml-'))
+    const bin = join(dir, 'bin')
+    mkdirSync(bin)
+    writeFileSync(join(dir, 'empty.xml'), '')
+    writeFileSync(
+      join(bin, 'curl'),
+      [
+        '#!/usr/bin/env bash',
+        'out=/dev/null',
+        'while [ $# -gt 0 ]; do',
+        '  case "$1" in',
+        '    -o) out="$2"; shift 2 ;;',
+        '    -w|--max-time) shift 2 ;;',
+        '    -L|-sS|-s|-S) shift ;;',
+        '    *) shift ;;',
+        '  esac',
+        'done',
+        'cp "$DIR/empty.xml" "$out"',
+        'printf "200 https://example.test/sitemap.xml application/xml\\n"',
+      ].join('\n'),
+      { encoding: 'utf8', mode: 0o755 },
+    )
+    try {
+      const result = spawnSync('bash', ['-c', sitemapScript], {
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          DIR: dir,
+          PATH: `${bin}:${process.env.PATH}`,
+          EXPECT_TEXT: '',
+        },
+      })
+      assert.equal(result.status, 1, result.stdout + result.stderr)
+      assert.match(result.stdout + result.stderr, /empty body/)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 })
 

@@ -20,7 +20,7 @@ const rows = [...doc.projects]
     const note = [p.note, p.evidenceReason && `_Exception:_ ${p.evidenceReason}`]
       .filter(Boolean)
       .join(' ')
-    return `| ${name} | ${p.archetype} | ${p.tier} | ${p.owner} | ${p.verifiedAt} | ${note} |`
+    return `| ${name} | ${p.archetype} | ${p.tier} | ${p.monitorClass} | ${p.owner} | ${p.verifiedAt} | ${note} |`
   })
 
 const tally = {}
@@ -57,8 +57,8 @@ days stale fails the build until someone re-checks the tier or lowers it.
 
 ## Projects
 
-| Project | Archetype | Tier | Owner | Verified | Notes |
-|---|---|---|---|---|---|
+| Project | Archetype | Tier | Monitor | Owner | Verified | Notes |
+|---|---|---|---|---|---|---|
 ${rows.join('\n')}
 
 ## Adopting

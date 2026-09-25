@@ -118,8 +118,8 @@
       "guards": "The readable fleet table cannot disagree with the checked one. A generated file nobody regenerates is a hand-maintained list wearing a disguise.",
       "command": "node scripts/write-fleet-md.mjs --check",
       "file": "fleet.json",
-      "find": "\"tier\": 3,\n      \"owner\": \"gorf\",\n      \"verifiedAt\": \"2026-09-08\",\n      \"note\": \"Origin of the kit.",
-      "replace": "\"tier\": 2,\n      \"owner\": \"gorf\",\n      \"verifiedAt\": \"2026-09-08\",\n      \"note\": \"Origin of the kit."
+      "find": "\"tier\": 3,\n      \"monitorClass\": \"active-product\",\n      \"owner\": \"gorf\",\n      \"verifiedAt\": \"2026-09-08\",\n      \"note\": \"Origin of the kit.",
+      "replace": "\"tier\": 2,\n      \"monitorClass\": \"active-product\",\n      \"owner\": \"gorf\",\n      \"verifiedAt\": \"2026-09-08\",\n      \"note\": \"Origin of the kit."
     },
     {
       "id": "slug-guesses-a-non-github-remote",
@@ -160,6 +160,14 @@
       "file": ".github/workflows/production-healthcheck.yml",
       "find": "            if [ \"$bytes\" -lt \"$min_bytes\" ]; then",
       "replace": "            if false; then"
+    },
+    {
+      "id": "healthcheck-html-floor-on-xml",
+      "guards": "Callers list sitemap.xml and robots.txt beside HTML. The byte floor is an HTML budget; applying it to a 512-byte sitemap is how gorfed.net went red on 2026-09-21 while the site was up.",
+      "command": "node --test 'test/orgWorkflows.test.mjs'",
+      "file": ".github/workflows/production-healthcheck.yml",
+      "find": "              text/html*)\n                if [ \"$bytes\" -lt \"$min_bytes\" ]; then",
+      "replace": "              text/html*|application/xml*|text/xml*)\n                if [ \"$bytes\" -lt \"$min_bytes\" ]; then"
     },
     {
       "id": "gate-input-goes-nowhere",

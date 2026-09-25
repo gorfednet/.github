@@ -184,11 +184,28 @@ jobs:
               exit 1
             fi
 
-            if [ "$bytes" -lt "$min_bytes" ]; then
-              echo "::error::$url returned $bytes bytes, under the $min_bytes floor." \
-                   "An empty 200 is the shape of a broken deploy."
-              exit 1
-            fi
+            # The byte floor is for pages. Callers list sitemaps and robots.txt
+            # beside HTML, and those files are small on purpose: gorfed.net's
+            # sitemap is 512 bytes and denseware.com's robots.txt is 67, both
+            # healthy, both failed when the HTML floor ran on every path.
+            # A truly empty body is still a broken deploy, HTML or not.
+            case "$ctype" in
+              text/html*)
+                if [ "$bytes" -lt "$min_bytes" ]; then
+                  echo "::error::$url returned $bytes bytes, under the $min_bytes floor." \
+                       "An empty 200 is the shape of a broken deploy."
+                  exit 1
+                fi
+                ;;
+              *)
+                if [ "$bytes" -lt 1 ]; then
+                  echo "::error::$url returned an empty body." \
+                       "An empty 200 is the shape of a broken deploy."
+                  exit 1
+                fi
+                echo "  not HTML ($ctype), size floor skipped (${bytes} bytes)"
+                ;;
+            esac
 
             # The content match used to run on the first path only, which made
             # every other path a status-and-size check. A route whose
