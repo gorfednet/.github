@@ -118,8 +118,8 @@
       "guards": "The readable fleet table cannot disagree with the checked one. A generated file nobody regenerates is a hand-maintained list wearing a disguise.",
       "command": "node scripts/write-fleet-md.mjs --check",
       "file": "fleet.json",
-      "find": "\"tier\": 3,\n      \"owner\": \"gorf\",\n      \"verifiedAt\": \"2026-09-08\",\n      \"note\": \"Origin of the kit.",
-      "replace": "\"tier\": 2,\n      \"owner\": \"gorf\",\n      \"verifiedAt\": \"2026-09-08\",\n      \"note\": \"Origin of the kit."
+      "find": "\"tier\": 3,\n      \"monitorClass\": \"active-product\",\n      \"owner\": \"gorf\",\n      \"verifiedAt\": \"2026-09-08\",\n      \"note\": \"Origin of the kit.",
+      "replace": "\"tier\": 2,\n      \"monitorClass\": \"active-product\",\n      \"owner\": \"gorf\",\n      \"verifiedAt\": \"2026-09-08\",\n      \"note\": \"Origin of the kit."
     },
     {
       "id": "slug-guesses-a-non-github-remote",

@@ -359,10 +359,14 @@ for (const project of projects) {
     }
   }
 
-  // Playwright policy is a claim about a workflow, so it can run offline for
-  // this repository and online for everyone else. Skipping it for tier 0
-  // would let a dormant revival keep a weekly Playwright install.
-  if (!offline || project.slug === HERE) {
+  // Playwright policy is a claim about a workflow. This repository is read
+  // from the working tree. Everyone else is asked only once they claim a
+  // tier, which is the same moment the rest of this check starts making
+  // network calls — dropping a project to tier 0 is how the tests avoid
+  // calling GitHub. A stood-down repo that turns Playwright back on is
+  // caught when its tier is raised, which is when the gate is supposed to
+  // start firing again.
+  if (project.slug === HERE || (!offline && project.tier > 0)) {
     const workflows = repoWorkflows(project.slug)
     if (workflows.state === 'unreadable') {
       unreadable.add(project.slug)
