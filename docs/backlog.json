@@ -2,6 +2,33 @@
   "$comment": "Fleet-level findings — things wrong with the shared layer, or with a project that has not adopted the kit and so has nowhere of its own to record them. A project's own bugs belong in its own backlog once it adopts. Held by verification-kit/bin/check-backlog.mjs.",
   "entries": [
     {
+      "id": "html-min-bytes-applied-to-assets",
+      "title": "The live healthcheck applied the HTML size floor to sitemaps and robots.txt",
+      "status": "confirmed-bug",
+      "assignee": "main-model",
+      "userSymptom": "Monday production healthchecks went red on sites that were up: gorfed.net because its sitemap is 512 bytes, denseware.com because robots.txt is 67.",
+      "evidence": "https://github.com/gorfednet/gorfed.net/actions/runs/35635361413 and https://github.com/gorfednet/denseware.com/actions/runs/35631067723 on 2026-09-21. Shared production-healthcheck.yml ran min-bytes on every path; expect-text already skipped non-HTML.",
+      "reviewBy": "2026-12-01"
+    },
+    {
+      "id": "quiet-sites-paid-product-monitor-rates",
+      "title": "Mostly-static sites inherited product-site Playwright and Bugbot settings",
+      "status": "confirmed-bug",
+      "assignee": "main-model",
+      "userSymptom": "Credit and Actions usage went to weekly Playwright installs and incremental Bugbot on sites last touched by a kit bump.",
+      "evidence": "4thcltr.com production-healthcheck.yml passed only site-url, so run-playwright defaulted true. FLEET.md claimed a required Bugbot verdict job that no consumer calls. fleet.json had no monitorClass, so nothing could fail when a quiet site inherited the product default.",
+      "reviewBy": "2026-12-01"
+    },
+    {
+      "id": "bugbot-credits-exhausted-unreviewed-prs",
+      "title": "Cursor credits ran out and new pull requests sat with no Bugbot check",
+      "status": "confirmed-bug",
+      "assignee": "human",
+      "userSymptom": "MoonMan pull requests 150-153 have CI and no Bugbot check at all, which is how a billing outage looks — not a red Actions job.",
+      "evidence": "gh api on MoonMan#153 head e9c06b7: quality/test/e2e/build succeeded, no check-run matching Bugbot. Fleet PRs through 2026-09-20 still had completed Bugbot reviews. Restore credits, then apply the per-class table in .cursor/BUGBOT.md. Also add FLEET_READ_TOKEN; fleet-audit run 35605956812 failed on the missing secret.",
+      "reviewBy": "2026-10-15"
+    },
+    {
       "id": "towit-broken-refs",
       "title": "towit.io could not fetch from GitHub at all, and had been failing silently",
       "status": "landed",

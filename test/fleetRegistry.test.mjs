@@ -60,9 +60,25 @@ describe('fleet registry', () => {
     // A registry missing a project is the failure it exists to prevent, and
     // the count is the only thing that notices a quiet omission.
     assert.ok(
-      REGISTRY.projects.length >= 14,
-      `registry lists ${REGISTRY.projects.length} projects; the fleet has at least 14`,
+      REGISTRY.projects.length >= 16,
+      `registry lists ${REGISTRY.projects.length} projects; the fleet has at least 16`,
     )
+  })
+
+  it('registers the 2026-09-25 slugs rather than the retired names', () => {
+    const slugs = REGISTRY.projects.map((p) => p.slug)
+    assert.ok(slugs.includes('gorfednet/MoonMan'), 'MoonMan was unregistered')
+    assert.ok(slugs.includes('gorfednet/ACID2REAPER'), 'ACID2REAPER was unregistered')
+    assert.ok(slugs.includes('gorfednet/wychwood'), 'live repo is gorfednet/wychwood')
+    assert.ok(
+      !slugs.includes('gorfednet/wychwoodresort.com'),
+      'wychwoodresort.com redirects; the registry must name the live slug',
+    )
+  })
+
+  it('rejects a missing or unknown monitorClass', () => {
+    assert.match(run(withProject(0, { monitorClass: undefined })).stderr, /monitorClass must be one of/)
+    assert.match(run(withProject(0, { monitorClass: 'hourly-everything' })).stderr, /monitorClass must be one of/)
   })
 
   it('rejects an unknown archetype', () => {
@@ -511,6 +527,12 @@ describe('a project stood down', () => {
     const result = run(withProject(DORMANT, { tier: 2 }))
     assert.equal(result.status, 1)
     assert.match(result.stderr, /dormant but claims tier 2/)
+  })
+
+  it('fails when a dormant project keeps a live monitor class', () => {
+    const result = run(withProject(DORMANT, { monitorClass: 'active-site' }))
+    assert.equal(result.status, 1)
+    assert.match(result.stderr, /dormant but monitorClass is active-site/)
   })
 
   it('stops pressing it to re-verify, since there are no runs to go stale', () => {

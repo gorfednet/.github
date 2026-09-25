@@ -162,6 +162,14 @@
       "replace": "            if false; then"
     },
     {
+      "id": "healthcheck-html-floor-on-xml",
+      "guards": "Callers list sitemap.xml and robots.txt beside HTML. The byte floor is an HTML budget; applying it to a 512-byte sitemap is how gorfed.net went red on 2026-09-21 while the site was up.",
+      "command": "node --test 'test/orgWorkflows.test.mjs'",
+      "file": ".github/workflows/production-healthcheck.yml",
+      "find": "              text/html*)\n                if [ \"$bytes\" -lt \"$min_bytes\" ]; then",
+      "replace": "              text/html*|application/xml*|text/xml*)\n                if [ \"$bytes\" -lt \"$min_bytes\" ]; then"
+    },
+    {
       "id": "gate-input-goes-nowhere",
       "guards": "An input a project can set that the gate never receives. The configuration reads as applied and does nothing, which is worse than not offering it. source-dirs was added to the assertion and not to the generator that writes these workflows, so the script the test recommends produced a workflow that failed the test.",
       "command": "node --test 'test/orgWorkflows.test.mjs'",

@@ -4,7 +4,7 @@
     "0": "Has not adopted. The gate is off in its workflow.",
     "1": "Drift check, tracked-artifacts check, backlog, shared rules.",
     "2": "Tier 1 plus an executed-count assertion wired to a real test report.",
-    "3": "Tier 2 plus mutation canaries against its own gates, and the Bugbot verdict job."
+    "3": "Tier 2 plus mutation canaries against its own gates. Bugbot stays advisory on the dashboard; the unused verdict workflow is not a tier requirement."
   },
   "reverifyDays": 120,
   "$onlineComment": "When the tier claims below were last checked against the repositories themselves, rather than only read back off this file. Null means never. The offline run — the only one a pull request can perform, since its token cannot see a private sibling — warns until onlineGraceUntil and fails after it. Deferral is fine; undated deferral becomes permanent by accident, and this file's whole purpose is to not become fiction.",
@@ -15,6 +15,7 @@
       "slug": "gorfednet/bindercurve.com",
       "archetype": "react-spa-plus-api",
       "tier": 3,
+      "monitorClass": "active-product",
       "owner": "gorf",
       "verifiedAt": "2026-09-08",
       "note": "Origin of the kit. Keeps its own bespoke contracts alongside the shared ones; becomes a consumer of the shared copies rather than keeping duplicates.",
@@ -28,14 +29,16 @@
       "slug": "gorfednet/4thcltr.com",
       "archetype": "vite-spa",
       "tier": 3,
+      "monitorClass": "active-site",
       "owner": "gorf",
       "verifiedAt": "2026-09-10",
-      "note": "Tier 3 pilot, adopted in #60. Playwright across four shards with its own e2e spec registry, mutation canaries, and the Bugbot verdict job. Does not call the shared browser-compat workflow — it runs a sharded e2e job of its own, which is why the fleet-wide browser-compat default only silently truncated other repositories' suites."
+      "note": "Tier 3 pilot, adopted in #60. Playwright across four shards with its own e2e spec registry and mutation canaries. Weekly HTTP healthcheck only — live Playwright defaults off. Does not call the shared browser-compat workflow — it runs a sharded e2e job of its own, which is why the fleet-wide browser-compat default only silently truncated other repositories' suites."
     },
     {
       "slug": "gorfednet/gorfed.net",
       "archetype": "static-make-python-esbuild",
       "tier": 1,
+      "monitorClass": "active-site",
       "owner": "gorf",
       "verifiedAt": "2026-09-10",
       "note": "Tier 2 pilot, adopted in #39. The awkward case: the build is Make plus Python plus esbuild and `npm test` is a placeholder that exits 1. Proves the kit works when the runner is not npm. Carries an open confirmed bug — its anti-spam submit floor fails intermittently after a prerender."
@@ -44,6 +47,7 @@
       "slug": "gorfednet/subrythm.com",
       "archetype": "static-no-npm",
       "tier": 1,
+      "monitorClass": "static-marketing",
       "owner": "gorf",
       "verifiedAt": "2026-09-10",
       "note": "Tier 1 pilot, adopted in #3. No package.json, no tests, 49 files. Proves the floor: if the kit needs npm here, the design is wrong. Publish-set verification inverted to an extension allow-list."
@@ -52,6 +56,7 @@
       "slug": "gorfednet/anal0g.org",
       "archetype": "static-no-npm",
       "tier": 1,
+      "monitorClass": "static-marketing",
       "owner": "gorf",
       "verifiedAt": "2026-09-10",
       "note": "No test suite, so tier 1 is its ceiling until it has one. Its publish-set check found two files live on the public site that were never meant to be served — nginx-routes.conf and LICENSE — within seconds of being written. Removing them needs a deploy, not just the .deployignore commit."
@@ -60,6 +65,7 @@
       "slug": "gorfednet/blackpixelrecords.com",
       "archetype": "static-no-npm",
       "tier": 1,
+      "monitorClass": "static-marketing",
       "owner": "gorf",
       "verifiedAt": "2026-09-10",
       "note": "No test suite, so tier 1 is its ceiling. Publish-set verification inverted to an extension allow-list."
@@ -68,6 +74,7 @@
       "slug": "gorfednet/denseware.com",
       "archetype": "vite-spa",
       "tier": 1,
+      "monitorClass": "static-marketing",
       "owner": "gorf",
       "verifiedAt": "2026-09-10",
       "note": "Executed-count floor wired through the shared browser-compat job."
@@ -76,6 +83,7 @@
       "slug": "gorfednet/gorfmusic.com",
       "archetype": "vite-spa",
       "tier": 1,
+      "monitorClass": "static-marketing",
       "owner": "gorf",
       "verifiedAt": "2026-09-10",
       "note": "Its whole accessibility suite — axe scans, skip link, keyboard focus, contrast — had never run in CI, because browser-compat defaulted to naming one spec file. Carries an open confirmed bug: production answers on four URLs per page, with client-side redirects where server-side 301s are asserted."
@@ -84,6 +92,7 @@
       "slug": "gorfednet/promptboi.com",
       "archetype": "fullstack",
       "tier": 2,
+      "monitorClass": "active-site",
       "owner": "gorf",
       "verifiedAt": "2026-09-10",
       "note": "Its security audit had never executed once: the npm script invoked the wrong interpreter, and `npm audit` was suppressed with `|| true`. Behind it, 32 advisories including 8 critical, and zero security headers served in production — both open in its backlog."
@@ -92,6 +101,7 @@
       "slug": "gorfednet/rowanmcarthur.com",
       "archetype": "static-no-npm",
       "tier": 1,
+      "monitorClass": "static-marketing",
       "owner": "gorf",
       "verifiedAt": "2026-09-10",
       "note": "No test suite, so tier 1 is its ceiling. The one site already immune to the deny-list publishing defect, because it stages an allow-list into a clean directory and ships that."
@@ -100,6 +110,7 @@
       "slug": "gorfednet/ssatcy.com",
       "archetype": "vite-spa",
       "tier": 1,
+      "monitorClass": "static-marketing",
       "owner": "gorf",
       "verifiedAt": "2026-09-10",
       "note": "Sixteen cross-browser tests were failing and had been merged over. Cause was its own meta CSP, not a browser: `upgrade-insecure-requests` in a meta element broke the http preview server. Serves zero security headers in production — `_headers` is a Netlify convention and the site is on Cloudflare — and `frame-ancestors` is ignored in a meta element, so it is framable. Both open in its backlog."
@@ -108,6 +119,7 @@
       "slug": "gorfednet/TowIt",
       "archetype": "python-flask",
       "tier": 0,
+      "monitorClass": "dormant",
       "owner": "gorf",
       "verifiedAt": "2026-09-10",
       "note": "DORMANT until 2027-03-14 — triggers are workflow_dispatch only and dependabot is removed, so tier 0 is the honest record: the gate is off in its workflow. Kept for revival: its 49 tests do have an executed-count floor, but pytest emits neither a Playwright nor a Vitest JSON report, so the floor lives in a pytest_collection_modifyitems hook in tests/conftest.py rather than in the shared assertion — which is why it was tier 1 and not 2 while it ran. Also the first repository to need rule-sources scoped, because it vendors a bundled AngularJS.",
@@ -115,12 +127,13 @@
       "dormantReason": "Stood down 2026-09-14: not going live in the near term. Workflow triggers reduced to workflow_dispatch and dependabot removed, so nothing runs on a pull request and no bumps arrive. Dependabot had been proposing versions inside towit-admin/requirements.txt, a 2015-era Python 2 pin set nothing installs and no gate can validate. Restore the pull_request and push triggers to revive; the vendored kit will need a refresh first."
     },
     {
-      "slug": "gorfednet/wychwoodresort.com",
+      "slug": "gorfednet/wychwood",
       "archetype": "vite-spa",
       "tier": 0,
+      "monitorClass": "dormant",
       "owner": "gorf",
       "verifiedAt": "2026-09-10",
-      "note": "DORMANT until 2027-03-14 — triggers are workflow_dispatch only and dependabot is removed, so tier 0 is the honest record: the gate is off in its workflow. Kept for revival: its executed-count floor was wired through browser-compat, and its unit suite needed a second local floor because node --test with a shell glob exits 0 when the glob matches nothing. It never had a production monitor at all, which is still open in its backlog.",
+      "note": "DORMANT until 2027-03-14 — triggers are workflow_dispatch only and dependabot is removed, so tier 0 is the honest record: the gate is off in its workflow. GitHub renamed the remote from wychwoodresort.com to wychwood; this slug follows the live repo. Kept for revival: its executed-count floor was wired through browser-compat, and its unit suite needed a second local floor because node --test with a shell glob exits 0 when the glob matches nothing. It never had a production monitor at all, which is still open in its backlog.",
       "dormantUntil": "2027-03-14",
       "dormantReason": "Stood down 2026-09-14: not going live in the near term. Workflow triggers reduced to workflow_dispatch and dependabot removed, so the full vite-spa gate no longer runs per pull request on a site nobody can visit. Restore the pull_request and push triggers to revive; the vendored kit is six minors behind so drift will fail until refreshed."
     },
@@ -128,9 +141,10 @@
       "slug": "gorfednet/.github",
       "archetype": "org-shared-ci",
       "tier": 3,
+      "monitorClass": "org-shared",
       "owner": "gorf",
       "verifiedAt": "2026-09-10",
-      "note": "Holds the canonical kit. Gated harder than the copies, because a template defect replicates fourteen times.",
+      "note": "Holds the canonical kit. Gated harder than the copies, because a template defect replicates across every consumer.",
       "evidenceReason": "This is the source, not a consumer: the kit lives under templates/ and is not vendored into itself. Only the kit paths move; its backlog is at the standard location.",
       "evidencePaths": {
         "verification-kit/MANIFEST.json": "templates/verification-kit/MANIFEST.json",
@@ -141,6 +155,24 @@
         "pattern": "-lt 250",
         "reason": "This repository is the kit rather than a consumer of it, so it has no shared-workflow caller to pass test-report through. Its executed-count floor is the inline comparison on its own kit suite, and the pattern above is verified in the named workflow rather than taken on trust. Raised from 50 to 250 at kit v0.37.0: the suite had grown to 292 executed assertions, so a floor of 50 would have passed with five of sixteen test files deleted. This waiver caught the edit that raised it, which is the behaviour it exists for."
       }
+    },
+    {
+      "slug": "gorfednet/MoonMan",
+      "archetype": "vite-spa",
+      "tier": 0,
+      "monitorClass": "active-site",
+      "owner": "gorf",
+      "verifiedAt": "2026-09-25",
+      "note": "Active game with its own CI. Not a kit consumer yet, so tier 0 is the honest record. Weekly HTTP monitoring is enough until it vendors the kit; Bugbot should be on once credits are restored."
+    },
+    {
+      "slug": "gorfednet/ACID2REAPER",
+      "archetype": "tool",
+      "tier": 0,
+      "monitorClass": "tool",
+      "owner": "gorf",
+      "verifiedAt": "2026-09-25",
+      "note": "Desktop converter with PR CI and tagged releases. No production site to healthcheck. Bugbot stays off unless it starts shipping weekly."
     }
   ]
 }
