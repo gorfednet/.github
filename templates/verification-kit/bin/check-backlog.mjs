@@ -17,7 +17,8 @@
 import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { validateBacklog } from '../lib/backlogSchema.mjs'
-import { currentRepoSlug } from '../lib/githubSlug.mjs'
+import { rejectUnknownArgument } from '../lib/cliArgs.mjs'
+import { resolveRepoSlug } from '../lib/githubSlug.mjs'
 
 function parseArgs(argv) {
   const args = { file: 'docs/backlog.json', verifyPrs: false, repo: undefined, currentPr: undefined }
@@ -33,6 +34,8 @@ function parseArgs(argv) {
     } else if (argv[i] === '--current-pr') {
       args.currentPr = Number(argv[i + 1])
       i += 1
+    } else {
+      rejectUnknownArgument('check-backlog', argv[i])
     }
   }
   return args
@@ -191,11 +194,18 @@ if (claims.length === 0) {
   process.exit(0)
 }
 
-let repo = args.repo
-if (!repo) {
+let repo
+{
   try {
-    repo = currentRepoSlug()
+    const resolved = resolveRepoSlug({ flag: args.repo })
+    repo = resolved.slug
+    console.error(`  --verify-prs: ${repo} (from ${resolved.source})`)
   } catch (cause) {
+    // A repository someone named and mistyped is an error, not a skip.
+    if (cause.code === 'BAD_SLUG') {
+      console.error(`  --verify-prs: ${cause.message}`)
+      process.exit(1)
+    }
     console.log(
       `  --verify-prs: SKIPPED all ${claims.length} entr${claims.length === 1 ? 'y' : 'ies'} — ` +
         `cannot tell which repository this is (${cause.message.split('\n')[0]}).\n` +

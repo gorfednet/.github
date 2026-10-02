@@ -30,7 +30,8 @@
  * Requires the `gh` CLI, authenticated.
  */
 import { execFileSync } from 'node:child_process'
-import { currentRepoSlug } from '../lib/githubSlug.mjs'
+import { rejectUnknownArgument } from '../lib/cliArgs.mjs'
+import { resolveRepoSlug } from '../lib/githubSlug.mjs'
 import { isMain } from '../lib/isMain.mjs'
 
 function parseArgs(argv) {
@@ -41,7 +42,7 @@ function parseArgs(argv) {
     if (flag === '--pr') args.pr = Number.parseInt(value ?? '', 10)
     else if (flag === '--repo') args.repo = value
     else if (flag === '--min-runs') args.minRuns = Number.parseInt(value ?? '', 10)
-    else continue
+    else rejectUnknownArgument('assert-checks-started', flag)
     i += 1
   }
   return args
@@ -170,7 +171,9 @@ if (isMain(import.meta.url)) {
 
   let repo
   try {
-    repo = repoOverride ?? currentRepoSlug()
+    const resolved = resolveRepoSlug({ flag: repoOverride })
+    repo = resolved.slug
+    console.error(`assert-checks-started: ${repo} (from ${resolved.source})`)
   } catch (cause) {
     console.error(`assert-checks-started: ${cause.message}`)
     process.exit(1)

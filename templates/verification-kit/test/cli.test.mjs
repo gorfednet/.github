@@ -4,7 +4,7 @@
  */
 import { strict as assert } from 'node:assert'
 import { spawnSync } from 'node:child_process'
-import { chmodSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { delimiter, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -563,4 +563,111 @@ exit 1
       assert.match(result.stdout, /0 entries name a pull request/)
     })
   })
+})
+
+/*
+ * Which repository a pull-request check asks GitHub about.
+ *
+ * Run from the bindercurve.com clone to check 4thcltr.com #95, bugbot-review-status
+ * reported two Bugbot findings. The 4thcltr pull request was clean; the findings
+ * belonged to bindercurve.com #95. Every parser here dropped a flag it did not
+ * recognise, so `--repo=gorfednet/4thcltr.com` (or `-R`, or a typo) fell back to
+ * the clone's origin and answered a different repository's question as if it
+ * were yours. These cases drive the real CLIs against a stub `gh` that records
+ * every API path it is asked for, so "asked the wrong repository" is observable
+ * rather than inferred from an exit code.
+ */
+describe('repository resolution', () => {
+  const PR_CLIS = ['bugbot-review-status.mjs', 'assert-checks-started.mjs']
+  const ALL_CLIS = [...PR_CLIS, 'check-ci-headroom.mjs', 'check-backlog.mjs']
+
+  function cloneOf(slug) {
+    const dir = tempDir()
+    spawnSync('git', ['init', '-q'], { cwd: dir })
+    spawnSync('git', ['remote', 'add', 'origin', `https://github.com/${slug}.git`], { cwd: dir })
+    return dir
+  }
+
+  function recordingGh(dir) {
+    const binDir = join(dir, 'stub-bin')
+    mkdirSync(binDir, { recursive: true })
+    const log = join(dir, 'gh-calls.log')
+    writeFileSync(log, '', 'utf8')
+    const path = join(binDir, 'gh')
+    writeFileSync(
+      path,
+      `#!/bin/sh\necho "$2" >> "${log}"\necho "gh: Not Found (HTTP 404)" >&2\nexit 1\n`,
+      'utf8',
+    )
+    chmodSync(path, 0o755)
+    return { env: { PATH: `${binDir}${delimiter}${process.env.PATH}` }, log }
+  }
+
+  function run(name, args, cwd, env) {
+    return spawnSync('node', [bin(name), ...args], {
+      cwd,
+      encoding: 'utf8',
+      env: { ...process.env, GITHUB_REPOSITORY: '', GITHUB_REF: '', ...env },
+    })
+  }
+
+  const calls = (log) => readFileSync(log, 'utf8').split('\n').filter(Boolean)
+
+  // Each CLI's own valid arguments, then the one it must not swallow.
+  const VALID = {
+    'bugbot-review-status.mjs': ['--pr', '95'],
+    'assert-checks-started.mjs': ['--pr', '95'],
+    'check-ci-headroom.mjs': ['--runs', '3'],
+    'check-backlog.mjs': ['--verify-prs'],
+  }
+
+  for (const name of ALL_CLIS) {
+    it(`${name} refuses a flag it does not know instead of ignoring it`, () => {
+      const dir = cloneOf('gorfednet/cwd-repo')
+      const { env, log } = recordingGh(dir)
+      const result = run(name, [...VALID[name], '--repo=gorfednet/asked'], dir, env)
+      assert.equal(result.status, 1)
+      assert.match(result.stderr, /unknown (flag|argument) "--repo=gorfednet\/asked"/)
+      assert.deepEqual(calls(log), [], 'nothing may be asked of GitHub after a bad flag')
+    })
+  }
+
+  for (const name of PR_CLIS) {
+    it(`${name} asks about --repo, never the clone it runs in`, () => {
+      const dir = cloneOf('gorfednet/cwd-repo')
+      const { env, log } = recordingGh(dir)
+      const result = run(name, ['--pr', '95', '--repo', 'gorfednet/asked'], dir, env)
+      assert.ok(calls(log).length > 0, `gh was never called: ${result.stderr}`)
+      for (const path of calls(log)) assert.match(path, /^repos\/gorfednet\/asked\//, path)
+      assert.match(result.stderr, /gorfednet\/asked \(from --repo\)/)
+    })
+
+    it(`${name} prefers GITHUB_REPOSITORY over the clone's origin`, () => {
+      const dir = cloneOf('gorfednet/cwd-repo')
+      const { env, log } = recordingGh(dir)
+      const result = run(name, ['--pr', '95'], dir, { ...env, GITHUB_REPOSITORY: 'gorfednet/from-env' })
+      assert.ok(calls(log).length > 0, `gh was never called: ${result.stderr}`)
+      for (const path of calls(log)) assert.match(path, /^repos\/gorfednet\/from-env\//, path)
+      assert.match(result.stderr, /gorfednet\/from-env \(from GITHUB_REPOSITORY\)/)
+    })
+
+    // The negative case: with nothing else said, the origin is still the answer,
+    // and the output names it so a wrong-clone run is visible on the first line.
+    it(`${name} falls back to the origin remote and says so`, () => {
+      const dir = cloneOf('gorfednet/cwd-repo')
+      const { env, log } = recordingGh(dir)
+      const result = run(name, ['--pr', '95'], dir, env)
+      for (const path of calls(log)) assert.match(path, /^repos\/gorfednet\/cwd-repo\//, path)
+      assert.match(result.stderr, /gorfednet\/cwd-repo \(from origin remote\)/)
+    })
+
+    it(`${name} refuses a --repo that is not owner/name`, () => {
+      const dir = cloneOf('gorfednet/cwd-repo')
+      const { env, log } = recordingGh(dir)
+      const result = run(name, ['--pr', '95', '--repo', '4thcltr.com'], dir, env)
+      assert.equal(result.status, 1)
+      assert.match(result.stderr, /not an owner\/name slug/)
+      assert.deepEqual(calls(log), [])
+    })
+  }
 })

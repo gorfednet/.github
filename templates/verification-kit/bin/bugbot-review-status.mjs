@@ -30,7 +30,8 @@
  * Requires the `gh` CLI, authenticated.
  */
 import { execFileSync } from 'node:child_process'
-import { currentRepoSlug } from '../lib/githubSlug.mjs'
+import { rejectUnknownArgument } from '../lib/cliArgs.mjs'
+import { resolveRepoSlug } from '../lib/githubSlug.mjs'
 import { resolveCommitReview, resolvePullRequestReview } from '../lib/bugbotConclusion.mjs'
 
 function parseArgs(argv) {
@@ -45,7 +46,7 @@ function parseArgs(argv) {
       // not be swallowed as its value.
       args.since = value && !value.startsWith('--') ? value : true
       if (args.since === true) continue
-    } else continue
+    } else rejectUnknownArgument('bugbot-review-status', flag)
     i += 1
   }
   return args
@@ -201,7 +202,9 @@ if (!Number.isFinite(pr) && since === undefined) {
 
 let repo
 try {
-  repo = repoOverride ?? currentRepoSlug()
+  const resolved = resolveRepoSlug({ flag: repoOverride })
+  repo = resolved.slug
+  console.error(`bugbot-review-status: ${repo} (from ${resolved.source})`)
 } catch (cause) {
   console.error(`bugbot-review-status: ${cause.message}`)
   process.exit(1)
