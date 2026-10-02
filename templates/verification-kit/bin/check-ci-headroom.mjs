@@ -31,7 +31,8 @@
 import { execFileSync } from 'node:child_process'
 import { readFileSync, readdirSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
-import { currentRepoSlug } from '../lib/githubSlug.mjs'
+import { rejectUnknownArgument } from '../lib/cliArgs.mjs'
+import { resolveRepoSlug } from '../lib/githubSlug.mjs'
 import { isMain } from '../lib/isMain.mjs'
 
 const WORKFLOWS = '.github/workflows'
@@ -46,7 +47,7 @@ function parseArgs(argv) {
     else if (flag === '--fail') args.fail = Number.parseFloat(value ?? '')
     else if (flag === '--coverage') args.coverage = Number.parseFloat(value ?? '')
     else if (flag === '--repo') args.repo = value
-    else continue
+    else rejectUnknownArgument('check-ci-headroom', flag)
     i += 1
   }
   return args
@@ -361,7 +362,15 @@ export function allJobs(repo, runId, read = gh) {
 
 if (isMain(import.meta.url)) {
   const args = parseArgs(process.argv.slice(2))
-  const repo = args.repo ?? currentRepoSlug()
+  let repo
+  try {
+    const resolved = resolveRepoSlug({ flag: args.repo })
+    repo = resolved.slug
+    console.error(`check-ci-headroom: ${repo} (from ${resolved.source})`)
+  } catch (cause) {
+    console.error(`check-ci-headroom: ${cause.message}`)
+    process.exit(1)
+  }
 
   if (declaredTimeouts().size === 0) {
     // A caller-only repository — where *every* job is `uses:` a reusable

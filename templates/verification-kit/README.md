@@ -33,6 +33,14 @@ an ignore rule that did not cover them.
 | `bin/check-kit-drift.mjs` | This copy of the kit silently falling behind the canonical one, or being edited in place. |
 | `bin/mutation-canary.mjs` | A guard nobody has ever seen fail being counted as coverage. |
 
+The checks that ask GitHub about a repository (`bugbot-review-status`,
+`assert-checks-started`, `check-ci-headroom`, `check-backlog --verify-prs`) take
+it from `--repo owner/name`, then `GITHUB_REPOSITORY`, then the origin of the
+clone they run in, and print which one they used as their first line on stderr.
+An argument they do not recognise is an error rather than ignored: a dropped
+`--repo=…` used to fall back to the clone's origin and report another
+repository's pull request under the number asked about.
+
 ## Install
 
 Copy `verification-kit/` into the project, commit it, and wire the checks into

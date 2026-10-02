@@ -424,6 +424,22 @@
       "file": "templates/verification-kit/bin/check-rule-citations.mjs",
       "find": "    const cited = Number(raw)\n    if (cited < 1 || cited > sharedNumbers.length) {",
       "replace": "    const cited = Number(raw)\n    const ceiling = localNumbers.length > 0 ? localNumbers.length : sharedNumbers.length\n    if (cited < 1 || cited > ceiling) {"
+    },
+    {
+      "id": "pr-check-ignores-an-unknown-flag",
+      "guards": "A pull-request check drops an argument it does not recognise. `--repo=gorfednet/4thcltr.com` was dropped that way, the check fell back to the clone it ran in, and bindercurve.com #95's Bugbot findings were reported as 4thcltr.com #95's.",
+      "command": "node --test 'templates/verification-kit/test/cli.test.mjs'",
+      "file": "templates/verification-kit/bin/bugbot-review-status.mjs",
+      "find": "} else rejectUnknownArgument('bugbot-review-status', flag)",
+      "replace": "} else continue"
+    },
+    {
+      "id": "pr-check-ignores-github-repository",
+      "guards": "GITHUB_REPOSITORY is skipped and the clone's origin answers instead. Run from the bindercurve.com clone with GITHUB_REPOSITORY=gorfednet/4thcltr.com, the check reported on bindercurve.com #95.",
+      "command": "node --test 'templates/verification-kit/test/githubSlug.test.mjs' 'templates/verification-kit/test/cli.test.mjs'",
+      "file": "templates/verification-kit/lib/githubSlug.mjs",
+      "find": "    [env.GITHUB_REPOSITORY, 'GITHUB_REPOSITORY'],\n",
+      "replace": ""
     }
   ]
 }
