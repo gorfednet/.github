@@ -87,11 +87,12 @@ jobs:
 
       # The fleet registry. The online half needs credentials that can read the
       # other repositories, and `github.token` cannot: it is scoped to this one,
-      # so every private sibling answers 404 and — before V39 — that read as
-      # "has adopted nothing". Here it runs the schema-and-dates half and says
-      # so. The online half runs in fleet-audit.yml, which has the token and
-      # fails when it does not.
-      - name: Fleet registry is well-formed and no entry has gone stale
+      # so every private sibling answers 404 and, before V39, that read as
+      # "has adopted nothing". Here it runs the schema half only and says so;
+      # nothing date-based fails a pull request (2026-10 right-sizing). The
+      # online half and the aged-date warnings run monthly in fleet-audit.yml,
+      # which has the token and goes red only if it cannot run at all.
+      - name: Fleet registry is well-formed
         if: ${{ !cancelled() }}
         run: node scripts/check-fleet.mjs --offline
 

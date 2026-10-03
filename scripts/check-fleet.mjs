@@ -11,9 +11,16 @@
  * Usage:
  *   node scripts/check-fleet.mjs [--offline] [--file fleet.json]
  *
- * `--offline` validates the schema and the dates and skips every repository
- * lookup, and says so, because a run that checked nothing must not print the
- * same output as one that checked everything.
+ * `--offline` validates the schema and skips every repository lookup, and says
+ * so, because a run that checked nothing must not print the same output as one
+ * that checked everything. Nothing date-based fails it: a pull request check
+ * fails only on something that pull request can change, and time is not one of
+ * those. A stale `verifiedAt` or a lapsed `dormantUntil` is a printed warning,
+ * and only in the online mode (see scripts/lib/fleetDates.mjs).
+ *
+ * `--report` is the online mode for the scheduled audit: findings print as
+ * warnings and the exit code is non-zero only when the audit could not run
+ * (a repository it cannot see, an API answer that is not a 404).
  */
 import { execFileSync } from 'node:child_process'
 import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
@@ -21,6 +28,7 @@ import { join } from 'node:path'
 
 import { FLOOR_ABOVE, tierTwoWiring } from './tier-two-wiring.mjs'
 import { MONITOR_CLASSES, assertMonitorWorkflow } from './monitor-class.mjs'
+import { dateWarnings } from './lib/fleetDates.mjs'
 
 const ARCHETYPES = new Set([
   'react-spa-plus-api',
@@ -51,6 +59,7 @@ function parseArgs(argv) {
   return {
     offline: argv.includes('--offline'),
     record: argv.includes('--record'),
+    report: argv.includes('--report'),
     file: argv.includes('--file') ? argv[argv.indexOf('--file') + 1] : 'fleet.json',
   }
 }
@@ -192,7 +201,7 @@ function repoHasFile(slug, path) {
   }
 }
 
-const { offline, file, record } = parseArgs(process.argv.slice(2))
+const { offline, file, record, report } = parseArgs(process.argv.slice(2))
 
 let doc
 try {
@@ -204,6 +213,9 @@ try {
 
 const projects = doc.projects ?? []
 const problems = []
+// Findings that mean the audit could not run, as opposed to findings about the
+// fleet. A scheduled report fails on these and only on these.
+const cannotRun = []
 
 // Fail closed: an empty registry would satisfy every per-project assertion
 // below by having none to make.
@@ -215,7 +227,6 @@ if (projects.length < 10) {
   process.exit(1)
 }
 
-const reverifyDays = doc.reverifyDays ?? 120
 const today = todayUtc()
 const seen = new Set()
 const unreadable = new Set()
@@ -267,8 +278,8 @@ for (const project of projects) {
    *
    * The date is the point. Standing something down is a reasonable decision;
    * standing it down until further notice is how it becomes permanent without
-   * anyone choosing that. When the date lapses the fleet check fails, so
-   * continuing has to be decided again.
+   * anyone choosing that. When the date lapses the monthly fleet audit says so
+   * (dateWarnings), so continuing has to be decided again.
    */
   const dormant = project.dormantUntil !== undefined
   if (dormant) {
@@ -276,12 +287,6 @@ for (const project of projects) {
       problems.push(
         `${where}: dormantUntil must be YYYY-MM-DD. Without a date this is not a ` +
           'deferral, it is an exit.',
-      )
-    } else if (today > new Date(`${project.dormantUntil}T00:00:00Z`)) {
-      problems.push(
-        `${where}: dormant until ${project.dormantUntil}, which has passed. ` +
-          'Restore its workflow triggers and re-tier it, or move the date and own ' +
-          'the deferral.',
       )
     }
     if ((project.dormantReason ?? '').length < 40) {
@@ -299,19 +304,10 @@ for (const project of projects) {
     }
   }
 
-  // Deferral is fine; undated deferral becomes permanent by accident.
+  // The format is schema and fails everywhere. How old the date is does not:
+  // that is a warning from dateWarnings(), online only.
   if (!/^\d{4}-\d{2}-\d{2}$/.test(project.verifiedAt ?? '')) {
     problems.push(`${where}: verifiedAt must be YYYY-MM-DD`)
-  } else if (!dormant) {
-    // A dormant project has no runs to go stale: pressing it to re-verify would
-    // only invite moving a date to describe a check that is switched off.
-    const age = Math.floor((today - new Date(`${project.verifiedAt}T00:00:00Z`)) / 86_400_000)
-    if (age > reverifyDays) {
-      problems.push(
-        `${where}: last verified ${project.verifiedAt}, ${age} days ago (limit ${reverifyDays}). ` +
-          'Re-check the tier and move the date, or lower the tier.',
-      )
-    }
   }
 
   /**
@@ -371,9 +367,9 @@ for (const project of projects) {
     if (workflows.state === 'unreadable') {
       unreadable.add(project.slug)
     } else if (workflows.state === 'unknown') {
-      problems.push(
-        `${where}: could not read .github/workflows (not a 404). Reported rather than assumed.`,
-      )
+      const message = `${where}: could not read .github/workflows (not a 404). Reported rather than assumed.`
+      problems.push(message)
+      cannotRun.push(message)
     } else if (workflows.state === 'present' && Object.hasOwn(MONITOR_CLASSES, project.monitorClass)) {
       const clash = assertMonitorWorkflow(project.monitorClass, workflows.byPath)
       if (clash) problems.push(`${where}: ${clash}`)
@@ -395,10 +391,11 @@ for (const project of projects) {
       } else if (state === 'unreadable') {
         unreadable.add(project.slug)
       } else if (state === 'unknown') {
-        problems.push(
+        const message =
           `${where}: could not read ${path} (not a 404). Reported rather than assumed, because ` +
-            'a lookup that failed is not evidence of absence.',
-        )
+          'a lookup that failed is not evidence of absence.'
+        problems.push(message)
+        cannotRun.push(message)
       }
 
       /*
@@ -429,9 +426,9 @@ for (const project of projects) {
       if (workflows.state === 'unreadable') {
         unreadable.add(project.slug)
       } else if (workflows.state === 'unknown') {
-        problems.push(
-          `${where}: could not read .github/workflows (not a 404). Reported rather than assumed.`,
-        )
+        const message = `${where}: could not read .github/workflows (not a 404). Reported rather than assumed.`
+        problems.push(message)
+        cannotRun.push(message)
       } else if (workflows.state === 'absent') {
         problems.push(
           `${where}: claims tier ${project.tier} but has no workflows, so nothing enforces an ` +
@@ -471,53 +468,16 @@ for (const project of projects) {
 }
 
 /**
- * An offline run reads the registry back to itself. That is worth doing — the
- * schema and the dates are real checks — but it verifies no claim against any
- * repository, and a system whose only running check is the one that cannot
- * fail on adoption is how a table of intentions keeps reading as authoritative.
- *
- * So the offline path carries the deadline for the online one. It warns until
- * the grace date and fails after it, and the only ways past are to run the
- * online half and move `onlineVerifiedAt`, or to consciously move the grace
- * date — a decision someone makes, rather than a drift nobody notices.
+ * An offline run reads the registry back to itself. That is worth doing, the
+ * schema is a real check, but it verifies no claim against any repository, and
+ * says so. It used to carry a deadline for the online run (`onlineGraceUntil`)
+ * and fail every pull request when the date passed; that was a check failing on
+ * something no pull request could change, so the deadline is now the monthly
+ * fleet-audit run reporting, not this run failing.
  */
-const graceUntil = doc.onlineGraceUntil
 const onlineAt = doc.onlineVerifiedAt ?? null
-if (offline) {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(graceUntil ?? '')) {
-    problems.push(
-      'onlineGraceUntil must be a YYYY-MM-DD date. Without it an offline run is ' +
-        'an intention with no expiry.',
-    )
-  } else if (onlineAt !== null && !/^\d{4}-\d{2}-\d{2}$/.test(onlineAt)) {
-    problems.push(`onlineVerifiedAt must be a YYYY-MM-DD date or null, got ${onlineAt}`)
-  } else {
-    /**
-     * The deadline is on the *online* run, so a recent online run is what
-     * lifts it — measured the same way every other entry is, against
-     * reverifyDays. The first version of this compared only the grace date and
-     * ignored onlineVerifiedAt entirely, which made the error message a lie:
-     * it named recording a successful audit as a way out, and recording one
-     * changed nothing. Every pull request would have stayed red after
-     * 2026-10-15 no matter how well the weekly audit was doing.
-     */
-    const onlineAge = onlineAt
-      ? Math.floor((today - new Date(`${onlineAt}T00:00:00Z`)) / 86_400_000)
-      : Infinity
-    const lapsed = today > new Date(`${graceUntil}T00:00:00Z`)
-    if (lapsed && onlineAge > reverifyDays) {
-      const since =
-        onlineAt === null
-          ? 'it has never run'
-          : `the last one was ${onlineAt}, ${onlineAge} days ago (limit ${reverifyDays})`
-      problems.push(
-        `no tier has been verified against a repository: ${since}, and the grace ` +
-          `period ended ${graceUntil}. Run \`node scripts/check-fleet.mjs\` with a token ` +
-          'that can read the organisation and set onlineVerifiedAt to today, or move ' +
-          'onlineGraceUntil and own the deferral.',
-      )
-    }
-  }
+if (onlineAt !== null && !/^\d{4}-\d{2}-\d{2}$/.test(onlineAt)) {
+  problems.push(`onlineVerifiedAt must be a YYYY-MM-DD date or null, got ${onlineAt}`)
 }
 
 /**
@@ -533,7 +493,30 @@ if (unreadable.size > 0) {
       'means "cannot see", not "not there". Supply a token with read access to the ' +
       'organisation, or pass --offline and accept that no tier was verified.',
   )
+  cannotRun.push(problems.at(-1))
 }
+
+// Dates only ever warn, and only where something can act on them.
+const warnings = offline ? [] : dateWarnings(projects, today)
+const say = (kind, text) =>
+  console.error(process.env.GITHUB_ACTIONS ? `::${kind}::${text}` : `  ${kind}: ${text}`)
+
+if (report) {
+  // The scheduled audit: findings are information, inability to look is failure.
+  for (const problem of problems) say('warning', problem)
+  for (const warning of warnings) say('warning', warning)
+  if (cannotRun.length > 0) {
+    console.error(`\n✗ fleet audit could not run: ${cannotRun.length} lookup(s) failed.\n`)
+    process.exit(1)
+  }
+  console.log(
+    `fleet audit: ${projects.length} project(s), ${problems.length} finding(s), ` +
+      `${warnings.length} date warning(s). Findings are reported, not failed.`,
+  )
+  process.exit(0)
+}
+
+for (const warning of warnings) say('warning', warning)
 
 if (problems.length > 0) {
   console.error(`\n✗ fleet registry: ${problems.length} problem(s)\n`)
@@ -576,7 +559,7 @@ console.log(
   `✓ fleet: ${projects.length} project(s) (${tally})` +
     (offline
       ? '\n  --offline: did NOT verify any claimed tier against its repository.' +
-        `\n  Online verification ${onlineAt ? `last ran ${onlineAt}` : 'has never run'};` +
-        ` this run stops passing on ${graceUntil}.`
+        `\n  Online verification ${onlineAt ? `last ran ${onlineAt}` : 'has never run'}` +
+        ' (information only; fleet-audit.yml reports it monthly).'
       : ''),
 )

@@ -22,8 +22,9 @@ Adoption is opt-in per project. Every project already inherits one of the
 reusable `pr-check-*` workflows, so the gate defaults to **off**: a non-empty
 default would have turned the whole fleet red on the day it landed, and a
 fleet-wide red is indistinguishable from a fleet-wide outage. What stops "not
-yet" becoming permanent is the `verifiedAt` date — an entry 120
-days stale fails the build until someone re-checks the tier or lowers it.
+yet" becoming permanent is the `verifiedAt` date. It is information on a pull
+request, never a failure; the monthly fleet audit reports any entry that has
+gone stale, so someone re-checks the tier or lowers it.
 
 ## Projects
 

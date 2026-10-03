@@ -99,11 +99,11 @@
     },
     {
       "id": "fleet-entry-never-goes-stale",
-      "guards": "A registry entry that has not been re-verified inside the window fails. Deferral is fine; undated deferral becomes permanent by accident, and a table of intentions keeps reading as authoritative.",
+      "guards": "A registry entry that has not been re-verified inside the window is reported by the audit. The offline run no longer fails on it (a pull request cannot change the date), so the warning is the whole remaining signal: without it, a table of intentions keeps reading as authoritative.",
       "command": "node --test 'test/fleetRegistry.test.mjs'",
-      "file": "scripts/check-fleet.mjs",
-      "find": "    if (age > reverifyDays) {",
-      "replace": "    if (false) {"
+      "file": "scripts/lib/fleetDates.mjs",
+      "find": "      if (age > STALE_AFTER_DAYS) {",
+      "replace": "      if (false) {"
     },
     {
       "id": "fleet-lookup-failure-reads-as-adopted",
@@ -136,14 +136,6 @@
       "file": "scripts/check-fleet.mjs",
       "find": "  if (!repoVisible(slug)) return 'unreadable'\n",
       "replace": ""
-    },
-    {
-      "id": "offline-fleet-run-never-expires",
-      "guards": "The offline run verifies no claim against any repository, so it carries the deadline for the run that does. Removing the expiry leaves a check that cannot fail on adoption as the only one running, which is how a table of intentions keeps reading as authoritative.",
-      "command": "node --test 'test/fleetRegistry.test.mjs'",
-      "file": "scripts/check-fleet.mjs",
-      "find": "    if (lapsed && onlineAge > reverifyDays) {",
-      "replace": "    if (false) {"
     },
     {
       "id": "healthcheck-skips-a-missing-smoke-spec",
@@ -440,6 +432,14 @@
       "file": "templates/verification-kit/lib/githubSlug.mjs",
       "find": "    [env.GITHUB_REPOSITORY, 'GITHUB_REPOSITORY'],\n",
       "replace": ""
+    },
+    {
+      "id": "lapsed-backlog-dates-are-reported",
+      "guards": "The monthly fleet report lists backlog entries whose reviewBy has passed. Those dates used to fail every pull request on the day they lapsed; now they are only told about, so a report that stops listing them leaves nothing that notices a review date going by.",
+      "command": "node --test 'test/fleetReport.test.mjs'",
+      "file": "scripts/fleet-report.mjs",
+      "find": "entry.reviewBy < today",
+      "replace": "entry.reviewBy > today"
     }
   ]
 }

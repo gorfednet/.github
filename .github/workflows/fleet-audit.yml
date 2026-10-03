@@ -1,39 +1,44 @@
-# The half of the fleet check that has to leave this repository.
+# The half of the fleet check that has to leave this repository, as a report.
 #
-# `check-fleet.mjs --offline` runs on every pull request, but it only reads the
-# registry: schema, owners, and whether an entry has gone stale. Asking each
-# project whether it actually holds the artefacts its tier claims needs a token
-# that can read the organisation, and a workflow's default GITHUB_TOKEN cannot
-# — it reaches only the repository it runs in (V39).
+# `check-fleet.mjs --offline` runs on every pull request and reads only the
+# registry: schema, owners, overrides. Everything that depends on time, on the
+# network or on other repositories is here instead, because a pull request
+# check fails only on something that pull request can change (the 2026-10
+# right-sizing, docs/verification-rules.md). Asking each project whether it
+# holds the artefacts its tier claims needs a token that can read the
+# organisation, and a workflow's default GITHUB_TOKEN cannot (V39).
 #
-# So this job wants FLEET_READ_TOKEN, a fine-grained PAT with read-only Contents
-# and Metadata across gorfednet. It deliberately has no fallback. A missing
-# token means no tier has been verified against any repository, and a registry
-# nobody verifies is the fiction this whole system exists to prevent — so it
-# goes red and says which secret to add, rather than passing green having
-# checked nothing.
+# So this job wants FLEET_READ_TOKEN, a fine-grained PAT with read-only Contents,
+# Actions and Metadata across gorfednet. It deliberately has no fallback. A
+# missing token means nothing was audited, and a report that says "nothing
+# found" having read nothing is the fiction this system exists to prevent, so
+# that, and an unreachable API, are the only things that turn this red. What it
+# finds is written to the job summaries, one per repository.
 name: fleet-audit
 
 on:
   schedule:
-    # Mondays, 07:00 UTC. Weekly is enough: the registry moves at the pace of
-    # adoption, and reverifyDays is 120.
-    - cron: '0 7 * * 1'
+    # 07:00 UTC on the 1st of each month. Chosen over "weekly Monday cron plus a
+    # first-step day-of-month guard" because the guard is a second place to be
+    # wrong: a guard that exits 0 early is a green run that audited nothing,
+    # which is exactly the failure this audit refuses. One cron expression has
+    # one meaning. A monthly cadence is enough for what it reports (a
+    # verifiedAt that ages over 120 days, a lapsed backlog date, a gate pin);
+    # workflow_dispatch runs it on demand.
+    - cron: '0 7 1 * *'
   workflow_dispatch:
-# Deliberately not on pull_request. A pull request cannot be given the token
-# this job needs, so running it there would produce a guaranteed red on every
-# change — and a check that is always red is read as broken and ignored, taking
-# its real detections with it. The pressure to actually supply the token lives
-# in fleet.json's onlineGraceUntil instead, which the pull-request job enforces
-# and which is a date someone has to consciously move.
+# Deliberately not on pull_request. A pull request cannot be given the token this
+# job needs, and nothing it reports is something a pull request can change.
 
 permissions:
   contents: read
 
 jobs:
-  audit:
+  plan:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 5
+    outputs:
+      repos: ${{ steps.repos.outputs.repos }}
     steps:
       - uses: actions/checkout@v4
 
@@ -44,20 +49,69 @@ jobs:
       # Named before it is used, so the failure reads as a missing secret rather
       # than as a fleet-wide adoption collapse.
       - name: A cross-repository token is present
-        if: ${{ !cancelled() }}
         env:
           TOKEN: ${{ secrets.FLEET_READ_TOKEN }}
         run: |
           if [ -z "${TOKEN}" ]; then
-            echo "::error::FLEET_READ_TOKEN is not set. Without it this job can" \
+            echo "::error::FLEET_READ_TOKEN is not set. Without it this audit can" \
                  "only re-read the registry to itself, which verifies nothing." \
-                 "Add a fine-grained PAT with read-only Contents + Metadata on" \
-                 "gorfednet as the repository secret FLEET_READ_TOKEN."
+                 "Add a fine-grained PAT with read-only Contents, Actions and" \
+                 "Metadata on gorfednet as the repository secret FLEET_READ_TOKEN."
             exit 1
           fi
 
-      - name: Every claimed tier is backed by the repository that claims it
-        if: ${{ !cancelled() }}
+      - name: List the registered repositories
+        id: repos
+        run: |
+          set -euo pipefail
+          repos=$(node -e "
+            const doc = JSON.parse(require('fs').readFileSync('fleet.json', 'utf8'))
+            const slugs = doc.projects.map((p) => p.slug)
+            if (slugs.length < 10) { console.error('registry lists ' + slugs.length + ' projects'); process.exit(1) }
+            console.log(JSON.stringify(slugs))
+          ")
+          echo "repos=${repos}" >> "$GITHUB_OUTPUT"
+
+  registry:
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # Every claimed tier against the repository that claims it, plus the date
+      # warnings (stale verifiedAt, lapsed dormantUntil). --report prints each
+      # finding as a warning and exits non-zero only if a lookup could not be
+      # made at all.
+      - name: Every claimed tier is checked against its repository
         env:
           GH_TOKEN: ${{ secrets.FLEET_READ_TOKEN }}
-        run: node scripts/check-fleet.mjs
+        run: node scripts/check-fleet.mjs --report
+
+  repo:
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      # One repository failing to read must not hide the other fifteen.
+      fail-fast: false
+      matrix:
+        slug: ${{ fromJSON(needs.plan.outputs.repos) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # Gate pin, main branch conclusion, lapsed backlog dates and the last
+      # healthcheck run, written to this job's summary. Red only if the
+      # repository cannot be read.
+      - name: Report ${{ matrix.slug }}
+        env:
+          GH_TOKEN: ${{ secrets.FLEET_READ_TOKEN }}
+        run: node scripts/fleet-report.mjs --repo "${{ matrix.slug }}" --summary "$GITHUB_STEP_SUMMARY"

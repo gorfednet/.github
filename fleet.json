@@ -6,10 +6,8 @@
     "2": "Tier 1 plus an executed-count assertion wired to a real test report.",
     "3": "Tier 2 plus mutation canaries against its own gates. Bugbot stays advisory on the dashboard; the unused verdict workflow is not a tier requirement."
   },
-  "reverifyDays": 120,
-  "$onlineComment": "When the tier claims below were last checked against the repositories themselves, rather than only read back off this file. Null means never. The offline run — the only one a pull request can perform, since its token cannot see a private sibling — warns until onlineGraceUntil and fails after it. Deferral is fine; undated deferral becomes permanent by accident, and this file's whole purpose is to not become fiction.",
+  "$onlineComment": "When the tier claims below were last checked against the repositories themselves (by the monthly fleet-audit run), rather than only read back off this file. Null means never. Information only: no date in this file fails a pull request, because a pull request cannot change what day it is. A stale date is reported by fleet-audit.yml instead.",
   "onlineVerifiedAt": "2026-09-10",
-  "onlineGraceUntil": "2026-10-15",
   "projects": [
     {
       "slug": "gorfednet/bindercurve.com",

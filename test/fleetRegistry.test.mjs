@@ -16,6 +16,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { after, describe, it } from 'node:test'
 
+import { STALE_AFTER_DAYS, dateWarnings } from '../scripts/lib/fleetDates.mjs'
 import { FLOOR_ABOVE, tierTwoWiring } from '../scripts/tier-two-wiring.mjs'
 
 const CHECK = resolve('scripts/check-fleet.mjs')
@@ -102,21 +103,14 @@ describe('fleet registry', () => {
     assert.match(run(path).stderr, /listed twice/)
   })
 
-  // Deferral is fine; undated deferral becomes permanent by accident.
-  it('fails once an entry has gone stale, and names the remedy', () => {
-    const result = run(withProject(0, { verifiedAt: '2020-01-01' }))
-    assert.equal(result.status, 1)
-    assert.match(result.stderr, /days ago \(limit 120\)/)
-    assert.match(result.stderr, /Re-check the tier and move the date, or lower the tier/)
-  })
-
   /**
-   * The offline run is the only one a pull request can perform, and it reads
-   * the registry back to itself. It therefore carries the deadline for the
-   * online half, so that "we will wire the token up later" expires on a date
-   * instead of quietly becoming the permanent arrangement.
+   * The 2026-10 right-sizing: a pull request check fails only on something that
+   * pull request can change. A date aging is not one of those, so the offline
+   * run (what pull requests run) must pass over a stale entry, a lapsed grace
+   * date that no longer exists, and a past online run. The aged records are
+   * reported by the monthly fleet-audit run instead (scripts/lib/fleetDates.mjs).
    */
-  describe('the deadline the offline run carries', () => {
+  describe('nothing date-based fails the offline run', () => {
     const withRoot = (changes) => {
       const doc = { ...structuredClone(REGISTRY), ...changes }
       for (const key of Object.keys(changes)) {
@@ -129,35 +123,29 @@ describe('fleet registry', () => {
       return path
     }
 
-    it('fails once the grace date has passed, naming both ways out', () => {
-      const result = run(withRoot({ onlineGraceUntil: '2020-01-01', onlineVerifiedAt: null }))
-      assert.equal(result.status, 1)
-      assert.match(result.stderr, /no tier has been verified against a repository/)
-      assert.match(result.stderr, /it has never run/)
-      assert.match(result.stderr, /set onlineVerifiedAt to today, or move onlineGraceUntil/)
-    })
-
-    /**
-     * The first version of this compared only the grace date and never looked
-     * at onlineVerifiedAt, which made its own error message untrue: it named
-     * recording a successful audit as the way out, and recording one changed
-     * nothing. Every pull request would have been red from the grace date
-     * onward however well the weekly audit was doing — and a check that stays
-     * red whatever you do is one people route around.
-     */
-    it('a recent online run lifts the deadline, as the message promises', () => {
-      const recent = new Date(Date.now() - 3 * 86_400_000).toISOString().slice(0, 10)
-      const result = run(withRoot({ onlineGraceUntil: '2020-01-01', onlineVerifiedAt: recent }))
+    it('a stale verifiedAt does not fail --offline', () => {
+      const result = run(withProject(0, { verifiedAt: '2020-01-01' }))
       assert.equal(result.status, 0, result.stderr)
-      assert.match(result.stdout, new RegExp(`last ran ${recent}`))
+      assert.doesNotMatch(result.stderr, /days ago/)
     })
 
-    // ...and an old one does not. The online half is held to reverifyDays like
-    // every other claim in the file.
-    it('an online run older than reverifyDays does not', () => {
-      const result = run(withRoot({ onlineGraceUntil: '2020-01-01', onlineVerifiedAt: '2021-01-01' }))
-      assert.equal(result.status, 1)
-      assert.match(result.stderr, /the last one was 2021-01-01, \d+ days ago \(limit 120\)/)
+    it('a past online run, and a past or absent grace date, do not fail --offline', () => {
+      for (const changes of [
+        { onlineVerifiedAt: '2020-01-01', onlineGraceUntil: '2020-01-01' },
+        { onlineVerifiedAt: null, onlineGraceUntil: '2020-01-01' },
+        { onlineVerifiedAt: null, onlineGraceUntil: undefined },
+      ]) {
+        const result = run(withRoot(changes))
+        assert.equal(result.status, 0, `${JSON.stringify(changes)}: ${result.stderr}`)
+      }
+    })
+
+    it('the registry carries neither tripwire any more', () => {
+      assert.equal(REGISTRY.onlineGraceUntil, undefined)
+      assert.equal(REGISTRY.reverifyDays, undefined)
+      for (const project of REGISTRY.projects) {
+        assert.equal(project.reverifyDays, undefined, `${project.slug} carries reverifyDays`)
+      }
     })
 
     it('rejects a malformed online date rather than reading it as never', () => {
@@ -166,17 +154,45 @@ describe('fleet registry', () => {
       assert.match(result.stderr, /onlineVerifiedAt must be a YYYY-MM-DD date or null/)
     })
 
-    it('refuses an undated deferral', () => {
-      const result = run(withRoot({ onlineGraceUntil: undefined }))
-      assert.equal(result.status, 1)
-      assert.match(result.stderr, /an intention with no expiry/)
-    })
-
-    it('says when the online half last ran, and when this run stops passing', () => {
+    it('says when the online half last ran, as information', () => {
       const result = spawnSync('node', [CHECK, '--offline'], { encoding: 'utf8' })
       assert.equal(result.status, 0, result.stderr)
       assert.match(result.stdout, /Online verification (has never run|last ran \d{4}-\d{2}-\d{2})/)
-      assert.match(result.stdout, /stops passing on \d{4}-\d{2}-\d{2}/)
+      assert.doesNotMatch(result.stdout, /stops passing/)
+    })
+  })
+
+  describe('the date warnings the audit prints instead', () => {
+    const NOW = new Date(Date.UTC(2026, 9, 3))
+
+    it('reports a stale verifiedAt, naming the age and the remedy', () => {
+      const [warning] = dateWarnings([{ slug: 'o/r', verifiedAt: '2026-01-01' }], NOW)
+      assert.match(warning, /o\/r: last verified 2026-01-01, 275 days ago \(limit 120\)/)
+      assert.match(warning, /Re-check the tier and move the date, or lower the tier/)
+    })
+
+    it('is silent inside the window, and on the boundary day', () => {
+      assert.deepEqual(dateWarnings([{ slug: 'o/r', verifiedAt: '2026-09-10' }], NOW), [])
+      const edge = new Date(Date.UTC(2026, 0, 1 + STALE_AFTER_DAYS))
+      assert.deepEqual(dateWarnings([{ slug: 'o/r', verifiedAt: '2026-01-01' }], edge), [])
+    })
+
+    it('reports a lapsed dormantUntil, and does not press a dormant project to re-verify', () => {
+      const warnings = dateWarnings(
+        [{ slug: 'o/d', dormantUntil: '2026-01-01', verifiedAt: '2019-01-01' }],
+        NOW,
+      )
+      assert.equal(warnings.length, 1)
+      assert.match(warnings[0], /dormant until 2026-01-01, which has passed/)
+    })
+
+    it('leaves a malformed date to the schema rather than reporting it twice', () => {
+      assert.deepEqual(dateWarnings([{ slug: 'o/r', verifiedAt: 'recently' }], NOW), [])
+    })
+
+    it('is never a failure: it returns strings, and --offline prints none', () => {
+      const result = run(withProject(0, { verifiedAt: '2020-01-01' }))
+      assert.doesNotMatch(`${result.stdout}${result.stderr}`, /last verified/)
     })
   })
 
@@ -505,10 +521,9 @@ describe('a project stood down', () => {
     assert.equal(result.status, 0, result.stderr)
   })
 
-  it('fails once the date it was deferred to has passed', () => {
+  it('does not fail a pull request once its date has passed (the audit reports it)', () => {
     const result = run(withProject(DORMANT, { dormantUntil: '2020-01-01' }))
-    assert.equal(result.status, 1)
-    assert.match(result.stderr, /dormant until 2020-01-01, which has passed/)
+    assert.equal(result.status, 0, result.stderr)
   })
 
   it('fails when the stand-down carries no date at all', () => {
@@ -540,11 +555,10 @@ describe('a project stood down', () => {
     assert.equal(result.status, 0, result.stderr)
   })
 
-  it('still presses a live project whose verification has gone stale', () => {
+  it('a live project whose verification has gone stale is reported by the audit, not failed here', () => {
     assert.notEqual(LIVE, -1, 'the registry should contain a live tier-1 project')
     const result = run(withProject(LIVE, { verifiedAt: '2019-01-01' }))
-    assert.equal(result.status, 1)
-    assert.match(result.stderr, /last verified 2019-01-01/)
+    assert.equal(result.status, 0, result.stderr)
   })
 
   it('keeps dormant projects out of the tier counts it reports', () => {
