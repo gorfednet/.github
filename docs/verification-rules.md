@@ -1047,3 +1047,47 @@ generalize to any app with an i18n catalog or a skeleton, and neither
 generalizes to a fifteen-project fleet of mostly static sites. If a second
 project hits one, promote it to a `V` number then — that is what the promotion
 path in [How the numbering works](#how-the-numbering-works) is for.
+
+## 2026-10 right-sizing
+
+Decided 2026-10-03. The rule it applies everywhere: **a pull request check
+fails only on something that pull request can change.** Time, network, other
+repositories and upstream releases are reported on a schedule
+(`fleet-audit.yml`), not enforced on a pull request that cannot move them.
+
+Three things made this necessary. The kit was copied into every consumer, and a
+drift check failed any consumer more than one minor version behind, so two kit
+releases each needed thirteen mechanical pull requests. The kit's own suite (about
+250 tests) ran in every consumer on every pull request, testing code the pull
+request did not touch. And dated tripwires (`onlineGraceUntil` in `fleet.json`,
+`MACHINE_PATHS_GRACE_UNTIL` in the gate, `reviewBy` dates in consumers'
+`docs/backlog.json`) were set to turn the whole fleet red on 2026-10-15
+regardless of any change.
+
+The gate now runs the kit from its own checkout: `verification-gate` resolves
+`${{ github.action_path }}/../../../templates/verification-kit`, so the kit is
+the copy in this repository at the ref the caller pinned. The `kit` input is
+still declared and ignored, as is `rule-sources`, so callers that pass them do
+not break. No rule in this document is renumbered or retired by this change:
+each row below changes where or how a class is caught, not whether it is a
+defect.
+
+| Check | Was | Now | What still catches the class |
+|-------|-----|-----|------------------------------|
+| Verification kit is present | Failed when the consumer had no `verification-kit/` folder | Removed. The gate does not read the consumer's copy | The new first step, "Locate the kit this gate runs", fails if the kit is missing from the action's own checkout, which means the pinned ref is broken |
+| Kit is current and unmodified (drift) | Failed a consumer more than one minor behind, or with an edited copy | Removed | Nothing to drift: the gate runs this repository's kit. A consumer that still vendors a copy is running its own scripts, not the gate's. `refresh-kit.mjs` and `check-kit-drift.mjs` remain in the kit for a consumer that chooses to vendor, and `fleet-audit.yml` reports the pinned gate ref per repository |
+| The kit works in this repository | Ran the kit's ~250 tests in every consumer on every pull request, floor 250 | Removed | `verification-kit.yml` here runs the same suite on every pull request to this repository, with the same executed-count floor of 250 (V18 and the anti-vacuous rule), plus the MANIFEST check and the mutation canaries. A consumer pull request cannot change the kit, so that is the only place a failure is actionable |
+| Rule citations resolve | Failed a consumer whose code cited a missing `V` number | Removed | `verification-kit.yml` here fails on a gap or duplicate in the shared sequence. A dangling citation in a consumer is a comment defect: `check-rule-citations.mjs` still runs by hand (`node <kit>/bin/check-rule-citations.mjs --source .`) and in this repository |
+| Metadata and social-card inputs agree | Failed on a half-wired `site-url`, `metadata-pages` or `publish-root` | `::warning`, job passes | The warning names the mismatch. The inputs live in the consumer's workflow file, which the pull request edits; the checks they feed (next three rows) report the same gap |
+| The publish set the gate was asked to read exists | Failed when the publish or error-page directory was missing or empty | `::warning`, job passes | The failed or skipped Build step above it in the same job, which is the actual cause and still fails the job; the consumer's own build and tests are unchanged |
+| Page metadata is per-page and correct | Failed on missing or duplicated canonical, title, description or JSON-LD | `::warning`, job passes | The warning, with the checker's output in the log; the consumer's e2e specs for pages it owns; `production-healthcheck.yml`'s live probes of what is actually served |
+| The social card is the image it says it is | Failed on an og:image that is not a real image of the stated size | `::warning`, job passes | The warning; `production-healthcheck.yml` fetches the live card (`check-live-og-image.mjs`), which is the half a pull request could never see |
+| Error pages ship with the site | Failed on a missing or placeholder 404.html or 500.html | `::warning`, job passes | The warning; the live probe in `production-healthcheck.yml` for the server half (V66), which is the stronger check |
+| Paths are derived, not named | Failed on a tracked absolute machine path; failed everywhere on 2026-10-15 if the consumer's vendored kit lacked the checker | `::warning`, job passes. The grace date and its test seam are deleted | The warning; this repository applies the same checker to itself (`selfAppliedCheckers`), enforced. The date logic is gone because a date is not something a pull request can change |
+| No generated files tracked in git | Failed on tracked build output | `::warning`, job passes | The warning; this repository applies the same checker to itself, enforced |
+| Backlog describes reality | Failed on a malformed or lapsed backlog entry, including a `reviewBy` date in the past on a landed entry | `::warning`, job passes | The warning; this repository's own backlog is still enforced in `verification-kit.yml`, including `--verify-prs`; `fleet-audit.yml` lists lapsed `reviewBy` dates per repository on its schedule |
+
+Still enforced in the gate, unchanged: "Assert the tests actually ran" (the
+executed-count floor over the consumer's own test report) and everything that
+runs the consumer's own build or tests. Those depend on what the pull request
+changes.

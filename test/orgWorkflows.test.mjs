@@ -13,7 +13,7 @@
  */
 import { strict as assert } from 'node:assert'
 import { spawnSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, it } from 'node:test'
@@ -189,77 +189,160 @@ describe('verification-gate composite action', () => {
    * three checkers, every one of them true and none of them the cause.
    */
   /**
-   * The grace window is the part worth testing, because it is the part that
-   * expires. Kit 0.40.0 introduces check-machine-paths and the drift gate permits
-   * one minor behind, so on the day this lands ten repositories have no such file
-   * — and failing them all at once produces a fleet-wide red, which reads exactly
-   * like a fleet-wide outage.
-   *
-   * The alternative to a date is a tolerance somebody has to remember to remove,
-   * and that is the shape that becomes permanent. Both sides of the boundary are
-   * asserted here so the expiry cannot be quietly widened without a test saying
-   * so.
+   * Every check that was softened reports with a `::warning` and exits 0. The
+   * property worth testing is the one that could regress silently: a refactor
+   * that drops the `if !` wrapper turns a warning back into a failure that a
+   * pull request cannot always fix, and nothing else would notice. These run
+   * each step's own shell against a stub checker that fails, and against one
+   * that passes, so both halves are watched.
    */
-  describe('the machine-path step\u2019s dated grace window', () => {
-    const script = stepScript(text, 'Paths are derived, not named')
+  describe('the softened steps warn and never fail the job', () => {
+    const SOFTENED = [
+      ['No generated files tracked in git', 'check-tracked-artifacts.mjs'],
+      ['Page metadata is per-page and correct', 'check-page-metadata.mjs'],
+      ['The social card is the image it says it is', 'check-og-image.mjs'],
+      ['Error pages ship with the site', 'check-error-pages.mjs'],
+      ['Paths are derived, not named', 'check-machine-paths.mjs'],
+      ['Backlog describes reality', 'check-backlog.mjs'],
+    ]
 
-    const runWith = ({ kit, today, allow = '' }) => {
-      const filled = script
-        .replaceAll('${{ inputs.kit }}', kit)
-        .replaceAll('${{ inputs.allow-machine-paths }}', allow)
-      const run = spawnSync('bash', ['-c', filled], {
-        encoding: 'utf8',
-        env: { ...process.env, MACHINE_PATHS_TODAY: today },
-      })
-      return { code: run.status, output: `${run.stdout}${run.stderr}` }
-    }
-
-    it('warns but passes while the window is open, naming the one command that fixes it', () => {
-      const { code, output } = runWith({ kit: join(tmpdir(), 'no-such-kit'), today: '20260914' })
-      assert.equal(code, 0, output)
-      assert.match(output, /refresh-kit\.mjs/)
-      assert.match(output, /Not fatal until 20261015/)
-    })
-
-    it('fails once the window closes, without anyone editing this file', () => {
-      const { code, output } = runWith({ kit: join(tmpdir(), 'no-such-kit'), today: '20261015' })
-      assert.equal(code, 1, output)
-      assert.match(output, /grace window for this closed/)
-    })
-
-    it('runs the real checker when the kit has it, rather than trusting the window', () => {
-      // The window must excuse an absent file and nothing else: a present checker
-      // that fails still fails, inside the window and out.
+    const runWith = (name, checkerBody, extra = {}) => {
       const kit = mkdtempSync(join(tmpdir(), 'gate-kit-'))
       try {
         mkdirSync(join(kit, 'bin'), { recursive: true })
-        writeFileSync(
-          join(kit, 'bin/check-machine-paths.mjs'),
-          'console.error("checker ran"); process.exit(1)\n',
-          'utf8',
+        for (const [, file] of SOFTENED) {
+          writeFileSync(join(kit, 'bin', file), checkerBody, 'utf8')
+        }
+        let filled = stepScript(text, name)
+        for (const [key, value] of Object.entries({
+          'inputs.site-url': 'https://example.test',
+          'inputs.require-jsonld': 'false',
+          'inputs.metadata-pages': 'index.html',
+          'inputs.publish-root': 'dist',
+          'inputs.og-max-bytes': '300000',
+          'inputs.error-page-root': 'dist',
+          'inputs.error-page-markers': '',
+          'inputs.source-dirs': '',
+          'inputs.allow-machine-paths': '',
+          'inputs.backlog': 'docs/backlog.json',
+          ...extra,
+        })) {
+          filled = filled.replaceAll(`\${{ ${key} }}`, value)
+        }
+        // The one expression the loop above does not cover.
+        filled = filled.replaceAll(
+          "${{ inputs.require-jsonld == 'true' && '--require-jsonld' || '' }}",
+          '',
         )
-        const { code, output } = runWith({ kit, today: '20260101' })
-        assert.equal(code, 1, output)
-        assert.match(output, /checker ran/)
+        const run = spawnSync('bash', ['-c', filled], {
+          encoding: 'utf8',
+          env: { ...process.env, VERIFICATION_GATE_KIT: kit },
+        })
+        return { code: run.status, output: `${run.stdout}${run.stderr}` }
       } finally {
         rmSync(kit, { recursive: true, force: true })
       }
-    })
+    }
+
+    for (const [name] of SOFTENED) {
+      it(`${name}: a finding is a warning with the checker's output left visible, and exit 0`, () => {
+        const { code, output } = runWith(name, 'console.log("CHECKER SAID THIS"); process.exit(1)\n')
+        assert.equal(code, 0, output)
+        assert.match(output, /CHECKER SAID THIS/)
+        assert.equal(output.match(/::warning title=/g)?.length, 1, output)
+        assert.doesNotMatch(output, /::error::/)
+      })
+
+      it(`${name}: a clean run prints no warning`, () => {
+        const { code, output } = runWith(name, 'console.log("fine")\n')
+        assert.equal(code, 0, output)
+        assert.doesNotMatch(output, /::warning/)
+      })
+    }
 
     it('passes each waiver through as a separate --allow argument', () => {
-      const kit = mkdtempSync(join(tmpdir(), 'gate-kit-allow-'))
+      const { code, output } = runWith(
+        'Paths are derived, not named',
+        'console.log(process.argv.slice(2).join("|"))\n',
+        { 'inputs.allow-machine-paths': 'one two' },
+      )
+      assert.equal(code, 0, output)
+      assert.match(output, /--allow\|one\|--allow\|two/)
+    })
+
+    it('carries no grace-date logic: a dated tripwire is not something a pull request can change', () => {
+      assert.doesNotMatch(text, /GRACE_UNTIL|MACHINE_PATHS_TODAY/)
+    })
+  })
+
+  describe('the metadata inputs step', () => {
+    const script = stepScript(text, 'Metadata and social-card inputs agree')
+    const runWith = ({ url = '', pages = '', root = '' }) => {
+      const filled = script
+        .replaceAll('${{ inputs.site-url }}', url)
+        .replaceAll('${{ inputs.metadata-pages }}', pages)
+        .replaceAll('${{ inputs.publish-root }}', root)
+      const run = spawnSync('bash', ['-c', filled], { encoding: 'utf8' })
+      return { code: run.status, output: `${run.stdout}${run.stderr}` }
+    }
+
+    it('warns, exit 0, for pages without a site-url', () => {
+      const { code, output } = runWith({ pages: 'index.html', root: 'dist' })
+      assert.equal(code, 0, output)
+      assert.equal(output.match(/::warning title=/g)?.length, 1, output)
+      assert.match(output, /Set site-url/)
+    })
+
+    it('warns for a site-url with no pages, and for pages with no publish-root', () => {
+      assert.match(runWith({ url: 'https://x.test' }).output, /::warning/)
+      assert.match(runWith({ url: 'https://x.test', pages: 'index.html' }).output, /Set publish-root/)
+    })
+
+    it('is silent when the three agree, or none is set', () => {
+      assert.doesNotMatch(runWith({ url: 'https://x.test', pages: 'a.html', root: 'dist' }).output, /::warning/)
+      assert.doesNotMatch(runWith({}).output, /::warning/)
+    })
+  })
+
+  describe('the gate locates the kit in its own checkout', () => {
+    const script = stepScript(text, 'Locate the kit this gate runs')
+    const actionDir = join(process.cwd(), ACTIONS, 'verification-gate')
+
+    // This is the verification of the relative path: the real action directory
+    // of this repository, run through the step's own shell, must land on the
+    // real kit. If the action moves or the kit is renamed, this fails.
+    it('resolves github.action_path/../../../templates/verification-kit to the real kit', () => {
+      const envFile = join(mkdtempSync(join(tmpdir(), 'gate-env-')), 'env')
+      writeFileSync(envFile, '', 'utf8')
+      const filled = script.replaceAll('${{ github.action_path }}', actionDir)
+      const run = spawnSync('bash', ['-c', filled], {
+        encoding: 'utf8',
+        env: { ...process.env, GITHUB_ENV: envFile },
+      })
+      assert.equal(run.status, 0, `${run.stdout}${run.stderr}`)
+      const written = readFileSync(envFile, 'utf8').trim()
+      assert.equal(
+        written,
+        `VERIFICATION_GATE_KIT=${realpathSync(join(process.cwd(), 'templates/verification-kit'))}`,
+      )
+    })
+
+    it('fails loudly, blaming the action ref, when the kit is not there', () => {
+      const envFile = join(mkdtempSync(join(tmpdir(), 'gate-env-')), 'env')
+      writeFileSync(envFile, '', 'utf8')
+      const fake = mkdtempSync(join(tmpdir(), 'gate-fake-'))
       try {
-        mkdirSync(join(kit, 'bin'), { recursive: true })
-        writeFileSync(
-          join(kit, 'bin/check-machine-paths.mjs'),
-          'console.log(process.argv.slice(2).join("|"))\n',
-          'utf8',
-        )
-        const { code, output } = runWith({ kit, today: '20260101', allow: 'one two' })
-        assert.equal(code, 0, output)
-        assert.match(output, /--allow\|one\|--allow\|two/)
+        mkdirSync(join(fake, 'a/b/c'), { recursive: true })
+        mkdirSync(join(fake, 'templates/verification-kit'), { recursive: true })
+        const filled = script.replaceAll('${{ github.action_path }}', join(fake, 'a/b/c'))
+        const run = spawnSync('bash', ['-c', filled], {
+          encoding: 'utf8',
+          env: { ...process.env, GITHUB_ENV: envFile },
+        })
+        assert.equal(run.status, 1)
+        assert.match(`${run.stdout}${run.stderr}`, /broken at the ref/)
       } finally {
-        rmSync(kit, { recursive: true, force: true })
+        rmSync(fake, { recursive: true, force: true })
       }
     })
   })
@@ -275,19 +358,21 @@ describe('verification-gate composite action', () => {
       return { code: run.status, output: `${run.stdout}${run.stderr}` }
     }
 
-    it('fails once, naming the skipped build, when the directory is absent', () => {
+    it('warns once, naming the skipped build, when the directory is absent, and does not fail', () => {
       const { code, output } = runWith({ publishRoot: join(tmpdir(), 'gate-absent-dir') })
-      assert.equal(code, 1, output)
+      assert.equal(code, 0, output)
       assert.match(output, /there is no such directory/)
       assert.match(output, /if Build did not run, that is why/)
-      assert.equal(output.match(/::error::/g).length, 1, `expected one error, got: ${output}`)
+      assert.equal(output.match(/::warning/g).length, 1, `expected one warning, got: ${output}`)
+      assert.doesNotMatch(output, /::error::/)
     })
 
-    it('fails when the directory exists but the build produced nothing', () => {
+    it('warns when the directory exists but the build produced nothing', () => {
       const empty = mkdtempSync(join(tmpdir(), 'gate-empty-'))
       try {
         const { code, output } = runWith({ publishRoot: empty })
-        assert.equal(code, 1, output)
+        assert.equal(code, 0, output)
+        assert.match(output, /::warning/)
         assert.match(output, /contains no files/)
       } finally {
         rmSync(empty, { recursive: true, force: true })
@@ -300,6 +385,7 @@ describe('verification-gate composite action', () => {
         writeFileSync(join(built, 'index.html'), '<!doctype html>', 'utf8')
         const { code, output } = runWith({ publishRoot: built })
         assert.equal(code, 0, output)
+        assert.doesNotMatch(output, /::warning/)
       } finally {
         rmSync(built, { recursive: true, force: true })
       }
@@ -318,7 +404,8 @@ describe('verification-gate composite action', () => {
           publishRoot: built,
           errorPageRoot: join(tmpdir(), 'gate-absent-errors'),
         })
-        assert.equal(code, 1, output)
+        assert.equal(code, 0, output)
+        assert.match(output, /::warning/)
         assert.match(output, /gate-absent-errors/)
       } finally {
         rmSync(built, { recursive: true, force: true })
@@ -328,7 +415,7 @@ describe('verification-gate composite action', () => {
     it('does nothing when neither root was asked for', () => {
       const { code, output } = runWith({})
       assert.equal(code, 0, output)
-      assert.doesNotMatch(output, /::error::/)
+      assert.doesNotMatch(output, /::(error|warning)/)
     })
 
     /**
@@ -366,16 +453,33 @@ describe('verification-gate composite action', () => {
   })
 
   /**
-   * The kit vendors its own test suite into every project, and until this step
-   * existed no project ever ran it — assertions shipped as decoration, which
-   * reads as coverage to anyone who sees the directory. It also answers what
-   * the drift check cannot: whether the kit runs *here*, on this runner, in a
-   * repository that may have no npm at all.
+   * The gate runs the kit from its own checkout, so the consumer's vendored
+   * copy is neither required, drift-checked nor self-tested on every pull
+   * request. This pins the removals: a step that came back would put a check on
+   * every consumer's PR that the PR cannot change.
    */
-  it("runs the kit's own tests, with a floor under the count", () => {
-    assert.match(text, /The kit works in this repository/)
-    assert.match(text, /--test-reporter=tap/)
-    assert.match(text, /-lt 250/, 'a self-test step with no floor passes when the glob misses')
+  it('does not check, drift-test or self-test the consumer copy of the kit', () => {
+    for (const removed of [
+      'Verification kit is present',
+      'Kit is current and unmodified',
+      'The kit works in this repository',
+      'Rule citations resolve',
+    ]) {
+      assert.ok(!text.includes(`- name: ${removed}`), `"${removed}" is back in the gate`)
+    }
+    assert.doesNotMatch(text, /check-kit-drift|check-rule-citations/)
+  })
+
+  it('never reads the kit input: the kit comes from the action checkout', () => {
+    assert.doesNotMatch(text, /\$\{\{ inputs\.kit \}\}/)
+    assert.doesNotMatch(text, /\$\{\{ inputs\.rule-sources \}\}/)
+    assert.ok(actionInputNames(text).includes('kit'), 'the kit input must stay declared')
+  })
+
+  it('keeps the executed-count assertion enforced, not softened', () => {
+    const step = text.slice(text.indexOf('- name: Assert the tests actually ran'))
+    assert.match(step, /assert-tests-executed\.mjs/)
+    assert.doesNotMatch(step, /::warning|if ! node/)
   })
 
   // V5: an unanchored contains on an identifier, converted to a behaviour
@@ -390,27 +494,23 @@ describe('verification-gate composite action', () => {
     const invokes = (script) =>
       text
         .split('\n')
-        .some((line) => /^\s*(run:\s*)?node\s/.test(line) && line.includes(`/bin/${script}"`))
+        .some(
+          (line) =>
+            /^\s*(run:\s*)?(if ! )?node\s/.test(line) &&
+            line.includes(`$VERIFICATION_GATE_KIT/bin/${script}"`),
+        )
 
     for (const script of [
-      'check-kit-drift.mjs',
-      'check-rule-citations.mjs',
       'check-tracked-artifacts.mjs',
       'check-page-metadata.mjs',
       'check-og-image.mjs',
       'check-error-pages.mjs',
+      'check-machine-paths.mjs',
       'check-backlog.mjs',
       'assert-tests-executed.mjs',
     ]) {
       assert.ok(invokes(script), `the gate never runs ${script}`)
     }
-  })
-
-  // A missing kit is the condition the gate exists to surface in a project
-  // that has not adopted it, so it must not read as "nothing to check".
-  it('fails when the kit is absent rather than skipping', () => {
-    assert.match(text, /No verification kit at/)
-    assert.match(text, /exit 1/)
   })
 })
 
