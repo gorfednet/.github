@@ -158,6 +158,39 @@ export function resolveStartupState(pr, repo, read, minRuns = 1) {
     }
   }
 
+  /*
+   * A run can exist and still have run nothing. While an account's payment is
+   * failing, GitHub creates every run and then refuses each job: the job
+   * concludes failure with zero steps, and its annotation says it "was not
+   * started because recent account payments have failed or your spending limit
+   * needs to be increased". That is a red branch nobody tested, and it reads
+   * exactly like a broken one. Only a failed run can hide it, so only those
+   * runs' jobs are read.
+   */
+  const neverRan = []
+  for (const run of list) {
+    if (run.status !== 'completed' || run.conclusion !== 'failure') continue
+    const jobs = read(`repos/${repo}/actions/runs/${run.id}/jobs?per_page=100&filter=latest`)
+    if (!jobs.ok) {
+      return {
+        state: 'undetermined',
+        detail: `could not read the jobs of failed run ${run.name}: ${jobs.error}`,
+      }
+    }
+    for (const job of jobs.data?.jobs ?? []) {
+      if (job.conclusion === 'failure' && (job.steps?.length ?? 0) === 0) {
+        neverRan.push({ run: run.name, name: job.name, url: job.html_url ?? run.html_url })
+      }
+    }
+  }
+  if (neverRan.length > 0) {
+    return {
+      state: 'jobs-not-started',
+      detail: `${neverRan.length} job(s) failed without running a step`,
+      jobs: neverRan,
+    }
+  }
+
   return { state: 'ok', detail: `${list.length} workflow run(s), all started` }
 }
 
@@ -210,6 +243,18 @@ if (isMain(import.meta.url)) {
             '  by `pull_request`, a path filter excluded every changed file, or the\n' +
             '  branch conflicts with its base (check `mergeStateStatus`; a missing\n' +
             '  merge ref dispatches nothing).\n'),
+    )
+    process.exit(1)
+  }
+
+  if (result.state === 'jobs-not-started') {
+    console.error(`\n✗ #${pr}: ${result.detail}\n`)
+    for (const job of result.jobs) console.error(`  ${job.run} / ${job.name}\n    ${job.url}`)
+    console.error(
+      '\n  These jobs were never run, so their red is not a test result. Open one\n' +
+        '  and read its annotation: "not started because recent account payments\n' +
+        '  have failed or your spending limit needs to be increased" means the\n' +
+        '  account, not the branch. Fix that, then re-run the failed jobs.\n',
     )
     process.exit(1)
   }

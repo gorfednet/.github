@@ -157,4 +157,96 @@ describe('resolveStartupState', () => {
     const read = reader({ [head]: {} })
     assert.equal(resolveStartupState(7, repo, read).state, 'undetermined')
   })
+
+  // From 2026-09-29 GitHub refused to start any job on bindercurve.com while the
+  // account's payment was failing. Every workflow run existed and concluded
+  // failure in two seconds, each job with zero steps and the annotation "The job
+  // was not started because recent account payments have failed or your
+  // spending limit needs to be increased". This check said "all started"
+  // because runs existed, and the checks panel showed a red branch that had
+  // never been tested.
+  const jobsFor = (id) => `repos/${repo}/actions/runs/${id}/jobs?per_page=100&filter=latest`
+
+  it('catches jobs that failed without running a single step', () => {
+    const read = reader({
+      [head]: { head: { sha: 'abc' } },
+      [runsFor('abc')]: {
+        workflow_runs: [
+          {
+            id: 11,
+            name: 'deploy-check',
+            workflow_id: 1,
+            run_number: 3,
+            status: 'completed',
+            conclusion: 'failure',
+            html_url: 'https://example/run/11',
+          },
+        ],
+      },
+      [jobsFor(11)]: {
+        jobs: [
+          { name: 'heavy-runner-preflight', conclusion: 'failure', steps: [] },
+          { name: 'check', conclusion: 'skipped', steps: [] },
+        ],
+      },
+    })
+    const result = resolveStartupState(7, repo, read)
+    assert.equal(result.state, 'jobs-not-started')
+    assert.deepEqual(
+      result.jobs.map((job) => job.name),
+      ['heavy-runner-preflight'],
+    )
+    assert.equal(result.jobs[0].run, 'deploy-check')
+  })
+
+  it('accepts a failed run whose jobs ran and failed, which is a real verdict', () => {
+    const read = reader({
+      [head]: { head: { sha: 'abc' } },
+      [runsFor('abc')]: {
+        workflow_runs: [
+          { id: 12, name: 'CI', workflow_id: 1, status: 'completed', conclusion: 'failure' },
+        ],
+      },
+      [jobsFor(12)]: {
+        jobs: [
+          {
+            name: 'test',
+            conclusion: 'failure',
+            steps: [{ name: 'Set up job' }, { name: 'npm test' }],
+          },
+        ],
+      },
+    })
+    assert.equal(resolveStartupState(7, repo, read).state, 'ok')
+  })
+
+  it('does not read jobs for runs that succeeded or are still running', () => {
+    // Only a failed run can hide a refusal, and reading every run's jobs would
+    // spend the rate limit on the common case. The reader has no jobs stubs, so
+    // any read of them would come back undetermined.
+    const read = reader({
+      [head]: { head: { sha: 'abc' } },
+      [runsFor('abc')]: {
+        workflow_runs: [
+          { id: 13, name: 'CI', workflow_id: 1, status: 'completed', conclusion: 'success' },
+          { id: 14, name: 'Lint', workflow_id: 2, status: 'in_progress', conclusion: null },
+        ],
+      },
+    })
+    assert.equal(resolveStartupState(7, repo, read).state, 'ok')
+  })
+
+  it('reports unreadable jobs for a failed run as undetermined, never as ok', () => {
+    const read = reader({
+      [head]: { head: { sha: 'abc' } },
+      [runsFor('abc')]: {
+        workflow_runs: [
+          { id: 15, name: 'CI', workflow_id: 1, status: 'completed', conclusion: 'failure' },
+        ],
+      },
+    })
+    const result = resolveStartupState(7, repo, read)
+    assert.equal(result.state, 'undetermined')
+    assert.match(result.detail, /jobs/)
+  })
 })
