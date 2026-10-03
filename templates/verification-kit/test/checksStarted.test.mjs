@@ -220,6 +220,32 @@ describe('resolveStartupState', () => {
     assert.equal(resolveStartupState(7, repo, read).state, 'ok')
   })
 
+  it('does not mistake a reusable-workflow caller for a job that never started', () => {
+    // A job that only says `uses: ./.github/workflows/x.yml` has no steps of
+    // its own, so when the called workflow fails the caller reads as "failed
+    // with zero steps" too. The jobs it called did run and fail, which is a real
+    // verdict; a run counts as refused only when no failed job ran a step.
+    const read = reader({
+      [head]: { head: { sha: 'abc' } },
+      [runsFor('abc')]: {
+        workflow_runs: [
+          { id: 15, name: 'ci', workflow_id: 1, status: 'completed', conclusion: 'failure' },
+        ],
+      },
+      [jobsFor(15)]: {
+        jobs: [
+          { name: 'gate', conclusion: 'failure', steps: [] },
+          {
+            name: 'gate / verify',
+            conclusion: 'failure',
+            steps: [{ name: 'Set up job' }, { name: 'Assert the tests actually ran' }],
+          },
+        ],
+      },
+    })
+    assert.equal(resolveStartupState(7, repo, read).state, 'ok')
+  })
+
   it('does not read jobs for runs that succeeded or are still running', () => {
     // Only a failed run can hide a refusal, and reading every run's jobs would
     // spend the rate limit on the common case. The reader has no jobs stubs, so

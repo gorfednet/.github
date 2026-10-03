@@ -177,8 +177,13 @@ export function resolveStartupState(pr, repo, read, minRuns = 1) {
         detail: `could not read the jobs of failed run ${run.name}: ${jobs.error}`,
       }
     }
-    for (const job of jobs.data?.jobs ?? []) {
-      if (job.conclusion === 'failure' && (job.steps?.length ?? 0) === 0) {
+    // A run is refused only when none of its failed jobs ran a step. A
+    // reusable-workflow caller has no steps of its own and fails whenever the
+    // jobs it called fail; those called jobs ran, so that is a real verdict.
+    const failed = (jobs.data?.jobs ?? []).filter((job) => job.conclusion === 'failure')
+    const stepless = failed.filter((job) => (job.steps?.length ?? 0) === 0)
+    if (stepless.length > 0 && stepless.length === failed.length) {
+      for (const job of stepless) {
         neverRan.push({ run: run.name, name: job.name, url: job.html_url ?? run.html_url })
       }
     }
