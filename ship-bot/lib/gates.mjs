@@ -173,9 +173,15 @@ export async function evaluateBugbot(ctx, repo, pr, sha, runs, { headSince, prSt
   const budgetSpent = bugbotReviews >= 2 || runComments.length > 0 || Boolean(prState.bugbotRequestedAt)
 
   if (status.state === 'not-run') {
-    const requestedForHead = prState.bugbotRequestedHead === sha
+    // Asked for this head: by the bot's own record, or (if that record was
+    // lost) by a `bugbot run` comment newer than the head itself. Without the
+    // second half, a lost state file reads as "budget spent, no threads" and
+    // merges a head Bugbot was asked to review and never did.
+    const latestRequest = runComments.map((c) => c.created_at).filter(Boolean).sort().pop()
+    const requestedForHead = prState.bugbotRequestedHead === sha || Boolean(latestRequest && headSince && latestRequest >= headSince)
     if (requestedForHead) {
-      const waited = minutesBetween(prState.bugbotRequestedAt, now)
+      const since = prState.bugbotRequestedHead === sha ? prState.bugbotRequestedAt : latestRequest
+      const waited = minutesBetween(since, now)
       if (waited > ctx.config.bugbotWaitMinutes) {
         return {
           blocks: [

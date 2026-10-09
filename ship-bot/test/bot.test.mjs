@@ -221,6 +221,7 @@ describe('gate (d): Bugbot', () => {
     await s.run()
     await s.run()
     assert.equal(bodies(s.github).filter((b) => b === 'bugbot run').length, 1)
+    assert.equal(merges(s.github).length, 0, 'a lost state file must not turn a pending review into a pass')
   })
 
   it('does not ask while the automatic review is running', async () => {
