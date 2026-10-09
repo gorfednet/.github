@@ -29,6 +29,8 @@ describe('config validation', () => {
     assert.deepEqual(validateConfig(example()), [])
     const config = normalizeConfig(example(), { home: HOME })
     assert.equal(config.live, false, 'the example must never ship live')
+    assert.deepEqual(config.repos.filter((r) => r.todo.length > 0).map((r) => r.slug), [], 'every decision is recorded as a note, none left open')
+    assert.deepEqual(config.preflight.map((s) => s.command.at(-2)), ['gorfednas', 'dapyllil'])
     assert.equal(config.repos.find((r) => r.name === 'gorfed.net').siblings[0].path, join(HOME, '.ship-bot', 'work', 'gorfednet.github'))
   })
 

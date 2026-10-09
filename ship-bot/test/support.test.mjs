@@ -167,7 +167,7 @@ describe('branch protection plan', () => {
     assert.equal(slugs.length, 14)
     const moon = plan.find((p) => p.slug === 'gorfednet/MoonMan').body
     assert.deepEqual(moon, {
-      required_status_checks: { strict: false, contexts: ['heavy-runner-preflight', 'quality', 'test', 'server', 'build', 'e2e', 'visual'] },
+      required_status_checks: { strict: false, contexts: ['quality', 'test', 'server', 'build', 'e2e', 'e2e-webkit', 'visual'] },
       enforce_admins: false,
       required_pull_request_reviews: null,
       restrictions: null,

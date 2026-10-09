@@ -1,7 +1,9 @@
 {
   "note": "Copy to ~/.ship-bot/config.json (install.sh does this once). Every repo with a non-empty todo list is refused by a live run until a person has confirmed and deleted each item. Paths may start with ~.",
   "live": false,
-  "allowedAuthors": ["gorfednet"],
+  "allowedAuthors": [
+    "gorfednet"
+  ],
   "stateDir": "~/.ship-bot",
   "workRoot": "~/.ship-bot/work",
   "sourceRoot": "~/Developer/gorfednet",
@@ -11,6 +13,35 @@
   "defaultStepTimeoutMinutes": 20,
   "gateTimeoutSeconds": 180,
   "notify": true,
+  "preflight": [
+    {
+      "name": "nas",
+      "command": [
+        "ssh",
+        "-o",
+        "BatchMode=yes",
+        "-o",
+        "ConnectTimeout=10",
+        "gorfednas",
+        "true"
+      ],
+      "timeoutMinutes": 1
+    },
+    {
+      "name": "docker host",
+      "command": [
+        "ssh",
+        "-o",
+        "BatchMode=yes",
+        "-o",
+        "ConnectTimeout=10",
+        "dapyllil",
+        "true"
+      ],
+      "timeoutMinutes": 1,
+      "note": "Tailscale SSH to dapyllil can demand a browser re-login, and the ssh key's passphrase lives in the keychain/agent; a LaunchAgent may have neither. Checked once per pass before the first deploy-mode merge."
+    }
+  ],
   "ghPath": "~/bin/gh",
   "scripts": {
     "assertChecksStarted": "~/Developer/gorfednet/TowIt/verification-kit/bin/assert-checks-started.mjs",
@@ -23,57 +54,90 @@
       "dir": "MoonMan",
       "mode": "deploy",
       "bugbot": true,
-      "expectedChecks": ["heavy-runner-preflight", "quality", "test", "server", "build", "e2e", "visual"],
-      "envFiles": [".deploy-env"],
-      "setup": [{ "name": "install", "command": ["npm", "ci"], "timeoutMinutes": 15 }],
+      "expectedChecks": [
+        "quality",
+        "test",
+        "server",
+        "build",
+        "e2e",
+        "e2e-webkit",
+        "visual"
+      ],
+      "envFiles": [
+        ".deploy-env"
+      ],
+      "setup": [
+        {
+          "name": "install",
+          "command": [
+            "npm",
+            "ci"
+          ],
+          "timeoutMinutes": 15
+        }
+      ],
       "deploy": [
         {
           "name": "infra",
-          "command": ["npm", "run", "deploy:infra"],
-          "timeoutMinutes": 30,
-          "onlyIfChanged": [
-            "server/",
-            "infra/",
-            "scripts/deploy-infra.mjs",
-            "scripts/build-splash.mjs",
-            "scripts/lib/",
-            "public/",
-            "vite.hero.config.ts",
-            "src/game/rng.ts",
-            "src/game/runLimits.ts",
-            "src/game/solarSystem.ts",
-            "src/game/tuning.ts",
-            "src/lib/analytics/aggregate.ts",
-            "src/lib/analytics/archive/statsArchive.ts",
-            "src/lib/analytics/archiveMerge.ts",
-            "src/lib/analytics/displayVersion.ts",
-            "src/lib/analytics/endpoint.ts",
-            "src/lib/analytics/publicStats.ts",
-            "src/lib/api/retention.ts",
-            "src/lib/callsign.ts"
+          "command": [
+            "npm",
+            "run",
+            "deploy:infra"
           ],
-          "note": "server/ and infra/ as decided, plus what deploy-infra.mjs actually reads: the splash builder and its libs, brand images in public/, the hero build config, and the game files server/shared-files.json copies into the API image."
+          "timeoutMinutes": 30,
+          "note": "Runs on every merge: the landing hero and its What's New are built from game code, and deploy:infra takes the pre-deploy database backup before the new API can migrate."
         },
-        { "name": "game", "command": ["npm", "run", "deploy"], "timeoutMinutes": 30 }
+        {
+          "name": "game",
+          "command": [
+            "npm",
+            "run",
+            "deploy"
+          ],
+          "timeoutMinutes": 30
+        }
       ],
-      "todo": [
-        "Confirm the infra onlyIfChanged list. The landing hero is built from game code (vite.hero.config.ts), so an ordinary game change also changes the landing page, and with this list it would ship the game but leave the landing hero stale until the next infra change. Options: run deploy:infra on every merge (drop onlyIfChanged), or accept a stale hero.",
-        "deploy:infra rebuilds the API on dapyllil and the API runs its migrations (server/src/migrations.ts), so a server/ change ships a migration unattended. promptboi is paused for exactly this; confirm MoonMan should not be.",
-        "No rollback steps: scripts/rollback.mjs has no --yes flag (it does not prompt either), so per the plan a failed deploy redeploys the previous commit, including deploy:infra when it ran. `npm run rollback` (snapshot restore, no rebuild) would be faster for game-only failures; decide.",
-        "No script reads .deploy-env in this repo (scripts/deploy*.mjs take NAS_* from the environment with defaults). Copying it is harmless; confirm it is not meant to be sourced.",
-        "While a store build is in review the web build must match it (one-version rule); the bot deploys MoonMan web as soon as a PR is labelled ready-to-merge. Confirm, or set mode merge-only during reviews."
-      ]
+      "note": "Decided by the main session 2026-10-09: deploy:infra then deploy on every merge. Unattended migrations are accepted here because deploy:infra backs the database up first. Rollback is a redeploy of the previous commit (both steps); scripts/rollback.mjs has no --yes flag. heavy-runner-preflight is not listed: it is a runner-pool preflight, and every listed job needs it to succeed. e2e-webkit confirmed on #266. .deploy-env is copied though no script reads it (harmless). The one-version rule while a store build is in review is the labelling session's job: it bumps the version before labelling a game change."
     },
     {
       "slug": "gorfednet/gorfed.net",
       "dir": "gorfed.net",
       "mode": "deploy",
       "bugbot": true,
-      "expectedChecks": ["check / check", "browser-compat / compat-success"],
-      "envFiles": [".deploy-env"],
-      "siblings": [{ "dir": "gorfednet.github", "slug": "gorfednet/.github", "branch": "main" }],
-      "setup": [{ "name": "install", "command": ["npm", "ci"], "timeoutMinutes": 15 }],
-      "deploy": [{ "name": "site", "command": ["make", "deploy"], "timeoutMinutes": 20 }],
+      "expectedChecks": [
+        "check / check",
+        "browser-compat / compat-success"
+      ],
+      "envFiles": [
+        ".deploy-env"
+      ],
+      "siblings": [
+        {
+          "dir": "gorfednet.github",
+          "slug": "gorfednet/.github",
+          "branch": "main"
+        }
+      ],
+      "setup": [
+        {
+          "name": "install",
+          "command": [
+            "npm",
+            "ci"
+          ],
+          "timeoutMinutes": 15
+        }
+      ],
+      "deploy": [
+        {
+          "name": "site",
+          "command": [
+            "make",
+            "deploy"
+          ],
+          "timeoutMinutes": 20
+        }
+      ],
       "note": "make deploy builds dist/ (npm scripts + python3), requires WEB3FORMS_ACCESS_KEY from .deploy-env, rsyncs, restarts the static nginx container on dapyllil and compares the live index.html byte for byte (nas-ssh-deploy.sh)."
     },
     {
@@ -81,11 +145,33 @@
       "dir": "gorfmusic.com",
       "mode": "deploy",
       "bugbot": true,
-      "expectedChecks": ["check / check", "browser-compat / compat-success", "canaries"],
-      "envFiles": [".deploy-env", ".env"],
-      "siblings": [{ "dir": "gorfednet.github", "slug": "gorfednet/.github", "branch": "main" }],
+      "expectedChecks": [
+        "check / check",
+        "browser-compat / compat-success",
+        "canaries"
+      ],
+      "envFiles": [
+        ".deploy-env",
+        ".env"
+      ],
+      "siblings": [
+        {
+          "dir": "gorfednet.github",
+          "slug": "gorfednet/.github",
+          "branch": "main"
+        }
+      ],
       "setup": [],
-      "deploy": [{ "name": "site", "command": ["make", "deploy"], "timeoutMinutes": 25 }],
+      "deploy": [
+        {
+          "name": "site",
+          "command": [
+            "make",
+            "deploy"
+          ],
+          "timeoutMinutes": 25
+        }
+      ],
       "note": "make deploy runs its own npm ci, checks the Web3Forms key in .env (VITE_WEB3FORMS_ACCESS_KEY), builds, then deploy.sh with the shared helper's live check."
     },
     {
@@ -93,11 +179,40 @@
       "dir": "denseware.com",
       "mode": "deploy",
       "bugbot": true,
-      "expectedChecks": ["check / check", "browser-compat / compat-success"],
-      "envFiles": [".deploy-env"],
-      "siblings": [{ "dir": "gorfednet.github", "slug": "gorfednet/.github", "branch": "main" }],
-      "setup": [{ "name": "install", "command": ["npm", "ci"], "timeoutMinutes": 15 }],
-      "deploy": [{ "name": "site", "command": ["make", "deploy"], "timeoutMinutes": 20 }],
+      "expectedChecks": [
+        "check / check",
+        "browser-compat / compat-success"
+      ],
+      "envFiles": [
+        ".deploy-env"
+      ],
+      "siblings": [
+        {
+          "dir": "gorfednet.github",
+          "slug": "gorfednet/.github",
+          "branch": "main"
+        }
+      ],
+      "setup": [
+        {
+          "name": "install",
+          "command": [
+            "npm",
+            "ci"
+          ],
+          "timeoutMinutes": 15
+        }
+      ],
+      "deploy": [
+        {
+          "name": "site",
+          "command": [
+            "make",
+            "deploy"
+          ],
+          "timeoutMinutes": 20
+        }
+      ],
       "note": "make deploy = npm run deploy:ssh = build, then scripts/deploy-ssh.sh (assets first with --delete, then the tree; live check on the second rsync)."
     },
     {
@@ -105,11 +220,41 @@
       "dir": "ssatcy.com",
       "mode": "deploy",
       "bugbot": true,
-      "expectedChecks": ["check / check", "browser-compat / compat-success", "deploy-safety"],
-      "envFiles": [".deploy-env"],
-      "siblings": [{ "dir": "gorfednet.github", "slug": "gorfednet/.github", "branch": "main" }],
-      "setup": [{ "name": "install", "command": ["npm", "ci"], "timeoutMinutes": 15 }],
-      "deploy": [{ "name": "site", "command": ["make", "deploy"], "timeoutMinutes": 20 }],
+      "expectedChecks": [
+        "check / check",
+        "browser-compat / compat-success",
+        "deploy-safety"
+      ],
+      "envFiles": [
+        ".deploy-env"
+      ],
+      "siblings": [
+        {
+          "dir": "gorfednet.github",
+          "slug": "gorfednet/.github",
+          "branch": "main"
+        }
+      ],
+      "setup": [
+        {
+          "name": "install",
+          "command": [
+            "npm",
+            "ci"
+          ],
+          "timeoutMinutes": 15
+        }
+      ],
+      "deploy": [
+        {
+          "name": "site",
+          "command": [
+            "make",
+            "deploy"
+          ],
+          "timeoutMinutes": 20
+        }
+      ],
       "note": "make deploy = npm run deploy = build, then scripts/deploy-ssh.sh in four phases with its own verify-production.mjs against https://ssatcy.com."
     },
     {
@@ -117,53 +262,122 @@
       "dir": "anal0g.org",
       "mode": "deploy",
       "bugbot": true,
-      "expectedChecks": ["check / check"],
-      "envFiles": [".deploy-env"],
-      "copyFromSource": ["art-library.js"],
-      "siblings": [{ "dir": "gorfednet.github", "slug": "gorfednet/.github", "branch": "main" }],
+      "expectedChecks": [
+        "check / check"
+      ],
+      "envFiles": [
+        ".deploy-env"
+      ],
+      "copyFromSource": [
+        "art-library.js"
+      ],
+      "siblings": [
+        {
+          "dir": "gorfednet.github",
+          "slug": "gorfednet/.github",
+          "branch": "main"
+        }
+      ],
       "setup": [],
-      "deploy": [{ "name": "site", "command": ["make", "deploy"], "timeoutMinutes": 20 }],
-      "note": "make deploy runs `check` (python3 tools, node, and an ssh preflight) then rsyncs the repo root with --delete. art-library.js is gitignored and generated (a 4 MB download), so a clean checkout lacks it and the rsync would delete it from the live site; it is copied from the owner's clone instead.",
-      "todo": [
-        "Confirm copying art-library.js from the owner's clone is the right source (the alternative is a setup step `make art-library`, which downloads from raw.githubusercontent.com on every deploy)."
-      ]
+      "deploy": [
+        {
+          "name": "site",
+          "command": [
+            "make",
+            "deploy"
+          ],
+          "timeoutMinutes": 20
+        }
+      ],
+      "note": "make deploy runs `check` (python3 tools, node, and an ssh preflight) then rsyncs the repo root with --delete. art-library.js is gitignored and generated (a 4 MB download), so a clean checkout lacks it and the rsync would delete it from the live site; it is copied from the owner's clone instead. Accepted by the main session 2026-10-09."
     },
     {
       "slug": "gorfednet/blackpixelrecords.com",
       "dir": "blackpixelrecords.com",
       "mode": "deploy",
       "bugbot": true,
-      "expectedChecks": ["check / check"],
+      "expectedChecks": [
+        "check / check"
+      ],
       "envFiles": [],
-      "siblings": [{ "dir": "gorfednet.github", "slug": "gorfednet/.github", "branch": "main" }],
+      "siblings": [
+        {
+          "dir": "gorfednet.github",
+          "slug": "gorfednet/.github",
+          "branch": "main"
+        }
+      ],
       "setup": [],
-      "deploy": [{ "name": "site", "command": ["make", "deploy"], "timeoutMinutes": 20 }],
-      "note": "deploy.sh writes route directories (404/, 500/, <page>/index.html) into the checkout before rsyncing it with --delete; the next deploy's git clean removes them.",
-      "todo": [
-        "The owner's clone has no .deploy-env, so this deploys with the helper's defaults, the same as a manual deploy from that clone today. Confirm, or create one and list it in envFiles."
-      ]
+      "deploy": [
+        {
+          "name": "site",
+          "command": [
+            "make",
+            "deploy"
+          ],
+          "timeoutMinutes": 20
+        }
+      ],
+      "note": "deploy.sh writes route directories (404/, 500/, <page>/index.html) into the checkout before rsyncing it with --delete; the next deploy's git clean removes them. The owner's clone has no .deploy-env, so this deploys with the shared helper's defaults, as a manual deploy from that clone does today; accepted by the main session 2026-10-09."
     },
     {
       "slug": "gorfednet/rowanmcarthur.com",
       "dir": "rowanmcarthur.com",
       "mode": "deploy",
       "bugbot": true,
-      "expectedChecks": ["check / check"],
-      "envFiles": [".deploy-env"],
-      "siblings": [{ "dir": "gorfednet.github", "slug": "gorfednet/.github", "branch": "main" }],
+      "expectedChecks": [
+        "check / check"
+      ],
+      "envFiles": [
+        ".deploy-env"
+      ],
+      "siblings": [
+        {
+          "dir": "gorfednet.github",
+          "slug": "gorfednet/.github",
+          "branch": "main"
+        }
+      ],
       "setup": [],
-      "deploy": [{ "name": "site", "command": ["./deploy.sh"], "timeoutMinutes": 15 }]
+      "deploy": [
+        {
+          "name": "site",
+          "command": [
+            "./deploy.sh"
+          ],
+          "timeoutMinutes": 15
+        }
+      ]
     },
     {
       "slug": "gorfednet/subrythm.com",
       "dir": "subrythm.com",
       "mode": "deploy",
       "bugbot": true,
-      "expectedChecks": ["check / check"],
-      "envFiles": [".deploy-env"],
-      "siblings": [{ "dir": "gorfednet.github", "slug": "gorfednet/.github", "branch": "main" }],
+      "expectedChecks": [
+        "check / check"
+      ],
+      "envFiles": [
+        ".deploy-env"
+      ],
+      "siblings": [
+        {
+          "dir": "gorfednet.github",
+          "slug": "gorfednet/.github",
+          "branch": "main"
+        }
+      ],
       "setup": [],
-      "deploy": [{ "name": "site", "command": ["make", "deploy"], "timeoutMinutes": 15 }],
+      "deploy": [
+        {
+          "name": "site",
+          "command": [
+            "make",
+            "deploy"
+          ],
+          "timeoutMinutes": 15
+        }
+      ],
       "note": "make deploy rewrites the tracked deploy-marker.txt in the workspace before rsyncing; the next deploy's forced checkout resets it. The marker is never committed by the bot, so the repo's copy stays stale as before."
     },
     {
@@ -171,12 +385,46 @@
       "dir": "promptboi.com",
       "mode": "deploy",
       "bugbot": true,
-      "expectedChecks": ["check / check", "browser-compat / compat-success"],
-      "envFiles": [".deploy-env"],
-      "siblings": [{ "dir": "gorfednet.github", "slug": "gorfednet/.github", "branch": "main" }],
-      "setup": [{ "name": "install", "command": ["npm", "ci"], "timeoutMinutes": 15 }],
-      "deploy": [{ "name": "site", "command": ["make", "deploy-site"], "timeoutMinutes": 25 }],
-      "pausedIfChanged": ["server/", "deploy/", "scripts/deploy-api.sh", "src/app/feeds/"],
+      "expectedChecks": [
+        "check / check",
+        "browser-compat / compat-success"
+      ],
+      "envFiles": [
+        ".deploy-env"
+      ],
+      "siblings": [
+        {
+          "dir": "gorfednet.github",
+          "slug": "gorfednet/.github",
+          "branch": "main"
+        }
+      ],
+      "setup": [
+        {
+          "name": "install",
+          "command": [
+            "npm",
+            "ci"
+          ],
+          "timeoutMinutes": 15
+        }
+      ],
+      "deploy": [
+        {
+          "name": "site",
+          "command": [
+            "make",
+            "deploy-site"
+          ],
+          "timeoutMinutes": 25
+        }
+      ],
+      "pausedIfChanged": [
+        "server/",
+        "deploy/",
+        "scripts/deploy-api.sh",
+        "src/app/feeds/"
+      ],
       "note": "Only the static site (make deploy-site = build + feeds + deploy.sh). The API (make deploy-api: Postgres, migrations in server/migrations/) is never deployed by the bot; any merge touching what deploy-api ships (server/, deploy/api/, src/app/feeds/) is merged but not deployed, and blocks the repo until a session deploys it."
     },
     {
@@ -187,7 +435,6 @@
       "bugbot": true,
       "requireChecksAfterLabel": true,
       "expectedChecks": [
-        "heavy-runner-preflight",
         "changes",
         "check",
         "nginx-config",
@@ -201,9 +448,7 @@
         "axe-firefox",
         "axe-webkit"
       ],
-      "todo": [
-        "Confirm this list against a recent ready-to-merge PR's checks panel. The ready-to-merge label re-runs deploy-check and pr-fast-check with all three browsers, so requireChecksAfterLabel waits for that re-run; axe-firefox and axe-webkit are listed to prove the full tier ran."
-      ]
+      "note": "Check names confirmed against #396. heavy-runner-preflight is left out: a pool preflight that label re-runs duplicate; e2e-success and axe-chromium/firefox/webkit prove the full tier ran, after the label (requireChecksAfterLabel)."
     },
     {
       "slug": "gorfednet/4thcltr.com",
@@ -215,7 +460,6 @@
       "expectedChecks": [
         "check / check",
         "smoke",
-        "heavy-runner-preflight",
         "e2e (1)",
         "e2e (2)",
         "e2e (3)",
@@ -226,14 +470,14 @@
         "e2e (8)",
         "e2e-gate"
       ],
-      "note": "The e2e sweep runs only when the PR carries ready-to-merge (CI listens for `labeled`). e2e-gate passes when e2e was skipped, so each shard is listed and must be a success, and the checks must post-date the label."
+      "note": "The e2e sweep runs only when the PR carries ready-to-merge (CI listens for `labeled`). e2e-gate passes when e2e was skipped, so each shard is listed and must be a success, and the checks must post-date the label. heavy-runner-preflight is left out (a pool preflight, duplicated by label re-runs); the shards and e2e-gate prove the sweep ran."
     },
     {
       "slug": "gorfednet/ACID2REAPER",
       "dir": "ACID2Reaper",
       "mode": "merge-only",
       "reason": "it ships as a tagged release",
-      "bugbot": true,
+      "bugbot": false,
       "expectedChecks": [
         "test (ubuntu-latest, 3.9)",
         "test (ubuntu-latest, 3.11)",
@@ -250,10 +494,7 @@
         "lint",
         "package"
       ],
-      "todo": [
-        "Confirm the matrix check names against a PR's checks panel (written from ci.yml as GitHub names matrix jobs, not observed).",
-        "BUGBOT.md lists ACID2REAPER's Bugbot as off unless it ships weekly, while the fleet rule says every active repo has it. With bugbot true and Bugbot off, every PR waits forever for a review; set false if it is off."
-      ]
+      "note": "Matrix check names confirmed against #5. Bugbot is off for this repo (no Cursor Bugbot check on #5), so it is not waited for."
     },
     {
       "slug": "gorfednet/.github",
@@ -261,7 +502,9 @@
       "mode": "merge-only",
       "reason": "merging is the fleet rollout: every repository's CI uses these workflows at @main",
       "bugbot": true,
-      "expectedChecks": ["kit"]
+      "expectedChecks": [
+        "kit"
+      ]
     },
     {
       "slug": "gorfednet/TowIt",
