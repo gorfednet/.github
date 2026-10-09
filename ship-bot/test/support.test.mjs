@@ -144,3 +144,33 @@ describe('gate helpers', () => {
     )
   })
 })
+
+describe('branch protection plan', () => {
+  it('protects every repo that is not off, with its expectedChecks, not strict, no reviews, admins free', async () => {
+    const { protectionPlan } = await import('../lib/protection.mjs')
+    const { normalizeConfig } = await import('../lib/config.mjs')
+    const raw = JSON.parse(readFileSync(new URL('../config.example.json', import.meta.url), 'utf8'))
+    const plan = protectionPlan(normalizeConfig(raw, { home: '/home/test' }))
+    const slugs = plan.map((p) => p.slug)
+    assert.ok(!slugs.includes('gorfednet/TowIt') && !slugs.includes('gorfednet/wychwood'))
+    assert.equal(slugs.length, 14)
+    const moon = plan.find((p) => p.slug === 'gorfednet/MoonMan').body
+    assert.deepEqual(moon, {
+      required_status_checks: { strict: false, contexts: ['heavy-runner-preflight', 'quality', 'test', 'server', 'build', 'e2e', 'visual'] },
+      enforce_admins: false,
+      required_pull_request_reviews: null,
+      restrictions: null,
+      allow_force_pushes: false,
+      allow_deletions: false,
+    })
+  })
+
+  it('an unmatched --repo, or only "off" repos, is an error rather than an empty run', async () => {
+    const { protectionPlan } = await import('../lib/protection.mjs')
+    const { normalizeConfig } = await import('../lib/config.mjs')
+    const raw = JSON.parse(readFileSync(new URL('../config.example.json', import.meta.url), 'utf8'))
+    const config = normalizeConfig(raw, { home: '/home/test' })
+    assert.throws(() => protectionPlan(config, ['nope']), /no configured repository/)
+    assert.throws(() => protectionPlan(config, ['TowIt']), /no repositories to protect/)
+  })
+})
