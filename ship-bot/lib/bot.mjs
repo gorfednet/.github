@@ -230,6 +230,20 @@ async function liveMerge(ctx, repo, pr, tag) {
     if (!res?.merged || !res?.sha) throw new Error(res?.message ?? 'GitHub did not confirm the merge')
     mergeSha = res.sha
   } catch (cause) {
+    // Only a definite answer from GitHub means "not merged". A timeout or a
+    // 5xx may have merged anyway, and a merged commit nobody deploys is worse
+    // than a stopped repo, so that case blocks the repo for a person.
+    const definite = [403, 404, 405, 409, 422].includes(cause.status)
+    if (!definite) {
+      if (repo.mode === 'deploy') {
+        delete rs.deployInProgress
+        rs.blocked = { reason: `merging #${pr.number} (${short(sha)}) ended without a clear answer (${cause.message}); it may or may not be merged`, at: ctx.clock.now().toISOString(), pr: pr.number }
+      }
+      ctx.state.save()
+      ctx.say('error', `${tag}: merge outcome unknown: ${cause.message}`)
+      await notify(ctx, `${repo.name} #${pr.number}: merge outcome unknown`, true)
+      return true
+    }
     delete rs.deployInProgress
     ctx.state.save()
     ctx.say('warn', `${tag}: merge refused: ${cause.message}`)

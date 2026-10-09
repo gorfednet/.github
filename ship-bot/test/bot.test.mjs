@@ -363,6 +363,16 @@ describe('merging', () => {
     assert.equal(s.state().repo(SLUG).blocked, undefined)
   })
 
+  it('a merge call that ends without a clear answer blocks the repo instead of assuming it failed', async () => {
+    const gh = new FakeGitHub()
+    gh.mergeResult = () => new Error('The operation was aborted due to timeout')
+    const s = scenario({ github: gh })
+    await s.run()
+    assert.equal(s.runner.ofKind('deploy').length, 0)
+    assert.match(s.state().repo(SLUG).blocked.reason, /may or may not be merged/)
+    assert.match(s.runner.ofKind('notify')[0].args[1], /merge outcome unknown/)
+  })
+
   it('in merge-only mode: merges, comments the reason, runs no workspace or deploy command', async () => {
     const s = scenario({ repos: [{ slug: SLUG, dir: 'site', mode: 'merge-only', reason: 'tagged release via /ship', bugbot: false, expectedChecks: ['check / check'] }] })
     await s.run()
