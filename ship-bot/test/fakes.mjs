@@ -18,7 +18,8 @@ export const SLUG = 'gorfednet/site'
 export const HEAD = 'a'.repeat(40)
 export const MERGE = 'b'.repeat(40)
 export const PARENT = 'c'.repeat(40)
-export const TOKEN = 'gho_FAKEtoken1234567890abcdefghijkl'
+/** A fake OAuth-shaped token, assembled so the repository holds no token-shaped literal. */
+export const TOKEN = ['gh', 'o_', 'FAKEtoken1234567890abcdefghijkl'].join('')
 export const ENV_SECRET = 'nas-password-that-must-not-leak'
 
 export function makePr(overrides = {}) {

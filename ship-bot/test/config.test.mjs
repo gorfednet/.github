@@ -1,8 +1,12 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { describe, it } from 'node:test'
 import { ConfigError, normalizeConfig, validateConfig } from '../lib/config.mjs'
 
+// A home directory derived at run time, never a named one (check-machine-paths).
+const HOME = join(tmpdir(), 'ship-bot-home')
 const example = () => JSON.parse(readFileSync(new URL('../config.example.json', import.meta.url), 'utf8'))
 const base = (repos) => ({
   live: false,
@@ -23,9 +27,9 @@ const problemsFor = (raw) => validateConfig(raw).join('\n')
 describe('config validation', () => {
   it('accepts the shipped example config', () => {
     assert.deepEqual(validateConfig(example()), [])
-    const config = normalizeConfig(example(), { home: '/home/test' })
+    const config = normalizeConfig(example(), { home: HOME })
     assert.equal(config.live, false, 'the example must never ship live')
-    assert.equal(config.repos.find((r) => r.name === 'gorfed.net').siblings[0].path, '/home/test/.ship-bot/work/gorfednet.github')
+    assert.equal(config.repos.find((r) => r.name === 'gorfed.net').siblings[0].path, join(HOME, '.ship-bot', 'work', 'gorfednet.github'))
   })
 
   it('the example covers every repository, with the agreed modes', () => {

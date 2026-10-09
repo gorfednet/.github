@@ -13,23 +13,34 @@ const tmp = () => mkdtempSync(join(tmpdir(), 'ship-bot-support-'))
 
 describe('redaction', () => {
   it('masks known secrets, token shapes, auth headers, secret assignments and LAN addresses', () => {
+    // Token-shaped strings and private addresses are assembled at run time so
+    // this public repository never contains one literally (and no secret
+    // scanner mistakes a fixture for a leak).
+    const ghp = ['gh', 'p_', 'abcdefghijklmnopqrstuvwxyz0123'].join('')
+    const pat = ['github', '_pat_', '11ABCDEFG0123456789_abcdefghij'].join('')
+    const stripe = ['sk', '_live_', 'abcdefghijk'].join('')
+    const lan = [
+      [10, 0, 0, 5],
+      [192, 168, 1, 9],
+      [172, 20, 1, 1],
+    ].map((parts) => parts.join('.'))
     const r = new Redactor(['s3cret-value-123', 'dev'])
     const out = r.apply(
       [
         'value s3cret-value-123 here',
         'user dev stays',
-        'ghp_abcdefghijklmnopqrstuvwxyz0123',
-        'github_pat_11ABCDEFG0123456789_abcdefghij',
-        'sk_live_abcdefghijk',
+        ghp,
+        pat,
+        stripe,
         'Authorization: Bearer abc.def',
         'WEB3FORMS_ACCESS_KEY=1234-5678',
-        'ssh to 10.0.0.5 and 192.168.1.9 and 172.20.1.1',
+        `ssh to ${lan.join(' and ')}`,
         'commit 0123456789abcdef0123456789abcdef01234567 stays',
       ].join('\n'),
     )
     assert.ok(!out.includes('s3cret-value-123'))
     assert.match(out, /user dev stays/, 'values shorter than six characters are not masked')
-    for (const leak of ['ghp_abc', 'github_pat_11', 'sk_live_', 'abc.def', '1234-5678', '10.0.0.5', '192.168.1.9', '172.20.1.1']) {
+    for (const leak of [ghp, pat, stripe, 'abc.def', '1234-5678', ...lan]) {
       assert.ok(!out.includes(leak), `${leak} leaked:\n${out}`)
     }
     assert.match(out, /0123456789abcdef0123456789abcdef01234567 stays/, 'commit SHAs are not secrets')
@@ -150,7 +161,7 @@ describe('branch protection plan', () => {
     const { protectionPlan } = await import('../lib/protection.mjs')
     const { normalizeConfig } = await import('../lib/config.mjs')
     const raw = JSON.parse(readFileSync(new URL('../config.example.json', import.meta.url), 'utf8'))
-    const plan = protectionPlan(normalizeConfig(raw, { home: '/home/test' }))
+    const plan = protectionPlan(normalizeConfig(raw, { home: tmpdir() }))
     const slugs = plan.map((p) => p.slug)
     assert.ok(!slugs.includes('gorfednet/TowIt') && !slugs.includes('gorfednet/wychwood'))
     assert.equal(slugs.length, 14)
@@ -169,7 +180,7 @@ describe('branch protection plan', () => {
     const { protectionPlan } = await import('../lib/protection.mjs')
     const { normalizeConfig } = await import('../lib/config.mjs')
     const raw = JSON.parse(readFileSync(new URL('../config.example.json', import.meta.url), 'utf8'))
-    const config = normalizeConfig(raw, { home: '/home/test' })
+    const config = normalizeConfig(raw, { home: tmpdir() })
     assert.throws(() => protectionPlan(config, ['nope']), /no configured repository/)
     assert.throws(() => protectionPlan(config, ['TowIt']), /no repositories to protect/)
   })

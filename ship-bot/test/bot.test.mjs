@@ -489,9 +489,10 @@ describe('deploying', () => {
 
 describe('redaction', () => {
   it('removes the token and env-file values from PR comments and the deploy log', async () => {
+    const lan = [192, 168, 1, 20].join('.') // assembled so no private address is committed literally
     const runner = makeRunner({
       handle: (cmd) =>
-        cmd.kind === 'deploy' ? { code: 1, stdout: `using ${TOKEN}\npassword is ${ENV_SECRET}\nAuthorization: Bearer xyz123secret\nhost 192.168.1.20\n` } : undefined,
+        cmd.kind === 'deploy' ? { code: 1, stdout: `using ${TOKEN}\npassword is ${ENV_SECRET}\nAuthorization: Bearer xyz123secret\nhost ${lan}\n` } : undefined,
     })
     const s = scenario({ runner })
     await s.run()
@@ -499,7 +500,7 @@ describe('redaction', () => {
     assert.ok(!body.includes(TOKEN))
     assert.ok(!body.includes(ENV_SECRET))
     assert.ok(!body.includes('xyz123secret'))
-    assert.ok(!body.includes('192.168.1.20'))
+    assert.ok(!body.includes(lan))
     assert.match(body, /\[REDACTED\]/)
     const logDir = join(s.config.stateDir, 'logs', 'deploys')
     const [file] = readdirSync(logDir)
