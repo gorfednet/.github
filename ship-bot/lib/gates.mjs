@@ -42,6 +42,43 @@ export function unmergeableReason(full) {
 }
 
 /**
+ * The most recent check run per name. A head can carry the same name more
+ * than once (a label-triggered re-run beside the push run, or two workflows
+ * with a job of the same name); only the latest says where that check stands.
+ * Latest = latest started_at, ties broken by the higher id. A run with no
+ * started_at has not started yet, so it counts as the newest.
+ */
+export function latestPerName(runs) {
+  const newest = new Map()
+  const rank = (r) => [r.started_at ?? '\uffff', Number(r.id ?? 0)]
+  for (const r of runs) {
+    const seen = newest.get(r.name)
+    if (!seen) {
+      newest.set(r.name, r)
+      continue
+    }
+    const [a, ai] = rank(r)
+    const [b, bi] = rank(seen)
+    if (a > b || (a === b && ai > bi)) newest.set(r.name, r)
+  }
+  return [...newest.values()]
+}
+
+/** The most recent commit status per context (latest created_at, ties by id). */
+export function latestPerContext(statuses) {
+  const newest = new Map()
+  for (const s of statuses) {
+    const seen = newest.get(s.context)
+    const newer =
+      !seen ||
+      (s.created_at ?? '') > (seen.created_at ?? '') ||
+      ((s.created_at ?? '') === (seen.created_at ?? '') && Number(s.id ?? 0) > Number(seen.id ?? 0))
+    if (newer) newest.set(s.context, s)
+  }
+  return [...newest.values()]
+}
+
+/**
  * Gates (b), (c) and (f): every check and status on the head finished green,
  * and every expected check is present, successful and (optionally) newer than
  * the ready-to-merge label.
@@ -51,8 +88,9 @@ export function evaluateChecks({ runs, statuses, expectedChecks, graceOver, labe
   if (!Array.isArray(runs) || !Array.isArray(statuses)) {
     return [{ key: 'checks-unreadable', kind: 'wait', reason: 'could not read the checks on this head' }]
   }
-  const others = runs.filter((r) => !isBugbotCheck(r))
-  const otherStatuses = statuses.filter((s) => !/bugbot/i.test(s.context ?? ''))
+  // Only the latest run of each name is judged; older runs of it are history.
+  const others = latestPerName(runs.filter((r) => !isBugbotCheck(r)))
+  const otherStatuses = latestPerContext(statuses.filter((s) => !/bugbot/i.test(s.context ?? '')))
 
   const pending = [
     ...others.filter((r) => r.status !== 'completed').map((r) => r.name),
@@ -148,6 +186,23 @@ export function parseBugbotStatus(result, prNumber) {
 }
 
 /**
+ * A Bugbot thread is triaged when it is resolved, or when an allowlisted login
+ * replied after Bugbot's latest comment in it. Sessions cannot resolve review
+ * threads in the permission mode they run in, so a reply is the other way to
+ * show a person (or their session) read the finding. A reply that predates
+ * Bugbot's latest comment answered something earlier, not what is there now.
+ */
+export function isTriaged(thread, allowedAuthors) {
+  if (thread.isResolved === true) return true
+  const comments = Array.isArray(thread.comments) ? thread.comments : []
+  const bugbotTimes = comments.filter((c) => isBugbotUser(c.author)).map((c) => c.createdAt)
+  // Without a timestamp for every Bugbot comment there is nothing to compare a reply to.
+  if (bugbotTimes.length === 0 || bugbotTimes.some((t) => !t)) return false
+  const latestBugbot = bugbotTimes.sort().pop()
+  return comments.some((c) => allowedAuthors.includes(c.author) && c.createdAt && c.createdAt > latestBugbot)
+}
+
+/**
  * Gate (d). Returns `{blocks, actions}`; an action of type `bugbot-run` means
  * "comment `bugbot run` now", which the caller does (or reports in a dry run).
  */
@@ -160,7 +215,7 @@ export async function evaluateBugbot(ctx, repo, pr, sha, runs, { headSince, prSt
   }
   if (status.state === 'clean') return { blocks: [], actions: [] }
 
-  const bugbotRun = runs.find(isBugbotCheck)
+  const [bugbotRun] = latestPerName(runs.filter(isBugbotCheck))
   if (status.state === 'not-run' && bugbotRun && bugbotRun.status !== 'completed') {
     return { blocks: [{ key: 'bugbot-in-progress', kind: 'wait', reason: 'Bugbot is reviewing this head' }], actions: [] }
   }
@@ -211,12 +266,18 @@ export async function evaluateBugbot(ctx, repo, pr, sha, runs, { headSince, prSt
   // once every Bugbot thread on the PR has been resolved by a person.
   const threads = await ctx.github.listReviewThreads(repo.slug, pr.number)
   const bugbotThreads = threads.filter((t) => isBugbotUser(t.author))
-  const open = bugbotThreads.filter((t) => t.isResolved !== true)
+  const open = bugbotThreads.filter((t) => !isTriaged(t, ctx.config.allowedAuthors))
   const why = status.state === 'findings' ? 'Bugbot reported findings' : 'Bugbot has not reviewed this head and its review budget for this PR is spent'
   if (open.length > 0) {
     const list = open.map((t) => `- ${t.path ?? '(general)'}${t.line ? `:${t.line}` : ''} ${t.url}`).join('\n')
     return {
-      blocks: [{ key: 'bugbot-threads', kind: 'fail', reason: `${why}; ${open.length} Bugbot thread(s) are unresolved:\n${list}` }],
+      blocks: [
+        {
+          key: 'bugbot-threads',
+          kind: 'fail',
+          reason: `${why}; ${open.length} Bugbot comment thread(s) have no answer yet. Reply to each Bugbot comment (saying what was done or why it is fine) or resolve it:\n${list}`,
+        },
+      ],
       actions: [],
     }
   }

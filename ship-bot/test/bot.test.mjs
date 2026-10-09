@@ -159,6 +159,52 @@ describe('gate (b): every check and status finished green', () => {
   })
 })
 
+describe('the same check name more than once on a head', () => {
+  const run = (name, conclusion, started_at, id, status = 'completed') => ({ name, status, conclusion, started_at, id })
+  const withRuns = async (runs, statuses = []) => {
+    const gh = new FakeGitHub({ runs, statuses })
+    const s = scenario({ github: gh })
+    await s.run()
+    return gh
+  }
+
+  it('an older cancelled run beside a newer success: only the newer counts, so it merges', async () => {
+    const gh = await withRuns([run('check / check', 'cancelled', '2026-10-09T11:00:00Z', 1), run('check / check', 'success', '2026-10-09T11:30:00Z', 2)])
+    assert.equal(merges(gh).length, 1)
+  })
+
+  it('an older skipped run of a required check beside a newer success: merges', async () => {
+    const gh = await withRuns([run('check / check', 'success', '2026-10-09T11:30:00Z', 2), run('check / check', 'skipped', '2026-10-09T11:00:00Z', 1)])
+    assert.equal(merges(gh).length, 1)
+  })
+
+  for (const conclusion of ['cancelled', 'failure']) {
+    it(`an older success beside a newer ${conclusion}: does not merge`, async () => {
+      const gh = await withRuns([run('check / check', 'success', '2026-10-09T11:00:00Z', 1), run('check / check', conclusion, '2026-10-09T11:30:00Z', 2)])
+      assert.equal(merges(gh).length, 0)
+    })
+  }
+
+  it('the same start time: the higher id is the newer', async () => {
+    const t = '2026-10-09T11:00:00Z'
+    assert.equal(merges(await withRuns([run('check / check', 'success', t, 5), run('check / check', 'failure', t, 4)])).length, 1)
+    assert.equal(merges(await withRuns([run('check / check', 'success', t, 4), run('check / check', 'failure', t, 5)])).length, 0)
+  })
+
+  it('a newer run still in progress beside an older success: waits', async () => {
+    const gh = await withRuns([run('check / check', 'success', '2026-10-09T11:00:00Z', 1), run('check / check', null, '2026-10-09T11:30:00Z', 2, 'in_progress')])
+    assert.equal(merges(gh).length, 0)
+    assert.equal(gh.writes.length, 0)
+  })
+
+  it('commit statuses: only the latest per context counts', async () => {
+    const st = (state, created_at, id) => ({ context: 'ci/legacy', state, created_at, id })
+    assert.equal(merges(await withRuns(greenRuns(), [st('failure', '2026-10-09T11:00:00Z', 1), st('success', '2026-10-09T11:30:00Z', 2)])).length, 1)
+    assert.equal(merges(await withRuns(greenRuns(), [st('success', '2026-10-09T11:00:00Z', 1), st('error', '2026-10-09T11:30:00Z', 2)])).length, 0)
+    assert.equal(merges(await withRuns(greenRuns(), [st('success', '2026-10-09T11:00:00Z', 1), st('pending', '2026-10-09T11:30:00Z', 2)])).length, 0)
+  })
+})
+
 describe('gate (c): expected checks present and successful', () => {
   it('does not merge when an expected check never appeared, and says so after the grace period', async () => {
     const gh = new FakeGitHub({ runs: greenRuns(['something else']) })
@@ -245,7 +291,7 @@ describe('gate (d): Bugbot', () => {
     assert.equal(merges(gh).length, 0)
     const posted = bodies(gh)
     assert.equal(posted.length, 1)
-    assert.match(posted[0], /budget for this PR is spent; 1 Bugbot thread\(s\) are unresolved/)
+    assert.match(posted[0], /budget for this PR is spent; 1 Bugbot comment thread\(s\) have no answer yet\. Reply to each Bugbot comment .* or resolve it/)
     assert.match(posted[0], /src\/a\.ts:3/)
   })
 
@@ -259,6 +305,54 @@ describe('gate (d): Bugbot', () => {
     const s = scenario({ repos: bugbotRepo(), github: gh, runner: makeRunner({ handle: findings }) })
     await s.run()
     assert.equal(merges(gh).length, 1)
+  })
+
+  // A Bugbot thread with one Bugbot comment at 10:00 and the given replies.
+  const thread = (path, replies = [], extra = {}) => ({
+    isResolved: false,
+    author: 'cursor[bot]',
+    path,
+    url: `https://github.com/x/${path}`,
+    comments: [{ author: 'cursor[bot]', createdAt: '2026-10-09T10:00:00Z' }, ...replies],
+    ...extra,
+  })
+  const findingsWith = async (threads) => {
+    const gh = new FakeGitHub({ threads })
+    const s = scenario({ repos: bugbotRepo(), github: gh, runner: makeRunner({ handle: findings }) })
+    await s.run()
+    return { gh, s }
+  }
+
+  it('with findings and every Bugbot thread answered by an allowlisted reply after Bugbot: merges', async () => {
+    const { gh } = await findingsWith([
+      thread('src/a.ts', [{ author: 'gorfednet', createdAt: '2026-10-09T10:30:00Z' }]),
+      thread('src/b.ts', [], { isResolved: true }),
+    ])
+    assert.equal(merges(gh).length, 1)
+  })
+
+  it('near miss: a reply older than the latest Bugbot comment in that thread is not triage', async () => {
+    const { gh } = await findingsWith([
+      thread('src/a.ts', [
+        { author: 'gorfednet', createdAt: '2026-10-09T10:30:00Z' },
+        { author: 'cursor[bot]', createdAt: '2026-10-09T11:00:00Z' },
+      ]),
+    ])
+    assert.equal(merges(gh).length, 0)
+    assert.match(bodies(gh)[0], /Reply to each Bugbot comment/)
+  })
+
+  it('near miss: a reply from a login that is not allowlisted is not triage', async () => {
+    const { gh } = await findingsWith([thread('src/a.ts', [{ author: 'drive-by-user', createdAt: '2026-10-09T10:30:00Z' }])])
+    assert.equal(merges(gh).length, 0)
+  })
+
+  it('near miss: one of two Bugbot threads answered is not enough', async () => {
+    const { gh } = await findingsWith([thread('src/a.ts', [{ author: 'gorfednet', createdAt: '2026-10-09T10:30:00Z' }]), thread('src/b.ts')])
+    assert.equal(merges(gh).length, 0)
+    assert.match(bodies(gh)[0], /1 Bugbot comment thread\(s\) have no answer yet/)
+    assert.match(bodies(gh)[0], /src\/b\.ts/)
+    assert.doesNotMatch(bodies(gh)[0], /src\/a\.ts/)
   })
 
   it('with findings and no Bugbot thread to resolve: does not merge', async () => {

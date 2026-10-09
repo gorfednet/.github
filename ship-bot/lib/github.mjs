@@ -84,20 +84,25 @@ export function createGitHubClient({ token, fetchImpl = globalThis.fetch, api = 
       let after = null
       for (let page = 0; page < 20; page += 1) {
         const data = await graphql(
-          `query($owner:String!,$name:String!,$n:Int!,$after:String){repository(owner:$owner,name:$name){pullRequest(number:$n){reviewThreads(first:100,after:$after){pageInfo{hasNextPage endCursor} nodes{isResolved path line comments(first:1){nodes{author{login} url body}}}}}}}`,
+          `query($owner:String!,$name:String!,$n:Int!,$after:String){repository(owner:$owner,name:$name){pullRequest(number:$n){reviewThreads(first:100,after:$after){pageInfo{hasNextPage endCursor} nodes{isResolved path line comments(first:100){totalCount nodes{author{login} url createdAt}}}}}}}`,
           { owner, name, n, after },
         )
         const conn = data?.repository?.pullRequest?.reviewThreads
         if (!conn || !Array.isArray(conn.nodes)) throw new GitHubError('POST', '/graphql', 'bad-shape', 'no reviewThreads')
         for (const t of conn.nodes) {
-          const first = t.comments?.nodes?.[0]
+          const nodes = t.comments?.nodes ?? []
+          // A thread longer than one page could hide the reply (or the newest
+          // Bugbot comment); refuse to judge it rather than judge part of it.
+          if (t.comments?.totalCount > nodes.length) {
+            throw new GitHubError('POST', '/graphql', 'too-many', `a review thread has ${t.comments.totalCount} comments`)
+          }
           threads.push({
             isResolved: t.isResolved,
             path: t.path,
             line: t.line,
-            author: first?.author?.login ?? '',
-            url: first?.url ?? '',
-            body: first?.body ?? '',
+            author: nodes[0]?.author?.login ?? '',
+            url: nodes[0]?.url ?? '',
+            comments: nodes.map((c) => ({ author: c.author?.login ?? '', createdAt: c.createdAt ?? null })),
           })
         }
         if (!conn.pageInfo?.hasNextPage) return threads
