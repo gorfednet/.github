@@ -5,6 +5,9 @@
 #   ship-bot/install.sh --uninstall  stop it and remove the LaunchAgent
 #
 # What it does:
+#   - runs the bot's own test suite from this checkout first and refuses to
+#     install if it fails or runs fewer tests than expected (this is the bot's
+#     CI: it costs no GitHub Actions minutes)
 #   - creates ~/.ship-bot/ (config, state, logs, the bot's own workspaces)
 #   - copies the bot's code to ~/.ship-bot/app/, so the running bot does not
 #     change when this checkout switches branches; re-run to update it
@@ -12,7 +15,8 @@
 #     none; an existing config is never touched. The example has "live": false.
 #   - writes and loads ~/Library/LaunchAgents/net.gorfed.ship-bot.plist, which
 #     runs `ship-bot.mjs --live --once` every 120 seconds. Until the config says
-#     "live": true, each of those runs refuses and does nothing.
+#     "live": true, each of those runs refuses and does nothing. Each run
+#     first moves ship-bot.log to ship-bot.log.1 once it passes 5 MB.
 #
 # It copies no secrets: the bot reads deploy credentials from each repo's own
 # clone at deploy time and asks `gh auth token` for its GitHub token each run.
@@ -52,6 +56,13 @@ NODE_BIN="$(node -p 'process.execPath')"
 major="$("${NODE_BIN}" -p 'process.versions.node.split(".")[0]')"
 if [[ "${major}" -lt 22 ]]; then
   echo "install.sh: needs Node 22 or newer; ${NODE_BIN} is $("${NODE_BIN}" --version)." >&2
+  exit 1
+fi
+
+# The suite is the gate (check.sh counts what ran, not just the exit code).
+echo "Running the ship bot's tests..."
+if ! NODE_BIN="${NODE_BIN}" "${HERE}/check.sh"; then
+  echo "install.sh: the tests did not pass. Nothing was installed." >&2
   exit 1
 fi
 
@@ -102,6 +113,8 @@ cat >"${PLIST}.tmp" <<EOF
     <string>--once</string>
     <string>--config</string>
     <string>$(xml "${BOT_HOME}/config.json")</string>
+    <string>--rotate-log</string>
+    <string>$(xml "${BOT_HOME}/logs/ship-bot.log")</string>
   </array>
   <key>StartInterval</key>
   <integer>120</integer>

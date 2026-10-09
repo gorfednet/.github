@@ -9,6 +9,7 @@
  *   node ship-bot.mjs --unblock MoonMan    clear a block left by a failed deploy
  *   node ship-bot.mjs --config <path>      default ~/.ship-bot/config.json
  *   node ship-bot.mjs --verbose            also print why each PR was ignored
+ *   node ship-bot.mjs --rotate-log <path>  first move <path> to <path>.1 if it is over 5 MB
  *
  * Without --once it keeps running, one pass every two minutes. The LaunchAgent
  * runs it with --once and lets launchd do the scheduling.
@@ -20,13 +21,14 @@ import { ConfigError, expandHome, loadConfig } from './lib/config.mjs'
 import { createGitHubClient } from './lib/github.mjs'
 import { Redactor } from './lib/redact.mjs'
 import { realRunner, succeeded } from './lib/runner.mjs'
+import { rotateLog } from './lib/logs.mjs'
 import { StateStore, acquireLock, lockPath } from './lib/state.mjs'
 import { isMain } from './lib/isMain.mjs'
 
-const USAGE = 'usage: ship-bot.mjs [--dry-run | --live] [--once] [--repo <name>]... [--config <path>] [--verbose] [--unblock <name>]'
+const USAGE = 'usage: ship-bot.mjs [--dry-run | --live] [--once] [--repo <name>]... [--config <path>] [--verbose] [--unblock <name>] [--rotate-log <path>]'
 
 export function parseArgs(argv) {
-  const args = { mode: undefined, once: false, repos: [], config: '~/.ship-bot/config.json', verbose: false, unblock: undefined }
+  const args = { mode: undefined, once: false, repos: [], config: '~/.ship-bot/config.json', verbose: false, unblock: undefined, rotateLog: undefined }
   for (let i = 0; i < argv.length; i += 1) {
     const flag = argv[i]
     const value = () => {
@@ -44,6 +46,7 @@ export function parseArgs(argv) {
     else if (flag === '--config') args.config = value()
     else if (flag === '--verbose') args.verbose = true
     else if (flag === '--unblock') args.unblock = value()
+    else if (flag === '--rotate-log') args.rotateLog = value()
     else if (flag === '--help' || flag === '-h') args.help = true
     else throw new Error(`unknown argument ${flag}`)
   }
@@ -86,6 +89,14 @@ export async function main(argv, overrides = {}) {
   if (args.help) {
     deps.out(USAGE)
     return 0
+  }
+  if (args.rotateLog) {
+    try {
+      if (rotateLog(expandHome(args.rotateLog))) print('info', `rotated ${args.rotateLog} to ${args.rotateLog}.1`)
+    } catch (cause) {
+      // A log that cannot be rotated is not a reason to stop shipping.
+      print('warn', `could not rotate ${args.rotateLog}: ${cause.message}`)
+    }
   }
 
   for (let pass = 0; ; pass += 1) {

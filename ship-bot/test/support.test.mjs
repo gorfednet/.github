@@ -185,3 +185,27 @@ describe('branch protection plan', () => {
     assert.throws(() => protectionPlan(config, ['TowIt']), /no repositories to protect/)
   })
 })
+
+describe('log rotation', () => {
+  it('moves a log over the limit to .1, replacing an older .1', async () => {
+    const { rotateLog } = await import('../lib/logs.mjs')
+    const dir = tmp()
+    const log = join(dir, 'ship-bot.log')
+    writeFileSync(log, Buffer.alloc(101, 'x'))
+    writeFileSync(`${log}.1`, 'older')
+    assert.equal(rotateLog(log, 100), true)
+    assert.equal(existsSync(log), false)
+    assert.equal(readFileSync(`${log}.1`, 'utf8').length, 101)
+  })
+
+  it('leaves a log at or under the limit alone, and a missing log is not an error', async () => {
+    const { rotateLog, MAX_LOG_BYTES } = await import('../lib/logs.mjs')
+    const dir = tmp()
+    const log = join(dir, 'ship-bot.log')
+    writeFileSync(log, Buffer.alloc(100, 'x'))
+    assert.equal(rotateLog(log, 100), false)
+    assert.equal(readFileSync(log, 'utf8').length, 100)
+    assert.equal(rotateLog(join(dir, 'missing.log')), false)
+    assert.equal(MAX_LOG_BYTES, 5 * 1024 * 1024)
+  })
+})

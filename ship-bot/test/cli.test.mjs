@@ -100,6 +100,17 @@ describe('command line', () => {
     assert.equal(h.runner.calls.length, 0)
   })
 
+  it('--rotate-log rotates a log past 5 MB before the pass', async () => {
+    const h = harness()
+    const log = join(h.config.stateDir, 'ship-bot.log')
+    mkdirSync(h.config.stateDir, { recursive: true })
+    writeFileSync(log, Buffer.alloc(5 * 1024 * 1024 + 1, 'x'))
+    const code = await main(['--once', '--rotate-log', log], h.deps)
+    assert.equal(code, 0, h.out.join('\n'))
+    assert.equal(readFileSync(`${log}.1`).length, 5 * 1024 * 1024 + 1)
+    assert.match(h.out.join('\n'), /rotated/)
+  })
+
   it('children never inherit a GitHub token from the environment', () => {
     const env = childEnv({ PATH: '/bin', GH_TOKEN: 'x', GITHUB_TOKEN: 'y', GITHUB_EVENT_PATH: '/e' })
     assert.deepEqual(env, { PATH: '/bin' })
