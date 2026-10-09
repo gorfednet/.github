@@ -25,6 +25,7 @@ const TOP_KEYS = new Set([
   'defaultStepTimeoutMinutes',
   'gateTimeoutSeconds',
   'notify',
+  'preflight',
   'ghPath',
   'scripts',
   'repos',
@@ -227,6 +228,8 @@ export function validateConfig(raw) {
     }
   }
 
+  if (raw.preflight !== undefined) validateSteps(raw.preflight, 'preflight', problems, { allowOnlyIfChanged: false })
+
   if (!Array.isArray(raw.repos) || raw.repos.length === 0) problems.push('repos: required, a non-empty array')
   else {
     const seen = { slugs: new Set(), dirs: new Set() }
@@ -260,6 +263,7 @@ export function normalizeConfig(raw, { home = homedir() } = {}) {
     defaultStepTimeoutMinutes: raw.defaultStepTimeoutMinutes ?? 20,
     gateTimeoutSeconds: raw.gateTimeoutSeconds ?? 180,
     notify: raw.notify ?? true,
+    preflight: raw.preflight ?? [],
     ghPath: raw.ghPath ? expandHome(raw.ghPath, home) : 'gh',
     scripts: Object.fromEntries(SCRIPT_KEYS.map((k) => [k, x(raw.scripts[k])])),
     repos: raw.repos.map((repo) => {

@@ -43,8 +43,10 @@ export const greenRuns = (names = ['check / check'], startedAt = '2026-10-09T12:
   names.map((name) => ({ name, status: 'completed', conclusion: 'success', started_at: startedAt }))
 
 export class FakeGitHub {
-  constructor({ pulls = [makePr()], runs = greenRuns(), statuses = [], reviews = [], comments = [], events = [], threads = [], files = [] } = {}) {
+  constructor({ pulls = [makePr()], pullsBySlug = undefined, runs = greenRuns(), statuses = [], reviews = [], comments = [], events = [], threads = [], files = [] } = {}) {
     this.pulls = pulls
+    /** Optional: a separate list of pull requests per repository. */
+    this.pullsBySlug = pullsBySlug
     this.runs = runs
     this.statuses = statuses
     this.reviews = reviews
@@ -59,6 +61,10 @@ export class FakeGitHub {
     this.onGetPull = null
   }
 
+  pullsFor(slug) {
+    return this.pullsBySlug?.[slug] ?? this.pulls
+  }
+
   log(name, ...args) {
     this.calls.push({ name, args })
   }
@@ -70,12 +76,12 @@ export class FakeGitHub {
 
   async listOpenPulls(slug) {
     this.log('listOpenPulls', slug)
-    return this.pulls.filter((p) => p.state === 'open').map((p) => structuredClone(p))
+    return this.pullsFor(slug).filter((p) => p.state === 'open').map((p) => structuredClone(p))
   }
 
   async getPull(slug, n) {
     this.log('getPull', slug, n)
-    const pr = this.pulls.find((p) => p.number === n)
+    const pr = this.pullsFor(slug).find((p) => p.number === n)
     this.onGetPull?.(pr, this.calls.filter((c) => c.name === 'getPull').length)
     return structuredClone(pr)
   }
@@ -127,7 +133,7 @@ export class FakeGitHub {
     this.writes.push({ name: 'mergePull', slug, n, ...opts })
     const result = this.mergeResult(slug, n, opts)
     if (result instanceof Error) throw result
-    const pr = this.pulls.find((p) => p.number === n)
+    const pr = this.pullsFor(slug).find((p) => p.number === n)
     if (pr && result.merged) pr.state = 'closed'
     return result
   }

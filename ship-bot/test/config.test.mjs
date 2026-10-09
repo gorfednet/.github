@@ -103,6 +103,12 @@ describe('config validation', () => {
     assert.match(p, /rollback\[0\]\.onlyIfChanged: only deploy steps can be conditional/)
   })
 
+  it('validates the top-level preflight steps like any other step', () => {
+    assert.deepEqual(validateConfig({ ...base([deployRepo()]), preflight: [{ name: 'nas', command: ['ssh', 'nas', 'true'] }] }), [])
+    assert.match(problemsFor({ ...base([deployRepo()]), preflight: [{ name: 'nas', command: 'ssh nas true' }] }), /preflight\[0\]\.command/)
+    assert.match(problemsFor({ ...base([deployRepo()]), preflight: [{ name: 'nas', command: ['x'], onlyIfChanged: ['a/'] }] }), /only deploy steps can be conditional/)
+  })
+
   it('rejects a deploy where every step is conditional', () => {
     assert.match(problemsFor(base([deployRepo({ deploy: [{ name: 'a', command: ['x'], onlyIfChanged: ['a/'] }] })])), /every step is conditional/)
   })

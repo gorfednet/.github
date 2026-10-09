@@ -696,3 +696,65 @@ describe('safety rails', () => {
     assert.equal(s.github.calls.length, 0)
   })
 })
+
+describe('deploy preflight', () => {
+  const LIB = 'gorfednet/lib'
+  const SITE2 = 'gorfednet/site2'
+  const prFor = (slug) => makePr({ head: { sha: HEAD, repo: { full_name: slug } } })
+  const preflight = [
+    { name: 'nas', command: ['ssh', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10', 'gorfednas', 'true'] },
+    { name: 'docker host', command: ['ssh', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10', 'dapyllil', 'true'] },
+  ]
+  const setup = (failing) => {
+    const gh = new FakeGitHub({ pullsBySlug: { [SLUG]: [prFor(SLUG)], [SITE2]: [prFor(SITE2)], [LIB]: [prFor(LIB)] } })
+    const runner = makeRunner({
+      handle: (cmd) => (cmd.kind === 'preflight' && failing && cmd.args.includes('gorfednas') ? { code: 255, stderr: 'Permission denied (publickey).' } : undefined),
+    })
+    return scenario({
+      github: gh,
+      runner,
+      configOverrides: { preflight },
+      repos: [
+        repoEntry(),
+        repoEntry({ slug: SITE2, dir: 'site2' }),
+        { slug: LIB, dir: 'lib', mode: 'merge-only', reason: 'tagged release', bugbot: false, expectedChecks: ['check / check'] },
+      ],
+    })
+  }
+
+  it('when it fails: no deploy-mode repo merges, a merge-only repo still does, and it runs once per pass', async () => {
+    const s = setup(true)
+    await s.run()
+    assert.deepEqual(merges(s.github).map((m) => m.slug), [LIB])
+    assert.equal(s.runner.ofKind('preflight').length, 1, 'stops at the first failing step and is not re-run for the second deploy repo')
+    assert.equal(s.runner.ofKind('deploy').length, 0)
+    assert.ok(s.logs.some((l) => /deploy preflight failed: "nas" exited 255: Permission denied/.test(l)), s.logs.join('\n'))
+  })
+
+  it('when it fails: notifies at most once an hour', async () => {
+    const s = setup(true)
+    await s.run()
+    s.clock.advance(30)
+    await s.run()
+    assert.equal(s.runner.ofKind('notify').length, 1)
+    s.clock.advance(31)
+    await s.run()
+    assert.equal(s.runner.ofKind('notify').length, 2)
+    assert.match(s.runner.ofKind('notify')[0].args[1], /deploy preflight failed \(nas\)/)
+  })
+
+  it('when it passes: runs every step once, then merges and deploys', async () => {
+    const s = setup(false)
+    await s.run()
+    assert.deepEqual(s.runner.commandLines('preflight'), preflight.map((p) => p.command.join(' ')))
+    assert.deepEqual(merges(s.github).map((m) => m.slug), [SLUG, SITE2, LIB])
+  })
+
+  it('a dry run does not run it, and says it would', async () => {
+    const s = setup(true)
+    const decisions = (await s.run('dry-run')).map((d) => d.text)
+    assert.equal(s.runner.ofKind('preflight').length, 0)
+    assert.ok(decisions.some((t) => /would run the deploy preflight before merging: ssh -o BatchMode=yes .* gorfednas true/.test(t)), decisions.join('\n'))
+    assert.ok(decisions.some((t) => /gorfednet\/site#7 .*would merge/.test(t)))
+  })
+})

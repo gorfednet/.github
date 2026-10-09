@@ -12,7 +12,7 @@ import { DeployLog, deployMerged, envSecrets, matchingFiles, preflight, realFs, 
 import { evaluatePull, ineligibleReason, unmergeableReason } from './gates.mjs'
 import { guardWrites } from './github.mjs'
 import { Redactor } from './redact.mjs'
-import { guardCommands } from './runner.mjs'
+import { guardCommands, succeeded } from './runner.mjs'
 
 const short = (sha) => String(sha ?? '').slice(0, 7)
 const marker = (key, sha) => `<!-- ship-bot:${key}:${sha} -->`
@@ -186,11 +186,64 @@ async function processPull(ctx, repo, pr, defaultBranch) {
     return false
   }
 
+  if (repo.mode === 'deploy') {
+    const pf = await deployPreflight(ctx)
+    if (!pf.ok) {
+      ctx.say('warn', `${tag}: ready, but not merging: the deploy preflight failed this pass (${pf.reason})`)
+      return true
+    }
+  }
+
   if (ctx.dry) {
     await dryRunMerge(ctx, repo, pr, tag)
     return true
   }
   return liveMerge(ctx, repo, pr, tag)
+}
+
+/**
+ * Can this Mac reach what deploys need (ssh to the NAS and the Docker host)?
+ * Run once per pass, before the first merge in a deploy-mode repo. A LaunchAgent
+ * may lack the keychain-held ssh key or a fresh Tailscale login that a person's
+ * terminal has; finding that out after merging would leave a merged,
+ * undeployed commit. On failure no deploy-mode repo merges this pass;
+ * merge-only repos carry on.
+ */
+async function deployPreflight(ctx) {
+  if (ctx.preflightResult) return ctx.preflightResult
+  const steps = ctx.config.preflight
+  if (ctx.dry) {
+    if (steps.length > 0) {
+      ctx.say('info', `would run the deploy preflight before merging: ${steps.map((s) => s.command.join(' ')).join('; ')}`)
+    }
+    ctx.preflightResult = { ok: true }
+    return ctx.preflightResult
+  }
+  for (const step of steps) {
+    const minutes = step.timeoutMinutes ?? 1
+    const result = await ctx.runner.run({
+      kind: 'preflight',
+      cmd: step.command[0],
+      args: step.command.slice(1),
+      env: ctx.baseEnv,
+      timeoutMs: minutes * 60 * 1000,
+    })
+    if (!succeeded(result)) {
+      const how = result.timedOut ? `timed out after ${minutes} min` : result.error ? `could not start (${result.error})` : `exited ${result.code}`
+      const detail = ctx.redactor.apply(`${result.stderr ?? ''}`.trim().split('\n').pop() ?? '')
+      ctx.preflightResult = { ok: false, reason: `"${step.name}" ${how}${detail ? `: ${detail}` : ''}` }
+      ctx.say('error', `deploy preflight failed: ${ctx.preflightResult.reason}. No deploy-mode repo merges this pass.`)
+      const last = ctx.state.data.preflightNotifiedAt
+      if (!last || ctx.clock.now().getTime() - new Date(last).getTime() >= 60 * 60 * 1000) {
+        ctx.state.data.preflightNotifiedAt = ctx.clock.now().toISOString()
+        ctx.state.save()
+        await notify(ctx, `deploy preflight failed (${step.name}); nothing is being deployed`, true)
+      }
+      return ctx.preflightResult
+    }
+  }
+  ctx.preflightResult = { ok: true }
+  return ctx.preflightResult
 }
 
 async function dryRunMerge(ctx, repo, pr, tag) {
