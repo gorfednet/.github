@@ -227,6 +227,23 @@ describe('gate (c): expected checks present and successful', () => {
     assert.match(bodies(gh)[0], /required checks did not succeed: check \/ check \(skipped\)/)
   })
 
+  it('a failed check and a required check that did not succeed: one comment with both reasons, not two', async () => {
+    const gh = new FakeGitHub({
+      runs: [
+        { name: 'check / check', status: 'completed', conclusion: 'skipped', started_at: '2026-10-09T12:00:00Z' },
+        { name: 'lint', status: 'completed', conclusion: 'failure', started_at: '2026-10-09T12:00:00Z' },
+      ],
+    })
+    const s = scenario({ github: gh })
+    const decisions = (await s.run('dry-run')).map((d) => d.text)
+    assert.equal(decisions.filter((t) => /would comment/.test(t)).length, 1, decisions.join('\n'))
+    await s.run()
+    await s.run()
+    const posted = bodies(gh)
+    assert.equal(posted.length, 1)
+    assert.match(posted[0], /- checks did not pass on this head: lint \(failure\)\n- required checks did not succeed: check \/ check \(skipped\)/)
+  })
+
   it('does not merge with no checks at all', async () => {
     const gh = new FakeGitHub({ runs: [] })
     const s = scenario({ github: gh })
@@ -653,7 +670,7 @@ describe('safety rails', () => {
     assert.equal(gh.writes.length, 0)
   })
 
-  it('live mode is refused when the config does not say live: true', async () => {
+  it('runOnce itself refuses live mode without live: true (the CLI observes instead; this is the backstop)', async () => {
     const s = scenario({ configOverrides: { live: false } })
     await assert.rejects(s.run('live'), /live mode refused/)
     assert.equal(s.github.calls.length, 0)

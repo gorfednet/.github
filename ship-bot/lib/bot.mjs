@@ -161,9 +161,14 @@ async function processPull(ctx, repo, pr, defaultBranch) {
   if (!result.ready) {
     for (const block of result.blocks) {
       ctx.say(block.kind === 'fail' ? 'info' : 'debug', `${tag}: not merging: ${block.reason}`)
-      if (block.kind === 'fail') {
-        await postOnce(ctx, repo, pr.number, sha, block.key, `Ship bot is not merging this yet.\n\n${block.reason}\n\nIt checks again every couple of minutes. Add the \`${HOLD_LABEL}\` label to make it stop looking.`)
-      }
+    }
+    // Every reason a person must act on goes in one comment, not one each:
+    // failed checks and missing required checks often block the same head.
+    const fails = result.blocks.filter((b) => b.kind === 'fail')
+    if (fails.length > 0) {
+      const key = fails.map((b) => b.key).sort().join('+')
+      const reasons = fails.length === 1 ? fails[0].reason : fails.map((b) => `- ${b.reason}`).join('\n')
+      await postOnce(ctx, repo, pr.number, sha, key, `Ship bot is not merging this yet.\n\n${reasons}\n\nIt checks again every couple of minutes. Add the \`${HOLD_LABEL}\` label to make it stop looking.`)
     }
     return false
   }

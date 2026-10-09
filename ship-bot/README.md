@@ -42,6 +42,26 @@ promptboi.com is special: the bot only ever publishes its website. If a merge
 changes the API or the database (`server/`), the bot merges it but does **not**
 deploy, says so, and leaves the deploy to a session.
 
+## Watching first
+
+After it is installed, the bot only **watches**. Every two minutes it works
+out what it would merge and deploy and writes that to its log
+(`~/.ship-bot/logs/ship-bot.log`, lines starting `OBSERVE`), but it changes
+nothing: no merges, no comments, no deploys.
+
+When the log looks right, let it act:
+
+```bash
+node ~/.ship-bot/app/ship-bot.mjs --set-live true
+```
+
+To stop merges and deploys again, at once (from the next pass, within two
+minutes):
+
+```bash
+node ~/.ship-bot/app/ship-bot.mjs --set-live false
+```
+
 ## How a change ships
 
 1. A session finishes the work and adds the **`ready-to-merge`** label.
@@ -53,8 +73,8 @@ deploy, says so, and leaves the deploy to a session.
 5. It comments on the pull request saying what happened, and shows a Mac
    notification when something went live or went wrong.
 
-To stop it: add the **`hold`** label to a pull request, or set `"live": false`
-in `~/.ship-bot/config.json` to stop everything, or run
+To stop it: add the **`hold`** label to a pull request, or run
+`node ~/.ship-bot/app/ship-bot.mjs --set-live false` to stop everything, or run
 `ship-bot/install.sh --uninstall` to remove it from the Mac.
 
 ## What it never does
@@ -72,9 +92,10 @@ in `~/.ship-bot/config.json` to stop everything, or run
 
 - **One pull request:** add the label **`hold`**. Remove it to let the bot
   carry on.
-- **Everything, right now:** open `~/.ship-bot/config.json` and change
-  `"live": true` to `"live": false`. The next run does nothing. Nothing else
-  needs to change; set it back to `true` to resume.
+- **Everything, right now:** run
+  `node ~/.ship-bot/app/ship-bot.mjs --set-live false` (or change `"live"` to
+  `false` in `~/.ship-bot/config.json`). From the next run it only watches and
+  logs. `--set-live true` resumes.
 - **Remove it from the Mac:** `ship-bot/install.sh --uninstall`.
 
 ## Where to look
@@ -110,8 +131,10 @@ ship-bot/protect-branches.sh --dry-run                 # print the branch-protec
 ```
 
 A dry run reads GitHub (it runs the verification kit's read-only gate scripts)
-but posts nothing, merges nothing and runs no deploy. `--live` refuses unless
-the config says `"live": true`, and any repository whose config entry still has
+but posts nothing, merges nothing and runs no deploy. `--live` acts only when
+the config says `"live": true`; otherwise it observes, which is a dry run whose
+decisions are logged as `OBSERVE` lines (only a missing or invalid config makes
+it refuse), and any repository whose config entry still has
 a `todo` list is refused in live mode until each item is confirmed and removed.
 
 The config lives outside this repository at `~/.ship-bot/config.json`;

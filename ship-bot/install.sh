@@ -15,7 +15,9 @@
 #     none; an existing config is never touched. The example has "live": false.
 #   - writes and loads ~/Library/LaunchAgents/net.gorfed.ship-bot.plist, which
 #     runs `ship-bot.mjs --live --once` every 120 seconds. Until the config says
-#     "live": true, each of those runs refuses and does nothing. Each run
+#     "live": true, each of those runs only observes: it logs what it would do
+#     (prefixed OBSERVE) and changes nothing. `ship-bot.mjs --set-live true`
+#     switches it to acting. Each run
 #     first moves ship-bot.log to ship-bot.log.1 once it passes 5 MB.
 #
 # It copies no secrets: the bot reads deploy credentials from each repo's own
@@ -144,4 +146,5 @@ mv "${PLIST}.tmp" "${PLIST}"
 unload
 launchctl bootstrap "${DOMAIN}" "${PLIST}"
 echo "Loaded ${LABEL}: every 120 s, logging to ${BOT_HOME}/logs/ship-bot.log."
-echo "It acts only when ${BOT_HOME}/config.json says \"live\": true."
+echo "Until ${BOT_HOME}/config.json says \"live\": true it only observes (see OBSERVE lines in the log)."
+echo "To let it merge and deploy: ${NODE_BIN} ${APP_DIR}/ship-bot.mjs --set-live true"
