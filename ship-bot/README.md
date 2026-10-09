@@ -14,10 +14,11 @@ pull request, asks:
 2. Did **every check pass** on the latest commit, including the specific
    checks that repository is supposed to run? A check that is still running,
    failed, was cancelled, or never ran at all means "not yet".
-3. Did **Bugbot** review it and find nothing, or have you **resolved every
-   Bugbot comment**? If Bugbot has not looked at the latest commit, the bot
-   asks it once (`bugbot run`) and waits. It never asks twice on one pull
-   request, which keeps Bugbot to two reviews per pull request.
+3. Did **Bugbot** review it and find nothing, or has **every Bugbot comment
+   been answered**, either with a reply written after the comment or by
+   resolving it? If Bugbot has not looked at the latest commit, the bot asks it
+   once (`bugbot run`) and waits. It never asks twice on one pull request, which
+   keeps Bugbot to two reviews per pull request.
 4. Does the description avoid phrases like "fixes #12" that would close an
    issue by accident?
 
@@ -40,6 +41,32 @@ on the repository:
 promptboi.com is special: the bot only ever publishes its website. If a merge
 changes the API or the database (`server/`), the bot merges it but does **not**
 deploy, says so, and leaves the deploy to a session.
+
+## How a change ships
+
+1. A session finishes the work and adds the **`ready-to-merge`** label.
+2. The bot waits until every check has passed and Bugbot has reviewed the
+   change, or until every Bugbot comment has an answer.
+3. It merges the pull request.
+4. For MoonMan and the websites, it first checks it can reach the NAS and the
+   Docker host, then puts the change live and checks the live site.
+5. It comments on the pull request saying what happened, and shows a Mac
+   notification when something went live or went wrong.
+
+To stop it: add the **`hold`** label to a pull request, or set `"live": false`
+in `~/.ship-bot/config.json` to stop everything, or run
+`ship-bot/install.sh --uninstall` to remove it from the Mac.
+
+## What it never does
+
+- Upload anything to the App Store or Google Play.
+- Anything that needs a password typed in. If the Mac cannot reach the NAS or
+  the Docker host on its own (for example, Tailscale wants you to log in
+  again), it merges nothing that would need a deploy and tells you, at most
+  once an hour.
+- Merge a pull request without the `ready-to-merge` label, or one with `hold`.
+- Retry a deploy that failed. It puts the previous version back and waits for
+  a person.
 
 ## How to stop it
 
@@ -77,8 +104,8 @@ node ~/.ship-bot/app/ship-bot.mjs --unblock MoonMan
 node ship-bot/ship-bot.mjs --dry-run --once            # what would it do? (default; makes no changes)
 node ship-bot/ship-bot.mjs --dry-run --once --verbose  # also why each PR was ignored
 node ship-bot/ship-bot.mjs --dry-run --once --repo MoonMan
-node --test 'ship-bot/test/*.test.mjs'                 # the bot's tests (no network)
-ship-bot/install.sh                                    # install or update the LaunchAgent
+ship-bot/check.sh                                      # the bot's tests (no network); install.sh runs this first
+ship-bot/install.sh                                    # install or update the LaunchAgent (refuses if check.sh fails)
 ship-bot/protect-branches.sh --dry-run                 # print the branch-protection calls
 ```
 
@@ -98,6 +125,12 @@ per-repository settings. An unknown or misspelt key is an error, never ignored.
   the merge instead of shipping unchecked code.
 - At most one merge per repository per run, and one deploy at a time across
   all repositories (a lock file, `~/.ship-bot/run.lock`).
+- Before the first merge in a deploy-mode repository each run, the config's
+  `preflight` steps (ssh to the NAS and to the Docker host) must succeed; if
+  not, only merge-only repositories merge that run.
+- When a check name appears more than once on a commit (a re-run), only its
+  latest run counts.
+- `~/.ship-bot/logs/ship-bot.log` moves to `ship-bot.log.1` once it passes 5 MB.
 - A deploy that fails is rolled back (the repository's `rollback` steps, or a
   redeploy of the previous commit) and never retried. A run interrupted in the
   middle of a deploy blocks that repository on the next run.
