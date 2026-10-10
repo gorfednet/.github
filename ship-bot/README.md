@@ -158,4 +158,6 @@ per-repository settings. An unknown or misspelt key is an error, never ignored.
   redeploy of the previous commit) and never retried. A run interrupted in the
   middle of a deploy blocks that repository on the next run.
 - The GitHub token comes from `gh auth token` each run and is never stored,
-  logged, or passed on a command line.
+  logged, or passed on a command line. A failed read is tried again twice, about two
+  seconds apart; if all three fail the pass does nothing and the log gives each
+  attempt's exit code, stderr and the length (never the content) of stdout.

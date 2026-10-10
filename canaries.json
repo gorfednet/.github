@@ -496,6 +496,30 @@
       "file": "scripts/fleet-report.mjs",
       "find": "    if (unread.length > 0) {",
       "replace": "    if (false) {"
+    },
+    {
+      "id": "fleet-report-judges-tag-only-workflows",
+      "guards": "A push workflow with only tag filters runs on tags and on nothing else, so its stale runs on the default branch are not the branch's health. Treating it as an unfiltered push made milestone-release read 'not green' on bindercurve.com for a failure from before it became tag-only.",
+      "command": "node --test 'test/fleetReport.test.mjs' 'test/workflowTriggers.test.mjs'",
+      "file": "scripts/lib/workflowTriggers.mjs",
+      "find": "  if (push.tags || push.tagsIgnore) return false\n",
+      "replace": ""
+    },
+    {
+      "id": "fleet-report-judges-every-workflow-on-main",
+      "guards": "Only workflows that run on a push to the branch or on a schedule speak for main. Judging every active workflow by its last run on the branch let a manual-only workflow's one-off failure (ops-nginx-restore-prod, 2026-09-15) hold main red.",
+      "command": "node --test 'test/fleetReport.test.mjs' 'test/workflowTriggers.test.mjs'",
+      "file": "scripts/fleet-report.mjs",
+      "find": "        if (verdict.judged) judgedWorkflows.push(workflow)\n",
+      "replace": "        if (true) judgedWorkflows.push(workflow)\n"
+    },
+    {
+      "id": "fleet-report-skips-workflow-with-unreadable-triggers",
+      "guards": "A workflow whose triggers could not be read is undetermined for main and the run goes red. Dropping it from both lists would be a workflow skipped silently, which is how a guard reads clean about what it could not look at.",
+      "command": "node --test 'test/fleetReport.test.mjs' 'test/workflowTriggers.test.mjs'",
+      "file": "scripts/fleet-report.mjs",
+      "find": "        triggerFailures.set(workflow.id, `could not read what triggers it (${cause.message})`)\n",
+      "replace": ""
     }
   ]
 }

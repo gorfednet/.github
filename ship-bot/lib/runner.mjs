@@ -16,7 +16,7 @@ const MAX_CAPTURE = 8 * 1024 * 1024
 /**
  * @typedef {{cmd: string, args?: string[], cwd?: string, env?: Record<string,string>,
  *   timeoutMs?: number, kind: string}} Command
- * @typedef {{code: number|null, stdout: string, stderr: string, timedOut: boolean, error?: string}} Result
+ * @typedef {{code: number|null, signal?: string, stdout: string, stderr: string, timedOut: boolean, error?: string}} Result
  */
 
 /** @param {Command} command @returns {Promise<Result>} */
@@ -63,11 +63,11 @@ export function run({ cmd, args = [], cwd, env, timeoutMs = 10 * 60 * 1000 }) {
       clearTimeout(timer)
       resolvePromise({ code: null, stdout, stderr, timedOut, error: cause.message })
     })
-    child.on('close', (code) => {
+    child.on('close', (code, signal) => {
       if (settled) return
       settled = true
       clearTimeout(timer)
-      resolvePromise({ code: timedOut ? null : code, stdout, stderr, timedOut })
+      resolvePromise({ code: timedOut ? null : code, signal: signal ?? undefined, stdout, stderr, timedOut })
     })
   })
 }

@@ -133,6 +133,103 @@ describe('command line', () => {
   })
 })
 
+describe('reading the GitHub token', () => {
+  /** Auth results, one per attempt; the last one repeats. */
+  const withAuth = (h, results) => {
+    let n = 0
+    h.runner = makeRunner({ handle: (cmd) => (cmd.kind === 'auth' ? results[Math.min(n++, results.length - 1)] : undefined) })
+    h.deps.runner = h.runner
+    h.sleeps = []
+    h.deps.sleep = async (ms) => h.sleeps.push(ms)
+  }
+  const good = { stdout: `${TOKEN}\n` }
+  // The shape seen in the live log: the command ran, said nothing, and did not succeed.
+  const silentFailure = { code: 1, stdout: '', stderr: '' }
+
+  it('retries a failed read and carries on when the second attempt works, with one warning', async () => {
+    const h = harness({ live: false, pulls: [makePr()] })
+    withAuth(h, [silentFailure, good])
+    const code = await main(['--once'], h.deps)
+    const out = h.out.join('\n')
+    assert.equal(code, 0, out)
+    assert.equal(h.runner.ofKind('auth').length, 2)
+    assert.deepEqual(h.sleeps, [2000], 'waits about two seconds between attempts')
+    assert.equal(h.out.filter((l) => / warn /.test(l)).length, 1, out)
+    assert.match(out, /warn {2}GitHub token read worked on attempt 2 of 3 \(attempt 1: exit 1, stderr "", stdout 0 chars\)/)
+    assert.equal(h.constructed(), 1, 'the pass went ahead')
+    assert.ok(!out.includes(TOKEN))
+  })
+
+  it('a clean first read logs no warning and never sleeps', async () => {
+    const h = harness({ live: false })
+    withAuth(h, [good])
+    assert.equal(await main(['--once'], h.deps), 0)
+    assert.equal(h.runner.ofKind('auth').length, 1)
+    assert.deepEqual(h.sleeps, [])
+    assert.ok(!h.out.some((l) => / warn /.test(l)))
+  })
+
+  it('three failures: the pass does nothing and the log says exit code, stderr and stdout length', async () => {
+    const h = harness({ live: true, pulls: [makePr()] })
+    withAuth(h, [
+      { code: 1, stdout: '', stderr: 'keychain locked' },
+      { code: 44, stdout: 'x', stderr: '' },
+      { code: null, stdout: '', stderr: '', timedOut: true },
+    ])
+    const code = await main(['--live', '--once'], h.deps)
+    const out = h.out.join('\n')
+    assert.equal(code, 1)
+    assert.equal(h.runner.ofKind('auth').length, 3)
+    assert.deepEqual(h.sleeps, [2000, 2000], 'no sleep after the last attempt')
+    assert.equal(h.constructed(), 0, 'fail closed: no GitHub client, nothing looked at')
+    assert.equal(h.github.writes.length, 0)
+    assert.equal(h.runner.calls.filter((c) => c.kind !== 'auth').length, 0)
+    assert.match(out, /error could not get a GitHub token from `.*auth token` after 3 attempts/)
+    assert.match(out, /attempt 1: exit 1, stderr "keychain locked", stdout 0 chars/)
+    assert.match(out, /attempt 2: exit 44, stderr "", stdout 1 chars/)
+    assert.match(out, /attempt 3: timed out, stderr "", stdout 0 chars/)
+  })
+
+  it('an empty token on a zero exit counts as a failed read and is retried', async () => {
+    const h = harness({ live: false })
+    withAuth(h, [{ code: 0, stdout: '\n' }, good])
+    assert.equal(await main(['--once'], h.deps), 0)
+    assert.equal(h.runner.ofKind('auth').length, 2)
+    assert.match(h.out.join('\n'), /attempt 1: exit 0, stderr "", stdout 1 chars/)
+  })
+
+  it('the token never appears in a log line, even when the command echoes it on stderr or fails with it on stdout', async () => {
+    const h = harness({ live: true })
+    withAuth(h, [
+      { code: 1, stdout: `${TOKEN} extra words`, stderr: `denied for ${TOKEN}` },
+      { code: 1, stdout: TOKEN, stderr: `Authorization: Bearer ${TOKEN}` },
+      { code: 1, stdout: '', stderr: `GH_TOKEN=${TOKEN}` },
+    ])
+    assert.equal(await main(['--live', '--once'], h.deps), 1)
+    assert.ok(h.out.join('\n').includes('attempt 3'), 'the failure was logged')
+    for (const line of h.out) assert.ok(!line.includes(TOKEN), line)
+    for (const part of ['FAKEtoken1234567890', 'abcdefghijkl']) assert.ok(!h.out.join('\n').includes(part))
+  })
+
+  it('a success on the final attempt also proceeds', async () => {
+    const h = harness({ live: false })
+    withAuth(h, [silentFailure, silentFailure, good])
+    assert.equal(await main(['--once'], h.deps), 0)
+    assert.equal(h.runner.ofKind('auth').length, 3)
+    assert.match(h.out.join('\n'), /worked on attempt 3 of 3/)
+  })
+
+  it('attempts and spacing can be set through the dependencies', async () => {
+    const h = harness({ live: false })
+    withAuth(h, [silentFailure])
+    h.deps.tokenAttempts = 2
+    h.deps.tokenRetryMs = 50
+    assert.equal(await main(['--once'], h.deps), 1)
+    assert.equal(h.runner.ofKind('auth').length, 2)
+    assert.deepEqual(h.sleeps, [50])
+  })
+})
+
 describe('--set-live', () => {
   const example = readFileSync(new URL('../config.example.json', import.meta.url), 'utf8')
   const file = (text = example) => {

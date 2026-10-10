@@ -174,7 +174,7 @@ function repository({ workflows = [CI, HEALTH] } = {}) {
     routes[lastRun(w.id)] = runs(completed('success'))
   }
   routes[`repos/${SLUG}/contents/${CI.path}`] = file(
-    'jobs:\n  a:\n    uses: gorfednet/.github/.github/workflows/pr-check-static.yml@v1\n',
+    'on:\n  push:\n    branches: [main]\n  pull_request:\njobs:\n  a:\n    uses: gorfednet/.github/.github/workflows/pr-check-static.yml@v1\n',
   )
   return routes
 }
@@ -304,6 +304,110 @@ describe('gathering: a failed lookup is never written as absence', () => {
   })
 })
 
+const RELEASE = { id: 4, name: 'milestone-release', path: '.github/workflows/milestone-release.yml', state: 'active' }
+const RESTORE = { id: 5, name: 'ops-nginx-restore-prod', path: '.github/workflows/ops-nginx-restore-prod.yml', state: 'active' }
+const TAG_ONLY = 'on:\n  push:\n    tags:\n      # a glob\n      - "v*.*.*.*"\n  workflow_dispatch:\n    inputs:\n      tag:\n        description: |\n          on: push\n          branches: [main]\njobs:\n  a:\n    runs-on: x\n'
+const MANUAL_ONLY = 'name: restore\non:\n  workflow_dispatch:\njobs:\n  a:\n    runs-on: x\n'
+
+/** A repository whose extra workflows each have the given file text and a failing last run on main. */
+function withFailing(extra) {
+  const routes = repository({ workflows: [CI, ...extra.map((e) => e.workflow)] })
+  for (const { workflow, text } of extra) {
+    routes[`repos/${SLUG}/contents/${workflow.path}`] = file(text)
+    routes[lastRun(workflow.id)] = runs(completed('failure'))
+  }
+  return routes
+}
+
+describe('gathering: only workflows that run on the branch speak for it', () => {
+  it('a tag-only workflow with an old failure on main does not make main red, and is listed as not judged', () => {
+    const run = report(withFailing([{ workflow: RELEASE, text: TAG_ONLY }]))
+    assert.equal(run.status, 0, `${run.stdout}${run.stderr}`)
+    assert.equal(line(run.summary, 'Main branch'), 'green (1 workflow(s) judged on main)')
+    assert.match(run.summary, /^- _Not judged: milestone-release \(tag-only\)_$/m)
+  })
+
+  it('a dispatch-only workflow with a one-off failure on main likewise', () => {
+    const run = report(withFailing([{ workflow: RESTORE, text: MANUAL_ONLY }]))
+    assert.equal(run.status, 0, `${run.stdout}${run.stderr}`)
+    assert.equal(line(run.summary, 'Main branch'), 'green (1 workflow(s) judged on main)')
+    assert.match(run.summary, /^- _Not judged: ops-nginx-restore-prod \(manual only\)_$/m)
+  })
+
+  it('names both exclusions in one line, as the report for bindercurve.com should', () => {
+    const run = report(withFailing([{ workflow: RELEASE, text: TAG_ONLY }, { workflow: RESTORE, text: MANUAL_ONLY }]))
+    assert.match(run.summary, /^- _Not judged: milestone-release \(tag-only\), ops-nginx-restore-prod \(manual only\)_$/m)
+    assert.equal(line(run.summary, 'Main branch'), 'green (1 workflow(s) judged on main)')
+  })
+
+  it('does not look up the last run of a workflow it does not judge', () => {
+    const routes = withFailing([{ workflow: RELEASE, text: TAG_ONLY }])
+    delete routes[lastRun(RELEASE.id)]
+    const run = report(routes)
+    assert.equal(run.status, 0, `${run.stdout}${run.stderr}`)
+  })
+
+  it('near miss: a workflow that runs on push to main still makes main red when it failed', () => {
+    const routes = repository()
+    routes[lastRun(CI.id)] = runs(completed('failure'))
+    const run = report(routes)
+    assert.equal(run.status, 0, `${run.stdout}${run.stderr}`)
+    assert.equal(line(run.summary, 'Main branch'), '**not green**: ci (failure) (2 workflow(s) judged on main)')
+    assert.doesNotMatch(run.summary, /Not judged/)
+  })
+
+  it('near miss: a push workflow that also has tags, or an unfiltered push, is judged', () => {
+    const both = 'on:\n  push:\n    branches:\n      - main\n    tags:\n      - "v*"\n'
+    const unfiltered = 'on: [push, workflow_dispatch]\n'
+    for (const text of [both, unfiltered]) {
+      const run = report(withFailing([{ workflow: RELEASE, text }]))
+      assert.equal(line(run.summary, 'Main branch'), '**not green**: milestone-release (failure) (2 workflow(s) judged on main)')
+      assert.doesNotMatch(run.summary, /Not judged/)
+    }
+  })
+
+  it('a scheduled workflow is judged; a push to other branches only is not', () => {
+    const scheduled = report(withFailing([{ workflow: RESTORE, text: 'on:\n  schedule:\n    - cron: "0 7 * * *"\n' }]))
+    assert.match(line(scheduled.summary, 'Main branch'), /^\*\*not green\*\*: ops-nginx-restore-prod/)
+    const other = report(withFailing([{ workflow: RESTORE, text: 'on:\n  push:\n    branches: [release/**]\n' }]))
+    assert.equal(line(other.summary, 'Main branch'), 'green (1 workflow(s) judged on main)')
+    assert.match(other.summary, /Not judged: ops-nginx-restore-prod \(push to other branches only\)/)
+  })
+
+  it('a workflow whose triggers cannot be read makes main undetermined and the run red, never skipped', () => {
+    const run = report(withFailing([{ workflow: RELEASE, text: 'name: no trigger block here\njobs: {}\n' }]))
+    assert.equal(run.status, 1, `${run.stdout}${run.stderr}`)
+    assert.match(line(run.summary, 'Main branch'), /^undetermined: could not read the last run of milestone-release \(could not read what triggers it/)
+    assert.match(run.summary, /Could not check:\*\* the triggers of milestone-release/)
+    assert.doesNotMatch(run.summary, /Not judged/)
+  })
+
+  it('a workflow file that could not be read is undetermined for main as well, not skipped', () => {
+    const routes = withFailing([{ workflow: RELEASE, text: TAG_ONLY }])
+    routes[`repos/${SLUG}/contents/${RELEASE.path}`] = { status: 502 }
+    const run = report(routes)
+    assert.equal(run.status, 1, `${run.stdout}${run.stderr}`)
+    assert.match(line(run.summary, 'Main branch'), /^undetermined: could not read the last run of milestone-release/)
+    assert.doesNotMatch(run.summary, /Not judged/)
+  })
+
+  it('says so when no workflow runs on the branch at all, rather than "no active workflows"', () => {
+    const routes = repository({ workflows: [RELEASE] })
+    routes[`repos/${SLUG}/contents/${RELEASE.path}`] = file(TAG_ONLY)
+    const run = report(routes)
+    assert.equal(run.status, 0, `${run.stdout}${run.stderr}`)
+    assert.match(line(run.summary, 'Main branch'), /^no workflow judges main \(1 active workflow\(s\)/)
+  })
+
+  it('GitHub-managed workflows with no file are judged by their runs, as before', () => {
+    const pages = { id: 6, name: 'pages build and deployment', path: 'dynamic/pages/pages-build-deployment', state: 'active' }
+    const routes = repository({ workflows: [CI, pages] })
+    routes[lastRun(pages.id)] = runs(completed('failure'))
+    const run = report(routes)
+    assert.equal(line(run.summary, 'Main branch'), '**not green**: pages build and deployment (failure) (2 workflow(s) judged on main)')
+  })
+})
+
 describe('gathering: one page is not the whole', () => {
   it('a failure whose last completion is not on the first page of runs still reads as not green', () => {
     const routes = repository({ workflows: [CI, { id: 3, name: 'deploy', path: '.github/workflows/deploy.yml', state: 'active' }] })
@@ -329,6 +433,7 @@ describe('gathering: one page is not the whole', () => {
     routes[workflowsPage(1)] = ok({ total_count: 101, workflows: idle })
     routes[workflowsPage(2)] = ok({ total_count: 101, workflows: [late] })
     routes[lastRun(late.id)] = runs(completed('failure'))
+    routes[`repos/${SLUG}/contents/${late.path}`] = file('on: push\n')
     const run = report(routes)
     assert.equal(line(run.summary, 'Main branch'), '**not green**: late (failure) (1 workflow(s) judged on main)')
   })
