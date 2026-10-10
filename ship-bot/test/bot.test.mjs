@@ -297,19 +297,147 @@ describe('gate (d): Bugbot', () => {
     assert.equal(gh.writes.length, 0)
   })
 
-  it('with the budget spent and a Bugbot thread unresolved: no merge, one comment naming the thread', async () => {
+  it('with findings and a Bugbot thread unresolved: no merge, one comment naming the thread', async () => {
     const gh = new FakeGitHub({
-      comments: [{ pr: 7, body: 'bugbot run', created_at: '2026-10-09T09:00:00Z' }],
       threads: [{ isResolved: false, author: 'cursor', path: 'src/a.ts', line: 3, url: 'https://github.com/x/1' }],
     })
-    const s = scenario({ repos: bugbotRepo(), github: gh, runner: makeRunner({ handle: notRun }) })
+    const s = scenario({ repos: bugbotRepo(), github: gh, runner: makeRunner({ handle: findings }) })
     await s.run()
     await s.run()
     assert.equal(merges(gh).length, 0)
     const posted = bodies(gh)
     assert.equal(posted.length, 1)
-    assert.match(posted[0], /budget for this PR is spent; 1 Bugbot comment thread\(s\) have no answer yet\. Reply to each Bugbot comment .* or resolve it/)
+    assert.match(posted[0], /Bugbot reported findings; 1 Bugbot comment thread\(s\) have no answer yet\. Reply to each Bugbot comment .* or resolve it/)
     assert.match(posted[0], /src\/a\.ts:3/)
+  })
+
+  // Two Bugbot reviews and a `bugbot run` from before this head was pushed:
+  // under the old two-review budget this PR had nothing left to spend.
+  const afterTwoReviews = (extra = {}) =>
+    new FakeGitHub({
+      reviews: [
+        { user: { login: 'cursor[bot]' }, submitted_at: '2026-10-09T08:00:00Z' },
+        { user: { login: 'cursor[bot]' }, submitted_at: '2026-10-09T09:30:00Z' },
+      ],
+      comments: [{ pr: 7, body: 'bugbot run', created_at: '2026-10-09T09:00:00Z' }],
+      ...extra,
+    })
+
+  it('an unreviewed head after two reviews, with every Bugbot thread answered: waits for a review instead of merging', async () => {
+    const gh = afterTwoReviews({
+      threads: [
+        { isResolved: true, author: 'cursor', path: 'src/a.ts', url: 'u1' },
+        { isResolved: true, author: 'cursor', path: 'src/b.ts', url: 'u2' },
+      ],
+    })
+    const s = scenario({ repos: bugbotRepo(), github: gh, runner: makeRunner({ handle: notRun }) })
+    await s.run()
+    s.clock.advance(20)
+    await s.run()
+    await s.run()
+    assert.equal(merges(gh).length, 0, 'an unreviewed final head never merges, however many reviews came before')
+    assert.deepEqual(bodies(gh), ['bugbot run'])
+  })
+
+  it('a head pushed after two reviews and a `bugbot run`: asks for a third review once, merges only once it is reviewed clean', async () => {
+    let state = 'not-run'
+    const handle = (cmd) =>
+      cmd.args?.[0]?.endsWith('bugbot-review-status.mjs')
+        ? state === 'clean'
+          ? { code: 0, stdout: '#7  clean  no issues found\n' }
+          : { code: 1, stdout: '#7  not-run  no Bugbot check run on the PR head\n' }
+        : undefined
+    const gh = afterTwoReviews()
+    const s = scenario({ repos: bugbotRepo(), github: gh, runner: makeRunner({ handle }) })
+    await s.run()
+    assert.equal(bodies(gh).length, 0, 'gives the automatic review its grace period first')
+    s.clock.advance(20)
+    for (let i = 0; i < 5; i += 1) {
+      await s.run()
+      s.clock.advance(5)
+    }
+    assert.deepEqual(bodies(gh), ['bugbot run'], 'one request for this head, never two')
+    assert.equal(merges(gh).length, 0, 'not merged while the third review is outstanding')
+    state = 'clean'
+    await s.run()
+    assert.equal(merges(gh).length, 1)
+    assert.deepEqual(bodies(gh).filter((b) => b === 'bugbot run'), ['bugbot run'])
+  })
+
+  it('a new head after a request: asks once for the new head too, and never twice for either', async () => {
+    const gh = new FakeGitHub()
+    const s = scenario({ repos: bugbotRepo(), github: gh, runner: makeRunner({ handle: notRun }) })
+    await s.run()
+    s.clock.advance(20)
+    await s.run()
+    await s.run()
+    assert.deepEqual(bodies(gh), ['bugbot run'])
+    // A fix lands: a new head, its checks start an hour later.
+    const NEXT = 'd'.repeat(40)
+    gh.pulls[0].head.sha = NEXT
+    gh.runs = greenRuns(undefined, '2026-10-09T13:20:00Z')
+    s.clock.advance(60)
+    await s.run()
+    assert.equal(bodies(gh).length, 1, 'grace period on the new head first')
+    s.clock.advance(20)
+    for (let i = 0; i < 4; i += 1) {
+      await s.run()
+      s.clock.advance(5)
+    }
+    assert.deepEqual(bodies(gh), ['bugbot run', 'bugbot run'])
+    assert.equal(merges(gh).length, 0)
+    assert.equal(s.state().data.prs[`${SLUG}#7`].bugbotRequestedHead, NEXT)
+  })
+
+  // What Cursor reports when the account is out of Bugbot budget: a completed
+  // neutral run with an error title and no completed-review summary.
+  const usageLimitRun = {
+    name: 'Cursor Bugbot',
+    status: 'completed',
+    conclusion: 'neutral',
+    started_at: '2026-10-09T12:01:00Z',
+    output: { title: "Bugbot couldn't run - usage limit reached", summary: 'Your team has reached its Bugbot usage limit.' },
+  }
+  const usageLimitStatus = (cmd) =>
+    cmd.args?.[0]?.endsWith('bugbot-review-status.mjs') ? { code: 1, stdout: '#7  not-run  conclusion "neutral" with no completed-review summary\n' } : undefined
+
+  it('a usage-limit error on the head: no merge, no `bugbot run`, one comment and one notification across many runs', async () => {
+    const gh = new FakeGitHub({ runs: [...greenRuns(), usageLimitRun] })
+    const s = scenario({ repos: bugbotRepo(), github: gh, runner: makeRunner({ handle: usageLimitStatus }) })
+    for (let i = 0; i < 6; i += 1) {
+      await s.run()
+      s.clock.advance(30)
+    }
+    assert.equal(merges(gh).length, 0)
+    const posted = bodies(gh)
+    assert.equal(posted.length, 1, posted.join('\n---\n'))
+    assert.match(posted[0], /Bugbot could not review this head: Bugbot couldn't run - usage limit reached/)
+    assert.ok(!posted.includes('bugbot run'), 'asking again would only hit the same limit')
+    const notes = s.runner.ofKind('notify')
+    assert.equal(notes.length, 1)
+    assert.match(notes[0].args[1], /usage limit reached/)
+  })
+
+  it('a usage-limit error: a dry run says it would notify, and notifies nobody', async () => {
+    const gh = new FakeGitHub({ runs: [...greenRuns(), usageLimitRun] })
+    const s = scenario({ repos: bugbotRepo(), github: gh, runner: makeRunner({ handle: usageLimitStatus }) })
+    const decisions = (await s.run('dry-run')).map((d) => d.text)
+    assert.equal(gh.writes.length, 0)
+    assert.equal(s.runner.ofKind('notify').length, 0)
+    assert.ok(decisions.some((t) => /would notify: .*usage limit reached/.test(t)), decisions.join('\n'))
+  })
+
+  it('near miss: a completed neutral Bugbot run with no error in its title is not an error, so the bot asks once', async () => {
+    const quiet = { ...usageLimitRun, output: { title: 'Bugbot', summary: '' } }
+    const gh = new FakeGitHub({ runs: [...greenRuns(), quiet] })
+    const s = scenario({ repos: bugbotRepo(), github: gh, runner: makeRunner({ handle: usageLimitStatus }) })
+    await s.run()
+    s.clock.advance(20)
+    await s.run()
+    await s.run()
+    assert.deepEqual(bodies(gh), ['bugbot run'])
+    assert.equal(s.runner.ofKind('notify').length, 0)
+    assert.equal(merges(gh).length, 0)
   })
 
   it('with findings and every Bugbot thread resolved: merges', async () => {
