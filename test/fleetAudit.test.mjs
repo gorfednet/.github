@@ -48,14 +48,41 @@ describe('fleet-audit workflow', () => {
   })
 })
 
+/**
+ * The script's output format depends on GITHUB_ACTIONS (an annotation in CI, an
+ * indented line in a terminal), so every spawn here sets it explicitly. Inheriting
+ * it made the test pass on a laptop and fail in CI, where the variable is set.
+ */
+const envWith = (githubActions, extra = {}) => {
+  const env = { ...process.env, ...extra }
+  delete env.GITHUB_ACTIONS
+  if (githubActions) env.GITHUB_ACTIONS = 'true'
+  return env
+}
+
 describe('check-fleet --report', () => {
-  it('prints a finding as a warning and exits 0', () => {
-    const file = registryWith((doc) => {
+  const file = () =>
+    registryWith((doc) => {
       doc.projects[0].archetype = 'something-new'
     })
-    const result = spawnSync('node', [CHECK, '--offline', '--report', '--file', file], { encoding: 'utf8' })
+
+  it('prints a finding as a warning and exits 0, in a terminal', () => {
+    const result = spawnSync('node', [CHECK, '--offline', '--report', '--file', file()], {
+      encoding: 'utf8',
+      env: envWith(false),
+    })
     assert.equal(result.status, 0, result.stderr)
-    assert.match(result.stderr, /warning: .*unknown archetype/)
+    assert.match(result.stderr, /^ {2}warning: .*unknown archetype/m)
+    assert.match(result.stdout, /Findings are reported, not failed/)
+  })
+
+  it('prints the same finding as a GitHub warning annotation in Actions, and exits 0', () => {
+    const result = spawnSync('node', [CHECK, '--offline', '--report', '--file', file()], {
+      encoding: 'utf8',
+      env: envWith(true),
+    })
+    assert.equal(result.status, 0, result.stderr)
+    assert.match(result.stderr, /^::warning::.*unknown archetype/m)
     assert.match(result.stdout, /Findings are reported, not failed/)
   })
 
@@ -68,7 +95,7 @@ describe('check-fleet --report', () => {
     chmodSync(join(dir, 'gh'), 0o755)
     const result = spawnSync('node', [CHECK, '--report'], {
       encoding: 'utf8',
-      env: { ...process.env, PATH: `${dir}:${process.env.PATH}` },
+      env: envWith(false, { PATH: `${dir}:${process.env.PATH}` }),
     })
     assert.equal(result.status, 1, `${result.stdout}${result.stderr}`)
     assert.match(result.stderr, /fleet audit could not run/)
