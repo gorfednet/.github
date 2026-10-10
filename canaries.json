@@ -442,6 +442,30 @@
       "replace": "entry.reviewBy > today"
     },
     {
+      "id": "fleet-report-reads-hidden-actions-as-quiet",
+      "guards": "A 404 or 403 from a repository's Actions runs list, after the repository itself was read, means the token cannot see Actions: that list answers 200 and empty when nothing has run. Read as absence, a token without Actions access made the first audit report a quiet, green fleet (Bugbot on #43, V39).",
+      "command": "node --test 'test/fleetReport.test.mjs'",
+      "file": "scripts/fleet-report.mjs",
+      "find": "  } else if (refused(runs)) {",
+      "replace": "  } else if (false) {"
+    },
+    {
+      "id": "fleet-report-reads-hidden-files-as-absent",
+      "guards": "The report probes a repository's root listing before reading a missing workflow directory or backlog as absent. Without the probe, a token that cannot read files reports every repository as having no workflows, no backlog and no healthcheck, and exits 0 (V39).",
+      "command": "node --test 'test/fleetReport.test.mjs'",
+      "file": "scripts/fleet-report.mjs",
+      "find": "  const filesHidden = root.value === undefined && refused(root)",
+      "replace": "  const filesHidden = false"
+    },
+    {
+      "id": "fleet-report-judges-only-the-newest-run",
+      "guards": "Each workflow on main is judged by its last finished run. Judging the newest run and dropping it when it was still in progress hid a failed last completion, so main read green, or as having no completed runs, while a workflow's last finished run had failed (Bugbot on #43).",
+      "command": "node --test 'test/fleetReport.test.mjs'",
+      "file": "scripts/fleet-report.mjs",
+      "find": "    if (run.status === 'completed') {",
+      "replace": "    if (true) {"
+    },
+    {
       "id": "pr-check-ignores-jobs-that-never-ran",
       "guards": "A run whose jobs failed without running a step counts as started. While bindercurve.com's account payment was failing, every job on #327 and #333 to #339 concluded failure with zero steps and the check said all started, so a branch nobody tested read as a broken one.",
       "command": "node --test 'templates/verification-kit/test/checksStarted.test.mjs'",

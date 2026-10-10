@@ -109,8 +109,10 @@ jobs:
           node-version: '22'
 
       # Gate pin, main branch conclusion, lapsed backlog dates and the last
-      # healthcheck run, written to this job's summary. Red only if the
-      # repository cannot be read.
+      # healthcheck run, written to this job's summary. Red only if it could not
+      # look: the repository cannot be read, or it can but the token cannot read
+      # its files or see its Actions (a 404 there means "not allowed", since an
+      # empty run list is a 200; V39). The summary is written either way.
       - name: Report ${{ matrix.slug }}
         env:
           GH_TOKEN: ${{ secrets.FLEET_READ_TOKEN }}
