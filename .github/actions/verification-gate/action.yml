@@ -6,7 +6,11 @@ description: >-
 
 inputs:
   kit:
-    description: Path to the vendored verification kit.
+    description: >-
+      Ignored since the 2026-10 right-sizing. The gate runs the kit from its own
+      checkout (this repository at the ref the caller pinned), never from a copy
+      vendored into the calling repository. Still declared so callers that pass
+      it do not break.
     required: false
     default: verification-kit
   backlog:
@@ -25,7 +29,10 @@ inputs:
     required: false
     default: "1"
   rule-sources:
-    description: Space-separated roots to scan for rule citations.
+    description: >-
+      Ignored since the 2026-10 right-sizing, which removed the rule-citation
+      step (this repository checks its own rule sequence in verification-kit.yml).
+      Still declared so callers that pass it do not break.
     required: false
     default: "."
   source-dirs:
@@ -110,105 +117,84 @@ runs:
     # tests, which skipped the assertion whose whole purpose was proving the
     # job was not inert. A verification step ordered behind something that can
     # fail for an unrelated reason is not a gate. See rule V18.
+    #
+    # 2026-10 right-sizing. A pull request check fails only on something that
+    # pull request can change. The kit this gate runs is no longer the copy
+    # vendored into the calling repository: it is the copy in this repository
+    # at the ref the caller pinned, so there is nothing in the consumer to
+    # drift, and no check for drift. What a consumer's change cannot affect (the
+    # kit's own correctness, rule numbering, a dated grace window) is
+    # checked where it can be changed (verification-kit.yml here) or reported
+    # on a schedule (fleet-audit.yml). The page-shaped and repository-shaped
+    # checks that remain report with a `::warning` annotation and do not fail
+    # the job; docs/verification-rules.md ("2026-10 right-sizing") records, for
+    # each one, what still catches its class. What stays enforced is what the
+    # change under review decides: the consumer's own build and tests, and the
+    # executed-count floor that proves they ran.
 
-    - name: Verification kit is present
+    # When a workflow says `uses: gorfednet/.github/.github/actions/verification-gate@<ref>`
+    # the runner downloads this whole repository at <ref> and runs the action
+    # from `<workspace-runner>/_actions/gorfednet/.github/<ref>/.github/actions/verification-gate`
+    # (that is `github.action_path`). Three levels up (verification-gate ->
+    # actions -> .github -> repository root) is this repository's root, and the
+    # kit is at templates/verification-kit under it. Resolved once here and read
+    # as $VERIFICATION_GATE_KIT by every step below.
+    - name: Locate the kit this gate runs
       if: ${{ !cancelled() }}
       shell: bash
       run: |
         set -euo pipefail
-        if [ ! -d "${{ inputs.kit }}" ]; then
-          echo "::error::No verification kit at ${{ inputs.kit }}."
-          echo "Install it: https://github.com/gorfednet/.github/tree/main/templates/verification-kit"
+        wanted="${{ github.action_path }}/../../../templates/verification-kit"
+        # The `cd` is inside the test, so a missing folder reaches the message
+        # below instead of ending the step under `set -e` with no word of whose
+        # fault it is.
+        if ! kit="$(cd "$wanted" 2>/dev/null && pwd)" || [ ! -f "$kit/bin/check-backlog.mjs" ]; then
+          echo "::error::The verification kit was not found at $wanted. This action is" \
+               "broken at the ref it was pinned to; it is not a problem in the calling repository."
           exit 1
         fi
-        echo "kit: $(find '${{ inputs.kit }}' -type f | wc -l | tr -d ' ') file(s)"
-
-    # Fifteen copies of the same script drift apart one fix at a time, and
-    # every one of them keeps printing ticks. This is the only thing looking.
-    - name: Kit is current and unmodified
-      if: ${{ !cancelled() }}
-      shell: bash
-      run: node "${{ inputs.kit }}/bin/check-kit-drift.mjs" --kit "${{ inputs.kit }}"
-
-    # The kit ships its own tests and, until this step, no consuming project
-    # ever ran them — seventy-six assertions vendored into a repository as
-    # decoration. They also answer a question the drift check cannot: whether
-    # the kit works *here*, on this runner, in a repository that may have no
-    # package.json and no npm at all. The floor is what separates that from a
-    # glob quietly matching nothing.
-    - name: The kit works in this repository
-      if: ${{ !cancelled() }}
-      shell: bash
-      run: |
-        set -euo pipefail
-        # Two separate questions, and piping into `grep -c` answers only the
-        # second. `node --test | grep` reports grep's status, so a suite where
-        # everything failed still exits 0 as long as enough `ok` lines came
-        # out of it — and `|| true` on top would swallow even a crash. Run it
-        # once to a file, check that it passed, then count what it ran.
-        report=$(mktemp)
-        status=0
-        node --test --test-reporter=tap "${{ inputs.kit }}/test/"*.test.mjs \
-          | tee "$report" || status=$?
-        if [ "$status" -ne 0 ]; then
-          echo "::error::The vendored kit's own tests fail in this repository." \
-               "The checks below are running on a kit that does not work here."
-          exit 1
-        fi
-        count=$(grep -c '^ *ok ' "$report" || true)
-        echo "kit self-tests executed $count assertion(s)"
-        # Raised from 40 to 250 in the change that added check-page-metadata,
-        # check-og-image and check-error-pages with 43 tests between them.
-        # Measured on that commit: 266 `ok` lines. The floor is not the count —
-        # it is far enough below it to tolerate a skip and far enough above the
-        # old value that dropping one of the three new suites cannot pass.
-        # A floor that stays put while the suite grows stops being a floor.
-        if [ "$count" -lt 250 ]; then
-          echo "::error::The kit's own suite executed $count tests, expected at least 250." \
-               "A glob that matches nothing exits 0 having proven nothing."
-          exit 1
-        fi
-
-    - name: Rule citations resolve
-      if: ${{ !cancelled() }}
-      shell: bash
-      run: |
-        node "${{ inputs.kit }}/bin/check-rule-citations.mjs" \
-          $(for root in ${{ inputs.rule-sources }}; do printf -- '--source %s ' "$root"; done)
+        echo "VERIFICATION_GATE_KIT=$kit" >> "$GITHUB_ENV"
+        echo "kit: $kit"
 
     - name: No generated files tracked in git
       if: ${{ !cancelled() }}
       shell: bash
       run: |
-        node "${{ inputs.kit }}/bin/check-tracked-artifacts.mjs" \
-          $(for dir in ${{ inputs.source-dirs }}; do printf -- '--source %s ' "$dir"; done)
+        if ! node "$VERIFICATION_GATE_KIT/bin/check-tracked-artifacts.mjs" \
+          $(for dir in ${{ inputs.source-dirs }}; do printf -- '--source %s ' "$dir"; done); then
+          echo "::warning title=No generated files tracked in git::Generated files are tracked in git. See this step's log for the paths; untrack them or list the directory in source-dirs."
+        fi
 
     # Both of these need --site-url and a page list. A caller that supplies one
     # and not the other has half-wired the gate, which is worse than not wiring
     # it: the run goes green having skipped the check silently. So the mismatch
-    # is a failure rather than a skip.
+    # is reported rather than skipped.
     - name: Metadata and social-card inputs agree
       if: ${{ !cancelled() }}
       shell: bash
       run: |
-        set -euo pipefail
         url="${{ inputs.site-url }}"
         pages="${{ inputs.metadata-pages }}"
         root="${{ inputs.publish-root }}"
-        if [ -n "$pages" ] && [ -z "$url" ]; then
-          echo "::error::metadata-pages is set but site-url is not, so the" \
-               "metadata and og:image checks were skipped. Set site-url."
-          exit 1
-        fi
-        if [ -n "$url" ] && [ -z "$pages" ]; then
-          echo "::error::site-url is set but metadata-pages is empty, so the" \
-               "metadata check has nothing to read and would pass over zero pages."
-          exit 1
-        fi
-        if [ -n "$pages" ] && [ -z "$root" ]; then
-          echo "::error::metadata-pages is set but publish-root is not, so no" \
-               "og:image could be resolved to bytes. Set publish-root."
-          exit 1
+        inputs_agree() {
+          if [ -n "$pages" ] && [ -z "$url" ]; then
+            echo "metadata-pages is set but site-url is not, so the" \
+                 "metadata and og:image checks were skipped. Set site-url."
+            return 1
+          fi
+          if [ -n "$url" ] && [ -z "$pages" ]; then
+            echo "site-url is set but metadata-pages is empty, so the" \
+                 "metadata check has nothing to read and would pass over zero pages."
+            return 1
+          fi
+          if [ -n "$pages" ] && [ -z "$root" ]; then
+            echo "metadata-pages is set but publish-root is not, so no" \
+                 "og:image could be resolved to bytes. Set publish-root."
+            return 1
+          fi
+        }
+        if ! inputs_agree; then
+          echo "::warning title=Metadata and social-card inputs agree::The site-url, metadata-pages and publish-root inputs do not agree, so the metadata checks did not run as configured. See this step's log."
         fi
 
     # `!cancelled()` on every check above is deliberate (V18): an earlier failure
@@ -220,60 +206,66 @@ runs:
     # a screen and a half above them.
     #
     # So the gate says the one thing those eighteen lines could not: the
-    # directory is not there. It does not turn the checks off, because a
-    # genuinely missing publish set is still a failure — it names it once,
-    # accurately, and stops before the noise.
+    # directory is not there. It does not turn the checks off; it names the
+    # missing directory once, accurately, ahead of the noise.
     - name: The publish set the gate was asked to read exists
       if: ${{ !cancelled() && (inputs.publish-root != '' || inputs.error-page-root != '') }}
       shell: bash
       run: |
-        set -euo pipefail
-        for root in "${{ inputs.publish-root }}" "${{ inputs.error-page-root }}"; do
-          [ -n "$root" ] || continue
-          if [ ! -d "$root" ]; then
-            echo "::error::The gate was asked to read \"$root\" and there is no such" \
-                 "directory. Every check below it will report its own file missing," \
-                 "which is true and is not the cause. Look for the first failed or" \
-                 "skipped step in this job: if Build did not run, that is why."
-            exit 1
-          fi
-          if [ -z "$(find "$root" -type f -print -quit)" ]; then
-            echo "::error::The gate was asked to read \"$root\" and it contains no" \
-                 "files. A build that produced an empty directory fails here rather" \
-                 "than one check at a time."
-            exit 1
-          fi
-        done
+        publish_set_exists() {
+          for root in "${{ inputs.publish-root }}" "${{ inputs.error-page-root }}"; do
+            [ -n "$root" ] || continue
+            if [ ! -d "$root" ]; then
+              echo "The gate was asked to read \"$root\" and there is no such" \
+                   "directory. Every check below it will report its own file missing," \
+                   "which is true and is not the cause. Look for the first failed or" \
+                   "skipped step in this job: if Build did not run, that is why."
+              return 1
+            fi
+            if [ -z "$(find "$root" -type f -print -quit)" ]; then
+              echo "The gate was asked to read \"$root\" and it contains no" \
+                   "files. A build that produced an empty directory fails here rather" \
+                   "than one check at a time."
+              return 1
+            fi
+          done
+        }
+        if ! publish_set_exists; then
+          echo "::warning title=The publish set the gate was asked to read exists::A directory the gate was asked to read is missing or empty. The page checks below will report their own files missing; look for the first failed or skipped step in this job."
+        fi
 
     - name: Page metadata is per-page and correct
       if: ${{ !cancelled() && inputs.metadata-pages != '' }}
       shell: bash
       run: |
-        set -euo pipefail
-        node "${{ inputs.kit }}/bin/check-page-metadata.mjs" \
+        if ! node "$VERIFICATION_GATE_KIT/bin/check-page-metadata.mjs" \
           --site-url "${{ inputs.site-url }}" \
           ${{ inputs.require-jsonld == 'true' && '--require-jsonld' || '' }} \
-          $(for page in ${{ inputs.metadata-pages }}; do printf -- '--page %s ' "$page"; done)
+          $(for page in ${{ inputs.metadata-pages }}; do printf -- '--page %s ' "$page"; done); then
+          echo "::warning title=Page metadata is per-page and correct::A checked page has missing, duplicated or wrong metadata (canonical, title, description, JSON-LD). See this step's log."
+        fi
 
     - name: The social card is the image it says it is
       if: ${{ !cancelled() && inputs.metadata-pages != '' }}
       shell: bash
       run: |
-        set -euo pipefail
-        node "${{ inputs.kit }}/bin/check-og-image.mjs" \
+        if ! node "$VERIFICATION_GATE_KIT/bin/check-og-image.mjs" \
           --site-url "${{ inputs.site-url }}" \
           --root "${{ inputs.publish-root }}" \
           --max-bytes "${{ inputs.og-max-bytes }}" \
-          $(for page in ${{ inputs.metadata-pages }}; do printf -- '--page %s ' "$page"; done)
+          $(for page in ${{ inputs.metadata-pages }}; do printf -- '--page %s ' "$page"; done); then
+          echo "::warning title=The social card is the image it says it is::An og:image does not resolve to an image of the stated kind and size. See this step's log."
+        fi
 
     - name: Error pages ship with the site
       if: ${{ !cancelled() && inputs.error-page-root != '' }}
       shell: bash
       run: |
-        set -euo pipefail
-        node "${{ inputs.kit }}/bin/check-error-pages.mjs" \
+        if ! node "$VERIFICATION_GATE_KIT/bin/check-error-pages.mjs" \
           --root "${{ inputs.error-page-root }}" \
-          $(for marker in ${{ inputs.error-page-markers }}; do printf -- '--expect-text %s ' "$marker"; done)
+          $(for marker in ${{ inputs.error-page-markers }}; do printf -- '--expect-text %s ' "$marker"; done); then
+          echo "::warning title=Error pages ship with the site::404.html or 500.html is missing or is a placeholder. See this step's log."
+        fi
 
     # Unconditional, unlike the checks above it. This one needs no configuration
     # to be meaningful — every repository has a git index — and the defect it
@@ -281,48 +273,35 @@ runs:
     # dependency from a sibling checkout fails on the runner if something happens
     # to run it, and stays invisible if nothing does. Two of the three instances
     # in this fleet were in the second category.
+    #
+    # (The title says "%2C" for the comma: annotation properties are
+    # comma-separated, so a literal comma would end the title early.)
     - name: Paths are derived, not named
       if: ${{ !cancelled() }}
       shell: bash
       run: |
-        set -euo pipefail
-        checker="${{ inputs.kit }}/bin/check-machine-paths.mjs"
-        # A dated grace window, not an indefinite tolerance. This checker arrives
-        # in kit 0.40.0, and the drift gate permits one minor behind, so a
-        # repository sitting on 0.39.0 passes drift and has no such file. Making
-        # its absence fatal on day one would turn ten repositories red at once,
-        # and a fleet-wide red is indistinguishable from a fleet-wide outage.
-        #
-        # So it is loud immediately and fatal from the date below, whatever anyone
-        # remembers. Undated deferral is what becomes permanent by accident; the
-        # fix in the meantime is one command, printed here.
-        grace="${MACHINE_PATHS_GRACE_UNTIL:-20261015}"
-        today="${MACHINE_PATHS_TODAY:-$(date -u +%Y%m%d)}"
-        if [ ! -f "$checker" ]; then
-          echo "check-machine-paths.mjs is absent from ${{ inputs.kit }} (V73)."
-          echo "Refresh the vendored kit: node ${{ inputs.kit }}/bin/refresh-kit.mjs"
-          if [ "$today" -ge "$grace" ]; then
-            echo "The grace window for this closed on $grace. Failing."
-            exit 1
-          fi
-          echo "Not fatal until $grace."
-          exit 0
+        if ! node "$VERIFICATION_GATE_KIT/bin/check-machine-paths.mjs" \
+          $(for allow in ${{ inputs.allow-machine-paths }}; do printf -- '--allow %s ' "$allow"; done); then
+          echo "::warning title=Paths are derived%2C not named::A tracked file names an absolute machine path. See this step's log; derive the path, or waive it with allow-machine-paths."
         fi
-        node "$checker" \
-          $(for allow in ${{ inputs.allow-machine-paths }}; do printf -- '--allow %s ' "$allow"; done)
 
     - name: Backlog describes reality
       if: ${{ !cancelled() && inputs.backlog != '' }}
       shell: bash
-      run: node "${{ inputs.kit }}/bin/check-backlog.mjs" --file "${{ inputs.backlog }}"
+      run: |
+        if ! node "$VERIFICATION_GATE_KIT/bin/check-backlog.mjs" --file "${{ inputs.backlog }}"; then
+          echo "::warning title=Backlog describes reality::The backlog has an entry that is malformed, stale or contradicts the repository. See this step's log."
+        fi
 
     # A fully-skipped suite exits 0, so only a count can tell a green job that
-    # ran everything from a green job that ran nothing.
+    # ran everything from a green job that ran nothing. Enforced: this is the
+    # one gate step that reads the consumer's own tests, which the pull request
+    # under review can break.
     - name: Assert the tests actually ran
       if: ${{ !cancelled() && inputs.test-report != '' }}
       shell: bash
       run: |
-        node "${{ inputs.kit }}/bin/assert-tests-executed.mjs" \
+        node "$VERIFICATION_GATE_KIT/bin/assert-tests-executed.mjs" \
           --report "${{ inputs.test-report }}" \
           --min "${{ inputs.min-tests }}" \
           --label "${{ github.job }}"
