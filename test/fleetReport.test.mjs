@@ -64,57 +64,58 @@ describe('lapsedBacklog', () => {
 })
 
 describe('judgeMain', () => {
-  // The runs API lists newest first; these are in that order.
-  it('judges the last finished run when a newer one is still going, so a failure is not hidden', () => {
-    const verdict = judgeMain(
-      [
-        { workflow_id: 1, name: 'ci', status: 'in_progress', conclusion: null },
-        { workflow_id: 1, name: 'ci', status: 'completed', conclusion: 'failure' },
-        { workflow_id: 2, name: 'deploy', status: 'completed', conclusion: 'success' },
-      ],
-      'main',
-    )
-    assert.match(verdict, /^\*\*not green\*\*: ci \(failure\)/)
-    assert.match(verdict, /running now: ci/)
-  })
+  // One entry per active workflow: its last completed run on the branch (or
+  // null when it has none), or `failed` when that run could not be read.
+  const done = (conclusion) => ({ status: 'completed', conclusion })
 
-  it('reads green only when every workflow\'s last finished run passed, and says what is running', () => {
-    const verdict = judgeMain(
-      [
-        { workflow_id: 1, name: 'ci', status: 'queued', conclusion: null },
-        { workflow_id: 1, name: 'ci', status: 'completed', conclusion: 'success' },
-        { workflow_id: 2, name: 'deploy', status: 'completed', conclusion: 'skipped' },
-        { workflow_id: 2, name: 'deploy', status: 'completed', conclusion: 'failure' },
-      ],
-      'main',
-    )
-    assert.equal(verdict, 'green (2 workflow(s) on main); running now: ci')
-  })
-
-  it('keeps two workflows that share a display name apart', () => {
-    const verdict = judgeMain(
-      [
-        { workflow_id: 1, name: 'ci', status: 'completed', conclusion: 'success' },
-        { workflow_id: 2, name: 'ci', status: 'completed', conclusion: 'failure' },
-      ],
-      'main',
-    )
-    assert.match(verdict, /not green/)
-  })
-
-  it('says when nothing has finished, rather than green', () => {
+  it('reads green only when every judged workflow passed, and counts only what it judged', () => {
     assert.equal(
-      judgeMain([{ workflow_id: 1, name: 'ci', status: 'in_progress', conclusion: null }], 'main'),
-      'no completed runs on main; running now: ci',
+      judgeMain(
+        [
+          { name: 'ci', run: done('success') },
+          { name: 'deploy', run: done('skipped') },
+          { name: 'pr-only', run: null },
+        ],
+        'main',
+      ),
+      'green (2 workflow(s) judged on main, 1 with no completed run there)',
     )
-    assert.equal(judgeMain([], 'main'), 'no completed runs on main')
+  })
+
+  it('names every workflow whose last completed run did not pass', () => {
+    assert.equal(
+      judgeMain([{ name: 'ci', run: done('failure') }, { name: 'ci', run: done('success') }], 'main'),
+      '**not green**: ci (failure) (2 workflow(s) judged on main)',
+    )
+  })
+
+  it('never reads green when a workflow could not be read, and still names a failure', () => {
+    const verdict = judgeMain(
+      [
+        { name: 'ci', run: done('success') },
+        { name: 'deploy', failed: 'HTTP 502' },
+      ],
+      'main',
+    )
+    assert.match(verdict, /^undetermined: could not read the last run of deploy \(HTTP 502\)/)
+    assert.doesNotMatch(verdict, /green/)
+    assert.match(
+      judgeMain([{ name: 'ci', run: done('failure') }, { name: 'deploy', failed: 'HTTP 502' }], 'main'),
+      /^undetermined: .*; \*\*not green\*\*: ci \(failure\)/,
+    )
+  })
+
+  it('says when nothing has finished, or nothing is active, rather than green', () => {
+    assert.equal(judgeMain([{ name: 'ci', run: null }], 'main'), 'no completed runs on main (1 active workflow(s))')
+    assert.equal(judgeMain([], 'main'), 'no active workflows')
   })
 })
 
 /**
  * A fake gh that answers `gh api <path>` from a table, the way the real one
  * does: JSON on stdout and exit 0, or `gh: <message> (HTTP <n>)` on stderr and
- * exit 1 (shapes confirmed against the live API, 2026-10-10).
+ * exit 1 (shapes confirmed against the live API, 2026-10-10). A path not in the
+ * table is a 404.
  */
 function fakeGh(routes) {
   const dir = mkdtempSync(join(tmpdir(), 'fleet-report-gh-'))
@@ -139,29 +140,43 @@ process.exit(1)
 }
 
 const b64 = (text) => Buffer.from(text, 'utf8').toString('base64')
+const file = (text) => ({ status: 200, body: { encoding: 'base64', content: b64(text) } })
+const ok = (body) => ({ status: 200, body })
 const SLUG = 'gorfednet/example'
+const CI = { id: 1, name: 'ci', path: '.github/workflows/ci.yml', state: 'active' }
+const HEALTH = { id: 2, name: 'healthcheck', path: '.github/workflows/healthcheck.yml', state: 'active' }
+const workflowsPage = (page) => `repos/${SLUG}/actions/workflows?per_page=100&page=${page}`
+const lastRun = (id) => `repos/${SLUG}/actions/workflows/${id}/runs?branch=main&status=completed&per_page=1`
+const runs = (...list) => ok({ total_count: list.length, workflow_runs: list })
+const completed = (conclusion) => ({ status: 'completed', conclusion, created_at: '2026-10-01T07:00:00Z' })
 
-/** A readable repository with a CI workflow and a healthcheck; Actions answers as given. */
-function repository({ runs, healthRuns }) {
-  return {
-    [`repos/${SLUG}`]: { status: 200, body: { default_branch: 'main' } },
-    [`repos/${SLUG}/contents`]: { status: 200, body: [{ name: '.github', type: 'dir' }] },
-    [`repos/${SLUG}/contents/.github/workflows`]: {
-      status: 200,
-      body: [
-        { type: 'file', name: 'ci.yml', path: '.github/workflows/ci.yml' },
-        { type: 'file', name: 'healthcheck.yml', path: '.github/workflows/healthcheck.yml' },
-      ],
-    },
-    [`repos/${SLUG}/contents/.github/workflows/ci.yml`]: {
-      status: 200,
-      body: { content: b64('jobs:\n  a:\n    uses: gorfednet/.github/.github/workflows/pr-check-static.yml@v1\n') },
-    },
-    [`repos/${SLUG}/contents/.github/workflows/healthcheck.yml`]: { status: 200, body: { content: b64('on: schedule') } },
-    [`repos/${SLUG}/contents/docs/backlog.json`]: { status: 200, body: { content: b64('{"entries":[]}') } },
-    [`repos/${SLUG}/actions/runs?branch=main&per_page=50`]: runs,
-    [`repos/${SLUG}/actions/workflows/healthcheck.yml/runs?per_page=1`]: healthRuns,
+/**
+ * A readable repository with a CI workflow and a healthcheck, both of whose
+ * last completed runs on main passed. Tests replace the routes they are about.
+ */
+function repository({ workflows = [CI, HEALTH] } = {}) {
+  const routes = {
+    [`repos/${SLUG}`]: ok({ default_branch: 'main' }),
+    [`repos/${SLUG}/contents`]: ok([{ name: '.github', type: 'dir' }]),
+    [`repos/${SLUG}/contents/.github/workflows`]: ok(
+      workflows.map((w) => ({ type: 'file', name: w.path.split('/').pop(), path: w.path })),
+    ),
+    [`repos/${SLUG}/contents/docs/backlog.json`]: file('{"entries":[]}'),
+    [workflowsPage(1)]: ok({ total_count: workflows.length, workflows }),
+    // The single page of runs the report used to judge main by. Served so the
+    // tests can show what that read concluded; the report no longer asks for it.
+    [`repos/${SLUG}/actions/runs?branch=main&per_page=50`]: runs(
+      ...workflows.map((w) => ({ workflow_id: w.id, name: w.name, ...completed('success') })),
+    ),
   }
+  for (const w of workflows) {
+    routes[`repos/${SLUG}/contents/${w.path}`] = file('on: push\n')
+    routes[lastRun(w.id)] = runs(completed('success'))
+  }
+  routes[`repos/${SLUG}/contents/${CI.path}`] = file(
+    'jobs:\n  a:\n    uses: gorfednet/.github/.github/workflows/pr-check-static.yml@v1\n',
+  )
+  return routes
 }
 
 function report(routes) {
@@ -178,34 +193,50 @@ function report(routes) {
   return { ...run, summary: written }
 }
 
+const line = (summary, label) => summary.match(new RegExp(`\\*\\*${label}:\\*\\* (.*)`))?.[1] ?? ''
+
+describe('gathering: a healthy repository', () => {
+  it('reads every line and exits 0', () => {
+    const run = report(repository())
+    assert.equal(run.status, 0, `${run.stdout}${run.stderr}`)
+    assert.equal(line(run.summary, 'Gate pin'), '`.github/workflows/pr-check-static.yml@v1`')
+    assert.equal(line(run.summary, 'Main branch'), 'green (2 workflow(s) judged on main)')
+    assert.equal(line(run.summary, 'Backlog'), 'no lapsed reviewBy dates')
+    assert.equal(line(run.summary, 'Healthcheck'), 'success at 2026-10-01T07:00:00Z')
+    assert.doesNotMatch(run.summary, /Could not check/)
+  })
+})
+
 describe('gathering, when the token cannot see Actions (V39)', () => {
   for (const status of [404, 403]) {
     it(`a ${status} from Actions after the repository was read is "could not check", never "nothing ran"`, () => {
-      const run = report(repository({ runs: { status }, healthRuns: { status } }))
+      const routes = repository()
+      routes[workflowsPage(1)] = { status }
+      const run = report(routes)
       // Written to the summary, so the reader sees why, and red, so nobody reads it as a quiet fleet.
       assert.equal(run.status, 1, `${run.stdout}${run.stderr}`)
-      assert.match(run.summary, /\*\*Main branch:\*\* undetermined/)
-      assert.match(run.summary, /\*\*Healthcheck:\*\* undetermined/)
+      assert.match(line(run.summary, 'Main branch'), /^undetermined/)
+      assert.match(line(run.summary, 'Healthcheck'), /^undetermined/)
       assert.match(run.summary, /cannot see Actions/)
-      assert.doesNotMatch(run.summary, /no runs recorded|never run|green|no completed runs/)
-      assert.match(run.stderr, /cannot see Actions/)
+      assert.doesNotMatch(run.summary, /no runs recorded|never run|green|no completed run|no healthcheck/)
       // One credentials problem, said once, not once per lookup.
       assert.equal(run.stderr.match(/cannot see Actions/g).length, 1)
     })
   }
 
-  it('an empty list from Actions, which is what nothing-has-run looks like, is reported as absence and exits 0', () => {
-    const empty = { status: 200, body: { total_count: 0, workflow_runs: [] } }
-    const run = report(repository({ runs: empty, healthRuns: empty }))
+  it('workflows with no completed run on main are reported as such, and exit 0', () => {
+    const routes = repository()
+    routes[lastRun(CI.id)] = runs()
+    routes[lastRun(HEALTH.id)] = runs()
+    const run = report(routes)
     assert.equal(run.status, 0, `${run.stdout}${run.stderr}`)
-    assert.match(run.summary, /\*\*Main branch:\*\* no completed runs on main/)
-    assert.match(run.summary, /\*\*Healthcheck:\*\* workflow exists, has never run/)
+    assert.equal(line(run.summary, 'Main branch'), 'no completed runs on main (2 active workflow(s))')
+    assert.equal(line(run.summary, 'Healthcheck'), 'has no completed run on main')
   })
 
   for (const status of [404, 403]) {
-    it(`a ${status} on the file listing after the repository was read is "could not check", not "no workflows, no backlog"`, () => {
-      const empty = { status: 200, body: { workflow_runs: [] } }
-      const routes = repository({ runs: empty, healthRuns: empty })
+    it(`a ${status} on the root listing after the repository was read is "could not check", not "no workflows, no backlog"`, () => {
+      const routes = repository()
       for (const path of Object.keys(routes)) if (path.includes('/contents')) routes[path] = { status }
       const run = report(routes)
       assert.equal(run.status, 1, `${run.stdout}${run.stderr}`)
@@ -213,24 +244,124 @@ describe('gathering, when the token cannot see Actions (V39)', () => {
       assert.doesNotMatch(run.summary, /no workflows|no docs\/backlog\.json|no healthcheck workflow|does not call/)
     })
   }
+})
 
-  it('a failed run behind a newer one still in progress reads as not green', () => {
-    const run = report(
-      repository({
-        runs: {
-          status: 200,
-          body: {
-            workflow_runs: [
-              { workflow_id: 7, name: 'ci', status: 'in_progress', conclusion: null },
-              { workflow_id: 7, name: 'ci', status: 'completed', conclusion: 'failure' },
-            ],
-          },
-        },
-        healthRuns: { status: 200, body: { workflow_runs: [{ status: 'completed', conclusion: 'success', created_at: 't' }] } },
-      }),
+describe('gathering: a failed lookup is never written as absence', () => {
+  for (const status of [502, 403]) {
+    it(`a ${status} on the workflows listing leaves the healthcheck known or undetermined, never "no healthcheck workflow"`, () => {
+      const routes = repository()
+      routes[`repos/${SLUG}/contents/.github/workflows`] = { status }
+      const run = report(routes)
+      assert.equal(run.status, 1, `${run.stdout}${run.stderr}`)
+      assert.match(line(run.summary, 'Gate pin'), /^unavailable/)
+      assert.doesNotMatch(run.summary, /no healthcheck workflow/)
+      assert.match(run.summary, /\*\*Could not check:\*\* .*\.github\/workflows/)
+    })
+  }
+
+  it('an outage on the root listing proves nothing about files, so nothing below it reads as absent', () => {
+    const routes = repository()
+    routes[`repos/${SLUG}/contents`] = { status: 502 }
+    routes[`repos/${SLUG}/contents/.github/workflows`] = { status: 404 }
+    routes[`repos/${SLUG}/contents/docs/backlog.json`] = { status: 404 }
+    const run = report(routes)
+    assert.equal(run.status, 1, `${run.stdout}${run.stderr}`)
+    assert.doesNotMatch(run.summary, /no workflows|no docs\/backlog\.json/)
+    assert.match(run.summary, /\*\*Could not check:\*\*/)
+  })
+
+  it('an unreadable workflow file leaves the gate undetermined, not "does not call gorfednet/.github"', () => {
+    const routes = repository()
+    routes[`repos/${SLUG}/contents/${CI.path}`] = { status: 502 }
+    const run = report(routes)
+    assert.equal(run.status, 1, `${run.stdout}${run.stderr}`)
+    assert.match(line(run.summary, 'Gate pin'), /^undetermined: could not read \.github\/workflows\/ci\.yml/)
+    assert.doesNotMatch(run.summary, /does not call/)
+  })
+
+  it('a backlog the contents API returns without its content (over 1 MB) is unavailable, not parsed as empty', () => {
+    const routes = repository()
+    routes[`repos/${SLUG}/contents/docs/backlog.json`] = ok({ encoding: 'none', content: '', size: 2_000_000 })
+    const run = report(routes)
+    assert.equal(run.status, 1, `${run.stdout}${run.stderr}`)
+    assert.match(line(run.summary, 'Backlog'), /^unavailable/)
+  })
+
+  it('a backlog without an entries list says so, rather than "no lapsed reviewBy dates"', () => {
+    const routes = repository()
+    routes[`repos/${SLUG}/contents/docs/backlog.json`] = file('{"items":[{"id":"a","reviewBy":"2020-01-01"}]}')
+    const run = report(routes)
+    assert.equal(line(run.summary, 'Backlog'), 'docs/backlog.json has no entries list')
+  })
+
+  it('a workflow whose last run could not be read makes main undetermined and the run red', () => {
+    const routes = repository()
+    routes[lastRun(CI.id)] = { status: 502 }
+    const run = report(routes)
+    assert.equal(run.status, 1, `${run.stdout}${run.stderr}`)
+    assert.match(line(run.summary, 'Main branch'), /^undetermined: could not read the last run of ci/)
+    assert.doesNotMatch(line(run.summary, 'Main branch'), /green/)
+  })
+})
+
+describe('gathering: one page is not the whole', () => {
+  it('a failure whose last completion is not on the first page of runs still reads as not green', () => {
+    const routes = repository({ workflows: [CI, { id: 3, name: 'deploy', path: '.github/workflows/deploy.yml', state: 'active' }] })
+    routes[lastRun(CI.id)] = runs(completed('failure'))
+    // What the old single-page read saw: fifty newer deploy runs and no ci at all.
+    routes[`repos/${SLUG}/actions/runs?branch=main&per_page=50`] = runs(
+      ...Array.from({ length: 50 }, () => ({ workflow_id: 3, name: 'deploy', ...completed('success') })),
     )
+    const run = report(routes)
     assert.equal(run.status, 0, `${run.stdout}${run.stderr}`)
-    assert.match(run.summary, /\*\*Main branch:\*\* \*\*not green\*\*: ci \(failure\)/)
+    assert.equal(line(run.summary, 'Main branch'), '**not green**: ci (failure) (2 workflow(s) judged on main)')
+  })
+
+  it('pages the workflow list until total_count, so a workflow on page two is judged', () => {
+    const idle = Array.from({ length: 100 }, (_, i) => ({
+      id: 100 + i,
+      name: `old-${i}`,
+      path: `.github/workflows/old-${i}.yml`,
+      state: 'disabled_manually',
+    }))
+    const late = { id: 999, name: 'late', path: '.github/workflows/late.yml', state: 'active' }
+    const routes = repository({ workflows: [CI] })
+    routes[workflowsPage(1)] = ok({ total_count: 101, workflows: idle })
+    routes[workflowsPage(2)] = ok({ total_count: 101, workflows: [late] })
+    routes[lastRun(late.id)] = runs(completed('failure'))
+    const run = report(routes)
+    assert.equal(line(run.summary, 'Main branch'), '**not green**: late (failure) (1 workflow(s) judged on main)')
+  })
+
+  it('a workflow list that ends before its total_count could not be checked', () => {
+    const routes = repository()
+    routes[workflowsPage(1)] = ok({ total_count: 3, workflows: [CI, HEALTH] })
+    routes[workflowsPage(2)] = ok({ total_count: 3, workflows: [] })
+    const run = report(routes)
+    assert.equal(run.status, 1, `${run.stdout}${run.stderr}`)
+    assert.match(run.summary, /\*\*Could not check:\*\* .*2 of 3/)
+    assert.doesNotMatch(line(run.summary, 'Main branch'), /green/)
+  })
+})
+
+describe('gathering: the healthcheck', () => {
+  it('reports the last completed run, not a newer one still going', () => {
+    const routes = repository()
+    routes[lastRun(HEALTH.id)] = runs(completed('failure'))
+    // What a newest-run read sees, by file name (the old report) or by id.
+    const going = runs({ status: 'in_progress', conclusion: null, created_at: '2026-10-02T07:00:00Z' })
+    routes[`repos/${SLUG}/actions/workflows/healthcheck.yml/runs?per_page=1`] = going
+    routes[`repos/${SLUG}/actions/workflows/${HEALTH.id}/runs?branch=main&per_page=1`] = going
+    const run = report(routes)
+    assert.equal(line(run.summary, 'Healthcheck'), 'failure at 2026-10-01T07:00:00Z')
+  })
+
+  it('says when the healthcheck is disabled, and does not judge main by a disabled workflow', () => {
+    const routes = repository({ workflows: [CI, { ...HEALTH, state: 'disabled_inactivity' }] })
+    routes[lastRun(HEALTH.id)] = runs(completed('failure'))
+    const run = report(routes)
+    assert.equal(line(run.summary, 'Healthcheck'), '**disabled_inactivity**; last completed: failure at 2026-10-01T07:00:00Z')
+    assert.equal(line(run.summary, 'Main branch'), 'green (1 workflow(s) judged on main)')
   })
 })
 

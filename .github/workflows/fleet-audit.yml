@@ -12,8 +12,8 @@
 # Actions and Metadata across gorfednet. It deliberately has no fallback. A
 # missing token means nothing was audited, and a report that says "nothing
 # found" having read nothing is the fiction this system exists to prevent, so
-# that, and an unreachable API, are the only things that turn this red. What it
-# finds is written to the job summaries, one per repository.
+# that, and a lookup that could not be made, are the only things that turn this
+# red. What it finds is written to the job summaries, one per repository.
 name: fleet-audit
 
 on:
@@ -110,9 +110,10 @@ jobs:
 
       # Gate pin, main branch conclusion, lapsed backlog dates and the last
       # healthcheck run, written to this job's summary. Red only if it could not
-      # look: the repository cannot be read, or it can but the token cannot read
-      # its files or see its Actions (a 404 there means "not allowed", since an
-      # empty run list is a 200; V39). The summary is written either way.
+      # look: the repository cannot be read, or any lookup behind a line failed.
+      # That includes a token that cannot read its files or see its Actions (a
+      # 404 there means "not allowed", since an empty workflow list is a 200;
+      # V39). The summary says what could not be checked.
       - name: Report ${{ matrix.slug }}
         env:
           GH_TOKEN: ${{ secrets.FLEET_READ_TOKEN }}
