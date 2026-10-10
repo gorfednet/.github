@@ -148,7 +148,7 @@ async function processPull(ctx, repo, pr, defaultBranch) {
   for (const action of result.actions) {
     if (action.type !== 'bugbot-run') continue
     if (ctx.dry) {
-      ctx.say('info', `${tag}: would comment "bugbot run" (Bugbot has not reviewed this head; first request on this PR)`)
+      ctx.say('info', `${tag}: would comment "bugbot run" (Bugbot has not reviewed this head; first request for this head)`)
     } else {
       // Recorded before posting: if the post half-succeeds, never ask twice.
       prState.bugbotRequestedAt = nowIso
@@ -170,6 +170,7 @@ async function processPull(ctx, repo, pr, defaultBranch) {
       const reasons = fails.length === 1 ? fails[0].reason : fails.map((b) => `- ${b.reason}`).join('\n')
       await postOnce(ctx, repo, pr.number, sha, key, `Ship bot is not merging this yet.\n\n${reasons}\n\nIt checks again every couple of minutes. Add the \`${HOLD_LABEL}\` label to make it stop looking.`)
     }
+    for (const block of fails.filter((b) => b.notify)) await notifyOnce(ctx, headState, tag, block)
     return false
   }
 
@@ -392,6 +393,23 @@ async function notify(ctx, message, loud = false) {
   const script = `display notification "${escapeAppleScript(ctx.redactor.apply(message))}" with title "ship bot"${loud ? ' sound name "Basso"' : ''}`
   const result = await ctx.runner.run({ kind: 'notify', cmd: 'osascript', args: ['-e', script], env: ctx.baseEnv, timeoutMs: 15_000 })
   if (result.code !== 0) ctx.say('warn', `notification failed: ${result.stderr ?? result.error ?? ''}`)
+}
+
+/**
+ * Show the owner a block's notification once per head (state-backed: a lost
+ * state file costs at most one repeat). Dry run: say it would.
+ */
+async function notifyOnce(ctx, headState, tag, block) {
+  headState.notified ??= {}
+  if (headState.notified[block.key]) return
+  if (ctx.dry) {
+    ctx.say('info', `${tag}: would notify: ${block.notify}`)
+    headState.notified[block.key] = 'dry-run'
+    return
+  }
+  headState.notified[block.key] = ctx.clock.now().toISOString()
+  ctx.state.save()
+  await notify(ctx, block.notify, true)
 }
 
 /** Comment on a PR once per head per reason. Dry run: say what would be posted. */
