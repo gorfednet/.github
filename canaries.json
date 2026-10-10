@@ -440,6 +440,14 @@
       "file": "templates/verification-kit/lib/githubSlug.mjs",
       "find": "    [env.GITHUB_REPOSITORY, 'GITHUB_REPOSITORY'],\n",
       "replace": ""
+    },
+    {
+      "id": "pr-check-ignores-jobs-that-never-ran",
+      "guards": "A run whose jobs failed without running a step counts as started. While bindercurve.com's account payment was failing, every job on #327 and #333 to #339 concluded failure with zero steps and the check said all started, so a branch nobody tested read as a broken one.",
+      "command": "node --test 'templates/verification-kit/test/checksStarted.test.mjs'",
+      "file": "templates/verification-kit/bin/assert-checks-started.mjs",
+      "find": "    if (stepless.length > 0 && stepless.length === failed.length) {",
+      "replace": "      if (false) {"
     }
   ]
 }
