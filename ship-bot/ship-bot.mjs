@@ -77,6 +77,11 @@ const defaultDeps = () => ({
   sleep: (ms) => sleep(ms),
   baseEnv: childEnv(),
   intervalMs: 120_000,
+  // The macOS Keychain sometimes answers `gh auth token` with an empty failure
+  // (seen 72 times in a day, on passes around ones that worked). A second try
+  // a moment later almost always works, so the read is tried a few times.
+  tokenAttempts: 3,
+  tokenRetryMs: 2000,
 })
 
 /**
@@ -147,12 +152,8 @@ async function onePass(config, args, deps, print) {
     }
   }
   try {
-    const auth = await deps.runner.run({ kind: 'auth', cmd: config.ghPath, args: ['auth', 'token'], env: deps.baseEnv, timeoutMs: 30_000 })
-    const token = (auth.stdout ?? '').trim()
-    if (!succeeded(auth) || !token || /\s/.test(token)) {
-      print('error', `could not get a GitHub token from \`${config.ghPath} auth token\`: ${new Redactor([token]).apply(auth.stderr ?? auth.error ?? '')}`)
-      return 1
-    }
+    const token = await readToken(config, deps, print)
+    if (!token) return 1
     const state = new StateStore(join(config.stateDir, 'state.json'), { persist: live }).load()
     const observe = args.mode === 'observe'
     const banner = live ? 'LIVE' : observe ? 'OBSERVE (config says "live": false: no writes, no deploys)' : 'DRY RUN (no writes, no deploys)'
@@ -180,6 +181,35 @@ async function onePass(config, args, deps, print) {
   } finally {
     lock.release()
   }
+}
+
+/** What one failed `gh auth token` looked like, for the log. Never includes stdout itself, only its length. */
+function describeAttempt(auth, token, attempt) {
+  const how = auth.timedOut ? 'timed out' : auth.error ? `could not start (${auth.error})` : auth.signal ? `killed by ${auth.signal}` : `exit ${auth.code}`
+  const stderr = new Redactor([token, auth.stdout]).apply(String(auth.stderr ?? '').trim()).replace(/\s+/g, ' ').slice(0, 300)
+  return `attempt ${attempt}: ${how}, stderr "${stderr}", stdout ${(auth.stdout ?? '').length} chars`
+}
+
+/**
+ * The GitHub token from `gh auth token`, tried up to deps.tokenAttempts times,
+ * deps.tokenRetryMs apart. Returns undefined when every attempt failed (the
+ * pass then does nothing) and says why: exit code, stderr, stdout length.
+ */
+async function readToken(config, deps, print) {
+  const attempts = Math.max(1, deps.tokenAttempts)
+  const failures = []
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    const auth = await deps.runner.run({ kind: 'auth', cmd: config.ghPath, args: ['auth', 'token'], env: deps.baseEnv, timeoutMs: 30_000 })
+    const token = (auth.stdout ?? '').trim()
+    if (succeeded(auth) && token && !/\s/.test(token)) {
+      if (failures.length > 0) print('warn', `GitHub token read worked on attempt ${attempt} of ${attempts} (${failures.join('; ')})`)
+      return token
+    }
+    failures.push(describeAttempt(auth, token, attempt))
+    if (attempt < attempts) await deps.sleep(deps.tokenRetryMs)
+  }
+  print('error', `could not get a GitHub token from \`${config.ghPath} auth token\` after ${attempts} attempts: ${failures.join('; ')}`)
+  return undefined
 }
 
 /**
