@@ -144,9 +144,12 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
-        kit="$(cd "${{ github.action_path }}/../../../templates/verification-kit" && pwd)"
-        if [ ! -f "$kit/bin/check-backlog.mjs" ]; then
-          echo "::error::The verification kit was not found at $kit. This action is" \
+        wanted="${{ github.action_path }}/../../../templates/verification-kit"
+        # The `cd` is inside the test, so a missing folder reaches the message
+        # below instead of ending the step under `set -e` with no word of whose
+        # fault it is.
+        if ! kit="$(cd "$wanted" 2>/dev/null && pwd)" || [ ! -f "$kit/bin/check-backlog.mjs" ]; then
+          echo "::error::The verification kit was not found at $wanted. This action is" \
                "broken at the ref it was pinned to; it is not a problem in the calling repository."
           exit 1
         fi

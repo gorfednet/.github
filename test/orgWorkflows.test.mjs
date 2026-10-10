@@ -345,6 +345,27 @@ describe('verification-gate composite action', () => {
         rmSync(fake, { recursive: true, force: true })
       }
     })
+
+    // Bugbot on #44: with no kit folder at all, `cd` failed under `set -e`
+    // and ended the step before the message that says whose fault it is.
+    it('says the same when the kit folder is missing altogether', () => {
+      const envFile = join(mkdtempSync(join(tmpdir(), 'gate-env-')), 'env')
+      writeFileSync(envFile, '', 'utf8')
+      const fake = mkdtempSync(join(tmpdir(), 'gate-fake-'))
+      try {
+        mkdirSync(join(fake, 'a/b/c'), { recursive: true })
+        const filled = script.replaceAll('${{ github.action_path }}', join(fake, 'a/b/c'))
+        const run = spawnSync('bash', ['-c', filled], {
+          encoding: 'utf8',
+          env: { ...process.env, GITHUB_ENV: envFile },
+        })
+        assert.equal(run.status, 1)
+        assert.match(`${run.stdout}${run.stderr}`, /::error::The verification kit was not found .*broken at the ref/)
+        assert.equal(readFileSync(envFile, 'utf8'), '')
+      } finally {
+        rmSync(fake, { recursive: true, force: true })
+      }
+    })
   })
 
   describe('the publish-set precondition', () => {
