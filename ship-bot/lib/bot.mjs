@@ -234,15 +234,25 @@ async function deployPreflight(ctx) {
       timeoutMs: minutes * 60 * 1000,
     })
     if (!succeeded(result)) {
-      const how = result.timedOut ? `timed out after ${minutes} min` : result.error ? `could not start (${result.error})` : `exited ${result.code}`
-      const detail = ctx.redactor.apply(`${result.stderr ?? ''}`.trim().split('\n').pop() ?? '')
-      ctx.preflightResult = { ok: false, reason: `"${step.name}" ${how}${detail ? `: ${detail}` : ''}` }
-      ctx.say('error', `deploy preflight failed: ${ctx.preflightResult.reason}. No deploy-mode repo merges this pass.`)
+      // Tailscale SSH stopped the login for a browser check only the owner can
+      // approve: the link goes in the log and the notification, and comes back
+      // within minutes rather than an hour, since each attempt's link expires.
+      const link = tailscaleApprovalLink(`${result.stderr ?? ''}`)
+      if (link) {
+        ctx.preflightResult = { ok: false, reason: `"${step.name}" is waiting for a Tailscale approval: ${link}` }
+        ctx.say('error', `deploy preflight: approve SSH for "${step.name}" at ${link} . No deploy-mode repo merges until it is approved.`)
+      } else {
+        const how = result.timedOut ? `timed out after ${minutes} min` : result.error ? `could not start (${result.error})` : `exited ${result.code}`
+        const detail = ctx.redactor.apply(`${result.stderr ?? ''}`.trim().split('\n').pop() ?? '')
+        ctx.preflightResult = { ok: false, reason: `"${step.name}" ${how}${detail ? `: ${detail}` : ''}` }
+        ctx.say('error', `deploy preflight failed: ${ctx.preflightResult.reason}. No deploy-mode repo merges this pass.`)
+      }
       const last = ctx.state.data.preflightNotifiedAt
-      if (!last || ctx.clock.now().getTime() - new Date(last).getTime() >= 60 * 60 * 1000) {
+      const every = (link ? 10 : 60) * 60 * 1000
+      if (!last || ctx.clock.now().getTime() - new Date(last).getTime() >= every) {
         ctx.state.data.preflightNotifiedAt = ctx.clock.now().toISOString()
         ctx.state.save()
-        await notify(ctx, `deploy preflight failed (${step.name}); nothing is being deployed`, true)
+        await notify(ctx, link ? `Approve SSH for ${step.name}: ${link}` : `deploy preflight failed (${step.name}); nothing is being deployed`, true)
       }
       return ctx.preflightResult
     }
@@ -369,6 +379,12 @@ async function report(ctx, repo, pr, mergeSha, outcome, deployLog) {
     await notify(ctx, `${repo.name} #${pr.number}: DEPLOY AND ROLLBACK FAILED`, true)
   }
   await postOnce(ctx, repo, pr.number, mergeSha, `deploy-${outcome.status}`, body)
+}
+
+/** The approval link in Tailscale SSH's "requires an additional check" prompt, or null. */
+export function tailscaleApprovalLink(text) {
+  if (!/Tailscale SSH requires an additional check/i.test(text)) return null
+  return /https:\/\/login\.tailscale\.com\/\S+/.exec(text)?.[0] ?? null
 }
 
 async function notify(ctx, message, loud = false) {

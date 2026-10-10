@@ -760,6 +760,29 @@ describe('deploy preflight', () => {
     assert.match(s.runner.ofKind('notify')[0].args[1], /deploy preflight failed \(nas\)/)
   })
 
+  it('when Tailscale wants an approval: the link is in the log and the notification, and comes back every ten minutes', async () => {
+    const link = 'https://login.tailscale.com/a/l1e5a54be31941a'
+    const gh = new FakeGitHub({ pullsBySlug: { [SLUG]: [prFor(SLUG)] } })
+    const runner = makeRunner({
+      handle: (cmd) =>
+        cmd.kind === 'preflight' && cmd.args.includes('dapyllil')
+          ? { code: null, timedOut: true, stderr: `# Tailscale SSH requires an additional check.\n# To authenticate, visit: ${link}\n` }
+          : undefined,
+    })
+    const s = scenario({ github: gh, runner, configOverrides: { preflight }, repos: [repoEntry()] })
+    await s.run()
+    assert.equal(merges(s.github).length, 0)
+    assert.ok(s.logs.some((l) => l.includes(link) && /approve SSH for "docker host"/.test(l)), s.logs.join('\n'))
+    assert.equal(s.runner.ofKind('notify').length, 1)
+    assert.ok(s.runner.ofKind('notify')[0].args[1].includes(link), s.runner.ofKind('notify')[0].args[1])
+    s.clock.advance(9)
+    await s.run()
+    assert.equal(s.runner.ofKind('notify').length, 1, 'not again within ten minutes')
+    s.clock.advance(2)
+    await s.run()
+    assert.equal(s.runner.ofKind('notify').length, 2, 'again after ten minutes: the last link has likely expired')
+  })
+
   it('when it passes: runs every step once, then merges and deploys', async () => {
     const s = setup(false)
     await s.run()
