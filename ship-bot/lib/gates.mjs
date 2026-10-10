@@ -202,9 +202,39 @@ export function isTriaged(thread, allowedAuthors) {
   return comments.some((c) => allowedAuthors.includes(c.author) && c.createdAt && c.createdAt > latestBugbot)
 }
 
+/** Summary text Bugbot writes only when a review ran to completion (the kit's COMPLETED_REVIEW_MARKER). */
+const COMPLETED_REVIEW = /bugbot completed review/i
+/** Words Bugbot's check run uses when it stopped without reviewing, e.g. "Bugbot couldn't run - usage limit reached". */
+const BUGBOT_ERROR = /usage limit|spend limit|limit reached|couldn['’]?t run|could not run|\berror\b|\bfailed\b/i
+
 /**
- * Gate (d). Returns `{blocks, actions}`; an action of type `bugbot-run` means
- * "comment `bugbot run` now", which the caller does (or reports in a dry run).
+ * Did Bugbot's check run on this head finish without reviewing, because of an
+ * error such as a usage limit? bugbot-review-status cannot say: it prints any
+ * completed run without a completed-review summary as `not-run`. The check
+ * run's own title and summary can, and the bot already holds them.
+ *
+ * @returns {string|null} the title (or summary) Bugbot gave, or null
+ */
+export function bugbotErrorTitle(run) {
+  if (!run || run.status !== 'completed' || run.conclusion === 'success') return null
+  const title = (run.output?.title ?? '').trim()
+  const summary = (run.output?.summary ?? '').trim()
+  if (COMPLETED_REVIEW.test(summary) || COMPLETED_REVIEW.test(title)) return null
+  if (BUGBOT_ERROR.test(title)) return title
+  if (BUGBOT_ERROR.test(summary)) return title ? `${title}: ${summary.split('\n')[0]}` : summary.split('\n')[0]
+  return null
+}
+
+/**
+ * Gate (d). The PR's final head must have a Bugbot review: clean, or with
+ * findings whose every Bugbot thread is triaged. An unreviewed head always
+ * waits for one, however many reviews earlier heads had; the bot asks
+ * (`bugbot run`) at most once per head, after the automatic review has had
+ * time to start.
+ *
+ * Returns `{blocks, actions}`; an action of type `bugbot-run` means "comment
+ * `bugbot run` now", which the caller does (or reports in a dry run). A block
+ * may carry `notify`: a message the caller shows the owner once per head.
  */
 export async function evaluateBugbot(ctx, repo, pr, sha, runs, { headSince, prState }) {
   const now = ctx.clock.now()
@@ -215,24 +245,40 @@ export async function evaluateBugbot(ctx, repo, pr, sha, runs, { headSince, prSt
   }
   if (status.state === 'clean') return { blocks: [], actions: [] }
 
-  const [bugbotRun] = latestPerName(runs.filter(isBugbotCheck))
-  if (status.state === 'not-run' && bugbotRun && bugbotRun.status !== 'completed') {
-    return { blocks: [{ key: 'bugbot-in-progress', kind: 'wait', reason: 'Bugbot is reviewing this head' }], actions: [] }
-  }
-
-  const [reviews, comments] = await Promise.all([ctx.github.listReviews(repo.slug, pr.number), ctx.github.listIssueComments(repo.slug, pr.number)])
-  const bugbotReviews = reviews.filter((r) => isBugbotUser(r.user?.login)).length
-  const runComments = comments.filter(isBugbotRunComment)
-  // The budget is two reviews: the automatic one and one `bugbot run`. Any
-  // `bugbot run` already on the PR, from anyone, is the one extra.
-  const budgetSpent = bugbotReviews >= 2 || runComments.length > 0 || Boolean(prState.bugbotRequestedAt)
-
   if (status.state === 'not-run') {
+    const [bugbotRun] = latestPerName(runs.filter(isBugbotCheck))
+    if (bugbotRun && bugbotRun.status !== 'completed') {
+      return { blocks: [{ key: 'bugbot-in-progress', kind: 'wait', reason: 'Bugbot is reviewing this head' }], actions: [] }
+    }
+    // Bugbot ran on this head and stopped on an error (out of budget, most
+    // often). Asking again would hit the same wall, and waiting quietly
+    // would hold the PR with nobody knowing: hold it and tell the owner.
+    const error = bugbotErrorTitle(bugbotRun)
+    if (error) {
+      const title = ctx.redactor.apply(error)
+      return {
+        blocks: [
+          {
+            key: 'bugbot-error',
+            kind: 'fail',
+            reason: `Bugbot could not review this head: ${title}. Nothing merges without a review of the final head. Once Cursor's Bugbot budget is restored, comment \`bugbot run\` here; the bot merges when that review is clean or every Bugbot thread has an answer.`,
+            notify: `${repo.name ?? repo.slug} #${pr.number}: Bugbot could not review (${title}); not merging`,
+          },
+        ],
+        actions: [],
+      }
+    }
+
+    const comments = await ctx.github.listIssueComments(repo.slug, pr.number)
     // Asked for this head: by the bot's own record, or (if that record was
     // lost) by a `bugbot run` comment newer than the head itself. Without the
-    // second half, a lost state file reads as "budget spent, no threads" and
-    // merges a head Bugbot was asked to review and never did.
-    const latestRequest = runComments.map((c) => c.created_at).filter(Boolean).sort().pop()
+    // second half, a lost state file would ask a second time for one head.
+    const latestRequest = comments
+      .filter(isBugbotRunComment)
+      .map((c) => c.created_at)
+      .filter(Boolean)
+      .sort()
+      .pop()
     const requestedForHead = prState.bugbotRequestedHead === sha || Boolean(latestRequest && headSince && latestRequest >= headSince)
     if (requestedForHead) {
       const since = prState.bugbotRequestedHead === sha ? prState.bugbotRequestedAt : latestRequest
@@ -251,23 +297,20 @@ export async function evaluateBugbot(ctx, repo, pr, sha, runs, { headSince, prSt
       }
       return { blocks: [{ key: 'bugbot-requested', kind: 'wait', reason: 'waiting for the requested Bugbot review' }], actions: [] }
     }
-    if (!budgetSpent) {
-      if (minutesBetween(headSince, now) < ctx.config.bugbotGraceMinutes) {
-        return { blocks: [{ key: 'bugbot-grace', kind: 'wait', reason: "giving Bugbot's automatic review time to start" }], actions: [] }
-      }
-      return {
-        blocks: [{ key: 'bugbot-requested', kind: 'wait', reason: 'Bugbot has not reviewed this head; asking once' }],
-        actions: [{ type: 'bugbot-run' }],
-      }
+    if (minutesBetween(headSince, now) < ctx.config.bugbotGraceMinutes) {
+      return { blocks: [{ key: 'bugbot-grace', kind: 'wait', reason: "giving Bugbot's automatic review time to start" }], actions: [] }
+    }
+    return {
+      blocks: [{ key: 'bugbot-requested', kind: 'wait', reason: 'Bugbot has not reviewed this head; asking once' }],
+      actions: [{ type: 'bugbot-run' }],
     }
   }
 
-  // Reviewed with findings, or not reviewed and the budget is spent: pass only
-  // once every Bugbot thread on the PR has been resolved by a person.
+  // Reviewed with findings: pass only once every Bugbot thread on the PR has
+  // an answer from a person.
   const threads = await ctx.github.listReviewThreads(repo.slug, pr.number)
   const bugbotThreads = threads.filter((t) => isBugbotUser(t.author))
   const open = bugbotThreads.filter((t) => !isTriaged(t, ctx.config.allowedAuthors))
-  const why = status.state === 'findings' ? 'Bugbot reported findings' : 'Bugbot has not reviewed this head and its review budget for this PR is spent'
   if (open.length > 0) {
     const list = open.map((t) => `- ${t.path ?? '(general)'}${t.line ? `:${t.line}` : ''} ${t.url}`).join('\n')
     return {
@@ -275,13 +318,13 @@ export async function evaluateBugbot(ctx, repo, pr, sha, runs, { headSince, prSt
         {
           key: 'bugbot-threads',
           kind: 'fail',
-          reason: `${why}; ${open.length} Bugbot comment thread(s) have no answer yet. Reply to each Bugbot comment (saying what was done or why it is fine) or resolve it:\n${list}`,
+          reason: `Bugbot reported findings; ${open.length} Bugbot comment thread(s) have no answer yet. Reply to each Bugbot comment (saying what was done or why it is fine) or resolve it:\n${list}`,
         },
       ],
       actions: [],
     }
   }
-  if (status.state === 'findings' && bugbotThreads.length === 0) {
+  if (bugbotThreads.length === 0) {
     // Findings with no thread to resolve: nothing a person could have triaged.
     return {
       blocks: [{ key: 'bugbot-findings-no-threads', kind: 'fail', reason: `Bugbot reported findings (${ctx.redactor.apply(status.detail)}) but left no review thread to resolve; a person must look` }],
@@ -361,7 +404,7 @@ export async function evaluatePull(ctx, repo, pr, { headState, prState }) {
     return blocked([{ key: 'closing-keywords', kind: 'fail', reason: `check-closing-keywords did not pass: ${firstLine(closing, ctx.redactor)}` }])
   }
 
-  // (d) Bugbot, last: it can spend budget, so only on an otherwise-ready head.
+  // (d) Bugbot, last: each review is billed, so only on an otherwise-ready head.
   if (repo.bugbot) {
     let result
     try {

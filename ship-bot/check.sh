@@ -12,7 +12,7 @@ set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 NODE_BIN="${NODE_BIN:-$(node -p 'process.execPath')}"
-MIN_TESTS=125
+MIN_TESTS=137
 
 tests=("${HERE}"/test/*.test.mjs)
 if [[ ! -f "${tests[0]}" ]]; then

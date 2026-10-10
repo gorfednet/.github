@@ -14,11 +14,15 @@ pull request, asks:
 2. Did **every check pass** on the latest commit, including the specific
    checks that repository is supposed to run? A check that is still running,
    failed, was cancelled, or never ran at all means "not yet".
-3. Did **Bugbot** review it and find nothing, or has **every Bugbot comment
-   been answered**, either with a reply written after the comment or by
-   resolving it? If Bugbot has not looked at the latest commit, the bot asks it
-   once (`bugbot run`) and waits. It never asks twice on one pull request, which
-   keeps Bugbot to two reviews per pull request.
+3. Did **Bugbot review the latest commit**, and either find nothing or have
+   **every Bugbot comment answered**, with a reply written after the comment
+   or by resolving it? A latest commit Bugbot has not reviewed always waits,
+   however many earlier commits it reviewed. If the automatic review has not
+   started after 15 minutes, the bot asks once (`bugbot run`) for that commit
+   and never twice for the same one; a fix pushed after that gets its own one
+   request. If Bugbot says it could not run (for example "usage limit
+   reached"), the bot does not merge, does not ask again, and tells you once
+   per commit, in a comment and a Mac notification.
 4. Does the description avoid phrases like "fixes #12" that would close an
    issue by accident?
 
@@ -66,7 +70,12 @@ node ~/.ship-bot/app/ship-bot.mjs --set-live false
 
 1. A session finishes the work and adds the **`ready-to-merge`** label.
 2. The bot waits until every check has passed and Bugbot has reviewed the
-   change, or until every Bugbot comment has an answer.
+   latest commit: clean, or with every Bugbot comment answered. If Bugbot has
+   not reviewed the latest commit, the bot asks it once (`bugbot run`) and
+   keeps waiting; in a repository with Bugbot it never merges a commit Bugbot
+   did not review. When Bugbot cannot run (out of budget), the bot comments
+   and notifies you once; after you top up, comment `bugbot run` on the pull
+   request.
 3. It merges the pull request.
 4. For MoonMan and the websites, it first checks it can reach the NAS and the
    Docker host, then puts the change live and checks the live site.
