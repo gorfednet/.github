@@ -433,6 +433,9 @@ describe('gathering: one page is not the whole', () => {
     routes[workflowsPage(1)] = ok({ total_count: 101, workflows: idle })
     routes[workflowsPage(2)] = ok({ total_count: 101, workflows: [late] })
     routes[lastRun(late.id)] = runs(completed('failure'))
+    routes[`repos/${SLUG}/contents/.github/workflows`] = ok(
+      [CI, late].map((w) => ({ type: 'file', name: w.path.split('/').pop(), path: w.path })),
+    )
     routes[`repos/${SLUG}/contents/${late.path}`] = file('on: push\n')
     const run = report(routes)
     assert.equal(line(run.summary, 'Main branch'), '**not green**: late (failure) (1 workflow(s) judged on main)')
@@ -467,6 +470,118 @@ describe('gathering: the healthcheck', () => {
     const run = report(routes)
     assert.equal(line(run.summary, 'Healthcheck'), '**disabled_inactivity**; last completed: failure at 2026-10-01T07:00:00Z')
     assert.equal(line(run.summary, 'Main branch'), 'green (1 workflow(s) judged on main)')
+  })
+})
+
+// gorfednet/subrythm.com, 2026-10-10 (run 38080324174): Actions lists gate-ref-test
+// as active, but its file is only on another branch.
+const OFF_BRANCH = { id: 7, name: 'gate-ref-test', path: '.github/workflows/gate-ref-test.yml', state: 'active' }
+
+/** A repository where `workflow` is registered with Actions but absent from the default branch's directory listing. */
+function withOffBranch(workflow = OFF_BRANCH) {
+  const routes = repository({ workflows: [CI, HEALTH, workflow] })
+  routes[`repos/${SLUG}/contents/.github/workflows`] = ok(
+    [CI, HEALTH].map((w) => ({ type: 'file', name: w.path.split('/').pop(), path: w.path })),
+  )
+  // Not on the branch, so the contents API says 404 and a run lookup would find stale runs from the other branch.
+  delete routes[`repos/${SLUG}/contents/${workflow.path}`]
+  routes[lastRun(workflow.id)] = runs(completed('failure'))
+  return routes
+}
+
+describe('gathering: a workflow registered with Actions whose file is not on the default branch', () => {
+  it('is not judged, does not make the run red, and is listed with its reason (the subrythm.com report)', () => {
+    const run = report(withOffBranch())
+    assert.equal(run.status, 0, `${run.stdout}${run.stderr}`)
+    assert.equal(line(run.summary, 'Main branch'), 'green (2 workflow(s) judged on main)')
+    assert.match(run.summary, /^- _Not judged: gate-ref-test \(not on the default branch\)_$/m)
+    assert.doesNotMatch(run.summary, /Could not check/)
+  })
+
+  it('neither fetches its file nor looks up its runs', () => {
+    const routes = withOffBranch()
+    // A fake gh answers an unlisted path with a 404, so make any such call loud: a 500 would turn the run red.
+    routes[`repos/${SLUG}/contents/${OFF_BRANCH.path}`] = { status: 502 }
+    routes[lastRun(OFF_BRANCH.id)] = { status: 502 }
+    const run = report(routes)
+    assert.equal(run.status, 0, `${run.stdout}${run.stderr}`)
+    assert.doesNotMatch(run.summary, /Could not check/)
+  })
+
+  it('near miss: a workflow that is in the listing but whose file read fails is still could-not-check and red', () => {
+    for (const status of [404, 502]) {
+      const routes = repository()
+      routes[`repos/${SLUG}/contents/${CI.path}`] = { status }
+      const run = report(routes)
+      assert.equal(run.status, 1, `${status}: ${run.stdout}${run.stderr}`)
+      assert.match(run.summary, /Could not check:\*\* workflow file\(s\) could not be read: \.github\/workflows\/ci\.yml/)
+      assert.match(line(run.summary, 'Main branch'), /^undetermined: could not read the last run of ci/)
+      assert.doesNotMatch(run.summary, /Not judged/)
+    }
+  })
+
+  it('near miss: when the directory listing itself could not be read, a registered workflow is not assumed to be off the branch', () => {
+    for (const status of [502, 403]) {
+      const routes = withOffBranch()
+      routes[`repos/${SLUG}/contents/.github/workflows`] = { status }
+      const run = report(routes)
+      assert.equal(run.status, 1, `${status}: ${run.stdout}${run.stderr}`)
+      assert.match(run.summary, /Could not check:\*\* \.github\/workflows could not be listed/)
+      assert.match(line(run.summary, 'Main branch'), /^undetermined/)
+      assert.doesNotMatch(run.summary, /not on the default branch/)
+    }
+  })
+
+  it('a repository with no .github/workflows directory on its branch has every registered workflow off it', () => {
+    const routes = withOffBranch()
+    routes[`repos/${SLUG}/contents/.github/workflows`] = { status: 404 }
+    const run = report(routes)
+    assert.equal(run.status, 0, `${run.stdout}${run.stderr}`)
+    assert.match(run.summary, /Not judged: ci \(not on the default branch\), healthcheck \(not on the default branch\), gate-ref-test \(not on the default branch\)/)
+  })
+})
+
+describe('gathering: the healthcheck line uses the same trigger classification', () => {
+  const REUSABLE = 'on:\n  workflow_call:\n    inputs:\n      url:\n        type: string\n'
+
+  it('a healthcheck that is reusable only is no healthcheck of its own, not a missing run (gorfednet/.github)', () => {
+    const prod = { id: 8, name: 'production-healthcheck', path: '.github/workflows/production-healthcheck.yml', state: 'active' }
+    const routes = repository({ workflows: [CI, prod] })
+    routes[`repos/${SLUG}/contents/${prod.path}`] = file(REUSABLE)
+    routes[lastRun(prod.id)] = runs()
+    const run = report(routes)
+    assert.equal(run.status, 0, `${run.stdout}${run.stderr}`)
+    assert.equal(line(run.summary, 'Healthcheck'), 'no healthcheck workflow of its own (production-healthcheck is reusable only)')
+    assert.match(run.summary, /Not judged: production-healthcheck \(reusable only\)/)
+    assert.equal(line(run.summary, 'Main branch'), 'green (1 workflow(s) judged on main)')
+  })
+
+  it('does not look up the runs of a healthcheck that is not judged', () => {
+    const routes = repository()
+    routes[`repos/${SLUG}/contents/${HEALTH.path}`] = file(REUSABLE)
+    routes[lastRun(HEALTH.id)] = { status: 502 }
+    const run = report(routes)
+    assert.equal(run.status, 0, `${run.stdout}${run.stderr}`)
+  })
+
+  it('a healthcheck that is off the default branch is no healthcheck of its own either', () => {
+    const run = report(withOffBranch({ ...HEALTH, id: 9, name: 'prod-health', path: '.github/workflows/prod-health.yml' }))
+    assert.match(line(run.summary, 'Healthcheck'), /no healthcheck workflow of its own \(prod-health is not on the default branch\)/)
+  })
+
+  it('near miss: a healthcheck on a schedule is a healthcheck, and its run is reported', () => {
+    const routes = repository()
+    routes[`repos/${SLUG}/contents/${HEALTH.path}`] = file('on:\n  schedule:\n    - cron: "0 7 * * *"\n  workflow_call:\n')
+    const run = report(routes)
+    assert.equal(line(run.summary, 'Healthcheck'), 'success at 2026-10-01T07:00:00Z')
+  })
+
+  it('near miss: a healthcheck whose triggers cannot be read stays undetermined and red, never "of its own"', () => {
+    const routes = repository()
+    routes[`repos/${SLUG}/contents/${HEALTH.path}`] = file('name: no trigger block\njobs: {}\n')
+    const run = report(routes)
+    assert.equal(run.status, 1, `${run.stdout}${run.stderr}`)
+    assert.doesNotMatch(line(run.summary, 'Healthcheck'), /of its own/)
   })
 })
 

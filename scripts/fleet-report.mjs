@@ -11,9 +11,12 @@
  *   - whether its main branch is green, and which workflows are not (judged by
  *     the workflows that run on the branch: a push to it, a schedule; a
  *     tag-only or manual-only workflow is listed as not judged, because its
- *     runs on the branch are stale or one-off, not the branch's health)
+ *     runs on the branch are stale or one-off, not the branch's health; a
+ *     workflow Actions still lists whose file is not on the default branch is
+ *     likewise not judged)
  *   - lapsed `reviewBy` dates in its docs/backlog.json
- *   - the last run of its healthcheck workflow
+ *   - the last run of its healthcheck workflow (or that it has none of its own:
+ *     a reusable-only healthcheck is called by other repositories, not run here)
  *
  * This is a report. It exits non-zero only when it could not look: the
  * repository cannot be seen with this token, or any lookup the section depends
@@ -209,23 +212,28 @@ export function gather(slug, today) {
   // Workflow files: the shared gate and workflows they pin. Their text is kept,
   // because what triggers each workflow decides whether it speaks for main.
   const workflowFiles = new Map()
-  const triedPaths = new Set()
+  // The paths in the default branch's `.github/workflows`, when that listing was
+  // read (a 404 after the root listing succeeded means the directory is not
+  // there: an empty set). null when it could not be read, and then nothing is
+  // known about which registered workflows have a file on the branch.
+  let onBranch = null
   let gate
   const listing = filesUnknown ? null : api(`repos/${slug}/contents/.github/workflows`)
   if (filesUnknown) {
     gate = filesUnknown
   } else if (listing.status === 404) {
     gate = 'no workflows'
+    onBranch = new Set()
   } else if (listing.value === undefined) {
     gate = `unavailable (${listing.message})`
     cannotCheck.push(`.github/workflows could not be listed (${listing.message})`)
   } else {
     const files = listing.value.filter((f) => f.type === 'file' && /\.ya?ml$/.test(f.name))
+    onBranch = new Set(files.map((f) => f.path))
     const texts = []
     const unread = []
     for (const file of files) {
       const text = fileText(slug, file.path)
-      triedPaths.add(file.path)
       if (text.value !== undefined) {
         texts.push(text.value)
         workflowFiles.set(file.path, text.value)
@@ -276,41 +284,55 @@ export function gather(slug, today) {
     // A workflow whose triggers cannot be read is undetermined, never skipped.
     // GitHub-managed workflows (Pages, Dependabot) have no file and keep being
     // judged by their runs.
+    // A registered workflow whose file is not on the default branch cannot run
+    // from a push to it or its schedule: GitHub keeps registering workflows that
+    // were pushed on other branches (subrythm.com gate-ref-test, 2026-10). The
+    // directory listing is the whole directory (up to 1,000 entries), so when it
+    // was read a path missing from it is not on the branch, and neither its file
+    // nor its runs are fetched. When it could not be read nothing is known, and
+    // the workflow stays undetermined below.
+    const classes = new Map()
+    const classify = (workflow) => {
+      if (classes.has(workflow.id)) return classes.get(workflow.id)
+      const path = workflow.path ?? ''
+      let result
+      if (!path.startsWith('.github/workflows/')) {
+        result = { judged: true }
+      } else if (onBranch && !onBranch.has(path)) {
+        result = { judged: false, why: 'not on the default branch' }
+      } else if (workflowFiles.get(path) === undefined) {
+        // The unreadable file is already a "could not check" line above.
+        result = { unknown: 'its workflow file could not be read, so what triggers it is unknown' }
+      } else {
+        try {
+          result = speaksForBranch(workflowTriggers(workflowFiles.get(path)), branch)
+        } catch (cause) {
+          result = {
+            unknown: `could not read what triggers it (${cause.message})`,
+            problem: `the triggers of ${workflow.name} (${path}): ${cause.message}`,
+          }
+        }
+      }
+      classes.set(workflow.id, result)
+      return result
+    }
     const judgedWorkflows = []
     const triggerFailures = new Map()
     for (const workflow of active) {
-      const path = workflow.path ?? ''
-      if (!path.startsWith('.github/workflows/')) {
-        judgedWorkflows.push(workflow)
-        continue
-      }
-      // Normally read above; a workflow the directory listing did not show is asked for by path.
-      if (!triedPaths.has(path) && !filesUnknown) {
-        triedPaths.add(path)
-        const fetched = fileText(slug, path)
-        if (fetched.value !== undefined) workflowFiles.set(path, fetched.value)
-        else cannotCheck.push(`workflow file ${path} could not be read (${reason(fetched)})`)
-      }
-      const text = workflowFiles.get(path)
-      if (text === undefined) {
-        // The unreadable file is already a "could not check" line above.
-        triggerFailures.set(workflow.id, 'its workflow file could not be read, so what triggers it is unknown')
-        continue
-      }
-      try {
-        const verdict = speaksForBranch(workflowTriggers(text), branch)
-        if (verdict.judged) judgedWorkflows.push(workflow)
-        else notJudged.push({ name: workflow.name, why: verdict.why })
-      } catch (cause) {
-        triggerFailures.set(workflow.id, `could not read what triggers it (${cause.message})`)
-        cannotCheck.push(`the triggers of ${workflow.name} (${path}): ${cause.message}`)
-      }
+      const verdict = classify(workflow)
+      if (verdict.unknown) {
+        triggerFailures.set(workflow.id, verdict.unknown)
+        if (verdict.problem) cannotCheck.push(verdict.problem)
+      } else if (verdict.judged) judgedWorkflows.push(workflow)
+      else notJudged.push({ name: workflow.name, why: verdict.why })
     }
     // Each workflow's own last completed run on the branch: one page of the
     // repository's runs can be filled by one busy workflow, and the newest run
     // of a workflow may still be going.
     const last = new Map()
-    for (const workflow of [...judgedWorkflows, ...health]) {
+    // A health workflow that does not speak for the branch has no run to report.
+    const ownHealth = health.filter((w) => classify(w).judged !== false)
+    for (const workflow of [...judgedWorkflows, ...ownHealth]) {
       if (last.has(workflow.id)) continue
       const result = api(
         `repos/${slug}/actions/workflows/${workflow.id}/runs?branch=${encodeURIComponent(branch)}&status=completed&per_page=1`,
@@ -332,11 +354,18 @@ export function gather(slug, today) {
       entries.length === 0 && notJudged.length > 0
         ? `no workflow judges ${branch} (${notJudged.length} active workflow(s), none runs on a push to it or a schedule)`
         : judgeMain(entries, branch)
+    const healthName = (w) => basename(w.path ?? '').replace(/\.ya?ml$/, '')
     healthcheck =
       health.length === 0
         ? 'no healthcheck workflow'
         : health
             .map((w) => {
+              const verdict = classify(w)
+              const name = health.length > 1 ? `${basename(w.path)}: ` : ''
+              if (verdict.judged === false) {
+                const own = verdict.why.startsWith('runs on') ? `${healthName(w)} ${verdict.why}` : `${healthName(w)} is ${verdict.why}`
+                return `${name}no healthcheck workflow of its own (${own})`
+              }
               const { run, failed } = last.get(w.id)
               const what = failed
                 ? `undetermined (${failed})`
@@ -344,7 +373,6 @@ export function gather(slug, today) {
                   ? `${run.conclusion} at ${run.created_at}`
                   : `has no completed run on ${branch}`
               const state = w.state === 'active' ? '' : `**${w.state}**; last completed: `
-              const name = health.length > 1 ? `${basename(w.path)}: ` : ''
               return `${name}${state}${what}`
             })
             .join('; ')
