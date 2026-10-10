@@ -36,6 +36,64 @@ nas_ssh_options() {
   printf '%s\n' "${opts[@]}"
 }
 
+# Tailscale SSH can stop a login and ask for a browser check that only the
+# owner can approve; until then ssh waits for ever. The origin refresh below
+# throws ssh's output away, so on 2026-10-09 a deploy could sit after its upload
+# with no link and no reason. This logs in first with a command that does
+# nothing, shows the link the moment one appears (and a macOS notification),
+# and waits for the approval, which then holds for the logins after it.
+# Usage: nas_ssh_approve <label> <target> [ssh options...]
+nas_ssh_approve() {
+  local label="${1:?label required}" target="${2:?target required}"
+  shift 2
+  local wait="${NAS_SSH_APPROVAL_WAIT:-600}"
+  local log
+  log="$(mktemp "${TMPDIR:-/tmp}/nas-ssh-approve.XXXXXX")"
+  ssh "$@" -o BatchMode=yes -o ConnectTimeout=15 "${target}" true </dev/null >/dev/null 2>"${log}" &
+  local pid=$! waited=0 link=""
+  while kill -0 "${pid}" 2>/dev/null; do
+    if [[ -z "${link}" ]] && grep -qi 'Tailscale SSH requires an additional check' "${log}"; then
+      link="$(grep -oE 'https://login\.tailscale\.com/[^[:space:]]+' "${log}" | head -1)"
+      if [[ -n "${link}" ]]; then
+        {
+          printf '%s\n' "========================================================================"
+          printf '%s Tailscale wants you to approve SSH to %s. Open this link and approve it:\n\n    %s\n\n' "${label}" "${target}" "${link}"
+          printf '%s Waiting up to %s minutes; the deploy carries on by itself once you approve.\n' "${label}" "$((wait / 60))"
+          printf '%s\n' "========================================================================"
+        } >&2
+        if [[ "${NAS_SSH_NOTIFY:-1}" == "1" ]] && command -v osascript >/dev/null 2>&1; then
+          osascript -e "display notification \"Approve SSH to ${target}: ${link}\" with title \"Deploy waiting for Tailscale\"" >/dev/null 2>&1 || true
+        fi
+      fi
+    fi
+    if (( waited >= wait )); then
+      kill "${pid}" 2>/dev/null || true
+      # Its exit status is the kill's; under errexit it must not end the caller.
+      wait "${pid}" 2>/dev/null || true
+      if [[ -n "${link}" ]]; then
+        echo "${label} SSH to ${target} is still waiting for a Tailscale approval after $((wait / 60)) minutes. Approve it, then run this again: ${link}" >&2
+      else
+        echo "${label} SSH to ${target} did not answer within ${wait} s." >&2
+      fi
+      rm -f "${log}"
+      return 1
+    fi
+    sleep 1
+    waited=$((waited + 1))
+  done
+  local code=0
+  wait "${pid}" || code=$?
+  if (( code != 0 )); then
+    echo "${label} SSH to ${target} failed (exit ${code}):" >&2
+    cat "${log}" >&2
+    rm -f "${log}"
+    return 1
+  fi
+  if [[ -n "${link}" ]]; then echo "${label} Approved: ${target} answers." >&2; fi
+  rm -f "${log}"
+  return 0
+}
+
 nas_ssh_rsync_shell() {
   local quoted=()
   local opt
@@ -229,6 +287,17 @@ EOF
   return 1
 }
 
+# Whether nas_ssh_rsync_to will restart the serving container after uploading
+# to `remote_target`, decided the same way it decides there.
+nas_ssh_will_refresh_origin() {
+  local site_dir="${1:?remote target required}"
+  site_dir="${site_dir#*:}"
+  site_dir="${site_dir%/}"
+  site_dir="${site_dir##*/}"
+  [[ "${NAS_SKIP_LIVE_CHECK:-0}" != "1" && "${NAS_SKIP_ORIGIN_REFRESH:-0}" != "1" ]] || return 1
+  [[ -n "$(nas_ssh_site_url "${site_dir}")" ]]
+}
+
 nas_ssh_rsync_to() {
   local remote_target="${1:?remote target required}"
   shift
@@ -237,6 +306,16 @@ nas_ssh_rsync_to() {
     return 2
   }
   local source_path="${!#}"
+  # Every host this deploy will log in to, before anything is uploaded: a
+  # Tailscale approval shows its link here, not after the upload in silence.
+  # shellcheck disable=SC2046
+  nas_ssh_approve "[deploy]" "${NAS_SSH_USER}@${NAS_SSH_HOST}" $(nas_ssh_options) || return 1
+  # The origin host only when this deploy will log in to it: the same three
+  # conditions as the refresh after the upload (a fleet site with a live URL,
+  # and neither skip set). A staging or non-fleet deploy never touches it.
+  if nas_ssh_will_refresh_origin "${remote_target}"; then
+    nas_ssh_approve "[deploy]" "${NAS_ORIGIN_SSH:-dapyllil}" || return 1
+  fi
   local caller_args=()
   if [[ "$#" -gt 1 ]]; then
     caller_args=("${@:1:$#-1}")
