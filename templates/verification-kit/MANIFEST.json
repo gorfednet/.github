@@ -1,8 +1,8 @@
 {
   "version": "0.44.0",
   "files": {
-    "README.md": "7acbbc27155028f3b91941db9c5300e1e33577c23e5e88846357415c1346284d",
-    "bin/assert-checks-started.mjs": "5f0b509e212fcc458759448775b5ca6d5f4f176edfc303526be9f50fee026114",
+    "README.md": "380c2547e577653e9bc3a4ce2d4656d5f921daaad0ec237a3c2d340004ccefa6",
+    "bin/assert-checks-started.mjs": "9b32370e3b8ab4dae94c9b54abd46c6d364f81fb00b6f81ccbaf0e4d21b077f0",
     "bin/assert-tests-executed.mjs": "0c51a19cb8fa467bd8bf98fbbabb1e349cbe28ce125095fe302039e47f8db6fd",
     "bin/bugbot-review-status.mjs": "c4f791b24b8856b9c6437284dc261ee3876e52fbc829fa0d4694d09a1f76a7d4",
     "bin/check-backlog.mjs": "879e1faee3d499894fb995815d57c5eec124cc97d9388a1740aa6490d375673c",
@@ -27,7 +27,7 @@
     "lib/isMain.mjs": "bd3c354d760cb4bbceb2a022d36ae86a903db69865180c58c42d807c74a5fdb4",
     "test/backlogSchema.test.mjs": "18bdb331a9d88d294e7bfe8a8d85e428ebc0e23ec616e9c3c3d51cbcdf2f22b1",
     "test/bugbotConclusion.test.mjs": "90c981ee31d30037c1e21f41b26b4140b2fa0131946a8708cdf7a06119d3c169",
-    "test/checksStarted.test.mjs": "21527c756d8613426beec32ecd601e774455ee77bcccbc27b0105fc4447674bc",
+    "test/checksStarted.test.mjs": "2119717207e22438afe7107b74f0f9d5b60641fa66ef54856b473bb9f0a7828e",
     "test/ciHeadroom.test.mjs": "0de9f0e90cdc1fa1a79dcae28f68689502e52acd0aed7bd5cef1d064b6aca96b",
     "test/cli.test.mjs": "78a6765c0c8337621848983baaed9fd74f9cb60bc4f73151cd10fccac207bc18",
     "test/errorPages.test.mjs": "b5e4c8771e43a0c6c2af7340ee2d2b2b0814f5c6f082a4b1bfb5ec7148be2a92",
