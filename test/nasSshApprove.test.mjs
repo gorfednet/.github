@@ -59,3 +59,23 @@ test("fails with ssh's own words for any other refusal", () => {
   assert.match(result.stderr, /failed \(exit 255\)/)
   assert.match(result.stderr, /Permission denied \(publickey\)/)
 })
+
+// The origin host is asked for approval only when the deploy will restart it
+// afterwards: a fleet site with a live URL, and neither skip flag set.
+function willRefresh(remoteTarget, env = {}) {
+  const dir = mkdtempSync(path.join(tmpdir(), 'fleet-'))
+  const fleet = path.join(dir, 'fleet.json')
+  writeFileSync(fleet, JSON.stringify({ repos: [{ slug: 'gorfednet/example.com' }] }, null, 2))
+  return spawnSync('bash', ['-c', `set -euo pipefail; source "${helper}"; if nas_ssh_will_refresh_origin "${remoteTarget}"; then echo yes; else echo no; fi`], {
+    encoding: 'utf8',
+    env: { ...process.env, NAS_FLEET_FILE: fleet, NAS_SKIP_LIVE_CHECK: '0', NAS_SKIP_ORIGIN_REFRESH: '0', ...env },
+  }).stdout.trim()
+}
+
+test('asks the origin host only for a deploy that will restart it', () => {
+  assert.equal(willRefresh('dev@gorfednas:/volume1/data/websites/example.com/'), 'yes')
+  // Near miss: a site that is not in the fleet (staging, a scratch folder).
+  assert.equal(willRefresh('dev@gorfednas:/volume1/data/websites/staging.example.com/'), 'no')
+  assert.equal(willRefresh('dev@gorfednas:/volume1/data/websites/example.com/', { NAS_SKIP_ORIGIN_REFRESH: '1' }), 'no')
+  assert.equal(willRefresh('dev@gorfednas:/volume1/data/websites/example.com/', { NAS_SKIP_LIVE_CHECK: '1' }), 'no')
+})

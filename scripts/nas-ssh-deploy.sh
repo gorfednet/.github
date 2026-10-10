@@ -287,6 +287,17 @@ EOF
   return 1
 }
 
+# Whether nas_ssh_rsync_to will restart the serving container after uploading
+# to `remote_target`, decided the same way it decides there.
+nas_ssh_will_refresh_origin() {
+  local site_dir="${1:?remote target required}"
+  site_dir="${site_dir#*:}"
+  site_dir="${site_dir%/}"
+  site_dir="${site_dir##*/}"
+  [[ "${NAS_SKIP_LIVE_CHECK:-0}" != "1" && "${NAS_SKIP_ORIGIN_REFRESH:-0}" != "1" ]] || return 1
+  [[ -n "$(nas_ssh_site_url "${site_dir}")" ]]
+}
+
 nas_ssh_rsync_to() {
   local remote_target="${1:?remote target required}"
   shift
@@ -299,7 +310,10 @@ nas_ssh_rsync_to() {
   # Tailscale approval shows its link here, not after the upload in silence.
   # shellcheck disable=SC2046
   nas_ssh_approve "[deploy]" "${NAS_SSH_USER}@${NAS_SSH_HOST}" $(nas_ssh_options) || return 1
-  if [[ "${NAS_SKIP_LIVE_CHECK:-0}" != "1" && "${NAS_SKIP_ORIGIN_REFRESH:-0}" != "1" ]]; then
+  # The origin host only when this deploy will log in to it: the same three
+  # conditions as the refresh after the upload (a fleet site with a live URL,
+  # and neither skip set). A staging or non-fleet deploy never touches it.
+  if nas_ssh_will_refresh_origin "${remote_target}"; then
     nas_ssh_approve "[deploy]" "${NAS_ORIGIN_SSH:-dapyllil}" || return 1
   fi
   local caller_args=()
