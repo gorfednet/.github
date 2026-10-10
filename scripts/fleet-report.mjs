@@ -8,7 +8,10 @@
  * markdown section (to --summary, normally $GITHUB_STEP_SUMMARY, and to stdout):
  *
  *   - the ref of the shared gate and workflows it is pinned to
- *   - whether its main branch is green, and which workflows are not
+ *   - whether its main branch is green, and which workflows are not (judged by
+ *     the workflows that run on the branch: a push to it, a schedule; a
+ *     tag-only or manual-only workflow is listed as not judged, because its
+ *     runs on the branch are stale or one-off, not the branch's health)
  *   - lapsed `reviewBy` dates in its docs/backlog.json
  *   - the last run of its healthcheck workflow
  *
@@ -30,6 +33,7 @@ import { appendFileSync } from 'node:fs'
 import { basename } from 'node:path'
 
 import { isMain } from '../templates/verification-kit/lib/isMain.mjs'
+import { speaksForBranch, workflowTriggers } from './lib/workflowTriggers.mjs'
 
 
 /** Every distinct `uses: gorfednet/.github/...@ref` across the given workflow texts. */
@@ -85,11 +89,12 @@ export function judgeMain(workflows, branch) {
   return `${verdict.join('; ')} (${counts.join(', ')})`
 }
 
-export function renderSection({ slug, gate, main, backlog, healthcheck, notes, cannotCheck = [] }) {
+export function renderSection({ slug, gate, main, notJudged = [], backlog, healthcheck, notes, cannotCheck = [] }) {
   const lines = [`### ${slug}`, '']
   for (const problem of cannotCheck) lines.push(`- **Could not check:** ${problem}`)
   lines.push(`- **Gate pin:** ${gate}`)
   lines.push(`- **Main branch:** ${main}`)
+  if (notJudged.length > 0) lines.push(`- _Not judged: ${notJudged.map((w) => `${w.name} (${w.why})`).join(', ')}_`)
   lines.push(`- **Backlog:** ${backlog}`)
   lines.push(`- **Healthcheck:** ${healthcheck}`)
   for (const note of notes) lines.push(`- _Note:_ ${note}`)
@@ -201,7 +206,10 @@ export function gather(slug, today) {
     }
   }
 
-  // Workflow files: the shared gate and workflows they pin.
+  // Workflow files: the shared gate and workflows they pin. Their text is kept,
+  // because what triggers each workflow decides whether it speaks for main.
+  const workflowFiles = new Map()
+  const triedPaths = new Set()
   let gate
   const listing = filesUnknown ? null : api(`repos/${slug}/contents/.github/workflows`)
   if (filesUnknown) {
@@ -217,7 +225,11 @@ export function gather(slug, today) {
     const unread = []
     for (const file of files) {
       const text = fileText(slug, file.path)
-      if (text.value !== undefined) texts.push(text.value)
+      triedPaths.add(file.path)
+      if (text.value !== undefined) {
+        texts.push(text.value)
+        workflowFiles.set(file.path, text.value)
+      }
       else unread.push({ path: file.path, why: reason(text) })
     }
     const pins = pinnedRefs(texts).map((p) => `\`${p.target}@${p.ref}\``)
@@ -236,6 +248,7 @@ export function gather(slug, today) {
   // refusal after the repository was readable is the token, not the repository.
   let main
   let healthcheck
+  const notJudged = []
   const listed = listWorkflows(slug)
   if (listed.value === undefined && refused(listed)) {
     main = `undetermined: the token cannot see Actions (HTTP ${listed.status})`
@@ -252,11 +265,52 @@ export function gather(slug, today) {
   } else {
     const active = listed.value.filter((w) => w.state === 'active')
     const health = listed.value.filter((w) => w.state !== 'deleted' && isHealthcheck(w))
+    // Which active workflows speak for the branch. A workflow's last run on the
+    // default branch is only the branch's health when the workflow is meant to
+    // run there: a release workflow triggered by version tags keeps a stale
+    // failure from before it was tag-only, and a manual-only workflow keeps a
+    // one-off failure for ever (bindercurve.com, 2026-10: milestone-release and
+    // ops-nginx-restore-prod both read "not green" for months). The run's own
+    // `event` cannot tell these apart, because the stale runs are push runs on
+    // main from before the trigger changed; the workflow file's `on:` can.
+    // A workflow whose triggers cannot be read is undetermined, never skipped.
+    // GitHub-managed workflows (Pages, Dependabot) have no file and keep being
+    // judged by their runs.
+    const judgedWorkflows = []
+    const triggerFailures = new Map()
+    for (const workflow of active) {
+      const path = workflow.path ?? ''
+      if (!path.startsWith('.github/workflows/')) {
+        judgedWorkflows.push(workflow)
+        continue
+      }
+      // Normally read above; a workflow the directory listing did not show is asked for by path.
+      if (!triedPaths.has(path) && !filesUnknown) {
+        triedPaths.add(path)
+        const fetched = fileText(slug, path)
+        if (fetched.value !== undefined) workflowFiles.set(path, fetched.value)
+        else cannotCheck.push(`workflow file ${path} could not be read (${reason(fetched)})`)
+      }
+      const text = workflowFiles.get(path)
+      if (text === undefined) {
+        // The unreadable file is already a "could not check" line above.
+        triggerFailures.set(workflow.id, 'its workflow file could not be read, so what triggers it is unknown')
+        continue
+      }
+      try {
+        const verdict = speaksForBranch(workflowTriggers(text), branch)
+        if (verdict.judged) judgedWorkflows.push(workflow)
+        else notJudged.push({ name: workflow.name, why: verdict.why })
+      } catch (cause) {
+        triggerFailures.set(workflow.id, `could not read what triggers it (${cause.message})`)
+        cannotCheck.push(`the triggers of ${workflow.name} (${path}): ${cause.message}`)
+      }
+    }
     // Each workflow's own last completed run on the branch: one page of the
     // repository's runs can be filled by one busy workflow, and the newest run
     // of a workflow may still be going.
     const last = new Map()
-    for (const workflow of [...active, ...health]) {
+    for (const workflow of [...judgedWorkflows, ...health]) {
       if (last.has(workflow.id)) continue
       const result = api(
         `repos/${slug}/actions/workflows/${workflow.id}/runs?branch=${encodeURIComponent(branch)}&status=completed&per_page=1`,
@@ -270,10 +324,14 @@ export function gather(slug, today) {
       const { failed } = last.get(workflow.id)
       if (failed) cannotCheck.push(`the last run of ${workflow.name} (${workflow.path}): ${failed}`)
     }
-    main = judgeMain(
-      active.map((w) => ({ name: w.name, ...last.get(w.id) })),
-      branch,
-    )
+    const entries = [
+      ...judgedWorkflows.map((w) => ({ name: w.name, ...last.get(w.id) })),
+      ...active.filter((w) => triggerFailures.has(w.id)).map((w) => ({ name: w.name, failed: triggerFailures.get(w.id) })),
+    ]
+    main =
+      entries.length === 0 && notJudged.length > 0
+        ? `no workflow judges ${branch} (${notJudged.length} active workflow(s), none runs on a push to it or a schedule)`
+        : judgeMain(entries, branch)
     healthcheck =
       health.length === 0
         ? 'no healthcheck workflow'
@@ -318,7 +376,7 @@ export function gather(slug, today) {
     }
   }
 
-  return { slug, gate, main, backlog, healthcheck, notes, cannotCheck }
+  return { slug, gate, main, notJudged, backlog, healthcheck, notes, cannotCheck }
 }
 
 if (isMain(import.meta.url)) {
