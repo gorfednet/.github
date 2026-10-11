@@ -83,18 +83,33 @@ that breaks the site.
 
 1. On dapyllil: `mkdir -p ~/Docker/nginx/conf.d/snippets/csp` and copy `snippets/` from
    this directory there (`scp -r`).
-2. Edit each `~/Docker/nginx/conf.d/<site>.conf`: add the three `include` lines at server
-   level (after `index index.html;`) and the same three inside the static-asset `location`
-   (after its `add_header Cache-Control`). Sites in the "headers only" row get the two
-   non-CSP includes. `vhosts/promptboi.com.conf.proposed` here shows the finished shape.
+2. Edit each `~/Docker/nginx/conf.d/<site>.conf`: add the `include` lines at server level
+   (after `index index.html;`) and the same lines inside the static-asset `location` (after
+   its `add_header Cache-Control`). **Which lines depends on the table above, read at apply
+   time:** every site gets `security-headers.inc` and its `permissions-*.inc`; the
+   `csp/<site>.inc` line is added **only for a site whose status is "verified"** (today:
+   promptboi.com alone). A "declared" site gets no CSP include until its injection check has
+   passed and the table says so; a snippet file existing in `snippets/csp/` is not permission
+   to include it. `vhosts/promptboi.com.conf.proposed` shows the finished shape for a
+   verified site.
 3. `docker exec nginx nginx -t` must say `syntax is ok` and `test is successful`; only then
    `docker exec nginx nginx -s reload`.
-4. Verify every site three ways, because of the inheritance trap:
+4. Verify every site three ways, because of the inheritance trap. The asset must be a
+   **real** one: a missing `.css` path is handed to `error_page 404 /404.html`, which is
+   answered from `location /`, so it would show server-level headers and prove nothing
+   about the asset location. Take the first stylesheet the home page links, and confirm the
+   response came through the asset location by its `cache-control: public, immutable`:
    ```
-   for u in / /assets/does-not-exist.css /no-such-page; do curl -sI https://<site>$u | grep -iE "^(content-security-policy|strict-transport|x-frame|x-content-type|referrer-policy|permissions-policy)"; done
+   site=<site>
+   css=$(curl -s "https://$site/" | grep -oE 'href="[^"]+\.css[^"]*"' | head -1 | cut -d'"' -f2)
+   for u in / "$css" /no-such-page; do
+     echo "== $u"; curl -sI "https://$site$u" | grep -iE "^(cache-control|content-security-policy|strict-transport|x-frame|x-content-type|referrer-policy|permissions-policy)"
+   done
    ```
-   Each of the three responses must show the same set. Then open the site in a browser
-   and read the console: zero CSP reports.
+   The asset response must show `cache-control: public, immutable` **and** the same header
+   set as the page; the 404 must show the set too. A site with no stylesheet link uses its
+   first `<script src>` instead. Then open the site in a browser and read the console: zero
+   CSP reports.
 5. Re-capture: copy the live `conf.d/*.conf` into `../vhosts/`, update `../CAPTURE.json`
    hashes and `capturedAt`, run `node scripts/check-vhost-capture.mjs`.
 6. Follow-up PRs: `production-healthcheck.yml` asserts the header set on each site
