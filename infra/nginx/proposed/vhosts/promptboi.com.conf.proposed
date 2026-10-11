@@ -1,0 +1,78 @@
+server {
+    listen 80;
+    listen [::]:80;
+    server_name promptboi.com www.promptboi.com;
+    root /mnt/gorfednas/websites/promptboi.com;
+    index index.html;
+
+    # Security headers (infra/nginx/proposed/README.md). Included again inside the
+    # static-asset location below, because its own add_header drops these otherwise.
+    include /etc/nginx/conf.d/snippets/security-headers.inc;
+    include /etc/nginx/conf.d/snippets/permissions-promptboi.inc;
+    include /etc/nginx/conf.d/snippets/csp/promptboi.com.inc;
+
+    if ($redirect_https) {
+        return 308 https://$host$request_uri;
+    }
+
+    gzip on;
+    gzip_vary on;
+    gzip_min_length 1024;
+    gzip_types text/plain text/css text/xml text/javascript application/x-javascript application/xml+rss application/json application/javascript;
+
+    location ~* \.(jpg|jpeg|png|gif|ico|css|js|svg|woff|woff2|ttf|eot|webp|avif)$ {
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+        include /etc/nginx/conf.d/snippets/security-headers.inc;
+        include /etc/nginx/conf.d/snippets/permissions-promptboi.inc;
+        include /etc/nginx/conf.d/snippets/csp/promptboi.com.inc;
+        access_log off;
+        try_files $uri =404;
+    }
+
+    location ~ /\. {
+        deny all;
+        access_log off;
+        log_not_found off;
+    }
+
+    location ~* \.(env|log|sql|md|json|lock|key|pem|config|ini|bak|backup|old|tmp)$ {
+        deny all;
+        access_log off;
+        log_not_found off;
+    }
+
+    # Branded error bodies at the correct status. nginx returns the file with the
+    # original code, so an unknown URL is still a hard 404 and never a soft one.
+    # Verified before rollout: with the target file absent nginx serves its own
+    # 404 rather than entering a redirect cycle, so these were safe to add ahead
+    # of the deploys that create the pages.
+    error_page 404 /404.html;
+    error_page 500 502 503 504 /500.html;
+
+    # promptboi.com's API (compose project "promptboi" on this host, container
+    # promptboi-api on the gorf_default network). Resolved per request through
+    # Docker's DNS, so nginx still starts - and every other site still serves -
+    # when that container is down; /api/ then answers 502 and the site falls
+    # back to its static feed snapshot. ^~ keeps the extension deny rules above
+    # from ever seeing these paths.
+    location ^~ /api/ {
+        resolver 127.0.0.11 valid=30s ipv6=off;
+        set $promptboi_api http://promptboi-api:8080;
+        proxy_pass $promptboi_api;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header CF-Connecting-IP $http_cf_connecting_ip;
+        proxy_connect_timeout 3s;
+        proxy_read_timeout 15s;
+        client_max_body_size 16k;
+    }
+
+    location / {
+        try_files $uri $uri/ =404;
+    }
+
+    server_tokens off;
+}
