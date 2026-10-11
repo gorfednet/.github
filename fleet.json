@@ -171,6 +171,15 @@
       "owner": "gorf",
       "verifiedAt": "2026-09-25",
       "note": "Desktop converter with PR CI and tagged releases. No production site to healthcheck. Bugbot stays off unless it starts shipping weekly."
+    },
+    {
+      "slug": "gorfednet/career-portfolio",
+      "archetype": "tool",
+      "tier": 2,
+      "monitorClass": "tool",
+      "owner": "gorf",
+      "verifiedAt": "2026-10-10",
+      "note": "Private archive behind the sites' identity layer. No site: the gate runs tools/run_tests.py (both unittest suites, Vitest-shaped report) with an executed floor of 218, make validate, and the kit checks, in its own .github/workflows/ci.yml. Sources (the 368 GB archive share) never reach the runner."
     }
   ]
 }
