@@ -102,12 +102,20 @@ that breaks the site.
    ```
    site=<site>
    css=$(curl -s "https://$site/" | grep -oE 'href="[^"]+\.css[^"]*"' | head -1 | cut -d'"' -f2)
-   for u in / "$css" /no-such-page; do
-     echo "== $u"; curl -sI "https://$site$u" | grep -iE "^(cache-control|content-security-policy|strict-transport|x-frame|x-content-type|referrer-policy|permissions-policy)"
+   # Cloudflare caches the immutable assets at the edge, so a plain request can return the
+   # copy cached BEFORE the reload, without the new headers, and hide the change. A unique
+   # query string makes the edge miss and fetch from the origin; the cf-cache-status line
+   # must say MISS (or DYNAMIC), never HIT, for the asset response to count.
+   nonce=$(date +%s)
+   for u in / "$css?verify=$nonce" /no-such-page; do
+     echo "== $u"; curl -sI "https://$site$u" | grep -iE "^(cf-cache-status|cache-control|content-security-policy|strict-transport|x-frame|x-content-type|referrer-policy|permissions-policy)"
    done
    ```
-   The asset response must show `cache-control: public, immutable` **and** the same header
-   set as the page; the 404 must show the set too. A site with no stylesheet link uses its
+   The asset response must show `cf-cache-status: MISS` (not `HIT`), `cache-control: public,
+   immutable` **and** the same header set as the page; the 404 must show the set too. Then
+   purge the Cloudflare cache for the zone (dashboard, Caching, Purge everything) so visitors
+   stop receiving cached assets without the headers; until the purge, an asset served HIT
+   carries the old headers for up to a year. A site with no stylesheet link uses its
    first `<script src>` instead. Then open the site in a browser and read the console: zero
    CSP reports.
 5. Re-capture: copy the live `conf.d/*.conf` into `../vhosts/`, update `../CAPTURE.json`
