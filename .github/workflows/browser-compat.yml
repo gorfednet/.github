@@ -73,7 +73,14 @@ jobs:
           node-version: ${{ inputs.node-version }}
       - name: Build
         run: ${{ inputs.build-command }}
+      # One browser per job. The action's default installs all three, so every matrix
+      # job paid for chromium, firefox and webkit on a cache miss, and every Playwright
+      # bump is a miss: ssatcy.com#18 and gorfed.net#57 lost their chromium jobs to the
+      # 25-minute limit inside this step (2026-10-01). The cache key already carries the
+      # browser slug, so each browser caches on its own.
       - uses: gorfednet/.github/.github/actions/setup-playwright@main
+        with:
+          browsers: ${{ matrix.browser }}
       - name: Playwright smoke (${{ matrix.browser }})
         run: >-
           ${{ inputs.playwright-test-command }} --project=${{ matrix.browser }}
