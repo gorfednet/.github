@@ -85,6 +85,18 @@ jobs:
           # a browser fails. A report only a machine sees is no use at 2am.
           PLAYWRIGHT_JSON_OUTPUT_NAME: compat-${{ matrix.browser }}.json
 
+      # A failing browser job must leave its evidence behind: traces, screenshots and
+      # error context under test-results/. Without this, a Linux-only failure can only
+      # be guessed at (promptboi.com#44, 2026-10-11).
+      - name: Upload Playwright test results
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: playwright-${{ matrix.browser }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 7
+
       # Three browsers, and until now nothing checked that any of them ran a
       # test. The spec selection is a command string supplied by the caller, so
       # a path that stops matching produces three green jobs in about forty
