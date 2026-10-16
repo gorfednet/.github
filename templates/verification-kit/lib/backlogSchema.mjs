@@ -38,19 +38,22 @@ const REQUIRED_PROSE = ['title', 'userSymptom', 'evidence']
  */
 export const PLACEHOLDER_ID = 'example-entry'
 
+const REVIEW_DATE = /^\d{4}-\d{2}-\d{2}$/
+
 /** Today at day resolution, so a `reviewBy` of today has not yet lapsed. */
 export function todayUtc(now = new Date()) {
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()))
 }
 
 /**
+ * The shape of the plan of record: everything a pull request that edits it can
+ * get wrong. Nothing here depends on the date.
+ *
  * @param {unknown} doc parsed backlog.json
- * @param {{now?: Date}} [options]
  * @returns {string[]} human-readable problems; empty means valid
  */
-export function validateBacklog(doc, options = {}) {
+export function validateBacklog(doc) {
   const problems = []
-  const now = todayUtc(options.now ?? new Date())
 
   if (doc === null || typeof doc !== 'object' || Array.isArray(doc)) {
     return ['backlog.json must be a JSON object with an "entries" array']
@@ -142,18 +145,49 @@ export function validateBacklog(doc, options = {}) {
       problems.push(`${where} names pull request #${entry.pr} but its status is "${entry.status}"`)
     }
 
-    // Deferral is fine. Undated deferral becomes permanent by accident.
-    if (entry.reviewBy != null) {
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(entry.reviewBy)) {
-        problems.push(`${where} has an unparseable reviewBy "${entry.reviewBy}"; use YYYY-MM-DD`)
-      } else if (new Date(`${entry.reviewBy}T00:00:00Z`) < now) {
-        problems.push(
-          `${where} was deferred to ${entry.reviewBy}, which has passed. Renew the date as a ` +
-            'decision, or change the status. Drifting past it is not a decision.',
-        )
-      }
+    // Deferral is fine. Undated deferral becomes permanent by accident. The
+    // shape of the date is checked here; whether it has passed is not — see
+    // lapsedReviewDates below.
+    if (entry.reviewBy != null && !REVIEW_DATE.test(entry.reviewBy)) {
+      problems.push(`${where} has an unparseable reviewBy "${entry.reviewBy}"; use YYYY-MM-DD`)
     }
   }
 
   return problems
+}
+
+/**
+ * Entries whose `reviewBy` has passed, as findings to report rather than
+ * problems to fail on.
+ *
+ * This used to be one of validateBacklog's problems, and that made the date a
+ * tripwire on every pull request: on 2026-10-16 seven entries dated the day
+ * before failed gorfednet/.github#55, which touched none of them, while `main`
+ * had been green five days earlier only because the dates had not arrived. A
+ * pull request check fails only on something that pull request can change
+ * (the 2026-10 right-sizing, docs/verification-rules.md), and the calendar is
+ * not one. So check-backlog prints these as warnings, and fleet-audit.yml lists
+ * them per repository on its schedule, where renewing or closing each one is
+ * the decision it asks for.
+ *
+ * Only well-formed dates are considered; a malformed one is validateBacklog's.
+ *
+ * @param {unknown} doc parsed backlog.json
+ * @param {{now?: Date}} [options]
+ * @returns {{id: string, status: string, reviewBy: string}[]}
+ */
+export function lapsedReviewDates(doc, options = {}) {
+  const now = todayUtc(options.now ?? new Date())
+  const entries = Array.isArray(doc?.entries) ? doc.entries : []
+  return entries
+    .filter(
+      (entry) =>
+        entry !== null &&
+        typeof entry === 'object' &&
+        entry.id !== PLACEHOLDER_ID &&
+        typeof entry.reviewBy === 'string' &&
+        REVIEW_DATE.test(entry.reviewBy) &&
+        new Date(`${entry.reviewBy}T00:00:00Z`) < now,
+    )
+    .map((entry) => ({ id: entry.id, status: entry.status, reviewBy: entry.reviewBy }))
 }

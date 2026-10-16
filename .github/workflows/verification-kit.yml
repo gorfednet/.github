@@ -61,6 +61,10 @@ jobs:
         if: ${{ !cancelled() }}
         run: bash scripts/test-nas-ssh-deploy.sh
 
+      # The backlog's shape, enforced. A `reviewBy` that has passed is printed as
+      # a warning and does not fail this step: the calendar is not something a
+      # pull request can change (2026-10 right-sizing). fleet-audit.yml lists
+      # the lapsed dates on its schedule.
       - name: Fleet backlog describes reality
         if: ${{ !cancelled() }}
         run: node templates/verification-kit/bin/check-backlog.mjs --file docs/backlog.json

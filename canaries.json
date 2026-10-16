@@ -19,11 +19,19 @@
     },
     {
       "id": "backlog-lets-a-deferral-lapse",
-      "guards": "A dated deferral fails the build once it passes. Without this, 'revisit before the next release' becomes permanent by accident.",
+      "guards": "A dated deferral is listed once it passes. Without this, 'revisit before the next release' becomes permanent by accident: the date no longer fails a pull request, so being told about it is all that is left.",
       "command": "node --test 'templates/verification-kit/test/backlogSchema.test.mjs'",
       "file": "templates/verification-kit/lib/backlogSchema.mjs",
       "find": "new Date(`${entry.reviewBy}T00:00:00Z`) < now",
       "replace": "false"
+    },
+    {
+      "id": "backlog-fails-a-pr-on-the-calendar",
+      "guards": "A lapsed reviewBy prints a warning and leaves check-backlog's exit code alone. It used to fail every pull request on the day the date passed, and on 2026-10-16 failed gorfednet/.github#55 for seven entries it did not touch (the 2026-10 right-sizing: a pull request check fails only on something that pull request can change).",
+      "command": "node --test 'templates/verification-kit/test/cli.test.mjs'",
+      "file": "templates/verification-kit/bin/check-backlog.mjs",
+      "find": "const problems = validateBacklog(doc)",
+      "replace": "const problems = [...validateBacklog(doc), ...lapsed.map((entry) => entry.id)]"
     },
     {
       "id": "bugbot-neutral-read-as-skipped",
