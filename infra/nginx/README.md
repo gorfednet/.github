@@ -51,9 +51,15 @@ of which are the things that matter to a visitor.
 All ten site vhosts came from one template and differ only in `server_name` and
 `root`. Worth knowing when reading them:
 
-- **Port 80 only.** No `listen 443`, no TLS, no HSTS, no security headers. TLS
-  terminates at Cloudflare in front of this host. Any repository file claiming
-  this layer serves 443 with HSTS is describing something that does not exist.
+- **Port 80 only.** No `listen 443` and no TLS: TLS terminates at Cloudflare in
+  front of this host. Any repository file claiming this layer serves 443 is
+  describing something that does not exist.
+- **Security headers: 4thcltr.com only**, since 2026-10-16. Its vhost is the file
+  tracked in that repository (`nginx/4thcltr.com.conf`), installed by hand, and
+  carries CSP, HSTS and six more at server level, with `add_header_inherit
+  merge;` on the asset location so they survive its own `Cache-Control`. That
+  repository's scheduled `check-live-headers.mjs` compares the live responses
+  with its file. The other vhosts send none.
 - `error_page 404 /404.html;` and `error_page 500 502 503 504 /500.html;` on all
   ten. Added 2026-09-14. Verified beforehand that with the target file absent
   nginx still returns its own clean 404 rather than entering a redirect cycle,
