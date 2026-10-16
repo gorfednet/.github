@@ -1,6 +1,6 @@
 import { strict as assert } from 'node:assert'
 import { describe, it } from 'node:test'
-import { PLACEHOLDER_ID, validateBacklog } from '../lib/backlogSchema.mjs'
+import { PLACEHOLDER_ID, lapsedReviewDates, validateBacklog } from '../lib/backlogSchema.mjs'
 
 const PROSE = 'a sentence long enough to clear the twenty character floor'
 
@@ -102,15 +102,41 @@ describe('validateBacklog', () => {
     assert.ok(problems.some((p) => /unparseable reviewBy/.test(p)))
   })
 
-  // Deferral is fine; undated deferral becomes permanent by accident.
-  it('fails once a dated commitment has lapsed, and not before', () => {
-    const now = new Date('2026-06-15T12:00:00Z')
+  // A pull request cannot change the date, so a lapsed one is not a problem
+  // with the file's shape. gorfednet/.github#55 failed on seven of them.
+  it('does not fail an entry because its review date has passed', () => {
+    assert.deepEqual(validateBacklog({ entries: [entry({ reviewBy: '2000-01-01' })] }), [])
+  })
 
-    const lapsed = validateBacklog({ entries: [entry({ reviewBy: '2026-06-14' })] }, { now })
-    assert.ok(lapsed.some((p) => /has passed/.test(p)))
+  // The near miss: dropping the date rule must not drop the shape rule with it.
+  it('still rejects a malformed review date even when it would have lapsed', () => {
+    const problems = validateBacklog({ entries: [entry({ reviewBy: '2000-1-1' })] })
+    assert.ok(problems.some((p) => /unparseable reviewBy/.test(p)))
+  })
+})
+
+describe('lapsedReviewDates', () => {
+  const now = new Date('2026-06-15T12:00:00Z')
+
+  // Deferral is fine; undated deferral becomes permanent by accident. So the
+  // date is still read, and reported, just never enforced on a pull request.
+  it('lists an entry once its dated commitment has lapsed, and not before', () => {
+    assert.deepEqual(
+      lapsedReviewDates({ entries: [entry({ id: 'late', reviewBy: '2026-06-14', status: 'landed', pr: 3 })] }, { now }),
+      [{ id: 'late', status: 'landed', reviewBy: '2026-06-14' }],
+    )
 
     // Today is not yet lapsed: the comparison is at day resolution.
-    assert.deepEqual(validateBacklog({ entries: [entry({ reviewBy: '2026-06-15' })] }, { now }), [])
-    assert.deepEqual(validateBacklog({ entries: [entry({ reviewBy: '2026-06-16' })] }, { now }), [])
+    assert.deepEqual(lapsedReviewDates({ entries: [entry({ reviewBy: '2026-06-15' })] }, { now }), [])
+    assert.deepEqual(lapsedReviewDates({ entries: [entry({ reviewBy: '2026-06-16' })] }, { now }), [])
+    assert.deepEqual(lapsedReviewDates({ entries: [entry({})] }, { now }), [])
+  })
+
+  // A malformed date is validateBacklog's to reject; reporting it here as well
+  // would print one defect twice, once as a warning that sounds optional.
+  it('leaves malformed dates and malformed documents to validateBacklog', () => {
+    assert.deepEqual(lapsedReviewDates({ entries: [entry({ reviewBy: 'last week' })] }, { now }), [])
+    assert.deepEqual(lapsedReviewDates({ entries: [null, 'x'] }, { now }), [])
+    assert.deepEqual(lapsedReviewDates([], { now }), [])
   })
 })
