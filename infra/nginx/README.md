@@ -59,7 +59,7 @@ All ten site vhosts came from one template and differ only in `server_name` and
   carries CSP, HSTS and six more at server level, with `add_header_inherit
   merge;` on the asset location so they survive its own `Cache-Control`. That
   repository's scheduled `check-live-headers.mjs` compares the live responses
-  with its file. The other vhosts send none.
+  with its file. The other captured site vhosts send none.
 - `error_page 404 /404.html;` and `error_page 500 502 503 504 /500.html;` on all
   ten. Added 2026-09-14. Verified beforehand that with the target file absent
   nginx still returns its own clean 404 rather than entering a redirect cycle,
