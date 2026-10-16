@@ -343,7 +343,7 @@
       "evidence": "The captured live vhosts in infra/nginx/vhosts/ contain no listen 443, no HSTS and no security headers, and a test now asserts that and fails if a captured vhost ever claims 443. The nginx conf tracked inside the 4thcltr.com repository claims all three. Only one of the two can be true, and the captured one came off the running host. Fixed 2026-10-16 by gorfednet/4thcltr.com#153: the cause of missing headers on the live site was exactly this file never having been installed. That repository's nginx/4thcltr.com.conf is now the live vhost byte for byte (port 80, no 443) plus the security headers, installed on dapyllil with a backup, nginx -t and a reload, and re-captured here (sha eeaa4e42…, hashed on the host).",
       "reviewBy": "2026-11-30",
       "note": "Not fixed in the same change because 4thcltr.com had concurrent work in flight and two writers in one clone is how uncommitted edits get silently stashed. The fix is either to delete the file or to make it say what it is - a proposal, or a record of a different layer - rather than reading as a description of this one.",
-      "pr": 0
+      "pr": 55
     },
     {
       "id": "vhost-capture-drift-gorfed-work-and-assist",
