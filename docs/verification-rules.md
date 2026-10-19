@@ -1085,9 +1085,24 @@ defect.
 | Error pages ship with the site | Failed on a missing or placeholder 404.html or 500.html | `::warning`, job passes | The warning; the live probe in `production-healthcheck.yml` for the server half (V66), which is the stronger check |
 | Paths are derived, not named | Failed on a tracked absolute machine path; failed everywhere on 2026-10-15 if the consumer's vendored kit lacked the checker | `::warning`, job passes. The grace date and its test seam are deleted | The warning; this repository applies the same checker to itself (`selfAppliedCheckers`), enforced. The date logic is gone because a date is not something a pull request can change |
 | No generated files tracked in git | Failed on tracked build output | `::warning`, job passes | The warning; this repository applies the same checker to itself, enforced |
-| Backlog describes reality | Failed on a malformed or lapsed backlog entry, including a `reviewBy` date in the past on a landed entry | `::warning`, job passes | The warning; this repository's own backlog is still enforced in `verification-kit.yml`, including `--verify-prs`; `fleet-audit.yml` lists lapsed `reviewBy` dates per repository on its schedule |
+| Backlog describes reality | Failed on a malformed or lapsed backlog entry, including a `reviewBy` date in the past on a landed entry | `::warning`, job passes | The warning; this repository's own backlog shape is still enforced in `verification-kit.yml`, including `--verify-prs`; `fleet-audit.yml` lists lapsed `reviewBy` dates per repository on its schedule. Since 2026-10-16 `check-backlog.mjs` itself prints a lapsed date as a warning and never fails on one (below) |
 
 Still enforced in the gate, unchanged: "Assert the tests actually ran" (the
 executed-count floor over the consumer's own test report) and everything that
 runs the consumer's own build or tests. Those depend on what the pull request
 changes.
+
+**2026-10-16, a date the right-sizing missed.** The table above moved the
+consumer gate's backlog step to a warning, but the date still lived inside
+`validateBacklog`, so every caller that ran `check-backlog.mjs` directly kept
+failing on the calendar: this repository's own `verification-kit.yml`, and any
+consumer workflow that invokes the checker outside the gate. Seven entries dated
+2026-10-15 failed #55 the next day, a pull request that touched none of them,
+while `main` had been green on 2026-10-11 only because the dates had not arrived.
+The lapsed-date test is now `lapsedReviewDates()`, separate from the shape
+problems; `check-backlog.mjs` prints each as a warning (an annotation under
+Actions) and leaves the exit code to the shape and `--verify-prs` checks.
+`fleet-audit.yml` already listed lapsed dates per repository, and still does.
+A malformed `reviewBy` still fails. Canaries `backlog-lets-a-deferral-lapse`
+(a lapsed date stops being listed) and `backlog-fails-a-pr-on-the-calendar` (a
+lapsed date fails the run again) were each watched red.
