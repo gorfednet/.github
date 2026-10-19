@@ -4,6 +4,34 @@ A check taken out on purpose is a recorded decision, not a weakening
 (`~/.claude/rules/shipping.md`, "When CI is red"). Each entry says what the
 check caught, why it went, and what still catches that class. Newest first.
 
+## 2026-10-19: the ship bot's Bugbot gate
+
+**Removed:** from `ship-bot/` (the merge bot on the owner's Mac), gate (d)'s
+Bugbot half: running the kit's `bugbot-review-status.mjs`, the `bugbot run`
+comment it posted once per unreviewed head, its wait timeout, its
+usage-limit detection, and the filter that left Bugbot's check runs out of
+the checks gate. The config keys `bugbot`, `scripts.bugbotReviewStatus`,
+`bugbotGraceMinutes` and `bugbotWaitMinutes` went with it.
+
+**What it caught:** a head Bugbot had not reviewed, or reviewed with
+findings nobody had answered; the bot did not merge it. It also stopped a
+Bugbot usage-limit error from reading as a wait nobody heard about.
+
+**Why it went:** the owner retired Cursor and Bugbot on 2026-10-16. Every
+repository then read `not-run`, so the gate either held every merge or
+posted `bugbot run`, which nobody may comment any more. Its script came from
+TowIt's dormant kit, and the entry below removes it from the kit.
+
+**What catches that class now:** the same gate on the Claude reviewer. It
+runs `review-status.mjs` (bindercurve.com `scripts/`) for the verdict on the
+current head, merges on `clean`, or on `findings` once every thread the
+reviewer opened is resolved or answered after its latest comment, and holds
+a `not-run` head with one comment per head. It never asks for a review,
+since shipping.md leaves whether a push needs one to a person. Renamed keys:
+`claudeReview`, `scripts.reviewStatus`, `reviewGraceMinutes`; an old key is
+refused with what replaced it. Check runs named for Bugbot are judged like
+any other check.
+
 ## 2026-10-19: `bugbot-verdict.yml` and the kit's Bugbot status check
 
 **Removed:** `.github/workflows/bugbot-verdict.yml`; from the kit (v0.46.0),
