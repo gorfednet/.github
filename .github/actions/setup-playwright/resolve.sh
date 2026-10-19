@@ -24,8 +24,9 @@ if [ -z "$version" ]; then
   exit 1
 fi
 
+# Word-split on purpose: collapses repeated spaces, then joins with dashes.
 # shellcheck disable=SC2086
-slug="$(printf '%s' $browsers | tr -s ' ' '-')"
+slug="$(echo $browsers | tr ' ' '-')"
 mode=hosted
 
 preinstalled="${BC_PREINSTALLED_PLAYWRIGHT_VERSION:-}"

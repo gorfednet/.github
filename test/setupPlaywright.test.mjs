@@ -37,6 +37,12 @@ function run({ locked = '1.64.1', pkg = '@playwright/test', preinstalled, browse
 }
 
 describe('setup-playwright resolve.sh', () => {
+  it('keeps the hosted cache key: browsers joined by dashes, as before', () => {
+    const x = run({ browsers: 'chromium  firefox webkit' })
+    assert.equal(x.r.status, 0, x.r.stderr)
+    assert.match(x.out, /^browsers_slug=chromium-firefox-webkit$/m)
+  })
+
   it('hosted (env unset): mode=hosted and the script installs nothing itself', () => {
     const x = run({})
     assert.equal(x.r.status, 0, x.r.stderr)
