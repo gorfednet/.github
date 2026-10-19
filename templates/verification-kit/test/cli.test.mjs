@@ -620,8 +620,8 @@ exit 1
 /*
  * Which repository a pull-request check asks GitHub about.
  *
- * Run from the bindercurve.com clone to check 4thcltr.com #95, bugbot-review-status
- * reported two Bugbot findings. The 4thcltr pull request was clean; the findings
+ * Run from the bindercurve.com clone to check 4thcltr.com #95, the review-status
+ * check (since retired with Bugbot) reported two Bugbot findings. The 4thcltr pull request was clean; the findings
  * belonged to bindercurve.com #95. Every parser here dropped a flag it did not
  * recognise, so `--repo=gorfednet/4thcltr.com` (or `-R`, or a typo) fell back to
  * the clone's origin and answered a different repository's question as if it
@@ -630,7 +630,7 @@ exit 1
  * rather than inferred from an exit code.
  */
 describe('repository resolution', () => {
-  const PR_CLIS = ['bugbot-review-status.mjs', 'assert-checks-started.mjs']
+  const PR_CLIS = ['assert-checks-started.mjs']
   const ALL_CLIS = [...PR_CLIS, 'check-ci-headroom.mjs', 'check-backlog.mjs']
 
   function cloneOf(slug) {
@@ -667,7 +667,6 @@ describe('repository resolution', () => {
 
   // Each CLI's own valid arguments, then the one it must not swallow.
   const VALID = {
-    'bugbot-review-status.mjs': ['--pr', '95'],
     'assert-checks-started.mjs': ['--pr', '95'],
     'check-ci-headroom.mjs': ['--runs', '3'],
     'check-backlog.mjs': ['--verify-prs'],

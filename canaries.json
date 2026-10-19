@@ -34,22 +34,6 @@
       "replace": "const problems = [...validateBacklog(doc), ...lapsed.map((entry) => entry.id)]"
     },
     {
-      "id": "bugbot-neutral-read-as-skipped",
-      "guards": "A neutral Bugbot conclusion carrying a completed-review summary is findings, not a skipped review. This is the exact defect that left five findings unread across three pull requests.",
-      "command": "node --test 'templates/verification-kit/test/bugbotConclusion.test.mjs'",
-      "file": "templates/verification-kit/lib/bugbotConclusion.mjs",
-      "find": "  if (!finished) {",
-      "replace": "  if (bugbot.conclusion === 'neutral') {"
-    },
-    {
-      "id": "bugbot-api-failure-reads-as-clean",
-      "guards": "A GitHub API failure resolves to undetermined, never to a pass. Collapsing errors to a benign state is how a detector reports green during an outage.",
-      "command": "node --test 'templates/verification-kit/test/bugbotConclusion.test.mjs'",
-      "file": "templates/verification-kit/lib/bugbotConclusion.mjs",
-      "find": "    return { state: 'undetermined', pr, detail: `could not read #${pr}: ${detail.error}` }",
-      "replace": "    return { state: 'clean', pr, detail: 'assumed fine' }"
-    },
-    {
       "id": "rule-numbering-gap-goes-unnoticed",
       "guards": "A gap or duplicate in a rule sequence fails the build. Nine branches merging at once once produced 21-24 missing and two rules both numbered 25, with registry entries citing rules that had moved.",
       "command": "node --test 'templates/verification-kit/test/ruleCitations.test.mjs'",
@@ -96,14 +80,6 @@
       "file": ".github/actions/verification-gate/action.yml",
       "find": "    - name: No generated files tracked in git\n      if: ${{ !cancelled() }}",
       "replace": "    - name: No generated files tracked in git"
-    },
-    {
-      "id": "bugbot-timeout-reads-as-a-pass",
-      "guards": "A Bugbot verdict job that gives up waiting must fail. 'Did not finish in time' is not 'found nothing', and reporting it as a pass reproduces the exact defect the job was written to fix.",
-      "command": "node --test 'test/*.test.mjs'",
-      "file": ".github/workflows/bugbot-verdict.yml",
-      "find": "                   \"Comment 'bugbot run' on the PR, or re-run this job once it has finished.\"\n              exit 1",
-      "replace": "                   \"Comment 'bugbot run' on the PR, or re-run this job once it has finished.\"\n              exit 0"
     },
     {
       "id": "fleet-entry-never-goes-stale",
@@ -427,11 +403,11 @@
     },
     {
       "id": "pr-check-ignores-an-unknown-flag",
-      "guards": "A pull-request check drops an argument it does not recognise. `--repo=gorfednet/4thcltr.com` was dropped that way, the check fell back to the clone it ran in, and bindercurve.com #95's Bugbot findings were reported as 4thcltr.com #95's.",
+      "guards": "A pull-request check drops an argument it does not recognise. `--repo=gorfednet/4thcltr.com` was dropped that way, the check fell back to the clone it ran in, and bindercurve.com #95's review findings were reported as 4thcltr.com #95's.",
       "command": "node --test 'templates/verification-kit/test/cli.test.mjs'",
-      "file": "templates/verification-kit/bin/bugbot-review-status.mjs",
-      "find": "} else rejectUnknownArgument('bugbot-review-status', flag)",
-      "replace": "} else continue"
+      "file": "templates/verification-kit/bin/assert-checks-started.mjs",
+      "find": "    else rejectUnknownArgument('assert-checks-started', flag)",
+      "replace": "    else continue"
     },
     {
       "id": "pr-check-ignores-github-repository",

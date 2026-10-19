@@ -22,11 +22,11 @@
     {
       "id": "bugbot-credits-exhausted-unreviewed-prs",
       "title": "Cursor credits ran out and new pull requests sat with no Bugbot check",
-      "status": "confirmed-bug",
+      "status": "declined",
       "assignee": "human",
       "userSymptom": "MoonMan pull requests 150-153 have CI and no Bugbot check at all, which is how a billing outage looks — not a red Actions job.",
-      "evidence": "gh api on MoonMan#153 head e9c06b7: quality/test/e2e/build succeeded, no check-run matching Bugbot. Fleet PRs through 2026-09-20 still had completed Bugbot reviews. Restore credits, then apply the per-class table in .cursor/BUGBOT.md. Also add FLEET_READ_TOKEN; fleet-audit run 35605956812 failed on the missing secret.",
-      "reviewBy": "2026-10-15"
+      "evidence": "gh api on MoonMan#153 head e9c06b7: quality/test/e2e/build succeeded, no check-run matching Bugbot. Fleet PRs through 2026-09-20 still had completed Bugbot reviews. FLEET_READ_TOKEN was added 2026-10-10 (gh secret list).",
+      "note": "Declined 2026-10-19: Cursor and Bugbot were retired by the owner on 2026-10-16 and the Claude reviewer replaces them, so there are no credits to restore. docs/retired-checks.md records the retirement."
     },
     {
       "id": "towit-broken-refs",
