@@ -46,6 +46,9 @@ permissions:
 
 jobs:
   verdict:
+    # Hosted: no repository calls this workflow any more (Bugbot was retired on
+    # 2026-10-16), so it runs nowhere and costs nothing. Retire the file rather
+    # than move it to the pool.
     runs-on: ubuntu-latest
     timeout-minutes: 20
     # A pull request number is the only thing this can ask about.

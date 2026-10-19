@@ -17,6 +17,10 @@ on:
 
 jobs:
   kit:
+    # Hosted: this repository is public, and the dapyllil pool refuses public
+    # repositories by design (a fork's pull request would run its code on that
+    # host). Hosted minutes are not billed for a public repository. The full
+    # reason is in fleet-audit.yml, above its jobs.
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
