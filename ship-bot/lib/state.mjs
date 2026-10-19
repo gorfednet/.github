@@ -3,10 +3,9 @@
  * from overlapping.
  *
  * State is what makes the bot idempotent: which comments it already posted on
- * which head, whether it already asked Bugbot for a review, and which repos it
- * has stopped touching after a failure. Comments also carry a hidden marker, so
- * losing this file costs at most a repeated "waiting" note, never a second
- * `bugbot run` (that is guarded by reading the PR's own comments).
+ * which head, and which repos it has stopped touching after a failure.
+ * Comments also carry a hidden marker, so losing this file costs at most a
+ * repeated "waiting" note.
  */
 import { existsSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, writeFileSync, closeSync } from 'node:fs'
 import { dirname, join } from 'node:path'
@@ -32,7 +31,7 @@ export class StateStore {
     const raw = JSON.parse(readFileSync(this.path, 'utf8'))
     if (raw?.version !== 1 || typeof raw.prs !== 'object' || typeof raw.repos !== 'object') {
       // Unreadable memory is not an empty memory: an empty one would forget a
-      // blocked repo and ask Bugbot again. Refuse to run instead.
+      // blocked repo. Refuse to run instead.
       throw new Error(`${this.path} is not a ship-bot state file this version understands`)
     }
     this.data = raw

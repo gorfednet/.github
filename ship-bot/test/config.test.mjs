@@ -10,14 +10,14 @@ const HOME = join(tmpdir(), 'ship-bot-home')
 const example = () => JSON.parse(readFileSync(new URL('../config.example.json', import.meta.url), 'utf8'))
 const base = (repos) => ({
   live: false,
-  scripts: { assertChecksStarted: 'a.mjs', bugbotReviewStatus: 'b.mjs', checkClosingKeywords: 'c.mjs' },
+  scripts: { assertChecksStarted: 'a.mjs', reviewStatus: 'b.mjs', checkClosingKeywords: 'c.mjs' },
   repos,
 })
 const deployRepo = (extra = {}) => ({
   slug: 'gorfednet/site',
   dir: 'site',
   mode: 'deploy',
-  bugbot: true,
+  claudeReview: true,
   expectedChecks: ['check / check'],
   deploy: [{ name: 'site', command: ['make', 'deploy'] }],
   ...extra,
@@ -65,19 +65,34 @@ describe('config validation', () => {
   })
 
   it('rejects a deploy-only key on a merge-only repo', () => {
-    const repo = { slug: 'gorfednet/x', dir: 'x', mode: 'merge-only', reason: 'r', bugbot: false, expectedChecks: ['c'], deploy: [] }
+    const repo = { slug: 'gorfednet/x', dir: 'x', mode: 'merge-only', reason: 'r', claudeReview: false, expectedChecks: ['c'], deploy: [] }
     assert.match(problemsFor(base([repo])), /unknown key "deploy"/)
   })
 
   it('requires expectedChecks for every mode except off', () => {
     assert.match(problemsFor(base([deployRepo({ expectedChecks: [] })])), /expectedChecks: required and non-empty for mode "deploy"/)
-    const mergeOnly = { slug: 'gorfednet/x', dir: 'x', mode: 'merge-only', reason: 'r', bugbot: false }
+    const mergeOnly = { slug: 'gorfednet/x', dir: 'x', mode: 'merge-only', reason: 'r', claudeReview: false }
     assert.match(problemsFor(base([mergeOnly])), /expectedChecks: required and non-empty for mode "merge-only"/)
     assert.deepEqual(validateConfig(base([{ slug: 'gorfednet/x', dir: 'x', mode: 'off' }])), [])
   })
 
-  it('refuses Bugbot in expectedChecks', () => {
-    assert.match(problemsFor(base([deployRepo({ expectedChecks: ['Cursor Bugbot'] })])), /Bugbot is gated separately/)
+  it('requires claudeReview to be stated for every mode except off', () => {
+    assert.match(problemsFor(base([deployRepo({ claudeReview: undefined })])), /claudeReview: required, true or false/)
+  })
+
+  it('refuses the retired Bugbot keys and says what replaced each', () => {
+    const raw = { ...base([deployRepo({ bugbot: true })]), bugbotWaitMinutes: 120, bugbotGraceMinutes: 15 }
+    raw.scripts = { ...raw.scripts, bugbotReviewStatus: 'b.mjs' }
+    const p = problemsFor(raw)
+    assert.match(p, /unknown key "bugbot" \(Bugbot was retired: renamed "claudeReview"\)/)
+    assert.match(p, /scripts: unknown key "bugbotReviewStatus" \(Bugbot was retired: renamed "reviewStatus"/)
+    assert.match(p, /config: unknown key "bugbotGraceMinutes" \(Bugbot was retired: renamed "reviewGraceMinutes"\)/)
+    assert.match(p, /config: unknown key "bugbotWaitMinutes" \(Bugbot was retired: removed/)
+  })
+
+  it('the example gates every repository the bot can merge in on the Claude reviewer', () => {
+    const open = example().repos.filter((r) => r.mode !== 'off' && r.claudeReview !== true).map((r) => r.slug)
+    assert.deepEqual(open, [], 'shipping.md has no unreviewed merge path for the bot')
   })
 
   it('requires live to be stated', () => {

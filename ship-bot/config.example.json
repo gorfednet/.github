@@ -7,8 +7,7 @@
   "stateDir": "~/.ship-bot",
   "workRoot": "~/.ship-bot/work",
   "sourceRoot": "~/Developer/gorfednet",
-  "bugbotWaitMinutes": 120,
-  "bugbotGraceMinutes": 15,
+  "reviewGraceMinutes": 15,
   "checksGraceMinutes": 10,
   "defaultStepTimeoutMinutes": 20,
   "gateTimeoutSeconds": 180,
@@ -45,7 +44,7 @@
   "ghPath": "~/bin/gh",
   "scripts": {
     "assertChecksStarted": "~/Developer/gorfednet/TowIt/verification-kit/bin/assert-checks-started.mjs",
-    "bugbotReviewStatus": "~/Developer/gorfednet/TowIt/verification-kit/bin/bugbot-review-status.mjs",
+    "reviewStatus": "~/Developer/gorfednet/bindercurve.com/scripts/review-status.mjs",
     "checkClosingKeywords": "~/Developer/gorfednet/bindercurve.com/scripts/check-closing-keywords.mjs"
   },
   "repos": [
@@ -53,7 +52,7 @@
       "slug": "gorfednet/MoonMan",
       "dir": "MoonMan",
       "mode": "deploy",
-      "bugbot": true,
+      "claudeReview": true,
       "expectedChecks": [
         "quality",
         "test",
@@ -103,7 +102,7 @@
       "slug": "gorfednet/gorfed.net",
       "dir": "gorfed.net",
       "mode": "deploy",
-      "bugbot": true,
+      "claudeReview": true,
       "expectedChecks": [
         "check / check",
         "browser-compat / compat-success"
@@ -144,7 +143,7 @@
       "slug": "gorfednet/gorfmusic.com",
       "dir": "gorfmusic.com",
       "mode": "deploy",
-      "bugbot": true,
+      "claudeReview": true,
       "expectedChecks": [
         "check / check",
         "browser-compat / compat-success",
@@ -178,7 +177,7 @@
       "slug": "gorfednet/denseware.com",
       "dir": "denseware.com",
       "mode": "deploy",
-      "bugbot": true,
+      "claudeReview": true,
       "expectedChecks": [
         "check / check",
         "browser-compat / compat-success"
@@ -219,7 +218,7 @@
       "slug": "gorfednet/ssatcy.com",
       "dir": "ssatcy.com",
       "mode": "deploy",
-      "bugbot": true,
+      "claudeReview": true,
       "expectedChecks": [
         "check / check",
         "browser-compat / compat-success",
@@ -261,7 +260,7 @@
       "slug": "gorfednet/anal0g.org",
       "dir": "anal0g.org",
       "mode": "deploy",
-      "bugbot": true,
+      "claudeReview": true,
       "expectedChecks": [
         "check / check"
       ],
@@ -295,7 +294,7 @@
       "slug": "gorfednet/blackpixelrecords.com",
       "dir": "blackpixelrecords.com",
       "mode": "deploy",
-      "bugbot": true,
+      "claudeReview": true,
       "expectedChecks": [
         "check / check"
       ],
@@ -324,7 +323,7 @@
       "slug": "gorfednet/rowanmcarthur.com",
       "dir": "rowanmcarthur.com",
       "mode": "deploy",
-      "bugbot": true,
+      "claudeReview": true,
       "expectedChecks": [
         "check / check"
       ],
@@ -353,7 +352,7 @@
       "slug": "gorfednet/subrythm.com",
       "dir": "subrythm.com",
       "mode": "deploy",
-      "bugbot": true,
+      "claudeReview": true,
       "expectedChecks": [
         "check / check"
       ],
@@ -384,7 +383,7 @@
       "slug": "gorfednet/promptboi.com",
       "dir": "promptboi.com",
       "mode": "deploy",
-      "bugbot": true,
+      "claudeReview": true,
       "expectedChecks": [
         "check / check",
         "browser-compat / compat-success"
@@ -432,7 +431,7 @@
       "dir": "bindercurve.com",
       "mode": "merge-only",
       "reason": "it ships as a tagged release via /ship",
-      "bugbot": true,
+      "claudeReview": true,
       "requireChecksAfterLabel": true,
       "expectedChecks": [
         "changes",
@@ -455,7 +454,7 @@
       "dir": "4thcltr.com",
       "mode": "merge-only",
       "reason": "it ships with a release note and a tag",
-      "bugbot": true,
+      "claudeReview": true,
       "requireChecksAfterLabel": true,
       "expectedChecks": [
         "check / check",
@@ -477,7 +476,7 @@
       "dir": "ACID2Reaper",
       "mode": "merge-only",
       "reason": "it ships as a tagged release",
-      "bugbot": false,
+      "claudeReview": true,
       "expectedChecks": [
         "test (ubuntu-latest, 3.9)",
         "test (ubuntu-latest, 3.11)",
@@ -494,14 +493,14 @@
         "lint",
         "package"
       ],
-      "note": "Matrix check names confirmed against #5. Bugbot is off for this repo (no Cursor Bugbot check on #5), so it is not waited for."
+      "note": "Matrix check names confirmed against #5. It never had Bugbot. claudeReview is true because ~/.claude/rules/shipping.md has no unreviewed merge: until the Claude reviewer reaches this repository, the bot holds each pull request and a session merges it after reading the diff."
     },
     {
       "slug": "gorfednet/.github",
       "dir": "gorfednet.github",
       "mode": "merge-only",
       "reason": "merging is the fleet rollout: every repository's CI uses these workflows at @main",
-      "bugbot": true,
+      "claudeReview": true,
       "expectedChecks": [
         "kit"
       ]

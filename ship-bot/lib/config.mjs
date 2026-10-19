@@ -19,8 +19,7 @@ const TOP_KEYS = new Set([
   'stateDir',
   'workRoot',
   'sourceRoot',
-  'bugbotWaitMinutes',
-  'bugbotGraceMinutes',
+  'reviewGraceMinutes',
   'checksGraceMinutes',
   'defaultStepTimeoutMinutes',
   'gateTimeoutSeconds',
@@ -30,9 +29,9 @@ const TOP_KEYS = new Set([
   'scripts',
   'repos',
 ])
-const SCRIPT_KEYS = ['assertChecksStarted', 'bugbotReviewStatus', 'checkClosingKeywords']
+const SCRIPT_KEYS = ['assertChecksStarted', 'reviewStatus', 'checkClosingKeywords']
 
-const COMMON_REPO_KEYS = ['slug', 'dir', 'mode', 'note', 'todo', 'bugbot', 'expectedChecks', 'requireChecksAfterLabel']
+const COMMON_REPO_KEYS = ['slug', 'dir', 'mode', 'note', 'todo', 'claudeReview', 'expectedChecks', 'requireChecksAfterLabel']
 const DEPLOY_REPO_KEYS = [
   'sourceDir',
   'workDir',
@@ -50,6 +49,17 @@ const ALLOWED_REPO_KEYS = {
   deploy: new Set([...COMMON_REPO_KEYS, ...DEPLOY_REPO_KEYS]),
   'merge-only': new Set([...COMMON_REPO_KEYS, 'reason']),
   off: new Set([...COMMON_REPO_KEYS, ...DEPLOY_REPO_KEYS, 'reason']),
+}
+/**
+ * Keys from the Bugbot gate, retired on 2026-10-19 with Cursor (owner,
+ * 2026-10-16). They are unknown keys like any other; this only says what
+ * replaced them, so an old config fails with directions rather than a puzzle.
+ */
+const RETIRED_KEYS = {
+  bugbot: 'renamed "claudeReview"',
+  bugbotReviewStatus: 'renamed "reviewStatus", the path to review-status.mjs',
+  bugbotGraceMinutes: 'renamed "reviewGraceMinutes"',
+  bugbotWaitMinutes: 'removed: the bot no longer asks for a review, so there is no request to time out',
 }
 const STEP_KEYS = new Set(['name', 'command', 'timeoutMinutes', 'onlyIfChanged', 'note'])
 const SIBLING_KEYS = new Set(['dir', 'slug', 'branch'])
@@ -84,7 +94,9 @@ function isSafeRelative(p) {
 
 function checkUnknownKeys(obj, allowed, where, problems) {
   for (const key of Object.keys(obj)) {
-    if (!allowed.has(key)) problems.push(`${where}: unknown key "${key}"`)
+    if (allowed.has(key)) continue
+    const retired = Object.hasOwn(RETIRED_KEYS, key) ? ` (Bugbot was retired: ${RETIRED_KEYS[key]})` : ''
+    problems.push(`${where}: unknown key "${key}"${retired}`)
   }
 }
 
@@ -156,10 +168,8 @@ function validateRepo(repo, i, problems, seen) {
   // leaves nothing to fail, and "every check passed" is true of zero checks.
   if (!isStringArray(repo.expectedChecks) || repo.expectedChecks.length === 0) {
     problems.push(`${label}.expectedChecks: required and non-empty for mode "${repo.mode}"`)
-  } else if (repo.expectedChecks.some((name) => /bugbot/i.test(name))) {
-    problems.push(`${label}.expectedChecks: Bugbot is gated separately (set "bugbot"); do not list its check here`)
   }
-  if (typeof repo.bugbot !== 'boolean') problems.push(`${label}.bugbot: required, true or false`)
+  if (typeof repo.claudeReview !== 'boolean') problems.push(`${label}.claudeReview: required, true or false`)
 
   if (repo.mode === 'merge-only') {
     if (!isNonEmptyString(repo.reason)) problems.push(`${label}.reason: required for merge-only (it is quoted in the PR comment)`)
@@ -214,7 +224,7 @@ export function validateConfig(raw) {
   for (const key of ['stateDir', 'workRoot', 'sourceRoot', 'ghPath']) {
     if (raw[key] !== undefined && !isNonEmptyString(raw[key])) problems.push(`${key}: must be a non-empty string`)
   }
-  for (const key of ['bugbotWaitMinutes', 'bugbotGraceMinutes', 'checksGraceMinutes', 'defaultStepTimeoutMinutes', 'gateTimeoutSeconds']) {
+  for (const key of ['reviewGraceMinutes', 'checksGraceMinutes', 'defaultStepTimeoutMinutes', 'gateTimeoutSeconds']) {
     if (raw[key] !== undefined && !(typeof raw[key] === 'number' && raw[key] > 0)) problems.push(`${key}: must be a positive number`)
   }
   if (raw.notify !== undefined && typeof raw.notify !== 'boolean') problems.push('notify: must be true or false')
@@ -257,8 +267,7 @@ export function normalizeConfig(raw, { home = homedir() } = {}) {
     stateDir,
     workRoot,
     sourceRoot,
-    bugbotWaitMinutes: raw.bugbotWaitMinutes ?? 120,
-    bugbotGraceMinutes: raw.bugbotGraceMinutes ?? 15,
+    reviewGraceMinutes: raw.reviewGraceMinutes ?? 15,
     checksGraceMinutes: raw.checksGraceMinutes ?? 10,
     defaultStepTimeoutMinutes: raw.defaultStepTimeoutMinutes ?? 20,
     gateTimeoutSeconds: raw.gateTimeoutSeconds ?? 180,
@@ -274,7 +283,7 @@ export function normalizeConfig(raw, { home = homedir() } = {}) {
         mode: repo.mode,
         todo: repo.todo ?? [],
         note: repo.note ?? '',
-        bugbot: repo.bugbot ?? false,
+        claudeReview: repo.claudeReview ?? false,
         expectedChecks: repo.expectedChecks ?? [],
         requireChecksAfterLabel: repo.requireChecksAfterLabel ?? false,
         reason: repo.reason ?? '',
