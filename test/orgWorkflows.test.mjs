@@ -879,6 +879,75 @@ describe('every job is bounded', () => {
 })
 
 /**
+ * Every CI job runs on the dapyllil pool (owner, 2026-10-19). Hosted is allowed
+ * only where the pool cannot do the job, and the reason belongs on the job, where
+ * the next person to read it will look. fleet-audit and production-healthcheck
+ * reached main hard-coded to ubuntu-latest with no reason given, and the second
+ * is reusable, so it decided the runner for ten repositories that could not
+ * override it.
+ *
+ * So a `runs-on:` that names a fixed runner (not the caller's `inputs.runs-on`,
+ * not a `vars.` lookup, not a self-hosted label) must sit directly under a
+ * comment that opens with "# Hosted". Directly: a reason one job up, or across a
+ * blank line, belongs to something else.
+ */
+function hostedWithoutReason(text) {
+  const lines = text.split('\n')
+  const bare = []
+  lines.forEach((line, i) => {
+    const m = line.match(/^(\s*)runs-on:\s*(.+)$/)
+    if (!m) return
+    const value = m[2]
+    if (/inputs\.runs-on|vars\.|self-hosted/.test(value)) return
+    let j = i - 1
+    let reasoned = false
+    while (j >= 0 && /^\s*#/.test(lines[j])) {
+      if (/^\s*# Hosted\b/.test(lines[j])) reasoned = true
+      j--
+    }
+    if (!reasoned) bare.push(`line ${i + 1}: runs-on: ${value}`)
+  })
+  return bare
+}
+
+describe('a hosted job says why it is not on the pool', () => {
+  it('flags a bare hosted runner, a reason across a blank line, and a reason one job up', () => {
+    assert.deepEqual(hostedWithoutReason('jobs:\n  a:\n    runs-on: ubuntu-latest\n'), [
+      'line 3: runs-on: ubuntu-latest',
+    ])
+    assert.equal(
+      hostedWithoutReason('jobs:\n  a:\n    # Hosted: why\n\n    runs-on: ubuntu-latest\n').length,
+      1,
+    )
+    assert.equal(
+      hostedWithoutReason(
+        'jobs:\n  a:\n    # Hosted: why\n    runs-on: ubuntu-latest\n  b:\n    runs-on: macos-latest\n',
+      ).length,
+      1,
+    )
+  })
+
+  it("accepts a reason directly above, and a runner the caller or the pool decides", () => {
+    assert.deepEqual(
+      hostedWithoutReason(
+        'jobs:\n  a:\n    # Hosted: why\n    # more of why\n    runs-on: ubuntu-latest\n' +
+          "  b:\n    runs-on: ${{ fromJSON(inputs.runs-on != '' && inputs.runs-on || '\"ubuntu-latest\"') }}\n" +
+          '  c:\n    runs-on: ${{ fromJSON(vars.HEAVY_RUNS_ON) }}\n' +
+          '  d:\n    runs-on: [self-hosted, linux, bc-heavy]\n',
+      ),
+      [],
+    )
+  })
+
+  for (const file of readdirSync(WORKFLOWS).filter((f) => f.endsWith('.yml'))) {
+    it(`${file} gives a reason for every hosted job`, () => {
+      const bare = hostedWithoutReason(readFileSync(join(WORKFLOWS, file), 'utf8'))
+      assert.deepEqual(bare, [], `hosted with no "# Hosted" reason in ${file}:\n${bare.join('\n')}`)
+    })
+  }
+})
+
+/**
  * A sitemap answering 200 is an envelope, not a payload. This step used to check
  * only that robots.txt named a sitemap which resolved, and promptboi.com passed
  * it for months while advertising two URLs that returned 404 to a direct request
