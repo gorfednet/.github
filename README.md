@@ -61,10 +61,10 @@ behind every rule is bindercurve.com's `docs/audit/verification-teardown.md`.
 
 Three layers:
 
-1. **Machine-wide** Cursor rules and skills, so an agent applies the standing
+1. **Machine-wide** Claude Code rules and skills (`~/.claude`), so an agent applies the standing
    loop in a repository that has adopted nothing yet.
 2. **This repository.** The canonical kit, the shared rules, the
-   `verification-gate` composite action, and `bugbot-verdict.yml`.
+   and the `verification-gate` composite action.
 3. **Each project**, which copies the kit and runs `check-kit-drift.mjs` so its
    copy cannot quietly fall behind.
 
@@ -88,9 +88,9 @@ Adoption is tiered, because a static site with no `package.json` cannot run
 what BinderCurve runs. The kit is plain node with no dependencies for exactly
 that reason.
 
-## Pull requests and Cursor Bugbot
+## Pull requests and review
 
-Feature work on portfolio sites is a **branch + GitHub PR** so Cursor Bugbot and the reusable `pr-check-*` workflows run. Do not push feature commits straight to `main`.
+Feature work on portfolio sites is a **branch + GitHub PR** so the Claude reviewer and the reusable `pr-check-*` workflows run. Do not push feature commits straight to `main`.
 
-Repo review notes: [`.cursor/BUGBOT.md`](.cursor/BUGBOT.md). Operator checklist (effort Low, Autofix off, incremental on): BinderCurve [`docs/CURSOR_BUGBOT.md`](https://github.com/gorfednet/bindercurve.com/blob/main/docs/CURSOR_BUGBOT.md). Do not add a Cloud Agent automation that comments on every PR.
+Cursor and Bugbot were retired on 2026-10-16. The Claude reviewer (`claude-review.yml`, `REVIEW.md`, `review-status.mjs`) reviews pull requests; it lives in each repository that has adopted it. Retired checks are listed in [`docs/retired-checks.md`](docs/retired-checks.md).
 

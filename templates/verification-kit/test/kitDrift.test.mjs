@@ -714,14 +714,12 @@ describe('write-manifest --check', () => {
     assert.ok(tracked.length >= 15, `manifest tracks only ${tracked.length} files`)
     for (const required of [
       'bin/assert-tests-executed.mjs',
-      'bin/bugbot-review-status.mjs',
       'bin/check-backlog.mjs',
       'bin/check-kit-drift.mjs',
       'bin/check-rule-citations.mjs',
       'bin/check-tracked-artifacts.mjs',
       'bin/mutation-canary.mjs',
       'lib/backlogSchema.mjs',
-      'lib/bugbotConclusion.mjs',
       'lib/githubSlug.mjs',
     ]) {
       assert.ok(tracked.includes(required), `manifest does not track ${required}`)
