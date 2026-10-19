@@ -38,8 +38,6 @@ export const NOT_APPLICABLE = {
     'Reads a pull request\u2019s check runs from the API. It guards a caller\u2019s CI, not a checkout.',
   'assert-tests-executed.mjs':
     'Takes a test report a runner produces. This repository asserts its own floor directly in the workflow, against a count it computes there.',
-  'bugbot-review-status.mjs':
-    'Queries the review status of a pull request. There is nothing to ask about a working tree.',
   'check-ci-headroom.mjs':
     'Reads workflow run durations from the API for a repository under load. Nothing in a checkout answers it.',
   'check-error-pages.mjs':

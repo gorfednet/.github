@@ -24,7 +24,6 @@ an ignore rule that did not cover them.
 | File | What it refuses to let happen |
 |---|---|
 | `bin/assert-tests-executed.mjs` | A test job reporting success while executing zero tests. Reads Playwright and Vitest JSON. |
-| `bin/bugbot-review-status.mjs` | Merging on a Bugbot `NEUTRAL` that actually means *reviewed, and found things*. Also answers "what is about to be tagged that nobody reviewed?" with `--since`. |
 | `bin/check-ci-headroom.mjs` | A job quietly growing into its `timeout-minutes`. Green until it is not, and then it lands on an unrelated PR. |
 | `bin/assert-checks-started.mjs` | A pull request whose CI failed to *start*. That produces no check runs, so `gh pr checks` shows nothing at all and it reads as a repo with no CI. Also a run whose jobs failed without running a step (GitHub refusing jobs while an account's payment fails), which reads as a broken branch nobody tested. |
 | `bin/check-backlog.mjs` | The plan of record decaying into prose nobody validates. |
@@ -33,9 +32,8 @@ an ignore rule that did not cover them.
 | `bin/check-kit-drift.mjs` | This copy of the kit silently falling behind the canonical one, or being edited in place. |
 | `bin/mutation-canary.mjs` | A guard nobody has ever seen fail being counted as coverage. |
 
-The checks that ask GitHub about a repository (`bugbot-review-status`,
-`assert-checks-started`, `check-ci-headroom`, `check-backlog --verify-prs`) take
-it from `--repo owner/name`, then `GITHUB_REPOSITORY`, then the origin of the
+The checks that ask GitHub about a repository (`assert-checks-started`,
+`check-ci-headroom`, `check-backlog --verify-prs`) take it from `--repo owner/name`, then `GITHUB_REPOSITORY`, then the origin of the
 clone they run in, and print which one they used as their first line on stderr.
 An argument they do not recognise is an error rather than ignored: a dropped
 `--repo=…` used to fall back to the clone's origin and report another

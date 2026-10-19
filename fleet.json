@@ -4,7 +4,7 @@
     "0": "Has not adopted. The gate is off in its workflow.",
     "1": "Drift check, tracked-artifacts check, backlog, shared rules.",
     "2": "Tier 1 plus an executed-count assertion wired to a real test report.",
-    "3": "Tier 2 plus mutation canaries against its own gates. Bugbot stays advisory on the dashboard; the unused verdict workflow is not a tier requirement."
+    "3": "Tier 2 plus mutation canaries against its own gates."
   },
   "$onlineComment": "When the tier claims below were last checked against the repositories themselves (by the monthly fleet-audit run), rather than only read back off this file. Null means never. Information only: no date in this file fails a pull request, because a pull request cannot change what day it is. A stale date is reported by fleet-audit.yml instead.",
   "onlineVerifiedAt": "2026-09-10",
@@ -161,7 +161,7 @@
       "monitorClass": "active-site",
       "owner": "gorf",
       "verifiedAt": "2026-09-25",
-      "note": "Active game with its own CI. Not a kit consumer yet, so tier 0 is the honest record. Weekly HTTP monitoring is enough until it vendors the kit; Bugbot should be on once credits are restored."
+      "note": "Active game with its own CI. Not a kit consumer yet, so tier 0 is the honest record. Weekly HTTP monitoring is enough until it vendors the kit."
     },
     {
       "slug": "gorfednet/ACID2REAPER",
@@ -170,7 +170,7 @@
       "monitorClass": "tool",
       "owner": "gorf",
       "verifiedAt": "2026-09-25",
-      "note": "Desktop converter with PR CI and tagged releases. No production site to healthcheck. Bugbot stays off unless it starts shipping weekly."
+      "note": "Desktop converter with PR CI and tagged releases. No production site to healthcheck."
     },
     {
       "slug": "gorfednet/career-portfolio",

@@ -817,35 +817,6 @@ describe('production-healthcheck workflow', () => {
   })
 })
 
-describe('bugbot-verdict workflow', () => {
-  const text = readFileSync(join(WORKFLOWS, 'bugbot-verdict.yml'), 'utf8')
-
-  it('is reusable', () => {
-    assert.match(text, /workflow_call:/)
-  })
-
-  /**
-   * The reason this workflow exists. A Bugbot NEUTRAL prints in the checks
-   * panel in the same bucket as a clean pass and means "reviewed, and found
-   * things" — so a verdict job that treats anything other than an explicit
-   * clean result as acceptable reproduces the bug it was written to fix.
-   */
-  it('treats a timeout as a failure, not as a pass', () => {
-    assert.match(text, /No Bugbot verdict on PR/)
-    const afterTimeout = text.slice(text.indexOf('No Bugbot verdict on PR'))
-    assert.match(afterTimeout.split('\n').slice(0, 4).join('\n'), /exit 1/)
-  })
-
-  it('stops immediately on findings rather than waiting them out', () => {
-    assert.match(text, /found something/)
-  })
-
-  it('passes only on the clean exit code from the kit', () => {
-    assert.match(text, /bugbot-review-status\.mjs/)
-    assert.match(text, /if \[ "\$status" -eq 0 \]/)
-  })
-})
-
 /**
  * A job with no `timeout-minutes` runs until GitHub kills it at six hours.
  *
