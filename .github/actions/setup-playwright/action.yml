@@ -16,14 +16,15 @@ runs:
       id: playwright
       shell: bash
       working-directory: ${{ inputs.working-directory }}
-      run: |
-        set -euo pipefail
-        version="$(node -p "require('@playwright/test/package.json').version")"
-        browsers_slug="$(printf '%s' "${{ inputs.browsers }}" | tr ' ' '-')"
-        echo "version=${version}" >> "$GITHUB_OUTPUT"
-        echo "browsers_slug=${browsers_slug}" >> "$GITHUB_OUTPUT"
+      env:
+        BROWSERS: ${{ inputs.browsers }}
+      # Hosted runners fall through to the cache and install steps below. A pool job sets
+      # BC_PREINSTALLED_PLAYWRIGHT_VERSION; resolve.sh then skips the install or installs
+      # without system deps into RUNNER_TEMP. See the script header.
+      run: bash "${{ github.action_path }}/resolve.sh"
     - name: Cache Playwright browsers
       id: playwright-cache
+      if: steps.playwright.outputs.mode == 'hosted'
       uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
       with:
         path: ~/.cache/ms-playwright
@@ -31,12 +32,12 @@ runs:
         restore-keys: |
           ${{ runner.os }}-playwright-${{ steps.playwright.outputs.version }}-
     - name: Install Playwright browsers and system dependencies
-      if: steps.playwright-cache.outputs.cache-hit != 'true'
+      if: steps.playwright.outputs.mode == 'hosted' && steps.playwright-cache.outputs.cache-hit != 'true'
       shell: bash
       working-directory: ${{ inputs.working-directory }}
       run: npx playwright install --with-deps ${{ inputs.browsers }}
     - name: Install Playwright system dependencies
-      if: steps.playwright-cache.outputs.cache-hit == 'true'
+      if: steps.playwright.outputs.mode == 'hosted' && steps.playwright-cache.outputs.cache-hit == 'true'
       shell: bash
       working-directory: ${{ inputs.working-directory }}
       run: npx playwright install-deps ${{ inputs.browsers }}
