@@ -3,6 +3,17 @@ name: pr-check-fullstack
 on:
   workflow_call:
     inputs:
+      runs-on:
+        description: >-
+          Where the job runs, as JSON: a label string or an array of labels, e.g.
+          '["self-hosted","linux","4c-heavy"]' from the caller's HEAVY_RUNS_ON variable. Every
+          CI job runs on the dapyllil pool by default (owner, 2026-10-19), so a caller passes
+          its pool labels; left empty it is GitHub-hosted ubuntu-latest, as before this input
+          existed. A caller routing to the pool must also gate on its pool-liveness preflight,
+          because a label no runner carries is not red, it is queued.
+        required: false
+        type: string
+        default: ""
       node-version:
         description: Node.js version
         required: false
@@ -165,7 +176,7 @@ on:
         default: ""
 jobs:
   check:
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(inputs.runs-on != '' && inputs.runs-on || '"ubuntu-latest"') }}
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
