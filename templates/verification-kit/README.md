@@ -80,7 +80,11 @@ one.
 
 ## Backlog
 
-`check-backlog.mjs` validates the schema and the dates. Pass `--verify-prs`
+`check-backlog.mjs` validates the schema, including that each `reviewBy` is a
+`YYYY-MM-DD` date, and fails on any problem with it. A `reviewBy` that has
+passed is printed as a warning and never fails the run, because a pull request
+cannot change the date; the scheduled fleet audit lists lapsed dates per
+repository until someone renews or closes each one. Pass `--verify-prs`
 where a token is available and it also asks GitHub whether each entry is true:
 an entry saying `in-review` against a merged pull request, `landed` against an
 open one, or either against a number that does not exist. It needs `--repo
