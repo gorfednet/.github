@@ -33,6 +33,16 @@
 # sh on this machine and rsyncs to a local path; SITE_CURL, SITE_NOW,
 # SITE_FLEET_FILE, SITE_LIVE_RETRIES, SITE_LIVE_DELAY.
 #
+# Before anything else a deploy checks the git state of the directory it runs in
+# (the site repository): HEAD must be exactly origin's default branch and no
+# tracked file may be modified; and the directory it is given to upload must hold
+# no `.claude` path or `.git` at any depth. Otherwise it refuses. Emergency
+# override of the first two: DEPLOY_ALLOW_UNMERGED=1 with DEPLOY_REASON="why"
+# (required), which prints a warning naming the SHA. The upload check has no
+# override. The live
+# check below compares the live site with the LOCAL build, so without this a
+# stale clone passes it (2026-10-20).
+#
 # A deploy uploads to releases/<id>.partial (hard-linking unchanged files from
 # the current release), refuses an empty release or one with no index.html,
 # renames it into place, switches `current`, prunes old releases, then fetches
@@ -56,6 +66,140 @@ die() {
 usage() {
   sed -n '2,8p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//' >&2
   exit 2
+}
+
+# Refuse to publish anything but the merged tip of the repository's default
+# branch. Incident 2026-10-20: blackpixelrecords.com's clone sat on an old main
+# commit after its Plausible PR had merged upstream. `make deploy` from it would
+# have published the old site without the tracker, and the live check would have
+# said "serves this release", because that check compares the live site with the
+# LOCAL build and never with origin. The same day a builder worktree inside
+# another clone was published, because deploys rsync the working tree.
+#
+# Refuses when
+#   - the remote's default branch cannot be fetched (fails closed, never skips);
+#   - HEAD is not exactly that commit: behind, ahead or diverged;
+#   - a tracked file has uncommitted changes;
+#   - the directory being uploaded contains a `.claude` path or a `.git` file or
+#     directory at any depth (agent worktrees live under <repo>/.claude/worktrees,
+#     and a build or stage that copies the repo root carries them to the NAS).
+#     NO override reaches this one.
+# Untracked files are the publish-set checks' job (.deployignore), not this.
+#
+# Emergency override of the first three: DEPLOY_ALLOW_UNMERGED=1 with
+# DEPLOY_REASON="why". It still runs the checks, prints each problem with the
+# SHA and the reason, and goes on. Without a reason it refuses, even when the
+# tree is fine.
+#
+# Usage: require_merged_tip [repo-dir] [upload-dir]   (repo-dir defaults to the current directory)
+#   cmd_deploy calls it first, before .deploy-env is read and before anything is
+#   staged or uploaded. Every site runs site-deploy.sh from its repo root, so the
+#   current directory is the site repository, not this one. <local-dir> may be a
+#   stage copy outside any repository; only the repo's own state is judged.
+require_merged_tip() {
+  local dir="${1:-${PWD}}"
+  local upload="${2:-}"
+  local label="[site-deploy]"
+  local override=0
+  if [[ "${DEPLOY_ALLOW_UNMERGED:-0}" == "1" ]]; then
+    override=1
+    if [[ -z "${DEPLOY_REASON:-}" ]]; then
+      echo "${label} DEPLOY_ALLOW_UNMERGED=1 needs DEPLOY_REASON=\"why this cannot wait for a merge\". Refusing." >&2
+      return 1
+    fi
+  fi
+
+  # The upload-directory check comes first and is never overridable.
+  if [[ -n "${upload}" ]]; then
+    local leaks find_err
+    # Fail closed: a find that cannot read part of the upload could miss a .claude or .git there.
+    find_err="$(mktemp)"
+    if ! leaks="$(find "${upload}" \( -name .claude -o -name .git \) -print 2>"${find_err}")"; then
+      {
+        printf '%s Refusing to publish: could not scan all of %s for .claude or .git:\n' "${label}" "${upload}"
+        sed 's/^/    /' "${find_err}" | head -10
+      } >&2
+      rm -f "${find_err}"
+      return 1
+    fi
+    rm -f "${find_err}"
+    leaks="$(printf '%s\n' "${leaks}" | sed '/^$/d' | sort | head -20)"
+    if [[ -n "${leaks}" ]]; then
+      {
+        printf '%s Refusing to publish: %s holds paths that must never be on the site:\n' "${label}" "${upload}"
+        printf '%s\n' "${leaks}" | sed 's/^/    /'
+        printf '%s Keep .claude and .git out of the upload (add .claude to .deployignore or the build'"'"'s excludes). There is no override for this.\n' "${label}"
+      } >&2
+      return 1
+    fi
+  fi
+
+  local problems=() top="" head="" branch="" tip="" fix=""
+  top="$(git -C "${dir}" rev-parse --show-toplevel 2>/dev/null)" || top=""
+  if [[ -z "${top}" ]]; then
+    problems+=("${dir} is not inside a git work tree, so nothing says what it would publish.")
+  else
+    top="$(cd "${top}" && pwd -P)"
+    head="$(git -C "${top}" rev-parse HEAD 2>/dev/null)" || head=""
+    # The remote names its own default branch; do not assume it is main.
+    local symref
+    symref="$(GIT_TERMINAL_PROMPT=0 git -C "${top}" ls-remote --symref origin HEAD 2>/dev/null |
+      sed -n 's|^ref: refs/heads/\(.*\)[[:space:]]HEAD$|\1|p' | head -1)" || symref=""
+    branch="${symref}"
+    if [[ -z "${branch}" ]]; then
+      problems+=("could not read the default branch of origin (is the network up and origin set?). A deploy cannot tell whether this is the latest code.")
+    elif ! GIT_TERMINAL_PROMPT=0 git -C "${top}" fetch --quiet origin \
+      "+refs/heads/${branch}:refs/remotes/origin/${branch}" 2>/dev/null; then
+      problems+=("could not fetch origin/${branch}. A deploy cannot tell whether this is the latest code.")
+    else
+      tip="$(git -C "${top}" rev-parse "refs/remotes/origin/${branch}")"
+      if [[ "${head}" != "${tip}" ]]; then
+        local base state
+        base="$(git -C "${top}" merge-base "${head}" "${tip}" 2>/dev/null)" || base=""
+        if [[ "${base}" == "${head}" ]]; then
+          state="is behind"
+          fix="git pull --ff-only"
+        elif [[ "${base}" == "${tip}" ]]; then
+          state="is ahead of"
+          fix="merge your pull request first, then git pull --ff-only"
+        else
+          state="has diverged from"
+          fix="merge your pull request first, then bring this clone to origin/${branch}"
+        fi
+        problems+=("HEAD ${head:0:7} ${state} origin/${branch} ${tip:0:7}. Fix: ${fix}.")
+      fi
+    fi
+
+    local dirty
+    dirty="$(git -C "${top}" status --porcelain --untracked-files=no 2>/dev/null)" || dirty="?"
+    if [[ -n "${dirty}" ]]; then
+      problems+=("tracked files have uncommitted changes (commit them in a merged PR, or discard them):
+$(printf '%s\n' "${dirty}" | head -10 | sed 's/^/    /')")
+    fi
+  fi
+
+  if [[ "${#problems[@]}" -eq 0 ]]; then
+    return 0
+  fi
+
+  local p
+  if [[ "${override}" == "1" ]]; then
+    {
+      printf '%s\n' "========================================================================"
+      printf '%s WARNING: DEPLOYING AN UNMERGED TREE (DEPLOY_ALLOW_UNMERGED=1)\n' "${label}"
+      printf '%s publishing commit %s from %s\n' "${label}" "${head:0:7}" "${top:-${dir}}"
+      printf '%s reason given: %s\n' "${label}" "${DEPLOY_REASON}"
+      for p in "${problems[@]}"; do printf '  - %s\n' "${p}"; done
+      printf '%s\n' "========================================================================"
+    } >&2
+    return 0
+  fi
+  {
+    printf '%s Refusing to publish: this is not the latest merged code.\n' "${label}"
+    for p in "${problems[@]}"; do printf '  - %s\n' "${p}"; done
+    printf '%s For an emergency only: DEPLOY_ALLOW_UNMERGED=1 DEPLOY_REASON="why" (it prints a warning and is on the record).\n' "${label}"
+  } >&2
+  return 1
 }
 
 load_config() {
@@ -325,9 +469,12 @@ cmd_deploy() {
   done
   [[ -n "${src}" ]] || usage
   [[ -d "${src}" ]] || die "local directory '${src}' does not exist"
+  # First, before .deploy-env is read (it cannot switch the override on) and
+  # before anything is staged or uploaded. It judges the caller's repository,
+  # which is the current directory; see require_merged_tip.
+  require_merged_tip "${PWD}" "${src}" || exit 1
   load_config
   command -v rsync >/dev/null 2>&1 || die "rsync is required"
-
   local sha stamp id
   if sha="$(git rev-parse --short HEAD 2>/dev/null)" && [[ -n "${sha}" ]]; then :; else sha="nogit"; fi
   stamp="${SITE_NOW:-$(date -u +%Y%m%dT%H%M%SZ)}"
@@ -466,4 +613,5 @@ main() {
   esac
 }
 
-main "$@"
+# Sourceable for tests; run as a command it behaves as before.
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then main "$@"; fi

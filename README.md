@@ -60,6 +60,27 @@ serves something else, `current` is switched back to the previous release and
 the script exits non-zero. `scripts/test-site-deploy.sh` runs all of this against
 a temp directory.
 
+**A deploy publishes the merged tip or nothing.** Before it reads `.deploy-env`,
+stages or uploads anything, `deploy` judges the repository it runs in (the site
+repo, the current directory) and refuses when:
+
+- `HEAD` is not exactly `origin`'s default branch after a quiet fetch: behind,
+  ahead or diverged (the message gives both short SHAs and the fix, `git pull
+  --ff-only` or merge your PR first), or the fetch fails;
+- a tracked file has uncommitted changes (untracked files are the publish-set
+  checks' job);
+- the directory being uploaded holds a `.claude` path or a `.git` file or
+  directory at any depth (agent worktrees live under `<repo>/.claude/worktrees`,
+  and a build or stage that copies the repo root carries them). The paths are
+  named. This one has no override.
+
+Emergency override of the first two: `DEPLOY_ALLOW_UNMERGED=1
+DEPLOY_REASON="why"`. The reason is required; the deploy prints a loud warning
+with the commit SHA and the reason, then goes on. Why: the live check compares
+the live site with the local build, never with `origin`, so on 2026-10-20 a stale
+clone would have passed it. `scripts/test-site-deploy-guard.sh` runs the guard
+against real temporary git repos with a bare origin.
+
 `scripts/nas-ssh-deploy.sh` stays only until every site has moved (phase 3) and
 is removed in phase 5.
 

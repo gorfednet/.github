@@ -102,6 +102,24 @@ chmod 600 "${src}/index.html"  # a private source file must still publish world-
 printf 'body{}' >"${src}/assets/app.css"
 printf 'secret' >"${src}/.deploy-env"
 
+# The work dir is a real clone in sync with a bare origin: deploy refuses any
+# tree that is not the merged tip (require_merged_tip in site-deploy.sh). The files above
+# are untracked, which the guard leaves to the publish-set checks.
+export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null
+export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@example.test GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@example.test
+git init -q --bare -b main "${tmp}/origin.git"
+git init -q -b main "${tmp}/seed"
+printf 'tracked\n' >"${tmp}/seed/README"
+git -C "${tmp}/seed" add README
+git -C "${tmp}/seed" commit -q -m one
+git -C "${tmp}/seed" remote add origin "${tmp}/origin.git"
+git -C "${tmp}/seed" push -q origin main
+git clone -q "${tmp}/origin.git" "${tmp}/clone"
+mv "${work}/.deploy-env" "${work}/dist" "${tmp}/clone/"
+rm -rf "${work}"
+work="${tmp}/clone"
+src="${work}/dist"
+
 export SITE_SSH=local
 export SITE_FLEET_FILE="${fleet}"
 export SITE_LIVE_DELAY=0
@@ -117,6 +135,17 @@ run() { # run <args...>; runs in the work dir with a unique release stamp
 }
 current_id() { readlink "${site_dir}/current" | sed 's#^releases/##'; }
 release_count() { find "${site_dir}/releases" -mindepth 1 -maxdepth 1 -type d ! -name '*.partial' | wc -l | tr -d ' '; }
+
+# ---- 0. a stale tree is refused before anything is uploaded -----------------
+printf 'newer\n' >>"${tmp}/seed/README"
+git -C "${tmp}/seed" commit -q -am two
+git -C "${tmp}/seed" push -q origin main
+: >"${tmp}/rsync-args"
+if run deploy dist >"${tmp}/stale.out" 2>&1; then fail "a clone behind origin must not deploy"; fi
+grep -q 'is behind' "${tmp}/stale.out" || { cat "${tmp}/stale.out"; fail "the refusal must say the clone is behind"; }
+assert "a refused deploy must not run rsync" test ! -s "${tmp}/rsync-args"
+assert "a refused deploy must not create the site directory" test ! -e "${site_dir}"
+git -C "${work}" pull -q --ff-only
 
 # ---- 1. first deploy -------------------------------------------------------
 run deploy dist >"${tmp}/d1.out" 2>&1 || { cat "${tmp}/d1.out"; fail "first deploy failed"; }
@@ -304,7 +333,7 @@ cp "${src}/index.html" "${STUB_BODY_FILE}"
 run deploy dist >/dev/null 2>&1 || fail "deploy for the URL check failed"
 assert "the live URL must default to https://\$SITE/ for a fleet slug" grep -q 'https://example.test/' "${STUB_CURL_LOG}"
 other="${tmp}/work-other"
-mkdir -p "${other}"
+git clone -q "${tmp}/origin.git" "${other}"
 printf 'SITE=not-in-fleet.test\nSITE_ROOT=%s\n' "${remote_root}" >"${other}/.deploy-env"
 (cd "${other}" && SITE_NOW=20260102T000001Z bash "${DEPLOY}" deploy "${src}" >"${tmp}/skip.out" 2>&1) || fail "a non-fleet site must deploy"
 grep -q 'Live check skipped' "${tmp}/skip.out" || fail "a skipped live check must say so"
@@ -364,7 +393,7 @@ pass
 for bad in '..' '../x' 'a/b' '' '-rf' '.hidden' 'a..b' '/abs' 'a b'; do
   badwork="${tmp}/bad"
   rm -rf "${badwork}"
-  mkdir -p "${badwork}"
+  git clone -q "${tmp}/origin.git" "${badwork}"
   printf 'SITE=%q\nSITE_ROOT=%s\n' "${bad}" "${remote_root}" >"${badwork}/.deploy-env"
   if (cd "${badwork}" && bash "${DEPLOY}" deploy "${src}" >"${tmp}/bad.out" 2>&1); then
     fail "unsafe SITE '${bad}' must be rejected"

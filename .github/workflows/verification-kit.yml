@@ -71,6 +71,12 @@ jobs:
         if: ${{ !cancelled() }}
         run: bash scripts/test-site-deploy.sh
 
+      # The guard inside site-deploy.sh: a deploy publishes origin's default
+      # branch exactly and never uploads .claude or .git. Real temp git repos.
+      - name: Site deploy fresh-tree guard
+        if: ${{ !cancelled() }}
+        run: bash scripts/test-site-deploy-guard.sh
+
       # The backlog's shape, enforced. A `reviewBy` that has passed is printed as
       # a warning and does not fail this step: the calendar is not something a
       # pull request can change (2026-10 right-sizing). fleet-audit.yml lists
