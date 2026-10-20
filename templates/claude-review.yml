@@ -21,7 +21,5 @@ permissions:
 jobs:
   review:
     uses: gorfednet/.github/.github/workflows/claude-review.yml@main
-    with:
-      runs-on: ${{ vars.HEAVY_RUNS_ON }}
     secrets:
       CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
