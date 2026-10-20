@@ -139,25 +139,11 @@ async function processRepo(ctx, repo) {
 async function processPull(ctx, repo, pr, defaultBranch) {
   const sha = pr.head.sha
   const nowIso = ctx.clock.now().toISOString()
-  const prState = ctx.state.pr(repo.slug, pr.number)
   const headState = ctx.state.head(repo.slug, pr.number, sha, nowIso)
   const tag = `${repo.slug}#${pr.number} (${short(sha)})`
 
-  const result = await evaluatePull(ctx, repo, pr, { headState, prState })
+  const result = await evaluatePull(ctx, repo, pr, { headState })
 
-  for (const action of result.actions) {
-    if (action.type !== 'bugbot-run') continue
-    if (ctx.dry) {
-      ctx.say('info', `${tag}: would comment "bugbot run" (Bugbot has not reviewed this head; first request for this head)`)
-    } else {
-      // Recorded before posting: if the post half-succeeds, never ask twice.
-      prState.bugbotRequestedAt = nowIso
-      prState.bugbotRequestedHead = sha
-      ctx.state.save()
-      await ctx.github.createComment(repo.slug, pr.number, 'bugbot run')
-      ctx.say('info', `${tag}: commented "bugbot run"`)
-    }
-  }
   if (!result.ready) {
     for (const block of result.blocks) {
       ctx.say(block.kind === 'fail' ? 'info' : 'debug', `${tag}: not merging: ${block.reason}`)

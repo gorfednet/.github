@@ -92,7 +92,7 @@ export function createGitHubClient({ token, fetchImpl = globalThis.fetch, api = 
         for (const t of conn.nodes) {
           const nodes = t.comments?.nodes ?? []
           // A thread longer than one page could hide the reply (or the newest
-          // Bugbot comment); refuse to judge it rather than judge part of it.
+          // reviewer comment); refuse to judge it rather than judge part of it.
           if (t.comments?.totalCount > nodes.length) {
             throw new GitHubError('POST', '/graphql', 'too-many', `a review thread has ${t.comments.totalCount} comments`)
           }

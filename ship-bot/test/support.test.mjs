@@ -6,7 +6,7 @@ import { describe, it } from 'node:test'
 import { Redactor, parseEnvValues, tail } from '../lib/redact.mjs'
 import { guardCommands, run } from '../lib/runner.mjs'
 import { StateStore, acquireLock } from '../lib/state.mjs'
-import { evaluateChecks, parseBugbotStatus } from '../lib/gates.mjs'
+import { evaluateChecks, parseReviewStatus } from '../lib/gates.mjs'
 import { pathMatches, selectSteps } from '../lib/deploy.mjs'
 
 const tmp = () => mkdtempSync(join(tmpdir(), 'ship-bot-support-'))
@@ -126,12 +126,21 @@ describe('command runner', () => {
 })
 
 describe('gate helpers', () => {
-  it('parses bugbot-review-status and fails closed on anything unexpected', () => {
-    assert.equal(parseBugbotStatus({ code: 0, stdout: '#5  clean  no issues found\n' }, 5).state, 'clean')
-    assert.equal(parseBugbotStatus({ code: 1, stdout: '#5  findings  2 issues\n' }, 5).state, 'findings')
-    assert.equal(parseBugbotStatus({ code: 0, stdout: '#6  clean  x\n' }, 5).state, 'undetermined', 'another PR')
-    assert.equal(parseBugbotStatus({ code: 1, stdout: '#5  clean  x\n' }, 5).state, 'undetermined', 'exit disagrees')
-    assert.equal(parseBugbotStatus({ code: 0, stdout: '' }, 5).state, 'undetermined')
+  it('parses review-status and fails closed on anything unexpected', () => {
+    // The lines review-status.mjs prints (bindercurve.com scripts/review-status.mjs).
+    const clean = '#5  clean  Claude reviewed abcdef123: no findings  https://github.com/x/pull/5#c1\n'
+    const findings = '#5  findings  Claude reviewed abcdef123: 2 finding(s)\n  Read the inline review comments and triage each on the pull request before merging.\n'
+    const notRun = '#5  not-run  no Claude review of abcdef123\n  Comment "claude review" on the pull request and wait for its verdict comment.\n'
+    assert.equal(parseReviewStatus({ code: 0, stdout: clean }, 5).state, 'clean')
+    assert.equal(parseReviewStatus({ code: 1, stdout: findings }, 5).state, 'findings')
+    assert.equal(parseReviewStatus({ code: 1, stdout: notRun }, 5).state, 'not-run')
+    assert.equal(parseReviewStatus({ code: 0, stdout: clean.replace('#5', '#6') }, 5).state, 'undetermined', 'another PR')
+    assert.equal(parseReviewStatus({ code: 1, stdout: clean }, 5).state, 'undetermined', 'exit disagrees')
+    assert.equal(parseReviewStatus({ code: 0, stdout: notRun }, 5).state, 'undetermined', 'not-run that exited 0')
+    assert.equal(parseReviewStatus({ code: 2, stdout: findings }, 5).state, 'undetermined', 'exit 2 is "GitHub could not be read"')
+    assert.equal(parseReviewStatus({ code: 0, stdout: clean, timedOut: true }, 5).state, 'undetermined', 'timed out')
+    assert.equal(parseReviewStatus({ code: 0, stdout: '' }, 5).state, 'undetermined')
+    assert.equal(parseReviewStatus({ code: 1, stdout: '#5  undetermined  x\n' }, 5).state, 'undetermined', 'a state review-status never prints')
   })
 
   it('an expected check satisfied only by a commit status still counts', () => {

@@ -14,15 +14,18 @@ pull request, asks:
 2. Did **every check pass** on the latest commit, including the specific
    checks that repository is supposed to run? A check that is still running,
    failed, was cancelled, or never ran at all means "not yet".
-3. Did **Bugbot review the latest commit**, and either find nothing or have
-   **every Bugbot comment answered**, with a reply written after the comment
-   or by resolving it? A latest commit Bugbot has not reviewed always waits,
-   however many earlier commits it reviewed. If the automatic review has not
-   started after 15 minutes, the bot asks once (`bugbot run`) for that commit
-   and never twice for the same one; a fix pushed after that gets its own one
-   request. If Bugbot says it could not run (for example "usage limit
-   reached"), the bot does not merge, does not ask again, and tells you once
-   per commit, in a comment and a Mac notification.
+3. Did the **Claude reviewer review the latest commit**, and either find
+   nothing or have **every one of its comments answered**, with a reply
+   written after the comment or by resolving it? It reads this with
+   `review-status.mjs`. A latest commit the reviewer has not reviewed always
+   waits, however many earlier commits it reviewed. The bot never asks for a
+   review itself: whether a push needs one is a judgement (a clean merge of
+   `main`, a regenerated file, a moved pin or a lint fix does not). After 15
+   minutes without one it says so once per commit in a comment: comment
+   `claude review` if the push changed code, or merge by hand after saying on
+   the pull request which kind of push it was. A repository without the
+   reviewer yet is held the same way, and a session merges it after reading
+   the diff.
 4. Does the description avoid phrases like "fixes #12" that would close an
    issue by accident?
 
@@ -69,13 +72,11 @@ node ~/.ship-bot/app/ship-bot.mjs --set-live false
 ## How a change ships
 
 1. A session finishes the work and adds the **`ready-to-merge`** label.
-2. The bot waits until every check has passed and Bugbot has reviewed the
-   latest commit: clean, or with every Bugbot comment answered. If Bugbot has
-   not reviewed the latest commit, the bot asks it once (`bugbot run`) and
-   keeps waiting; in a repository with Bugbot it never merges a commit Bugbot
-   did not review. When Bugbot cannot run (out of budget), the bot comments
-   and notifies you once; after you top up, comment `bugbot run` on the pull
-   request.
+2. The bot waits until every check has passed and the Claude reviewer has
+   reviewed the latest commit: clean, or with every one of its comments
+   answered. It never merges a commit the reviewer did not review, and it
+   never comments `claude review` (or `bugbot run`; Bugbot was retired on
+   2026-10-16).
 3. It merges the pull request.
 4. For MoonMan and the websites, it first checks it can reach the NAS and the
    Docker host, then puts the change live and checks the live site.

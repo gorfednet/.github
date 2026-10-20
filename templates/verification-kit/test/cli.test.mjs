@@ -620,8 +620,9 @@ exit 1
 /*
  * Which repository a pull-request check asks GitHub about.
  *
- * Run from the bindercurve.com clone to check 4thcltr.com #95, the review-status
- * check (since retired with Bugbot) reported two Bugbot findings. The 4thcltr pull request was clean; the findings
+ * Run from the bindercurve.com clone to check 4thcltr.com #95, the kit's
+ * bugbot-review-status.mjs (retired with Bugbot in v0.46.0) reported two Bugbot
+ * findings. The 4thcltr pull request was clean; the findings
  * belonged to bindercurve.com #95. Every parser here dropped a flag it did not
  * recognise, so `--repo=gorfednet/4thcltr.com` (or `-R`, or a typo) fell back to
  * the clone's origin and answered a different repository's question as if it

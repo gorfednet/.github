@@ -161,7 +161,7 @@ export function makeRunner({ handle, changed = ['index.html'] } = {}) {
         const script = basename(cmd.args[0])
         if (script.startsWith('assert-checks-started')) return ok('✓ all started')
         if (script.startsWith('check-closing-keywords')) return ok('no closing phrases')
-        if (script.startsWith('bugbot-review-status')) return ok(`#${cmd.args[2]}  clean  no issues found\n`)
+        if (script.startsWith('review-status')) return ok(`#${cmd.args[2]}  clean  Claude reviewed aaaaaaaaa: no findings\n`)
       }
       if (cmd.cmd === 'git' && cmd.args[0] === '-C') {
         const sub = cmd.args[2]
@@ -188,7 +188,7 @@ export function repoEntry(overrides = {}) {
     slug: SLUG,
     dir: 'site',
     mode: 'deploy',
-    bugbot: false,
+    claudeReview: false,
     expectedChecks: ['check / check'],
     envFiles: ['.deploy-env'],
     setup: [{ name: 'install', command: ['npm', 'ci'] }],
@@ -218,7 +218,7 @@ export function scenario({ repos = [repoEntry()], configOverrides = {}, github =
     sourceRoot: join(home, 'src'),
     scripts: {
       assertChecksStarted: join(home, 'kit/bin/assert-checks-started.mjs'),
-      bugbotReviewStatus: join(home, 'kit/bin/bugbot-review-status.mjs'),
+      reviewStatus: join(home, 'bindercurve/scripts/review-status.mjs'),
       checkClosingKeywords: join(home, 'kit/bin/check-closing-keywords.mjs'),
     },
     repos,

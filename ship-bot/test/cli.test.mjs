@@ -15,7 +15,7 @@ function harness({ live = true, lock, pulls = [] } = {}) {
       live,
       stateDir: join(home, 'state'),
       sourceRoot: join(home, 'src'),
-      scripts: { assertChecksStarted: 'a.mjs', bugbotReviewStatus: 'b.mjs', checkClosingKeywords: 'c.mjs' },
+      scripts: { assertChecksStarted: 'a.mjs', reviewStatus: 'b.mjs', checkClosingKeywords: 'c.mjs' },
       repos: [repoEntry({ envFiles: [] })],
     },
     { home },
