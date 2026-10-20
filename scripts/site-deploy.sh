@@ -473,6 +473,20 @@ cmd_deploy() {
   # before anything is staged or uploaded. It judges the caller's repository,
   # which is the current directory; see require_merged_tip.
   require_merged_tip "${PWD}" "${src}" || exit 1
+  # The helper's own clone must be current too: a stale gorfednet.github clone runs an old
+  # copy of this script, with old checks or none (2026-10-20: the clone was 4 commits behind
+  # and its site-deploy.sh had no require_merged_tip at all).
+  if ! require_merged_tip "${SCRIPT_DIR}" "" 2>"${TMPDIR:-/tmp}/site-deploy-self.$$"; then
+    {
+      echo "[site-deploy] The deploy helper itself is not the merged tip of its repository (${SCRIPT_DIR%/scripts}):"
+      sed 's/^/  /' "${TMPDIR:-/tmp}/site-deploy-self.$$"
+      echo "[site-deploy] Fix: git -C '${SCRIPT_DIR%/scripts}' pull --ff-only, then deploy again."
+    } >&2
+    rm -f "${TMPDIR:-/tmp}/site-deploy-self.$$"
+    exit 1
+  fi
+  if [[ -s "${TMPDIR:-/tmp}/site-deploy-self.$$" ]]; then cat "${TMPDIR:-/tmp}/site-deploy-self.$$" >&2; fi
+  rm -f "${TMPDIR:-/tmp}/site-deploy-self.$$"
   load_config
   command -v rsync >/dev/null 2>&1 || die "rsync is required"
   local sha stamp id
