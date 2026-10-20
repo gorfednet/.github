@@ -92,5 +92,11 @@ that reason.
 
 Feature work on portfolio sites is a **branch + GitHub PR** so the Claude reviewer and the reusable `pr-check-*` workflows run. Do not push feature commits straight to `main`.
 
-Cursor and Bugbot were retired on 2026-10-16. The Claude reviewer (`claude-review.yml`, `REVIEW.md`, `review-status.mjs`) reviews pull requests; it lives in each repository that has adopted it. Retired checks are listed in [`docs/retired-checks.md`](docs/retired-checks.md).
+Cursor and Bugbot were retired on 2026-10-16. The Claude reviewer reviews pull requests. Its shared parts live here:
+
+- [`.github/workflows/claude-review.yml`](.github/workflows/claude-review.yml): the reusable review job. It reviews when a pull request opens or leaves draft, and again on a `claude review` comment from an owner, member or collaborator, and ends with a `<!-- claude-review head=<sha> findings=<n> -->` verdict comment.
+- [`.github/actions/review-input/`](.github/actions/review-input/): builds the whole diff with git (GitHub's diff API stops at 300 files). It runs from this repository, never from the checkout under review, because the review job holds the owner's Claude token.
+- [`scripts/review-status.mjs`](scripts/review-status.mjs): the merge gate's review check, `clean`, `findings` or `not-run` for the current head: `node scripts/review-status.mjs --pr <n> --repo gorfednet/<repository>`.
+
+A repository adopts it with a copy of [`templates/claude-review.yml`](templates/claude-review.yml), a `REVIEW.md` holding its house rules, and a `CLAUDE_CODE_OAUTH_TOKEN` secret (from `claude setup-token`). bindercurve.com keeps its own copy of the workflow, where this one was ported from. Retired checks are listed in [`docs/retired-checks.md`](docs/retired-checks.md).
 

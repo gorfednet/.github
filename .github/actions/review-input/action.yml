@@ -1,0 +1,35 @@
+name: Claude review input
+description: >-
+  Builds the diff the Claude reviewer reads (full.diff, files.txt, README.txt, and for a release
+  train merges.diff, own.diff and carried.txt) from a full-history checkout, so a pull request of any
+  size is reviewed whole. `gh pr diff` goes through GitHub's diff API, which refuses past 300 files.
+
+  The script runs from this action's own directory, which GitHub fetches at the ref the workflow
+  names (gorfednet/.github@main), never from the checkout under review: the review job holds the
+  owner's Claude token and a token that can write to the pull request, and a pull request that edited
+  the script would otherwise run its own code with both. It runs with an empty environment as well.
+inputs:
+  base:
+    description: Base commit sha of the pull request
+    required: true
+  head:
+    description: Head commit sha of the pull request
+    required: true
+  out:
+    description: Directory to write the review input into
+    required: false
+    default: review-input
+runs:
+  using: composite
+  steps:
+    - name: Build the review input
+      shell: bash
+      env:
+        BASE: ${{ inputs.base }}
+        HEAD: ${{ inputs.head }}
+        OUT: ${{ inputs.out }}
+      run: |
+        set -euo pipefail
+        env -i PATH="${PATH}" HOME="${HOME}" node "${GITHUB_ACTION_PATH}/review-input.mjs" \
+          --repo "${GITHUB_WORKSPACE}" --base "${BASE}" --head "${HEAD}" --out "${GITHUB_WORKSPACE}/${OUT}"
+        head -n 3 "${GITHUB_WORKSPACE}/${OUT}/README.txt"
