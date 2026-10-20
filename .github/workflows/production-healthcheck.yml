@@ -125,7 +125,7 @@ jobs:
   health:
     # Hosted, on purpose, and deliberately no runs-on input: this is a liveness
     # monitor that must run off the dapyllil pool. Every site that calls it is
-    # served by the nginx container on dapyllil (infra/nginx/README.md), the same
+    # served by the nginx container on dapyllil (infra/nginx/README.md: its config is in gorfednet/ops), the same
     # host the pool runs on. When that host is down, every site is down, and a job
     # routed to the pool does not go red: it waits in the queue for a runner that
     # is not coming. The outage this monitor exists to report would be the one it

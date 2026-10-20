@@ -4,6 +4,37 @@ A check taken out on purpose is a recorded decision, not a weakening
 (`~/.claude/rules/shipping.md`, "When CI is red"). Each entry says what the
 check caught, why it went, and what still catches that class. Newest first.
 
+## 2026-10-20: the nginx vhost record and `check-vhost-capture.mjs`
+
+**Removed:** `infra/nginx/vhosts/` and `infra/nginx/CAPTURE.json` (a hashed copy
+of dapyllil's live nginx `conf.d`), `scripts/check-vhost-capture.mjs`,
+`test/vhostCapture.test.mjs`, the workflow step "The vhost record has not been
+edited or gone stale", and the `check-machine-paths` waiver that existed only
+for `CAPTURE.json`'s host path. `infra/nginx/README.md` now points at the new
+record; `infra/nginx/proposed/` (the security-header proposal) stays.
+
+**What it caught:** an edit to the copy made as though it deployed something
+(the copy's hash no longer matched `CAPTURE.json`), and a copy left past its
+dated re-capture. It could not compare the copy with the host, since a runner
+has no route to it.
+
+**Why it went:** the copy was a record, not the configuration, so it drifted
+within a week: on 2026-10-16 `gorfed.net.conf` differed from the host and two
+live files were missing, while the check stayed green because it hashed the
+copy against itself (backlog `vhost-capture-drift-gorfed-work-and-assist`).
+gorfednet/ops#13 (merged 2026-10-20) made the record something that deploys:
+`hosts/dapyllil/webserver/conf.d/` holds all twelve live files plus
+`00-error-cache-control.conf`, and `webserver-conf` there diffs the record
+against the host, applies a change with `nginx -t`, a reload and a rollback,
+and pulls a change made on the host. That is backlog
+`vhost-record-should-be-the-source`. A public repository was also the wrong
+place for the host's full configuration.
+
+**What catches that class now:** `webserver-conf diff` in gorfednet/ops, which
+compares the record with the host itself. That is what the dated hash stood in
+for. 4thcltr.com's scheduled `check-live-headers.mjs` still compares that
+site's served headers with its repository's vhost.
+
 ## 2026-10-19: the ship bot's Bugbot gate
 
 **Removed:** from `ship-bot/` (the merge bot on the owner's Mac), gate (d)'s

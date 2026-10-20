@@ -1315,7 +1315,10 @@ describe("the org's own checkers are wired and pass", () => {
     .join('\n')
 
   it('finds checkers to check, rather than passing over an empty set', () => {
-    assert.ok(checkers.length >= 2, `expected several checkers, found ${checkers.join(', ')}`)
+    // At least one, which is what an empty set needs. Was two until 2026-10-20, when
+    // check-vhost-capture.mjs was retired with the vhost record (docs/retired-checks.md)
+    // and check-fleet.mjs was left as the one org checker.
+    assert.ok(checkers.length >= 1, `expected a checker, found none: ${checkers.join(', ')}`)
   })
 
   for (const checker of checkers) {
