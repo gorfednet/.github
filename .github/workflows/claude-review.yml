@@ -1,0 +1,136 @@
+# Pull request review by Claude, shared by every repository (ported from bindercurve.com's
+# claude-review.yml; it replaced Cursor Bugbot, which was retired on 2026-10-16).
+#
+# A repository calls this from its own .github/workflows/claude-review.yml (templates/claude-review.yml)
+# on `pull_request: [opened, ready_for_review]` and `issue_comment: [created]`. The job reviews when a
+# pull request opens or leaves draft, and again whenever an owner, member or collaborator comments
+# "claude review": once at open, once more on the final head after a push that changed code someone
+# wrote, which keeps reviews inside the Max plan's limits.
+#
+# It authenticates with the owner's Claude subscription (CLAUDE_CODE_OAUTH_TOKEN, from
+# `claude setup-token`), never an API key. It runs where the caller's HEAVY_RUNS_ON says (the
+# dapyllil pool); left empty it is GitHub-hosted ubuntu-latest, like the other shared workflows,
+# until that repository is on the pool.
+#
+# The verdict is machine-readable: the review ends with one pull request comment carrying
+# `<!-- claude-review head=<sha> findings=<n> -->`, which scripts/review-status.mjs (in this
+# repository) reads for the merge gate. The repository's REVIEW.md holds its house rules.
+name: claude-review
+
+on:
+  workflow_call:
+    inputs:
+      runs-on:
+        description: >-
+          Where the job runs, as JSON: a label string or an array of labels, normally the caller's
+          HEAVY_RUNS_ON variable. Left empty it is GitHub-hosted ubuntu-latest.
+        required: false
+        type: string
+        default: ""
+    secrets:
+      CLAUDE_CODE_OAUTH_TOKEN:
+        required: true
+
+jobs:
+  review:
+    if: >-
+      (github.event_name == 'pull_request' && !github.event.pull_request.draft) ||
+      (github.event_name == 'issue_comment' && github.event.issue.pull_request &&
+       startsWith(github.event.comment.body, 'claude review') &&
+       contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association))
+    runs-on: ${{ fromJSON(inputs.runs-on != '' && inputs.runs-on || '"ubuntu-latest"') }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+      id-token: write
+    concurrency:
+      group: claude-review-${{ github.repository }}-${{ github.event.pull_request.number || github.event.issue.number }}
+      cancel-in-progress: false
+    steps:
+      - name: Resolve the pull request head
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
+        run: |
+          set -euo pipefail
+          pull="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${NUMBER}" --jq '.head.sha + " " + .base.sha')"
+          echo "number=${NUMBER}" >> "$GITHUB_OUTPUT"
+          echo "head=${pull%% *}" >> "$GITHUB_OUTPUT"
+          echo "base=${pull##* }" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ steps.pr.outputs.head }}
+          fetch-depth: 0
+
+      # From gorfednet/.github@main, never from the checkout: see the action's description.
+      - name: Build the review input
+        uses: gorfednet/.github/.github/actions/review-input@main
+        with:
+          base: ${{ steps.pr.outputs.base }}
+          head: ${{ steps.pr.outputs.head }}
+          out: review-input
+
+      - name: Review
+        uses: anthropics/claude-code-action@1d6de8cb0c237e7c15e9e1bdf973826ebae490cc # v1.0.248
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ github.token }}
+          prompt: |
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ steps.pr.outputs.number }}
+            HEAD SHA: ${{ steps.pr.outputs.head }}
+
+            Review this pull request for real defects. House rules are in REVIEW.md and CLAUDE.md
+            at the repository root, where they exist; hold the change to them.
+
+            Do not use `gh pr diff`: GitHub refuses it past 300 files. The diff is already built in
+            `review-input/`. Read `review-input/README.txt` first; its first line says
+            `MODE: ordinary` or `MODE: train`.
+
+            - Ordinary pull request: review `review-input/full.diff` line by line.
+            - Release train (one branch that merges several separately reviewed pull requests):
+              the carried pull requests were reviewed on their own, so the verdict covers the code
+              written on the train. Review `review-input/merges.diff` (what each conflict
+              resolution changed relative to git's automatic merge) and `review-input/own.diff`
+              (the commits written on the train itself) line by line. Use `review-input/full.diff`,
+              `git show` and `git log` only to check context. If you could not read all of what
+              you were told to review, say so in the closing comment.
+
+            What to report: real defects in the lines this pull request changes, or defects those
+            lines cause elsewhere.
+            - Wrong behaviour: logic errors, races, an unreachable branch, a swallowed error, a
+              value that can be null where the code assumes it is not.
+            - Data loss or corruption: a write that overwrites what another writer wrote; a
+              migration that is not re-runnable or deletes more than it says.
+            - Security: authorization gaps, secrets in code or logs, input that reaches SQL, a
+              shell or a prompt unchecked, a check that fails open.
+            - Tests and gates that cannot fail: an assertion that passes whether or not the change
+              works, a skipped or empty suite reported as green, a filter that matches nothing, a
+              CI step that an earlier failure silently switches off.
+            - Production breakage: a dependency, environment variable or deploy step the
+              production path does not have.
+            - Copy that no longer matches behaviour: a change to what a feature does, stores or
+              measures, without the help, legal or privacy text that describes it.
+
+            Do not report style, naming, formatting or comment wording unless it hides a defect,
+            lockfile-only churn unless a dependency change looks unsafe, or anything outside the
+            diff that the pull request does not affect. Never suggest weakening a check, raising a
+            ratchet, widening a tolerance, skipping a test or enabling auto-merge to go green.
+
+            Read whatever surrounding code you need to be sure a finding is real; a finding you
+            have not traced to a concrete failure is not a finding.
+
+            Leave one inline comment per finding on the changed line, starting with High, Medium or
+            Low, saying what goes wrong, for whom, and how to see it. Name the fix only when it is
+            clear.
+
+            Finish with exactly one top-level comment on the pull request (`gh pr comment`), whether
+            or not you found anything: one or two sentences saying what you reviewed and what you
+            found, then this line exactly, with the number of inline comments you left:
+            <!-- claude-review head=${{ steps.pr.outputs.head }} findings=N -->
+          claude_args: |
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr view:*),Bash(git show:*),Bash(git log:*),Bash(git diff:*),Read,Grep,Glob"
