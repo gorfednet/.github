@@ -520,6 +520,38 @@
       "file": "scripts/fleet-report.mjs",
       "find": "              if (verdict.judged === false) {\n",
       "replace": "              if (false) {\n"
+    },
+    {
+      "id": "site-deploy-uploads-full-copies",
+      "guards": "A deploy hard-links unchanged files from the current release with a destination-relative --link-dest. Without it every release is a full copy and the retention window multiplies the disk use of each site.",
+      "command": "bash scripts/test-site-deploy.sh",
+      "file": "scripts/site-deploy.sh",
+      "find": "  [[ -z \"${prev_target}\" ]] || args+=(--link-dest=../../current/)\n",
+      "replace": ""
+    },
+    {
+      "id": "site-deploy-prunes-the-served-release",
+      "guards": "Retention never deletes the release `current` points at, however old. Rolling current back to an old release and then deploying again would otherwise delete the live site.",
+      "command": "bash scripts/test-site-deploy.sh",
+      "file": "scripts/site-deploy.sh",
+      "find": "  if [ \\\"\\$r\\\" = \\\"\\$cur\\\" ]; then continue; fi\n",
+      "replace": ""
+    },
+    {
+      "id": "site-deploy-keeps-a-broken-release-live",
+      "guards": "A live check that finds the site serving other bytes switches current back to the previous release. Without it a bad deploy stays live and the script only complains.",
+      "command": "bash scripts/test-site-deploy.sh",
+      "file": "scripts/site-deploy.sh",
+      "find": "    remote_switch \"${prev}\"\n    echo \"Rolled",
+      "replace": "    echo \"Rolled"
+    },
+    {
+      "id": "site-deploy-publishes-an-empty-release",
+      "guards": "An empty release is refused even where the index.html check is waived. An empty directory behind current serves 403 for the whole site.",
+      "command": "bash scripts/test-site-deploy.sh",
+      "file": "scripts/site-deploy.sh",
+      "find": "if [ -z \\\"\\$(ls -A \\\"\\$p\\\")\\\" ]; then",
+      "replace": "if false; then"
     }
   ]
 }

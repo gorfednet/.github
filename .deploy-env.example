@@ -5,3 +5,19 @@ NAS_SSH_PORT=22
 NAS_REMOTE_BASE=/volume1/data/websites
 NAS_SITE_DIR=example.com
 # NAS_SSH_IDENTITY_FILE=~/.ssh/id_ed25519
+
+# --- scripts/site-deploy.sh (dapyllil releases; replaces the NAS_* keys above) ---
+# The site's folder name under SITE_ROOT, one safe path segment. Required.
+SITE=example.com
+# SITE_HOST=sitedeploy@dapyllil
+# SITE_ROOT=/srv/sites
+# Releases kept after a deploy (minimum 2: the new one and the one to roll back to).
+# SITE_KEEP=5
+# Live URL whose index.html must equal the deployed one. Defaults to
+# https://$SITE/ when SITE is a fleet.json slug; otherwise the check is skipped.
+# SITE_LIVE_URL=https://example.com/
+# Extra rsync excludes, whitespace separated.
+# SITE_EXCLUDES=
+# 1 = the site has no index.html at its root (publishes anyway; live check only
+# asserts reachability).
+# SITE_NO_INDEX=0
