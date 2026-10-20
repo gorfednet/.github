@@ -20,7 +20,7 @@ cd "$ROOT"
 # reasoning. Scanned only on lines that are not comments.
 #
 # (Written apart from this script's own success echo so the self-scan stays clean.)
-ACTIONABLE='smb://|mount_smbfs|mount\s+-t\s+cifs|/Volumes/'
+ACTIONABLE='smb://|mount_smbfs|mount[[:space:]]+-t[[:space:]]+cifs|/Volumes/'
 PROSE_WORD='\bcifs\b'
 
 # The comment test lives inline in the awk program below rather than in a
@@ -62,14 +62,60 @@ EXCLUDE_DIRS=(
   --glob '!**/docs/verification-rules.md'
 )
 
-if ! command -v rg >/dev/null 2>&1; then
-  echo "rg (ripgrep) required for no-smb-guard" >&2
-  exit 2
-fi
+# ripgrep is used when present. The self-hosted pool's containers have no rg, no
+# sudo and no apt, so without a fallback this guard exited 2 there and every
+# repository's check went red. The fallback must reach the SAME verdict, so it
+# reproduces rg's file selection (git's view of the tree when in a repository,
+# otherwise every file; hidden paths skipped; binary files skipped) and the same
+# exclusions, and uses the same patterns (both are valid ERE for rg and grep).
+USE_RG=0
+if command -v rg >/dev/null 2>&1; then USE_RG=1; fi
+
+# The exclusions above, as the path test the grep fallback applies. Keep the two
+# lists in step: the test suite runs every case under both engines.
+excluded() {
+  case "$1" in
+    */.*) return 0 ;;  # hidden: .git, .gorfednet-github; rg skips these by default
+    */node_modules/* | */dist/* | */assets/* | */bindercurve.com/*) return 0 ;;
+    *.min.js | *.min.css) return 0 ;;
+    */art-library.js | */package-lock.json | */no-smb-guard.sh | */noSmbGuard.test.mjs) return 0 ;;
+    */docs/verification-rules.md) return 0 ;;
+  esac
+  return 1
+}
+
+grep_scan() {
+  # A pattern grep cannot compile would read as "no matches" below. Say so (exit 2,
+  # a tool problem, as for the comment filter) instead of passing.
+  local probe=0
+  printf '' | grep -E -e "$1" >/dev/null 2>&1 || probe=$?
+  if [[ "$probe" -gt 1 ]]; then
+    echo "ERROR: grep cannot compile the guard pattern, so nothing was checked." >&2
+    exit 2
+  fi
+  local file_list
+  # Same file set rg walks: tracked plus untracked, minus gitignored.
+  if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    file_list=(git ls-files -z --cached --others --exclude-standard)
+  else
+    file_list=(find . -type f -print0)
+  fi
+  local f
+  while IFS= read -r -d '' f; do
+    f="./${f#./}"
+    [[ -f "$f" ]] || continue
+    excluded "$f" && continue
+    printf '%s\0' "$f"
+  done < <("${file_list[@]}" 2>/dev/null) | xargs -0 grep -nIiE -e "$1" /dev/null 2>/dev/null || true
+}
 
 # Bindercurve is still on legacy share mounts and out of scope when run from Apps/www.
 scan() {
-  rg -n -i -e "$1" "${EXCLUDE_DIRS[@]}" --glob '!**/bindercurve.com/**' . 2>/dev/null || true
+  if [[ "$USE_RG" == 1 ]]; then
+    rg -n -i -e "$1" "${EXCLUDE_DIRS[@]}" --glob '!**/bindercurve.com/**' . 2>/dev/null || true
+  else
+    grep_scan "$1"
+  fi
 }
 
 actionable="$(scan "$ACTIONABLE")"

@@ -9,27 +9,43 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, symlinkSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 
 const GUARD = join(dirname(fileURLToPath(import.meta.url)), '..', 'scripts', 'no-smb-guard.sh')
 
-// Named rather than skipped. The guard shells out to ripgrep and exits 2 without it,
-// so every case below would fail as `2 !== 1` and read as broken behaviour instead of
-// a missing tool — which is exactly what happened on the runner, whose image does not
-// ship ripgrep and whose job did not install it. A skip here would have been worse:
-// the suite would have gone green having tested nothing.
-if (spawnSync('rg', ['--version']).status !== 0) {
-  throw new Error(
-    'ripgrep is required to test the share-mount guard, which shells out to it. ' +
-      'Install it in the workflow (see .github/workflows/verification-kit.yml) ' +
-      'rather than skipping these cases.',
-  )
+// Two engines, because the guard has two paths and the pool only ever runs one. It
+// uses ripgrep when present; the self-hosted pool's containers have none (and no sudo
+// to install it), so there it falls back to grep. The same cases run under both, so
+// the fallback is held to the same verdict rather than to its own idea of one.
+//
+// The grep engine is a PATH holding only the tools the pool has (bash, grep, git,
+// find, awk, sed, xargs), with no rg. The rg engine needs a real rg and is reported
+// as skipped, by name, where there is none: the grep engine still runs every case, so
+// the suite cannot go green having tested nothing.
+function toolDir() {
+  const dir = mkdtempSync(join(tmpdir(), 'smb-guard-bin-'))
+  for (const tool of ['bash', 'grep', 'git', 'find', 'awk', 'sed', 'xargs', 'cat', 'dirname']) {
+    const which = spawnSync('bash', ['-c', `command -v ${tool}`], { encoding: 'utf8' })
+    const found = which.stdout.trim()
+    if (which.status !== 0 || !found.startsWith('/')) throw new Error(`${tool} is required to run this suite`)
+    symlinkSync(found, join(dir, tool))
+  }
+  return dir
+}
+const GREP_ONLY_PATH = toolDir()
+const HAS_RG = spawnSync('rg', ['--version']).status === 0
+const ENGINES = [
+  { name: 'rg', path: process.env.PATH, skip: HAS_RG ? false : 'ripgrep is not installed here' },
+  { name: 'grep fallback (no rg on PATH)', path: GREP_ONLY_PATH, skip: false },
+]
+if (spawnSync('bash', ['-c', 'command -v rg'], { env: { PATH: GREP_ONLY_PATH } }).status === 0) {
+  throw new Error('the grep-only PATH must not contain rg')
 }
 
-function scan(files) {
+function scanWith(files, engine, { git = false } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'smb-guard-'))
   try {
     for (const [rel, body] of Object.entries(files)) {
@@ -37,14 +53,21 @@ function scan(files) {
       mkdirSync(dirname(path), { recursive: true })
       writeFileSync(path, body, 'utf8')
     }
-    const run = spawnSync('bash', [GUARD, root], { encoding: 'utf8' })
+    if (git) spawnSync('git', ['init', '-q'], { cwd: root, env: { PATH: process.env.PATH } })
+    const run = spawnSync('bash', [GUARD, root], {
+      encoding: 'utf8',
+      env: { PATH: engine.path, HOME: process.env.HOME },
+    })
     return { code: run.status, output: `${run.stdout}${run.stderr}` }
   } finally {
     rmSync(root, { recursive: true, force: true })
   }
 }
 
-describe('no-smb-guard', () => {
+for (const engine of ENGINES) {
+describe(`no-smb-guard under ${engine.name}`, { skip: engine.skip }, () => {
+  const scan = (files, opts) => scanWith(files, engine, opts)
+
   it('fails when a deploy script mounts a share', () => {
     const { code, output } = scan({
       'scripts/deploy.sh': 'mount_smbfs //dev@gorfednas/websites /Volumes/websites\n',
@@ -157,4 +180,53 @@ describe('no-smb-guard', () => {
     const { code, output } = scan({ 'scripts/deploy.sh': 'TARGET_FS=cifs\n' })
     assert.equal(code, 1, output)
   })
+
+  // File selection is where a grep fallback would quietly disagree with rg, so the
+  // cases that pin the selection live here, run under both engines.
+  it('passes a clean tree and says so', () => {
+    const { code, output } = scan({
+      'scripts/deploy.sh': 'rsync -e ssh -a dist/ deploy@host:/srv/site/\n',
+      'README.md': 'Deploys over ssh.\n',
+    })
+    assert.equal(code, 0, output)
+    assert.match(output, /OK: no legacy share-mount deploy references/)
+  })
+
+  it('fails on a share path in a file whose name has spaces', () => {
+    const { code, output } = scan({ 'docs/old deploy.md': 'copy to /Volumes/websites\n' })
+    assert.equal(code, 1, output)
+    assert.match(output, /old deploy\.md/)
+  })
+
+  it('matches case-insensitively', () => {
+    assert.equal(scan({ 'a.sh': 'MOUNT_SMBFS //x/y /z\n' }).code, 1)
+    assert.equal(scan({ 'a.sh': 'MOUNT   -T   CIFS //x /y\n' }).code, 1)
+  })
+
+  it('skips node_modules, dist, assets and a bindercurve.com directory', () => {
+    const { code, output } = scan({
+      'node_modules/x/index.js': 'mount_smbfs\n',
+      'pkg/node_modules/x/index.js': 'mount_smbfs\n',
+      'dist/a.js': '/Volumes/x\n',
+      'site/dist/a.js': '/Volumes/x\n',
+      'site/assets/a.txt': '/Volumes/x\n',
+      'bindercurve.com/deploy.sh': 'mount_smbfs\n',
+      'a.min.js': '/Volumes/x\n',
+      'package-lock.json': '"smb://x"\n',
+    })
+    assert.equal(code, 0, output)
+  })
+
+  it('skips hidden directories, as rg does', () => {
+    const { code, output } = scan({ '.github/workflows/old.yml': 'run: mount_smbfs\n' })
+    assert.equal(code, 0, output)
+  })
+
+  it('skips gitignored files in a git repository, but not untracked ones', () => {
+    const ignored = scan({ '.gitignore': 'build/\n', 'build/out.sh': 'mount_smbfs\n' }, { git: true })
+    assert.equal(ignored.code, 0, ignored.output)
+    const untracked = scan({ '.gitignore': 'build/\n', 'src/new.sh': 'mount_smbfs\n' }, { git: true })
+    assert.equal(untracked.code, 1, untracked.output)
+  })
 })
+}
