@@ -137,6 +137,8 @@ assert "rsync must exclude .deploy-env" grep -q -- '--exclude=.deploy-env' "${tm
 
 # ---- 2. second deploy hard-links unchanged files ---------------------------
 printf 'body{color:red}' >"${src}/assets/new.css"
+# A rebuild touches every file: same content, new mtime. They must still be hard links.
+touch -t 203001010000 "${src}/index.html" "${src}/assets/app.css"
 : >"${tmp}/rsync-args"
 run deploy dist >"${tmp}/d2.out" 2>&1 || { cat "${tmp}/d2.out"; fail "second deploy failed"; }
 rel2="$(current_id)"

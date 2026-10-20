@@ -341,7 +341,10 @@ cmd_deploy() {
 
   # No --chmod: the openrsync macOS ships rejects it, and deploys run from the Mac.
   # Modes are set on dapyllil instead (remote_fix_modes), whatever rsync uploaded.
-  local args=(-rlt --delete --exclude=.deploy-env)
+  # --checksum: builds and staging copies give every file a fresh mtime, and
+  # --link-dest only reuses a file whose size and mtime match, so without it every
+  # release was a full copy (seen on rowanmcarthur.com, 2026-10-20). Compare by content.
+  local args=(-rlt --checksum --delete --exclude=.deploy-env)
   local ex
   set -f
   # shellcheck disable=SC2086
