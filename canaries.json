@@ -552,6 +552,22 @@
       "file": "scripts/site-deploy.sh",
       "find": "if [ -z \\\"\\$(ls -A \\\"\\$p\\\")\\\" ]; then",
       "replace": "if false; then"
+    },
+    {
+      "id": "site-deploy-publishes-a-stale-build",
+      "guards": "A deploy refuses an upload whose .build-sha is not HEAD. On 2026-10-20 gorfmusic.com's deploy.sh was run without a build: the source was origin/main, dist/ was the morning's build, and /privacy went live as a 404.",
+      "command": "bash scripts/test-site-deploy-build-stamp.sh",
+      "file": "scripts/site-deploy.sh",
+      "find": "    if [[ \"${built}\" == \"${head}\" ]]; then\n",
+      "replace": "    if true; then\n"
+    },
+    {
+      "id": "site-deploy-ignores-the-build-registry",
+      "guards": "A site fleet.json marks buildStamp cannot deploy an upload with no .build-sha. Without it a build that never wrote the stamp (or a deploy.sh run with no build) goes out unchecked.",
+      "command": "bash scripts/test-site-deploy-build-stamp.sh",
+      "file": "scripts/site-deploy.sh",
+      "find": "  if [[ \"${want}\" == \"yes\" ]]; then\n",
+      "replace": "  if false; then\n"
     }
   ]
 }

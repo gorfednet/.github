@@ -77,6 +77,12 @@ jobs:
         if: ${{ !cancelled() }}
         run: bash scripts/test-site-deploy-guard.sh
 
+      # The second guard: the upload was built from the commit being deployed
+      # (dist/.build-sha), and a site fleet.json marks buildStamp has one.
+      - name: Site deploy build-stamp guard
+        if: ${{ !cancelled() }}
+        run: bash scripts/test-site-deploy-build-stamp.sh
+
       # The backlog's shape, enforced. A `reviewBy` that has passed is printed as
       # a warning and does not fail this step: the calendar is not something a
       # pull request can change (2026-10 right-sizing). fleet-audit.yml lists

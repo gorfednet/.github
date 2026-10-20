@@ -510,6 +510,36 @@ describe('FLEET.md', () => {
  * to a position silently starts testing a different project when the registry
  * is reordered.
  */
+/*
+ * buildStamp: site-deploy.sh refuses a stamp-less upload for a site marked here, and
+ * reads the key as `=== true`, so a mistyped value must fail here rather than read as
+ * "not built".
+ */
+describe('buildStamp', () => {
+  const BUILT = REGISTRY.projects.findIndex((p) => p.archetype === 'vite-spa' && p.dormantUntil === undefined)
+  const STATIC = REGISTRY.projects.findIndex((p) => p.archetype === 'static-no-npm')
+
+  it('is accepted as true on a built site', () => {
+    const result = run(withProject(BUILT, { buildStamp: true }))
+    assert.equal(result.status, 0, result.stderr)
+  })
+
+  it('fails for anything but true: a string, false, a number', () => {
+    for (const value of ['true', false, 1]) {
+      const result = run(withProject(BUILT, { buildStamp: value }))
+      assert.equal(result.status, 1, `buildStamp ${JSON.stringify(value)}`)
+      assert.match(result.stderr, /buildStamp must be true or absent/)
+    }
+  })
+
+  it('fails on a static site, which has no build to write the stamp', () => {
+    assert.notEqual(STATIC, -1)
+    const result = run(withProject(STATIC, { buildStamp: true }))
+    assert.equal(result.status, 1)
+    assert.match(result.stderr, /static-no-npm site has no build/)
+  })
+})
+
 describe('a project stood down', () => {
   const DORMANT = REGISTRY.projects.findIndex((p) => p.dormantUntil !== undefined)
   const LIVE = REGISTRY.projects.findIndex((p) => p.tier === 1 && p.dormantUntil === undefined)
