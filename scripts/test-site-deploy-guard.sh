@@ -16,7 +16,7 @@ command -v git >/dev/null 2>&1 || fail "git is required"
 
 tmp_dir="$(mktemp -d "${TMPDIR:-/tmp}/nas-deploy-guard-test.XXXXXX")"
 tmp_dir="$(cd "${tmp_dir}" && pwd -P)"
-trap 'rm -rf "${tmp_dir}"' EXIT
+trap 'chmod -R u+rwx "${tmp_dir}" 2>/dev/null; rm -rf "${tmp_dir}"' EXIT
 
 export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null
 export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@example.test GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@example.test
@@ -130,6 +130,15 @@ c="$(new_case up-gitfile)"
 mkdir -p "${c}/dist/sub"
 printf 'gitdir: /somewhere\n' > "${c}/dist/sub/.git"
 expect_refuse "a .git file (a worktree's link) in the upload dir" "must never be on the site" "${c}" "UPLOAD=${c}/dist"
+
+# An unreadable subdirectory could hide a .claude from find, so a scan error refuses (fail closed).
+if [[ "$(id -u)" != "0" ]]; then
+  c="$(new_case up-unreadable)"
+  mkdir -p "${c}/dist/locked/.claude"
+  chmod 000 "${c}/dist/locked"
+  expect_refuse "an unreadable directory in the upload dir" "could not scan all of" "${c}" "UPLOAD=${c}/dist"
+  chmod 755 "${c}/dist/locked"
+fi
 
 c="$(new_case up-outside)"
 mkdir -p "${c}/.claude/worktrees/agent-a" "${c}/dist"

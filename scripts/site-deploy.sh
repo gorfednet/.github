@@ -111,8 +111,19 @@ require_merged_tip() {
 
   # The upload-directory check comes first and is never overridable.
   if [[ -n "${upload}" ]]; then
-    local leaks
-    leaks="$(find "${upload}" \( -name .claude -o -name .git \) -print 2>/dev/null | sort | head -20)" || leaks=""
+    local leaks find_err
+    # Fail closed: a find that cannot read part of the upload could miss a .claude or .git there.
+    find_err="$(mktemp)"
+    if ! leaks="$(find "${upload}" \( -name .claude -o -name .git \) -print 2>"${find_err}")"; then
+      {
+        printf '%s Refusing to publish: could not scan all of %s for .claude or .git:\n' "${label}" "${upload}"
+        sed 's/^/    /' "${find_err}" | head -10
+      } >&2
+      rm -f "${find_err}"
+      return 1
+    fi
+    rm -f "${find_err}"
+    leaks="$(printf '%s\n' "${leaks}" | sed '/^$/d' | sort | head -20)"
     if [[ -n "${leaks}" ]]; then
       {
         printf '%s Refusing to publish: %s holds paths that must never be on the site:\n' "${label}" "${upload}"
