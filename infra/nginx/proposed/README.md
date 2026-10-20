@@ -1,10 +1,10 @@
 # Security headers for every site: the proposal and the runbook
 
 Status: **proposed, not applied.** Nothing in this directory configures anything
-(see `../README.md`: the live configuration is `/home/gorf/Docker/nginx/conf.d` on
-dapyllil, and `vhosts/` is a hashed record of it). This directory holds the text
-that will be applied on the host at the next coordinated release, and the steps
-that apply and verify it. Once applied, `vhosts/` is re-captured and this
+(see `../README.md`: the live configuration is on dapyllil, and its record is
+the private gorfednet/ops repository, `hosts/dapyllil/webserver/conf.d/`). This
+directory holds the text that will be applied on the host at the next coordinated
+release, and the steps that apply and verify it. Once applied through ops, this
 directory's job is done.
 
 ## The finding (2026-10-11)
@@ -90,7 +90,7 @@ that breaks the site.
    `csp/<site>.inc` line is added **only for a site whose status is "verified"** (today:
    promptboi.com alone). A "declared" site gets no CSP include until its injection check has
    passed and the table says so; a snippet file existing in `snippets/csp/` is not permission
-   to include it. `vhosts/promptboi.com.conf.proposed` shows the finished shape for a
+   to include it. `vhosts/promptboi.com.conf.proposed` (in this directory) shows the finished shape for a
    verified site.
 3. `docker exec nginx nginx -t` must say `syntax is ok` and `test is successful`; only then
    `docker exec nginx nginx -s reload`.
@@ -118,8 +118,9 @@ that breaks the site.
    carries the old headers for up to a year. A site with no stylesheet link uses its
    first `<script src>` instead. Then open the site in a browser and read the console: zero
    CSP reports.
-5. Re-capture: copy the live `conf.d/*.conf` into `../vhosts/`, update `../CAPTURE.json`
-   hashes and `capturedAt`, run `node scripts/check-vhost-capture.mjs`.
+5. Record it: the change is made in gorfednet/ops `hosts/dapyllil/webserver/conf.d/`
+   and installed with `webserver-conf apply`; a change made on the host instead is
+   brought back with `webserver-conf pull`, and `webserver-conf diff` must be empty.
 6. Follow-up PRs: `production-healthcheck.yml` asserts the header set on each site
    (behaviour, not text, as `../README.md` prefers); the CSP fixture moves into the kit;
    each "declared" site runs it and either flips to "verified" or lists its violations.
