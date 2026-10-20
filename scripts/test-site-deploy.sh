@@ -36,6 +36,10 @@ command -v rsync >/dev/null 2>&1 || fail "rsync is required"
 command -v python3 >/dev/null 2>&1 || fail "python3 is required (the macOS fallback of the atomic switch)"
 
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/site-deploy-test.XXXXXX")"
+# site-deploy.sh refuses a stale copy of itself, so run a copy that is its repo's merged tip.
+source "${SCRIPT_DIR}/lib-fresh-helper.sh"
+make_fresh_helper "${tmp}/fresh" "${SCRIPT_DIR}/.." >/dev/null
+RUN_DEPLOY="${FRESH_HELPER_DIR}/site-deploy.sh"
 trap 'rm -rf "${tmp}"' EXIT
 
 # ---- shims -----------------------------------------------------------------
@@ -131,7 +135,7 @@ tick=0
 # A fresh stamp per call; two deploys inside one second would otherwise collide.
 run() { # run <args...>; runs in the work dir with a unique release stamp
   tick=$((tick + 1))
-  (cd "${work}" && SITE_NOW="$(printf '20260101T0000%02dZ' "${tick}")" bash "${DEPLOY}" "$@")
+  (cd "${work}" && SITE_NOW="$(printf '20260101T0000%02dZ' "${tick}")" bash "${RUN_DEPLOY}" "$@")
 }
 current_id() { readlink "${site_dir}/current" | sed 's#^releases/##'; }
 release_count() { find "${site_dir}/releases" -mindepth 1 -maxdepth 1 -type d ! -name '*.partial' | wc -l | tr -d ' '; }
@@ -226,7 +230,7 @@ mkdir -p "${prune_site}/example.test/releases"
 for n in 1 2 3 4 5 6 7 8; do mkdir "${prune_site}/example.test/releases/2025010${n}T000000Z-aaaaaaa"; done
 mkdir "${prune_site}/example.test/releases/keepme-not-a-release"
 ln -s releases/20250101T000000Z-aaaaaaa "${prune_site}/example.test/current"
-(cd "${work}" && SITE_ROOT="${prune_site}" SITE_KEEP=3 bash "${DEPLOY}" prune >/dev/null)
+(cd "${work}" && SITE_ROOT="${prune_site}" SITE_KEEP=3 bash "${RUN_DEPLOY}" prune >/dev/null)
 p="${prune_site}/example.test/releases"
 assert "prune must never remove the current target, however old" test -d "${p}/20250101T000000Z-aaaaaaa"
 assert "prune must keep the newest SITE_KEEP" test -d "${p}/20250108T000000Z-aaaaaaa" -a -d "${p}/20250107T000000Z-aaaaaaa" -a -d "${p}/20250106T000000Z-aaaaaaa"
@@ -237,7 +241,7 @@ assert "prune must not touch entries that are not releases" test -d "${p}/keepme
 mkdir "${p}/stale.partial" "${p}/fresh.partial" "${p}/halfhour.partial"
 touch -t 202501010000 "${p}/stale.partial"
 python3 -c 'import os,sys,time; t=time.time()-1800; os.utime(sys.argv[1], (t, t))' "${p}/halfhour.partial"
-(cd "${work}" && SITE_ROOT="${prune_site}" SITE_KEEP=3 bash "${DEPLOY}" prune >/dev/null)
+(cd "${work}" && SITE_ROOT="${prune_site}" SITE_KEEP=3 bash "${RUN_DEPLOY}" prune >/dev/null)
 assert "a .partial older than an hour must be removed" test ! -d "${p}/stale.partial"
 assert "a .partial younger than an hour is an in-flight deploy and must stay" test -d "${p}/fresh.partial" -a -d "${p}/halfhour.partial"
 
@@ -283,7 +287,7 @@ pass
 bad_root="${tmp}/srv3"
 mkdir -p "${bad_root}/example.test/releases" "${bad_root}/example.test/current"
 printf 'x' >"${bad_root}/example.test/current/keep"
-if (cd "${work}" && SITE_ROOT="${bad_root}" SITE_NOW=20260102T000000Z bash "${DEPLOY}" deploy dist >"${tmp}/nonlink.out" 2>&1); then
+if (cd "${work}" && SITE_ROOT="${bad_root}" SITE_NOW=20260102T000000Z bash "${RUN_DEPLOY}" deploy dist >"${tmp}/nonlink.out" 2>&1); then
   fail "a real directory named current must be refused"
 fi
 grep -q 'is not a symlink' "${tmp}/nonlink.out" || fail "the refusal must say current is not a symlink, got: $(tail -2 "${tmp}/nonlink.out")"
@@ -335,11 +339,11 @@ assert "the live URL must default to https://\$SITE/ for a fleet slug" grep -q '
 other="${tmp}/work-other"
 git clone -q "${tmp}/origin.git" "${other}"
 printf 'SITE=not-in-fleet.test\nSITE_ROOT=%s\n' "${remote_root}" >"${other}/.deploy-env"
-(cd "${other}" && SITE_NOW=20260102T000001Z bash "${DEPLOY}" deploy "${src}" >"${tmp}/skip.out" 2>&1) || fail "a non-fleet site must deploy"
+(cd "${other}" && SITE_NOW=20260102T000001Z bash "${RUN_DEPLOY}" deploy "${src}" >"${tmp}/skip.out" 2>&1) || fail "a non-fleet site must deploy"
 grep -q 'Live check skipped' "${tmp}/skip.out" || fail "a skipped live check must say so"
 pass
 : >"${STUB_CURL_LOG}"
-(cd "${other}" && SITE_LIVE_URL=https://custom.test/ SITE_NOW=20260102T000002Z bash "${DEPLOY}" deploy "${src}" >/dev/null 2>&1) || fail "SITE_LIVE_URL deploy failed"
+(cd "${other}" && SITE_LIVE_URL=https://custom.test/ SITE_NOW=20260102T000002Z bash "${RUN_DEPLOY}" deploy "${src}" >/dev/null 2>&1) || fail "SITE_LIVE_URL deploy failed"
 assert "SITE_LIVE_URL must be used" grep -q 'https://custom.test/' "${STUB_CURL_LOG}"
 
 # ---- 8. rollback and list --------------------------------------------------
@@ -349,7 +353,7 @@ for d in "${site_dir}"/releases/*; do
   [[ -f "${d}/index.html" ]] || rm -rf "${d}"
 done
 cur="$(current_id)"
-list_out="$(cd "${work}" && bash "${DEPLOY}" list)"
+list_out="$(cd "${work}" && bash "${RUN_DEPLOY}" list)"
 assert "list must mark the current release" bash -c "grep -q '^\* ${cur}  (current)\$' <<<'${list_out}'"
 first_listed="$(printf '%s\n' "${list_out}" | head -1 | sed 's/^[ *] //; s/  (current).*//')"
 assert "list must be newest first" test "${first_listed}" = "${cur}"
@@ -361,32 +365,32 @@ while IFS= read -r line; do
 done < <(find "${site_dir}/releases" -mindepth 1 -maxdepth 1 -type d | sed 's#.*/##' | sort -r)
 cp "${src}/index.html" "${STUB_BODY_FILE}"
 older="${ids[1]}"
-rb_out="$(cd "${work}" && bash "${DEPLOY}" rollback 2>&1)" || { echo "${rb_out}"; fail "rollback without id failed"; }
+rb_out="$(cd "${work}" && bash "${RUN_DEPLOY}" rollback 2>&1)" || { echo "${rb_out}"; fail "rollback without id failed"; }
 assert "rollback without an id must go to the newest release older than current" test "$(current_id)" = "${older}"
 # the stub still serves the newest release's bytes; make it serve the target's
 printf '%s' "${rb_out}" | grep -q 'Live check' || fail "rollback must run the live check"
 pass
 target="${ids[3]}"
 cp "${site_dir}/releases/${target}/index.html" "${STUB_BODY_FILE}"
-(cd "${work}" && bash "${DEPLOY}" rollback "${target}" >/dev/null 2>&1) || fail "rollback to an explicit id failed"
+(cd "${work}" && bash "${RUN_DEPLOY}" rollback "${target}" >/dev/null 2>&1) || fail "rollback to an explicit id failed"
 assert "rollback <id> must switch to that release" test "$(current_id)" = "${target}"
-if (cd "${work}" && bash "${DEPLOY}" rollback 20990101T000000Z-nothere >/dev/null 2>&1); then fail "rollback to an unknown release must fail"; fi
+if (cd "${work}" && bash "${RUN_DEPLOY}" rollback 20990101T000000Z-nothere >/dev/null 2>&1); then fail "rollback to an unknown release must fail"; fi
 pass
 assert "a failed rollback must not move current" test "$(current_id)" = "${target}"
-if (cd "${work}" && bash "${DEPLOY}" rollback "../etc" >"${tmp}/rbid.out" 2>&1); then fail "a path-like release id must be refused"; fi
+if (cd "${work}" && bash "${RUN_DEPLOY}" rollback "../etc" >"${tmp}/rbid.out" 2>&1); then fail "a path-like release id must be refused"; fi
 grep -q 'is not a release id' "${tmp}/rbid.out" || fail "a path-like id must be refused by validation, got: $(tail -1 "${tmp}/rbid.out")"
 pass
 # the oldest release has nothing older
 oldest="${ids[$((${#ids[@]} - 1))]}"
 cp "${site_dir}/releases/${oldest}/index.html" "${STUB_BODY_FILE}"
 if [[ "$(current_id)" != "${oldest}" ]]; then
-  (cd "${work}" && bash "${DEPLOY}" rollback "${oldest}") || fail "rollback to the oldest failed"
+  (cd "${work}" && bash "${RUN_DEPLOY}" rollback "${oldest}") || fail "rollback to the oldest failed"
 fi
-if (cd "${work}" && bash "${DEPLOY}" rollback >/dev/null 2>&1); then fail "rollback with nothing older must fail"; fi
+if (cd "${work}" && bash "${RUN_DEPLOY}" rollback >/dev/null 2>&1); then fail "rollback with nothing older must fail"; fi
 pass
 # a rollback whose live check fails exits non-zero
 printf 'not what the host holds' >"${STUB_BODY_FILE}"
-if (cd "${work}" && bash "${DEPLOY}" rollback "${ids[0]}" >/dev/null 2>&1); then fail "a rollback whose live check mismatches must exit non-zero"; fi
+if (cd "${work}" && bash "${RUN_DEPLOY}" rollback "${ids[0]}" >/dev/null 2>&1); then fail "a rollback whose live check mismatches must exit non-zero"; fi
 pass
 
 # ---- 9. unsafe SITE values -------------------------------------------------
@@ -395,20 +399,20 @@ for bad in '..' '../x' 'a/b' '' '-rf' '.hidden' 'a..b' '/abs' 'a b'; do
   rm -rf "${badwork}"
   git clone -q "${tmp}/origin.git" "${badwork}"
   printf 'SITE=%q\nSITE_ROOT=%s\n' "${bad}" "${remote_root}" >"${badwork}/.deploy-env"
-  if (cd "${badwork}" && bash "${DEPLOY}" deploy "${src}" >"${tmp}/bad.out" 2>&1); then
+  if (cd "${badwork}" && bash "${RUN_DEPLOY}" deploy "${src}" >"${tmp}/bad.out" 2>&1); then
     fail "unsafe SITE '${bad}' must be rejected"
   fi
   pass
   grep -qE 'safe single path segment|SITE is required' "${tmp}/bad.out" || fail "'${bad}' must be rejected by the SITE check, got: $(tail -1 "${tmp}/bad.out")"
 done
 assert "an unsafe SITE must not create anything under the root" test ! -e "${remote_root}/x" -a ! -e "${remote_root}/../x"
-if (cd "${work}" && SITE_KEEP=1 bash "${DEPLOY}" deploy "${src}" >"${tmp}/keep.out" 2>&1); then fail "SITE_KEEP below 2 must be rejected"; fi
+if (cd "${work}" && SITE_KEEP=1 bash "${RUN_DEPLOY}" deploy "${src}" >"${tmp}/keep.out" 2>&1); then fail "SITE_KEEP below 2 must be rejected"; fi
 grep -q 'SITE_KEEP must be' "${tmp}/keep.out" || fail "SITE_KEEP=1 must be rejected by validation, got: $(tail -1 "${tmp}/keep.out")"
 pass
 
 # ---- 10. dry run -----------------------------------------------------------
 dry_root="${tmp}/srv-dry"
-(cd "${work}" && SITE_ROOT="${dry_root}" SITE_NOW=20260103T000000Z bash "${DEPLOY}" deploy --dry-run dist >"${tmp}/dry.out" 2>&1) || { cat "${tmp}/dry.out"; fail "dry run failed"; }
+(cd "${work}" && SITE_ROOT="${dry_root}" SITE_NOW=20260103T000000Z bash "${RUN_DEPLOY}" deploy --dry-run dist >"${tmp}/dry.out" 2>&1) || { cat "${tmp}/dry.out"; fail "dry run failed"; }
 pass
 assert "a dry run must not create the site tree" test ! -e "${dry_root}"
 

@@ -188,6 +188,9 @@ mkdir -p "${tmp_dir}/plain"
 expect_refuse "not a git work tree" "not inside a git work tree" "${tmp_dir}/plain"
 
 # ---- the guard is on the path a deploy takes -------------------------------
+source "${SCRIPT_DIR}/lib-fresh-helper.sh"
+make_fresh_helper "${tmp_dir}/fresh" "${SCRIPT_DIR}/.." >/dev/null
+RUN_HELPER="${FRESH_HELPER_DIR}/site-deploy.sh"
 # `site-deploy.sh deploy` runs it before .deploy-env is read and before any ssh
 # or rsync. Fake ssh and rsync log every call, so a refusal that still uploaded
 # would show.
@@ -200,7 +203,7 @@ for tool in ssh rsync curl; do
   chmod +x "${tmp_dir}/bin/${tool}"
 done
 : > "${tmp_dir}/calls.log"
-if ( cd "${c}" && PATH="${tmp_dir}/bin:${PATH}" bash "${HELPER}" deploy dist ) >"${tmp_dir}/out" 2>&1; then
+if ( cd "${c}" && PATH="${tmp_dir}/bin:${PATH}" bash "${RUN_HELPER}" deploy dist ) >"${tmp_dir}/out" 2>&1; then
   fail "site-deploy.sh deploy must refuse a clone that is behind"
 fi
 grep -q 'is behind' "${tmp_dir}/out" || { cat "${tmp_dir}/out" >&2; fail "deploy: the refusal must say behind"; }
@@ -208,10 +211,28 @@ grep -q 'is behind' "${tmp_dir}/out" || { cat "${tmp_dir}/out" >&2; fail "deploy
 
 git_q -C "${c}" pull --ff-only
 mkdir -p "${c}/dist/.claude"
-if ( cd "${c}" && PATH="${tmp_dir}/bin:${PATH}" DEPLOY_ALLOW_UNMERGED=1 DEPLOY_REASON=x bash "${HELPER}" deploy dist ) >"${tmp_dir}/out" 2>&1; then
+if ( cd "${c}" && PATH="${tmp_dir}/bin:${PATH}" DEPLOY_ALLOW_UNMERGED=1 DEPLOY_REASON=x bash "${RUN_HELPER}" deploy dist ) >"${tmp_dir}/out" 2>&1; then
   fail "site-deploy.sh deploy must refuse an upload dir holding .claude, override or not"
 fi
 grep -q 'must never be on the site' "${tmp_dir}/out" || fail "deploy: the refusal must name the upload leak"
 [[ ! -s "${tmp_dir}/calls.log" ]] || fail "a leaking upload must not reach ssh or rsync"
+
+# ---- the helper's own clone must be current too ----------------------------
+# A stale gorfednet.github clone runs an old site-deploy.sh (2026-10-20: 4 commits behind, no guard).
+c="$(new_case self-stale)"
+mkdir -p "${c}/dist"
+printf 'x\n' > "${c}/dist/index.html"
+: > "${tmp_dir}/calls.log"
+helper_repo="${FRESH_HELPER_DIR%/scripts}"
+seed2="${tmp_dir}/helper-seed2"
+git clone -q "${tmp_dir}/fresh/helper-origin.git" "${seed2}"
+printf 'newer\n' > "${seed2}/NEWER"
+git -C "${seed2}" add NEWER && git -C "${seed2}" -c user.email=t@t -c user.name=t commit -q -m newer && git -C "${seed2}" push -q origin main
+if ( cd "${c}" && PATH="${tmp_dir}/bin:${PATH}" bash "${RUN_HELPER}" deploy dist ) >"${tmp_dir}/out" 2>&1; then
+  fail "site-deploy.sh deploy must refuse when its own clone is behind origin"
+fi
+grep -q 'deploy helper itself is not the merged tip' "${tmp_dir}/out" || { cat "${tmp_dir}/out" >&2; fail "self-check: the refusal must name the helper"; }
+[[ ! -s "${tmp_dir}/calls.log" ]] || fail "a stale helper must not reach ssh or rsync"
+git -C "${helper_repo}" pull -q --ff-only
 
 echo "site-deploy fresh-tree guard tests passed."
