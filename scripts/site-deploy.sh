@@ -385,16 +385,21 @@ cmd_deploy() {
   remote_promote "${id}"
   remote_switch "${id}"
   echo "current -> releases/${id}"
-  remote_prune
 
+  # Prune only once the release is known good. Pruning before the live check could
+  # delete the release a failed check must roll back to: after a rollback to an old
+  # id, that id is outside the newest SITE_KEEP and was pruned, leaving the bad
+  # release live (Claude review finding on .github#66).
   local url artefact=""
   url="$(live_url)"
   if [[ -z "${url}" ]]; then
     echo "Live check skipped: no SITE_LIVE_URL and ${SITE} is not a fleet.json slug."
+    remote_prune
     return 0
   fi
   [[ "${SITE_NO_INDEX}" == 1 ]] || artefact="${src%/}/index.html"
   if verify_live "${url}" "${artefact}"; then
+    remote_prune
     return 0
   fi
   if [[ -n "${prev}" ]]; then

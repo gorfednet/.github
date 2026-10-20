@@ -279,6 +279,24 @@ assert "a live mismatch must switch current back to the previous release" test "
 STUB_STATUS=500 run deploy dist >"${tmp}/s500.out" 2>&1 && fail "a 500 from the live site must fail the deploy"
 pass
 assert "a 500 must roll back too" test "$(current_id)" = "${good}"
+
+# After a rollback to an old release, a failed live check must still find that
+# release to roll back to: prune must not run before the check (review finding).
+for k in 1 2 3 4 5 6; do
+  printf '<!doctype html><title>fill%s</title>' "${k}" >"${src}/index.html"
+  cp "${src}/index.html" "${STUB_BODY_FILE}"
+  run deploy dist >/dev/null 2>&1 || fail "fill deploy ${k} failed"
+done
+oldest="$(ls "${site_dir}/releases" | grep -v '\.partial$' | sort | head -1)"
+cp "${site_dir}/releases/${oldest}/index.html" "${STUB_BODY_FILE}"
+run rollback "${oldest}" >/dev/null 2>&1 || fail "rollback to the oldest kept release failed"
+assert "rollback must reach the oldest kept release" test "$(current_id)" = "${oldest}"
+printf '<!doctype html><title>bad after rollback</title>' >"${src}/index.html"
+printf '<!doctype html><title>something else</title>' >"${STUB_BODY_FILE}"
+if run deploy dist >"${tmp}/after-rollback.out" 2>&1; then fail "a mismatch after a rollback must fail the deploy"; fi
+pass
+assert "the rollback target must survive a failed deploy" test -d "${site_dir}/releases/${oldest}"
+assert "a failed deploy after a rollback must return current to that old release" test "$(current_id)" = "${oldest}"
 cp "${src}/index.html" "${STUB_BODY_FILE}"
 
 # default live URL comes from fleet.json; a non-fleet SITE skips, loudly
