@@ -312,7 +312,7 @@
       "userSymptom": "A visitor sees nothing until it goes wrong, and then sees everything go wrong at once. The nginx configuration for all ten live sites existed only on the host, with no history and no copy. A bad edit, a lost disk or a mistaken overwrite would take down every site with nothing to restore from and no record of what the working version had been.",
       "evidence": "The serving container bind-mounts its conf.d read-only from an unversioned host directory - the path is recorded in infra/nginx/CAPTURE.json rather than repeated here - and that directory had no .git. It also held backup tarballs and dated .bak files, the shape a directory takes when someone has been editing it carefully with no version control to help. All twelve loaded .conf files are now recorded in infra/nginx/vhosts/ with a per-file sha256 in CAPTURE.json. Scanned for secrets before committing: the only match was server_tokens off.",
       "reviewBy": "2027-03-14",
-      "note": "The gate is deliberately not a diff against the host, because the host is reachable only over Tailscale and a runner has no route to it - and a check that cannot run reports the same green as one that passed. So it is a hash per file plus a dated recaptureBy. The hash is not protecting the bytes; it is stopping someone editing a config in the repo, watching CI pass, and believing production changed. Seven mutations red."
+      "note": "The gate is deliberately not a diff against the host, because the host is reachable only over Tailscale and a runner has no route to it - and a check that cannot run reports the same green as one that passed. So it is a hash per file plus a dated recaptureBy. The hash is not protecting the bytes; it is stopping someone editing a config in the repo, watching CI pass, and believing production changed. Seven mutations red. Superseded 2026-10-20: the record moved to gorfednet/ops hosts/dapyllil/webserver/conf.d/ (ops#13), and the copy and its check were retired here (docs/retired-checks.md)."
     },
     {
       "id": "org-checkers-had-no-wiring-gate",
@@ -327,12 +327,13 @@
     {
       "id": "vhost-record-should-be-the-source",
       "title": "The vhost copy is a record when it could be the configuration itself",
-      "status": "confirmed-bug",
+      "status": "landed",
       "assignee": "main-model",
       "userSymptom": "Nobody sees this directly. It is the difference between a config that cannot drift and one that is checked for drift on a timer, and it decides how much of the above stays necessary.",
-      "evidence": "This host already does it the better way for a different site. bindercurve-dev-nginx-1 mounts its configuration out of a git checkout: bindercurve.com-repo/infra/nginx/templates/bindercurve-dev.conf.template. Its tracked config IS its live config, so no snapshot, no hashes and no expiry are needed. Pointing the nginx container at a checkout the same way would make infra/nginx/vhosts/ the source of truth and delete the drift problem rather than dating it.",
+      "evidence": "This host already does it the better way for a different site. bindercurve-dev-nginx-1 mounts its configuration out of a git checkout: bindercurve.com-repo/infra/nginx/templates/bindercurve-dev.conf.template. Its tracked config IS its live config, so no snapshot, no hashes and no expiry are needed. Pointing the nginx container at a checkout the same way would make infra/nginx/vhosts/ the source of truth and delete the drift problem rather than dating it. Landed 2026-10-20 the other way round: rather than mounting this repository into the container, gorfednet/ops#13 keeps the live conf.d as a record that deploys (`webserver-conf apply` with nginx -t, reload and rollback; `pull` for a change made on the host; `diff` against the host). This PR deletes the copy and check-vhost-capture.mjs, as this entry predicted.",
       "reviewBy": "2027-03-14",
-      "note": "Deliberately not folded into the capture change. It needs the container recreated, which is a production action on the thing serving all ten sites, and it should be its own change with its own verification rather than a step inside a bookkeeping commit. If it lands, most of check-vhost-capture.mjs can be deleted, which is the good outcome."
+      "note": "Deliberately not folded into the capture change. It needs the container recreated, which is a production action on the thing serving all ten sites, and it should be its own change with its own verification rather than a step inside a bookkeeping commit. If it lands, most of check-vhost-capture.mjs can be deleted, which is the good outcome.",
+      "pr": 68
     },
     {
       "id": "tracked-nginx-conf-describes-nothing",
@@ -348,12 +349,13 @@
     {
       "id": "vhost-capture-drift-gorfed-work-and-assist",
       "title": "The live nginx conf.d has drifted from the capture: gorfed.net /work locations and two uncaptured files",
-      "status": "confirmed-bug",
+      "status": "landed",
       "assignee": "main-model",
       "userSymptom": "None for a visitor. Whoever reads infra/nginx/ is told gorfed.net serves only static files and that the container has eleven vhosts; the live gorfed.net vhost carries the Cloudflare Access-gated /work tree and assist.gorfed.net proxies the chat assistant, and neither is on record here.",
-      "evidence": "2026-10-16, sha256sum of /home/gorf/Docker/nginx/conf.d/*.conf on dapyllil against CAPTURE.json: gorfed.net.conf differs (83 added lines, the /work, /work/private and /work/_view locations, dated 2026-10-12); assist.gorfed.net.conf (2026-10-11) and 00-work-tiers.conf (2026-10-12) are live and not captured. The other nine match. check-vhost-capture passes regardless, because it hashes the tracked copy, not the host.",
+      "evidence": "2026-10-16, sha256sum of dapyllil's live nginx conf.d (the container's bind mount) against CAPTURE.json: gorfed.net.conf differs (83 added lines, the /work, /work/private and /work/_view locations, dated 2026-10-12); assist.gorfed.net.conf (2026-10-11) and 00-work-tiers.conf (2026-10-12) are live and not captured. The other nine match. check-vhost-capture passes regardless, because it hashes the tracked copy, not the host. Resolved 2026-10-20 by moving the record rather than re-capturing it: gorfednet/ops#13 (merged 2026-10-20) holds hosts/dapyllil/webserver/conf.d/ with gorfed.net.conf and assist.gorfed.net.conf as they are live and 00-work-tiers.conf left out (it holds email addresses), and `webserver-conf diff` compares that record with the host itself. This PR removes the stale copy here.",
       "reviewBy": "2026-11-15",
-      "note": "Not re-captured with 4thcltr.com.conf because it is another project's work (gorfed.net work tiers, gorfednet/ask-collector). 00-work-tiers.conf says it holds email addresses and must never be committed: a re-capture must exclude it by name, and the capture check should learn that a generated map can be live and deliberately untracked. assist.gorfed.net.conf has no error_page and is a proxy, so the vhostCapture tests that assume every site vhost is static need an exception for it."
+      "note": "00-work-tiers.conf stays out of every repository; ops#13 excludes it by name.",
+      "pr": 68
     },
     {
       "id": "fleet-analytics-one-service",
