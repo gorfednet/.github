@@ -10,13 +10,19 @@
  * three weeks ago reads as work in flight, and nothing in the file itself can
  * tell. That is not hypothetical — it is why this option exists.
  *
+ * A `reviewBy` that has passed is printed as a warning and never changes the
+ * exit code. The calendar is not something a pull request can change, so the
+ * lapsed dates are reported here and listed per repository by the scheduled
+ * fleet audit (scripts/fleet-report.mjs in gorfednet/.github), which is where
+ * renewing or closing each one gets decided.
+ *
  * Usage:
  *   node verification-kit/bin/check-backlog.mjs [--file docs/backlog.json]
  *                                              [--verify-prs] [--repo owner/name]
  */
 import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
-import { validateBacklog } from '../lib/backlogSchema.mjs'
+import { lapsedReviewDates, validateBacklog } from '../lib/backlogSchema.mjs'
 import { rejectUnknownArgument } from '../lib/cliArgs.mjs'
 import { resolveRepoSlug } from '../lib/githubSlug.mjs'
 
@@ -126,6 +132,26 @@ try {
       '  verification-kit/templates/backlog.json.\n',
   )
   process.exit(1)
+}
+
+/*
+ * Printed before the verdict either way, so a failing run still shows them and
+ * a passing one cannot hide them. Under Actions each is an annotation, which
+ * puts it on the pull request's checks page without turning the check red.
+ */
+const lapsed = lapsedReviewDates(doc)
+if (lapsed.length > 0) {
+  const s = lapsed.length === 1 ? 'y' : 'ies'
+  console.log(`⚠ ${file}: ${lapsed.length} entr${s} past reviewBy (reported, not enforced):`)
+  for (const entry of lapsed) {
+    const text = `entry "${entry.id}" (${entry.status}) was deferred to ${entry.reviewBy}, which has passed`
+    console.log(process.env.GITHUB_ACTIONS ? `::warning title=Backlog reviewBy has passed::${text}` : `  - ${text}`)
+  }
+  console.log(
+    '  Renew each date as a decision, or change the status. A date is not something a\n' +
+      '  pull request can change, so it does not fail this check; the scheduled fleet\n' +
+      '  audit lists these until they are decided.',
+  )
 }
 
 const problems = validateBacklog(doc)

@@ -321,6 +321,58 @@ describe('check-backlog', () => {
     assert.match(result.stderr, /userSymptom/)
   })
 
+  /*
+   * A lapsed reviewBy is a warning, never the exit code: gorfednet/.github#55
+   * went red on seven dates it did not touch. Run with and without
+   * GITHUB_ACTIONS, because the annotation form is what reaches the checks page.
+   */
+  it('passes with a warning naming each entry whose review date has passed', () => {
+    const late = {
+      id: 'deferred-and-forgotten',
+      title: PROSE,
+      status: 'confirmed-bug',
+      assignee: 'human',
+      userSymptom: PROSE,
+      evidence: PROSE,
+      reviewBy: '2000-01-01',
+    }
+    const dir = backlogAt({ entries: [late] })
+
+    const local = spawnSync('node', [bin('check-backlog.mjs')], {
+      cwd: dir,
+      encoding: 'utf8',
+      env: { ...process.env, GITHUB_ACTIONS: '' },
+    })
+    assert.equal(local.status, 0, local.stderr)
+    assert.match(local.stdout, /1 entry past reviewBy \(reported, not enforced\)/)
+    assert.match(local.stdout, /entry "deferred-and-forgotten" \(confirmed-bug\) was deferred to 2000-01-01/)
+    assert.match(local.stdout, /1 entry \(confirmed-bug: 1\)/)
+
+    const actions = spawnSync('node', [bin('check-backlog.mjs')], {
+      cwd: dir,
+      encoding: 'utf8',
+      env: { ...process.env, GITHUB_ACTIONS: 'true' },
+    })
+    assert.equal(actions.status, 0, actions.stderr)
+    assert.match(actions.stdout, /^::warning title=Backlog reviewBy has passed::entry "deferred-and-forgotten"/m)
+  })
+
+  // The near miss: a shape problem beside a lapsed date still fails, and the
+  // warning is still printed so the failing run shows both.
+  it('still fails on a shape problem in a backlog that also has a lapsed date', () => {
+    const dir = backlogAt({
+      entries: [
+        { id: 'late', title: PROSE, status: 'confirmed-bug', assignee: 'human', userSymptom: PROSE, evidence: PROSE, reviewBy: '2000-01-01' },
+        { id: 'vague', title: PROSE, status: 'confirmed-bug', assignee: 'human', userSymptom: 'bad', evidence: PROSE },
+      ],
+    })
+    const result = runCli('check-backlog.mjs', [], dir)
+    assert.equal(result.status, 1)
+    assert.match(result.stderr, /entry "vague" needs a "userSymptom"/)
+    assert.doesNotMatch(result.stderr, /late/)
+    assert.match(result.stdout, /entry "late" \(confirmed-bug\) was deferred to 2000-01-01/)
+  })
+
   // A project with no plan of record is the condition the gate exists to
   // surface, so a missing file is a failure and not a skip.
   it('fails closed when the backlog file does not exist', () => {
@@ -568,8 +620,9 @@ exit 1
 /*
  * Which repository a pull-request check asks GitHub about.
  *
- * Run from the bindercurve.com clone to check 4thcltr.com #95, bugbot-review-status
- * reported two Bugbot findings. The 4thcltr pull request was clean; the findings
+ * Run from the bindercurve.com clone to check 4thcltr.com #95, the kit's
+ * bugbot-review-status.mjs (retired with Bugbot in v0.46.0) reported two Bugbot
+ * findings. The 4thcltr pull request was clean; the findings
  * belonged to bindercurve.com #95. Every parser here dropped a flag it did not
  * recognise, so `--repo=gorfednet/4thcltr.com` (or `-R`, or a typo) fell back to
  * the clone's origin and answered a different repository's question as if it
@@ -578,7 +631,7 @@ exit 1
  * rather than inferred from an exit code.
  */
 describe('repository resolution', () => {
-  const PR_CLIS = ['bugbot-review-status.mjs', 'assert-checks-started.mjs']
+  const PR_CLIS = ['assert-checks-started.mjs']
   const ALL_CLIS = [...PR_CLIS, 'check-ci-headroom.mjs', 'check-backlog.mjs']
 
   function cloneOf(slug) {
@@ -615,7 +668,6 @@ describe('repository resolution', () => {
 
   // Each CLI's own valid arguments, then the one it must not swallow.
   const VALID = {
-    'bugbot-review-status.mjs': ['--pr', '95'],
     'assert-checks-started.mjs': ['--pr', '95'],
     'check-ci-headroom.mjs': ['--runs', '3'],
     'check-backlog.mjs': ['--verify-prs'],

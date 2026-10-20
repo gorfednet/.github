@@ -33,8 +33,18 @@ on:
 permissions:
   contents: read
 
+# Hosted, on purpose: every job here runs on GitHub-hosted ubuntu-latest, against
+# the rule that CI runs on the dapyllil pool (owner, 2026-10-19). The pool cannot
+# take these jobs. This repository is public (the org's reusable workflows live
+# here), and the pool refuses public repositories by design: any fork could open
+# a pull request whose code would then run on that host (bindercurve.com
+# infra/ci-runner/README.md, "Why public repos are refused"). Standard hosted
+# runners are not billed for a public repository, so these jobs cost nothing
+# against the hosted-minutes ceiling. If this repository is ever made private,
+# give it a pools.conf row and a token and move these jobs to the pool.
 jobs:
   plan:
+    # Hosted: public repository, see the note above jobs.
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
@@ -74,6 +84,7 @@ jobs:
 
   registry:
     needs: plan
+    # Hosted: public repository, see the note above jobs.
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -94,6 +105,7 @@ jobs:
 
   repo:
     needs: plan
+    # Hosted: public repository, see the note above jobs.
     runs-on: ubuntu-latest
     timeout-minutes: 10
     strategy:

@@ -19,27 +19,19 @@
     },
     {
       "id": "backlog-lets-a-deferral-lapse",
-      "guards": "A dated deferral fails the build once it passes. Without this, 'revisit before the next release' becomes permanent by accident.",
+      "guards": "A dated deferral is listed once it passes. Without this, 'revisit before the next release' becomes permanent by accident: the date no longer fails a pull request, so being told about it is all that is left.",
       "command": "node --test 'templates/verification-kit/test/backlogSchema.test.mjs'",
       "file": "templates/verification-kit/lib/backlogSchema.mjs",
       "find": "new Date(`${entry.reviewBy}T00:00:00Z`) < now",
       "replace": "false"
     },
     {
-      "id": "bugbot-neutral-read-as-skipped",
-      "guards": "A neutral Bugbot conclusion carrying a completed-review summary is findings, not a skipped review. This is the exact defect that left five findings unread across three pull requests.",
-      "command": "node --test 'templates/verification-kit/test/bugbotConclusion.test.mjs'",
-      "file": "templates/verification-kit/lib/bugbotConclusion.mjs",
-      "find": "  if (!finished) {",
-      "replace": "  if (bugbot.conclusion === 'neutral') {"
-    },
-    {
-      "id": "bugbot-api-failure-reads-as-clean",
-      "guards": "A GitHub API failure resolves to undetermined, never to a pass. Collapsing errors to a benign state is how a detector reports green during an outage.",
-      "command": "node --test 'templates/verification-kit/test/bugbotConclusion.test.mjs'",
-      "file": "templates/verification-kit/lib/bugbotConclusion.mjs",
-      "find": "    return { state: 'undetermined', pr, detail: `could not read #${pr}: ${detail.error}` }",
-      "replace": "    return { state: 'clean', pr, detail: 'assumed fine' }"
+      "id": "backlog-fails-a-pr-on-the-calendar",
+      "guards": "A lapsed reviewBy prints a warning and leaves check-backlog's exit code alone. It used to fail every pull request on the day the date passed, and on 2026-10-16 failed gorfednet/.github#55 for seven entries it did not touch (the 2026-10 right-sizing: a pull request check fails only on something that pull request can change).",
+      "command": "node --test 'templates/verification-kit/test/cli.test.mjs'",
+      "file": "templates/verification-kit/bin/check-backlog.mjs",
+      "find": "const problems = validateBacklog(doc)",
+      "replace": "const problems = [...validateBacklog(doc), ...lapsed.map((entry) => entry.id)]"
     },
     {
       "id": "rule-numbering-gap-goes-unnoticed",
@@ -88,14 +80,6 @@
       "file": ".github/actions/verification-gate/action.yml",
       "find": "    - name: No generated files tracked in git\n      if: ${{ !cancelled() }}",
       "replace": "    - name: No generated files tracked in git"
-    },
-    {
-      "id": "bugbot-timeout-reads-as-a-pass",
-      "guards": "A Bugbot verdict job that gives up waiting must fail. 'Did not finish in time' is not 'found nothing', and reporting it as a pass reproduces the exact defect the job was written to fix.",
-      "command": "node --test 'test/*.test.mjs'",
-      "file": ".github/workflows/bugbot-verdict.yml",
-      "find": "                   \"Comment 'bugbot run' on the PR, or re-run this job once it has finished.\"\n              exit 1",
-      "replace": "                   \"Comment 'bugbot run' on the PR, or re-run this job once it has finished.\"\n              exit 0"
     },
     {
       "id": "fleet-entry-never-goes-stale",
@@ -419,11 +403,11 @@
     },
     {
       "id": "pr-check-ignores-an-unknown-flag",
-      "guards": "A pull-request check drops an argument it does not recognise. `--repo=gorfednet/4thcltr.com` was dropped that way, the check fell back to the clone it ran in, and bindercurve.com #95's Bugbot findings were reported as 4thcltr.com #95's.",
+      "guards": "A pull-request check drops an argument it does not recognise. `--repo=gorfednet/4thcltr.com` was dropped that way, the check fell back to the clone it ran in, and bindercurve.com #95's review findings were reported as 4thcltr.com #95's.",
       "command": "node --test 'templates/verification-kit/test/cli.test.mjs'",
-      "file": "templates/verification-kit/bin/bugbot-review-status.mjs",
-      "find": "} else rejectUnknownArgument('bugbot-review-status', flag)",
-      "replace": "} else continue"
+      "file": "templates/verification-kit/bin/assert-checks-started.mjs",
+      "find": "    else rejectUnknownArgument('assert-checks-started', flag)",
+      "replace": "    else continue"
     },
     {
       "id": "pr-check-ignores-github-repository",

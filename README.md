@@ -61,10 +61,10 @@ behind every rule is bindercurve.com's `docs/audit/verification-teardown.md`.
 
 Three layers:
 
-1. **Machine-wide** Cursor rules and skills, so an agent applies the standing
+1. **Machine-wide** Claude Code rules and skills (`~/.claude`), so an agent applies the standing
    loop in a repository that has adopted nothing yet.
 2. **This repository.** The canonical kit, the shared rules, the
-   `verification-gate` composite action, and `bugbot-verdict.yml`.
+   and the `verification-gate` composite action.
 3. **Each project**, which copies the kit and runs `check-kit-drift.mjs` so its
    copy cannot quietly fall behind.
 
@@ -88,9 +88,15 @@ Adoption is tiered, because a static site with no `package.json` cannot run
 what BinderCurve runs. The kit is plain node with no dependencies for exactly
 that reason.
 
-## Pull requests and Cursor Bugbot
+## Pull requests and review
 
-Feature work on portfolio sites is a **branch + GitHub PR** so Cursor Bugbot and the reusable `pr-check-*` workflows run. Do not push feature commits straight to `main`.
+Feature work on portfolio sites is a **branch + GitHub PR** so the Claude reviewer and the reusable `pr-check-*` workflows run. Do not push feature commits straight to `main`.
 
-Repo review notes: [`.cursor/BUGBOT.md`](.cursor/BUGBOT.md). Operator checklist (effort Low, Autofix off, incremental on): BinderCurve [`docs/CURSOR_BUGBOT.md`](https://github.com/gorfednet/bindercurve.com/blob/main/docs/CURSOR_BUGBOT.md). Do not add a Cloud Agent automation that comments on every PR.
+Cursor and Bugbot were retired on 2026-10-16. The Claude reviewer reviews pull requests. Its shared parts live here:
+
+- [`.github/workflows/claude-review.yml`](.github/workflows/claude-review.yml): the reusable review job. It reviews when a pull request opens or leaves draft, and again on a `claude review` comment from an owner, member or collaborator, and ends with a `<!-- claude-review head=<sha> findings=<n> -->` verdict comment.
+- [`.github/actions/review-input/`](.github/actions/review-input/): builds the whole diff with git (GitHub's diff API stops at 300 files). It runs from this repository, never from the checkout under review, because the review job holds the owner's Claude token.
+- [`scripts/review-status.mjs`](scripts/review-status.mjs): the merge gate's review check, `clean`, `findings` or `not-run` for the current head: `node scripts/review-status.mjs --pr <n> --repo gorfednet/<repository>`.
+
+A repository adopts it with a copy of [`templates/claude-review.yml`](templates/claude-review.yml), a `REVIEW.md` holding its house rules, and a `CLAUDE_CODE_OAUTH_TOKEN` secret (from `claude setup-token`). bindercurve.com keeps its own copy of the workflow, where this one was ported from. Retired checks are listed in [`docs/retired-checks.md`](docs/retired-checks.md).
 

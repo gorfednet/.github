@@ -22,11 +22,11 @@
     {
       "id": "bugbot-credits-exhausted-unreviewed-prs",
       "title": "Cursor credits ran out and new pull requests sat with no Bugbot check",
-      "status": "confirmed-bug",
+      "status": "declined",
       "assignee": "human",
       "userSymptom": "MoonMan pull requests 150-153 have CI and no Bugbot check at all, which is how a billing outage looks — not a red Actions job.",
-      "evidence": "gh api on MoonMan#153 head e9c06b7: quality/test/e2e/build succeeded, no check-run matching Bugbot. Fleet PRs through 2026-09-20 still had completed Bugbot reviews. Restore credits, then apply the per-class table in .cursor/BUGBOT.md. Also add FLEET_READ_TOKEN; fleet-audit run 35605956812 failed on the missing secret.",
-      "reviewBy": "2026-10-15"
+      "evidence": "gh api on MoonMan#153 head e9c06b7: quality/test/e2e/build succeeded, no check-run matching Bugbot. Fleet PRs through 2026-09-20 still had completed Bugbot reviews. FLEET_READ_TOKEN was added 2026-10-10 (gh secret list).",
+      "note": "Declined 2026-10-19: Cursor and Bugbot were retired by the owner on 2026-10-16 and the Claude reviewer replaces them, so there are no credits to restore. docs/retired-checks.md records the retirement."
     },
     {
       "id": "towit-broken-refs",
@@ -342,7 +342,7 @@
       "userSymptom": "It misleads whoever reads it next. Someone auditing security posture from the repository would conclude this site terminates TLS with HSTS and a set of security headers. The live server does none of that - it listens on port 80 only and Cloudflare terminates TLS in front of it - so the file describes protections that are not where it says they are.",
       "evidence": "The captured live vhosts in infra/nginx/vhosts/ contain no listen 443, no HSTS and no security headers, and a test now asserts that and fails if a captured vhost ever claims 443. The nginx conf tracked inside the 4thcltr.com repository claims all three. Only one of the two can be true, and the captured one came off the running host. Fixed 2026-10-16 by gorfednet/4thcltr.com#153: the cause of missing headers on the live site was exactly this file never having been installed. That repository's nginx/4thcltr.com.conf is now the live vhost byte for byte (port 80, no 443) plus the security headers, installed on dapyllil with a backup, nginx -t and a reload, and re-captured here (sha eeaa4e42…, hashed on the host).",
       "reviewBy": "2026-11-30",
-      "note": "Not fixed in the same change because 4thcltr.com had concurrent work in flight and two writers in one clone is how uncommitted edits get silently stashed. The fix is either to delete the file or to make it say what it is - a proposal, or a record of a different layer - rather than reading as a description of this one.",
+      "note": "Fixed by making the 4thcltr.com repository file the live vhost rather than deleting it (gorfednet/4thcltr.com#153). gorfednet/4thcltr.com#177 makes DEPLOY.md install it from the repository and checks the served headers against it on a schedule.",
       "pr": 55
     },
     {
@@ -364,6 +364,16 @@
       "evidence": "2026-10-16, each fleet homepage fetched with a Safari user agent: all eleven (bindercurve.com, 4thcltr.com, gorfed.net, subrythm.com, anal0g.org, blackpixelrecords.com, denseware.com, gorfmusic.com, promptboi.com, rowanmcarthur.com, ssatcy.com) carry Cloudflare's beacon, injected at the edge; bindercurve.com also loads Google Tag Manager GTM-WHPZ4PZD from index.html. No site loads Plausible. 4thcltr.com has Plausible wired with four events but never sets VITE_PLAUSIBLE_DOMAIN (its backlog: analytics-plausible-wired-but-never-loads).",
       "reviewBy": "2026-11-30",
       "note": "Owner decision 2026-10-16: Plausible is the one analytics service for the eleven static sites. Blocked on the owner creating the Plausible account and adding the sites (Claude cannot create accounts). Then per site: the Plausible script (or 4thcltr.com's build variable), a CSP entry where the site has a CSP, events for outcomes only (contact submitted, assistant opened, outbound client links) not every click, and privacy copy that names Plausible. Consider serving the script and event endpoint from each site's own domain, since blockers drop the third-party call. After a few weeks of overlap the owner turns off Cloudflare Web Analytics per zone. BinderCurve's Google Tag Manager is out of scope until the owner decides what it feeds; it likely sets cookies and so carries consent obligations the static sites do not. Deferred by the owner 2026-10-16 (\"skip Plausible for now\"); a one-time reminder runs 2026-11-02."
+    },
+    {
+      "id": "backlog-dates-failed-unrelated-prs",
+      "title": "A lapsed backlog reviewBy failed every pull request, whatever it changed",
+      "status": "landed",
+      "assignee": "main-model",
+      "pr": 56,
+      "userSymptom": "A pull request that changed nothing in the backlog went red on the day a date in it passed, and stayed red until somebody renewed dates that were never that pull request's to decide.",
+      "evidence": "On 2026-10-16 #55 failed 'Fleet backlog describes reality' and 'Every backlog entry agrees with its pull request' on seven entries dated 2026-10-15 that it did not touch; main had been green on 2026-10-11 only because the dates had not arrived. The right-sizing had moved the gate's backlog step to a warning but left the date inside validateBacklog. Now lapsedReviewDates() reports it as a warning and fleet-report.mjs lists it on the schedule; canaries backlog-lets-a-deferral-lapse and backlog-fails-a-pr-on-the-calendar both watched red.",
+      "reviewBy": "2026-12-31"
     }
   ]
 }

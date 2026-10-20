@@ -17,6 +17,10 @@ on:
 
 jobs:
   kit:
+    # Hosted: this repository is public, and the dapyllil pool refuses public
+    # repositories by design (a fork's pull request would run its code on that
+    # host). Hosted minutes are not billed for a public repository. The full
+    # reason is in fleet-audit.yml, above its jobs.
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -61,6 +65,10 @@ jobs:
         if: ${{ !cancelled() }}
         run: bash scripts/test-nas-ssh-deploy.sh
 
+      # The backlog's shape, enforced. A `reviewBy` that has passed is printed as
+      # a warning and does not fail this step: the calendar is not something a
+      # pull request can change (2026-10 right-sizing). fleet-audit.yml lists
+      # the lapsed dates on its schedule.
       - name: Fleet backlog describes reality
         if: ${{ !cancelled() }}
         run: node templates/verification-kit/bin/check-backlog.mjs --file docs/backlog.json
