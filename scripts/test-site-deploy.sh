@@ -98,6 +98,7 @@ src="${work}/dist"
 mkdir -p "${work}" "${src}/assets"
 printf 'SITE=example.test\nSITE_ROOT=%s\nSITE_KEEP=5\n' "${remote_root}" >"${work}/.deploy-env"
 printf '<!doctype html><title>one</title>' >"${src}/index.html"
+chmod 600 "${src}/index.html"  # a private source file must still publish world-readable
 printf 'body{}' >"${src}/assets/app.css"
 printf 'secret' >"${src}/.deploy-env"
 
@@ -129,11 +130,9 @@ assert "no .partial may remain after a deploy" test -z "$(find "${site_dir}/rele
 assert "first deploy must not pass --link-dest (nothing to link against)" bash -c "! grep -q -- --link-dest '${tmp}/rsync-args'"
 grep -q 'Live check ok' "${tmp}/d1.out" || fail "first deploy must report a passing live check"
 pass
-if ((CHMOD_NATIVE)); then
-  assert "files must be 0644" test "$(mode_of "${site_dir}/releases/${rel1}/index.html")" = 644
-  assert "directories must be 0755" test "$(mode_of "${site_dir}/releases/${rel1}/assets")" = 755
-fi
-assert "rsync must be asked for D755,F644" grep -q -- '--chmod=D755,F644' "${tmp}/rsync-args"
+assert "files must be 0644" test "$(mode_of "${site_dir}/releases/${rel1}/index.html")" = 644
+assert "directories must be 0755" test "$(mode_of "${site_dir}/releases/${rel1}/assets")" = 755
+assert "rsync must not be passed --chmod (the macOS openrsync rejects it)" bash -c "! grep -q -- --chmod '${tmp}/rsync-args'"
 assert "rsync must exclude .deploy-env" grep -q -- '--exclude=.deploy-env' "${tmp}/rsync-args"
 
 # ---- 2. second deploy hard-links unchanged files ---------------------------

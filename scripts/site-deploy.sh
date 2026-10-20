@@ -172,6 +172,17 @@ remote_drop_partial() {
 rm -rf -- '${SITE_DIR}/releases/$1.partial'"
 }
 
+# World-readable, owner-writable: files 0644, directories 0755, set on the host so
+# the result does not depend on the uploading rsync. Hard links shared with the
+# live release get the same modes they already had.
+remote_fix_modes() {
+  local id="$1"
+  remote "set -eu
+p='${SITE_DIR}/releases/${id}.partial'
+find \"\$p\" -type d -exec chmod 0755 {} +
+find \"\$p\" -type f -exec chmod 0644 {} +"
+}
+
 remote_promote() {
   local id="$1"
   remote "set -eu
@@ -328,7 +339,9 @@ cmd_deploy() {
   prev_target="$(remote_preflight "$((dry == 1 ? 0 : 1))")"
   local prev="${prev_target#releases/}"
 
-  local args=(-rlt --delete --chmod=D755,F644 --exclude=.deploy-env)
+  # No --chmod: the openrsync macOS ships rejects it, and deploys run from the Mac.
+  # Modes are set on dapyllil instead (remote_fix_modes), whatever rsync uploaded.
+  local args=(-rlt --delete --exclude=.deploy-env)
   local ex
   set -f
   # shellcheck disable=SC2086
@@ -353,6 +366,8 @@ cmd_deploy() {
     remote_drop_partial "${id}"
     die "rsync exited ${status}; nothing was published and current is unchanged"
   fi
+
+  remote_fix_modes "${id}"
 
   local check=0
   remote_check_release "${id}" || check=$?
