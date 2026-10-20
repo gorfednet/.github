@@ -103,7 +103,7 @@ printf 'body{}' >"${src}/assets/app.css"
 printf 'secret' >"${src}/.deploy-env"
 
 # The work dir is a real clone in sync with a bare origin: deploy refuses any
-# tree that is not the merged tip (nas_ssh_require_merged_tip). The files above
+# tree that is not the merged tip (require_merged_tip in site-deploy.sh). The files above
 # are untracked, which the guard leaves to the publish-set checks.
 export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null
 export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@example.test GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@example.test

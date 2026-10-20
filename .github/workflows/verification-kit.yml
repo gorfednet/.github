@@ -65,12 +65,6 @@ jobs:
         if: ${{ !cancelled() }}
         run: bash scripts/test-nas-ssh-deploy.sh
 
-      # The merged-tip guard in that helper: a deploy publishes origin's default
-      # branch exactly, or refuses. Real temporary git repos, no network.
-      - name: Shared NAS deploy fresh-tree guard
-        if: ${{ !cancelled() }}
-        run: bash scripts/test-nas-ssh-deploy-guard.sh
-
       # The release-based deploy to dapyllil that replaces the helper above.
       # It runs against a temp directory standing in for the host.
       - name: Site deploy (releases on dapyllil) contract
