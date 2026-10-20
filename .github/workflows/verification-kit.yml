@@ -65,6 +65,12 @@ jobs:
         if: ${{ !cancelled() }}
         run: bash scripts/test-nas-ssh-deploy.sh
 
+      # The release-based deploy to dapyllil that replaces the helper above.
+      # It runs against a temp directory standing in for the host.
+      - name: Site deploy (releases on dapyllil) contract
+        if: ${{ !cancelled() }}
+        run: bash scripts/test-site-deploy.sh
+
       # The backlog's shape, enforced. A `reviewBy` that has passed is printed as
       # a warning and does not fail this step: the calendar is not something a
       # pull request can change (2026-10 right-sizing). fleet-audit.yml lists

@@ -28,6 +28,41 @@ permission contract without contacting the NAS. After initial SSH setup,
 `scripts/phase0-verify.sh` checks connectivity, key authentication, remote
 write access, and an rsync dry run.
 
+## Site deploy to dapyllil (releases)
+
+Static sites are moving from the NAS to dapyllil's local disk.
+[`scripts/site-deploy.sh`](scripts/site-deploy.sh) is the new deploy path; run it
+from a site repo with a `.deploy-env` (see `.deploy-env.example`, keys `SITE`,
+`SITE_HOST`, `SITE_ROOT`, `SITE_KEEP`, `SITE_LIVE_URL`, `SITE_EXCLUDES`):
+
+```bash
+scripts/site-deploy.sh deploy dist      # --dry-run to preview
+scripts/site-deploy.sh list             # releases, newest first, current marked
+scripts/site-deploy.sh rollback         # to the newest release older than current
+scripts/site-deploy.sh rollback <id>    # to a named release
+```
+
+Layout on dapyllil, owned by the local user `sitedeploy` (SSH as
+`sitedeploy@dapyllil`):
+
+```
+/srv/sites/<site>/releases/<UTC-stamp>-<gitsha>/   immutable, one per deploy
+/srv/sites/<site>/current -> releases/<id>          relative symlink
+```
+
+nginx serves `/srv/sites/<site>/current` read-only. A deploy uploads to
+`releases/<id>.partial` (unchanged files are hard-linked from the current
+release), refuses an empty release or one without `index.html` (override with
+`SITE_NO_INDEX=1`), renames it into place, switches `current` with a rename (no
+nginx restart), keeps the newest `SITE_KEEP` releases, and then compares the
+live site's `index.html` with the uploaded one byte for byte. If the live site
+serves something else, `current` is switched back to the previous release and
+the script exits non-zero. `scripts/test-site-deploy.sh` runs all of this against
+a temp directory.
+
+`scripts/nas-ssh-deploy.sh` stays only until every site has moved (phase 3) and
+is removed in phase 5.
+
 ## Shared CI tooling
 
 The reusable pull-request workflows under `.github/workflows/` provide common
