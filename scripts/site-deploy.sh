@@ -43,6 +43,10 @@
 # check below compares the live site with the LOCAL build, so without this a
 # stale clone passes it (2026-10-20).
 #
+# Then the upload itself must have been built from HEAD: a .build-sha in it that is
+# not HEAD is refused, and so is a missing one for a site fleet.json marks
+# "buildStamp": true. No override (require_fresh_build).
+#
 # A deploy uploads to releases/<id>.partial (hard-linking unchanged files from
 # the current release), refuses an empty release or one with no index.html,
 # renames it into place, switches `current`, prunes old releases, then fetches
@@ -200,6 +204,87 @@ $(printf '%s\n' "${dirty}" | head -10 | sed 's/^/    /')")
     printf '%s For an emergency only: DEPLOY_ALLOW_UNMERGED=1 DEPLOY_REASON="why" (it prints a warning and is on the record).\n' "${label}"
   } >&2
   return 1
+}
+
+# Refuse to publish a build that was not made from the commit being deployed.
+# Incident 2026-10-20: gorfmusic.com's ./deploy.sh was run on its own, without the
+# build. require_merged_tip passed (the clone was origin/main and clean) but dist/
+# was the morning's build, and the new /privacy page went live as a 404. That guard
+# proves the source is the merged tip; this proves the upload was built from it.
+#
+# A built site's build writes its upload directory's .build-sha as its last step:
+# `git rev-parse HEAD`, with `-dirty` appended when tracked files were modified at
+# build time. (A dotfile: nginx denies every dotfile, and it is neither .claude nor
+# .git, which require_merged_tip refuses.)
+#
+# Refuses when
+#   - the upload holds a .build-sha that is not exactly HEAD (an old build, or one
+#     made from a modified tree);
+#   - the upload holds no .build-sha and fleet.json marks the site "buildStamp": true;
+#   - fleet.json cannot be read, or SITE's entry cannot be parsed, while there is no
+#     stamp (nothing then says whether the site is built).
+# A site whose fleet.json entry lacks buildStamp (the static sites with no build
+# step, and built sites until their build writes the stamp) may upload without one.
+# There is no override: a stale build is never what a deploy wants. Rebuild.
+#
+# Usage: require_fresh_build <repo-dir> <upload-dir> <site> [fleet-file]
+require_fresh_build() {
+  local dir="$1" upload="$2" site="$3" fleet="${4:-${SCRIPT_DIR}/../fleet.json}"
+  local label="[site-deploy]" head stamp_file want
+  head="$(git -C "${dir}" rev-parse HEAD 2>/dev/null)" || {
+    echo "${label} Refusing to publish: cannot read HEAD of ${dir}." >&2
+    return 1
+  }
+  stamp_file="${upload%/}/.build-sha"
+  if [[ -f "${stamp_file}" ]]; then
+    local built
+    built="$(tr -d '[:space:]' <"${stamp_file}")"
+    if [[ "${built}" == "${head}" ]]; then
+      return 0
+    fi
+    {
+      if [[ "${built}" == "${head}-dirty" ]]; then
+        printf '%s Refusing to publish: %s was built from this commit with uncommitted changes (%s).
+' "${label}" "${upload}" "${built:0:7}-dirty"
+      else
+        printf '%s Refusing to publish: %s was built from %s, and HEAD is %s.
+' "${label}" "${upload}" "${built:0:12}" "${head:0:7}"
+      fi
+      printf '%s Rebuild, then deploy: run the site'"'"'s deploy target (make deploy or npm run deploy), which builds first. There is no override.
+' "${label}"
+    } >&2
+    return 1
+  fi
+  # No stamp: allowed only for a site the registry does not mark as built.
+  if [[ ! -f "${fleet}" ]]; then
+    printf '%s Refusing to publish: %s has no .build-sha, and %s is missing, so nothing says whether %s is built.
+' "${label}" "${upload}" "${fleet}" "${site}" >&2
+    return 1
+  fi
+  if ! want="$(python3 - "${fleet}" "${site}" <<'PY'
+import json, sys
+fleet, site = sys.argv[1], sys.argv[2]
+projects = json.load(open(fleet)).get("projects")
+if not isinstance(projects, list):
+    sys.exit(1)
+match = [p for p in projects if isinstance(p, dict) and str(p.get("slug", "")).split("/")[-1] == site]
+print("yes" if match and match[0].get("buildStamp") is True else "no")
+PY
+  )"; then
+    printf '%s Refusing to publish: %s has no .build-sha, and %s could not be read, so nothing says whether %s is built.
+' "${label}" "${upload}" "${fleet}" "${site}" >&2
+    return 1
+  fi
+  if [[ "${want}" == "yes" ]]; then
+    {
+      printf '%s Refusing to publish: %s has no .build-sha, and fleet.json marks %s as built ("buildStamp": true).
+' "${label}" "${upload}" "${site}"
+      printf '%s Its build must write the stamp as its last step; run the site'"'"'s deploy target (make deploy or npm run deploy), which builds first. There is no override.
+' "${label}"
+    } >&2
+    return 1
+  fi
+  return 0
 }
 
 load_config() {
@@ -488,6 +573,8 @@ cmd_deploy() {
   if [[ -s "${TMPDIR:-/tmp}/site-deploy-self.$$" ]]; then cat "${TMPDIR:-/tmp}/site-deploy-self.$$" >&2; fi
   rm -f "${TMPDIR:-/tmp}/site-deploy-self.$$"
   load_config
+  # After load_config: it needs SITE to find the site's fleet.json entry. Still before any upload.
+  require_fresh_build "${PWD}" "${src}" "${SITE}" "${SITE_FLEET_FILE:-${SCRIPT_DIR}/../fleet.json}" || exit 1
   command -v rsync >/dev/null 2>&1 || die "rsync is required"
   local sha stamp id
   if sha="$(git rev-parse --short HEAD 2>/dev/null)" && [[ -n "${sha}" ]]; then :; else sha="nogit"; fi

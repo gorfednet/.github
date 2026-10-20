@@ -151,6 +151,29 @@ assert "a refused deploy must not run rsync" test ! -s "${tmp}/rsync-args"
 assert "a refused deploy must not create the site directory" test ! -e "${site_dir}"
 git -C "${work}" pull -q --ff-only
 
+# ---- 0b. an upload built from another commit is refused before upload ----------
+printf '%s\n' 0000000000000000000000000000000000000000 >"${src}/.build-sha"
+: >"${tmp}/rsync-args"
+if run deploy dist >"${tmp}/stamp.out" 2>&1; then fail "a stale build must not deploy"; fi
+grep -q 'was built from 000000000000, and HEAD is' "${tmp}/stamp.out" || { cat "${tmp}/stamp.out"; fail "the refusal must name both commits"; }
+assert "a stale build must not run rsync" test ! -s "${tmp}/rsync-args"
+assert "a stale build must not create the site directory" test ! -e "${site_dir}"
+rm "${src}/.build-sha"
+
+# ---- 0c. a site the registry marks as built needs a stamp ---------------------
+cp "${fleet}" "${tmp}/fleet.plain.json"
+printf '{ "projects": [ { "slug": "gorfednet/example.test", "tier": 1, "buildStamp": true } ] }\n' >"${fleet}"
+if run deploy dist >"${tmp}/nostamp.out" 2>&1; then fail "a built site without a stamp must not deploy"; fi
+grep -q 'has no .build-sha, and fleet.json marks example.test as built' "${tmp}/nostamp.out" || { cat "${tmp}/nostamp.out"; fail "the refusal must say the stamp is required"; }
+assert "a missing stamp must not run rsync" test ! -s "${tmp}/rsync-args"
+git -C "${work}" rev-parse HEAD >"${src}/.build-sha"
+: >"${tmp}/rsync-args"
+run deploy --dry-run dist >"${tmp}/stamped.out" 2>&1 || { cat "${tmp}/stamped.out"; fail "a build stamped with HEAD must pass the build check"; }
+pass
+rm "${src}/.build-sha"
+cp "${tmp}/fleet.plain.json" "${fleet}"
+rm -rf "${site_dir}"
+
 # ---- 1. first deploy -------------------------------------------------------
 run deploy dist >"${tmp}/d1.out" 2>&1 || { cat "${tmp}/d1.out"; fail "first deploy failed"; }
 rel1="$(current_id)"
