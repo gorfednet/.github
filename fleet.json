@@ -25,6 +25,7 @@
     },
     {
       "slug": "gorfednet/4thcltr.com",
+      "buildStamp": true,
       "archetype": "vite-spa",
       "tier": 3,
       "monitorClass": "active-site",
