@@ -262,3 +262,83 @@ describe('the caller template', () => {
     for (const permission of permissions) assert.ok(template.includes(`  ${permission}\n`), permission)
   })
 })
+
+/*
+ * What a comment must say to start a review. It used to have to START with "claude review"
+ * (`startsWith` in the job's `if`), so a session that explained a push and put the request on
+ * the last line got no review, and the pull request waited all night (MoonMan #283 and #292,
+ * 2026-10-20). Now any one line of the comment, trimmed, is exactly the request, in any case. A
+ * phrase inside a sentence is not a request: "please don't claude review yet" must not fire.
+ *
+ * The job's `if` keeps a cheap prefilter (the words appear at all, from an owner, member or
+ * collaborator, on a pull request, not from a bot); the first step decides exactly, and every
+ * other step runs only on its answer.
+ */
+describe('the review trigger', () => {
+  const TRIGGER = step(workflow, 'Is this a review request?')
+  const script = (() => {
+    const at = TRIGGER.indexOf('run: |\n')
+    assert.notEqual(at, -1, 'the trigger step has a run block')
+    // The run block is the lines indented deeper than the step; it ends at the first line that is not.
+    const lines = TRIGGER.slice(at + 'run: |\n'.length).split('\n')
+    const end = lines.findIndex((l) => l.trim() !== '' && !l.startsWith(' '.repeat(10)))
+    return (end === -1 ? lines : lines.slice(0, end)).map((l) => l.replace(/^ {10}/, '')).join('\n')
+  })()
+  const decide = (event, body = '') => {
+    const dir = mkdtempSync(join(tmpdir(), 'review-trigger-'))
+    const out = join(dir, 'out')
+    writeFileSync(out, '')
+    execFileSync('bash', ['-c', script], { env: { PATH: process.env.PATH, EVENT: event, BODY: body, GITHUB_OUTPUT: out } })
+    const go = /go=(\w+)/.exec(readFileSync(out, 'utf8'))?.[1]
+    rmSync(dir, { recursive: true, force: true })
+    return go
+  }
+
+  it('fires on the first line, the last line, or a line in the middle', () => {
+    assert.equal(decide('issue_comment', 'claude review'), 'true')
+    assert.equal(decide('issue_comment', 'claude review\nThe push only fixed lint.'), 'true')
+    assert.equal(decide('issue_comment', 'Merged main after #12; a clean merge.\nclaude review'), 'true')
+    assert.equal(decide('issue_comment', 'One.\r\n  Claude Review  \r\nTwo.'), 'true')
+  })
+
+  it('does not fire on the phrase inside prose, a longer word, or a code-quoted mention', () => {
+    assert.equal(decide('issue_comment', 'claude reviewed this head already'), 'false')
+    assert.equal(decide('issue_comment', 'please claude review this'), 'false')
+    assert.equal(decide('issue_comment', "please don't claude review yet"), 'false')
+    assert.equal(decide('issue_comment', 'Ask for it with `claude review` once CI is green.'), 'false')
+    assert.equal(decide('issue_comment', ''), 'false')
+  })
+
+  it('always proceeds for a pull request event (opened, or out of draft)', () => {
+    assert.equal(decide('pull_request'), 'true')
+  })
+
+  /** One job's text, from its `  <name>:` line to the next top-level job. */
+  const job = (name) => {
+    const start = workflow.indexOf(`\n  ${name}:\n`)
+    assert.notEqual(start, -1, `no job ${name}`)
+    const next = workflow.slice(start + 1).search(/\n  [a-z-]+:\n/)
+    return next === -1 ? workflow.slice(start) : workflow.slice(start, start + 1 + next)
+  }
+
+  it('keeps the guards in the trigger job condition: a pull request, a trusted author, never a bot', () => {
+    const trigger = job('trigger')
+    const condition = trigger.slice(0, trigger.indexOf('\n    runs-on:'))
+    assert.match(condition, /if: >-/, 'the slice is the job condition')
+    assert.match(condition, /github\.event\.issue\.pull_request/)
+    assert.match(condition, /"OWNER","MEMBER","COLLABORATOR"/)
+    assert.match(condition, /github\.event\.comment\.user\.type != 'Bot'/)
+    assert.doesNotMatch(workflow, /startsWith\(github\.event\.comment\.body/)
+  })
+
+  it('a comment that is not a request never enters the review concurrency group', () => {
+    // The group lets a newer pending run replace an older queued one, so a prose mention that
+    // reached it could cancel a real request queued behind a running review.
+    assert.doesNotMatch(job('trigger'), /concurrency:/)
+    const review = job('review')
+    assert.match(review, /\n    needs: trigger\n/)
+    assert.match(review, /\n    if: needs\.trigger\.outputs\.go == 'true'\n/)
+    assert.match(review, /concurrency:/)
+    assert.match(job('trigger'), /go: \$\{\{ steps\.trigger\.outputs\.go \}\}/)
+  })
+})
