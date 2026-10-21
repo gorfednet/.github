@@ -32,7 +32,11 @@ on:
         required: true
 
 jobs:
-  review:
+  # Is this a review request? Its own job, with no concurrency group: the review job below holds
+  # `claude-review-<repo>-<pr>`, where a newer pending run replaces an older queued one, so a
+  # comment that only mentions the words must never reach it (a prose mention would otherwise
+  # cancel a real request queued behind a running review).
+  trigger:
     if: >-
       (github.event_name == 'pull_request' && !github.event.pull_request.draft) ||
       (github.event_name == 'issue_comment' && github.event.issue.pull_request &&
@@ -40,17 +44,12 @@ jobs:
        contains(github.event.comment.body, 'claude review') &&
        contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association))
     runs-on: ${{ fromJSON(inputs.runs-on != '' && inputs.runs-on || '"ubuntu-latest"') }}
-    timeout-minutes: 30
-    permissions:
-      contents: read
-      pull-requests: write
-      issues: write
-      id-token: write
-    concurrency:
-      group: claude-review-${{ github.repository }}-${{ github.event.pull_request.number || github.event.issue.number }}
-      cancel-in-progress: false
+    timeout-minutes: 2
+    permissions: {}
+    outputs:
+      go: ${{ steps.trigger.outputs.go }}
     steps:
-      # The `if` above only prefilters a comment (the words appear somewhere, and contains() is
+      # The job's `if` only prefilters a comment (the words appear somewhere, and contains() is
       # case-insensitive). This decides: a review is asked for when one line of the comment,
       # trimmed, is exactly "claude review", in any case. Until 2026-10-21 the comment had to
       # START with it, so a session that explained a push and put the request on the last line got
@@ -74,9 +73,22 @@ jobs:
           echo "go=${go}" >> "$GITHUB_OUTPUT"
           echo "review requested: ${go}"
 
+  review:
+    needs: trigger
+    if: needs.trigger.outputs.go == 'true'
+    runs-on: ${{ fromJSON(inputs.runs-on != '' && inputs.runs-on || '"ubuntu-latest"') }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+      id-token: write
+    concurrency:
+      group: claude-review-${{ github.repository }}-${{ github.event.pull_request.number || github.event.issue.number }}
+      cancel-in-progress: false
+    steps:
       - name: Resolve the pull request head
         id: pr
-        if: steps.trigger.outputs.go == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
@@ -88,14 +100,12 @@ jobs:
           echo "base=${pull##* }" >> "$GITHUB_OUTPUT"
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        if: steps.trigger.outputs.go == 'true'
         with:
           ref: ${{ steps.pr.outputs.head }}
           fetch-depth: 0
 
       # From gorfednet/.github@main, never from the checkout: see the action's description.
       - name: Build the review input
-        if: steps.trigger.outputs.go == 'true'
         uses: gorfednet/.github/.github/actions/review-input@main
         with:
           base: ${{ steps.pr.outputs.base }}
@@ -103,7 +113,6 @@ jobs:
           out: review-input
 
       - name: Review
-        if: steps.trigger.outputs.go == 'true'
         uses: anthropics/claude-code-action@1d6de8cb0c237e7c15e9e1bdf973826ebae490cc # v1.0.248
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}

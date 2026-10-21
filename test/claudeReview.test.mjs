@@ -279,7 +279,10 @@ describe('the review trigger', () => {
   const script = (() => {
     const at = TRIGGER.indexOf('run: |\n')
     assert.notEqual(at, -1, 'the trigger step has a run block')
-    return TRIGGER.slice(at + 'run: |\n'.length).split('\n').map((l) => l.replace(/^ {10}/, '')).join('\n')
+    // The run block is the lines indented deeper than the step; it ends at the first line that is not.
+    const lines = TRIGGER.slice(at + 'run: |\n'.length).split('\n')
+    const end = lines.findIndex((l) => l.trim() !== '' && !l.startsWith(' '.repeat(10)))
+    return (end === -1 ? lines : lines.slice(0, end)).map((l) => l.replace(/^ {10}/, '')).join('\n')
   })()
   const decide = (event, body = '') => {
     const dir = mkdtempSync(join(tmpdir(), 'review-trigger-'))
@@ -310,21 +313,32 @@ describe('the review trigger', () => {
     assert.equal(decide('pull_request'), 'true')
   })
 
-  it('keeps the guards in the job condition: a pull request, a trusted author, never a bot', () => {
-    const start = workflow.indexOf('\n  review:\n')
-    assert.notEqual(start, -1)
-    const condition = workflow.slice(start, workflow.indexOf('\n    runs-on:', start))
+  /** One job's text, from its `  <name>:` line to the next top-level job. */
+  const job = (name) => {
+    const start = workflow.indexOf(`\n  ${name}:\n`)
+    assert.notEqual(start, -1, `no job ${name}`)
+    const next = workflow.slice(start + 1).search(/\n  [a-z-]+:\n/)
+    return next === -1 ? workflow.slice(start) : workflow.slice(start, start + 1 + next)
+  }
+
+  it('keeps the guards in the trigger job condition: a pull request, a trusted author, never a bot', () => {
+    const trigger = job('trigger')
+    const condition = trigger.slice(0, trigger.indexOf('\n    runs-on:'))
     assert.match(condition, /if: >-/, 'the slice is the job condition')
     assert.match(condition, /github\.event\.issue\.pull_request/)
     assert.match(condition, /"OWNER","MEMBER","COLLABORATOR"/)
     assert.match(condition, /github\.event\.comment\.user\.type != 'Bot'/)
-    assert.doesNotMatch(condition, /startsWith\(github\.event\.comment\.body/)
+    assert.doesNotMatch(workflow, /startsWith\(github\.event\.comment\.body/)
   })
 
-  it('every later step waits for the trigger', () => {
-    const steps = workflow.slice(workflow.indexOf('    steps:\n')).split('\n      - ').slice(1)
-    assert.ok(steps.length >= 5, `found ${steps.length} steps`)
-    assert.match(steps[0], /^name: Is this a review request\?/)
-    for (const s of steps.slice(1)) assert.match(s, /\n {8}if: steps\.trigger\.outputs\.go == 'true'\n/, s.split('\n')[0])
+  it('a comment that is not a request never enters the review concurrency group', () => {
+    // The group lets a newer pending run replace an older queued one, so a prose mention that
+    // reached it could cancel a real request queued behind a running review.
+    assert.doesNotMatch(job('trigger'), /concurrency:/)
+    const review = job('review')
+    assert.match(review, /\n    needs: trigger\n/)
+    assert.match(review, /\n    if: needs\.trigger\.outputs\.go == 'true'\n/)
+    assert.match(review, /concurrency:/)
+    assert.match(job('trigger'), /go: \$\{\{ steps\.trigger\.outputs\.go \}\}/)
   })
 })
