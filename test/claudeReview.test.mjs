@@ -262,3 +262,69 @@ describe('the caller template', () => {
     for (const permission of permissions) assert.ok(template.includes(`  ${permission}\n`), permission)
   })
 })
+
+/*
+ * What a comment must say to start a review. It used to have to START with "claude review"
+ * (`startsWith` in the job's `if`), so a session that explained a push and put the request on
+ * the last line got no review, and the pull request waited all night (MoonMan #283 and #292,
+ * 2026-10-20). Now any one line of the comment, trimmed, is exactly the request, in any case. A
+ * phrase inside a sentence is not a request: "please don't claude review yet" must not fire.
+ *
+ * The job's `if` keeps a cheap prefilter (the words appear at all, from an owner, member or
+ * collaborator, on a pull request, not from a bot); the first step decides exactly, and every
+ * other step runs only on its answer.
+ */
+describe('the review trigger', () => {
+  const TRIGGER = step(workflow, 'Is this a review request?')
+  const script = (() => {
+    const at = TRIGGER.indexOf('run: |\n')
+    assert.notEqual(at, -1, 'the trigger step has a run block')
+    return TRIGGER.slice(at + 'run: |\n'.length).split('\n').map((l) => l.replace(/^ {10}/, '')).join('\n')
+  })()
+  const decide = (event, body = '') => {
+    const dir = mkdtempSync(join(tmpdir(), 'review-trigger-'))
+    const out = join(dir, 'out')
+    writeFileSync(out, '')
+    execFileSync('bash', ['-c', script], { env: { PATH: process.env.PATH, EVENT: event, BODY: body, GITHUB_OUTPUT: out } })
+    const go = /go=(\w+)/.exec(readFileSync(out, 'utf8'))?.[1]
+    rmSync(dir, { recursive: true, force: true })
+    return go
+  }
+
+  it('fires on the first line, the last line, or a line in the middle', () => {
+    assert.equal(decide('issue_comment', 'claude review'), 'true')
+    assert.equal(decide('issue_comment', 'claude review\nThe push only fixed lint.'), 'true')
+    assert.equal(decide('issue_comment', 'Merged main after #12; a clean merge.\nclaude review'), 'true')
+    assert.equal(decide('issue_comment', 'One.\r\n  Claude Review  \r\nTwo.'), 'true')
+  })
+
+  it('does not fire on the phrase inside prose, a longer word, or a code-quoted mention', () => {
+    assert.equal(decide('issue_comment', 'claude reviewed this head already'), 'false')
+    assert.equal(decide('issue_comment', 'please claude review this'), 'false')
+    assert.equal(decide('issue_comment', "please don't claude review yet"), 'false')
+    assert.equal(decide('issue_comment', 'Ask for it with `claude review` once CI is green.'), 'false')
+    assert.equal(decide('issue_comment', ''), 'false')
+  })
+
+  it('always proceeds for a pull request event (opened, or out of draft)', () => {
+    assert.equal(decide('pull_request'), 'true')
+  })
+
+  it('keeps the guards in the job condition: a pull request, a trusted author, never a bot', () => {
+    const start = workflow.indexOf('\n  review:\n')
+    assert.notEqual(start, -1)
+    const condition = workflow.slice(start, workflow.indexOf('\n    runs-on:', start))
+    assert.match(condition, /if: >-/, 'the slice is the job condition')
+    assert.match(condition, /github\.event\.issue\.pull_request/)
+    assert.match(condition, /"OWNER","MEMBER","COLLABORATOR"/)
+    assert.match(condition, /github\.event\.comment\.user\.type != 'Bot'/)
+    assert.doesNotMatch(condition, /startsWith\(github\.event\.comment\.body/)
+  })
+
+  it('every later step waits for the trigger', () => {
+    const steps = workflow.slice(workflow.indexOf('    steps:\n')).split('\n      - ').slice(1)
+    assert.ok(steps.length >= 5, `found ${steps.length} steps`)
+    assert.match(steps[0], /^name: Is this a review request\?/)
+    for (const s of steps.slice(1)) assert.match(s, /\n {8}if: steps\.trigger\.outputs\.go == 'true'\n/, s.split('\n')[0])
+  })
+})

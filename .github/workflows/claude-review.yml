@@ -3,8 +3,8 @@
 #
 # A repository calls this from its own .github/workflows/claude-review.yml (templates/claude-review.yml)
 # on `pull_request: [opened, ready_for_review]` and `issue_comment: [created]`. The job reviews when a
-# pull request opens or leaves draft, and again whenever an owner, member or collaborator comments
-# "claude review": once at open, once more on the final head after a push that changed code someone
+# pull request opens or leaves draft, and again whenever an owner, member or collaborator posts a
+# comment with a line that is exactly "claude review" (any case; other lines may explain): once at open, once more on the final head after a push that changed code someone
 # wrote, which keeps reviews inside the Max plan's limits.
 #
 # It authenticates with the owner's Claude subscription (CLAUDE_CODE_OAUTH_TOKEN, from
@@ -36,7 +36,8 @@ jobs:
     if: >-
       (github.event_name == 'pull_request' && !github.event.pull_request.draft) ||
       (github.event_name == 'issue_comment' && github.event.issue.pull_request &&
-       startsWith(github.event.comment.body, 'claude review') &&
+       github.event.comment.user.type != 'Bot' &&
+       contains(github.event.comment.body, 'claude review') &&
        contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association))
     runs-on: ${{ fromJSON(inputs.runs-on != '' && inputs.runs-on || '"ubuntu-latest"') }}
     timeout-minutes: 30
@@ -49,8 +50,33 @@ jobs:
       group: claude-review-${{ github.repository }}-${{ github.event.pull_request.number || github.event.issue.number }}
       cancel-in-progress: false
     steps:
+      # The `if` above only prefilters a comment (the words appear somewhere, and contains() is
+      # case-insensitive). This decides: a review is asked for when one line of the comment,
+      # trimmed, is exactly "claude review", in any case. Until 2026-10-21 the comment had to
+      # START with it, so a session that explained a push and put the request on the last line got
+      # no review and the pull request waited all night (MoonMan #283, #292). A phrase inside a
+      # sentence ("please don't claude review yet") is not a request.
+      - name: Is this a review request?
+        id: trigger
+        env:
+          EVENT: ${{ github.event_name }}
+          BODY: ${{ github.event.comment.body }}
+        run: |
+          set -euo pipefail
+          go=true
+          if [[ "$EVENT" == issue_comment ]]; then
+            go=false
+            while IFS= read -r line || [[ -n "$line" ]]; do
+              line="$(printf '%s' "${line%$'\r'}" | tr '[:upper:]' '[:lower:]' | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')"
+              if [[ "$line" == "claude review" ]]; then go=true; fi
+            done <<<"$BODY"
+          fi
+          echo "go=${go}" >> "$GITHUB_OUTPUT"
+          echo "review requested: ${go}"
+
       - name: Resolve the pull request head
         id: pr
+        if: steps.trigger.outputs.go == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
@@ -62,12 +88,14 @@ jobs:
           echo "base=${pull##* }" >> "$GITHUB_OUTPUT"
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        if: steps.trigger.outputs.go == 'true'
         with:
           ref: ${{ steps.pr.outputs.head }}
           fetch-depth: 0
 
       # From gorfednet/.github@main, never from the checkout: see the action's description.
       - name: Build the review input
+        if: steps.trigger.outputs.go == 'true'
         uses: gorfednet/.github/.github/actions/review-input@main
         with:
           base: ${{ steps.pr.outputs.base }}
@@ -75,6 +103,7 @@ jobs:
           out: review-input
 
       - name: Review
+        if: steps.trigger.outputs.go == 'true'
         uses: anthropics/claude-code-action@1d6de8cb0c237e7c15e9e1bdf973826ebae490cc # v1.0.248
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
