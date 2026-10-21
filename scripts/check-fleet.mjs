@@ -244,6 +244,13 @@ for (const project of projects) {
   if (!ARCHETYPES.has(project.archetype)) {
     problems.push(`${where}: unknown archetype "${project.archetype}"`)
   }
+  // scripts/site-deploy.sh refuses a stamp-less upload for a site marked here, so the
+  // key is read with `=== true`: anything else would quietly mean "not built".
+  if (project.buildStamp !== undefined && project.buildStamp !== true) {
+    problems.push(`${where}: buildStamp must be true or absent, got ${JSON.stringify(project.buildStamp)}`)
+  } else if (project.buildStamp === true && project.archetype === 'static-no-npm') {
+    problems.push(`${where}: buildStamp is true but a static-no-npm site has no build to write dist/.build-sha`)
+  }
   if (!Number.isInteger(project.tier) || project.tier < 0 || project.tier > 3) {
     problems.push(`${where}: tier must be 0-3, got ${project.tier}`)
     continue

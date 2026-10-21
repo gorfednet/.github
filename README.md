@@ -28,6 +28,62 @@ permission contract without contacting the NAS. After initial SSH setup,
 `scripts/phase0-verify.sh` checks connectivity, key authentication, remote
 write access, and an rsync dry run.
 
+## Site deploy to dapyllil (releases)
+
+Static sites are moving from the NAS to dapyllil's local disk.
+[`scripts/site-deploy.sh`](scripts/site-deploy.sh) is the new deploy path; run it
+from a site repo with a `.deploy-env` (see `.deploy-env.example`, keys `SITE`,
+`SITE_HOST`, `SITE_ROOT`, `SITE_KEEP`, `SITE_LIVE_URL`, `SITE_EXCLUDES`):
+
+```bash
+scripts/site-deploy.sh deploy dist      # --dry-run to preview
+scripts/site-deploy.sh list             # releases, newest first, current marked
+scripts/site-deploy.sh rollback         # to the newest release older than current
+scripts/site-deploy.sh rollback <id>    # to a named release
+```
+
+Layout on dapyllil, owned by the local user `sitedeploy` (SSH as
+`sitedeploy@dapyllil`):
+
+```
+/srv/sites/<site>/releases/<UTC-stamp>-<gitsha>/   immutable, one per deploy
+/srv/sites/<site>/current -> releases/<id>          relative symlink
+```
+
+nginx serves `/srv/sites/<site>/current` read-only. A deploy uploads to
+`releases/<id>.partial` (unchanged files are hard-linked from the current
+release), refuses an empty release or one without `index.html` (override with
+`SITE_NO_INDEX=1`), renames it into place, switches `current` with a rename (no
+nginx restart), keeps the newest `SITE_KEEP` releases, and then compares the
+live site's `index.html` with the uploaded one byte for byte. If the live site
+serves something else, `current` is switched back to the previous release and
+the script exits non-zero. `scripts/test-site-deploy.sh` runs all of this against
+a temp directory.
+
+**A deploy publishes the merged tip or nothing.** Before it reads `.deploy-env`,
+stages or uploads anything, `deploy` judges the repository it runs in (the site
+repo, the current directory) and refuses when:
+
+- `HEAD` is not exactly `origin`'s default branch after a quiet fetch: behind,
+  ahead or diverged (the message gives both short SHAs and the fix, `git pull
+  --ff-only` or merge your PR first), or the fetch fails;
+- a tracked file has uncommitted changes (untracked files are the publish-set
+  checks' job);
+- the directory being uploaded holds a `.claude` path or a `.git` file or
+  directory at any depth (agent worktrees live under `<repo>/.claude/worktrees`,
+  and a build or stage that copies the repo root carries them). The paths are
+  named. This one has no override.
+
+Emergency override of the first two: `DEPLOY_ALLOW_UNMERGED=1
+DEPLOY_REASON="why"`. The reason is required; the deploy prints a loud warning
+with the commit SHA and the reason, then goes on. Why: the live check compares
+the live site with the local build, never with `origin`, so on 2026-10-20 a stale
+clone would have passed it. `scripts/test-site-deploy-guard.sh` runs the guard
+against real temporary git repos with a bare origin.
+
+`scripts/nas-ssh-deploy.sh` stays only until every site has moved (phase 3) and
+is removed in phase 5.
+
 ## Shared CI tooling
 
 The reusable pull-request workflows under `.github/workflows/` provide common

@@ -34,6 +34,7 @@
     },
     {
       "slug": "gorfednet/gorfed.net",
+      "buildStamp": true,
       "archetype": "static-make-python-esbuild",
       "tier": 1,
       "monitorClass": "active-site",
@@ -70,6 +71,7 @@
     },
     {
       "slug": "gorfednet/denseware.com",
+      "buildStamp": true,
       "archetype": "vite-spa",
       "tier": 1,
       "monitorClass": "static-marketing",
@@ -79,6 +81,7 @@
     },
     {
       "slug": "gorfednet/gorfmusic.com",
+      "buildStamp": true,
       "archetype": "vite-spa",
       "tier": 1,
       "monitorClass": "static-marketing",
@@ -88,6 +91,7 @@
     },
     {
       "slug": "gorfednet/promptboi.com",
+      "buildStamp": true,
       "archetype": "fullstack",
       "tier": 2,
       "monitorClass": "active-site",
@@ -106,6 +110,7 @@
     },
     {
       "slug": "gorfednet/ssatcy.com",
+      "buildStamp": true,
       "archetype": "vite-spa",
       "tier": 1,
       "monitorClass": "static-marketing",

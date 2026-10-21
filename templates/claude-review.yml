@@ -1,7 +1,7 @@
 # Pull request review by Claude: the only reviewer (Cursor Bugbot was retired on 2026-10-16).
 #
 # The review itself is gorfednet/.github's shared claude-review.yml. It runs when a pull request
-# opens or leaves draft, and again on a "claude review" comment. Merge gate:
+# opens or leaves draft, and again on a comment with a line that is exactly "claude review". Merge gate:
 #   node <gorfednet/.github clone>/scripts/review-status.mjs --pr <n> --repo gorfednet/<repository>
 # House rules for the reviewer: REVIEW.md at the repository root.
 name: claude-review
