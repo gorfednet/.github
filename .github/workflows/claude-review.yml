@@ -8,9 +8,9 @@
 # wrote, which keeps reviews inside the Max plan's limits.
 #
 # It authenticates with the owner's Claude subscription (CLAUDE_CODE_OAUTH_TOKEN, from
-# `claude setup-token`), never an API key. It runs where the caller's HEAVY_RUNS_ON says (the
-# dapyllil pool); left empty it is GitHub-hosted ubuntu-latest, like the other shared workflows,
-# until that repository is on the pool.
+# `claude setup-token`), never an API key. It always runs GitHub-hosted (ubuntu-latest): it holds
+# that secret, and secret-holding jobs stay off the self-hosted pool (owner decision 2026-10-19).
+# The `runs-on` input is still accepted from older callers and ignored.
 #
 # The verdict is machine-readable: the review ends with one pull request comment carrying
 # `<!-- claude-review head=<sha> findings=<n> -->`, which scripts/review-status.mjs (in this
@@ -22,8 +22,9 @@ on:
     inputs:
       runs-on:
         description: >-
-          Where the job runs, as JSON: a label string or an array of labels, normally the caller's
-          HEAVY_RUNS_ON variable. Left empty it is GitHub-hosted ubuntu-latest.
+          Ignored, kept so existing callers do not break. Both jobs always run GitHub-hosted:
+          the review job holds CLAUDE_CODE_OAUTH_TOKEN, and secret-holding jobs stay off the
+          self-hosted pool (owner decision 2026-10-19).
         required: false
         type: string
         default: ""
@@ -43,7 +44,9 @@ jobs:
        github.event.comment.user.type != 'Bot' &&
        contains(github.event.comment.body, 'claude review') &&
        contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association))
-    runs-on: ${{ fromJSON(inputs.runs-on != '' && inputs.runs-on || '"ubuntu-latest"') }}
+    # The runs-on input is accepted and ignored.
+    # Hosted: a review request should not wait behind the self-hosted pool's queue (seconds of work).
+    runs-on: ubuntu-latest
     timeout-minutes: 2
     permissions: {}
     outputs:
@@ -76,7 +79,8 @@ jobs:
   review:
     needs: trigger
     if: needs.trigger.outputs.go == 'true'
-    runs-on: ${{ fromJSON(inputs.runs-on != '' && inputs.runs-on || '"ubuntu-latest"') }}
+    # Hosted: holds CLAUDE_CODE_OAUTH_TOKEN; secret-holding jobs stay off the pool (owner, 2026-10-19).
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
       contents: read
