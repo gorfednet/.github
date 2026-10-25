@@ -37,6 +37,8 @@ const ARCHETYPES = new Set([
   'python-flask',
   'static-no-npm',
   'static-make-python-esbuild',
+  // A static site built by a node script into dist/ (no SPA, no framework bundle): heuristics.4thcltr.com.
+  'static-node-build',
   'org-shared-ci',
   'tool',
 ])
