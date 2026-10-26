@@ -597,6 +597,7 @@ describe('write-manifest --check', () => {
     cpSync(fileURLToPath(new URL('..', import.meta.url)), kit, { recursive: true })
     mkdirSync(join(root, 'docs'), { recursive: true })
     writeFileSync(join(root, 'docs', 'verification-rules.md'), '# rules\n', 'utf8')
+    writeFileSync(join(root, 'docs', 'content-guidelines.md'), '# guidelines\n', 'utf8')
 
     const result = spawnSync('node', [join(kit, 'bin', 'write-manifest.mjs'), '--check'], {
       encoding: 'utf8',
@@ -636,6 +637,7 @@ describe('write-manifest --check', () => {
     if (companion !== null) {
       mkdirSync(join(dir, 'docs'), { recursive: true })
       writeFileSync(join(dir, 'docs/verification-rules.md'), companion, 'utf8')
+      writeFileSync(join(dir, 'docs/content-guidelines.md'), '# Content guidelines\n', 'utf8')
     }
     return join(kit, 'bin', 'write-manifest.mjs')
   }
@@ -651,7 +653,10 @@ describe('write-manifest --check', () => {
     const result = spawnSync('node', [writer, '--version', '9.9.9'], { encoding: 'utf8' })
     assert.equal(result.status, 0, result.stderr)
     const manifest = JSON.parse(readFileSync(join(writer, '../../MANIFEST.json'), 'utf8'))
-    assert.deepEqual(Object.keys(manifest.companions ?? {}), ['docs/verification-rules.md'])
+    assert.deepEqual(Object.keys(manifest.companions ?? {}), [
+      'docs/verification-rules.md',
+      'docs/content-guidelines.md',
+    ])
   })
 
   // A rule added upstream with no version bump reads to every consumer as two

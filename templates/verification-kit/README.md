@@ -31,6 +31,7 @@ an ignore rule that did not cover them.
 | `bin/check-tracked-artifacts.mjs` | Generated files reaching `main` under an ignore rule that does not cover them. |
 | `bin/check-kit-drift.mjs` | This copy of the kit silently falling behind the canonical one, or being edited in place. |
 | `bin/mutation-canary.mjs` | A guard nobody has ever seen fail being counted as coverage. |
+| `bin/check-voice.mjs` | Copy drifting back to praise-then-pivot summaries, software metaphors, "delivers value" and "Learn more" links. Enforces the checkable half of [`docs/content-guidelines.md`](../../docs/content-guidelines.md). |
 
 The checks that ask GitHub about a repository (`assert-checks-started`,
 `check-ci-headroom`, `check-backlog --verify-prs`) take it from `--repo owner/name`, then `GITHUB_REPOSITORY`, then the origin of the
@@ -50,7 +51,21 @@ cp -R templates/verification-kit ./verification-kit
 cp verification-kit/templates/backlog.json docs/backlog.json
 cp verification-kit/templates/canaries.json ./canaries.json   # tier 3 only
 cp docs/verification-rules.md docs/verification-rules.md      # from gorfednet/.github
+cp docs/content-guidelines.md docs/content-guidelines.md      # from gorfednet/.github
 ```
+
+## Adoption tiers
+
+- **Tier 1**: the vendored kit, `docs/backlog.json`, the drift check, and
+  `check-voice` in every repository with user-facing copy (a site, an app, a
+  published report). A tool with no visitor-facing text skips `check-voice`.
+- **Tier 2**: tier 1 plus `assert-tests-executed` on every test job.
+- **Tier 3**: tier 2 plus `canaries.json` run by `mutation-canary`.
+
+`scripts/check-fleet.mjs` asks for the files each tier requires; it does not
+yet ask whether `check-voice` is wired, because that is a line in a workflow or
+a test script rather than a file, and the fleet adopts it repository by
+repository first.
 
 The kit directory is **only** canonical files plus `templates/`. Your backlog
 and your canaries live outside it, at the paths above. This is not tidiness:
@@ -75,6 +90,30 @@ stays where it is so its citations keep resolving.
 resolvable. A citation is a number on the same line as the word "rule", so
 prose that ends a sentence in "rules" above a line beginning with a digit is not
 one.
+
+## Voice
+
+`check-voice.mjs` reads what a visitor reads and fails on the phrase lists in
+rules 4, 6, 8, 9 and 10 of [`docs/content-guidelines.md`](../../docs/content-guidelines.md),
+on "Learn more", "Click here", "Get started" and "Read more" as link or button
+text, on a summary over four sentences, and on the praise-then-pivot summary
+(a first sentence of eight words or fewer with no digit, then one beginning
+The, Its, Where or What). Rule 10's tics are allowed once per file and never
+in a summary or heading.
+
+```sh
+npm run build && node verification-kit/bin/check-voice.mjs          # dist/ or build/ HTML
+node verification-kit/bin/check-voice.mjs 'src/content/locales/en.ts' 'content/*.json' \
+  --allow voice-allow.json --allow-shrinks /tmp/voice-allow.main.json
+```
+
+A glob that matches nothing fails (V2). Text inside double quotes, straight or
+curly, or curly single quotes is exempt: it is the site's own label being
+quoted. Straight single quotes are not, because they are also apostrophes.
+The allowlist is a JSON array of `{match, where, reason, reviewBy}`; a lapsed
+`reviewBy` warns and never fails (V5), an entry that allowed nothing warns, and
+`--allow-shrinks <previous>` (for example `git show origin/main:voice-allow.json`)
+fails on any entry the previous list did not have.
 
 ## Backlog
 

@@ -73,7 +73,8 @@ const NOT_TRACKED_DIRS = new Set(['templates'])
  * Its path is relative to the project root, meaning the directory that contains
  * the kit.
  */
-const COMPANIONS = ['docs/verification-rules.md']
+// docs/content-guidelines.md (v0.48.0): the house voice, enforced by check-voice.
+const COMPANIONS = ['docs/verification-rules.md', 'docs/content-guidelines.md']
 
 /*
  * The date the one-minor grace expires, after which any staleness fails.
