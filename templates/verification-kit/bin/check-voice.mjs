@@ -92,9 +92,9 @@ export const RULES = {
   ],
   8: words([
     'quite', 'truly', 'simply', 'seamless', 'seamlessly', 'robust', 'powerful', 'delightful', 'intuitive',
-    'best-in-class', 'world-class',
+    'best-in-class', 'world-class', 'cutting-edge', 'ensure', 'ensures', 'ensured', 'ensuring',
   ]),
-  9: words(["in today's", "it's worth noting", 'importantly', 'ultimately', 'at the end of the day', "whether you're"]),
+  9: words(["in today's", "it's worth noting", 'importantly', 'ultimately', 'at the end of the day', "whether you're", 'in order to', 'the fact that']),
   10: words(['without saying so', 'as if', 'whatever the', 'nothing is drawn', 'the rest']),
 }
 

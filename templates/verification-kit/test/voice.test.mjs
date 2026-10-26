@@ -312,6 +312,35 @@ describe('check-voice phrases added in 0.48.1', () => {
   })
 })
 
+describe('check-voice rule 8 and 9 additions', () => {
+  const cases = [
+    // [rule, fails, passes]
+    ['9', 'Open the menu in order to sort.', 'Open the menu to sort.'],
+    ['9', 'The fact that search fails costs sales.', 'Search fails on 3 of 5 queries.'],
+    ['8', 'The form should ensure a valid date.', 'The form refuses an invalid date.'],
+    ['8', 'The check ensures nothing ships broken.', 'The check fails a broken build.'],
+    ['8', 'The team ensured coverage.', 'The team covered 12 pages.'],
+    ['8', 'A cutting-edge studio.', 'A studio in Toronto.'],
+  ]
+  for (const [rule, bad, good] of cases) {
+    it(`rule ${rule}: fails "${bad}", passes "${good}"`, () => {
+      assert.ok(rules(bad).some((r) => r.startsWith(`${rule}:`)), rules(bad).join())
+      assert.deepEqual(rules(good), [])
+    })
+  }
+
+  it('near miss: word-bounded, so "insurer", "ensurer" and "cutting edges" pass', () => {
+    assert.deepEqual(rules('The insurer and the ensurer both file.'), [])
+    assert.deepEqual(rules('The saw has two cutting edges.'), [])
+  })
+
+  it('leverage, seamless and world-class were already listed', () => {
+    assert.ok(rules('We leverage data.').includes('6:leverage'))
+    assert.ok(rules('A seamless flow.').includes('8:seamless'))
+    assert.ok(rules('A world-class team.').includes('8:world-class'))
+  })
+})
+
 describe('check-voice --term', () => {
   it('exempts a defined term spelt exactly, and only that spelling', () => {
     assert.deepEqual(rules('The Door field names the entry page.'), ['4:door'])
