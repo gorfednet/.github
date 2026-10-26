@@ -105,7 +105,25 @@ in a summary or heading.
 npm run build && node verification-kit/bin/check-voice.mjs          # dist/ or build/ HTML
 node verification-kit/bin/check-voice.mjs 'src/content/locales/en.ts' 'content/*.json' \
   --allow voice-allow.json --allow-shrinks /tmp/voice-allow.main.json
+node verification-kit/bin/check-voice.mjs README.md 'docs/**/*.md' --term Door   # a spec repository
 ```
+
+Markdown is read as a document: each paragraph, heading, list item, table cell
+and blockquote line is one string, located as `L<line>`. Fenced code blocks and
+inline code are skipped, link text is read and its URL is not, and front matter
+is read as key/value pairs. A paragraph under a heading that says Summary or
+Abstract is held to the summary rules.
+
+`--term <word>` (repeatable) exempts a word a specification uses as a defined
+term, such as a field called "Door". It is case-sensitive and word-bounded:
+`--term Door` exempts "the Door field" and still fails "every door" and
+"Doors". The phrase lists themselves do not change, so a repository that
+names its fields after a metaphor says so on its command line.
+
+The phrase lists match a hyphenated "let-down" (the noun) never and an
+unhyphenated "a let down" always: the lint cannot tell that noun from the verb,
+and the plain rewrite is better either way. "stray" matches the bare word only,
+not "astray" or "strayed".
 
 A glob that matches nothing fails (V2). Text inside double quotes, straight or
 curly, or curly single quotes is exempt: it is the site's own label being

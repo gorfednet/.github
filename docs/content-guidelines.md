@@ -11,12 +11,12 @@ A product team that owns the page we are describing, a founder deciding whether 
 1. **Say the thing first.** Open with the fault, the offer, the fact. Never open with praise and pivot ("Polished and consistent. The work left is in the corners."). If a reader needs to know what works, it is one plain sentence at the end.
 2. **No aphorisms.** A sentence that would survive on its own as a quotation is rewritten as a statement with a subject and a measurement. "A level is not a score" becomes "There is no overall rating."
 3. **No antithesis for effect.** "The counts are measured and the levels are judged" is rhythm, not information. Say what each comes from.
-4. **No metaphors for software.** No doors, corners, seams, surfaces, journeys, friction that sits, experiences that feel. A page is a page; a button is a button.
+4. **No metaphors for software.** No doors, corners, seams, surfaces, journeys, friction that sits, experiences that feel. A page is a page; a button is a button. Nothing is "stray", and nothing is "in good order".
 5. **Name the thing.** The control, the page, the pixel count, the price, the date. Quote the site's own label. "The Sort control" beats "sorting".
-6. **Plain verbs.** Shows, opens, covers, hides, fails, reads, measures, costs. Not: sits, lives, slips, carries (for UI), lets down, holds up, unlocks, empowers, elevates, leverages, delivers (for anything but a parcel).
+6. **Plain verbs.** Shows, opens, covers, hides, fails, reads, measures, costs. Not: sits, lives, slips, carries (for UI), lets down, holds up, lets (anyone) down, the work left, unlocks, empowers, elevates, leverages, delivers (for anything but a parcel).
 7. **One list in a paragraph, and no triads for rhythm.** Three items because there are three, never because three sounds finished.
-8. **No hedges and no intensifiers.** Not "quite", "truly", "simply", "seamless", "robust", "powerful", "delightful", "intuitive", "best-in-class", "world-class". If a claim needs a number, give the number; if there is no number, drop the claim.
-9. **No filler openers.** Not "In today's", "It's worth noting", "Importantly", "Ultimately", "At the end of the day", "Whether you're".
+8. **No hedges and no intensifiers.** Not "quite", "truly", "simply", "seamless", "robust", "cutting-edge", "ensure", "powerful", "delightful", "intuitive", "best-in-class", "world-class". If a claim needs a number, give the number; if there is no number, drop the claim.
+9. **No filler openers.** Not "In today's", "It's worth noting", "Importantly", "Ultimately", "At the end of the day", "Whether you're", "in order to", "the fact that".
 10. **Tics are rationed.** "Without saying so", "as if", "whatever the", "nothing is drawn", "the rest": at most once per page, never in a summary or a heading.
 
 ## Structure
@@ -52,4 +52,4 @@ Reading level of a national newspaper. Short sentences, about twenty words. Acro
 
 ## Enforcement
 
-`check-voice` runs in every repository's test suite over built pages and content files. It fails on the phrase lists in rules 4, 6, 8, 9 and 10, on the praise-then-pivot shape in summaries, on "Learn more"/"Click here"/"Get started" as link text, and on a summary over four sentences. An allowlist entry names the string, the reason and a review date; the allowlist can only shrink between releases. A finding the lint cannot see is still the editor's to catch.
+`check-voice` runs in every repository's test suite over built pages and content files. It fails on the phrase lists in rules 4, 6, 8, 9 and 10 (every phrase the lint bans is named in those rules), on the praise-then-pivot shape in summaries, on "Learn more"/"Click here"/"Get started" as link text, and on a summary over four sentences. An allowlist entry names the string, the reason and a review date; the allowlist can only shrink between releases. A finding the lint cannot see is still the editor's to catch.

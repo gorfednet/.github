@@ -12,6 +12,7 @@
  * Usage:
  *   node verification-kit/bin/check-voice.mjs [glob …] [--root <dir>]
  *        [--allow <voice-allow.json>] [--allow-shrinks <previous.json>]
+ *        [--term <word> …]
  *
  * With no glob it reads `dist/**\/*.html` and `build/**\/*.html`. Locale and
  * content files (JSON, TS, JS) are passed explicitly, e.g.
@@ -27,6 +28,11 @@
  *   - TS/JS: every string literal (template literals without `${}` included),
  *     located by the property key in front of it, or its line when it has none.
  *     Import specifiers are skipped.
+ *   - Markdown (.md, .markdown): each paragraph, heading, list item, table cell
+ *     and blockquote line, located as `L<line>`. Fenced code and inline code
+ *     are skipped; link text is kept and URLs dropped. Front matter is read as
+ *     key/value pairs located by key. A paragraph under a heading matching
+ *     /summary|abstract/i is a summary.
  *   A key matching /summary|theme|description/i is a summary; one matching
  *   /heading|headline|title/i is a heading; one matching /label|cta|button|link/i
  *   is link or button text.
@@ -36,6 +42,10 @@
  * quoted — an analysis that names a store's "Shop by room" button has to be
  * able to spell it. Straight single quotes are not exempt, because they are
  * also apostrophes and pairing them would exempt half a sentence.
+ *
+ * Defined terms (`--term <word>`, repeatable): a word a specification uses as a
+ * name, such as a field called "Door", is exempt where it is spelt exactly so
+ * (case-sensitive, word-bounded). "door" in lower case is still rule 4.
  *
  * Output: one line per hit, `path:key-or-line: rule N "<matched text>"`, then
  * exit 1. With none, a count line and exit 0.
@@ -63,9 +73,18 @@ export const RULES = {
     ...words(['door', 'doors', 'doorway', 'doorways', 'corner', 'corners', 'seam', 'seams']),
     ...words(['surface', 'surfaces', 'surfaced', 'surfacing', 'journey', 'journeys', 'friction']),
     'experiences?\\s+(?:that\\s+)?feels?',
+    // "stray" bare only: "astray" and "strayed" are other words, and the word
+    // bounds below already refuse both.
+    ...words(['stray', 'in good order']),
   ],
   6: [
     ...words(['sits', 'sitting', 'lives', 'slips', 'slipping', 'carries', 'lets down', 'let down', 'holds up']),
+    // "lets the visitor down", "let users down". A hyphenated "let-down" (the
+    // noun) is never matched, because the phrase needs whitespace after "let";
+    // an unhyphenated "a let down" is, since the lint cannot tell the noun from
+    // the verb and the rewrite is plainer either way.
+    'lets?\\s+(?:the\\s+)?\\w+\\s+down',
+    ...words(['the work left']),
     ...words(['unlock', 'unlocks', 'unlocked', 'unlocking', 'empower', 'empowers', 'empowered', 'empowering']),
     ...words(['elevate', 'elevates', 'elevated', 'elevating', 'leverage', 'leverages', 'leveraged', 'leveraging']),
     // "delivers (for anything but a parcel)".
@@ -73,9 +92,9 @@ export const RULES = {
   ],
   8: words([
     'quite', 'truly', 'simply', 'seamless', 'seamlessly', 'robust', 'powerful', 'delightful', 'intuitive',
-    'best-in-class', 'world-class',
+    'best-in-class', 'world-class', 'cutting-edge', 'ensure', 'ensures', 'ensured', 'ensuring',
   ]),
-  9: words(["in today's", "it's worth noting", 'importantly', 'ultimately', 'at the end of the day', "whether you're"]),
+  9: words(["in today's", "it's worth noting", 'importantly', 'ultimately', 'at the end of the day', "whether you're", 'in order to', 'the fact that']),
   10: words(['without saying so', 'as if', 'whatever the', 'nothing is drawn', 'the rest']),
 }
 
@@ -102,16 +121,31 @@ export function sentences(text) {
 }
 
 /**
+ * Blank out each defined term (case-sensitive, word-bounded) so offsets and the
+ * word bounds of its neighbours survive. A spec that names a field "Door" has to
+ * be able to say "the Door field"; "door" in lower case is still the metaphor.
+ */
+export function stripTerms(text, terms = []) {
+  let out = text
+  for (const term of terms) {
+    const re = new RegExp(`(?<![\\w-])${term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\w-])`, 'g')
+    out = out.replace(re, (m) => ' '.repeat(m.length))
+  }
+  return out
+}
+
+/**
  * Check one string. `kind` is 'summary', 'heading', 'label' or 'text'.
+ * `options.terms` lists words used as defined terms (see `--term`).
  * Returns [{rule, text}]; rule-10 hits are returned with `rationed: true`.
  */
-export function checkString(raw, kind) {
+export function checkString(raw, kind, options = {}) {
   const hits = []
   // Quotes first: the curly single quote that closes a quotation is the same
   // character as a curly apostrophe, so normalising apostrophes first would
   // unpair it.
   const text = raw.replace(/\s+/g, ' ')
-  const open = stripQuoted(text).replace(/[’ʼ]/g, "'")
+  const open = stripTerms(stripQuoted(text), options.terms).replace(/[’ʼ]/g, "'")
   for (const [rule, re] of Object.entries(COMPILED)) {
     re.lastIndex = 0
     for (const m of open.matchAll(re)) {
@@ -261,19 +295,140 @@ export function scriptStrings(src) {
   return out
 }
 
+/**
+ * Strings a reader reads in one Markdown file: [{where, text, kind}].
+ *
+ * A Markdown file is a document, not script. Read as TS/JS it yielded only the
+ * text between quote marks, so a README paragraph with no quotes in it was
+ * never checked at all. Here each paragraph, heading, list item, table cell and
+ * blockquote line is one string, located as `L<line>` where it starts. Fenced
+ * code blocks, inline code spans, HTML comments and link reference definitions
+ * are skipped; a link keeps its text and drops its URL, and a bare URL is
+ * dropped. Front matter is read as key/value pairs located by key, like JSON.
+ * A heading is a heading string; a paragraph under a heading matching
+ * /summary|abstract/i is a summary.
+ */
+export function markdownStrings(src) {
+  const out = []
+  const lines = src.replace(/<!--[\s\S]*?-->/g, (m) => m.replace(/[^\n]/g, ' ')).split(/\r?\n/)
+  const inline = (t) =>
+    t
+      .replace(/(`+)[\s\S]*?\1/g, ' ')
+      .replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')
+      .replace(/!?\[([^\]]*)\]\[[^\]]*\]/g, '$1')
+      .replace(/<(?:https?:|mailto:)[^>]*>/gi, ' ')
+      .replace(/\bhttps?:\/\/\S+/gi, ' ')
+      .replace(/<\/?[a-z][^>]*>/gi, ' ')
+      .replace(/(?<![\w\\])_{1,3}|_{1,3}(?!\w)/g, '')
+      .replace(/\\([\\`*_{}[\]()#+\-.!|>~])/g, '$1')
+      .replace(/\s+/g, ' ')
+      .trim()
+  const push = (line, raw, kind) => {
+    const text = inline(raw)
+    if (/[A-Za-z]{2}/.test(text)) out.push({ where: `L${line}`, text, kind })
+  }
+  let i = 0
+  if (/^---\s*$/.test(lines[0] ?? '')) {
+    const close = lines.findIndex((l, n) => n > 0 && /^(?:---|\.\.\.)\s*$/.test(l))
+    if (close > 0) {
+      for (const l of lines.slice(1, close)) {
+        const m = /^\s*([A-Za-z_][\w-]*)\s*:\s*(.+?)\s*$/.exec(l)
+        if (!m) continue
+        const value = m[2].replace(/^(["'])(.*)\1$/, '$2')
+        if (/[A-Za-z]{2}/.test(value)) out.push({ where: m[1], text: value, kind: kindOfKey(m[1]) })
+      }
+      i = close + 1
+    }
+  }
+  const FENCE = /^\s{0,3}(`{3,}|~{3,})/
+  const HEADING = /^\s{0,3}(#{1,6})\s+(.*?)(?:\s+#+)?\s*$/
+  const ITEM = /^(\s*)(?:[-*+]|\d{1,9}[.)])\s+(.*)$/
+  const QUOTE = /^\s{0,3}>\s?(.*)$/
+  const RULE = /^\s{0,3}(?:[-*_]\s*){3,}$/
+  const TABLE_SEP = /^\s*\|?\s*:?-+:?\s*(?:\|\s*:?-+:?\s*)*\|?\s*$/
+  const REF_DEF = /^\s{0,3}\[[^\]]+\]:\s*\S/
+  const cells = (l) =>
+    l
+      .trim()
+      .replace(/^\|/, '')
+      .replace(/(?<!\\)\|$/, '')
+      .split(/(?<!\\)\|/)
+  let under = '' // the nearest heading above
+  const paraKind = () => (/summary|abstract/i.test(under) ? 'summary' : 'text')
+  const blank = (l) => l === undefined || l.trim() === ''
+  const starts = (l) =>
+    FENCE.test(l) || HEADING.test(l) || ITEM.test(l) || QUOTE.test(l) || RULE.test(l) || REF_DEF.test(l)
+  while (i < lines.length) {
+    const l = lines[i]
+    const n = i + 1
+    let m
+    if (blank(l)) {
+      i++
+    } else if ((m = FENCE.exec(l))) {
+      const close = new RegExp(`^\\s{0,3}${m[1][0] === '`' ? '`' : '~'}{${m[1].length},}\\s*$`)
+      i++
+      while (i < lines.length && !close.test(lines[i])) i++
+      i++
+    } else if ((m = HEADING.exec(l))) {
+      under = inline(m[2])
+      push(n, m[2], 'heading')
+      i++
+    } else if (RULE.test(l) || REF_DEF.test(l)) {
+      i++
+    } else if ((m = QUOTE.exec(l))) {
+      push(n, m[1], 'text')
+      i++
+    } else if ((m = ITEM.exec(l))) {
+      const indent = m[1].length
+      let text = m[2]
+      i++
+      // Continuation lines belong to the item; a nested item is its own.
+      while (i < lines.length && !blank(lines[i]) && !FENCE.test(lines[i]) && !ITEM.test(lines[i])) {
+        if (/^\s*/.exec(lines[i])[0].length <= indent && starts(lines[i])) break
+        text += ` ${lines[i].trim()}`
+        i++
+      }
+      push(n, text, 'text')
+    } else if (l.includes('|') && TABLE_SEP.test(lines[i + 1] ?? '') && lines[i + 1].includes('-')) {
+      for (const c of cells(l)) push(n, c, 'text')
+      i += 2
+      while (i < lines.length && !blank(lines[i]) && lines[i].includes('|')) {
+        for (const c of cells(lines[i])) push(i + 1, c, 'text')
+        i++
+      }
+    } else if (/^\s{0,3}(?:=+|-+)\s*$/.test(lines[i + 1] ?? '') && !blank(lines[i + 1])) {
+      // A setext heading: one line underlined with = or -.
+      under = inline(l)
+      push(n, l, 'heading')
+      i += 2
+    } else {
+      let text = l
+      i++
+      while (i < lines.length && !blank(lines[i]) && !starts(lines[i])) {
+        text += ` ${lines[i]}`
+        i++
+      }
+      push(n, text, paraKind())
+    }
+  }
+  return out
+}
+
 /** Every hit in one file, with rule-10 rationing applied per file. */
-export function checkFile(rel, src) {
+export function checkFile(rel, src, options = {}) {
   const ext = extname(rel).toLowerCase()
   const strings =
     ext === '.html' || ext === '.htm'
       ? htmlStrings(src)
       : ext === '.json'
         ? jsonStrings(src)
-        : scriptStrings(src)
+        : ext === '.md' || ext === '.markdown'
+          ? markdownStrings(src)
+          : scriptStrings(src)
   const hits = []
   const rationed = new Map()
   for (const s of strings) {
-    for (const hit of checkString(s.text, s.kind)) {
+    for (const hit of checkString(s.text, s.kind, options)) {
       if (hit.rationed) {
         const k = hit.text.toLowerCase().replace(/\s+/g, ' ')
         const seen = (rationed.get(k) ?? 0) + 1
@@ -343,12 +498,17 @@ function fail(message) {
 }
 
 function parseArgs(argv) {
-  const args = { globs: [], root: process.cwd(), allow: null, shrinks: null }
+  const args = { globs: [], root: process.cwd(), allow: null, shrinks: null, terms: [] }
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]
     if (a === '--root') args.root = argv[++i]
     else if (a === '--allow') args.allow = argv[++i]
     else if (a === '--allow-shrinks') args.shrinks = argv[++i]
+    else if (a === '--term') {
+      const term = argv[++i]
+      if (term === undefined || !/^\w[\w-]*$/.test(term)) fail('--term needs one word, e.g. --term Door')
+      args.terms.push(term)
+    }
     else if (a.startsWith('-')) rejectUnknownArgument(TOOL, a)
     else args.globs.push(a)
   }
@@ -393,7 +553,7 @@ if (isMain(import.meta.url)) {
   for (const rel of files) {
     let result
     try {
-      result = checkFile(rel, readFileSync(join(args.root, rel), 'utf8'))
+      result = checkFile(rel, readFileSync(join(args.root, rel), 'utf8'), { terms: args.terms })
     } catch (error) {
       fail(`cannot read ${rel}: ${error.message}`)
     }
