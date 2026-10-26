@@ -1,6 +1,6 @@
 # Content guidelines
 
-For 4thcltr.com, heuristics.4thcltr.com and gorfed.net. Every word a visitor reads follows this, whoever or whatever wrote it. The guideline is distributed with the verification kit; change it upstream in gorfednet/.github, then refresh the kit in each repository. The voice lint (`check-voice`) enforces the parts a machine can check and fails the build when they slip.
+For every site 4th Culture and Michael publish: 4thcltr.com, heuristics.4thcltr.com, papers.4thcltr.com, gorfed.net and the repositories behind them. Every word a visitor reads follows this, whoever or whatever wrote it. The guideline is distributed with the verification kit; change it upstream in gorfednet/.github, then refresh the kit in each repository. The voice lint (`check-voice`) enforces the parts a machine can check and fails the build when they slip.
 
 ## Who we are writing for
 
