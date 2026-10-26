@@ -46,7 +46,8 @@ const NOT_TRACKED_DIRS = new Set(['templates'])
  * not have — numbered in the shared sequence, which the next fleet rule then
  * collided with — while its drift check printed a tick.
  */
-const COMPANIONS = ['docs/verification-rules.md']
+// docs/content-guidelines.md (v0.48.0): the house voice, enforced by check-voice.
+const COMPANIONS = ['docs/verification-rules.md', 'docs/content-guidelines.md']
 
 /**
  * The repository root, for the two layouts this file ever runs in.

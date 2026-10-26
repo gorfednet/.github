@@ -38,6 +38,8 @@ export const NOT_APPLICABLE = {
     'Reads a pull request\u2019s check runs from the API. It guards a caller\u2019s CI, not a checkout.',
   'assert-tests-executed.mjs':
     'Takes a test report a runner produces. This repository asserts its own floor directly in the workflow, against a count it computes there.',
+  'check-voice.mjs':
+    'Reads built pages and locale or content files a visitor sees. This repository ships neither; its one piece of public prose, docs/content-guidelines.md, quotes the banned phrases on purpose.',
   'check-ci-headroom.mjs':
     'Reads workflow run durations from the API for a repository under load. Nothing in a checkout answers it.',
   'check-error-pages.mjs':
