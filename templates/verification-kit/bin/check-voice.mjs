@@ -203,14 +203,33 @@ export function jsonStrings(src) {
 export function scriptStrings(src) {
   const out = []
   const clean = src.replace(/\/\*[\s\S]*?\*\/|(?<![:'"`\\])\/\/[^\n]*/g, (m) => m.replace(/[^\n]/g, ' '))
-  const re = /(?:([A-Za-z_$][\w$]*|'[^'\n]*'|"[^"\n]*")\s*:\s*)?(['"`])((?:\\.|(?!\2)[^\\])*?)\2/g
+  // String literals only. Whether one is an object key, or the value of one, is
+  // read from the punctuation around it rather than from one regex: a quoted
+  // ternary branch (`cond ? "seamless copy" : "plain"`) is followed by a colon
+  // too, and reading every `"…" :` as a key left that branch unchecked.
+  const re = /(['"`])((?:\\.|(?!\1)[^\\])*?)\1/g
+  const prevChar = (i) => /\S(?=\s*$)/.exec(clean.slice(Math.max(0, i - 200), i))?.[0] ?? ''
+  const nextChar = (i) => /^\s*(\S)/.exec(clean.slice(i, i + 200))?.[1] ?? ''
+  // A key sits right after `{` or `,` and right before `:`. After `?` it is a
+  // ternary branch, and after `(`, `[`, `=` or an operator it is a value.
+  const isKeyAt = (start, end) => /[{,]/.test(prevChar(start)) && nextChar(end) === ':'
+  /** The key a value at `start` belongs to, when it directly follows `key:`. */
+  const keyBefore = (start) => {
+    const head = clean.slice(Math.max(0, start - 200), start)
+    const m = /(?:([A-Za-z_$][\w$]*)|'([^'\n]*)'|"([^"\n]*)")\s*:\s*$/.exec(head)
+    if (!m) return undefined
+    const keyStart = start - head.length + m.index
+    return /[{,]/.test(prevChar(keyStart)) ? (m[1] ?? m[2] ?? m[3]) : undefined
+  }
   for (const m of clean.matchAll(re)) {
+    const end = m.index + m[0].length
     const before = clean.slice(Math.max(0, m.index - 12), m.index)
     if (/(?:\bfrom|\bimport|require\()\s*$/.test(before)) continue
-    if (m[2] === '`' && m[3].includes('${')) continue
-    const text = m[3].replace(/\\(['"`\\])/g, '$1').replace(/\\n/g, ' ')
+    if (m[1] !== '`' && isKeyAt(m.index, end)) continue
+    if (m[1] === '`' && m[2].includes('${')) continue
+    const text = m[2].replace(/\\(['"`\\])/g, '$1').replace(/\\n/g, ' ')
     if (!/[A-Za-z]{2}/.test(text)) continue
-    const key = m[1]?.replace(/^['"]|['"]$/g, '')
+    const key = keyBefore(m.index)
     out.push({ where: key ?? String(lineAt(src, m.index)), text, kind: key ? kindOfKey(key) : 'text' })
   }
   return out

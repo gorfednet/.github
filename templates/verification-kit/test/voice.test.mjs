@@ -119,6 +119,22 @@ describe('check-voice structure rules', () => {
   })
 })
 
+describe('check-voice TS/JS keys', () => {
+  it('scans a quoted ternary branch, which is followed by a colon but is not a key', () => {
+    const ts = 'export const label = wide ? "seamless copy" : "plain copy"\n'
+    assert.deepEqual(checkFile('a.ts', ts).hits, [{ location: 'a.ts:1', rule: '8', text: 'seamless' }])
+  })
+
+  it('skips an object key that spells a banned word', () => {
+    assert.deepEqual(checkFile('a.ts', 'export const counts = { "sits": 1, \'lives\': 2 }\n').hits, [])
+  })
+
+  it('near miss: the value of a quoted key is still scanned, and located by the key', () => {
+    const ts = 'export const en = { "intro": "The panel sits above the grid." }\n'
+    assert.deepEqual(checkFile('a.ts', ts).hits, [{ location: 'a.ts:intro', rule: '6', text: 'sits' }])
+  })
+})
+
 describe('check-voice CLI', () => {
   it('prints one line per hit and exits 1', () => {
     const dir = project({ 'dist/index.html': '<p>We deliver value.</p>' })
