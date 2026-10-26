@@ -196,6 +196,16 @@
       "owner": "gorf",
       "verifiedAt": "2026-10-25",
       "note": "Public UX heuristic analyses. A node build (react-dom/server renderToStaticMarkup, no client JavaScript but the Plausible init) writes dist/ with every page, a PDF and a social card per analysis. Tier 2: the shared gate asserts an executed floor of 82 over the Vitest report, and the verify step asserts 24 over the Playwright smoke (375 and 1440, axe WCAG 2.1 AA, no overflow, CSP). CI runs hosted until its pools.conf row and token land."
+    },
+    {
+      "slug": "gorfednet/papers.4thcltr.com",
+      "buildStamp": true,
+      "archetype": "static-node-build",
+      "tier": 2,
+      "monitorClass": "static-marketing",
+      "owner": "gorf",
+      "verifiedAt": "2026-10-26",
+      "note": "4th Culture's public documents: frameworks (AI Use Levels first, vendored by tag from the public gorfednet/ai-use-levels), public versions of proposals and papers, each at a versioned address with a PDF and a machine-readable spec.json. Cloned from heuristics.4thcltr.com: the same node build, no client JavaScript but the Plausible init and the wordmark. Tier 2: the shared gate asserts an executed floor of 96 over the Vitest report and the verify step 49 over the Playwright smoke (320, 375 and 1440). Vhost live in ops since 2026-10-25; first deploy pending the site copy."
     }
   ]
 }
