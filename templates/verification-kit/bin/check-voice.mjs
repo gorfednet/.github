@@ -165,8 +165,34 @@ export function htmlStrings(src) {
   const body = src.replace(/<script\b[\s\S]*?<\/script>|<style\b[\s\S]*?<\/style>|<!--[\s\S]*?-->/gi, (m) =>
     m.replace(/[^\n]/g, ' '),
   )
+  /*
+   * A summary is any element whose class names "summary", whatever its tag:
+   * `<div class="summary"><p>Polished and consistent. The work left…</p></div>`
+   * has to be read as one summary, or the pivot and the sentence count never run
+   * on it. Its whole text is one summary string, and the elements inside it are
+   * not read again as body text. The close is found by counting that tag's
+   * opens and closes, so a nested <div> does not end it early.
+   */
+  const inSummary = []
+  for (const m of body.matchAll(/<([a-z][\w-]*)\b([^>]*)>/gi)) {
+    const cls = /\bclass\s*=\s*["']([^"']*)["']/i.exec(m[2])?.[1] ?? ''
+    if (!/summary/i.test(cls) || inSummary.some(([s, e]) => m.index > s && m.index < e)) continue
+    const tag = m[1].toLowerCase()
+    const tags = new RegExp(`<(/?)${tag}\\b[^>]*>`, 'gi')
+    tags.lastIndex = m.index + m[0].length
+    let depth = 1
+    let end = body.length
+    for (let t; depth > 0 && (t = tags.exec(body)); ) {
+      depth += t[1] ? -1 : 1
+      if (depth === 0) end = t.index
+    }
+    inSummary.push([m.index, end])
+    const text = decode(body.slice(m.index + m[0].length, end))
+    if (text) out.push({ where: String(lineAt(src, m.index)), text, kind: 'summary' })
+  }
   const re = /<(p|li|dd|dt|figcaption|h[1-4]|button|a|title)\b([^>]*)>([\s\S]*?)<\/\1\s*>/gi
   for (const m of body.matchAll(re)) {
+    if (inSummary.some(([s, e]) => m.index >= s && m.index < e)) continue
     const tag = m[1].toLowerCase()
     const cls = /\bclass\s*=\s*["']([^"']*)["']/i.exec(m[2])?.[1] ?? ''
     const kind = /summary/i.test(cls)

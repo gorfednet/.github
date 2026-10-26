@@ -113,6 +113,21 @@ describe('check-voice structure rules', () => {
     assert.deepEqual(checkFile('i.html', html).hits.map((h) => `${h.location} ${h.rule}`), ['i.html:1 8', 'i.html:1 8'])
   })
 
+  it('reads a summary class on any tag, including the paragraphs inside it', () => {
+    const apple =
+      'Polished and consistent. The work left is in the corners: focus that slips out of open panels.'
+    for (const tag of ['div', 'section', 'span']) {
+      const html = `<${tag} class="report-summary">\n<div><p>${apple}</p></div></${tag}>`
+      const found = checkFile('i.html', html).hits.map((h) => `${h.location} ${h.rule}`).sort()
+      assert.deepEqual(found, ['i.html:1 1', 'i.html:1 4', 'i.html:1 6'], tag)
+    }
+  })
+
+  it('near miss: the same paragraph outside a summary is body text, so the pivot does not apply', () => {
+    const html = '<div class="intro"><p>Polished and consistent. The page has 3 sections.</p></div>'
+    assert.deepEqual(checkFile('i.html', html).hits, [])
+  })
+
   it('locates TS strings by key and skips imports', () => {
     const ts = "import x from 'seamless-lib'\nexport const en = {\n  hero: { summary: 'A powerful studio.' },\n}\n"
     assert.deepEqual(checkFile('en.ts', ts).hits, [{ location: 'en.ts:summary', rule: '8', text: 'powerful' }])
