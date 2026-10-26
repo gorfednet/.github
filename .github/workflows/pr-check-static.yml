@@ -148,10 +148,17 @@ on:
         required: false
         type: string
         default: ""
+      timeout-minutes:
+        description: >-
+          Minutes before the check job is cancelled. Default 10; a repository whose build prints
+          PDFs or cards may need more on a slow runner (heuristics.4thcltr.com, 2026-10-26).
+        required: false
+        type: number
+        default: 10
 jobs:
   check:
     runs-on: ${{ fromJSON(inputs.runs-on != '' && inputs.runs-on || '"ubuntu-latest"') }}
-    timeout-minutes: 10
+    timeout-minutes: ${{ inputs.timeout-minutes }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: No legacy share-mount deploy paths
