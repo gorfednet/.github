@@ -1,23 +1,23 @@
 {
-  "version": "0.48.1",
+  "version": "0.48.2",
   "files": {
-    "README.md": "d109c8526033b0dec27d94e80714ada5dc707d03407802c16f69030c88b10578",
+    "README.md": "a682a012269f4d3e42ec50899ab98fef95473c8402e96a98d39d24ccf4e40157",
     "bin/assert-checks-started.mjs": "9b32370e3b8ab4dae94c9b54abd46c6d364f81fb00b6f81ccbaf0e4d21b077f0",
     "bin/assert-tests-executed.mjs": "0c51a19cb8fa467bd8bf98fbbabb1e349cbe28ce125095fe302039e47f8db6fd",
     "bin/check-backlog.mjs": "92d71fca48e286536e33153f231fed76370f470095441eb65be30bceae93b4a4",
     "bin/check-ci-headroom.mjs": "3897b4e27aad99ba537aeafaaef3dec2021eda0fb80b367c49612c39df7a5833",
     "bin/check-error-pages.mjs": "0d0a169f775b4c9cdec1895e115134fb4fce388ca4dcb01a7ebd86ab3e41b6d5",
-    "bin/check-kit-drift.mjs": "1eca9c329d796bea247b37c5577e69ea2e3c089451700e2ce5ba3345b0f96c3e",
+    "bin/check-kit-drift.mjs": "7e7592993d4c767211598305fc59bd6c18fd19e0f29d6c68d9ac8263199c7241",
     "bin/check-live-og-image.mjs": "779a4068957968a9a1b844ee9ec36216eda7af5fba967a7a188d16e32d7d49ff",
     "bin/check-machine-paths.mjs": "bf644aa8a33d16542388cfdea425d2cbcce295a4f54bdd5f1e3ce4e7cecdbc35",
     "bin/check-og-image.mjs": "52bfa44361eebecaa6518b9960d3634ab8336a9bfd1a10b9ac6e50cc484176d1",
     "bin/check-page-metadata.mjs": "f876e3fdfa5d3cc03e993bac8e351d4c4b54aa180a662b2752309c7d84e65998",
     "bin/check-rule-citations.mjs": "be89e3cc348acd56f4f8a99e817393b91bd3d0c46ff6a2a58d0669776ed0493f",
     "bin/check-tracked-artifacts.mjs": "ef4a8e1d674c2d883db4e37781167c9fab1f6a3b0461b16d0a4b067cd1dc6e9c",
-    "bin/check-voice.mjs": "283e5b999163b69b1b028e98abeaa4ac716ae4ff4d8016497524c4e78e2af048",
+    "bin/check-voice.mjs": "0767ab64dd202532a25216695606a8fb0ec657751c4ae224500fc61f09cc5261",
     "bin/mutation-canary.mjs": "fafb50a15854c5273e262915baaef4b63328ccb5b631f4a5f3341c0915d0b6e6",
-    "bin/refresh-kit.mjs": "9c453700f81c2663cd88ec3cfb614c99a3749b1bd0186dcc8ad84fdcb48b6c91",
-    "bin/write-manifest.mjs": "69d22a6aeae0edf098c9c353b90f1514c809081ac69a9147a96f0d45e2c43f02",
+    "bin/refresh-kit.mjs": "d403414ee614561280c47d7b9f4d3db4ea91115f1ad9fa7cfed8b673b44e1fb7",
+    "bin/write-manifest.mjs": "91b740dfec858d9ce2206e9e0e5a1d1da49041dac94e3c5015550f0b050371d3",
     "lib/backlogSchema.mjs": "55693f0b2a3aa19f7530fe427cc5380cdeaf365dc5d23bab332748d4dbe0a6dc",
     "lib/cliArgs.mjs": "e0cac2ec05d80a3a914d6014a20bf8f9afc2cd8811dc317b86d809d160b81ecc",
     "lib/githubSlug.mjs": "5d4edfcae40b84e904601e099c246c2afd02a22c672891f08e53e0bc7fcfa5f6",
@@ -32,7 +32,7 @@
     "test/githubSlug.test.mjs": "f4671d2e04c13d67d513bc062cd82dec6f8ea87da38871846703356d3034e77b",
     "test/imageMeta.test.mjs": "0969d4b5aff5efa6e7ea5ab918d5a58328d0ed13166fb1d488144b87939de40c",
     "test/isMain.test.mjs": "b5d00295d10a6cd30c4401ace15a13bf118f9f7a65623354c13c4ce3ed5f7989",
-    "test/kitDrift.test.mjs": "e04e325c2363e341a53c5c3f91b11f73dcc0a9025c24e02103d28cc46f61f8ee",
+    "test/kitDrift.test.mjs": "f4c734e3d70ea78f131b1064fa5976d768651b0fc9a5d394d69e1f87bef6b17d",
     "test/liveOgImage.test.mjs": "995cd5d86a8fd1cc1d857ad925d3d3ab4073fa9fddff675733f4f06d6ecb9ed6",
     "test/machinePaths.test.mjs": "6c5b1ca73f9eef17064f569bf36dc9dd4c595ce0a15254cf18d560e4b3fe93cf",
     "test/mutationCanary.test.mjs": "eab9336a04ab9261a385cb6803c59b8bd5c412dc708560f05b752cbc6ea097ad",
@@ -40,10 +40,10 @@
     "test/pageMetadata.test.mjs": "77a74d4b70019117dc88f782dd973cc4880e797954bfd33465871139dc0e7a32",
     "test/refreshKitHandoff.test.mjs": "58f2380adcc2829e66ddb9654d95441eb25de716af2574f1e2f741dbc5f34336",
     "test/ruleCitations.test.mjs": "adca35331c0a5b6b6b62ff5c51aa4e7229bba09f4b9420d152fb45f9c98821ba",
-    "test/voice.test.mjs": "02dde4ab14db6bca0cbd689c5f2e628e4dee8701fdd4738b263efd49609df77f"
+    "test/voice.test.mjs": "5337604804df52fe0c649eeb940f7b7662f6f354b73ab2a4433af0661947d929"
   },
   "companions": {
     "docs/verification-rules.md": "6c252cce163b2606bc6263b5c9737c9a8807bbbefe50787809bf57699b02287a",
-    "docs/content-guidelines.md": "b7a5a08b7dcbd4c8176918c5ad63d2431689fda5a7b6efbf4494fb4c4ff8cc88"
+    "docs/content-guidelines.md": "b0fe65c202151612a8b77a038fac2d3bb91989b197033587238146297593d1d6"
   }
 }

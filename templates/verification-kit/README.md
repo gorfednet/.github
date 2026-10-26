@@ -103,8 +103,8 @@ in a summary or heading.
 
 ```sh
 npm run build && node verification-kit/bin/check-voice.mjs          # dist/ or build/ HTML
-node verification-kit/bin/check-voice.mjs 'src/content/locales/en.ts' 'content/*.json' \
-  --allow voice-allow.json --allow-shrinks /tmp/voice-allow.main.json
+node verification-kit/bin/check-voice.mjs 'src/content/locales/*.ts' 'content/*.json' \
+  --allow voice-allow.json --allow-shrinks verification-kit/state/voice-allow.json
 node verification-kit/bin/check-voice.mjs README.md 'docs/**/*.md' --term Door   # a spec repository
 ```
 
@@ -125,13 +125,67 @@ unhyphenated "a let down" always: the lint cannot tell that noun from the verb,
 and the plain rewrite is better either way. "stray" matches the bare word only,
 not "astray" or "strayed".
 
-A glob that matches nothing fails (V2). Text inside double quotes, straight or
-curly, or curly single quotes is exempt: it is the site's own label being
-quoted. Straight single quotes are not, because they are also apostrophes.
-The allowlist is a JSON array of `{match, where, reason, reviewBy}`; a lapsed
-`reviewBy` warns and never fails (V5), an entry that allowed nothing warns, and
-`--allow-shrinks <previous>` (for example `git show origin/main:voice-allow.json`)
-fails on any entry the previous list did not have.
+A glob that matches nothing fails (V2). `--exclude <glob>` (repeatable) drops
+files from every glob's matches before that check, so a glob whose every match
+is excluded still fails, and so does an exclude that removed nothing:
+
+```sh
+node verification-kit/bin/check-voice.mjs 'dist/**/*.html' --exclude 'dist/admin/**'
+```
+
+**Language.** The phrase lists are English, and "door" is Dutch for "through".
+A file's language is, first match wins: a `--lang-map '<glob>=<lang>'` entry
+(repeatable), the `lang` on an HTML file's `<html>`, a locale code in its path
+(`dist/nl/…`, `locales/nl.ts`, `index.nl.html`, `locales/pt-BR/…`), else
+English. Only ISO 639-1 codes count, with a script or region in its registered
+case (`zh-Hant`, `pt-BR`), so `dist/js/` and `no-js.html` stay English. A
+non-English file skips rules 4, 6, 8, 9 and 10 and is still held to the summary
+length, the pivot shape and link labels read by key. Every run prints how many
+files it read as not English and why, so a path that reads as a locale by
+accident is visible.
+
+```sh
+node verification-kit/bin/check-voice.mjs 'content/**/*.md' --lang-map 'content/handbuch/**=de'
+```
+
+**Quotation.** Text inside double quotes, straight or curly, or curly single
+quotes is exempt: it is the site's own label being quoted. Straight single
+quotes are not, because they are also apostrophes. Quoted blocks are exempt
+the same way, because a client's recommendation is the client's words: in HTML
+the text inside `<blockquote>`, `<q>` and any element whose class or role
+contains "quote" or "testimonial" is not read; in JSON, TS/JS and front matter
+a string whose own key matches /quote|passage|pull|testimonial|recommendation/i
+skips the phrase lists (`recommendations[0].passage` does,
+`recommendations[0].note` does not). A Markdown `>` line is still read: in a
+README it is usually the author's own note.
+
+**Allowlist.** A JSON array of `{match, where, reason, reviewBy}`; a lapsed
+`reviewBy` warns and never fails (V5), and an entry that allowed nothing warns.
+`--allow-shrinks <previous>` fails on any entry the previous list did not have,
+so the list only shrinks. `--shrinks-only` runs that comparison alone, reading
+no content. A repository wires the previous list one of two ways:
+
+- From main, in CI. A caller of `pr-check-static` sets `voice-allow-shrinks: true`
+  (and `voice-allowlist:` when the list is not `voice-allow.json` at the root).
+  The workflow fetches `origin/main`, compares `git show origin/main:<list>` with
+  the pull request's list, and passes with a note when main has no list yet or
+  the branch removed it; it fails when neither side has the file. A pull request
+  is checked out merged with main, so an entry main has since removed does not
+  read as growth. Another workflow does the same by hand:
+
+  ```sh
+  git fetch --no-tags --depth=1 origin +refs/heads/main:refs/remotes/origin/main
+  git show origin/main:voice-allow.json > "$RUNNER_TEMP/voice-allow.main.json"
+  node verification-kit/bin/check-voice.mjs --allow voice-allow.json \
+    --allow-shrinks "$RUNNER_TEMP/voice-allow.main.json" --shrinks-only
+  ```
+
+- From a committed copy, offline. Keep the list as of the last release in
+  `verification-kit/state/voice-allow.json` (the kit's drift check, manifest and
+  refresh leave `state/` alone; it is the project's) and copy the list over it
+  as a release step. The test suite then runs
+  `--allow voice-allow.json --allow-shrinks verification-kit/state/voice-allow.json`,
+  which needs no network and no git history.
 
 ## Backlog
 

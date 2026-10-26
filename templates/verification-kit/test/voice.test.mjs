@@ -10,7 +10,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { after, describe, it } from 'node:test'
-import { checkFile, checkString } from '../bin/check-voice.mjs'
+import { checkFile, checkString, languageOf, localeFromPath, selectFiles } from '../bin/check-voice.mjs'
 
 const CHECKER = fileURLToPath(new URL('../bin/check-voice.mjs', import.meta.url))
 const dirs = []
@@ -368,5 +368,166 @@ describe('check-voice --term', () => {
     const r = run(dir, ['spec.md', '--term', '--allow', 'x'])
     assert.equal(r.status, 1)
     assert.match(r.stderr, /--term needs one word/)
+  })
+})
+
+describe('check-voice language (0.48.2)', () => {
+  const hitsIn = (rel, src, options) => checkFile(rel, src, options).hits.map((h) => `${h.rule}:${h.text.toLowerCase()}`)
+
+  it('a locales/nl.ts with "door" passes: Dutch for "through", not the metaphor', () => {
+    const ts = "export const nl = {\n  intro: 'Gemaakt door een klein team.',\n}\n"
+    assert.deepEqual(hitsIn('src/content/locales/nl.ts', ts), [])
+    assert.equal(checkFile('src/content/locales/nl.ts', ts).lang, 'nl')
+  })
+
+  it('dist/nl/index.html with <html lang="nl"> passes', () => {
+    const html = '<!doctype html><html lang="nl"><body><p>Ontworpen door de studio.</p></body></html>'
+    assert.deepEqual(hitsIn('dist/nl/index.html', html), [])
+    // The lang attribute alone is enough, wherever the file sits.
+    assert.deepEqual(hitsIn('dist/index.html', html), [])
+    assert.equal(checkFile('dist/index.html', html).langFrom, 'html lang')
+  })
+
+  it('near miss: an English file with "door" still fails, by path, by lang and by default', () => {
+    assert.deepEqual(hitsIn('src/content/locales/en.ts', "export const en = { intro: 'Every door is open.' }\n"), ['4:door'])
+    assert.deepEqual(hitsIn('dist/index.html', '<html lang="en-GB"><p>Every door is open.</p></html>'), ['4:door'])
+    assert.deepEqual(hitsIn('content/page.json', JSON.stringify({ body: 'Every door is open.' })), ['4:door'])
+  })
+
+  it('--lang-map overrides the path and the lang attribute', () => {
+    const md = '# Seite\n\nDie Tür ist robust und seamless.\n'
+    const langMap = [{ re: /^content\/(?:.*\/)?[^/]*\.de\.md$/, lang: 'de' }]
+    assert.deepEqual(hitsIn('content/a/page.de.md', md, { langMap }), [])
+    assert.deepEqual(hitsIn('content/a/page.md', md, { langMap }).sort(), ['8:robust', '8:seamless'])
+    const mapped = languageOf('dist/fr/index.html', '<html lang="fr">', [{ re: /^dist\//, lang: 'en' }])
+    assert.deepEqual(mapped, { lang: 'en', from: 'lang-map' })
+  })
+
+  it('reads a locale from a directory, a basename or a dotted suffix, and only an ISO 639-1 code', () => {
+    assert.equal(localeFromPath('dist/nl/about/index.html'), 'nl')
+    assert.equal(localeFromPath('src/locales/pt-BR/home.json'), 'pt-BR')
+    assert.equal(localeFromPath('src/content/locales/fr.ts'), 'fr')
+    assert.equal(localeFromPath('dist/index.de.html'), 'de')
+    assert.equal(localeFromPath('src/locales/zh-Hant.json'), 'zh-Hant')
+    // Near misses: not codes, or a lower-case tail that is a file name.
+    for (const rel of ['dist/js/app.html', 'docs/ux/notes.md', 'src/my-file.ts', 'src/no-js.html', 'src/to-do.ts', 'README.md'])
+      assert.equal(localeFromPath(rel), undefined, rel)
+  })
+
+  it('a non-English summary is still held to the structural rules', () => {
+    const summary = 'Een. Twee. Drie. Vier. Vijf.'
+    const found = checkFile('locales/nl.json', JSON.stringify({ summary })).hits.map((h) => h.rule)
+    assert.deepEqual(found, ['summary'])
+    const label = checkFile('locales/nl.json', JSON.stringify({ cta: 'Learn more' })).hits.map((h) => h.rule)
+    assert.deepEqual(label, ['label'])
+  })
+
+  it('the CLI takes --lang-map, prints the files it read as not English, and refuses a malformed entry', () => {
+    const dir = project({
+      'content/guide/seite.de.md': '# A\n\nDie Tür ist robust.\n',
+      'content/handbuch/seite.md': '# B\n\nDas Handbuch ist robust.\n',
+    })
+    // The handbook has no locale in its path, so without a map it is English.
+    const without = run(dir, ['content/**/*.md'])
+    assert.equal(without.status, 1)
+    assert.equal(without.stdout.match(/rule 8/g)?.length, 1, without.stdout)
+    assert.match(without.stdout, /content\/handbuch\/seite\.md:L3: rule 8 "robust"/)
+    const mapped = run(dir, ['content/**/*.md', '--lang-map', 'content/**/*.de.md=de', '--lang-map', 'content/handbuch/**=de'])
+    assert.equal(mapped.status, 0, mapped.stdout + mapped.stderr)
+    assert.match(mapped.stdout, /not English, phrase lists skipped: 2 file\(s\) de \(lang-map\)/)
+    const bad = run(dir, ['content/**/*.md', '--lang-map', 'content/**/*.md'])
+    assert.equal(bad.status, 1)
+    assert.match(bad.stderr, /--lang-map needs '<glob>=<lang>'/)
+  })
+})
+
+describe('check-voice quoted blocks (0.48.2)', () => {
+  const hitsIn = (rel, src) => checkFile(rel, src).hits.map((h) => `${h.location} ${h.rule}:${h.text.toLowerCase()}`)
+
+  it('a blockquote with "robust" passes; the same words in a plain paragraph fail', () => {
+    assert.deepEqual(hitsIn('i.html', '<blockquote><p>A robust partner.</p><footer>A client</footer></blockquote>'), [])
+    assert.deepEqual(hitsIn('i.html', '<p>A robust partner.</p>'), ['i.html:1 8:robust'])
+  })
+
+  it('a <q> inside a paragraph is exempt, the rest of the paragraph is not', () => {
+    assert.deepEqual(hitsIn('i.html', '<p>She called it <q>robust</q>, and it is seamless.</p>'), ['i.html:1 8:seamless'])
+  })
+
+  it('an element whose class or role names a quote or testimonial is exempt, nested tags included', () => {
+    for (const open of ['<div class="pullquote">', '<section class="client-testimonial">', '<figure role="quote">']) {
+      const tag = /^<(\w+)/.exec(open)[1]
+      const html = `${open}<div><p>A truly robust team.</p></div></${tag}><p>Plain.</p>`
+      assert.deepEqual(hitsIn('i.html', html), [], open)
+    }
+    // The close is found by depth, so text after the quote's own close is read.
+    const after = '<div class="quote"><div>Robust.</div></div><p>A seamless page.</p>'
+    assert.deepEqual(hitsIn('i.html', after), ['i.html:1 8:seamless'])
+  })
+
+  it('near miss: a class that merely sits near a quote is not one', () => {
+    assert.deepEqual(hitsIn('i.html', '<div class="intro"><p>A robust partner.</p></div>'), ['i.html:1 8:robust'])
+  })
+
+  it('a JSON key recommendations[0].passage passes; a sibling key that is not a quote fails', () => {
+    const json = JSON.stringify({ recommendations: [{ passage: 'A robust, seamless partner.', note: 'A robust list.' }] })
+    assert.deepEqual(hitsIn('en.json', json), ['en.json:recommendations[0].note 8:robust'])
+  })
+
+  it('a TS string under a quote key passes, and structural rules still run on it', () => {
+    const ts = "export const en = { testimonial: 'Truly robust.', body: 'Truly robust.' }\n"
+    assert.deepEqual(hitsIn('en.ts', ts).sort(), ['en.ts:body 8:robust', 'en.ts:body 8:truly'])
+  })
+})
+
+describe('check-voice --exclude (0.48.2)', () => {
+  const all = ['dist/index.html', 'dist/nl/index.html', 'dist/admin/index.html', 'content/en.json']
+
+  it('removes matched files from a glob before the empty-selection check', () => {
+    const r = selectFiles(all, { globs: ['dist/**/*.html'], excludes: ['dist/admin/**'] })
+    assert.deepEqual(r, { files: ['dist/index.html', 'dist/nl/index.html'], errors: [] })
+  })
+
+  it('a glob whose every match is excluded is still an error (V2), as is an exclude that removed nothing', () => {
+    const emptied = selectFiles(all, { globs: ['content/*.json'], excludes: ['content/**'] })
+    assert.match(emptied.errors.join(), /every file matched by content\/\*\.json is excluded/)
+    const stale = selectFiles(all, { globs: ['dist/**/*.html'], excludes: ['dist/old/**'] })
+    assert.match(stale.errors.join(), /--exclude matched no selected file: dist\/old\/\*\*/)
+    const defaults = selectFiles(['dist/index.html'], { globs: [], excludes: ['dist/**'] })
+    assert.match(defaults.errors.join(), /every built HTML file under dist\/ or build\/ is excluded/)
+  })
+
+  it('the CLI applies it, and fails closed when it excludes everything', () => {
+    const dir = project({ 'dist/index.html': '<p>Fine.</p>', 'dist/admin/index.html': '<p>A seamless admin.</p>' })
+    assert.equal(run(dir).status, 1)
+    const r = run(dir, ['--exclude', 'dist/admin/**'])
+    assert.equal(r.status, 0, r.stdout + r.stderr)
+    assert.match(r.stdout, /1 file\(s\)/)
+    const all = run(dir, ['dist/**/*.html', '--exclude', 'dist/**'])
+    assert.equal(all.status, 1)
+    assert.match(all.stderr, /is excluded \(rule V2/)
+    assert.match(run(dir, ['--exclude']).stderr, /--exclude needs a value/)
+  })
+})
+
+describe('check-voice --shrinks-only (0.48.2)', () => {
+  const entry = (match) => ({ match, where: 'content/en.json', reason: 'r', reviewBy: '2099-01-01' })
+
+  it('compares the two lists without reading content, and fails on growth', () => {
+    // No dist/ and no content: a full run would fail on the empty selection.
+    const dir = project({ 'prev.json': [entry('door')], 'grew.json': [entry('door'), entry('seam')], 'same.json': [] })
+    const args = (cur) => ['--allow', join(dir, cur), '--allow-shrinks', join(dir, 'prev.json'), '--shrinks-only']
+    const grew = run(dir, args('grew.json'))
+    assert.equal(grew.status, 1)
+    assert.match(grew.stdout, /allowlist grew: "seam"/)
+    const shrank = run(dir, args('same.json'))
+    assert.equal(shrank.status, 0, shrank.stdout + shrank.stderr)
+    assert.match(shrank.stdout, /none new against/)
+  })
+
+  it('needs both lists and takes no content selection', () => {
+    const dir = project({ 'a.json': [] })
+    assert.match(run(dir, ['--allow', join(dir, 'a.json'), '--shrinks-only']).stderr, /--shrinks-only needs --allow and --allow-shrinks/)
+    const withGlob = run(dir, ['x.json', '--allow', join(dir, 'a.json'), '--allow-shrinks', join(dir, 'a.json'), '--shrinks-only'])
+    assert.match(withGlob.stderr, /takes no glob/)
   })
 })

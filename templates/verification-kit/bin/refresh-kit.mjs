@@ -47,14 +47,17 @@ const SELF_PATH = fileURLToPath(import.meta.url)
 const SELF_AT_START = readFileSync(SELF_PATH, 'utf8')
 const SUPERSEDED = 'REFRESH_KIT_SUPERSEDED'
 
-/** Every file in the vendored kit except the manifest and the starters. */
+/**
+ * Every file in the vendored kit except the manifest, the starters and the
+ * project's own `state/` (see check-kit-drift.mjs), which a refresh must not delete.
+ */
 function kitFiles(root) {
   const found = []
   const walk = (dir) => {
     for (const entry of readdirSync(dir).sort()) {
       const path = join(dir, entry)
       const rel = relative(root, path).split(sep).join('/')
-      if (rel === 'MANIFEST.json' || rel === 'templates') continue
+      if (rel === 'MANIFEST.json' || rel === 'templates' || rel === 'state') continue
       if (statSync(path).isDirectory()) walk(path)
       else found.push(rel)
     }

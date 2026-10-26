@@ -11,14 +11,26 @@
  *
  * Usage:
  *   node verification-kit/bin/check-voice.mjs [glob …] [--root <dir>]
+ *        [--exclude <glob> …] [--lang-map '<glob>=<lang>' …]
  *        [--allow <voice-allow.json>] [--allow-shrinks <previous.json>]
- *        [--term <word> …]
+ *        [--shrinks-only] [--term <word> …]
  *
  * With no glob it reads `dist/**\/*.html` and `build/**\/*.html`. Locale and
  * content files (JSON, TS, JS) are passed explicitly, e.g.
  * `'src/content/locales/en.ts'`. Every glob given must match at least one file
  * (rule V2: an empty selection is an error, never a pass). With no glob, at
- * least one of the two defaults must match.
+ * least one of the two defaults must match. `--exclude <glob>` (repeatable)
+ * removes files from each glob's matches before that check, so a glob whose
+ * every match is excluded is still an error, and so is an exclude that removes
+ * nothing (a stale filter is a selection nobody can see).
+ *
+ * Language. The phrase lists (rules 4, 6, 8, 9 and 10) are English; "door" is
+ * the Dutch for "through". A file's language is, in order: the first
+ * `--lang-map '<glob>=<lang>'` whose glob matches it, the `lang` attribute on
+ * an HTML file's <html> element, a locale code in its path (`/nl/`, `nl.ts`,
+ * `.nl.html`, `locales/nl/`), else English. A non-English file skips the phrase
+ * lists and is still held to the structural rules: summary length, the pivot
+ * shape, and link labels read by key.
  *
  * What is read:
  *   - HTML: the text of p, li, dd, dt, figcaption, h1–h4, button, a and title,
@@ -41,7 +53,11 @@
  * quotes (“…”) or curly single quotes (‘…’) is the site's own label being
  * quoted — an analysis that names a store's "Shop by room" button has to be
  * able to spell it. Straight single quotes are not exempt, because they are
- * also apostrophes and pairing them would exempt half a sentence.
+ * also apostrophes and pairing them would exempt half a sentence. Quoted
+ * blocks are exempt the same way: in HTML, the text inside <blockquote>, <q>
+ * and any element whose class or role contains "quote" or "testimonial" is not
+ * read; in JSON, TS/JS and front matter, a string whose own key matches
+ * /quote|passage|pull|testimonial|recommendation/i skips the phrase lists.
  *
  * Defined terms (`--term <word>`, repeatable): a word a specification uses as a
  * name, such as a field called "Door", is exempt where it is spelt exactly so
@@ -56,7 +72,9 @@
  * fails (rule V5: a pull request cannot change the date). An entry that allowed
  * nothing is printed too, so it can be removed. `--allow-shrinks <previous>`
  * fails when the allowlist names any entry the previous one did not: the list
- * only ever shrinks between releases.
+ * only ever shrinks between releases. `--shrinks-only` runs that comparison
+ * (and validates both lists) without reading any content, for a CI step whose
+ * only job is the shrink rule.
  */
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import { join, relative, sep, extname } from 'node:path'
@@ -107,6 +125,65 @@ const SUMMARY_KEY = /summary|theme|description/i
 const HEADING_KEY = /heading|headline|title/i
 const LABEL_KEY = /label|cta|button|link/i
 const PIVOT_OPENERS = /^(?:The|Its|Where|What)\b/
+const QUOTED_KEY = /quote|passage|pull|testimonial|recommendation/i
+const QUOTE_ATTR = /quote|testimonial/i
+
+/** ISO 639-1 codes, so a path segment is read as a locale only when it is one. */
+const LOCALES = new Set(
+  ('aa ab af ak am an ar as av ay az ba be bg bh bi bm bn bo br bs ca ce ch co cr cs cu cv cy da de dv dz ee el en ' +
+    'eo es et eu fa ff fi fj fo fr fy ga gd gl gn gu gv ha he hi ho hr ht hu hy hz ia id ie ig ii ik io is it iu ja ' +
+    'jv ka kg ki kj kk kl km kn ko kr ks ku kv kw ky la lb lg li ln lo lt lu lv mg mh mi mk ml mn mr ms mt my na nb ' +
+    'nd ne ng nl nn no nr nv ny oc oj om or os pa pi pl ps pt qu rm rn ro ru rw sa sc sd se sg si sk sl sm sn so sq ' +
+    'sr ss st su sv sw ta te tg th ti tk tl tn to tr ts tt tw ty ug uk ur uz ve vi vo wa wo xh yi yo za zh zu').split(' '),
+)
+// A language, then optionally a script (Hant), a region (BR, 419) or both, in
+// their registered case. A lower-case tail is refused, because `my-file`,
+// `no-js` and `to-do` are file names, not Burmese, Norwegian and Tongan.
+const LOCALE_CODE = /^([a-z]{2})(?:[-_][A-Z][a-z]{3})?(?:[-_](?:[A-Z]{2}|\d{3}))?$/
+
+/** The primary language subtag of a BCP 47 tag, lower-cased: "pt-BR" → "pt". */
+const primary = (tag) => tag.trim().toLowerCase().split(/[-_]/)[0]
+export const isEnglish = (lang) => primary(lang) === 'en'
+
+/**
+ * A locale code in a path, or undefined. A directory segment (`/nl/`,
+ * `locales/pt-BR/`), a whole basename (`nl.ts`, `nl.json`) or a dotted suffix
+ * before the extension (`index.nl.html`). Only ISO 639-1 codes count, so
+ * `dist/js/` and `docs/ux/` are not read as languages.
+ */
+export function localeFromPath(rel) {
+  const parts = rel.split('/')
+  const name = parts.pop()
+  const code = (s) => {
+    const m = LOCALE_CODE.exec(s)
+    return m && LOCALES.has(m[1]) ? s : undefined
+  }
+  const stem = name.replace(/\.[^.]+$/, '')
+  const found = code(stem) ?? code(stem.split('.').slice(1).pop() ?? '')
+  if (found) return found
+  for (const dir of parts.reverse()) if (code(dir)) return dir
+  return undefined
+}
+
+/** The `lang` on an HTML file's root element, or undefined. */
+export function htmlLang(src) {
+  const root = /<html\b([^>]*)>/i.exec(src)
+  return root ? (/\blang\s*=\s*["']?([A-Za-z0-9_-]+)/i.exec(root[1])?.[1] ?? undefined) : undefined
+}
+
+/**
+ * A file's language: the first --lang-map entry whose glob matches, the HTML
+ * root's lang, a locale code in its path, else English. Returns {lang, from}.
+ */
+export function languageOf(rel, src, langMap = []) {
+  for (const { re, lang } of langMap) if (re.test(rel)) return { lang, from: 'lang-map' }
+  const ext = extname(rel).toLowerCase()
+  const attr = ext === '.html' || ext === '.htm' ? htmlLang(src) : undefined
+  if (attr) return { lang: attr, from: 'html lang' }
+  const path = localeFromPath(rel)
+  if (path) return { lang: path, from: 'path' }
+  return { lang: 'en', from: 'default' }
+}
 
 /** Replace quoted spans with spaces so offsets and word bounds survive. */
 export function stripQuoted(text) {
@@ -137,6 +214,9 @@ export function stripTerms(text, terms = []) {
 /**
  * Check one string. `kind` is 'summary', 'heading', 'label' or 'text'.
  * `options.terms` lists words used as defined terms (see `--term`).
+ * `options.lang` is the file's language: anything but English skips the
+ * English phrase lists. `options.quoted` marks a string that is a quotation
+ * (a passage or testimonial by key), which skips them too.
  * Returns [{rule, text}]; rule-10 hits are returned with `rationed: true`.
  */
 export function checkString(raw, kind, options = {}) {
@@ -146,7 +226,8 @@ export function checkString(raw, kind, options = {}) {
   // unpair it.
   const text = raw.replace(/\s+/g, ' ')
   const open = stripTerms(stripQuoted(text), options.terms).replace(/[’ʼ]/g, "'")
-  for (const [rule, re] of Object.entries(COMPILED)) {
+  const phrases = !options.quoted && isEnglish(options.lang ?? 'en')
+  for (const [rule, re] of phrases ? Object.entries(COMPILED) : []) {
     re.lastIndex = 0
     for (const m of open.matchAll(re)) {
       const hit = { rule, text: m[0] }
@@ -193,11 +274,48 @@ const decode = (s) =>
 
 const lineAt = (src, index) => src.slice(0, index).split('\n').length
 
+/** [start, end) of the element opened at `open`, its close found by counting its tag. */
+function elementEnd(body, open) {
+  const tag = open[1].toLowerCase()
+  const tags = new RegExp(`<(/?)${tag}\\b[^>]*>`, 'gi')
+  tags.lastIndex = open.index + open[0].length
+  let depth = 1
+  for (let t; (t = tags.exec(body)); ) {
+    depth += t[1] ? -1 : 1
+    if (depth === 0) return { inner: t.index, end: t.index + t[0].length }
+  }
+  return { inner: body.length, end: body.length }
+}
+
+/**
+ * Blank the text of every quoted block, keeping tags, newlines and offsets: a
+ * <blockquote>, a <q>, and any element whose class or role contains "quote" or
+ * "testimonial". A recommendation quoted on the page is someone else's words,
+ * like text in quotation marks, and its author's "robust" is not the site's.
+ */
+export function blankQuoted(body) {
+  let out = body
+  for (const m of body.matchAll(/<([a-z][\w-]*)\b([^>]*)>/gi)) {
+    const tag = m[1].toLowerCase()
+    const cls = /\bclass\s*=\s*["']([^"']*)["']/i.exec(m[2])?.[1] ?? ''
+    const role = /\brole\s*=\s*["']([^"']*)["']/i.exec(m[2])?.[1] ?? ''
+    if (tag !== 'blockquote' && tag !== 'q' && !QUOTE_ATTR.test(cls) && !QUOTE_ATTR.test(role)) continue
+    if (m[0].endsWith('/>')) continue
+    const { inner } = elementEnd(body, m)
+    const start = m.index + m[0].length
+    const blanked = out.slice(start, inner).replace(/(<[^>]*>)|[^\n]/g, (c, t) => t ?? ' ')
+    out = out.slice(0, start) + blanked + out.slice(inner)
+  }
+  return out
+}
+
 /** Strings a visitor reads in one HTML file: [{where, text, kind}]. */
 export function htmlStrings(src) {
   const out = []
-  const body = src.replace(/<script\b[\s\S]*?<\/script>|<style\b[\s\S]*?<\/style>|<!--[\s\S]*?-->/gi, (m) =>
-    m.replace(/[^\n]/g, ' '),
+  const body = blankQuoted(
+    src.replace(/<script\b[\s\S]*?<\/script>|<style\b[\s\S]*?<\/style>|<!--[\s\S]*?-->/gi, (m) =>
+      m.replace(/[^\n]/g, ' '),
+    ),
   )
   /*
    * A summary is any element whose class names "summary", whatever its tag:
@@ -211,15 +329,7 @@ export function htmlStrings(src) {
   for (const m of body.matchAll(/<([a-z][\w-]*)\b([^>]*)>/gi)) {
     const cls = /\bclass\s*=\s*["']([^"']*)["']/i.exec(m[2])?.[1] ?? ''
     if (!/summary/i.test(cls) || inSummary.some(([s, e]) => m.index > s && m.index < e)) continue
-    const tag = m[1].toLowerCase()
-    const tags = new RegExp(`<(/?)${tag}\\b[^>]*>`, 'gi')
-    tags.lastIndex = m.index + m[0].length
-    let depth = 1
-    let end = body.length
-    for (let t; depth > 0 && (t = tags.exec(body)); ) {
-      depth += t[1] ? -1 : 1
-      if (depth === 0) end = t.index
-    }
+    const end = elementEnd(body, m).inner
     inSummary.push([m.index, end])
     const text = decode(body.slice(m.index + m[0].length, end))
     if (text) out.push({ where: String(lineAt(src, m.index)), text, kind: 'summary' })
@@ -251,7 +361,8 @@ export function htmlStrings(src) {
 export function jsonStrings(src) {
   const out = []
   const walk = (node, path, key) => {
-    if (typeof node === 'string') out.push({ where: path || '(root)', text: node, kind: kindOfKey(key) })
+    if (typeof node === 'string')
+      out.push({ where: path || '(root)', text: node, kind: kindOfKey(key), quoted: QUOTED_KEY.test(key) })
     else if (Array.isArray(node)) node.forEach((v, i) => walk(v, `${path}[${i}]`, key))
     else if (node && typeof node === 'object')
       for (const [k, v] of Object.entries(node)) walk(v, path ? `${path}.${k}` : k, k)
@@ -290,7 +401,12 @@ export function scriptStrings(src) {
     const text = m[2].replace(/\\(['"`\\])/g, '$1').replace(/\\n/g, ' ')
     if (!/[A-Za-z]{2}/.test(text)) continue
     const key = keyBefore(m.index)
-    out.push({ where: key ?? String(lineAt(src, m.index)), text, kind: key ? kindOfKey(key) : 'text' })
+    out.push({
+      where: key ?? String(lineAt(src, m.index)),
+      text,
+      kind: key ? kindOfKey(key) : 'text',
+      quoted: key !== undefined && QUOTED_KEY.test(key),
+    })
   }
   return out
 }
@@ -335,7 +451,8 @@ export function markdownStrings(src) {
         const m = /^\s*([A-Za-z_][\w-]*)\s*:\s*(.+?)\s*$/.exec(l)
         if (!m) continue
         const value = m[2].replace(/^(["'])(.*)\1$/, '$2')
-        if (/[A-Za-z]{2}/.test(value)) out.push({ where: m[1], text: value, kind: kindOfKey(m[1]) })
+        if (/[A-Za-z]{2}/.test(value))
+          out.push({ where: m[1], text: value, kind: kindOfKey(m[1]), quoted: QUOTED_KEY.test(m[1]) })
       }
       i = close + 1
     }
@@ -414,9 +531,14 @@ export function markdownStrings(src) {
   return out
 }
 
-/** Every hit in one file, with rule-10 rationing applied per file. */
+/**
+ * Every hit in one file, with rule-10 rationing applied per file. `options.lang`
+ * overrides the file's language; otherwise it comes from `languageOf` with
+ * `options.langMap`. The result carries the language used and where it came from.
+ */
 export function checkFile(rel, src, options = {}) {
   const ext = extname(rel).toLowerCase()
+  const language = options.lang ? { lang: options.lang, from: 'option' } : languageOf(rel, src, options.langMap)
   const strings =
     ext === '.html' || ext === '.htm'
       ? htmlStrings(src)
@@ -428,7 +550,7 @@ export function checkFile(rel, src, options = {}) {
   const hits = []
   const rationed = new Map()
   for (const s of strings) {
-    for (const hit of checkString(s.text, s.kind, options)) {
+    for (const hit of checkString(s.text, s.kind, { terms: options.terms, lang: language.lang, quoted: s.quoted })) {
       if (hit.rationed) {
         const k = hit.text.toLowerCase().replace(/\s+/g, ' ')
         const seen = (rationed.get(k) ?? 0) + 1
@@ -441,6 +563,8 @@ export function checkFile(rel, src, options = {}) {
   const seen = new Set()
   return {
     strings: strings.length,
+    lang: language.lang,
+    langFrom: language.from,
     hits: hits.filter((h) => {
       const k = `${h.location}|${h.rule}|${h.text.toLowerCase()}`
       return seen.has(k) ? false : (seen.add(k), true)
@@ -498,12 +622,34 @@ function fail(message) {
 }
 
 function parseArgs(argv) {
-  const args = { globs: [], root: process.cwd(), allow: null, shrinks: null, terms: [] }
+  const args = {
+    globs: [],
+    root: process.cwd(),
+    allow: null,
+    shrinks: null,
+    shrinksOnly: false,
+    terms: [],
+    excludes: [],
+    langMap: [],
+  }
+  const value = (flag, i) => {
+    const v = argv[i]
+    if (v === undefined || v.startsWith('-')) fail(`${flag} needs a value`)
+    return v
+  }
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]
     if (a === '--root') args.root = argv[++i]
     else if (a === '--allow') args.allow = argv[++i]
     else if (a === '--allow-shrinks') args.shrinks = argv[++i]
+    else if (a === '--shrinks-only') args.shrinksOnly = true
+    else if (a === '--exclude') args.excludes.push(value(a, ++i))
+    else if (a === '--lang-map') {
+      const entry = value(a, ++i)
+      const m = /^(.+)=([A-Za-z]{2,3}(?:[-_][A-Za-z0-9]{2,8})*)$/.exec(entry)
+      if (!m) fail(`--lang-map needs '<glob>=<lang>', e.g. 'content/**/*.de.md=de'; got ${entry}`)
+      args.langMap.push({ glob: m[1], lang: m[2], re: globToRegExp(m[1].replace(/^\.\//, '')) })
+    }
     else if (a === '--term') {
       const term = argv[++i]
       if (term === undefined || !/^\w[\w-]*$/.test(term)) fail('--term needs one word, e.g. --term Door')
@@ -515,26 +661,59 @@ function parseArgs(argv) {
   for (const k of ['root', 'allow', 'shrinks'])
     if (args[k] === undefined) fail(`--${k === 'shrinks' ? 'allow-shrinks' : k} needs a value`)
   if (args.shrinks && !args.allow) fail('--allow-shrinks needs --allow')
+  if (args.shrinksOnly && !args.shrinks) fail('--shrinks-only needs --allow and --allow-shrinks')
+  if (args.shrinksOnly && (args.globs.length > 0 || args.excludes.length > 0))
+    fail('--shrinks-only reads no content, so it takes no glob and no --exclude')
   return args
+}
+
+/**
+ * The files to read. Each glob's matches lose every excluded file before the
+ * empty-selection check, so a glob whose every match is excluded fails (V2)
+ * just as one that matched nothing does, and an exclude that removed nothing
+ * fails too: a filter that filters nothing is a stale selection.
+ */
+export function selectFiles(all, { globs, excludes = [] }) {
+  const explicit = globs.length > 0
+  const wanted = explicit ? globs : ['dist/**/*.html', 'build/**/*.html']
+  const out = excludes.map((g) => ({ glob: g, re: globToRegExp(g.replace(/^\.\//, '')), used: false }))
+  const excluded = (f) => {
+    let hit = false
+    for (const e of out) if (e.re.test(f)) hit = e.used = true
+    return hit
+  }
+  const files = new Set()
+  const empty = []
+  const emptied = []
+  for (const glob of wanted) {
+    const re = globToRegExp(glob.replace(/^\.\//, ''))
+    const matched = all.filter((f) => re.test(f))
+    const kept = matched.filter((f) => !excluded(f))
+    if (matched.length === 0) empty.push(glob)
+    else if (kept.length === 0) emptied.push(glob)
+    for (const f of kept) files.add(f)
+  }
+  const errors = []
+  if (explicit && empty.length > 0)
+    errors.push(`matched no files: ${empty.join(', ')} (rule V2: an empty selection is an error, never a pass)`)
+  if (explicit && emptied.length > 0)
+    errors.push(`every file matched by ${emptied.join(', ')} is excluded (rule V2: an empty selection is an error)`)
+  const unused = out.filter((e) => !e.used).map((e) => e.glob)
+  if (unused.length > 0) errors.push(`--exclude matched no selected file: ${unused.join(', ')} (a stale filter; remove it)`)
+  if (errors.length === 0 && files.size === 0)
+    errors.push(
+      emptied.length > 0
+        ? `every built HTML file under dist/ or build/ is excluded (rule V2: an empty selection is an error)`
+        : `no built HTML under dist/ or build/. Build first, or pass the files to read.`,
+    )
+  return { files: [...files].sort(), errors }
 }
 
 if (isMain(import.meta.url)) {
   const args = parseArgs(process.argv.slice(2))
-  const all = walkFiles(args.root)
-  const explicit = args.globs.length > 0
-  const globs = explicit ? args.globs : ['dist/**/*.html', 'build/**/*.html']
-  const files = new Set()
-  const empty = []
-  for (const glob of globs) {
-    const re = globToRegExp(glob.replace(/^\.\//, ''))
-    const matched = all.filter((f) => re.test(f))
-    if (matched.length === 0) empty.push(glob)
-    for (const f of matched) files.add(f)
-  }
-  if (explicit && empty.length > 0)
-    fail(`matched no files: ${empty.join(', ')} (rule V2: an empty selection is an error, never a pass)`)
-  if (files.size === 0)
-    fail(`no built HTML under dist/ or build/ in ${args.root}. Build first, or pass the files to read.`)
+  const selected = args.shrinksOnly ? { files: [], errors: [] } : selectFiles(walkFiles(args.root), args)
+  if (selected.errors.length > 0) fail(`${selected.errors.join('\n  ')}\n  (root: ${args.root})`)
+  const files = selected.files
 
   const allow = args.allow ? readAllowlist(args.allow) : []
   if (args.shrinks) {
@@ -546,20 +725,35 @@ if (isMain(import.meta.url)) {
       for (const e of added) console.log(`${args.allow}: allowlist grew: "${e.match}" at ${e.where}`)
       fail(`the allowlist only shrinks; ${added.length} entr${added.length === 1 ? 'y is' : 'ies are'} new`)
     }
+    if (args.shrinksOnly) {
+      console.log(`✓ ${TOOL}: ${args.allow} has ${allow.length} entr${allow.length === 1 ? 'y' : 'ies'}, none new against ${args.shrinks}`)
+      process.exit(0)
+    }
   }
 
   let strings = 0
   const hits = []
+  const foreign = new Map()
   for (const rel of files) {
     let result
     try {
-      result = checkFile(rel, readFileSync(join(args.root, rel), 'utf8'), { terms: args.terms })
+      result = checkFile(rel, readFileSync(join(args.root, rel), 'utf8'), { terms: args.terms, langMap: args.langMap })
     } catch (error) {
       fail(`cannot read ${rel}: ${error.message}`)
     }
     strings += result.strings
     hits.push(...result.hits)
+    if (!isEnglish(result.lang)) {
+      const k = `${result.lang} (${result.langFrom})`
+      foreign.set(k, (foreign.get(k) ?? 0) + 1)
+    }
   }
+  // Printed every run, so a path that reads as a locale by accident is visible:
+  // the phrase lists did not run on these files.
+  if (foreign.size > 0)
+    console.log(
+      `  not English, phrase lists skipped: ${[...foreign].map(([k, n]) => `${n} file(s) ${k}`).join(', ')}`,
+    )
 
   const used = new Set()
   const remaining = hits.filter((h) => {
@@ -581,12 +775,12 @@ if (isMain(import.meta.url)) {
   for (const h of remaining) console.log(`${h.location}: rule ${h.rule} "${h.text}"`)
   if (remaining.length > 0) {
     console.error(
-      `\n✗ ${TOOL}: ${remaining.length} hit(s) in ${files.size} file(s). docs/content-guidelines.md has each rule.`,
+      `\n✗ ${TOOL}: ${remaining.length} hit(s) in ${files.length} file(s). docs/content-guidelines.md has each rule.`,
     )
     process.exit(1)
   }
   console.log(
-    `✓ ${TOOL}: ${files.size} file(s), ${strings} string(s), 0 hits` +
+    `✓ ${TOOL}: ${files.length} file(s), ${strings} string(s), 0 hits` +
       (used.size > 0 ? ` (${used.size} allowed)` : ''),
   )
 }

@@ -162,6 +162,22 @@ describe('check-kit-drift', () => {
     assert.match(result.stderr, /not upstream {2}verification-kit\/canaries\.json/)
   })
 
+  // 0.48.2. A project keeps its previous voice allowlist in verification-kit/state/
+  // for check-voice --allow-shrinks; that is the project's file, not a kit file.
+  it('ignores the project\'s own state/ directory, and only that one', () => {
+    const dir = project({})
+    mkdirSync(join(dir, 'verification-kit', 'state'), { recursive: true })
+    writeFileSync(join(dir, 'verification-kit', 'state', 'voice-allow.json'), '[]\n', 'utf8')
+    const ok = run(dir, ['--offline'])
+    assert.equal(ok.status, 0, ok.stderr)
+    // Near miss: the same file one level down in a kit directory is still not upstream.
+    mkdirSync(join(dir, 'verification-kit', 'bin', 'state'), { recursive: true })
+    writeFileSync(join(dir, 'verification-kit', 'bin', 'state', 'voice-allow.json'), '[]\n', 'utf8')
+    const nested = run(dir, ['--offline'])
+    assert.equal(nested.status, 1)
+    assert.match(nested.stderr, /not upstream\s+verification-kit\/bin\/state\/voice-allow\.json/)
+  })
+
   describe('staleness', () => {
     const files = { 'bin/a.mjs': 'a\n', 'lib/b.mjs': 'b\n' }
     const current = { version: '1.0.0', files: Object.fromEntries(Object.entries(files).map(([r, c]) => [r, sha(c)])) }
@@ -549,6 +565,8 @@ done
     }
 
     const dir = project({ upstream })
+    mkdirSync(join(dir, 'verification-kit', 'state'), { recursive: true })
+    writeFileSync(join(dir, 'verification-kit', 'state', 'voice-allow.json'), '[]\n', 'utf8')
     const env = upstreamTree(dir, {
       'templates/verification-kit/MANIFEST.json': JSON.stringify(upstream),
       'templates/verification-kit/bin/a.mjs': fixed,
@@ -565,6 +583,9 @@ done
       rules,
       'the shared rules document must be written; the drift check compares it and prints this command as the fix',
     )
+
+    // 0.48.2: the project's state/ survives a refresh (it is not in any manifest).
+    assert.equal(readFileSync(join(dir, 'verification-kit/state/voice-allow.json'), 'utf8'), '[]\n')
 
     // The property that matters: after following the remedy, the check passes.
     const after = run(dir, [], stubCurl(dir))

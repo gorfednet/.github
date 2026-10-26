@@ -56,7 +56,14 @@ const CANONICAL = `https://raw.githubusercontent.com/gorfednet/.github/main/${CA
  */
 const CANONICAL_UNCACHED = `https://api.github.com/repos/gorfednet/.github/contents/${CANONICAL_PATH}?ref=main`
 const NOT_TRACKED = new Set(['MANIFEST.json'])
-const NOT_TRACKED_DIRS = new Set(['templates'])
+/*
+ * `state/` is the project's own, never upstream's: a committed copy of what a
+ * check compares against next time, such as the previous voice allowlist that
+ * `check-voice --allow-shrinks` reads. It lives beside the kit so the kit's
+ * README can name one place for it, and so it is neither hashed, nor reported
+ * as not upstream, nor deleted by a refresh.
+ */
+const NOT_TRACKED_DIRS = new Set(['templates', 'state'])
 
 /*
  * Files the kit distributes that do not live inside the kit directory.

@@ -148,6 +148,24 @@ on:
         required: false
         type: string
         default: ""
+      voice-allow-shrinks:
+        description: >-
+          When true, the voice allowlist may only shrink: check-voice compares this
+          branch's allowlist (voice-allowlist) with origin/main's and fails on any
+          entry main did not have. If main has no allowlist yet, the step says so
+          and passes, because the pull request that introduces the list has nothing
+          to shrink from. If neither side has the file, it fails: the path is wrong.
+          The voice check itself runs in the project's own tests; this step reads
+          only the two lists. It runs the kit at the commit this workflow was
+          called at, not a vendored copy, so it needs kit 0.48.2 there.
+        required: false
+        type: boolean
+        default: false
+      voice-allowlist:
+        description: Path to the project's check-voice allowlist, from the repository root.
+        required: false
+        type: string
+        default: voice-allow.json
 jobs:
   check:
     runs-on: ${{ fromJSON(inputs.runs-on != '' && inputs.runs-on || '"ubuntu-latest"') }}
@@ -193,3 +211,42 @@ jobs:
           error-page-root: ${{ inputs.error-page-root }}
           error-page-markers: ${{ inputs.error-page-markers }}
           allow-machine-paths: ${{ inputs.allow-machine-paths }}
+
+      # The allowlist rule (check-voice --allow-shrinks) needs main's copy of the
+      # list, which only CI has at hand: a pull request checkout is one commit
+      # deep. The kit is checked out from this workflow's own commit, so the
+      # rule is the one the caller pinned, not whatever a vendored copy says.
+      - name: Check out the kit for the voice allowlist
+        if: ${{ !cancelled() && inputs.voice-allow-shrinks }}
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: gorfednet/.github
+          ref: ${{ github.job_workflow_sha }}
+          path: .voice-kit
+          sparse-checkout: templates/verification-kit
+          persist-credentials: false
+      - name: Voice allowlist only shrinks
+        if: ${{ !cancelled() && inputs.voice-allow-shrinks }}
+        env:
+          VOICE_KIT: ${{ github.workspace }}/.voice-kit/templates/verification-kit
+          VOICE_ALLOWLIST: ${{ inputs.voice-allowlist }}
+        run: |
+          set -euo pipefail
+          allow="$VOICE_ALLOWLIST"
+          git fetch --no-tags --depth=1 origin +refs/heads/main:refs/remotes/origin/main
+          if ! git cat-file -e "origin/main:$allow" 2>/dev/null; then
+            if [ ! -f "$allow" ]; then
+              echo "::error title=Voice allowlist only shrinks::voice-allow-shrinks is on, but $allow exists" \
+                   "neither on this branch nor on origin/main. Set voice-allowlist to the file's path."
+              exit 1
+            fi
+            echo "origin/main has no $allow yet; this branch introduces it, so there is nothing to shrink from."
+            exit 0
+          fi
+          if [ ! -f "$allow" ]; then
+            echo "$allow is on origin/main and removed here: the list shrank to nothing."
+            exit 0
+          fi
+          previous="${RUNNER_TEMP:-/tmp}/voice-allow.main.json"
+          git show "origin/main:$allow" > "$previous"
+          node "$VOICE_KIT/bin/check-voice.mjs" --allow "$allow" --allow-shrinks "$previous" --shrinks-only

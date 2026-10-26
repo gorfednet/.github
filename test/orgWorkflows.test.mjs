@@ -1340,3 +1340,93 @@ describe("the org's own checkers are wired and pass", () => {
     })
   }
 })
+
+/**
+ * pr-check-static's voice allowlist step (kit 0.48.2). The step's own shell runs
+ * against real temporary git repositories: an "origin" with a main branch, and a
+ * clone standing in for the pull request checkout. What only CI can show is the
+ * checkout of this repository at `github.job_workflow_sha` and the fetch from
+ * GitHub; everything after that is the same commands here.
+ */
+describe('pr-check-static: the voice allowlist only shrinks', () => {
+  const text = readFileSync(join(WORKFLOWS, 'pr-check-static.yml'), 'utf8')
+  const script = stepScript(text, 'Voice allowlist only shrinks')
+  const KIT = join(process.cwd(), 'templates/verification-kit')
+  const entry = (match) => ({ match, where: 'content/en.json', reason: 'r', reviewBy: '2099-01-01' })
+  const gitEnv = {
+    GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@example.test',
+    GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@example.test',
+  }
+  const git = (cwd, ...args) => {
+    const r = spawnSync('git', args, { cwd, encoding: 'utf8', env: { ...process.env, ...gitEnv } })
+    if (r.status !== 0) throw new Error(`git ${args.join(' ')}: ${r.stderr}`)
+  }
+
+  /** main has `onMain` (or no file when undefined); the branch has `onBranch`. */
+  const runWith = ({ onMain, onBranch, allowlist = 'voice-allow.json' }) => {
+    const root = realpathSync(mkdtempSync(join(tmpdir(), 'voice-shrinks-')))
+    try {
+      const origin = join(root, 'origin')
+      mkdirSync(origin)
+      git(origin, 'init', '-q', '-b', 'main')
+      writeFileSync(join(origin, 'README'), 'x\n')
+      if (onMain !== undefined) writeFileSync(join(origin, 'voice-allow.json'), JSON.stringify(onMain))
+      git(origin, 'add', '-A')
+      git(origin, 'commit', '-q', '-m', 'main')
+      const work = join(root, 'work')
+      git(root, 'clone', '-q', origin, work)
+      git(work, 'update-ref', '-d', 'refs/remotes/origin/main')
+      if (onBranch === undefined) rmSync(join(work, 'voice-allow.json'), { force: true })
+      else writeFileSync(join(work, 'voice-allow.json'), JSON.stringify(onBranch))
+      const run = spawnSync('bash', ['-c', script], {
+        cwd: work,
+        encoding: 'utf8',
+        env: { ...process.env, ...gitEnv, VOICE_KIT: KIT, VOICE_ALLOWLIST: allowlist, RUNNER_TEMP: root },
+      })
+      return { code: run.status, output: `${run.stdout}${run.stderr}` }
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  }
+
+  it('fails when the branch adds an entry main does not have', () => {
+    const { code, output } = runWith({ onMain: [entry('door')], onBranch: [entry('door'), entry('seam')] })
+    assert.equal(code, 1, output)
+    assert.match(output, /allowlist grew: "seam"/)
+  })
+
+  it('passes when the list is unchanged or shrank', () => {
+    for (const onBranch of [[entry('door')], []]) {
+      const { code, output } = runWith({ onMain: [entry('door')], onBranch })
+      assert.equal(code, 0, output)
+      assert.match(output, /none new against/)
+    }
+  })
+
+  it('passes, and says why, when main has no allowlist yet or the branch removed it', () => {
+    const added = runWith({ onMain: undefined, onBranch: [entry('door')] })
+    assert.equal(added.code, 0, added.output)
+    assert.match(added.output, /nothing to shrink from/)
+    const removed = runWith({ onMain: [entry('door')], onBranch: undefined })
+    assert.equal(removed.code, 0, removed.output)
+    assert.match(removed.output, /shrank to nothing/)
+  })
+
+  it('fails closed when the file exists on neither side: the path is wrong (V2)', () => {
+    const { code, output } = runWith({ onMain: undefined, onBranch: undefined, allowlist: 'content/voice-allow.json' })
+    assert.equal(code, 1, output)
+    assert.match(output, /::error title=Voice allowlist only shrinks::/)
+  })
+
+  it('is declared as a boolean that defaults off, and both steps run under !cancelled()', () => {
+    const block = text.slice(text.indexOf('      voice-allow-shrinks:')).split('\n').slice(0, 14).join('\n')
+    assert.match(block, /type: boolean\n\s+default: false/)
+    for (const name of ['Check out the kit for the voice allowlist', 'Voice allowlist only shrinks']) {
+      const step = text.slice(text.indexOf(`- name: ${name}`)).split('\n').slice(0, 2).join('\n')
+      assert.match(step, /if: \$\{\{ !cancelled\(\) && inputs\.voice-allow-shrinks \}\}/, name)
+    }
+    // The kit comes from this workflow's own commit, not a copy vendored in the caller.
+    assert.match(text, /ref: \$\{\{ github\.job_workflow_sha \}\}/)
+    assert.match(text, /VOICE_KIT: \$\{\{ github\.workspace \}\}\/\.voice-kit\/templates\/verification-kit/)
+  })
+})
