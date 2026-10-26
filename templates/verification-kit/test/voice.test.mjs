@@ -362,4 +362,11 @@ describe('check-voice --term', () => {
     assert.equal(bare.status, 1)
     assert.match(bare.stderr, /--term needs one word/)
   })
+
+  it('refuses a flag as the word, so --term cannot swallow --allow', () => {
+    const dir = project({ 'spec.md': '# Spec\n\nThe page lists 3 fields.\n' })
+    const r = run(dir, ['spec.md', '--term', '--allow', 'x'])
+    assert.equal(r.status, 1)
+    assert.match(r.stderr, /--term needs one word/)
+  })
 })

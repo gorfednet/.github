@@ -506,7 +506,7 @@ function parseArgs(argv) {
     else if (a === '--allow-shrinks') args.shrinks = argv[++i]
     else if (a === '--term') {
       const term = argv[++i]
-      if (term === undefined || !/^[\w-]+$/.test(term)) fail('--term needs one word, e.g. --term Door')
+      if (term === undefined || !/^\w[\w-]*$/.test(term)) fail('--term needs one word, e.g. --term Door')
       args.terms.push(term)
     }
     else if (a.startsWith('-')) rejectUnknownArgument(TOOL, a)
