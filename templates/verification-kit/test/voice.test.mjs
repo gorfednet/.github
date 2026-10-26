@@ -87,6 +87,7 @@ describe('check-voice structure rules', () => {
     assert.ok(found.some((r) => r.startsWith('1:polished and consistent.')), found.join())
     assert.ok(found.includes('4:corners'))
     assert.ok(found.includes('6:slips'))
+    assert.ok(found.includes('6:the work left'))
   })
 
   it('passes a summary that says the fault first', () => {
@@ -119,7 +120,8 @@ describe('check-voice structure rules', () => {
     for (const tag of ['div', 'section', 'span']) {
       const html = `<${tag} class="report-summary">\n<div><p>${apple}</p></div></${tag}>`
       const found = checkFile('i.html', html).hits.map((h) => `${h.location} ${h.rule}`).sort()
-      assert.deepEqual(found, ['i.html:1 1', 'i.html:1 4', 'i.html:1 6'], tag)
+      // Two rule-6 hits since 0.48.1: "slips" and "the work left".
+      assert.deepEqual(found, ['i.html:1 1', 'i.html:1 4', 'i.html:1 6', 'i.html:1 6'], tag)
     }
   })
 
@@ -207,5 +209,128 @@ describe('check-voice CLI', () => {
     const r = run(project({ 'dist/index.html': '<p>x</p>' }), ['--allow=x'])
     assert.equal(r.status, 1)
     assert.match(r.stderr, /unknown argument/)
+  })
+})
+
+describe('check-voice Markdown', () => {
+  const readme = [
+    '---',
+    'title: A seamless kit',
+    'owner: platform',
+    '---',
+    '# Kit',
+    '',
+    'The kit truly checks every repository',
+    'on every push.',
+    '',
+    '```sh',
+    'echo "a robust script"',
+    'robust',
+    '```',
+    '',
+    '| Check | What it does |',
+    '| --- | --- |',
+    '| voice | A powerful lint |',
+    '',
+    'See [the guide](https://example.com/seamless/guide) and [a delightful page](https://example.com/x).',
+    '',
+    'Run `build --quite robust` before pushing.',
+    '',
+    '- one item that sits',
+    '  on two lines',
+    '',
+    '> A quoted line that elevates.',
+    '',
+    '## Summary',
+    '',
+    'Polished and consistent. The page has 3 sections.',
+    '',
+  ].join('\n')
+  const found = () => checkFile('README.md', readme).hits.map((h) => `${h.location} ${h.rule} ${h.text.toLowerCase()}`)
+
+  it('reads a paragraph as one string, located at its first line', () => {
+    assert.ok(found().includes('README.md:L7 8 truly'), found().join('\n'))
+  })
+
+  it('skips a fenced code block and an inline code span', () => {
+    assert.ok(!found().some((h) => / robust$| quite$/.test(h)), found().join('\n'))
+  })
+
+  it('reads a table cell', () => {
+    assert.ok(found().includes('README.md:L17 8 powerful'), found().join('\n'))
+  })
+
+  it('keeps link text and drops the URL', () => {
+    assert.ok(found().includes('README.md:L19 8 delightful'), found().join('\n'))
+    assert.ok(!found().some((h) => h.startsWith('README.md:L19 ') && h.endsWith(' seamless')), found().join('\n'))
+  })
+
+  it('reads list items, blockquote lines and front matter by key', () => {
+    assert.ok(found().includes('README.md:L23 6 sits'), found().join('\n'))
+    assert.ok(found().includes('README.md:L26 6 elevates'), found().join('\n'))
+    assert.ok(found().includes('README.md:title 8 seamless'), found().join('\n'))
+  })
+
+  it('a paragraph under a Summary heading is a summary, so the pivot applies there only', () => {
+    assert.ok(found().includes('README.md:L30 1 polished and consistent. the page has'), found().join('\n'))
+    const body = 'Polished and consistent. The page has 3 sections.\n'
+    assert.deepEqual(checkFile('a.md', `# Notes\n\n${body}`).hits, [])
+  })
+
+  it('a fixture README on disk: the CLI reads it and fails on its paragraph', () => {
+    const dir = project({ 'README.md': '# Kit\n\nThe kit delivers value.\n\n```\nit delivers value\n```\n' })
+    const r = run(dir, ['README.md'])
+    assert.equal(r.status, 1)
+    assert.equal(r.stdout.trim(), 'README.md:L3: rule 6 "delivers"')
+  })
+})
+
+describe('check-voice phrases added in 0.48.1', () => {
+  const cases = [
+    // [rule, fails, passes]
+    ['6', 'The menu lets the visitor down.', 'The menu hides the price.'],
+    ['6', 'Search let users down on 3 of 5 queries.', 'Search failed 3 of 5 queries.'],
+    ['4', 'The page is in good order.', 'The page passes 12 of 12 checks.'],
+    ['6', 'The work left is small.', 'Two fixes remain.'],
+    ['4', 'A stray focus ring shows on the logo.', 'A focus ring shows on the logo.'],
+  ]
+  for (const [rule, bad, good] of cases) {
+    it(`rule ${rule}: fails "${bad}", passes "${good}"`, () => {
+      assert.ok(rules(bad).some((r) => r.startsWith(`${rule}:`)), rules(bad).join())
+      assert.deepEqual(rules(good), [])
+    })
+  }
+
+  it('near miss: "astray" and "strayed" are not "stray"', () => {
+    assert.deepEqual(rules('Focus goes astray in the menu.'), [])
+    assert.deepEqual(rules('Focus strayed into the footer.'), [])
+  })
+
+  it('near miss: the hyphenated noun "a let-down" is not matched; "let down" spaced is', () => {
+    assert.deepEqual(rules('The launch was a let-down.'), [])
+    assert.ok(rules('The launch was a let down.').includes('6:let down'))
+  })
+})
+
+describe('check-voice --term', () => {
+  it('exempts a defined term spelt exactly, and only that spelling', () => {
+    assert.deepEqual(rules('The Door field names the entry page.'), ['4:door'])
+    assert.deepEqual(checkString('The Door field names the entry page.', 'text', { terms: ['Door'] }), [])
+    const lower = checkString('Every door in the Door field.', 'text', { terms: ['Door'] })
+    assert.deepEqual(lower.map((h) => h.text), ['door'])
+    // Word-bounded: the term does not exempt a longer word.
+    const plural = checkString('Doors list each Door.', 'text', { terms: ['Door'] })
+    assert.deepEqual(plural.map((h) => h.text), ['Doors'])
+  })
+
+  it('the CLI takes --term repeatedly and refuses one without a word', () => {
+    const dir = project({ 'spec.md': '# Spec\n\nThe Door field and the Seam field are required.\n' })
+    assert.equal(run(dir, ['spec.md']).status, 1)
+    assert.equal(run(dir, ['spec.md', '--term', 'Door']).status, 1)
+    const both = run(dir, ['spec.md', '--term', 'Door', '--term', 'Seam'])
+    assert.equal(both.status, 0, both.stdout + both.stderr)
+    const bare = run(dir, ['spec.md', '--term'])
+    assert.equal(bare.status, 1)
+    assert.match(bare.stderr, /--term needs one word/)
   })
 })
