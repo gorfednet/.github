@@ -7,8 +7,12 @@
 # comment with a line that is exactly "claude review" (any case; other lines may explain): once at open, once more on the final head after a push that changed code someone
 # wrote, which keeps reviews inside the Max plan's limits.
 #
-# It authenticates with the owner's Claude subscription (CLAUDE_CODE_OAUTH_TOKEN, from
-# `claude setup-token`), never an API key. It always runs GitHub-hosted (ubuntu-latest): it holds
+# It authenticates with whatever the caller passes as CLAUDE_CODE_OAUTH_TOKEN: the owner's Claude
+# subscription token (from `claude setup-token`, `sk-ant-oat...`) or an Anthropic API key
+# (`sk-ant-api...`) with its own spending cap. The "Pick the credential" step tells them apart by
+# prefix, so a repository switches by replacing the secret's value, with no caller change. An API
+# key keeps reviews off the subscription's weekly limit (owner, 2026-10-27: the shared limit was
+# reached and every review failed). It always runs GitHub-hosted (ubuntu-latest): it holds
 # that secret, and secret-holding jobs stay off the self-hosted pool (owner decision 2026-10-19).
 # The `runs-on` input is still accepted from older callers and ignored.
 #
@@ -116,10 +120,25 @@ jobs:
           head: ${{ steps.pr.outputs.head }}
           out: review-input
 
+      # The secret holds either a subscription token or an API key; pass it to the matching input.
+      # Fails closed: an empty or unrecognised value is an error, never a silent skip.
+      - name: Pick the credential
+        id: auth
+        env:
+          CREDENTIAL: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+        run: |
+          case "$CREDENTIAL" in
+            sk-ant-api*) echo "kind=api" >> "$GITHUB_OUTPUT" ;;
+            sk-ant-oat*) echo "kind=oauth" >> "$GITHUB_OUTPUT" ;;
+            "") echo "::error::CLAUDE_CODE_OAUTH_TOKEN is empty: set it to a subscription token or an Anthropic API key"; exit 1 ;;
+            *) echo "::error::CLAUDE_CODE_OAUTH_TOKEN is neither a subscription token (sk-ant-oat...) nor an API key (sk-ant-api...)"; exit 1 ;;
+          esac
+
       - name: Review
         uses: anthropics/claude-code-action@1d6de8cb0c237e7c15e9e1bdf973826ebae490cc # v1.0.248
         with:
-          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          anthropic_api_key: ${{ steps.auth.outputs.kind == 'api' && secrets.CLAUDE_CODE_OAUTH_TOKEN || '' }}
+          claude_code_oauth_token: ${{ steps.auth.outputs.kind == 'oauth' && secrets.CLAUDE_CODE_OAUTH_TOKEN || '' }}
           github_token: ${{ github.token }}
           prompt: |
             REPO: ${{ github.repository }}
