@@ -128,10 +128,10 @@ jobs:
           CREDENTIAL: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
         run: |
           case "$CREDENTIAL" in
-            sk-ant-api*) echo "kind=api" >> "$GITHUB_OUTPUT" ;;
+            sk-ant-api*|sk-ant-usr*) echo "kind=api" >> "$GITHUB_OUTPUT" ;;
             sk-ant-oat*) echo "kind=oauth" >> "$GITHUB_OUTPUT" ;;
             "") echo "::error::CLAUDE_CODE_OAUTH_TOKEN is empty: set it to a subscription token or an Anthropic API key"; exit 1 ;;
-            *) echo "::error::CLAUDE_CODE_OAUTH_TOKEN is neither a subscription token (sk-ant-oat...) nor an API key (sk-ant-api...)"; exit 1 ;;
+            *) echo "::error::CLAUDE_CODE_OAUTH_TOKEN is neither a subscription token (sk-ant-oat...) nor an API key (sk-ant-api... or sk-ant-usr...)"; exit 1 ;;
           esac
 
       - name: Review
