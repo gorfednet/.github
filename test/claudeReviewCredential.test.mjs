@@ -25,6 +25,7 @@ function pick(credential) {
 
 test('the step exists and has a script', () => assert.ok(script.includes('case "$CREDENTIAL"')))
 test('an API key goes to anthropic_api_key', () => assert.deepEqual(pick('sk-ant-api03-x'), { ok: true, output: 'kind=api' }))
+test('a user-linked API key goes to anthropic_api_key', () => assert.deepEqual(pick('sk-ant-usr-x'), { ok: true, output: 'kind=api' }))
 test('a subscription token goes to claude_code_oauth_token', () => assert.deepEqual(pick('sk-ant-oat01-x'), { ok: true, output: 'kind=oauth' }))
 test('an empty secret fails closed', () => assert.equal(pick('').ok, false))
 test('an unrecognised value fails closed (near miss: an OpenAI-style key)', () => assert.equal(pick('sk-proj-x').ok, false))
