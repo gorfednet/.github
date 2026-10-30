@@ -127,6 +127,18 @@ inline code are skipped, link text is read and its URL is not, and front matter
 is read as key/value pairs. A paragraph under a heading that says Summary or
 Abstract is held to the summary rules.
 
+Scripts are read as code. In TS and JS every string and template literal is
+read; a `${}` substitution reads as the digit 0, and the strings inside it are
+read too. From v0.50.0 JSX is read as well, in every script but `.ts`, `.mts` and
+`.cts`, where `<T>` is a cast: a block's text with its inline elements and `{…}`
+children joined in, the way a `<p>` reads in HTML, and string attributes other
+than code ones such as `className` and `href`. An `h1` to `h4` is a heading, `a`,
+`button` and a component named like `Link` are link text, a class naming
+"summary" makes the element one summary, and `code`, `pre`, `kbd`, `samp`, `script`
+and `style` are skipped. So a React site lints `'src/**/*.tsx'` and no longer
+needs to scan its bundle. Code held in a template, such as a shader, is read like
+any other literal, so leave that file out of the globs or allowlist the hit.
+
 `--term <word>` (repeatable) exempts a word a specification uses as a defined
 term, such as a field called "Door". It is case-sensitive and word-bounded:
 `--term Door` exempts "the Door field" and still fails "every door" and

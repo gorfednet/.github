@@ -25,9 +25,17 @@
  *     and `<meta name="description">`. Headings are h1–h4 and title; a summary is
  *     the meta description or any element whose class names "summary".
  *   - JSON: every string leaf, located by its key path.
- *   - TS/JS: every string literal (template literals without `${}` included),
- *     located by the property key in front of it, or its line when it has none.
- *     Import specifiers are skipped.
+ *   - TS/JS: every string and template literal, located by the property key in
+ *     front of it, or its line when it has none. A `${}` substitution reads as
+ *     the digit 0, and the strings inside it are read too. Import specifiers are
+ *     skipped.
+ *   - JSX (every script but .ts, .mts and .cts): a block's text with its inline
+ *     elements and `{…}` children joined in, like a `<p>` in HTML, and string
+ *     attributes other than code ones (className, href and the like), located
+ *     by line. h1–h4 and title are headings, a and button are link text, a tag
+ *     or attribute named like a key (below) reads as that key, and a class
+ *     naming "summary" is one summary. code, pre, kbd, samp, script and style
+ *     are skipped.
  *   - Markdown (.md, .markdown): each paragraph, heading, list item, table cell
  *     and blockquote line, located as `L<line>`. Fenced code and inline code
  *     are skipped; link text is kept and URLs dropped. Front matter is read as
@@ -330,14 +338,281 @@ export function jsonStrings(src) {
   return out
 }
 
-export function scriptStrings(src) {
+// What a substitution reads as: a digit can neither spell a banned phrase nor
+// pass for prose, and a count is what most substitutions in copy are.
+const HOLE = '0'
+// A word after which an expression starts, so `/` opens a regex and `<` a tag.
+const EXPRESSION_KEYWORD = new Set(['return', 'case', 'default', 'yield', 'await', 'else', 'do', 'in', 'of', 'typeof', 'void', 'delete', 'throw', 'new'])
+const INLINE_TAG = /^(?:a|abbr|b|bdi|bdo|br|cite|data|del|dfn|em|i|ins|mark|q|s|small|span|strong|sub|sup|time|u|wbr)$/
+const NO_COPY_TAG = /^(?:code|kbd|pre|samp|script|style)$/
+// Attributes that hold code. Any other one is read, so a new prop fails closed.
+const CODE_ATTR = /^(?:className|class|style|id|key|ref|href|src|srcSet|sizes|rel|target|type|name|role|htmlFor|as|to|method|action|variant|size|color|fill|stroke|d|viewBox|xmlns|width|height|tabIndex|lang|dir|loading|decoding|data-.*)$/
+
+const tagBase = (name) => name.split('.').pop()
+const tagKind = (base) => (/^h[1-4]$/.test(base) ? 'heading' : base === 'a' ? 'label' : kindOfKey(base))
+const isInlineTag = (base) => INLINE_TAG.test(base) || (/^[A-Z]/.test(base) && LABEL_KEY.test(base))
+const readsAsCopy = (text) => /[A-Za-z]{2}/.test(text)
+
+/**
+ * Walk a script once, the way a parser would, because the source has to be read
+ * as code to tell a string from an apostrophe in JSX text (`<p>Don't</p>` opens
+ * no string) or a quote in a regex. Returns the comments, every string and
+ * template literal, and each run of JSX text.
+ *
+ * A run is what a visitor reads as one string: a block's text with its inline
+ * elements and `{…}` children joined in, the way htmlStrings reads a `<p>`. A
+ * `<` that does not close as JSX (a TS generic, a comparison) is an operator:
+ * the attempt is undone and the scan carries on after it.
+ */
+function scanScript(src, jsx) {
+  const found = []
+  const comments = []
+  const n = src.length
+
+  const readString = (i) => {
+    for (let j = i + 1; j < n; j++) {
+      if (src[j] === '\\') j++
+      else if (src[j] === src[i]) return j + 1
+      else if (src[j] === '\n') return -1
+    }
+    return -1
+  }
+  const readRegex = (i) => {
+    let inClass = false
+    for (let j = i + 1; j < n; j++) {
+      const c = src[j]
+      if (c === '\n') return -1
+      if (c === '\\') j++
+      else if (c === '[') inClass = true
+      else if (c === ']') inClass = false
+      else if (c === '/' && !inClass) return j + 1 + /^[a-z]*/.exec(src.slice(j + 1, j + 9))[0].length
+    }
+    return -1
+  }
+  const readTemplate = (i) => {
+    let text = ''
+    let j = i + 1
+    while (j < n) {
+      if (src[j] === '\\') {
+        text += src.slice(j, j + 2)
+        j += 2
+      } else if (src[j] === '`') {
+        found.push({ start: i, end: j + 1, quote: '`', text })
+        return j + 1
+      } else if (src[j] === '$' && src[j + 1] === '{') {
+        text += HOLE
+        j = readCode(j + 2, true)
+      } else text += src[j++]
+    }
+    return n
+  }
+  const readComment = (i) => {
+    const close = src[i + 1] === '/' ? src.indexOf('\n', i) : src.indexOf('*/', i + 2)
+    const end = close === -1 ? n : src[i + 1] === '/' ? close : close + 2
+    comments.push([i, end])
+    return end
+  }
+
+  /** Code from `i`, to the end of the file or, with `inBrace`, past the closing `}`. */
+  function readCode(i, inBrace) {
+    let depth = 0
+    let expression = true
+    while (i < n) {
+      const c = src[i]
+      if (/\s/.test(c)) {
+        i++
+      } else if (c === '/' && (src[i + 1] === '/' || src[i + 1] === '*')) {
+        i = readComment(i)
+      } else if (c === '/' && expression && readRegex(i) > 0) {
+        i = readRegex(i)
+        expression = false
+      } else if (c === "'" || c === '"') {
+        const end = readString(i)
+        if (end > 0) found.push({ start: i, end, quote: c, text: src.slice(i + 1, end - 1) })
+        i = end > 0 ? end : i + 1
+        expression = end < 0
+      } else if (c === '`') {
+        i = readTemplate(i)
+        expression = false
+      } else if (/[\w$]/.test(c)) {
+        const word = /^[\w$]+/.exec(src.slice(i, i + 64))[0]
+        i += word.length
+        expression = EXPRESSION_KEYWORD.has(word)
+      } else {
+        if (c === '<' && jsx && expression) {
+          const marks = [found.length, comments.length]
+          const end = readElement(i, null, false)
+          if (end > 0) {
+            i = end
+            expression = false
+            continue
+          }
+          found.length = marks[0]
+          comments.length = marks[1]
+        }
+        if (c === '{') depth++
+        if (c === '}') {
+          if (inBrace && depth === 0) return i + 1
+          depth--
+        }
+        expression = !')]}'.includes(c)
+        i++
+      }
+    }
+    return n
+  }
+
+  /** One attribute value from `j`. Returns the index after it, or -1. */
+  function readAttribute(attr, j, onValue) {
+    if (src[j] === '"' || src[j] === "'") {
+      const close = src.indexOf(src[j], j + 1)
+      if (close === -1) return -1
+      onValue(j, decode(src.slice(j + 1, close)))
+      return close + 1
+    }
+    if (src[j] !== '{') return -1
+    const mark = found.length
+    const end = readCode(j + 1, true)
+    if (CODE_ATTR.test(attr)) {
+      onValue(j, src.slice(j, end))
+      found.length = mark
+    }
+    return end
+  }
+
+  /**
+   * The element at `i`. Returns the index after it, or -1 when it is not JSX.
+   * `parent` is the text run of an enclosing block, which this element's own
+   * text joins when it is inline; `merge` joins every element, for a summary.
+   */
+  function readElement(i, parent, merge) {
+    const open = /<([A-Za-z_$][\w$.:-]*)?/y
+    open.lastIndex = i
+    const name = open.exec(src)?.[1] ?? ''
+    let j = i + 1 + name.length
+    // `<T,>` and `<T extends U>` are a generic arrow function in .tsx.
+    if (/^\s*(?:,|extends\s)/.test(src.slice(j, j + 40))) return -1
+    const base = tagBase(name)
+    const kind = name ? tagKind(base) : 'text'
+    let isSummary = false
+    for (;;) {
+      while (/\s/.test(src[j] ?? '')) j++
+      if (j >= n) return -1
+      if (src.startsWith('/>', j)) {
+        parent?.push(' ', j)
+        return j + 2
+      }
+      if (src[j] === '>') {
+        j++
+        break
+      }
+      if (src.startsWith('/*', j) || src.startsWith('//', j)) {
+        j = readComment(j)
+      } else if (src[j] === '{') {
+        j = readCode(j + 1, true)
+      } else {
+        const m = /^[A-Za-z_$][\w$:.-]*/.exec(src.slice(j, j + 80))
+        if (!m) return -1
+        const attr = m[0]
+        j += attr.length
+        while (/\s/.test(src[j] ?? '')) j++
+        if (src[j] !== '=') continue
+        j++
+        while (/\s/.test(src[j] ?? '')) j++
+        j = readAttribute(attr, j, (at, value) => {
+          if (attr === 'className' || attr === 'class') isSummary ||= /summary/i.test(value)
+          else if (!CODE_ATTR.test(attr) && readsAsCopy(value)) found.push({ start: at, text: value, kind: kindOfKey(attr) })
+        })
+        if (j < 0) return -1
+      }
+    }
+
+    const joinAll = merge || isSummary
+    const mark = found.length
+    let parts = []
+    let runStart = j
+    const run = {
+      push(text, at) {
+        if (parts.length === 0) {
+          if (!text.trim()) return
+          runStart = at + text.search(/\S/)
+        }
+        parts.push(text)
+      },
+    }
+    const textOf = () => decode(parts.join(' '))
+    const flush = () => {
+      const text = textOf()
+      if (readsAsCopy(text)) found.push({ start: runStart, text, kind: isSummary ? 'summary' : kind })
+      parts = []
+    }
+    for (;;) {
+      if (j >= n) return -1
+      const c = src[j]
+      if (c === '<' && src[j + 1] === '/') {
+        const close = /<\/\s*([\w$.:-]*)\s*>/y
+        close.lastIndex = j
+        const m = close.exec(src)
+        if (!m || m[1] !== name) return -1
+        j += m[0].length
+        break
+      }
+      if (c === '<') {
+        const child = /<([A-Za-z_$][\w$.:-]*)?/y
+        child.lastIndex = j
+        const childBase = tagBase(child.exec(src)?.[1] ?? '')
+        const joins = joinAll || isInlineTag(childBase)
+        if (!joins) flush()
+        j = readElement(j, joins ? run : null, joinAll)
+        if (j < 0) return -1
+      } else if (c === '{') {
+        const only = /\{\s*(?:"([^"\n]*)"|'([^'\n]*)'|`([^`$\n]*)`)\s*\}/y
+        only.lastIndex = j
+        const m = only.exec(src)
+        if (m) {
+          run.push(m[1] ?? m[2] ?? m[3], j)
+          j += m[0].length
+        } else {
+          const end = readCode(j + 1, true)
+          const inner = src.slice(j + 1, end - 1).replace(/\/\*[\s\S]*?\*\//g, '')
+          if (inner.trim()) run.push(HOLE, j)
+          j = end
+        }
+      } else if (c === '}' || c === '>') {
+        return -1 // JSX text cannot hold either, so this was never an element
+      } else {
+        const end = /[<{}>]/.exec(src.slice(j))
+        const stop = end ? j + end.index : n
+        run.push(src.slice(j, stop), j)
+        j = stop
+      }
+    }
+
+    if (NO_COPY_TAG.test(base)) {
+      found.length = mark
+      parent?.push(HOLE, i)
+    } else if (parent) {
+      parent.push(` ${parts.join(' ')} `, i)
+      if (kind !== 'text' || isSummary) flush()
+    } else flush()
+    return j
+  }
+
+  readCode(0, false)
+  found.sort((a, b) => a.start - b.start)
+  return { found, comments }
+}
+
+export function scriptStrings(src, { jsx = false } = {}) {
   const out = []
-  const clean = src.replace(/\/\*[\s\S]*?\*\/|(?<![:'"`\\])\/\/[^\n]*/g, (m) => m.replace(/[^\n]/g, ' '))
-  // String literals only. Whether one is an object key, or the value of one, is
-  // read from the punctuation around it rather than from one regex: a quoted
-  // ternary branch (`cond ? "seamless copy" : "plain"`) is followed by a colon
-  // too, and reading every `"…" :` as a key left that branch unchecked.
-  const re = /(['"`])((?:\\.|(?!\1)[^\\])*?)\1/g
+  const { found, comments } = scanScript(src, jsx)
+  let clean = src
+  for (const [start, end] of comments)
+    clean = clean.slice(0, start) + clean.slice(start, end).replace(/[^\n]/g, ' ') + clean.slice(end)
+  // Whether a literal is an object key, or the value of one, is read from the
+  // punctuation around it: a quoted ternary branch (`cond ? "seamless copy" :
+  // "plain"`) is followed by a colon too, and reading every `"…" :` as a key
+  // left that branch unchecked.
   const prevChar = (i) => /\S(?=\s*$)/.exec(clean.slice(Math.max(0, i - 200), i))?.[0] ?? ''
   const nextChar = (i) => /^\s*(\S)/.exec(clean.slice(i, i + 200))?.[1] ?? ''
   // A key sits right after `{` or `,` and right before `:`. After `?` it is a
@@ -351,16 +626,18 @@ export function scriptStrings(src) {
     const keyStart = start - head.length + m.index
     return /[{,]/.test(prevChar(keyStart)) ? (m[1] ?? m[2] ?? m[3]) : undefined
   }
-  for (const m of clean.matchAll(re)) {
-    const end = m.index + m[0].length
-    const before = clean.slice(Math.max(0, m.index - 12), m.index)
-    if (/(?:\bfrom|\bimport|require\()\s*$/.test(before)) continue
-    if (m[1] !== '`' && isKeyAt(m.index, end)) continue
-    if (m[1] === '`' && m[2].includes('${')) continue
-    const text = m[2].replace(/\\(['"`\\])/g, '$1').replace(/\\n/g, ' ')
-    if (!/[A-Za-z]{2}/.test(text)) continue
-    const key = keyBefore(m.index)
-    out.push({ where: key ?? String(lineAt(src, m.index)), text, kind: key ? kindOfKey(key) : 'text' })
+  for (const item of found) {
+    if (item.kind) {
+      out.push({ where: String(lineAt(src, item.start)), text: item.text, kind: item.kind })
+      continue
+    }
+    const before = clean.slice(Math.max(0, item.start - 12), item.start)
+    if (/(?:\bfrom|\bimport|\bimport\(|require\()\s*$/.test(before)) continue
+    if (item.quote !== '`' && isKeyAt(item.start, item.end)) continue
+    const text = item.text.replace(/\\(['"`\\])/g, '$1').replace(/\\n/g, ' ')
+    if (!readsAsCopy(text)) continue
+    const key = keyBefore(item.start)
+    out.push({ where: key ?? String(lineAt(src, item.start)), text, kind: key ? kindOfKey(key) : 'text' })
   }
   return out
 }
@@ -494,7 +771,7 @@ export function checkFile(rel, src, options = {}) {
         ? jsonStrings(src)
         : ext === '.md' || ext === '.markdown'
           ? markdownStrings(src)
-          : scriptStrings(src)
+          : scriptStrings(src, { jsx: !/^\.[cm]?ts$/.test(ext) })
   const hits = []
   const rationed = new Map()
   for (const s of strings) {

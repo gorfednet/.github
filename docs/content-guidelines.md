@@ -13,9 +13,11 @@ A product team that owns the page we are describing, a founder deciding whether 
 | Site | Speaker | How |
 |------|---------|-----|
 | 4thcltr.com, heuristics.4thcltr.com, papers.4thcltr.com, gorfed.net | Michael, as "I" | "We" only for work done with a named partner or co-founder. "4th Culture" is the subject of at most 1 sentence per page, where the page has to name the business. Never "Michael" in the third person on his own pages. |
-| BinderCurve, MoonMan, Promptboi, Denseware, ssatcy.com | The product | The product by its name ("BinderCurve shows…"), or "we" for the people behind it. Never "I", never Michael in the third person. Describe behaviour from the user's side: "Tapping Continue will take you to…" |
+| BinderCurve, MoonMan, Promptboi, Denseware, ssatcy.com | The product | The product by its name ("BinderCurve shows…"), or "we" for the people behind it. Never "I", never Michael in the third person outside a signed credit (below). Describe behaviour from the user's side: "Tapping Continue will take you to…" |
 | gorfmusic.com, subrythm.com, blackpixelrecords.com, anal0g.org, ACID2REAPER | The artist or the label | An artist page speaks as the artist ("I" when the artist is 1 person). A label page speaks as the label, by name or as "we". |
 | rowanmcarthur.com | Rowan | Rowan's own voice. Out of scope until Rowan agrees to a guideline. |
+
+A signed credit on an About page may name the maker in the third person ("MoonMan is made by Michael Duncan McArthur"). It's the one exception to the product row above. MoonMan and BinderCurve both have one, and MoonMan's was kept on 30 October 2026 after a "we" version of the bio made false claims.
 
 On heuristics.4thcltr.com the method and limits lines say "I", because Michael built the method and signs the reviewed tiers. A finding keeps the page element as its subject ("The Sort control hides 3 of the 7 options at 390 px"), because the finding is about the page, not about the reviewer.
 
@@ -135,4 +137,4 @@ Reading level of a national newspaper. A median sentence of about 20 words, with
 
 ## Enforcement
 
-`check-voice` runs in every repository's test suite over built pages and content files. It fails on the phrase lists in rules 4, 6, 8, 9 and 10 (every phrase the lint bans is named in those rules), on the praise-then-pivot shape in summaries, on "Learn more"/"Click here"/"Get started"/"Read more" as link text, and on a summary over four sentences. An allowlist entry names the string, the reason and a review date; the allowlist can only shrink between releases. A finding the lint cannot see, including everything under Sound like a person, is still the editor's to catch.
+`check-voice` runs in every repository's test suite over built pages, content files and JSX source. It fails on the phrase lists in rules 4, 6, 8, 9 and 10 (every phrase the lint bans is named in those rules), on the praise-then-pivot shape in summaries, on "Learn more"/"Click here"/"Get started"/"Read more" as link text, and on a summary over four sentences. An allowlist entry names the string, the reason and a review date; the allowlist can only shrink between releases. A finding the lint cannot see, including everything under Sound like a person, is still the editor's to catch.

@@ -10,7 +10,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { after, describe, it } from 'node:test'
-import { checkFile, checkString } from '../bin/check-voice.mjs'
+import { checkFile, checkString, scriptStrings } from '../bin/check-voice.mjs'
 
 const CHECKER = fileURLToPath(new URL('../bin/check-voice.mjs', import.meta.url))
 const dirs = []
@@ -466,5 +466,124 @@ describe('check-voice abstract nouns (warning)', () => {
     const withList = run(dir, ['a.md', '--allow', join(dir, 'allow.json')])
     assert.equal(withList.status, 0, withList.stderr)
     assert.doesNotMatch(withList.stdout, /judgment/)
+  })
+})
+
+describe('check-voice JSX text', () => {
+  const hits = (tsx, file = 'a.tsx') => checkFile(file, tsx).hits.map((h) => `${h.location} ${h.rule} ${h.text.toLowerCase()}`)
+
+  it('reads a text child, the gap that left React body copy unchecked', () => {
+    const tsx = 'export const A = () => <p>A seamless journey</p>\n'
+    assert.deepEqual(hits(tsx).sort(), ['a.tsx:1 4 journey', 'a.tsx:1 8 seamless'])
+  })
+
+  it('the CLI fails on a planted phrase in a .tsx file and passes with it removed', () => {
+    const page = (copy) => ({ 'src/Page.tsx': `export const Page = () => (\n  <main>\n    <p>${copy}</p>\n  </main>\n)\n` })
+    const planted = run(project(page('A seamless journey')), ['src/*.tsx'])
+    assert.equal(planted.status, 1)
+    assert.match(planted.stdout, /^src\/Page\.tsx:3: rule 8 "seamless"$/m)
+    const removed = run(project(page('Checkout takes 4 steps')), ['src/*.tsx'])
+    assert.equal(removed.status, 0, removed.stdout + removed.stderr)
+  })
+
+  it('an apostrophe in text opens no string, so the copy after it is still read', () => {
+    const tsx = "export const A = () => (\n  <div>\n    <p>Don't wait</p>\n    <p>The panel sits above the grid</p>\n    <p>It's 4 steps</p>\n  </div>\n)\n"
+    assert.deepEqual(hits(tsx), ['a.tsx:4 6 sits'])
+  })
+
+  it('joins inline elements and {…} children into one sentence', () => {
+    assert.deepEqual(hits('const a = <p>Use the Sort control, <em>not the filter</em>.</p>\n').map((h) => h.split(' ')[1]), ['3'])
+    const strings = scriptStrings("const a = <p>Open {n} pages{' '}<a href=\"/x\">today</a>.</p>\n", { jsx: true })
+    assert.deepEqual(strings.map((s) => s.text), ['Open 0 pages today .', 'today'])
+  })
+
+  it('near miss: a block child is its own string', () => {
+    const strings = scriptStrings('const a = <div>Plans<p>Prices</p>Terms</div>\n', { jsx: true })
+    assert.deepEqual(strings.map((s) => s.text).sort(), ['Plans', 'Prices', 'Terms'])
+  })
+
+  it('reads elements nested in expressions and maps', () => {
+    assert.deepEqual(hits('const a = <ul>{items.map((i) => <li key={i}>It sits at {i}</li>)}</ul>\n'), ['a.tsx:1 6 sits'])
+    assert.deepEqual(hits('const a = <div>{open ? <p>A robust menu</p> : null}</div>\n'), ['a.tsx:1 8 robust'])
+  })
+
+  it('reads tags as HTML does: headings, link text and a summary class', () => {
+    assert.deepEqual(hits('const a = <h2>As if by design</h2>\n'), ['a.tsx:1 10 as if'])
+    assert.deepEqual(hits('const a = <motion.h2>As if by design</motion.h2>\n'), ['a.tsx:1 10 as if'])
+    assert.deepEqual(hits('const a = <a href="/x">Learn more</a>\n'), ['a.tsx:1 label learn more'])
+    assert.deepEqual(hits('const a = <Link to="/x">Read more</Link>\n'), ['a.tsx:1 label read more'])
+    const summary = 'const a = <div className="report-summary"><p>Polished and consistent.</p><p>The page has 3 sections.</p></div>\n'
+    assert.deepEqual(hits(summary).map((h) => h.split(' ')[1]), ['1'])
+    assert.deepEqual(hits(summary.replace('report-summary', 'intro')), [])
+  })
+
+  it('reads prose attributes by their name and skips code ones', () => {
+    assert.deepEqual(hits('const a = <img alt="A seamless view" />\n'), ['a.tsx:1 8 seamless'])
+    assert.deepEqual(hits('const a = <button aria-label="Learn more" />\n'), ['a.tsx:1 label learn more'])
+    assert.deepEqual(hits('const a = <Hero lead="A robust studio" />\n'), ['a.tsx:1 8 robust'])
+    assert.deepEqual(hits('const a = <div className="surface door" id="corner" data-x="seam" />\n'), [])
+    assert.deepEqual(hits('const a = <div className={`surface ${on ? "door" : ""}`} />\n'), [])
+  })
+
+  it('skips comments and code elements', () => {
+    assert.deepEqual(hits('const a = <div>{/* a seamless comment */}<code>robust</code><pre>truly</pre></div>\n'), [])
+    assert.deepEqual(hits('const a = <style>{`.door { color: red }`}</style>\n'), [])
+  })
+
+  it('decodes entities, so a quoted label stays exempt', () => {
+    assert.deepEqual(hits('const a = <p>The link &quot;Every corner&quot; fails</p>\n'), [])
+    assert.deepEqual(hits('const a = <p>It&apos;s worth noting</p>\n'), ["a.tsx:1 9 it's worth noting"])
+  })
+
+  it('near miss: generics, casts and comparisons are not elements', () => {
+    assert.deepEqual(hits("const f = <T,>(a: T) => a\nconst s = 'A seamless page'\n").map((h) => h.split(' ')[1]), ['8'])
+    assert.deepEqual(hits("const g = <T extends string>(a: T) => a\nconst s = 'A robust page'\n").map((h) => h.split(' ')[1]), ['8'])
+    assert.deepEqual(hits("type F = <T>(a: T) => T\nconst s = 'A truly fast page'\n").map((h) => h.split(' ')[1]), ['8'])
+    assert.deepEqual(hits("const s = useState<string>('A powerful page')\n").map((h) => h.split(' ')[1]), ['8'])
+    assert.deepEqual(hits("const t = a < b && c > d ? 'one' : 'two'\nconst s = 'A seamless page'\n").map((h) => h.split(' ')[1]), ['8'])
+  })
+
+  it('reads JSX in .jsx and .js, and never in .ts, where <T> is a cast', () => {
+    const tsx = 'const a = <p>A seamless page</p>\n'
+    assert.equal(hits(tsx, 'a.jsx').length, 1)
+    assert.equal(hits(tsx, 'a.js').length, 1)
+    assert.deepEqual(hits(tsx, 'a.ts'), [])
+    assert.deepEqual(scriptStrings(tsx), [])
+  })
+})
+
+describe('check-voice template literals with substitutions', () => {
+  const hits = (ts) => checkFile('a.ts', ts).hits.map((h) => `${h.location} ${h.rule} ${h.text.toLowerCase()}`)
+
+  it('reads the text around a substitution', () => {
+    assert.deepEqual(hits('const a = `${n} pages, a seamless view of ${site}`\n'), ['a.ts:1 8 seamless'])
+    assert.deepEqual(hits('const a = {\n  summary: `The design delivers ${n} pages`,\n}\n'), ['a.ts:summary 6 delivers'])
+  })
+
+  it('reads strings and templates inside a substitution', () => {
+    assert.deepEqual(hits("const a = `Open ${wide ? 'a robust menu' : 'the menu'} today`\n"), ['a.ts:1 8 robust'])
+    assert.deepEqual(hits('const a = `Open ${wide ? `a ${x} truly long menu` : y} today`\n'), ['a.ts:1 8 truly'])
+  })
+
+  it('a substitution reads as a count, so it fires no rule of its own', () => {
+    assert.deepEqual(scriptStrings('const a = `${n} pages ${m}`\n').map((s) => s.text), ['0 pages 0'])
+    assert.deepEqual(checkString('0 failures found. The worst is search.', 'summary'), [])
+  })
+
+  it('near miss: a template with no letters between substitutions is not copy', () => {
+    assert.deepEqual(scriptStrings('const a = `${x}/${y}-${z}`\n'), [])
+  })
+
+  it('a quote in a regex opens no string, so the strings after it are read', () => {
+    assert.deepEqual(hits("const r = /'/g\nconst a = 'A seamless page'\n"), ['a.ts:2 8 seamless'])
+    assert.deepEqual(hits("const r = x.replace(/[\"']/g, '')\nconst a = 'A robust page'\n"), ['a.ts:2 8 robust'])
+  })
+
+  it('near miss: division is not a regex', () => {
+    assert.deepEqual(hits("const a = b / 2\nconst c = 'A truly fast page' / 2\n"), ['a.ts:2 8 truly'])
+  })
+
+  it('skips a dynamic import path', () => {
+    assert.deepEqual(hits("const P = lazy(() => import('./Surface'))\n"), [])
   })
 })
