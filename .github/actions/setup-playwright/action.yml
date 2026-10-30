@@ -29,8 +29,6 @@ runs:
       with:
         path: ~/.cache/ms-playwright
         key: ${{ runner.os }}-playwright-${{ steps.playwright.outputs.version }}-${{ steps.playwright.outputs.browsers_slug }}
-        restore-keys: |
-          ${{ runner.os }}-playwright-${{ steps.playwright.outputs.version }}-
     - name: Install Playwright browsers and system dependencies
       if: steps.playwright.outputs.mode == 'hosted' && steps.playwright-cache.outputs.cache-hit != 'true'
       shell: bash
