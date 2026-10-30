@@ -20,6 +20,10 @@ set -uo pipefail
 browsers="${BROWSERS:-}"
 failed=""
 
+# TEMPORARY (tmp-system-deps-check.yml): break the probe alone, and keep a copy of its lines.
+if [ -n "${TMP_PROBE_BROWSERS_PATH:-}" ]; then export PLAYWRIGHT_BROWSERS_PATH="$TMP_PROBE_BROWSERS_PATH"; fi
+say() { echo "$1"; if [ -n "${TMP_PROBE_LOG:-}" ]; then echo "$1" >> "$TMP_PROBE_LOG"; fi; }
+
 for b in $browsers; do
   detail="$(mktemp 2>/dev/null || echo /dev/null)"
   if BROWSER="$b" timeout 120 node -e '
@@ -33,9 +37,9 @@ for b in $browsers; do
       (e) => { console.error(String((e && e.message) || e).split("\n")[0]); process.exit(1); },
     );
   ' >"$detail" 2>&1; then
-    echo "system-deps: $b launched; apt skipped"
+    say "system-deps: $b launched; apt skipped"
   else
-    echo "system-deps: $b failed to launch; running install-deps"
+    say "system-deps: $b failed to launch; running install-deps"
     head -n 3 "$detail" 2>/dev/null | sed 's/^/  probe detail: /'
     failed="$failed $b"
   fi

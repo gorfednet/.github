@@ -1,0 +1,137 @@
+name: tmp-system-deps-check
+
+# TEMPORARY. Runs the setup-playwright action from this pull request's own ref, on a hosted
+# runner (hosted mode is the code under test), and asserts the log lines and apt activity of
+# each system-deps path. Dropped before merge, together with the tmp-* inputs it uses.
+#
+# apt witness: a shim at /usr/local/bin/apt-get (first on sudo's secure_path) records every
+# call, so "apt did not run" is a file that stayed empty, not a log line nobody read.
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  auto-normal:
+    # Hosted: hosted mode of the action is the code under test; the pool is a different path.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Minimal package and apt shim
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/pkg"
+          cd "$RUNNER_TEMP/pkg"
+          npm init -y >/dev/null
+          npm install --save-exact @playwright/test@1.64.1
+          printf '#!/bin/sh\necho "apt-get $*" >> /tmp/apt-calls.log\nexec /usr/bin/apt-get "$@"\n' | sudo tee /usr/local/bin/apt-get >/dev/null
+          sudo chmod +x /usr/local/bin/apt-get
+          : > /tmp/apt-calls.log
+          chmod 666 /tmp/apt-calls.log
+      - uses: ./.github/actions/setup-playwright
+        with:
+          working-directory: ${{ runner.temp }}/pkg
+          browsers: chromium
+          system-deps: auto
+          tmp-probe-log: /tmp/probe.log
+      - name: Expect the launched line and no apt
+        if: ${{ !cancelled() }}
+        run: |
+          set -euo pipefail
+          cat /tmp/probe.log
+          test "$(cat /tmp/probe.log)" = "system-deps: chromium launched; apt skipped"
+          echo "apt calls: $(wc -l < /tmp/apt-calls.log)"
+          test ! -s /tmp/apt-calls.log
+
+  auto-broken-probe:
+    # Hosted: hosted mode of the action is the code under test; the pool is a different path.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Minimal package and apt shim
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/pkg"
+          cd "$RUNNER_TEMP/pkg"
+          npm init -y >/dev/null
+          npm install --save-exact @playwright/test@1.64.1
+          printf '#!/bin/sh\necho "apt-get $*" >> /tmp/apt-calls.log\nexec /usr/bin/apt-get "$@"\n' | sudo tee /usr/local/bin/apt-get >/dev/null
+          sudo chmod +x /usr/local/bin/apt-get
+          : > /tmp/apt-calls.log
+          chmod 666 /tmp/apt-calls.log
+      - uses: ./.github/actions/setup-playwright
+        with:
+          working-directory: ${{ runner.temp }}/pkg
+          browsers: chromium
+          system-deps: auto
+          tmp-probe-log: /tmp/probe.log
+          tmp-probe-browsers-path: /nonexistent
+      - name: Expect the failed line and apt
+        if: ${{ !cancelled() }}
+        run: |
+          set -euo pipefail
+          cat /tmp/probe.log
+          test "$(cat /tmp/probe.log)" = "system-deps: chromium failed to launch; running install-deps"
+          echo "apt calls:"; cat /tmp/apt-calls.log
+          grep -q '^apt-get ' /tmp/apt-calls.log
+
+  always-as-today:
+    # Hosted: hosted mode of the action is the code under test; the pool is a different path.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Minimal package and apt shim
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/pkg"
+          cd "$RUNNER_TEMP/pkg"
+          npm init -y >/dev/null
+          npm install --save-exact @playwright/test@1.64.1
+          printf '#!/bin/sh\necho "apt-get $*" >> /tmp/apt-calls.log\nexec /usr/bin/apt-get "$@"\n' | sudo tee /usr/local/bin/apt-get >/dev/null
+          sudo chmod +x /usr/local/bin/apt-get
+          : > /tmp/apt-calls.log
+          chmod 666 /tmp/apt-calls.log
+      - uses: ./.github/actions/setup-playwright
+        with:
+          working-directory: ${{ runner.temp }}/pkg
+          browsers: chromium
+          system-deps: always
+          tmp-probe-log: /tmp/probe.log
+      - name: Expect apt, and no probe
+        if: ${{ !cancelled() }}
+        run: |
+          set -euo pipefail
+          echo "apt calls:"; cat /tmp/apt-calls.log
+          grep -q '^apt-get ' /tmp/apt-calls.log
+          test ! -e /tmp/probe.log
+
+  invalid-value:
+    # Hosted: hosted mode of the action is the code under test; the pool is a different path.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Minimal package
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/pkg"
+          cd "$RUNNER_TEMP/pkg"
+          npm init -y >/dev/null
+          npm install --save-exact @playwright/test@1.64.1
+      - name: Action with an invalid value
+        id: bad
+        continue-on-error: true
+        uses: ./.github/actions/setup-playwright
+        with:
+          working-directory: ${{ runner.temp }}/pkg
+          browsers: chromium
+          system-deps: Auto
+      - name: Expect the step to have failed
+        if: ${{ !cancelled() }}
+        run: |
+          echo "outcome: ${{ steps.bad.outcome }}"
+          test "${{ steps.bad.outcome }}" = "failure"
