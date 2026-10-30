@@ -158,10 +158,17 @@ on:
         required: false
         type: string
         default: ""
+      timeout-minutes:
+        description: >-
+          Minutes before the check job is cancelled. Default 15; raise it for a repository whose
+          build runs long on a slow runner.
+        required: false
+        type: number
+        default: 15
 jobs:
   check:
     runs-on: ${{ fromJSON(inputs.runs-on != '' && inputs.runs-on || '"ubuntu-latest"') }}
-    timeout-minutes: 15
+    timeout-minutes: ${{ inputs.timeout-minutes }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: No legacy share-mount deploy paths
