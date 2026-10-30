@@ -4,7 +4,7 @@ name: tmp-system-deps-check
 # runner (hosted mode is the code under test), and asserts the log lines and apt activity of
 # each system-deps path. Dropped before merge, together with the tmp-* inputs it uses.
 #
-# apt witness: a shim at /usr/local/bin/apt-get (first on sudo's secure_path) records every
+# apt witness: a shim replacing /usr/bin/apt-get itself, so no PATH can miss it, records every
 # call, so "apt did not run" is a file that stayed empty, not a log line nobody read.
 on:
   pull_request:
@@ -26,8 +26,9 @@ jobs:
           cd "$RUNNER_TEMP/pkg"
           npm init -y >/dev/null
           npm install --save-exact @playwright/test@1.64.1
-          printf '#!/bin/sh\necho "apt-get $*" >> /tmp/apt-calls.log\nexec /usr/bin/apt-get "$@"\n' | sudo tee /usr/local/bin/apt-get >/dev/null
-          sudo chmod +x /usr/local/bin/apt-get
+          sudo mv /usr/bin/apt-get /usr/bin/apt-get.real
+          printf '#!/bin/sh\necho "apt-get $*" >> /tmp/apt-calls.log\nexec /usr/bin/apt-get.real "$@"\n' | sudo tee /usr/bin/apt-get >/dev/null
+          sudo chmod +x /usr/bin/apt-get
           : > /tmp/apt-calls.log
           chmod 666 /tmp/apt-calls.log
       - uses: ./.github/actions/setup-playwright
@@ -58,8 +59,9 @@ jobs:
           cd "$RUNNER_TEMP/pkg"
           npm init -y >/dev/null
           npm install --save-exact @playwright/test@1.64.1
-          printf '#!/bin/sh\necho "apt-get $*" >> /tmp/apt-calls.log\nexec /usr/bin/apt-get "$@"\n' | sudo tee /usr/local/bin/apt-get >/dev/null
-          sudo chmod +x /usr/local/bin/apt-get
+          sudo mv /usr/bin/apt-get /usr/bin/apt-get.real
+          printf '#!/bin/sh\necho "apt-get $*" >> /tmp/apt-calls.log\nexec /usr/bin/apt-get.real "$@"\n' | sudo tee /usr/bin/apt-get >/dev/null
+          sudo chmod +x /usr/bin/apt-get
           : > /tmp/apt-calls.log
           chmod 666 /tmp/apt-calls.log
       - uses: ./.github/actions/setup-playwright
@@ -91,8 +93,9 @@ jobs:
           cd "$RUNNER_TEMP/pkg"
           npm init -y >/dev/null
           npm install --save-exact @playwright/test@1.64.1
-          printf '#!/bin/sh\necho "apt-get $*" >> /tmp/apt-calls.log\nexec /usr/bin/apt-get "$@"\n' | sudo tee /usr/local/bin/apt-get >/dev/null
-          sudo chmod +x /usr/local/bin/apt-get
+          sudo mv /usr/bin/apt-get /usr/bin/apt-get.real
+          printf '#!/bin/sh\necho "apt-get $*" >> /tmp/apt-calls.log\nexec /usr/bin/apt-get.real "$@"\n' | sudo tee /usr/bin/apt-get >/dev/null
+          sudo chmod +x /usr/bin/apt-get
           : > /tmp/apt-calls.log
           chmod 666 /tmp/apt-calls.log
       - uses: ./.github/actions/setup-playwright
