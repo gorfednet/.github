@@ -21,16 +21,6 @@ inputs:
       error. Has no effect on the self-hosted pool.
     required: false
     default: always
-  # TEMPORARY, with tmp-system-deps-check.yml: both go in the same commit that is dropped
-  # before merge. They let that workflow break the probe alone and read what it printed.
-  tmp-probe-browsers-path:
-    description: TEMPORARY. PLAYWRIGHT_BROWSERS_PATH for the system-deps probe only.
-    required: false
-    default: ""
-  tmp-probe-log:
-    description: TEMPORARY. File the probe also appends its lines to.
-    required: false
-    default: ""
 runs:
   using: composite
   steps:
@@ -77,8 +67,6 @@ runs:
       working-directory: ${{ inputs.working-directory }}
       env:
         BROWSERS: ${{ inputs.browsers }}
-        TMP_PROBE_BROWSERS_PATH: ${{ inputs.tmp-probe-browsers-path }}
-        TMP_PROBE_LOG: ${{ inputs.tmp-probe-log }}
       run: bash "${{ github.action_path }}/probe.sh"
     - name: Install Playwright system dependencies for browsers that failed to launch (system-deps auto)
       if: ${{ !cancelled() && steps.playwright.outputs.mode == 'hosted' && steps.playwright.outputs.system_deps == 'auto' && (steps.probe.outcome != 'success' || steps.probe.outputs.failed != '') }}
