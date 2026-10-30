@@ -68,6 +68,16 @@ on:
         required: false
         type: string
         default: ""
+      system-deps:
+        description: >-
+          "always" (default) installs browsers with `--with-deps`, as before. "auto" skips apt on
+          a hosted runner when each browser already launches, and runs `install-deps` only for
+          those that do not (setup-playwright). `--with-deps` also installs fonts, so "auto" can
+          change text rendering: keep "always" where the specs compare screenshots, snapshots or
+          text widths. Any other value fails the job. Ignored on the self-hosted pool.
+        required: false
+        type: string
+        default: always
 
 jobs:
   compat:
@@ -92,6 +102,7 @@ jobs:
       - uses: gorfednet/.github/.github/actions/setup-playwright@main
         with:
           browsers: ${{ matrix.browser }}
+          system-deps: ${{ inputs.system-deps }}
       - name: Playwright smoke (${{ matrix.browser }})
         run: >-
           ${{ inputs.playwright-test-command }} --project=${{ matrix.browser }}
