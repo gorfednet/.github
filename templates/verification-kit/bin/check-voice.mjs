@@ -50,6 +50,21 @@
  * Output: one line per hit, `path:key-or-line: rule N "<matched text>"`, then
  * exit 1. With none, a count line and exit 0.
  *
+ * Errors and warnings (v0.49.0). Rules 1, 4, 6, 8, 9, 10, `label` and `summary`
+ * are errors. Four checks for the habits a model writes by default are newer:
+ *   - rule 3, antithesis ("X, not Y"; "not X but Y"): error. "not only", "not
+ *     just", quoted labels and "not" before a verb or quantifier do not fire.
+ *   - `colon`, a sentence led by a short noun phrase and a colon ("The fix: The
+ *     page loads."): error. Headings, labels, list leads, times, ratios and
+ *     step numbers do not fire.
+ *   - `rhythm`, a paragraph of four or more sentences whose lengths all sit
+ *     within 4 words of the median: warning.
+ *   - `abstract`, "judgment", "intent", "posture", "craft", "clarity", "the
+ *     space between", "at scale", "end-to-end": warning.
+ * A warning prints as `path:where: warning rule X "text"` and never fails the
+ * run. The allowlist covers both levels, and an entry for a warning also has to
+ * name its string, reason and review date.
+ *
  * Allowlist (`--allow`): a JSON array of {match, where, reason, reviewBy}. A hit
  * is allowed when its matched text equals `match` (case-insensitive) and its
  * location contains `where`. A `reviewBy` that has passed is printed and never
@@ -101,6 +116,39 @@ export const RULES = {
 const COMPILED = Object.fromEntries(
   Object.entries(RULES).map(([n, list]) => [n, new RegExp(`(?<![\\w-])(?:${list.join('|')})(?![\\w-])`, 'gi')]),
 )
+
+/** Words whose hits are warnings, not errors. */
+const WARN_RULES = new Set(['rhythm', 'abstract'])
+const HINTS = {
+  3: 'antithesis: say what each thing is instead of what it is not',
+  colon: 'colon-led statement: write one sentence with a subject and a verb',
+  rhythm: 'uniform sentence length: vary the sentences or cut the ones that add nothing',
+  abstract: 'abstract noun: name the concrete thing',
+}
+
+// "X, not Y" and "not X but Y". The words after "not" that make it an ordinary
+// negation or a different construction ("not only … but also") do not fire.
+const NOT_EXEMPT =
+  'only|just|merely|all|every|even|least|yet|to|be|been|being|have|has|had|do|does|did|is|are|was|were|will|would|can|could|should|shall|may|might|must|a\\s+lot|much|many|always|necessarily'
+const ANTITHESIS = [
+  new RegExp(`(?<!\\b(?:do|does|did|has|have|had|can|could|will|would|should|may|might|must)\\s)\\bnot\\s+(?!(?:${NOT_EXEMPT})\\b)[^.;:!?]{1,80}?,?\\s+but\\s+(?!also\\b)\\w`, 'gi'),
+  new RegExp(`\\w,\\s+not\\s+(?!(?:${NOT_EXEMPT})\\b)\\w+(?:\\s+\\w+){0,3}`, 'gi'),
+]
+
+const COLON_LABELS = new Set(['note', 'notes', 'example', 'examples', 'source', 'sources', 'caption', 'warning', 'tip', 'q', 'a', 'question', 'answer', 'update', 'summary', 'see', 'edit'])
+const COLON_LEAD = /^[*_\s]*([A-Za-z][\w'’-]*(?:\s+[A-Za-z][\w'’-]*){0,3})[*_]*:[*_]*\s+(?=[A-Z])/
+
+const ABSTRACT = [
+  '(?<!\\bto\\s)(?<!\\b(?:we|you|they)\\s)craft(?!ed|s|ing|y)',
+  ...words(['judgment', 'judgement', 'intent', 'posture', 'clarity', 'the space between', 'at scale', 'end-to-end']),
+]
+const ABSTRACT_RE = new RegExp(`(?<![\\w-])(?:${ABSTRACT.join('|')})(?![\\w-])`, 'gi')
+
+const median = (nums) => {
+  const a = [...nums].sort((x, y) => x - y)
+  const m = a.length >> 1
+  return a.length % 2 ? a[m] : (a[m - 1] + a[m]) / 2
+}
 
 const BAD_LABELS = new Set(['learn more', 'click here', 'get started', 'read more'])
 const SUMMARY_KEY = /summary|theme|description/i
@@ -154,6 +202,28 @@ export function checkString(raw, kind, options = {}) {
       hits.push(hit)
     }
   }
+  for (const re of ANTITHESIS) {
+    re.lastIndex = 0
+    for (const m of open.matchAll(re)) hits.push({ rule: '3', text: m[0].trim() })
+  }
+  if (kind !== 'heading' && kind !== 'label') {
+    for (const sentence of sentences(open)) {
+      const m = COLON_LEAD.exec(sentence)
+      if (!m || /\d/.test(m[1]) || COLON_LABELS.has(m[1].trim().toLowerCase())) continue
+      const rest = sentence.slice(m[0].length)
+      if (rest.trim().split(/\s+/).length < 4 || !/[.!?]\s*$/.test(rest)) continue
+      hits.push({ rule: 'colon', text: sentence.trim().slice(0, 60) })
+    }
+    const lengths = sentences(text).map((x) => x.trim().split(/\s+/).length)
+    if (lengths.length >= 4) {
+      const mid = median(lengths)
+      if (lengths.every((n) => Math.abs(n - mid) <= 4))
+        hits.push({ rule: 'rhythm', text: `${lengths.length} sentences of ${lengths.join(', ')} words` })
+    }
+    ABSTRACT_RE.lastIndex = 0
+    for (const m of open.matchAll(ABSTRACT_RE)) hits.push({ rule: 'abstract', text: m[0] })
+  }
+  for (const hit of hits) if (WARN_RULES.has(hit.rule)) hit.level = 'warn'
   if (kind === 'label') {
     const bare = text.trim().replace(/[\s.!→›»>…]+$/u, '').toLowerCase()
     if (BAD_LABELS.has(bare)) hits.push({ rule: 'label', text: text.trim() })
@@ -435,7 +505,7 @@ export function checkFile(rel, src, options = {}) {
         rationed.set(k, seen)
         if (seen === 1) continue
       }
-      hits.push({ location: `${rel}:${s.where}`, rule: hit.rule, text: hit.text })
+      hits.push({ location: `${rel}:${s.where}`, rule: hit.rule, text: hit.text, ...(hit.level ? { level: hit.level } : {}) })
     }
   }
   const seen = new Set()
@@ -578,15 +648,22 @@ if (isMain(import.meta.url)) {
     if (!used.has(i)) console.error(`  warn: allowlist entry "${e.match}" at ${e.where} allowed nothing; remove it`)
   })
 
-  for (const h of remaining) console.log(`${h.location}: rule ${h.rule} "${h.text}"`)
-  if (remaining.length > 0) {
+  const errors = remaining.filter((h) => h.level !== 'warn')
+  const warnings = remaining.filter((h) => h.level === 'warn')
+  const say = (h) => `${h.location}: ${h.level === 'warn' ? 'warning ' : ''}rule ${h.rule} "${h.text}"${HINTS[h.rule] ? ` (${HINTS[h.rule]})` : ''}`
+  for (const h of warnings) console.log(say(h))
+  for (const h of errors) console.log(say(h))
+  if (errors.length > 0) {
     console.error(
-      `\n✗ ${TOOL}: ${remaining.length} hit(s) in ${files.size} file(s). docs/content-guidelines.md has each rule.`,
+      `\n✗ ${TOOL}: ${errors.length} hit(s) in ${files.size} file(s)` +
+        (warnings.length > 0 ? ` and ${warnings.length} warning(s)` : '') +
+        '. docs/content-guidelines.md has each rule.',
     )
     process.exit(1)
   }
   console.log(
     `✓ ${TOOL}: ${files.size} file(s), ${strings} string(s), 0 hits` +
+      (warnings.length > 0 ? `, ${warnings.length} warning(s)` : '') +
       (used.size > 0 ? ` (${used.size} allowed)` : ''),
   )
 }
