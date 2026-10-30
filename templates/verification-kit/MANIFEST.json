@@ -1,7 +1,7 @@
 {
-  "version": "0.48.1",
+  "version": "0.49.0",
   "files": {
-    "README.md": "d109c8526033b0dec27d94e80714ada5dc707d03407802c16f69030c88b10578",
+    "README.md": "814af398df038f17e61f0b8661623215ebd361bb5ed7ddfe17ed3546365d9dde",
     "bin/assert-checks-started.mjs": "9b32370e3b8ab4dae94c9b54abd46c6d364f81fb00b6f81ccbaf0e4d21b077f0",
     "bin/assert-tests-executed.mjs": "0c51a19cb8fa467bd8bf98fbbabb1e349cbe28ce125095fe302039e47f8db6fd",
     "bin/check-backlog.mjs": "92d71fca48e286536e33153f231fed76370f470095441eb65be30bceae93b4a4",
@@ -14,7 +14,7 @@
     "bin/check-page-metadata.mjs": "f876e3fdfa5d3cc03e993bac8e351d4c4b54aa180a662b2752309c7d84e65998",
     "bin/check-rule-citations.mjs": "be89e3cc348acd56f4f8a99e817393b91bd3d0c46ff6a2a58d0669776ed0493f",
     "bin/check-tracked-artifacts.mjs": "ef4a8e1d674c2d883db4e37781167c9fab1f6a3b0461b16d0a4b067cd1dc6e9c",
-    "bin/check-voice.mjs": "283e5b999163b69b1b028e98abeaa4ac716ae4ff4d8016497524c4e78e2af048",
+    "bin/check-voice.mjs": "ce6f99a8021a220885c22bdafa3724e84c82e2d6a965497eb73bfc958249fabd",
     "bin/mutation-canary.mjs": "fafb50a15854c5273e262915baaef4b63328ccb5b631f4a5f3341c0915d0b6e6",
     "bin/refresh-kit.mjs": "9c453700f81c2663cd88ec3cfb614c99a3749b1bd0186dcc8ad84fdcb48b6c91",
     "bin/write-manifest.mjs": "69d22a6aeae0edf098c9c353b90f1514c809081ac69a9147a96f0d45e2c43f02",
@@ -40,7 +40,7 @@
     "test/pageMetadata.test.mjs": "77a74d4b70019117dc88f782dd973cc4880e797954bfd33465871139dc0e7a32",
     "test/refreshKitHandoff.test.mjs": "58f2380adcc2829e66ddb9654d95441eb25de716af2574f1e2f741dbc5f34336",
     "test/ruleCitations.test.mjs": "adca35331c0a5b6b6b62ff5c51aa4e7229bba09f4b9420d152fb45f9c98821ba",
-    "test/voice.test.mjs": "02dde4ab14db6bca0cbd689c5f2e628e4dee8701fdd4738b263efd49609df77f"
+    "test/voice.test.mjs": "f350ac09a6ed5536f0a61b7a57f2126436e4167b1b7cee5d24406c7edabd9e63"
   },
   "companions": {
     "docs/verification-rules.md": "6c252cce163b2606bc6263b5c9737c9a8807bbbefe50787809bf57699b02287a",

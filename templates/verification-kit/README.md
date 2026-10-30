@@ -101,6 +101,19 @@ text, on a summary over four sentences, and on the praise-then-pivot summary
 The, Its, Where or What). Rule 10's tics are allowed once per file and never
 in a summary or heading.
 
+Since v0.49.0 it also checks the habits a model writes by default. Errors:
+antithesis ("X, not Y", "not X but Y"; "not only", "not just", "does not X, but
+Y" and quoted labels pass) and a colon-led statement (a noun phrase of one to
+four words, a colon and a full sentence; headings, labels, list leads, times,
+ratios, step numbers and labels such as "Note:" pass). Warnings, printed as
+`path:where: warning rule X "text"` and never failing the run: uniform rhythm (a
+paragraph of four or more sentences whose lengths all sit within 4 words of the
+median) and the abstract nouns "judgment", "intent", "posture", "craft",
+"clarity", "the space between", "at scale" and "end-to-end". "best-in-class" is
+already an error under rule 8. The allowlist covers warnings too: a repository
+that keeps a positioning sentence with "judgment" lists it with its reason and
+review date, and the list only shrinks.
+
 ```sh
 npm run build && node verification-kit/bin/check-voice.mjs          # dist/ or build/ HTML
 node verification-kit/bin/check-voice.mjs 'src/content/locales/en.ts' 'content/*.json' \
