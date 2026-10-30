@@ -34,13 +34,13 @@ on:
         default: ""
       model:
         description: >-
-          Claude model that reviews. The default is Opus. While it is left at the default, the
-          "Pick the model" step reviews the small sites (the repositories it lists) with Sonnet,
-          so one place sets the model for 19 callers (owner, 2026-10-30, token efficiency). A
-          caller that passes another value gets exactly that model.
+          Claude model that reviews. "auto" (the default) means Opus, except that the "Pick the
+          model" step reviews the small sites (the repositories it lists) with Sonnet, so one
+          place sets the model for 19 callers (owner, 2026-10-30, token efficiency). Any other
+          value, claude-opus-5-5 included, is used exactly as passed.
         required: false
         type: string
-        default: claude-opus-5-5
+        default: auto
     secrets:
       CLAUDE_CODE_OAUTH_TOKEN:
         required: true
@@ -130,7 +130,7 @@ jobs:
           out: review-input
 
       # One place for the model. The small sites get Sonnet; 4thcltr.com, heuristics, papers,
-      # gorfed.net, bindercurve.com, assess and ops keep the input's Opus default. Matching is by
+      # gorfed.net, bindercurve.com, assess and ops keep Opus under "auto". Matching is by
       # repository name, case-insensitive (ACID2REAPER's remote is spelled in capitals).
       - name: Pick the model
         id: model
@@ -139,10 +139,10 @@ jobs:
           REQUESTED: ${{ inputs.model }}
         run: |
           set -euo pipefail
-          model="$REQUESTED"
-          if [[ -z "$model" ]]; then model=claude-opus-5-5; fi
-          repo="$(printf '%s' "${REPO#*/}" | tr '[:upper:]' '[:lower:]')"
-          if [[ "$model" == claude-opus-5-5 ]]; then
+          model="${REQUESTED:-auto}"
+          if [[ "$model" == auto ]]; then
+            model=claude-opus-5-5
+            repo="$(printf '%s' "${REPO#*/}" | tr '[:upper:]' '[:lower:]')"
             case "$repo" in
               promptboi.com|denseware.com|ssatcy.com|gorfmusic.com|subrythm.com|blackpixelrecords.com|anal0g.org|rowanmcarthur.com|acid2reaper) model=claude-sonnet-5-5 ;;
             esac

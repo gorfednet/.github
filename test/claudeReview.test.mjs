@@ -369,8 +369,8 @@ describe('claude-review model choice', () => {
     return model
   }
 
-  it('declares a model input that defaults to Opus', () => {
-    assert.match(workflow, /\n {6}model:\n[\s\S]*?default: claude-opus-5-5\n/)
+  it('declares a model input that defaults to auto (Opus, Sonnet on the small sites)', () => {
+    assert.match(workflow, /\n {6}model:\n[\s\S]*?default: auto\n/)
   })
 
   it('passes the chosen model to the action', () => {
@@ -378,18 +378,24 @@ describe('claude-review model choice', () => {
   })
 
   for (const repo of ['promptboi.com', 'denseware.com', 'ssatcy.com', 'gorfmusic.com', 'subrythm.com', 'blackpixelrecords.com', 'anal0g.org', 'rowanmcarthur.com', 'ACID2REAPER']) {
-    it(`reviews ${repo} with Sonnet`, () => assert.equal(choose(`gorfednet/${repo}`, 'claude-opus-5-5'), 'claude-sonnet-5-5'))
+    it(`reviews ${repo} with Sonnet`, () => assert.equal(choose(`gorfednet/${repo}`, 'auto'), 'claude-sonnet-5-5'))
   }
 
   for (const repo of ['4thcltr.com', 'heuristics.4thcltr.com', 'papers.4thcltr.com', 'gorfed.net', 'bindercurve.com', 'assess', 'ops', '.github']) {
-    it(`keeps Opus for ${repo}`, () => assert.equal(choose(`gorfednet/${repo}`, 'claude-opus-5-5'), 'claude-opus-5-5'))
+    it(`keeps Opus for ${repo}`, () => assert.equal(choose(`gorfednet/${repo}`, 'auto'), 'claude-opus-5-5'))
   }
 
   it('does not match a repository that only contains a small site name', () => {
-    assert.equal(choose('gorfednet/ssatcy.com-pool', 'claude-opus-5-5'), 'claude-opus-5-5')
+    assert.equal(choose('gorfednet/ssatcy.com-pool', 'auto'), 'claude-opus-5-5')
   })
 
-  it('honours a model a caller passes explicitly', () => {
+  it('honours a model a caller passes explicitly, Opus on a small site included', () => {
     assert.equal(choose('gorfednet/promptboi.com', 'claude-haiku-5-5'), 'claude-haiku-5-5')
+    assert.equal(choose('gorfednet/promptboi.com', 'claude-opus-5-5'), 'claude-opus-5-5')
+  })
+
+  it('treats an empty input as auto', () => {
+    assert.equal(choose('gorfednet/promptboi.com', ''), 'claude-sonnet-5-5')
+    assert.equal(choose('gorfednet/assess', ''), 'claude-opus-5-5')
   })
 })
