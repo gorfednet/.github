@@ -27,10 +27,11 @@ jobs:
           npm init -y >/dev/null
           npm install --save-exact @playwright/test@1.64.1
           sudo mv /usr/bin/apt-get /usr/bin/apt-get.real
-          printf '#!/bin/sh\necho "apt-get $*" >> /tmp/apt-calls.log\nexec /usr/bin/apt-get.real "$@"\n' | sudo tee /usr/bin/apt-get >/dev/null
+          printf '#!/bin/sh\necho "apt-get $*" >> /var/lib/apt-witness/calls.log\nexec /usr/bin/apt-get.real "$@"\n' | sudo tee /usr/bin/apt-get >/dev/null
           sudo chmod +x /usr/bin/apt-get
-          : > /tmp/apt-calls.log
-          chmod 666 /tmp/apt-calls.log
+          sudo install -d -m 777 /var/lib/apt-witness
+          : > /var/lib/apt-witness/calls.log
+          chmod 666 /var/lib/apt-witness/calls.log
       - uses: ./.github/actions/setup-playwright
         with:
           working-directory: ${{ runner.temp }}/pkg
@@ -43,8 +44,8 @@ jobs:
           set -euo pipefail
           cat /tmp/probe.log
           test "$(cat /tmp/probe.log)" = "system-deps: chromium launched; apt skipped"
-          echo "apt calls: $(wc -l < /tmp/apt-calls.log)"
-          test ! -s /tmp/apt-calls.log
+          echo "apt calls: $(wc -l < /var/lib/apt-witness/calls.log)"
+          test ! -s /var/lib/apt-witness/calls.log
 
   auto-broken-probe:
     # Hosted: hosted mode of the action is the code under test; the pool is a different path.
@@ -60,10 +61,11 @@ jobs:
           npm init -y >/dev/null
           npm install --save-exact @playwright/test@1.64.1
           sudo mv /usr/bin/apt-get /usr/bin/apt-get.real
-          printf '#!/bin/sh\necho "apt-get $*" >> /tmp/apt-calls.log\nexec /usr/bin/apt-get.real "$@"\n' | sudo tee /usr/bin/apt-get >/dev/null
+          printf '#!/bin/sh\necho "apt-get $*" >> /var/lib/apt-witness/calls.log\nexec /usr/bin/apt-get.real "$@"\n' | sudo tee /usr/bin/apt-get >/dev/null
           sudo chmod +x /usr/bin/apt-get
-          : > /tmp/apt-calls.log
-          chmod 666 /tmp/apt-calls.log
+          sudo install -d -m 777 /var/lib/apt-witness
+          : > /var/lib/apt-witness/calls.log
+          chmod 666 /var/lib/apt-witness/calls.log
       - uses: ./.github/actions/setup-playwright
         with:
           working-directory: ${{ runner.temp }}/pkg
@@ -77,8 +79,8 @@ jobs:
           set -euo pipefail
           cat /tmp/probe.log
           test "$(cat /tmp/probe.log)" = "system-deps: chromium failed to launch; running install-deps"
-          echo "apt calls:"; cat /tmp/apt-calls.log
-          grep -q '^apt-get ' /tmp/apt-calls.log
+          echo "apt calls:"; cat /var/lib/apt-witness/calls.log
+          grep -q '^apt-get ' /var/lib/apt-witness/calls.log
 
   always-as-today:
     # Hosted: hosted mode of the action is the code under test; the pool is a different path.
@@ -94,10 +96,11 @@ jobs:
           npm init -y >/dev/null
           npm install --save-exact @playwright/test@1.64.1
           sudo mv /usr/bin/apt-get /usr/bin/apt-get.real
-          printf '#!/bin/sh\necho "apt-get $*" >> /tmp/apt-calls.log\nexec /usr/bin/apt-get.real "$@"\n' | sudo tee /usr/bin/apt-get >/dev/null
+          printf '#!/bin/sh\necho "apt-get $*" >> /var/lib/apt-witness/calls.log\nexec /usr/bin/apt-get.real "$@"\n' | sudo tee /usr/bin/apt-get >/dev/null
           sudo chmod +x /usr/bin/apt-get
-          : > /tmp/apt-calls.log
-          chmod 666 /tmp/apt-calls.log
+          sudo install -d -m 777 /var/lib/apt-witness
+          : > /var/lib/apt-witness/calls.log
+          chmod 666 /var/lib/apt-witness/calls.log
       - uses: ./.github/actions/setup-playwright
         with:
           working-directory: ${{ runner.temp }}/pkg
@@ -108,8 +111,8 @@ jobs:
         if: ${{ !cancelled() }}
         run: |
           set -euo pipefail
-          echo "apt calls:"; cat /tmp/apt-calls.log
-          grep -q '^apt-get ' /tmp/apt-calls.log
+          echo "apt calls:"; cat /var/lib/apt-witness/calls.log
+          grep -q '^apt-get ' /var/lib/apt-witness/calls.log
           test ! -e /tmp/probe.log
 
   invalid-value:
