@@ -983,6 +983,45 @@ of scope for now", the honest move is to say so at the registry level with a dat
 on it — not to quietly loosen the checks and leave them looking like they still
 cover something.
 
+## Caches — the run used what an earlier run left
+
+**V75. A cache holds only what a tool would produce again from the same inputs,
+and a hit must be indistinguishable from a miss.** A cache is a second source of
+truth that nothing reads back, so the rules below keep it to material that can be
+rebuilt and make the two paths comparable. They apply to every `actions/cache`
+step in the fleet and to the shared actions.
+
+1. A cache holds only what a tool would produce again from the same inputs:
+   dependencies (`node_modules`, pip, browsers). Never test results, lint
+   results, typecheck state, or build output (`dist`, PDFs, cards) across runs.
+   Build output moves between jobs of one run as an artifact, never through the
+   cache.
+2. The key is a hash of the inputs that decide the content (lockfiles, the
+   tool's version, OS, Node major), plus a `vN` the owner bumps to retire a
+   shape. No dates, no run ids, no `restore-keys` partial matches: a partial
+   match is a miss that costs an install anyway.
+3. A miss must produce the same tree as a hit. Each cache prints one line on
+   both paths that lets a reader compare them (for `node_modules`: the sha256 of
+   `node_modules/.package-lock.json`).
+4. Save only when the install succeeded; save in the step, not a post step, so a
+   job cancelled later still published. A pull request writes only its own
+   scope.
+5. Only runs of main's own code write main-scope entries. A workflow that runs
+   on main's ref but checks out other code (`claude-review` on `issue_comment`)
+   never uses a cache.
+6. A deploy build installs fresh. Sites deployed by `site-deploy.sh` already
+   prove freshness with `.build-sha`; a release workflow that builds the
+   artifact disables restore.
+7. A new or re-keyed cache lands with one watched miss and one watched hit in the
+   pull request, and the log lines from both (V6). Turn one off by deleting its
+   restore step; the install path is always present.
+
+`setup-playwright` follows items 1 and 2 today (it still saves in the action's post step, so item 4 is open): it caches browsers only, keyed
+on OS, Playwright version and browser list, with no `restore-keys`. It prints
+`setup-playwright: playwright <version>; cache-hit=<flag>; browsers on disk: ...`
+on every hosted path, which is its item 3 line: the version is in the key, and
+the browser builds on disk are the tree to compare.
+
 ## Provenance
 
 Every rule above was first written in
