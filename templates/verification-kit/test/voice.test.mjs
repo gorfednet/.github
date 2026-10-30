@@ -102,7 +102,7 @@ describe('check-voice structure rules', () => {
   })
 
   it('fails a summary over four sentences, passes four', () => {
-    const four = 'One fact. Two facts. Three facts. Four facts.'
+    const four = 'One fact. Two facts, each with a number and a date attached to it. Three. Four facts.'
     assert.deepEqual(rules(four, 'summary'), [])
     assert.deepEqual(rules(`${four} Five facts.`, 'summary'), ['summary:5 sentences'])
   })
@@ -368,5 +368,103 @@ describe('check-voice --term', () => {
     const r = run(dir, ['spec.md', '--term', '--allow', 'x'])
     assert.equal(r.status, 1)
     assert.match(r.stderr, /--term needs one word/)
+  })
+})
+
+describe('check-voice antithesis (rule 3, error)', () => {
+  const fires = (t) => rules(t).filter((r) => r.startsWith('3:'))
+  it('fails "X, not Y" and "not X but Y"', () => {
+    assert.equal(fires('The page needs a clear label, not a long caption.').length, 1)
+    assert.equal(fires('The fix is not a new menu but a shorter one.').length, 1)
+    assert.equal(fires('It is not the price, but the shipping cost.').length, 1)
+  })
+  it('near miss: "not only", "not just", plain negation and quoted labels pass', () => {
+    assert.deepEqual(fires('The page is not only slow but also hard to read.'), [])
+    assert.deepEqual(fires('It is not just slow, but also hard to read.'), [])
+    assert.deepEqual(fires('The cart works, not all pages load.'), [])
+    assert.deepEqual(fires('The filter does not open, but the page loads.'), [])
+    assert.deepEqual(fires('The button reads "Buy, not rent" on 3 pages.'), [])
+  })
+  it('the CLI fails the build on it and prints the rule and the string', () => {
+    const dir = project({ 'a.md': '# A\n\nUse the Sort control, not the filter.\n' })
+    const r = run(dir, ['a.md'])
+    assert.equal(r.status, 1)
+    assert.match(r.stdout, /a\.md:L3: rule 3 ".*not the filter" \(antithesis/)
+  })
+})
+
+describe('check-voice colon-led statement (error)', () => {
+  const fires = (t, kind = 'text') => checkString(t, kind).filter((h) => h.rule === 'colon')
+  it('fails a short noun phrase, a colon and a full sentence', () => {
+    assert.equal(fires('The fix: Move the Sort control above the grid.').length, 1)
+    assert.equal(fires('Intro text here. The result: Search fails on 3 of 5 queries.').length, 1)
+  })
+  it('near miss: times, ratios, headings, labels, list leads and step numbers pass', () => {
+    assert.deepEqual(fires('Contrast is 3.62:1 on the footer links.'), [])
+    assert.deepEqual(fires('The store opens at 10:30 on weekdays.'), [])
+    assert.deepEqual(fires('The fix: Move the Sort control above the grid.', 'heading'), [])
+    assert.deepEqual(fires('The fix: Move the Sort control above the grid.', 'label'), [])
+    assert.deepEqual(fires('Note: Prices exclude shipping costs here.'), [])
+    assert.deepEqual(fires('Step 2: Open the Sort control and pick a value.'), [])
+    assert.deepEqual(fires('The page has three problems:'), [])
+    assert.deepEqual(fires('The page lists three sizes: Small, Medium and Large.'), [])
+  })
+})
+
+describe('check-voice uniform rhythm (warning)', () => {
+  const fires = (t) => checkString(t, 'text').filter((h) => h.rule === 'rhythm')
+  const flat = 'The menu hides prices on mobile. The search fails on two queries. The cart drops items on reload. The footer links miss contrast.'
+  it('warns on four sentences within 4 words of the median', () => {
+    const hits = fires(flat)
+    assert.equal(hits.length, 1)
+    assert.equal(hits[0].level, 'warn')
+  })
+  it('near miss: varied lengths, and fewer than four sentences, pass', () => {
+    assert.deepEqual(fires('The menu hides prices. The search fails on two queries, and the cart drops items on reload after 30 minutes. Contrast fails. The footer is fine.'), [])
+    assert.deepEqual(fires('The menu hides prices on mobile. The search fails on two queries. The cart drops items on reload.'), [])
+  })
+  it('the CLI prints it as a warning and exits 0', () => {
+    const dir = project({ 'a.md': `# A\n\n${flat}\n` })
+    const r = run(dir, ['a.md'])
+    assert.equal(r.status, 0, r.stdout + r.stderr)
+    assert.match(r.stdout, /a\.md:L3: warning rule rhythm "4 sentences/)
+    assert.match(r.stdout, /1 warning\(s\)/)
+  })
+})
+
+describe('check-voice abstract nouns (warning)', () => {
+  const fires = (t) => checkString(t, 'text').filter((h) => h.rule === 'abstract')
+  it('warns on the listed nouns and phrases', () => {
+    for (const t of [
+      'We bring judgment to every page.',
+      'The team works at scale on 40 sites.',
+      'The audit runs end-to-end in 6 minutes.',
+      'The report shows the space between the two prices.',
+      'Design posture and craft shape the result.',
+    ])
+      assert.ok(fires(t).length >= 1, t)
+    assert.equal(fires('Intent and clarity matter.').length, 2)
+    assert.equal(fires('Intent and clarity matter.')[0].level, 'warn')
+  })
+  it('near miss: verbs, longer words and quoted labels pass', () => {
+    assert.deepEqual(fires('We craft each report by hand.'), [])
+    assert.deepEqual(fires('The crafted page has 3 links.'), [])
+    assert.deepEqual(fires('The label "Clarity" opens a 404.'), [])
+    assert.deepEqual(fires('The bunker holds 12 posts.'), [])
+  })
+  it('best-in-class stays an error under rule 8', () => {
+    assert.ok(rules('A best-in-class store.').includes('8:best-in-class'))
+  })
+  it('an allowlist entry silences a warning and the owner positioning sentence passes', () => {
+    const dir = project({
+      'a.md': '# A\n\nI bring judgment to the work of 4 teams.\n',
+      'allow.json': [{ match: 'judgment', where: 'a.md', reason: "owner's positioning, 2026-10-27", reviewBy: '2027-04-27' }],
+    })
+    const without = run(dir, ['a.md'])
+    assert.equal(without.status, 0)
+    assert.match(without.stdout, /warning rule abstract "judgment"/)
+    const withList = run(dir, ['a.md', '--allow', join(dir, 'allow.json')])
+    assert.equal(withList.status, 0, withList.stderr)
+    assert.doesNotMatch(withList.stdout, /judgment/)
   })
 })
