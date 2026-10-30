@@ -353,3 +353,43 @@ describe('where the shared reviewer runs', () => {
     assert.doesNotMatch(jobs, /inputs\.runs-on/)
   })
 })
+
+describe('claude-review model choice', () => {
+  const pick = step(workflow, 'Pick the model')
+  const script = /run: \|\n([\s\S]*)$/.exec(pick)[1].replace(/^ {10}/gm, '')
+
+  /** The model the step selects for a repository and requested model. */
+  function choose(repo, requested) {
+    const dir = mkdtempSync(join(tmpdir(), 'pick-model-'))
+    const out = join(dir, 'out')
+    writeFileSync(out, '')
+    execFileSync('bash', ['-c', script], { env: { PATH: process.env.PATH, REPO: repo, REQUESTED: requested, GITHUB_OUTPUT: out } })
+    const model = /^model=(.*)$/m.exec(readFileSync(out, 'utf8'))[1]
+    rmSync(dir, { recursive: true, force: true })
+    return model
+  }
+
+  it('declares a model input that defaults to Opus', () => {
+    assert.match(workflow, /\n {6}model:\n[\s\S]*?default: claude-opus-5-5\n/)
+  })
+
+  it('passes the chosen model to the action', () => {
+    assert.match(step(workflow, 'Review'), /--model \$\{\{ steps\.model\.outputs\.model \}\}/)
+  })
+
+  for (const repo of ['promptboi.com', 'denseware.com', 'ssatcy.com', 'gorfmusic.com', 'subrythm.com', 'blackpixelrecords.com', 'anal0g.org', 'rowanmcarthur.com', 'ACID2REAPER']) {
+    it(`reviews ${repo} with Sonnet`, () => assert.equal(choose(`gorfednet/${repo}`, 'claude-opus-5-5'), 'claude-sonnet-5-5'))
+  }
+
+  for (const repo of ['4thcltr.com', 'heuristics.4thcltr.com', 'papers.4thcltr.com', 'gorfed.net', 'bindercurve.com', 'assess', 'ops', '.github']) {
+    it(`keeps Opus for ${repo}`, () => assert.equal(choose(`gorfednet/${repo}`, 'claude-opus-5-5'), 'claude-opus-5-5'))
+  }
+
+  it('does not match a repository that only contains a small site name', () => {
+    assert.equal(choose('gorfednet/ssatcy.com-pool', 'claude-opus-5-5'), 'claude-opus-5-5')
+  })
+
+  it('honours a model a caller passes explicitly', () => {
+    assert.equal(choose('gorfednet/promptboi.com', 'claude-haiku-5-5'), 'claude-haiku-5-5')
+  })
+})

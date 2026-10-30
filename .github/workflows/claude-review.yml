@@ -32,6 +32,15 @@ on:
         required: false
         type: string
         default: ""
+      model:
+        description: >-
+          Claude model that reviews. The default is Opus. While it is left at the default, the
+          "Pick the model" step reviews the small sites (the repositories it lists) with Sonnet,
+          so one place sets the model for 19 callers (owner, 2026-10-30, token efficiency). A
+          caller that passes another value gets exactly that model.
+        required: false
+        type: string
+        default: claude-opus-5-5
     secrets:
       CLAUDE_CODE_OAUTH_TOKEN:
         required: true
@@ -120,6 +129,27 @@ jobs:
           head: ${{ steps.pr.outputs.head }}
           out: review-input
 
+      # One place for the model. The small sites get Sonnet; 4thcltr.com, heuristics, papers,
+      # gorfed.net, bindercurve.com, assess and ops keep the input's Opus default. Matching is by
+      # repository name, case-insensitive (ACID2REAPER's remote is spelled in capitals).
+      - name: Pick the model
+        id: model
+        env:
+          REPO: ${{ github.repository }}
+          REQUESTED: ${{ inputs.model }}
+        run: |
+          set -euo pipefail
+          model="$REQUESTED"
+          if [[ -z "$model" ]]; then model=claude-opus-5-5; fi
+          repo="$(printf '%s' "${REPO#*/}" | tr '[:upper:]' '[:lower:]')"
+          if [[ "$model" == claude-opus-5-5 ]]; then
+            case "$repo" in
+              promptboi.com|denseware.com|ssatcy.com|gorfmusic.com|subrythm.com|blackpixelrecords.com|anal0g.org|rowanmcarthur.com|acid2reaper) model=claude-sonnet-5-5 ;;
+            esac
+          fi
+          echo "model=${model}" >> "$GITHUB_OUTPUT"
+          echo "reviewing ${REPO} with ${model}"
+
       # The secret holds either a subscription token or an API key; pass it to the matching input.
       # Fails closed: an empty or unrecognised value is an error, never a silent skip.
       - name: Pick the credential
@@ -194,4 +224,5 @@ jobs:
             found, then this line exactly, with the number of inline comments you left:
             <!-- claude-review head=${{ steps.pr.outputs.head }} findings=N -->
           claude_args: |
+            --model ${{ steps.model.outputs.model }}
             --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr view:*),Bash(git show:*),Bash(git log:*),Bash(git diff:*),Read,Grep,Glob"
