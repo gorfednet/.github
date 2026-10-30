@@ -12,7 +12,7 @@ import { fileURLToPath } from 'node:url'
 
 const ACTION = join(dirname(fileURLToPath(import.meta.url)), '..', '.github', 'actions', 'setup-playwright')
 
-function run({ locked = '1.64.1', pkg = '@playwright/test', preinstalled, browsers = 'chromium' }) {
+function run({ locked = '1.64.1', pkg = '@playwright/test', preinstalled, browsers = 'chromium', systemDeps = 'always' }) {
   const dir = mkdtempSync(join(tmpdir(), 'setup-pw-'))
   if (locked) {
     mkdirSync(join(dir, 'node_modules', pkg), { recursive: true })
@@ -30,6 +30,7 @@ function run({ locked = '1.64.1', pkg = '@playwright/test', preinstalled, browse
     GITHUB_OUTPUT: join(dir, 'out'),
     GITHUB_ENV: join(dir, 'env'),
   }
+  if (systemDeps !== null) env.SYSTEM_DEPS = systemDeps
   if (preinstalled !== undefined) env.BC_PREINSTALLED_PLAYWRIGHT_VERSION = preinstalled
   const r = spawnSync('bash', [join(ACTION, 'resolve.sh')], { cwd: dir, env, encoding: 'utf8' })
   const read = (f) => (existsSync(f) ? readFileSync(f, 'utf8') : '')
@@ -56,6 +57,52 @@ describe('setup-playwright resolve.sh', () => {
     const yml = readFileSync(join(ACTION, 'action.yml'), 'utf8')
     assert.match(yml, /if: steps\.playwright\.outputs\.mode == 'hosted' && [^\n]*!= 'true'\n[^]*?npx playwright install --with-deps/)
     assert.match(yml, /id: playwright-cache\n\s+if: steps\.playwright\.outputs\.mode == 'hosted'/)
+  })
+
+  it('hosted: the default install path is untouched, and the new paths never use --with-deps', () => {
+    const yml = readFileSync(join(ACTION, 'action.yml'), 'utf8')
+    const steps = yml.split(/\n    - name: /).slice(1)
+    const by = (needle) => steps.find((x) => x.startsWith(needle))
+    const miss = by('Install Playwright browsers and system dependencies')
+    assert.match(miss, /if: steps\.playwright\.outputs\.mode == 'hosted' && steps\.playwright\.outputs\.system_deps == 'always' && steps\.playwright-cache\.outputs\.cache-hit != 'true'/)
+    assert.match(miss, /run: npx playwright install --with-deps \$\{\{ inputs\.browsers \}\}/)
+    const hit = by('Install Playwright system dependencies\n')
+    assert.match(hit, /system_deps == 'always' && steps\.playwright-cache\.outputs\.cache-hit == 'true'/)
+    assert.match(hit, /run: npx playwright install-deps \$\{\{ inputs\.browsers \}\}/)
+    const auto = by('Install Playwright browsers (system-deps auto)')
+    assert.match(auto, /system_deps == 'auto' && steps\.playwright-cache\.outputs\.cache-hit != 'true'/)
+    assert.ok(!auto.includes('--with-deps'))
+    // No step may run apt-backed installs for 'auto' except the one gated on a failed probe.
+    const probeFix = by('Install Playwright system dependencies for browsers that failed')
+    assert.match(probeFix, /steps\.probe\.outcome != 'success' \|\| steps\.probe\.outputs\.failed != ''/)
+    assert.match(by('Launch each browser'), /continue-on-error: true/)
+    assert.doesNotMatch(yml, /restore-keys/)
+  })
+
+  it('system-deps: only always and auto are accepted, on every path, including the pool', () => {
+    for (const v of ['always', 'auto']) {
+      const x = run({ systemDeps: v })
+      assert.equal(x.r.status, 0, x.r.stderr)
+      assert.match(x.out, new RegExp(`^system_deps=${v}$`, 'm'))
+    }
+    // Near misses: case, padding, empty, unset, and a value that contains a valid one.
+    for (const v of ['Auto', 'ALWAYS', ' auto', 'auto ', '', 'never', 'always auto', 'true', null]) {
+      for (const preinstalled of [undefined, '1.64.1']) {
+        const x = run({ systemDeps: v, preinstalled })
+        assert.notEqual(x.r.status, 0, JSON.stringify([v, preinstalled]))
+        assert.match(x.r.stdout, /::error::setup-playwright: system-deps must be 'always' or 'auto'/)
+        assert.equal(x.out, '', 'nothing is decided from a bad value')
+        assert.equal(x.calls, '')
+      }
+    }
+  })
+
+  it('pool mode ignores system-deps: same outputs and same install either way', () => {
+    const a = run({ preinstalled: '1.62.1', systemDeps: 'always' })
+    const b = run({ preinstalled: '1.62.1', systemDeps: 'auto' })
+    assert.match(a.out, /mode=pool-install/)
+    assert.match(b.out, /mode=pool-install/)
+    assert.equal(a.calls.replaceAll(a.dir, 'D'), b.calls.replaceAll(b.dir, 'D'))
   })
 
   it('pool, image carries the locked version: skip', () => {
@@ -98,5 +145,55 @@ describe('setup-playwright resolve.sh', () => {
     const x = run({ locked: null })
     assert.notEqual(x.r.status, 0)
     assert.match(x.r.stdout, /::error::.*neither @playwright\/test nor playwright/)
+  })
+})
+
+// probe.sh: node and timeout are stubbed. FAKE_FAIL lists browsers whose launch fails.
+function probe({ browsers, fail = '', noNode = false }) {
+  const dir = mkdtempSync(join(tmpdir(), 'probe-'))
+  mkdirSync(join(dir, 'bin'))
+  writeFileSync(join(dir, 'bin', 'timeout'), '#!/bin/sh\nshift\nexec "$@"\n')
+  writeFileSync(
+    join(dir, 'bin', 'node'),
+    noNode
+      ? '#!/bin/sh\necho "Error: Cannot find module" >&2\nexit 1\n'
+      : '#!/bin/sh\ncase " $FAKE_FAIL " in *" $BROWSER "*) echo "Host system is missing dependencies" >&2; exit 1;; esac\nexit 0\n',
+  )
+  chmodSync(join(dir, 'bin', 'timeout'), 0o755)
+  chmodSync(join(dir, 'bin', 'node'), 0o755)
+  const out = join(dir, 'out')
+  const r = spawnSync('bash', [join(ACTION, 'probe.sh')], {
+    cwd: dir,
+    encoding: 'utf8',
+    env: { PATH: `${join(dir, 'bin')}:${process.env.PATH}`, BROWSERS: browsers, FAKE_FAIL: fail, GITHUB_OUTPUT: out },
+  })
+  return { r, out: existsSync(out) ? readFileSync(out, 'utf8') : '' }
+}
+
+describe('setup-playwright probe.sh', () => {
+  it('prints one line per browser and reports only the failures', () => {
+    const x = probe({ browsers: 'chromium firefox webkit', fail: 'firefox webkit' })
+    assert.equal(x.r.status, 0)
+    const lines = x.r.stdout.split('\n').filter((l) => l.startsWith('system-deps: '))
+    assert.deepEqual(lines, [
+      'system-deps: chromium launched; apt skipped',
+      'system-deps: firefox failed to launch; running install-deps',
+      'system-deps: webkit failed to launch; running install-deps',
+    ])
+    assert.match(x.out, /^failed=firefox webkit$/m)
+  })
+
+  it('all launch: nothing failed, so nothing for apt', () => {
+    const x = probe({ browsers: 'chromium' })
+    assert.equal(x.r.status, 0)
+    assert.equal(x.r.stdout.trim(), 'system-deps: chromium launched; apt skipped')
+    assert.match(x.out, /^failed=$/m)
+  })
+
+  it('fails open: a probe that errors for any reason counts as a failed launch', () => {
+    const x = probe({ browsers: 'chromium webkit', noNode: true })
+    assert.equal(x.r.status, 0)
+    assert.match(x.out, /^failed=chromium webkit$/m)
+    assert.doesNotMatch(x.r.stdout, /launched; apt skipped/)
   })
 })

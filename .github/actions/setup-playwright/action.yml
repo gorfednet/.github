@@ -9,6 +9,18 @@ inputs:
     description: Space-separated browser names
     required: false
     default: chromium firefox webkit
+  system-deps:
+    description: >-
+      How hosted runners get the system libraries and fonts the browsers need. "always" (the
+      default) runs `playwright install --with-deps` on a cache miss and `install-deps` on a
+      hit, as before. "auto" installs the browsers without system dependencies (or skips the
+      install on a cache hit), launches each requested browser once, and runs `install-deps`
+      only for those that fail to launch, so a runner image that already carries the libraries
+      skips apt. Fonts come from the same packages, so "auto" can change text rendering: leave
+      it on "always" where a job compares screenshots or text widths. Any other value is an
+      error. Has no effect on the self-hosted pool.
+    required: false
+    default: always
 runs:
   using: composite
   steps:
@@ -18,6 +30,7 @@ runs:
       working-directory: ${{ inputs.working-directory }}
       env:
         BROWSERS: ${{ inputs.browsers }}
+        SYSTEM_DEPS: ${{ inputs.system-deps }}
       # Hosted runners fall through to the cache and install steps below. A pool job sets
       # BC_PREINSTALLED_PLAYWRIGHT_VERSION; resolve.sh then skips the install or installs
       # without system deps into RUNNER_TEMP. See the script header.
@@ -28,16 +41,48 @@ runs:
       uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
       with:
         path: ~/.cache/ms-playwright
-        key: ${{ runner.os }}-playwright-${{ steps.playwright.outputs.version }}-${{ steps.playwright.outputs.browsers_slug }}
-        restore-keys: |
-          ${{ runner.os }}-playwright-${{ steps.playwright.outputs.version }}-
+        key: ${{ runner.os }}-playwright-v1-${{ steps.playwright.outputs.version }}-${{ steps.playwright.outputs.browsers_slug }}
     - name: Install Playwright browsers and system dependencies
-      if: steps.playwright.outputs.mode == 'hosted' && steps.playwright-cache.outputs.cache-hit != 'true'
+      if: steps.playwright.outputs.mode == 'hosted' && steps.playwright.outputs.system_deps == 'always' && steps.playwright-cache.outputs.cache-hit != 'true'
       shell: bash
       working-directory: ${{ inputs.working-directory }}
       run: npx playwright install --with-deps ${{ inputs.browsers }}
     - name: Install Playwright system dependencies
-      if: steps.playwright.outputs.mode == 'hosted' && steps.playwright-cache.outputs.cache-hit == 'true'
+      if: steps.playwright.outputs.mode == 'hosted' && steps.playwright.outputs.system_deps == 'always' && steps.playwright-cache.outputs.cache-hit == 'true'
       shell: bash
       working-directory: ${{ inputs.working-directory }}
       run: npx playwright install-deps ${{ inputs.browsers }}
+    # system-deps: auto. No apt here. A hit needs no install at all.
+    - name: Install Playwright browsers (system-deps auto)
+      if: steps.playwright.outputs.mode == 'hosted' && steps.playwright.outputs.system_deps == 'auto' && steps.playwright-cache.outputs.cache-hit != 'true'
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: npx playwright install ${{ inputs.browsers }}
+    - name: Launch each browser to see whether apt is needed (system-deps auto)
+      id: probe
+      if: steps.playwright.outputs.mode == 'hosted' && steps.playwright.outputs.system_deps == 'auto'
+      # Fails open: if this step errors for any reason, the next one runs apt for every browser.
+      continue-on-error: true
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        BROWSERS: ${{ inputs.browsers }}
+      run: bash "${{ github.action_path }}/probe.sh"
+    - name: Install Playwright system dependencies for browsers that failed to launch (system-deps auto)
+      if: ${{ !cancelled() && steps.playwright.outputs.mode == 'hosted' && steps.playwright.outputs.system_deps == 'auto' && (steps.probe.outcome != 'success' || steps.probe.outputs.failed != '') }}
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        TO_FIX: ${{ steps.probe.outputs.failed || inputs.browsers }}
+      run: npx playwright install-deps $TO_FIX
+    # One line on every hosted path, hit or miss, so a reader can compare the two trees: the
+    # Playwright version and the browser builds on disk (the cache key carries the version).
+    - name: Report installed Playwright browsers
+      if: ${{ !cancelled() && steps.playwright.outputs.mode == 'hosted' }}
+      shell: bash
+      env:
+        PW_VERSION: ${{ steps.playwright.outputs.version }}
+        CACHE_HIT: ${{ steps.playwright-cache.outputs.cache-hit }}
+      run: |
+        installed="$(ls "$HOME/.cache/ms-playwright" 2>/dev/null | tr '\n' ' ' || true)"
+        echo "setup-playwright: playwright ${PW_VERSION}; cache-hit=${CACHE_HIT:-false}; browsers on disk: ${installed:-none}"
