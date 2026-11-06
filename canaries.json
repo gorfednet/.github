@@ -592,6 +592,22 @@
       "file": "templates/verification-kit/bin/check-html.mjs",
       "find": "if (message.type === 'error' || message.type === 'non-document-error') errors.push",
       "replace": "if (message.type === 'error-never') errors.push"
+    },
+    {
+      "id": "report-issues-never-close",
+      "guards": "sync-report-issues closes an issue the latest run no longer sees. Left open, a fixed link stays listed as broken, and a label full of stale issues is one nobody reads.",
+      "command": "node --test 'templates/verification-kit/test/reportIssues.test.mjs'",
+      "file": "templates/verification-kit/bin/sync-report-issues.mjs",
+      "find": "close: [...openById].filter(([id]) => !seen.has(id))",
+      "replace": "close: [...openById].filter(() => false)"
+    },
+    {
+      "id": "outbound-files-bot-walls",
+      "guards": "report-outbound-links files only a 404, a 410 or a dead name. Filing a 403 would open an issue every week for every bank and retailer that refuses bots, while a visitor's browser gets the page.",
+      "command": "node --test 'templates/verification-kit/test/outboundLinks.test.mjs'",
+      "file": "templates/verification-kit/bin/report-outbound-links.mjs",
+      "find": "kind: GONE_STATUS.has(answer.status) ? 'gone' : 'unverified'",
+      "replace": "kind: 'gone'"
     }
   ]
 }

@@ -34,6 +34,8 @@ an ignore rule that did not cover them.
 | `bin/check-voice.mjs` | Copy drifting back to praise-then-pivot summaries, software metaphors, "delivers value" and "Learn more" links. Enforces the checkable half of [`docs/content-guidelines.md`](../../docs/content-guidelines.md). |
 | `bin/check-links.mjs` | A built page linking to a page, asset, font or #fragment the build does not contain. Reads every page and stylesheet under the root, not a sample. Outbound links are not read: someone else's server belongs in a scheduled report. |
 | `bin/check-html.mjs` | A page the browser quietly repairs before axe sees it: a duplicate id, a stray end tag, a link inside a link. Runs the W3C's Nu Html Checker offline from the repository's `vnu-jar` and needs Java 11 or later. Errors fail; warnings are listed. |
+| `bin/report-outbound-links.mjs` | A link to another site that died, found by a visitor first. Scheduled only, never a pull request check: it files a 404, a 410 or a dead name, and lists a bot wall or an outage without filing it. |
+| `bin/sync-report-issues.mjs` | A scheduled report read by nobody because its run was green. Files each finding as an issue that carries its backlog entry, comments while it is still seen, and closes it on the first run that does not see it. |
 
 The checks that ask GitHub about a repository (`assert-checks-started`,
 `check-ci-headroom`, `check-backlog --verify-prs`) take it from `--repo owner/name`, then `GITHUB_REPOSITORY`, then the origin of the
