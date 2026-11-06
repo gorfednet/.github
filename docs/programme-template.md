@@ -27,8 +27,8 @@ Approved <date> by the owner. Source plan: <path>.
 - <date>: <decision>
 
 ## Milestones
-| Milestone | Items | ETA (ET) | Status |
-|---|---|---|---|
+| Milestone | Items | ETA (ET) |
+|---|---|---|
 
 ## Items
 ### <id>: <title>

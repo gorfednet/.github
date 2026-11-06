@@ -22,13 +22,13 @@ The intake gap has no API limit behind it. `assess analyse` is one-shot calls on
 
 | Milestone | Items | ETA (ET) |
 |---|---|---|
-| Sites guarded, verify merged | A1, B1 to B8, C1 | Wednesday 11 November 2026, 5 PM ET |
-| Intake parity measured | A2 to A6 | Friday 13 November 2026, 5 PM ET |
+| Sites guarded, verify merged | A1, B1 to B4, B6 to B8, C1 | Wednesday 11 November 2026, 5 PM ET |
+| Intake parity measured | A2 to A6, B5, C2 | Friday 13 November 2026, 5 PM ET |
 | CI one run per PR, fleet task live | D1 to D6, E1 to E3, F2, G1, G2 | Wednesday 18 November 2026, 5 PM ET |
 
 ## Items
 
-Status for each item is its backlog entry in the named repository, or its pull request.
+An item not yet started has no status. The session that starts an item adds its backlog entry in that repository as its first commit, and writes `backlog: <repo>#<id>` and its session link into the item's row here. From then on the backlog entry or pull request is the status. Each session's brief (30 lines or fewer) is written when it starts and kept in that repository's `docs/briefs/`. Every item's done-when is its pull request merged with its verification line below met; A6, B4, B5 and E1 are done when their first report is posted and read.
 
 | id | repo | item | tier | depends-on | owner-decision |
 |---|---|---|---|---|---|
