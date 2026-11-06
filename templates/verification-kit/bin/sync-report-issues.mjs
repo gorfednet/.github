@@ -5,8 +5,8 @@
  *
  * A scheduled report that only writes to its run's summary is read by nobody:
  * the run is green, so nobody opens it. An issue is in the repository's list
- * the next time anyone looks. It is never a pull request check (verification
- * rule 5): this runs from a schedule and its findings gate nothing.
+ * the next time anyone looks. It is never a pull request check (the 2026-10
+ * right-sizing section of docs/verification-rules.md): this runs from a schedule and its findings gate nothing.
  *
  * Why an issue and not a pull request that edits the backlog: the fleet's
  * repositories do not let Actions open pull requests, and that is a setting

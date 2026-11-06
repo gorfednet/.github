@@ -19,7 +19,7 @@
  * Internal means a relative URL, a root-relative one, or an absolute one on
  * --site-url. Other origins and schemes (mailto:, tel:, data:) are not read:
  * an outbound link depends on someone else's server, so it belongs in a
- * scheduled report, never a per-PR gate (verification rule 5).
+ * scheduled report, never a per-PR gate (the 2026-10 right-sizing section of docs/verification-rules.md).
  *
  * Usage:
  *   node verification-kit/bin/check-links.mjs --root dist

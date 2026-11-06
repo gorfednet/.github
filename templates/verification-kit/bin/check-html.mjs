@@ -10,7 +10,7 @@
  *
  * Offline: the jar comes from the repository's own lockfile (the `vnu-jar`
  * package), so a pull request check never depends on validator.w3.org being up
- * (verification rule 5). It needs Java 11 or later on PATH, or JAVA_HOME.
+ * (the 2026-10 right-sizing section of docs/verification-rules.md). It needs Java 11 or later on PATH, or JAVA_HOME.
  *
  * Errors fail. Warnings are counted and listed, never failing, so a rule the
  * site breaks on purpose (role="list" on a list styled without markers, which

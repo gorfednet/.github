@@ -3,8 +3,8 @@
  * Every link from the built pages to another site, asked whether it still answers.
  *
  * A scheduled report, never a pull request check: whether someone else's page
- * is up depends on their server, not on the change under review (verification
- * rule 5). check-links holds the internal links on every pull request; this is
+ * is up depends on their server, not on the change under review (the 2026-10
+ * right-sizing section of docs/verification-rules.md). check-links holds the internal links on every pull request; this is
  * the other half, run weekly.
  *
  * Two kinds of answer are kept apart, because only one is ours to fix:
