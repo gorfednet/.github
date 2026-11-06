@@ -35,6 +35,12 @@ describe('sync-report-issues', () => {
     assert.deepEqual(findingProblems({ id: 'timed-out', keep: true }, 'f'), [])
   })
 
+  it('opens no new issue for a finding a person closed as not planned', () => {
+    const actions = plan([], [finding('waived'), finding('fresh')], [issue(9, 'waived')])
+    assert.deepEqual(actions.create.map((f) => f.id), ['fresh'])
+    assert.match(issueBody(finding('x'), { today: '2026-11-06' }), /close it as not planned/)
+  })
+
   it('writes a backlog entry the schema accepts, due two weeks out', () => {
     const entry = backlogEntry(finding('x-1'), '2026-11-06')
     assert.equal(entry.status, 'suspected')

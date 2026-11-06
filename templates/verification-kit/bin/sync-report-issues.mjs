@@ -95,17 +95,19 @@ export function backlogEntry(finding, today) {
  * What to do, given the open issues that carry the label and this run's findings.
  * @param {{ number: number, body: string }[]} open
  * @param {{ id: string }[]} findings
+ * @param {{ body: string }[]} notPlanned closed issues a person marked not planned: their ids are never reopened
  */
-export function plan(open, findings) {
+export function plan(open, findings, notPlanned = []) {
   const openById = new Map()
   for (const issue of open) {
     const id = MARKER.exec(issue.body ?? '')?.[1]
     if (id) openById.set(id, issue.number)
   }
+  const waived = new Set(notPlanned.map((issue) => MARKER.exec(issue.body ?? '')?.[1]).filter(Boolean))
   const seen = new Set(findings.map((finding) => finding.id))
   const found = findings.filter((finding) => finding.keep !== true)
   return {
-    create: found.filter((finding) => !openById.has(finding.id)),
+    create: found.filter((finding) => !openById.has(finding.id) && !waived.has(finding.id)),
     still: found.filter((finding) => openById.has(finding.id)).map((finding) => ({ finding, number: openById.get(finding.id) })),
     close: [...openById].filter(([id]) => !seen.has(id)).map(([id, number]) => ({ id, number })),
   }
@@ -119,7 +121,7 @@ export function issueBody(finding, { runUrl, today }) {
     `**Evidence:** ${finding.evidence}`,
     runUrl ? `\nFound by ${runUrl}.` : '',
     '',
-    'Add this entry to `docs/backlog.json` in the pull request that takes it on, or close this issue with the reason it is not a bug:',
+    'Add this entry to `docs/backlog.json` in the pull request that takes it on, or close it as not planned with the reason it is not a bug. The report then leaves this finding alone:',
     '',
     '```json',
     JSON.stringify(backlogEntry(finding, today), null, 2),
@@ -182,7 +184,15 @@ async function main() {
       if (batch.length < 100) break
     }
   }
-  const actions = plan(open, findings)
+  const notPlanned = []
+  if (token) {
+    for (let page = 1; ; page += 1) {
+      const batch = await api(slug, token, 'GET', `/issues?state=closed&labels=${encodeURIComponent(args.label)}&per_page=100&page=${page}`)
+      notPlanned.push(...batch.filter((issue) => !issue.pull_request && issue.state_reason === 'not_planned'))
+      if (batch.length < 100) break
+    }
+  }
+  const actions = plan(open, findings, notPlanned)
   const run = args.runUrl ? ` (${args.runUrl})` : ''
   console.log(`${actions.create.length} to open, ${actions.still.length} still seen, ${actions.close.length} to close.`)
   if (args.dryRun) {

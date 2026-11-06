@@ -1,5 +1,5 @@
 {
-  "version": "0.55.0",
+  "version": "0.58.0",
   "files": {
     "README.md": "e07a670363586d545791458808edcedf17c2d2afb4c0518b80f4337593bab631",
     "bin/assert-checks-started.mjs": "9b32370e3b8ab4dae94c9b54abd46c6d364f81fb00b6f81ccbaf0e4d21b077f0",
@@ -9,7 +9,7 @@
     "bin/check-error-pages.mjs": "0d0a169f775b4c9cdec1895e115134fb4fce388ca4dcb01a7ebd86ab3e41b6d5",
     "bin/check-html.mjs": "51bc3b2416f6b85d7570e62a6ca9774ed5533e7f53e87590bf2202e053efff5b",
     "bin/check-kit-drift.mjs": "1eca9c329d796bea247b37c5577e69ea2e3c089451700e2ce5ba3345b0f96c3e",
-    "bin/check-links.mjs": "7987d9bd9ea44909e4fb9b56a5f163fbd7780e516bffa42fd085fe8c0c1ba546",
+    "bin/check-links.mjs": "606e1b539f20bb0394d99a195c70d9dbc912df00a638fb3dcbe3259aa4c2d12f",
     "bin/check-live-og-image.mjs": "779a4068957968a9a1b844ee9ec36216eda7af5fba967a7a188d16e32d7d49ff",
     "bin/check-machine-paths.mjs": "bf644aa8a33d16542388cfdea425d2cbcce295a4f54bdd5f1e3ce4e7cecdbc35",
     "bin/check-og-image.mjs": "52bfa44361eebecaa6518b9960d3634ab8336a9bfd1a10b9ac6e50cc484176d1",
@@ -19,8 +19,8 @@
     "bin/check-voice.mjs": "e7df2a4e316fab6136ffb634c2d0173c796e02b9df61ddae54956d13cbc0ae76",
     "bin/mutation-canary.mjs": "fafb50a15854c5273e262915baaef4b63328ccb5b631f4a5f3341c0915d0b6e6",
     "bin/refresh-kit.mjs": "9c453700f81c2663cd88ec3cfb614c99a3749b1bd0186dcc8ad84fdcb48b6c91",
-    "bin/report-outbound-links.mjs": "aa41dfe58f4ae45305894ddd061be6b42ed64d982d8dd3fc2c31a49834a30751",
-    "bin/sync-report-issues.mjs": "9a4aecf9b2bfa26781ab0e1580dd01e7e35ddc830fbff26b10df82b7a11c6465",
+    "bin/report-outbound-links.mjs": "d75d21b4f49ba72a84051500dc3f3b5ee8f5facb190c13c0bfb2c13ca35ca28c",
+    "bin/sync-report-issues.mjs": "f5998c8cf3ac4a230c7e4df75d811a8333261a9aae0645787eb92d5550dea25c",
     "bin/write-manifest.mjs": "69d22a6aeae0edf098c9c353b90f1514c809081ac69a9147a96f0d45e2c43f02",
     "lib/backlogSchema.mjs": "55693f0b2a3aa19f7530fe427cc5380cdeaf365dc5d23bab332748d4dbe0a6dc",
     "lib/cliArgs.mjs": "e0cac2ec05d80a3a914d6014a20bf8f9afc2cd8811dc317b86d809d160b81ecc",
@@ -38,20 +38,20 @@
     "test/imageMeta.test.mjs": "0969d4b5aff5efa6e7ea5ab918d5a58328d0ed13166fb1d488144b87939de40c",
     "test/isMain.test.mjs": "b5d00295d10a6cd30c4401ace15a13bf118f9f7a65623354c13c4ce3ed5f7989",
     "test/kitDrift.test.mjs": "e04e325c2363e341a53c5c3f91b11f73dcc0a9025c24e02103d28cc46f61f8ee",
-    "test/links.test.mjs": "a5b3c013a1fe3920d3f17ff0baf600d578991a5c5bf2cdb015c96e4a89181ccd",
+    "test/links.test.mjs": "cb7f1697a911b37fde21f9992e6d3e5462fd801c0d2c18d9bc563f6a283ecccd",
     "test/liveOgImage.test.mjs": "995cd5d86a8fd1cc1d857ad925d3d3ab4073fa9fddff675733f4f06d6ecb9ed6",
     "test/machinePaths.test.mjs": "6c5b1ca73f9eef17064f569bf36dc9dd4c595ce0a15254cf18d560e4b3fe93cf",
     "test/mutationCanary.test.mjs": "eab9336a04ab9261a385cb6803c59b8bd5c412dc708560f05b752cbc6ea097ad",
     "test/ogImage.test.mjs": "f4dc6f421b0cdc4b272371588ef5ba9f7b8d2cee02dba273f96d0dbcfb436c08",
-    "test/outboundLinks.test.mjs": "b010eebab601a8305cbe728b756f42e84e1bffbb536290910611e8e32ddf62ed",
+    "test/outboundLinks.test.mjs": "278630890cc99818c10c065e8afc7d8858efe1301ad45ad6dbd61360cbc55154",
     "test/pageMetadata.test.mjs": "77a74d4b70019117dc88f782dd973cc4880e797954bfd33465871139dc0e7a32",
     "test/refreshKitHandoff.test.mjs": "58f2380adcc2829e66ddb9654d95441eb25de716af2574f1e2f741dbc5f34336",
-    "test/reportIssues.test.mjs": "836daa27c3d96d31d97cf7fc63613865e8ad449e01611f6bd4605b56172eacba",
+    "test/reportIssues.test.mjs": "e4e316c5a92c9dd92dd1d880f5e92da576e0e7c51427455feb81167ef2b9a877",
     "test/ruleCitations.test.mjs": "adca35331c0a5b6b6b62ff5c51aa4e7229bba09f4b9420d152fb45f9c98821ba",
     "test/voice.test.mjs": "8ce138614a44b4f918066f0dc6391b741589b6e3bb7a70aff501b8b7fd8b2eed"
   },
   "companions": {
     "docs/verification-rules.md": "20f1eed7cbaf8a6c10681d483b77f430ccfd6bbce2a2c7b8ddf82cac253bc37c",
-    "docs/content-guidelines.md": "b4c1d27209f361dd375cee090a5592a994f6427339e87a55ef86a8c8504947ba"
+    "docs/content-guidelines.md": "38bef6480ebd4bac29f6433537a7f5255567078ee1aa1a55e7dbf4ebf4e3be38"
   }
 }

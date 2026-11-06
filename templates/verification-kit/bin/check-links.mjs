@@ -115,10 +115,7 @@ export function htmlReferences(html) {
       // <object data> is a URL; data on anything else is not an attribute this check knows.
       if (key === 'data' && name !== 'object') continue
       if (key === 'srcset') {
-        for (const candidate of value.split(',')) {
-          const url = candidate.trim().split(/\s+/)[0]
-          if (url) refs.push({ value: url, what: `<${name} srcset>` })
-        }
+        for (const url of srcsetUrls(value)) refs.push({ value: url, what: `<${name} srcset>` })
       } else {
         refs.push({ value, what: `<${name} ${key}>` })
       }
@@ -143,11 +140,49 @@ export function cssReferences(css) {
   return refs
 }
 
-/** Ids and named anchors a #fragment may point at. */
+/**
+ * The URLs in a srcset, by the HTML parsing rules: a URL runs to the next whitespace, and only a
+ * trailing comma or one after its descriptors separates candidates. A comma inside a URL
+ * (data:image/gif;base64,R0l… or /img/w_300,h_200/a.jpg) stays part of it.
+ */
+export function srcsetUrls(value) {
+  const urls = []
+  let i = 0
+  while (i < value.length) {
+    while (i < value.length && /[\s,]/.test(value[i])) i += 1
+    const start = i
+    while (i < value.length && !/\s/.test(value[i])) i += 1
+    let url = value.slice(start, i)
+    if (url.endsWith(',')) {
+      url = url.replace(/,+$/, '')
+    } else {
+      let depth = 0
+      for (; i < value.length; i += 1) {
+        if (value[i] === '(') depth += 1
+        else if (value[i] === ')') depth = Math.max(0, depth - 1)
+        else if (value[i] === ',' && depth === 0) {
+          i += 1
+          break
+        }
+      }
+    }
+    if (url) urls.push(url)
+  }
+  return urls
+}
+
+/**
+ * Ids and named anchors a #fragment may point at: an id on any element, a name only on <a>,
+ * because a browser scrolls to nothing else. <meta name="description"> is not an anchor.
+ */
 export function anchorsIn(html) {
   const ids = new Set()
-  for (const match of stripInert(html).matchAll(/\s(?:id|name)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))/gi)) {
-    ids.add(decodeEntities(match[1] ?? match[2] ?? match[3] ?? ''))
+  for (const tag of stripInert(html).matchAll(/<([a-z][a-z0-9-]*)\b([^>]*)>/gi)) {
+    const isAnchor = tag[1].toLowerCase() === 'a'
+    for (const attr of tag[2].matchAll(/([^\s"'=<>/]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))/g)) {
+      const key = attr[1].toLowerCase()
+      if (key === 'id' || (key === 'name' && isAnchor)) ids.add(decodeEntities(attr[2] ?? attr[3] ?? attr[4] ?? ''))
+    }
   }
   return ids
 }

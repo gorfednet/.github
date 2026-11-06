@@ -13,7 +13,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { after, describe, it } from 'node:test'
-import { anchorsIn, cssReferences, htmlReferences } from '../bin/check-links.mjs'
+import { anchorsIn, cssReferences, htmlReferences, srcsetUrls } from '../bin/check-links.mjs'
 
 const CHECKER = fileURLToPath(new URL('../bin/check-links.mjs', import.meta.url))
 const workspaces = []
@@ -119,6 +119,17 @@ describe('check-links', () => {
   it('reads no link out of a comment or a script body', () => {
     const refs = htmlReferences('<!-- <a href="/x/">x</a> --><script>const a = "<a href=\'/y/\'>"</script><a href="/z/">z</a>')
     assert.deepEqual(refs.map((ref) => ref.value), ['/z/'])
+  })
+
+  it('keeps a comma inside a srcset URL, as the HTML parser does', () => {
+    assert.deepEqual(srcsetUrls('data:image/gif;base64,R0lGOD 1x, /img/w_300,h_200/a.jpg 300w,/b.jpg 2x'), ['data:image/gif;base64,R0lGOD', '/img/w_300,h_200/a.jpg', '/b.jpg'])
+    assert.deepEqual(srcsetUrls('/a.jpg,/b.jpg'), ['/a.jpg,/b.jpg'])
+    assert.deepEqual(srcsetUrls('/a.jpg, /b.jpg'), ['/a.jpg', '/b.jpg'])
+  })
+
+  it('counts name only on <a>, and no id= that sits in text or another attribute', () => {
+    const ids = anchorsIn('<meta name="description" content="x"><input name="q"><p title="a id=fake"> id=text</p><a name="old">o</a><h2 id="real">r</h2>')
+    assert.deepEqual([...ids].sort(), ['old', 'real'])
   })
 
   it('decodes entities in attributes and finds ids and names', () => {

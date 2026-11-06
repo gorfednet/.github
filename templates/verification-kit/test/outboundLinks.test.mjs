@@ -46,6 +46,13 @@ describe('report-outbound-links', () => {
     assert.deepEqual(kinds, { a: 'gone', b: 'gone', c: 'gone', d: 'unverified', e: 'unverified', f: 'unverified', g: 'ok' })
   })
 
+  it('reports a real AbortSignal timeout as TIMEOUT, not its legacy code 23', async () => {
+    const result = await probe('https://slow.test/', async () => {
+      throw new DOMException('The operation timed out.', 'TimeoutError')
+    }, 1000)
+    assert.deepEqual(result, { kind: 'unverified', detail: 'TIMEOUT' })
+  })
+
   it('refuses a concurrency or timeout that is not a whole number', () => {
     const bin = fileURLToPath(new URL('../bin/report-outbound-links.mjs', import.meta.url))
     for (const flags of [['--concurrency', 'x'], ['--concurrency', '0'], ['--timeout-ms', 'x']]) {

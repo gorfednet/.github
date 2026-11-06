@@ -121,7 +121,10 @@ export async function probe(url, get, timeoutMs) {
       await response.body?.cancel().catch(() => {})
       return { status: response.status }
     } catch (error) {
-      const code = error?.cause?.code ?? error?.code ?? (error?.name === 'TimeoutError' ? 'TIMEOUT' : error?.name ?? 'ERROR')
+      // An AbortSignal.timeout rejection is a DOMException whose legacy numeric code (23) is not an answer.
+      const named = { TimeoutError: 'TIMEOUT', AbortError: 'ABORTED' }[error?.name]
+      const text = (value) => (typeof value === 'string' ? value : undefined)
+      const code = named ?? text(error?.cause?.code) ?? text(error?.code) ?? error?.name ?? 'ERROR'
       return { error: String(code) }
     }
   }

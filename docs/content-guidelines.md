@@ -35,6 +35,7 @@ On heuristics.4thcltr.com the method and limits lines say "I", because Michael b
 8. **No hedges and no intensifiers.** Not "quite", "truly", "simply", "seamless", "robust", "cutting-edge", "ensure", "powerful", "delightful", "intuitive", "best-in-class", "world-class". If a claim needs a number, give the number; if there is no number, drop the claim.
 9. **No filler openers.** Not "In today's", "It's worth noting", "Importantly", "Ultimately", "At the end of the day", "Whether you're", "in order to", "the fact that".
 10. **Tics are rationed.** "Without saying so", "as if", "whatever the", "nothing is drawn", "the rest": at most once per page, never in a summary or a heading.
+11. **No process detail (owner, 6 November 2026).** Profiles, bios, About pages, product pages and social copy say what shipped, who it's for and what it does. They leave out how the engineering checks work: gates, CI, test floors, merge or deploy rules, runner pools, review bots. "I own the product and the design system" stays. "Changes pass gates I wrote before they merge" goes. The exception is a page whose job is to explain the method, such as the assessment method and limits, a paper or a README.
 
 ## Sound like a person
 
@@ -107,7 +108,7 @@ Reading level of a national newspaper, or easier. A median sentence of 10 to 14 
 
 ## Before and after
 
-Lines as they read on 30 October 2026, rewritten under the 6 November baseline. Every fact and number is kept; placeholders stay as they are.
+Lines as they read on 30 October 2026, rewritten under the 6 November baseline. Every fact and number is kept, except process detail that rule 11 removes. Placeholders stay as they are.
 
 1. Tenet title and first sentence (4thcltr.com)
    - Before: "Work over posture. {years} years of shipped work includes two patent filings, Canada's top-ranked digital brokerage three years running and a health-transport product acquired for $57.5M."
@@ -120,7 +121,7 @@ Lines as they read on 30 October 2026, rewritten under the 6 November baseline. 
    - After: "I'm Michael Duncan McArthur. I've spent {years} years on products that are complex, regulated and closely scrutinized."
 4. Bio, first paragraph, first sentence
    - Before: "I stay in the build itself, not only the direction of it: today that means directing agents through the interface, the services behind it and the infrastructure they run on, with checks that prove the work before it ships."
-   - After: "I set the direction and I still build. These days I direct agents across the interface, the services and the infrastructure. Checks prove the work before it ships."
+   - After: "I set the direction and I still build. These days I direct agents across the interface, the services and the infrastructure."
 5. Section "who" lede
    - Before: "Michael leads every engagement directly, directs the agents that do much of the building, and brings in trusted partners only when the work calls for them."
    - After: "I lead every engagement myself. Agents do much of the building under my direction. I bring in partners I trust when the work needs them."
