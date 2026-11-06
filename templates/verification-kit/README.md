@@ -106,9 +106,9 @@ antithesis ("X, not Y", "not X but Y"; "not only", "not just", "does not X, but
 Y" and quoted labels pass) and a colon-led statement (a noun phrase of one to
 four words, a colon and a full sentence; headings, labels, list leads, times,
 ratios, step numbers and labels such as "Note:" pass). Warnings, printed as
-`path:where: warning rule X "text"` and never failing the run: uniform rhythm (a
-paragraph of four or more sentences whose lengths all sit within 4 words of the
-median) and the abstract nouns "judgment", "intent", "posture", "craft",
+`path:where: warning rule X "text"` and never failing the run: long rhythm (a
+sentence over 22 words, or a paragraph of four or more sentences within 4 words
+of a median above 16) and the abstract nouns "judgment", "intent", "posture", "craft",
 "clarity", "the space between", "at scale" and "end-to-end". "best-in-class" is
 already an error under rule 8. The allowlist covers warnings too: a repository
 that keeps a positioning sentence with "judgment" lists it with its reason and

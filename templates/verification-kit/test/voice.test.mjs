@@ -411,17 +411,22 @@ describe('check-voice colon-led statement (error)', () => {
   })
 })
 
-describe('check-voice uniform rhythm (warning)', () => {
+describe('check-voice long rhythm (warning)', () => {
   const fires = (t) => checkString(t, 'text').filter((h) => h.rule === 'rhythm')
-  const flat = 'The menu hides prices on mobile. The search fails on two queries. The cart drops items on reload. The footer links miss contrast.'
-  it('warns on four sentences within 4 words of the median', () => {
+  const flat = 'The menu on the product page hides every single price from the shoppers who arrive on a phone screen. The search box on that same product page fails on two of the five queries that we tried. The cart on the checkout page drops all of the items in it whenever the page reloads after a while. The links in the footer of the site miss the contrast ratio that WCAG asks for on small text.'
+  const long = 'The menu hides prices on mobile, and the search fails on two of the five queries we tried, and the cart drops items on reload after 30 minutes.'
+  it('warns on four long sentences within 4 words of the median', () => {
     const hits = fires(flat)
     assert.equal(hits.length, 1)
     assert.equal(hits[0].level, 'warn')
   })
-  it('near miss: varied lengths, and fewer than four sentences, pass', () => {
+  it('warns on one sentence over 22 words', () => {
+    assert.equal(fires(long).length, 1)
+  })
+  it('near miss: short uniform sentences, varied lengths and fewer than four sentences pass', () => {
+    assert.deepEqual(fires('The menu hides prices on mobile. The search fails on two queries. The cart drops items on reload. The footer links miss contrast.'), [])
     assert.deepEqual(fires('The menu hides prices. The search fails on two queries, and the cart drops items on reload after 30 minutes. Contrast fails. The footer is fine.'), [])
-    assert.deepEqual(fires('The menu hides prices on mobile. The search fails on two queries. The cart drops items on reload.'), [])
+    assert.deepEqual(fires('The menu on the product page hides every price from shoppers on a phone screen. The search box on the same page fails on two of the five queries we tried.'), [])
   })
   it('the CLI prints it as a warning and exits 0', () => {
     const dir = project({ 'a.md': `# A\n\n${flat}\n` })
