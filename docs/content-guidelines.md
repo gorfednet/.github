@@ -43,7 +43,7 @@ Model-written copy has a shape a reader recognizes before they can say why. Thes
 | Tell | Example from the sites, 30 October 2026 | Fix |
 |------|------|-----|
 | Clause-piling | "I directed product design on KINETiQ, Klick's omnichannel life sciences brand management platform for marketing automation and rapid commercialization." | Split it, or make it bullets. 1 comma per sentence (see the habits below). |
-| "X, not Y" and "not X but Y" | "I stay in the build itself, not only the direction of it." | Say what is true. "I still do the building as well as setting the direction." At most 1 antithesis per page, "X over Y" and "instead of" included. |
+| "X, not Y" and "not X but Y" | "I stay in the build itself, not only the direction of it." | Say what is true. "I set the direction and I still build." At most 1 antithesis per page, "X over Y" and "instead of" included. |
 | Lists of 3 for rhythm | "taste, memory and argument"; "cultural range, human judgment and automation". | Count the things. List 3 only when there are 3. At most 1 triad per paragraph. |
 | Colon-led statements | "The commitment: use the tools without handing them the decisions." | Write the sentence. "So I use the tools, and I make the decisions myself." A colon introduces a list or a label, never a punchline. |
 | Abstract nouns for concrete things | "Differentiation begins before the interface."; judgment, intent, posture, craft, clarity, "the space between". | Name the client, the page, the month, the number. A sentence's subject is a person or a thing. |
@@ -117,7 +117,7 @@ Lines as they read on 30 October 2026, rewritten under the 6 November baseline. 
    - After: "Some of it started from nothing. I co-founded TowIt, named one of the 12 best apps made in Canada. KINETiQ at Klick began as a blank page too."
 3. Bio opening (`whoBio.leadItalic`)
    - Before: "I am Michael Duncan McArthur. For {years} years I have shaped complex, regulated and closely scrutinised products."
-   - After: "I'm Michael Duncan McArthur. I've spent {years} years on products that are complex and closely regulated."
+   - After: "I'm Michael Duncan McArthur. I've spent {years} years on products that are complex, regulated and closely scrutinized."
 4. Bio, first paragraph, first sentence
    - Before: "I stay in the build itself, not only the direction of it: today that means directing agents through the interface, the services behind it and the infrastructure they run on, with checks that prove the work before it ships."
    - After: "I set the direction and I still build. These days I direct agents across the interface, the services and the infrastructure. Checks prove the work before it ships."
@@ -132,7 +132,7 @@ Lines as they read on 30 October 2026, rewritten under the 6 November baseline. 
    - After: "Both, depending on the tier. An engine I built writes the Automated tier from measurements of your pages. On the reviewed tiers I read, edit and sign every finding."
 8. heuristics.4thcltr.com, `limits`
    - Before: "No real users were observed. Only public pages were examined, signed out, on the date shown, at the sizes listed. A browser took the measurements; the numbers are in each finding."
-   - After: "I didn't observe real users. I examined public pages only, signed out, on the date shown. A browser took the measurements. Each finding gives its numbers."
+   - After: "I didn't observe real users. I examined public pages only, signed out, on the date shown and at the sizes listed. A browser took the measurements. Each finding gives its numbers."
 
 ## Where the guideline applies
 
