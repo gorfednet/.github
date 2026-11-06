@@ -65,8 +65,10 @@
  *   - `colon`, a sentence led by a short noun phrase and a colon ("The fix: The
  *     page loads."): error. Headings, labels, list leads, times, ratios and
  *     step numbers do not fire.
- *   - `rhythm`, a paragraph of four or more sentences whose lengths all sit
- *     within 4 words of the median: warning.
+ *   - `rhythm`, a sentence over 22 words, or a paragraph of four or more
+ *     sentences whose lengths all sit within 4 words of a median above 16:
+ *     warning. Retuned 2026-11-06 for the short-sentence baseline; it used to
+ *     fire on short uniform sentences too, which the baseline now asks for.
  *   - `abstract`, "judgment", "intent", "posture", "craft", "clarity", "the
  *     space between", "at scale", "end-to-end": warning.
  * A warning prints as `path:where: warning rule X "text"` and never fails the
@@ -130,7 +132,7 @@ const WARN_RULES = new Set(['rhythm', 'abstract'])
 const HINTS = {
   3: 'antithesis: say what each thing is instead of what it is not',
   colon: 'colon-led statement: write one sentence with a subject and a verb',
-  rhythm: 'uniform sentence length: vary the sentences or cut the ones that add nothing',
+  rhythm: 'long sentences: split any sentence over 22 words and keep the median near 10 to 14',
   abstract: 'abstract noun: name the concrete thing',
 }
 
@@ -223,9 +225,11 @@ export function checkString(raw, kind, options = {}) {
       hits.push({ rule: 'colon', text: sentence.trim().slice(0, 60) })
     }
     const lengths = sentences(text).map((x) => x.trim().split(/\s+/).length)
-    if (lengths.length >= 4) {
+    const longest = Math.max(0, ...lengths)
+    if (longest > 22) hits.push({ rule: 'rhythm', text: `a sentence of ${longest} words` })
+    else if (lengths.length >= 4) {
       const mid = median(lengths)
-      if (lengths.every((n) => Math.abs(n - mid) <= 4))
+      if (mid > 16 && lengths.every((n) => Math.abs(n - mid) <= 4))
         hits.push({ rule: 'rhythm', text: `${lengths.length} sentences of ${lengths.join(', ')} words` })
     }
     ABSTRACT_RE.lastIndex = 0

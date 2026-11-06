@@ -2,7 +2,9 @@
 
 For every site Michael publishes: 4thcltr.com, heuristics.4thcltr.com, papers.4thcltr.com and gorfed.net; the product sites BinderCurve, MoonMan, Promptboi, Denseware and ssatcy.com; the music and label sites gorfmusic.com, subrythm.com, blackpixelrecords.com, anal0g.org and ACID2REAPER; and the repositories behind them. Every word a visitor reads follows this, whoever or whatever wrote it. The guideline is distributed with the verification kit; change it upstream in gorfednet/.github, then refresh the kit in each repository. The voice lint (`check-voice`) enforces the parts a machine can check and fails the build when they slip.
 
-The aim, decided 30 October 2026: the sites sound like the person or the product behind them, not like a model. The practice is 1 person, so his sites say "I". Sentences come in mixed lengths. Contractions are used where speech would use them.
+The aim, decided 30 October 2026: the sites sound like the person or the product behind them, not like a model. The practice is 1 person, so his sites say "I". Contractions are used where speech would use them.
+
+The baseline was reset on 6 November 2026 (owner: "more concise, more human, more bullets less long form sentences"). The October version copied Michael's writing from before 2023, with its long clause-piling sentences and trailing asides. That style is retired. Short sentences, few commas and bullets are the house voice now, on LinkedIn and on every site below.
 
 ## Who we are writing for
 
@@ -40,8 +42,8 @@ Model-written copy has a shape a reader recognizes before they can say why. Thes
 
 | Tell | Example from the sites, 30 October 2026 | Fix |
 |------|------|-----|
-| Uniform sentence length | Nearly every tenet paragraph is 3 sentences of 12 to 22 words. | Mix the lengths (see the habits below). |
-| "X, not Y" and "not X but Y" | "I stay in the build itself, not only the direction of it." | Say what is true. "I still do the building as well as setting the direction." At most 1 antithesis per page, "X over Y" and "instead of" included. |
+| Clause-piling | "I directed product design on KINETiQ, Klick's omnichannel life sciences brand management platform for marketing automation and rapid commercialization." | Split it, or make it bullets. 1 comma per sentence (see the habits below). |
+| "X, not Y" and "not X but Y" | "I stay in the build itself, not only the direction of it." | Say what is true. "I set the direction and I still build." At most 1 antithesis per page, "X over Y" and "instead of" included. |
 | Lists of 3 for rhythm | "taste, memory and argument"; "cultural range, human judgment and automation". | Count the things. List 3 only when there are 3. At most 1 triad per paragraph. |
 | Colon-led statements | "The commitment: use the tools without handing them the decisions." | Write the sentence. "So I use the tools, and I make the decisions myself." A colon introduces a list or a label, never a punchline. |
 | Abstract nouns for concrete things | "Differentiation begins before the interface."; judgment, intent, posture, craft, clarity, "the space between". | Name the client, the page, the month, the number. A sentence's subject is a person or a thing. |
@@ -54,15 +56,19 @@ The tell is density, not the device. One "X, not Y" on a page is a sentence; one
 
 ### Habits to use
 
-Michael's own writing, measured over 373 sentences written before 2023, has a median sentence of 20 words, 11% of sentences under 10 words and 21% over 30. The sites' median is 14.5 words, with 8% over 30. These are the habits that make the difference.
+The October baseline measured 373 sentences Michael wrote before 2023 (median 20 words, 21% over 30) and told writers to match them. On 6 November 2026 he said that read as long-winded and AI-like. These replace it.
 
-- **Long, then short.** 2 or 3 sentences of 20 to 35 words that pile clauses on with "and", "which" or a semicolon, then a flat one under 8 words. "Everything just works." Aim for a median of 18 to 22 words in prose, with about 1 sentence in 5 over 28 words. Labels and buttons are exempt.
-- **Tell what happened, in order.** Open with the situation, the reason or the date, and give the cause before the effect. Name the client, the deliverable, the month and year, the duration and the count: "9 months at the agency", "upwards of 50 clients", "Lyft support was added in December 2017".
+- **Short sentences.** Median 10 to 14 words in prose. None over 22. A run of 3 sentences of the same length is a sign to cut one down or join two.
+- **1 comma per sentence**, not counting the commas inside a list. No semicolons, no ellipses, no em dashes. When a sentence needs a second comma, it's 2 sentences.
+- **Bullets over paragraphs.** Where a section lists achievements, features or facts, write a 1-line opener and then bullets. Each bullet is one fact. It starts with a verb or a name and has no full stop unless it holds 2 sentences.
+- **Outcome first.** Say what happened, then how. "GIC trading went digital" before the order ticket that made it possible.
+- **Leader, then maker.** On his own pages and profiles, show the people he led or the partners he lined up, then the hands-on part. He's an executive who still designs and codes.
+- **Tell what happened, in order.** Name the client, the deliverable, the month and year, the duration and the count: "9 months at the agency", "upwards of 50 clients".
 - **Plain, concrete words.** Made, built, designed, launched, led, worked with, spent, took on, brought on, co-founded. "Bandaid" and "duct tape" are allowed when they are the right word.
-- **One dry aside in parentheses per page.** "(3 years running)", "(at the time)", "(and only then)". Parentheses also hold dates, qualifiers and abbreviations without limit; the ration is for the aside.
+- **No trailing asides.** No "or what have you", "and so on", "amongst other things", and no parenthetical jokes. Parentheses hold dates, qualifiers and abbreviations only.
 - **Contractions.** I'm, I've, I'll, it's, don't, didn't, can't, where speech would use them. "I am Michael" is a form; "I'm Michael" is a person.
 - **The user's side for behaviour.** On product pages and in the assessment: "Tapping the profile picture will take you to the Edit Profile screen." "If the page can't be reached, I'll email you what to allow."
-- **Say when something is bad, with the number.** "4 of the 5 home pages I measured use the same template, and it's a costly bandaid." (An illustration, not a site fact.) Heat is allowed once the measurement is there.
+- **Say when something is bad, with the number.** "4 of the 5 home pages I measured use the same template. It's a costly bandaid." (An illustration, not a site fact.)
 - **Credit others by role.** "We" for work with a co-founder or a named partner; "I" for his own part.
 - **One position per page.** "I believe" at most once per page, followed by the reason.
 
@@ -70,8 +76,8 @@ Michael's own writing, measured over 373 sentences written before 2023, has a me
 
 - **Numbers.** He writes "nine months" and "fifty clients". The guideline wins: "9 months", "50 clients".
 - **Dates.** He writes "February 7th". The guideline wins: "7 February", with the year after it.
-- **"In order to".** His most common connective after "as well as". Rule 9 bans it; "to" does the job. "As well as" is allowed once per page.
-- **Exclamation marks and "very".** Authentic, and out. 1 exclamation mark in 16,400 of his own words is the right rate for the sites: none.
+- **"In order to" and "as well as".** "To" and "and" do the job.
+- **Exclamation marks and "very".** None on the sites.
 - **Resume puffery.** Not "vast", "incredible", "extremely capable", "great asset", "disrupt".
 
 ## Structure
@@ -97,36 +103,36 @@ Michael's own writing, measured over 373 sentences written before 2023, has a me
 
 ## Accessibility of language
 
-Reading level of a national newspaper. A median sentence of about 20 words, with the lengths mixed; a 35-word sentence is fine when a short one follows it. Acronyms expanded on first use except WCAG, UX, URL, PDF, API. Link text makes sense out of context. Nothing conveyed by colour, position or tone alone.
+Reading level of a national newspaper, or easier. A median sentence of 10 to 14 words, none over 22. Acronyms expanded on first use except WCAG, UX, URL, PDF, API. Link text makes sense out of context. Nothing conveyed by colour, position or tone alone.
 
 ## Before and after
 
-8 lines from the sites as they read on 30 October 2026, rewritten under this guideline. Every fact and number is kept; placeholders stay as they are.
+Lines as they read on 30 October 2026, rewritten under the 6 November baseline. Every fact and number is kept; placeholders stay as they are.
 
 1. Tenet title and first sentence (4thcltr.com)
    - Before: "Work over posture. {years} years of shipped work includes two patent filings, Canada's top-ranked digital brokerage three years running and a health-transport product acquired for $57.5M."
-   - After: "What I've shipped. In {years} years my shipped work has included 2 patent filings, Canada's top-ranked digital brokerage (3 years running) and a health-transport product that was acquired for $57.5M."
+   - After: "What I've shipped" as the heading, then bullets: "2 patent filings at TD" · "Canada's top-ranked digital brokerage (3 years running)" · "A health-transport product, acquired for $57.5M".
 2. Same tenet, the TowIt sentence
    - Before: "Some of it started from nothing: TowIt, co-founded and named one of the 12 best apps made in Canada, and Klick's KINETiQ platform."
-   - After: "Some of it started from nothing. I co-founded TowIt, which was named one of the 12 best apps made in Canada, and Klick's KINETiQ platform started from nothing too."
+   - After: "Some of it started from nothing. I co-founded TowIt, named one of the 12 best apps made in Canada. KINETiQ at Klick began as a blank page too."
 3. Bio opening (`whoBio.leadItalic`)
    - Before: "I am Michael Duncan McArthur. For {years} years I have shaped complex, regulated and closely scrutinised products."
-   - After: "I'm Michael Duncan McArthur. I've spent the last {years} years shaping products that are complex, regulated and closely scrutinized."
+   - After: "I'm Michael Duncan McArthur. I've spent {years} years on products that are complex, regulated and closely scrutinized."
 4. Bio, first paragraph, first sentence
    - Before: "I stay in the build itself, not only the direction of it: today that means directing agents through the interface, the services behind it and the infrastructure they run on, with checks that prove the work before it ships."
-   - After: "I still do the building as well as setting the direction. These days that means directing agents across the interface, the services behind it and the infrastructure they run on, with checks that prove the work before it ships."
+   - After: "I set the direction and I still build. These days I direct agents across the interface, the services and the infrastructure. Checks prove the work before it ships."
 5. Section "who" lede
    - Before: "Michael leads every engagement directly, directs the agents that do much of the building, and brings in trusted partners only when the work calls for them."
-   - After: "I lead every engagement myself. Agents do much of the building, and I direct them; when the work calls for it (and only then), I bring in partners I trust."
+   - After: "I lead every engagement myself. Agents do much of the building under my direction. I bring in partners I trust when the work needs them."
 6. Home hero lede
    - Before: "Products that stand apart get chosen, and kept. {studio} finds what sets yours apart and takes it from strategy to shipped software."
-   - After: "People choose the products that stand apart, and they keep using them. I'll find what sets yours apart and take it from strategy to shipped software."
+   - After: "People choose products that stand apart. I'll find what sets yours apart and take it from strategy to shipped software."
 7. Assessment FAQ, "Is it written by a person or a machine?"
    - Before: "The Automated tier is written by an assessment engine Michael built and tuned, from measurements of your pages and his own evaluation method. On the reviewed tiers he reads, edits and signs every finding."
-   - After: "Both, depending on the tier. I built and tuned the engine that writes the Automated tier, from measurements of your pages and my own evaluation method. On the reviewed tiers I read, edit and sign every finding myself."
+   - After: "Both, depending on the tier. An engine I built writes the Automated tier from measurements of your pages. On the reviewed tiers I read, edit and sign every finding."
 8. heuristics.4thcltr.com, `limits`
    - Before: "No real users were observed. Only public pages were examined, signed out, on the date shown, at the sizes listed. A browser took the measurements; the numbers are in each finding."
-   - After: "I didn't observe real users. I examined only public pages, signed out, on the date shown and at the sizes listed. A browser took the measurements, and each finding gives its numbers."
+   - After: "I didn't observe real users. I examined public pages only, signed out, on the date shown and at the sizes listed. A browser took the measurements. Each finding gives its numbers."
 
 ## Where the guideline applies
 
