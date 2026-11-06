@@ -10,7 +10,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { after, describe, it } from 'node:test'
-import { findingId, outboundLinks, probe } from '../bin/report-outbound-links.mjs'
+import { findingId, offlineGuard, outboundLinks, probe } from '../bin/report-outbound-links.mjs'
 
 const workspaces = []
 after(() => {
@@ -74,6 +74,21 @@ describe('report-outbound-links', () => {
     const local = spawnSync(process.execPath, [bin, '--root', join(root, 'site'), '--site-url', 'https://ex.test', '--findings', findings], { encoding: 'utf8' })
     assert.equal(local.status, 0, local.stderr)
     assert.deepEqual(JSON.parse(readFileSync(findings, 'utf8')), [])
+  })
+
+  it('reads a protocol-relative link as outbound', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'outbound-'))
+    workspaces.push(dir)
+    writeFileSync(join(dir, 'index.html'), '<a href="//ex.com/p">p</a><a href="//site.test/self/">s</a><a href="/local/">l</a>')
+    assert.deepEqual([...outboundLinks(dir, 'https://site.test').keys()], ['https://ex.com/p'])
+    assert.deepEqual([...outboundLinks(dir).keys()], ['https://ex.com/p', 'https://site.test/self/'])
+  })
+
+  it('files nothing as gone when no link answered at all, as on a runner with no network', () => {
+    const offline = offlineGuard(new Map([['a', { kind: 'gone', detail: 'ECONNREFUSED' }], ['b', { kind: 'gone', detail: 'ENOTFOUND' }], ['c', { kind: 'unverified', detail: 'TIMEOUT' }]]))
+    assert.deepEqual([...offline.values()].map((result) => result.kind), ['unverified', 'unverified', 'unverified'])
+    const online = new Map([['a', { kind: 'gone', detail: 'ENOTFOUND' }], ['b', { kind: 'unverified', detail: '503' }]])
+    assert.equal(offlineGuard(online).get('a').kind, 'gone')
   })
 
   it('gives a link the same id every week', () => {

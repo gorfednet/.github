@@ -75,6 +75,9 @@ function walk(dir, root = dir) {
   return out
 }
 
+/** The base a relative link resolves against when no --site-url names the site's own origin. */
+const INTERNAL = 'https://internal.invalid'
+
 /**
  * Every outbound http(s) link a reader can follow, without its fragment, with the pages that carry it.
  * @returns {Map<string, string[]>}
@@ -87,11 +90,12 @@ export function outboundLinks(root, siteUrl = '') {
       if (ref.what !== '<a href>') continue
       let url
       try {
-        url = new URL(ref.value)
+        // A base, so a protocol-relative //other.example/ link resolves; internal links fall to the origin filter.
+        url = new URL(ref.value, `${own ?? INTERNAL}/`)
       } catch {
         continue
       }
-      if (!/^https?:$/.test(url.protocol) || url.origin === own) continue
+      if (!/^https?:$/.test(url.protocol) || url.origin === (own ?? INTERNAL)) continue
       url.hash = ''
       const key = url.href
       if (!links.has(key)) links.set(key, [])
@@ -135,6 +139,17 @@ export async function probe(url, get, timeoutMs) {
   return { kind: GONE_CODES.has(answer.error) ? 'gone' : 'unverified', detail: answer.error }
 }
 
+/**
+ * A run where no link answered at all (no HTTP status from any host) says the runner is offline, not that
+ * every site is gone: a firewalled egress or a dead resolver answers ECONNREFUSED or ENOTFOUND for each.
+ * Then nothing is filed as gone.
+ */
+export function offlineGuard(results) {
+  const answered = [...results.values()].some((result) => result.kind === 'ok' || /^\d+$/.test(result.detail ?? ''))
+  if (answered || results.size === 0) return results
+  return new Map([...results].map(([url, result]) => [url, result.kind === 'gone' ? { kind: 'unverified', detail: `${result.detail}, and no link answered` } : result]))
+}
+
 /** A stable id per link, so the same dead link is one issue week after week. */
 export const findingId = (url) => `outbound-${createHash('sha256').update(url).digest('hex').slice(0, 10)}`
 
@@ -158,7 +173,8 @@ async function main() {
       for (let url = queue.shift(); url !== undefined; url = queue.shift()) results.set(url, await probe(url, fetch, args.timeoutMs))
     }),
   )
-  const of = (kind) => [...results].filter(([, result]) => result.kind === kind)
+  const checked = offlineGuard(results)
+  const of = (kind) => [...checked].filter(([, result]) => result.kind === kind)
   const gone = of('gone')
   const unverified = of('unverified')
   const pagesOf = (url) => links.get(url).map((page) => `\`${page}\``).join(', ')
