@@ -23,7 +23,9 @@
  *   node verification-kit/bin/sync-report-issues.mjs --label weekly-report \
  *     --findings a.json [--findings b.json] [--repo owner/name] [--run-url URL] [--dry-run]
  *
- * Each findings file is a JSON array of { id, title, symptom, evidence }.
+ * Each findings file is a JSON array of { id, title, symptom, evidence }, or { id, keep: true } for
+ * something this run could not confirm either way (a link that timed out): its open issue is left as it
+ * is, and none is opened for it.
  * Needs GH_TOKEN or GITHUB_TOKEN with issues: write. Exits 1 on an unreadable
  * findings file, a malformed finding, or an API error.
  */
@@ -67,6 +69,7 @@ export function findingProblems(finding, where) {
   const problems = []
   if (finding === null || typeof finding !== 'object') return [`${where}: not an object`]
   if (typeof finding.id !== 'string' || !/^[a-z0-9][a-z0-9-]*$/.test(finding.id)) problems.push(`${where}: id must be lowercase letters, digits and hyphens`)
+  if (finding.keep === true) return problems
   for (const key of ['title', 'symptom', 'evidence']) {
     if (typeof finding[key] !== 'string' || finding[key].trim().length < 10) problems.push(`${where}: ${key} must be a sentence`)
   }
@@ -100,9 +103,10 @@ export function plan(open, findings) {
     if (id) openById.set(id, issue.number)
   }
   const seen = new Set(findings.map((finding) => finding.id))
+  const found = findings.filter((finding) => finding.keep !== true)
   return {
-    create: findings.filter((finding) => !openById.has(finding.id)),
-    still: findings.filter((finding) => openById.has(finding.id)).map((finding) => ({ finding, number: openById.get(finding.id) })),
+    create: found.filter((finding) => !openById.has(finding.id)),
+    still: found.filter((finding) => openById.has(finding.id)).map((finding) => ({ finding, number: openById.get(finding.id) })),
     close: [...openById].filter(([id]) => !seen.has(id)).map(([id, number]) => ({ id, number })),
   }
 }

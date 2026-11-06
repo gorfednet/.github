@@ -29,6 +29,12 @@ describe('sync-report-issues', () => {
     assert.deepEqual(actions.close, [{ id: 'gone-now', number: 2 }])
   })
 
+  it('leaves an open issue alone for a finding this run could not confirm, and opens none for it', () => {
+    const actions = plan([issue(1, 'timed-out')], [{ id: 'timed-out', keep: true }, { id: 'new-unconfirmed', keep: true }])
+    assert.deepEqual(actions, { create: [], still: [], close: [] })
+    assert.deepEqual(findingProblems({ id: 'timed-out', keep: true }, 'f'), [])
+  })
+
   it('writes a backlog entry the schema accepts, due two weeks out', () => {
     const entry = backlogEntry(finding('x-1'), '2026-11-06')
     assert.equal(entry.status, 'suspected')

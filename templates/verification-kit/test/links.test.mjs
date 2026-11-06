@@ -74,6 +74,12 @@ describe('check-links', () => {
     assert.match(result.stderr, /site\.css: url\(\) "\/fonts\/a\.woff2"/)
   })
 
+  it('lets #top through with no id, as browsers do', () => {
+    const files = good()
+    files['about/index.html'] += '<a href="#top">Back to top</a><a href="/#TOP">Top of home</a>'
+    assert.equal(run(site(files)).status, 0)
+  })
+
   it('fails the second srcset candidate, not only the first', () => {
     const files = good()
     delete files['img/a@2x.png']

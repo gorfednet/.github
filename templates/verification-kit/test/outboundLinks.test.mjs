@@ -4,6 +4,8 @@
  * bank's bot wall weekly, and a 404 left unverified would never be filed.
  */
 import { strict as assert } from 'node:assert'
+import { spawnSync } from 'node:child_process'
+import { fileURLToPath } from 'node:url'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -42,6 +44,15 @@ describe('report-outbound-links', () => {
     const kinds = {}
     for (const url of ['a', 'b', 'c', 'd', 'e', 'f', 'g']) kinds[url] = (await probe(url, get, 1000)).kind
     assert.deepEqual(kinds, { a: 'gone', b: 'gone', c: 'gone', d: 'unverified', e: 'unverified', f: 'unverified', g: 'ok' })
+  })
+
+  it('refuses a concurrency or timeout that is not a whole number', () => {
+    const bin = fileURLToPath(new URL('../bin/report-outbound-links.mjs', import.meta.url))
+    for (const flags of [['--concurrency', 'x'], ['--concurrency', '0'], ['--timeout-ms', 'x']]) {
+      const result = spawnSync(process.execPath, [bin, '--root', '.', ...flags], { encoding: 'utf8' })
+      assert.equal(result.status, 1, flags.join(' '))
+      assert.match(result.stderr, /must be a whole number/)
+    }
   })
 
   it('gives a link the same id every week', () => {

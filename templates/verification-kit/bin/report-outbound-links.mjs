@@ -16,7 +16,9 @@
  * Usage:
  *   node verification-kit/bin/report-outbound-links.mjs --root dist
  *     [--site-url https://example.com]   this origin is internal, not read
- *     [--findings findings.json]         write the gone links as findings for sync-report-issues
+ *     [--findings findings.json]         write the gone links as findings for sync-report-issues, and
+ *                                        each unverified one as { id, keep: true }, so a dead link's
+ *                                        issue is not closed in a week its host only timed out
  *     [--concurrency 6] [--timeout-ms 15000]
  *
  * Prints a Markdown summary. Exits 0 with anything to report; 1 only when it
@@ -48,6 +50,13 @@ function parseArgs(argv) {
     else if (flag === '--concurrency') args.concurrency = Number.parseInt(next(), 10)
     else if (flag === '--timeout-ms') args.timeoutMs = Number.parseInt(next(), 10)
     else rejectUnknownArgument('report-outbound-links', flag)
+  }
+  // NaN here started no workers: nothing was probed, the run reported 0 gone, and sync-report-issues closed every issue.
+  for (const [name, value] of [['--concurrency', args.concurrency], ['--timeout-ms', args.timeoutMs]]) {
+    if (!Number.isInteger(value) || value < 1) {
+      console.error(`report-outbound-links: ${name} must be a whole number of at least 1`)
+      process.exit(1)
+    }
   }
   if (args.root === '') {
     console.error('report-outbound-links: --root is required (the built site, e.g. dist)')
@@ -167,6 +176,8 @@ async function main() {
       symptom: `A reader who follows the link to ${url} gets ${/^\d+$/.test(result.detail) ? `a ${result.detail}` : `no page (${result.detail})`}.`,
       evidence: `The weekly report asked ${url} with HEAD, then GET, and got ${result.detail}. Linked from ${links.get(url).join(', ')}.`,
     }))
+    // Unverified is neither gone nor answering: an open issue for it stays open, and none is opened.
+    for (const [url] of unverified) findings.push({ id: findingId(url), keep: true })
     writeFileSync(args.findings, `${JSON.stringify(findings, null, 2)}\n`)
   }
 }

@@ -213,7 +213,8 @@ export function checkLinks({ root, siteUrl = '', ignore = [] }) {
       problems.push(`${from}: ${what} "${raw}" resolves to ${url.pathname}, which is not in ${root}/`)
       return
     }
-    if (url.hash.length > 1 && target.toLowerCase().endsWith('.html')) {
+    // #top needs no id: the HTML standard scrolls to the top of the document for it.
+    if (url.hash.length > 1 && url.hash.toLowerCase() !== '#top' && target.toLowerCase().endsWith('.html')) {
       let id
       try {
         id = decodeURIComponent(url.hash.slice(1))
