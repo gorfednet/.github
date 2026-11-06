@@ -108,7 +108,7 @@ Reading level of a national newspaper, or easier. A median sentence of 10 to 14 
 
 ## Before and after
 
-Lines as they read on 30 October 2026, rewritten under the 6 November baseline. Every fact and number is kept; placeholders stay as they are.
+Lines as they read on 30 October 2026, rewritten under the 6 November baseline. Every fact and number is kept, except process detail that rule 11 removes. Placeholders stay as they are.
 
 1. Tenet title and first sentence (4thcltr.com)
    - Before: "Work over posture. {years} years of shipped work includes two patent filings, Canada's top-ranked digital brokerage three years running and a health-transport product acquired for $57.5M."
