@@ -19,7 +19,7 @@
     "bin/check-voice.mjs": "e7df2a4e316fab6136ffb634c2d0173c796e02b9df61ddae54956d13cbc0ae76",
     "bin/mutation-canary.mjs": "fafb50a15854c5273e262915baaef4b63328ccb5b631f4a5f3341c0915d0b6e6",
     "bin/refresh-kit.mjs": "9c453700f81c2663cd88ec3cfb614c99a3749b1bd0186dcc8ad84fdcb48b6c91",
-    "bin/report-outbound-links.mjs": "dbbe53f1ae206dd45c7db1cd4ff0ef5a290be602bb0f399135cc0dad966cb0d1",
+    "bin/report-outbound-links.mjs": "52a4d0bff2f2953abb4d0b4855507908ad997c03a1d44726d9b54962b362a9aa",
     "bin/sync-report-issues.mjs": "49d934be10fa2fbdadca2685666f96be66f73559504540f503478c03e9c6b86b",
     "bin/write-manifest.mjs": "69d22a6aeae0edf098c9c353b90f1514c809081ac69a9147a96f0d45e2c43f02",
     "lib/backlogSchema.mjs": "55693f0b2a3aa19f7530fe427cc5380cdeaf365dc5d23bab332748d4dbe0a6dc",

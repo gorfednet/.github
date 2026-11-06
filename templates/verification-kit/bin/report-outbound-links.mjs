@@ -139,8 +139,8 @@ export async function probe(url, get, timeoutMs) {
   return { kind: GONE_CODES.has(answer.error) ? 'gone' : 'unverified', detail: answer.error }
 }
 
-/** A host that answers whenever the runner has a network. */
-export const CONTROL_URL = 'https://github.com/'
+/** A host outside GitHub that answers whenever the runner has a network: a pool runner's egress allowlist has to let github.com through, so github.com proves nothing. */
+export const CONTROL_URL = 'https://example.com/'
 
 const answered = (result) => result.kind === 'ok' || /^\d+$/.test(result.detail ?? '')
 
