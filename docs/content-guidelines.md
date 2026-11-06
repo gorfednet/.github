@@ -121,7 +121,7 @@ Lines as they read on 30 October 2026, rewritten under the 6 November baseline. 
    - After: "I'm Michael Duncan McArthur. I've spent {years} years on products that are complex, regulated and closely scrutinized."
 4. Bio, first paragraph, first sentence
    - Before: "I stay in the build itself, not only the direction of it: today that means directing agents through the interface, the services behind it and the infrastructure they run on, with checks that prove the work before it ships."
-   - After: "I set the direction and I still build. These days I direct agents across the interface, the services and the infrastructure. Checks prove the work before it ships."
+   - After: "I set the direction and I still build. These days I direct agents across the interface, the services and the infrastructure."
 5. Section "who" lede
    - Before: "Michael leads every engagement directly, directs the agents that do much of the building, and brings in trusted partners only when the work calls for them."
    - After: "I lead every engagement myself. Agents do much of the building under my direction. I bring in partners I trust when the work needs them."
