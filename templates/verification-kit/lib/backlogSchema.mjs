@@ -27,7 +27,7 @@ export const ASSIGNEES = ['main-model', 'composer-fast', 'explore-subagent', 'sh
  * will not stop someone determined to write nothing, but it does stop the
  * reflex one-word entry that makes a backlog unreadable six weeks later.
  */
-const MIN_PROSE = 20
+export const MIN_PROSE = 20
 
 const REQUIRED_PROSE = ['title', 'userSymptom', 'evidence']
 

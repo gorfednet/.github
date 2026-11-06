@@ -568,6 +568,46 @@
       "file": "scripts/site-deploy.sh",
       "find": "  if [[ \"${want}\" == \"yes\" ]]; then\n",
       "replace": "  if false; then\n"
+    },
+    {
+      "id": "links-ignores-a-missing-fragment",
+      "guards": "check-links fails a #fragment the target page has no id for. A page that exists answers 200 for any fragment, so a renamed heading id breaks every contents list and cross-link pointing at it with nothing else noticing.",
+      "command": "node --test 'templates/verification-kit/test/links.test.mjs'",
+      "file": "templates/verification-kit/bin/check-links.mjs",
+      "find": "if (!anchorsOf(target).has(id))",
+      "replace": "if (false)"
+    },
+    {
+      "id": "links-skips-stylesheets",
+      "guards": "check-links follows url() in every stylesheet. A font or background URL is never clicked, so a dropped font file ships as a silent fallback face and a 404 in every visitor's console.",
+      "command": "node --test 'templates/verification-kit/test/links.test.mjs'",
+      "file": "templates/verification-kit/bin/check-links.mjs",
+      "find": "for (const sheet of sheets) {",
+      "replace": "for (const sheet of []) {"
+    },
+    {
+      "id": "html-counts-errors-as-passing",
+      "guards": "check-html fails on every validator error and on a file the validator could not read. Classifying them as anything else turns the W3C check into a printout.",
+      "command": "node --test 'templates/verification-kit/test/html.test.mjs'",
+      "file": "templates/verification-kit/bin/check-html.mjs",
+      "find": "if (message.type === 'error' || message.type === 'non-document-error') errors.push",
+      "replace": "if (message.type === 'error-never') errors.push"
+    },
+    {
+      "id": "report-issues-never-close",
+      "guards": "sync-report-issues closes an issue the latest run no longer sees. Left open, a fixed link stays listed as broken, and a label full of stale issues is one nobody reads.",
+      "command": "node --test 'templates/verification-kit/test/reportIssues.test.mjs'",
+      "file": "templates/verification-kit/bin/sync-report-issues.mjs",
+      "find": "close: [...openById].filter(([id]) => !seen.has(id))",
+      "replace": "close: [...openById].filter(() => false)"
+    },
+    {
+      "id": "outbound-files-bot-walls",
+      "guards": "report-outbound-links files only a 404, a 410, a dead name, a refused connection or a bad certificate. Filing a 403 would open an issue every week for every bank and retailer that refuses bots, while a visitor's browser gets the page.",
+      "command": "node --test 'templates/verification-kit/test/outboundLinks.test.mjs'",
+      "file": "templates/verification-kit/bin/report-outbound-links.mjs",
+      "find": "kind: GONE_STATUS.has(answer.status) ? 'gone' : 'unverified'",
+      "replace": "kind: 'gone'"
     }
   ]
 }

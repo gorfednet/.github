@@ -42,6 +42,14 @@ export const NOT_APPLICABLE = {
     'Reads built pages and locale or content files a visitor sees. This repository ships neither; its one piece of public prose, docs/content-guidelines.md, quotes the banned phrases on purpose.',
   'check-ci-headroom.mjs':
     'Reads workflow run durations from the API for a repository under load. Nothing in a checkout answers it.',
+  'check-html.mjs':
+    'Validates a publish root of HTML pages. This repository publishes no site.',
+  'check-links.mjs':
+    'Follows links between the pages of a publish root. This repository publishes no site.',
+  'report-outbound-links.mjs':
+    'A scheduled report over a site\u2019s built pages. This repository publishes no site, and the report is never a check.',
+  'sync-report-issues.mjs':
+    'Files a scheduled report\u2019s findings as issues. This repository runs no such report, and filing issues is not a check.',
   'check-error-pages.mjs':
     'Wants a publish root containing 404.html and 500.html. This repository publishes no site.',
   'check-kit-drift.mjs':

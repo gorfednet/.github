@@ -1,0 +1,211 @@
+#!/usr/bin/env node
+/**
+ * Every link from the built pages to another site, asked whether it still answers.
+ *
+ * A scheduled report, never a pull request check: whether someone else's page
+ * is up depends on their server, not on the change under review (the 2026-10
+ * right-sizing section of docs/verification-rules.md). check-links holds the internal links on every pull request; this is
+ * the other half, run weekly.
+ *
+ * Two kinds of answer are kept apart, because only one is ours to fix:
+ *   - gone: 404, 410, a name that does not resolve, a refused connection or a
+ *     bad certificate. The page moved or died; change or drop the link.
+ *   - unverified: 401, 403, 429, 5xx, 999, a timeout. A bot wall or an outage.
+ *     Listed in the summary, never filed, since a visitor's browser may get in.
+ *
+ * Usage:
+ *   node verification-kit/bin/report-outbound-links.mjs --root dist
+ *     [--site-url https://example.com]   this origin is internal, not read
+ *     [--findings findings.json]         write the gone links as findings for sync-report-issues, and
+ *                                        each unverified one as { id, keep: true }, so a dead link's
+ *                                        issue is not closed in a week its host only timed out
+ *     [--concurrency 6] [--timeout-ms 15000]
+ *
+ * Prints a Markdown summary. Exits 0 with anything to report; 1 only when it
+ * could not run (no pages, an unreadable root, an unknown flag).
+ */
+import { createHash } from 'node:crypto'
+import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs'
+import { extname, join, relative, sep } from 'node:path'
+import { rejectUnknownArgument } from '../lib/cliArgs.mjs'
+import { isMain } from '../lib/isMain.mjs'
+import { htmlReferences } from './check-links.mjs'
+
+function parseArgs(argv) {
+  const args = { root: '', siteUrl: '', findings: '', concurrency: 6, timeoutMs: 15000 }
+  for (let i = 0; i < argv.length; i += 1) {
+    const flag = argv[i]
+    const next = () => {
+      const value = argv[i + 1]
+      i += 1
+      if (value === undefined || value.startsWith('--')) {
+        console.error(`report-outbound-links: ${flag} needs a value`)
+        process.exit(1)
+      }
+      return value
+    }
+    if (flag === '--root') args.root = next()
+    else if (flag === '--site-url') args.siteUrl = next().replace(/\/+$/, '')
+    else if (flag === '--findings') args.findings = next()
+    else if (flag === '--concurrency') args.concurrency = Number.parseInt(next(), 10)
+    else if (flag === '--timeout-ms') args.timeoutMs = Number.parseInt(next(), 10)
+    else rejectUnknownArgument('report-outbound-links', flag)
+  }
+  // NaN here started no workers: nothing was probed, the run reported 0 gone, and sync-report-issues closed every issue.
+  for (const [name, value] of [['--concurrency', args.concurrency], ['--timeout-ms', args.timeoutMs]]) {
+    if (!Number.isInteger(value) || value < 1) {
+      console.error(`report-outbound-links: ${name} must be a whole number of at least 1`)
+      process.exit(1)
+    }
+  }
+  if (args.root === '') {
+    console.error('report-outbound-links: --root is required (the built site, e.g. dist)')
+    process.exit(1)
+  }
+  return args
+}
+
+function walk(dir, root = dir) {
+  const out = []
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const path = join(dir, entry.name)
+    if (entry.isDirectory()) out.push(...walk(path, root))
+    else if (entry.isFile()) out.push(relative(root, path).split(sep).join('/'))
+  }
+  return out
+}
+
+/** The base a relative link resolves against when no --site-url names the site's own origin. */
+const INTERNAL = 'https://internal.invalid'
+
+/**
+ * Every outbound http(s) link a reader can follow, without its fragment, with the pages that carry it.
+ * @returns {Map<string, string[]>}
+ */
+export function outboundLinks(root, siteUrl = '') {
+  const own = siteUrl ? new URL(siteUrl).origin : null
+  const links = new Map()
+  for (const page of walk(root).filter((file) => extname(file).toLowerCase() === '.html')) {
+    for (const ref of htmlReferences(readFileSync(join(root, page), 'utf8'))) {
+      if (ref.what !== '<a href>') continue
+      let url
+      try {
+        // A base, so a protocol-relative //other.example/ link resolves; internal links fall to the origin filter.
+        url = new URL(ref.value, `${own ?? INTERNAL}/`)
+      } catch {
+        continue
+      }
+      if (!/^https?:$/.test(url.protocol) || url.origin === (own ?? INTERNAL)) continue
+      url.hash = ''
+      const key = url.href
+      if (!links.has(key)) links.set(key, [])
+      if (!links.get(key).includes(page)) links.get(key).push(page)
+    }
+  }
+  return links
+}
+
+const GONE_STATUS = new Set([404, 410])
+/*
+ * A certificate a browser also refuses. UNABLE_TO_VERIFY_LEAF_SIGNATURE is not here: it is usually a
+ * server that leaves out its intermediate certificate, which browsers fetch for themselves and Node does
+ * not (locations.cibc.com, 6 November 2026), so it is unverified.
+ */
+const GONE_CODES = new Set(['ENOTFOUND', 'ECONNREFUSED', 'CERT_HAS_EXPIRED', 'ERR_TLS_CERT_ALTNAME_INVALID', 'DEPTH_ZERO_SELF_SIGNED_CERT'])
+
+/**
+ * One link's answer, classified. HEAD first; GET when HEAD is refused or not answered,
+ * because many servers answer HEAD with 403, 404 or 405 and GET with the page.
+ * @param {(url: string, init: RequestInit) => Promise<Response>} get
+ */
+export async function probe(url, get, timeoutMs) {
+  const attempt = async (method) => {
+    try {
+      const response = await get(url, { method, redirect: 'follow', signal: AbortSignal.timeout(timeoutMs), headers: { 'user-agent': 'Mozilla/5.0 (compatible; gorfednet-link-report/1.0)', accept: 'text/html,*/*' } })
+      await response.body?.cancel().catch(() => {})
+      return { status: response.status }
+    } catch (error) {
+      // An AbortSignal.timeout rejection is a DOMException whose legacy numeric code (23) is not an answer.
+      const named = { TimeoutError: 'TIMEOUT', AbortError: 'ABORTED' }[error?.name]
+      const text = (value) => (typeof value === 'string' ? value : undefined)
+      const code = named ?? text(error?.cause?.code) ?? text(error?.code) ?? error?.name ?? 'ERROR'
+      return { error: String(code) }
+    }
+  }
+  let answer = await attempt('HEAD')
+  if (answer.error || answer.status >= 400) answer = await attempt('GET')
+  if (answer.status !== undefined && answer.status < 400) return { kind: 'ok', detail: String(answer.status) }
+  if (answer.status !== undefined) return { kind: GONE_STATUS.has(answer.status) ? 'gone' : 'unverified', detail: String(answer.status) }
+  return { kind: GONE_CODES.has(answer.error) ? 'gone' : 'unverified', detail: answer.error }
+}
+
+/** A host outside GitHub that answers whenever the runner has a network: a pool runner's egress allowlist has to let github.com through, so github.com proves nothing. */
+export const CONTROL_URL = 'https://example.com/'
+
+const answered = (result) => result.kind === 'ok' || /^\d+$/.test(result.detail ?? '')
+
+/**
+ * Before any link is filed as gone, ask CONTROL_URL. If it does not answer (a firewalled egress, a dead
+ * resolver), a refused connection or an unknown name says nothing about the site, so nothing is filed as gone.
+ * Other links answering proves nothing: an egress allowlist lets some hosts through and refuses the rest.
+ */
+export async function offlineGuard(results, probeControl) {
+  if (![...results.values()].some((result) => result.kind === 'gone')) return results
+  if (answered(await probeControl())) return results
+  return new Map([...results].map(([url, result]) => [url, result.kind === 'gone' ? { kind: 'unverified', detail: `${result.detail}, and ${CONTROL_URL} did not answer either` } : result]))
+}
+
+/** A stable id per link, so the same dead link is one issue week after week. */
+export const findingId = (url) => `outbound-${createHash('sha256').update(url).digest('hex').slice(0, 10)}`
+
+async function main() {
+  const args = parseArgs(process.argv.slice(2))
+  if (!existsSync(args.root) || !statSync(args.root).isDirectory()) {
+    console.error(`✗ report-outbound-links: ${args.root}/ is not a directory. Build the site first.`)
+    process.exit(1)
+  }
+  // No pages means the root is wrong or the build is empty. Pages with no outbound link is a real state
+  // (the last dead link was removed): it writes [] so the sync closes that link's issue.
+  if (!walk(args.root).some((file) => extname(file).toLowerCase() === '.html')) {
+    console.error(`✗ report-outbound-links: no page under ${args.root}/; the root is wrong or the build is empty`)
+    process.exit(1)
+  }
+  const links = outboundLinks(args.root, args.siteUrl)
+  const queue = [...links.keys()]
+  const results = new Map()
+  await Promise.all(
+    Array.from({ length: Math.max(1, args.concurrency) }, async () => {
+      for (let url = queue.shift(); url !== undefined; url = queue.shift()) results.set(url, await probe(url, fetch, args.timeoutMs))
+    }),
+  )
+  const checked = await offlineGuard(results, () => probe(CONTROL_URL, fetch, args.timeoutMs))
+  const of = (kind) => [...checked].filter(([, result]) => result.kind === kind)
+  const gone = of('gone')
+  const unverified = of('unverified')
+  const pagesOf = (url) => links.get(url).map((page) => `\`${page}\``).join(', ')
+
+  console.log(`### Outbound links\n\n${links.size} link(s) to other sites: ${of('ok').length} answer, ${gone.length} gone, ${unverified.length} unverified.\n`)
+  if (gone.length > 0) {
+    console.log('Gone (filed):\n')
+    for (const [url, result] of gone) console.log(`- ${url} answered ${result.detail}, linked from ${pagesOf(url)}`)
+    console.log('')
+  }
+  if (unverified.length > 0) {
+    console.log('Unverified (a bot wall or an outage, not filed):\n')
+    for (const [url, result] of unverified) console.log(`- ${url} answered ${result.detail}`)
+    console.log('')
+  }
+  if (args.findings) {
+    const findings = gone.map(([url, result]) => ({
+      id: findingId(url),
+      title: `Outbound link gone: ${new URL(url).host}${new URL(url).pathname}`.slice(0, 120),
+      symptom: `A reader who follows the link to ${url} gets ${/^\d+$/.test(result.detail) ? `a ${result.detail}` : `no page (${result.detail})`}.`,
+      evidence: `The weekly report asked ${url} with HEAD, then GET, and got ${result.detail}. Linked from ${links.get(url).join(', ')}.`,
+    }))
+    // Unverified is neither gone nor answering: an open issue for it stays open, and none is opened.
+    for (const [url] of unverified) findings.push({ id: findingId(url), keep: true })
+    writeFileSync(args.findings, `${JSON.stringify(findings, null, 2)}\n`)
+  }
+}
+
+if (isMain(import.meta.url)) await main()
