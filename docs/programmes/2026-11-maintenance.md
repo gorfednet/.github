@@ -38,14 +38,14 @@ An item not yet started has no status. The session that starts an item adds its 
 | A4 | assess | Verify as a tool-use loop with Playwright tools (navigate, click, DOM, axe): no form submission, no sign-in, allowlisted host | Opus builder, main reviews the boundary | A1 | no |  |  |
 | A5 | assess | Capture defects: `capture-exits-0-on-mostly-failed`, `blank-at-status-200`, `capture-check-misses-refused-data`, `capture-interaction-probes` | Sonnet builder | none | no |  |  |
 | A6 | assess | Parity eval on TD and 2 sites with deep studies, scored by `tools/verify-score.ts`. Done when paid precision is at least the deep study's and recall is at least 0.6. A report, never a PR gate | main | A3, A4, A5 | approved, US$75 |  |  |
-| B1 | kit, heuristics, papers | `check-links`: every internal href and src on every built page | Opus builder, main reviews | none | no |  |  |
-| B2 | kit, heuristics, papers | `check-html` (vnu.jar, offline) | Sonnet builder, main reviews | none | no |  |  |
-| B3 | heuristics, papers | WebKit and Firefox for the filter, facet and wordmark specs | Sonnet builder | none | no |  |  |
-| B4 | heuristics, papers | Weekly report: outbound links, `check-live-release` on the full sitemap, headers. Opens backlog entries | Sonnet builder | none | no |  |  |
+| B1 | kit, heuristics, papers | `check-links`: every internal href and src on every built page | Opus builder, main reviews | none | no | gorfednet/.github PR 88, heuristics PR 64, papers PR 27 | local_d414b064, then its finisher started from local_0018339b |
+| B2 | kit, heuristics, papers | `check-html` (vnu.jar, offline) | Sonnet builder, main reviews | none | no | gorfednet/.github PR 88, heuristics PR 64, papers PR 27 | local_d414b064, then its finisher started from local_0018339b |
+| B3 | heuristics, papers | WebKit and Firefox for the filter, facet and wordmark specs | Sonnet builder | none | no | heuristics PR 64, papers PR 27 | local_d414b064, then its finisher started from local_0018339b |
+| B4 | heuristics, papers | Weekly report: outbound links, `check-live-release` on the full sitemap, headers. Opens backlog entries | Sonnet builder | none | no | heuristics PR 64, papers PR 27 | local_d414b064, then its finisher started from local_0018339b |
 | B5 | heuristics | Monthly re-check of published findings live, through A4's loop, in a Max-plan session; results through the ledger | main sets up, Sonnet task runs | A4 | approved |  |  |
-| B6 | papers | Unit floor in `verify.sh`, `check-live-release` in `make deploy`, `numbers-derived-from-spec`, `spec-drift-schedule` | Sonnet builder | none | no |  |  |
-| B7 | heuristics, papers | CI onto the pool (`ci-on-the-pool`) | Haiku runner, main checks | none | no |  |  |
-| B8 | heuristics | Stale `dash-g-papers` status, stale comment at `e2e/smoke.spec.ts:25` | Haiku runner | none | no |  |  |
+| B6 | papers | Unit floor in `verify.sh`, `check-live-release` in `make deploy`, `numbers-derived-from-spec`, `spec-drift-schedule` | Sonnet builder | none | no | papers#numbers-derived-from-spec, papers#spec-drift-schedule (papers PR 27) | local_d414b064, then its finisher started from local_0018339b |
+| B7 | heuristics, papers | CI onto the pool (`ci-on-the-pool`) | Haiku runner, main checks | none | no | heuristics#ci-on-the-pool, papers#ci-on-the-pool | local_d414b064, then its finisher started from local_0018339b |
+| B8 | heuristics | Stale `dash-g-papers` status, stale comment at `e2e/smoke.spec.ts:25` | Haiku runner | none | no | heuristics PR 64 | local_d414b064, then its finisher started from local_0018339b |
 | C1 | intake | CI on the pool, `claude-review`, verification kit, executed-test floor | Sonnet builder | none | no |  |  |
 | C2 | propose | End-to-end test brief to draft with the fake model; a 3-brief eval report | Sonnet builder, main judges | C1 | no |  |  |
 | D1 | bindercurve.com | One full run per PR: the label run replaces the Chromium run for the SHA | main designs, Sonnet builder | none | no |  |  |
