@@ -30,6 +30,7 @@
  * findings file, a malformed finding, or an API error.
  */
 import { readFileSync } from 'node:fs'
+import { MIN_PROSE } from '../lib/backlogSchema.mjs'
 import { rejectUnknownArgument } from '../lib/cliArgs.mjs'
 import { resolveRepoSlug } from '../lib/githubSlug.mjs'
 import { isMain } from '../lib/isMain.mjs'
@@ -70,8 +71,9 @@ export function findingProblems(finding, where) {
   if (finding === null || typeof finding !== 'object') return [`${where}: not an object`]
   if (typeof finding.id !== 'string' || !/^[a-z0-9][a-z0-9-]*$/.test(finding.id)) problems.push(`${where}: id must be lowercase letters, digits and hyphens`)
   if (finding.keep === true) return problems
+  // The issue carries a backlog entry ready to paste, so its prose meets check-backlog's minimum.
   for (const key of ['title', 'symptom', 'evidence']) {
-    if (typeof finding[key] !== 'string' || finding[key].trim().length < 10) problems.push(`${where}: ${key} must be a sentence`)
+    if (typeof finding[key] !== 'string' || finding[key].trim().length < MIN_PROSE) problems.push(`${where}: ${key} must be a sentence of at least ${MIN_PROSE} characters`)
   }
   return problems
 }

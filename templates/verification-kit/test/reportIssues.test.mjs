@@ -18,7 +18,7 @@ after(() => {
   for (const dir of workspaces) rmSync(dir, { recursive: true, force: true })
 })
 
-const finding = (id) => ({ id, title: `Title for ${id}`, symptom: `A reader sees ${id} broken.`, evidence: `The run asked and got a 404 for ${id}.` })
+const finding = (id) => ({ id, title: `A dead link reported for ${id}`, symptom: `A reader sees ${id} broken.`, evidence: `The run asked and got a 404 for ${id}.` })
 const issue = (number, id) => ({ number, body: `<!-- report-finding: ${id} -->\nbody` })
 
 describe('sync-report-issues', () => {
@@ -50,6 +50,7 @@ describe('sync-report-issues', () => {
 
   it('refuses a malformed finding, a duplicate id and a missing flag', () => {
     assert.ok(findingProblems({ id: 'Bad Id', title: 'x', symptom: 'y', evidence: 'z' }, 'f').length >= 4)
+    assert.deepEqual(findingProblems({ id: 'ok', title: 'A dead link to x', symptom: 'A reader gets a 404 page.', evidence: 'HEAD and GET answered 404.' }, 'f'), ['f: title must be a sentence of at least 20 characters'])
     const dir = mkdtempSync(join(tmpdir(), 'report-'))
     workspaces.push(dir)
     const file = join(dir, 'f.json')
