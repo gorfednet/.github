@@ -139,15 +139,20 @@ export async function probe(url, get, timeoutMs) {
   return { kind: GONE_CODES.has(answer.error) ? 'gone' : 'unverified', detail: answer.error }
 }
 
+/** A host that answers whenever the runner has a network. */
+export const CONTROL_URL = 'https://github.com/'
+
+const answered = (result) => result.kind === 'ok' || /^\d+$/.test(result.detail ?? '')
+
 /**
- * A run where no link answered at all (no HTTP status from any host) says the runner is offline, not that
- * every site is gone: a firewalled egress or a dead resolver answers ECONNREFUSED or ENOTFOUND for each.
- * Then nothing is filed as gone.
+ * When no link got any HTTP answer, ask CONTROL_URL. If it answers too little (the runner's egress is
+ * firewalled or its resolver is dead), every ECONNREFUSED or ENOTFOUND says nothing about the sites, so
+ * nothing is filed as gone. If it answers, the links really are dead names and stay gone.
  */
-export function offlineGuard(results) {
-  const answered = [...results.values()].some((result) => result.kind === 'ok' || /^\d+$/.test(result.detail ?? ''))
-  if (answered || results.size === 0) return results
-  return new Map([...results].map(([url, result]) => [url, result.kind === 'gone' ? { kind: 'unverified', detail: `${result.detail}, and no link answered` } : result]))
+export async function offlineGuard(results, probeControl) {
+  if (results.size === 0 || [...results.values()].some(answered)) return results
+  if (answered(await probeControl())) return results
+  return new Map([...results].map(([url, result]) => [url, result.kind === 'gone' ? { kind: 'unverified', detail: `${result.detail}, and ${CONTROL_URL} did not answer either` } : result]))
 }
 
 /** A stable id per link, so the same dead link is one issue week after week. */
@@ -173,7 +178,7 @@ async function main() {
       for (let url = queue.shift(); url !== undefined; url = queue.shift()) results.set(url, await probe(url, fetch, args.timeoutMs))
     }),
   )
-  const checked = offlineGuard(results)
+  const checked = await offlineGuard(results, () => probe(CONTROL_URL, fetch, args.timeoutMs))
   const of = (kind) => [...checked].filter(([, result]) => result.kind === kind)
   const gone = of('gone')
   const unverified = of('unverified')

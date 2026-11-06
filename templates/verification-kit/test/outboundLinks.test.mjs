@@ -84,11 +84,16 @@ describe('report-outbound-links', () => {
     assert.deepEqual([...outboundLinks(dir).keys()], ['https://ex.com/p', 'https://site.test/self/'])
   })
 
-  it('files nothing as gone when no link answered at all, as on a runner with no network', () => {
-    const offline = offlineGuard(new Map([['a', { kind: 'gone', detail: 'ECONNREFUSED' }], ['b', { kind: 'gone', detail: 'ENOTFOUND' }], ['c', { kind: 'unverified', detail: 'TIMEOUT' }]]))
+  it('files nothing as gone when no link answered and the control host does not answer either', async () => {
+    const dead = () => new Map([['a', { kind: 'gone', detail: 'ECONNREFUSED' }], ['b', { kind: 'gone', detail: 'ENOTFOUND' }], ['c', { kind: 'unverified', detail: 'TIMEOUT' }]])
+    const offline = await offlineGuard(dead(), async () => ({ kind: 'gone', detail: 'ENOTFOUND' }))
     assert.deepEqual([...offline.values()].map((result) => result.kind), ['unverified', 'unverified', 'unverified'])
-    const online = new Map([['a', { kind: 'gone', detail: 'ENOTFOUND' }], ['b', { kind: 'unverified', detail: '503' }]])
-    assert.equal(offlineGuard(online).get('a').kind, 'gone')
+    const lapsed = await offlineGuard(dead(), async () => ({ kind: 'ok', detail: '200' }))
+    assert.deepEqual([...lapsed.values()].map((result) => result.kind), ['gone', 'gone', 'unverified'])
+    let asked = false
+    const online = await offlineGuard(new Map([['a', { kind: 'gone', detail: 'ENOTFOUND' }], ['b', { kind: 'unverified', detail: '503' }]]), async () => { asked = true })
+    assert.equal(online.get('a').kind, 'gone')
+    assert.equal(asked, false)
   })
 
   it('gives a link the same id every week', () => {
