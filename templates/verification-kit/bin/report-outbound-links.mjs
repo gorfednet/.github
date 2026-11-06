@@ -145,12 +145,12 @@ export const CONTROL_URL = 'https://example.com/'
 const answered = (result) => result.kind === 'ok' || /^\d+$/.test(result.detail ?? '')
 
 /**
- * When no link got any HTTP answer, ask CONTROL_URL. If it answers too little (the runner's egress is
- * firewalled or its resolver is dead), every ECONNREFUSED or ENOTFOUND says nothing about the sites, so
- * nothing is filed as gone. If it answers, the links really are dead names and stay gone.
+ * Before any link is filed as gone, ask CONTROL_URL. If it does not answer (a firewalled egress, a dead
+ * resolver), a refused connection or an unknown name says nothing about the site, so nothing is filed as gone.
+ * Other links answering proves nothing: an egress allowlist lets some hosts through and refuses the rest.
  */
 export async function offlineGuard(results, probeControl) {
-  if (results.size === 0 || [...results.values()].some(answered)) return results
+  if (![...results.values()].some((result) => result.kind === 'gone')) return results
   if (answered(await probeControl())) return results
   return new Map([...results].map(([url, result]) => [url, result.kind === 'gone' ? { kind: 'unverified', detail: `${result.detail}, and ${CONTROL_URL} did not answer either` } : result]))
 }
