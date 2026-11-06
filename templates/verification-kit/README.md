@@ -32,6 +32,8 @@ an ignore rule that did not cover them.
 | `bin/check-kit-drift.mjs` | This copy of the kit silently falling behind the canonical one, or being edited in place. |
 | `bin/mutation-canary.mjs` | A guard nobody has ever seen fail being counted as coverage. |
 | `bin/check-voice.mjs` | Copy drifting back to praise-then-pivot summaries, software metaphors, "delivers value" and "Learn more" links. Enforces the checkable half of [`docs/content-guidelines.md`](../../docs/content-guidelines.md). |
+| `bin/check-links.mjs` | A built page linking to a page, asset, font or #fragment the build does not contain. Reads every page and stylesheet under the root, not a sample. Outbound links are not read: someone else's server belongs in a scheduled report. |
+| `bin/check-html.mjs` | A page the browser quietly repairs before axe sees it: a duplicate id, a stray end tag, a link inside a link. Runs the W3C's Nu Html Checker offline from the repository's `vnu-jar` and needs Java 11 or later. Errors fail; warnings are listed. |
 
 The checks that ask GitHub about a repository (`assert-checks-started`,
 `check-ci-headroom`, `check-backlog --verify-prs`) take it from `--repo owner/name`, then `GITHUB_REPOSITORY`, then the origin of the
