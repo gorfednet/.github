@@ -95,11 +95,14 @@ const decodeEntities = (value) =>
 const ATTRS = new Set(['href', 'src', 'srcset', 'poster', 'data'])
 const META_URLS = new Set(['og:image', 'og:url', 'og:image:url', 'og:image:secure_url', 'twitter:image'])
 
+/** A start tag. A quoted attribute value may hold a raw > (class="[&>svg]:size-4"), so it does not end the tag. */
+const TAG = /<([a-z][a-z0-9-]*)\b((?:"[^"]*"|'[^']*'|[^'">])*)>/gi
+
 /** @returns {{ value: string, what: string }[]} */
 export function htmlReferences(html) {
   const refs = []
   const body = stripInert(html)
-  for (const tag of body.matchAll(/<([a-z][a-z0-9-]*)\b([^>]*)>/gi)) {
+  for (const tag of body.matchAll(TAG)) {
     const name = tag[1].toLowerCase()
     const attrs = new Map()
     for (const attr of tag[2].matchAll(/([^\s"'=<>/]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))/g)) {
@@ -177,7 +180,7 @@ export function srcsetUrls(value) {
  */
 export function anchorsIn(html) {
   const ids = new Set()
-  for (const tag of stripInert(html).matchAll(/<([a-z][a-z0-9-]*)\b([^>]*)>/gi)) {
+  for (const tag of stripInert(html).matchAll(TAG)) {
     const isAnchor = tag[1].toLowerCase() === 'a'
     for (const attr of tag[2].matchAll(/([^\s"'=<>/]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))/g)) {
       const key = attr[1].toLowerCase()

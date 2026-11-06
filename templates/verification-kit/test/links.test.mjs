@@ -132,6 +132,11 @@ describe('check-links', () => {
     assert.deepEqual([...ids].sort(), ['old', 'real'])
   })
 
+  it('reads every attribute of a tag whose quoted value holds a >', () => {
+    assert.deepEqual(htmlReferences('<a class="[&>svg]:size-4" href="/missing/">x</a>').map((ref) => ref.value), ['/missing/'])
+    assert.deepEqual([...anchorsIn('<h2 class="[&>a]:underline" id="team">t</h2>')], ['team'])
+  })
+
   it('decodes entities in attributes and finds ids and names', () => {
     assert.deepEqual(htmlReferences('<a href="/a/?x=1&amp;y=2">a</a>').map((ref) => ref.value), ['/a/?x=1&y=2'])
     assert.deepEqual([...anchorsIn('<h2 id="one">x</h2><a name="two"></a>')], ['one', 'two'])
