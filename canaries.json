@@ -603,7 +603,7 @@
     },
     {
       "id": "outbound-files-bot-walls",
-      "guards": "report-outbound-links files only a 404, a 410 or a dead name. Filing a 403 would open an issue every week for every bank and retailer that refuses bots, while a visitor's browser gets the page.",
+      "guards": "report-outbound-links files only a 404, a 410, a dead name, a refused connection or a bad certificate. Filing a 403 would open an issue every week for every bank and retailer that refuses bots, while a visitor's browser gets the page.",
       "command": "node --test 'templates/verification-kit/test/outboundLinks.test.mjs'",
       "file": "templates/verification-kit/bin/report-outbound-links.mjs",
       "find": "kind: GONE_STATUS.has(answer.status) ? 'gone' : 'unverified'",
