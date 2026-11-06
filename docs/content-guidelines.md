@@ -35,6 +35,7 @@ On heuristics.4thcltr.com the method and limits lines say "I", because Michael b
 8. **No hedges and no intensifiers.** Not "quite", "truly", "simply", "seamless", "robust", "cutting-edge", "ensure", "powerful", "delightful", "intuitive", "best-in-class", "world-class". If a claim needs a number, give the number; if there is no number, drop the claim.
 9. **No filler openers.** Not "In today's", "It's worth noting", "Importantly", "Ultimately", "At the end of the day", "Whether you're", "in order to", "the fact that".
 10. **Tics are rationed.** "Without saying so", "as if", "whatever the", "nothing is drawn", "the rest": at most once per page, never in a summary or a heading.
+11. **No process detail (owner, 6 November 2026).** Profiles, bios, About pages, product pages and social copy say what shipped, who it's for and what it does. They leave out how the engineering checks work: gates, CI, test floors, merge or deploy rules, runner pools, review bots. "I own the product and the design system" stays. "Changes pass gates I wrote before they merge" goes. The exception is a page whose job is to explain the method, such as the assessment method and limits, a paper or a README.
 
 ## Sound like a person
 
