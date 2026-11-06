@@ -144,11 +144,13 @@ async function main() {
     console.error(`✗ report-outbound-links: ${args.root}/ is not a directory. Build the site first.`)
     process.exit(1)
   }
-  const links = outboundLinks(args.root, args.siteUrl)
-  if (links.size === 0) {
-    console.error(`✗ report-outbound-links: no outbound link on any page under ${args.root}/; the root is wrong or the build is empty`)
+  // No pages means the root is wrong or the build is empty. Pages with no outbound link is a real state
+  // (the last dead link was removed): it writes [] so the sync closes that link's issue.
+  if (!walk(args.root).some((file) => extname(file).toLowerCase() === '.html')) {
+    console.error(`✗ report-outbound-links: no page under ${args.root}/; the root is wrong or the build is empty`)
     process.exit(1)
   }
+  const links = outboundLinks(args.root, args.siteUrl)
   const queue = [...links.keys()]
   const results = new Map()
   await Promise.all(

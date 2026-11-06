@@ -6,7 +6,7 @@
 import { strict as assert } from 'node:assert'
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { after, describe, it } from 'node:test'
@@ -60,6 +60,20 @@ describe('report-outbound-links', () => {
       assert.equal(result.status, 1, flags.join(' '))
       assert.match(result.stderr, /must be a whole number/)
     }
+  })
+
+  it('writes no findings for pages with no outbound link, and refuses a root with no page', () => {
+    const bin = fileURLToPath(new URL('../bin/report-outbound-links.mjs', import.meta.url))
+    const root = mkdtempSync(join(tmpdir(), 'outbound-'))
+    const findings = join(root, 'findings.json')
+    mkdirSync(join(root, 'site'))
+    const empty = spawnSync(process.execPath, [bin, '--root', join(root, 'site')], { encoding: 'utf8' })
+    assert.equal(empty.status, 1)
+    assert.match(empty.stderr, /no page under/)
+    writeFileSync(join(root, 'site', 'index.html'), '<a href="/x/">x</a>')
+    const local = spawnSync(process.execPath, [bin, '--root', join(root, 'site'), '--site-url', 'https://ex.test', '--findings', findings], { encoding: 'utf8' })
+    assert.equal(local.status, 0, local.stderr)
+    assert.deepEqual(JSON.parse(readFileSync(findings, 'utf8')), [])
   })
 
   it('gives a link the same id every week', () => {
