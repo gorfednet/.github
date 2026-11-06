@@ -93,7 +93,12 @@ export function outboundLinks(root, siteUrl = '') {
 }
 
 const GONE_STATUS = new Set([404, 410])
-const GONE_CODES = new Set(['ENOTFOUND', 'EAI_AGAIN_PERMANENT', 'ECONNREFUSED', 'CERT_HAS_EXPIRED', 'ERR_TLS_CERT_ALTNAME_INVALID', 'DEPTH_ZERO_SELF_SIGNED_CERT', 'UNABLE_TO_VERIFY_LEAF_SIGNATURE'])
+/*
+ * A certificate a browser also refuses. UNABLE_TO_VERIFY_LEAF_SIGNATURE is not here: it is usually a
+ * server that leaves out its intermediate certificate, which browsers fetch for themselves and Node does
+ * not (locations.cibc.com, 6 November 2026), so it is unverified.
+ */
+const GONE_CODES = new Set(['ENOTFOUND', 'ECONNREFUSED', 'CERT_HAS_EXPIRED', 'ERR_TLS_CERT_ALTNAME_INVALID', 'DEPTH_ZERO_SELF_SIGNED_CERT'])
 
 /**
  * One link's answer, classified. HEAD first; GET when HEAD is refused or not answered,
