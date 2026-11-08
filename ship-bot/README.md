@@ -101,8 +101,8 @@ minutes later.
 Owner-compressed schedule (9 November 2026):
 
 - **Stage 1: live.** `.github`, assess, career-portfolio, heuristics.4thcltr.com, papers.4thcltr.com (merge-only).
-- **Stages 2 and 3 together: Wednesday 12 November.** bindercurve.com and 4thcltr.com merge-only, plus the static site deploys: gorfed.net, gorfmusic, denseware, ssatcy, anal0g, blackpixelrecords, rowanmcarthur, subrythm and the promptboi site.
-- **Stage 4: Saturday 15 November.** MoonMan deploy.
+- **Stages 2 and 3 together: Thursday 12 November.** bindercurve.com and 4thcltr.com merge-only, plus the static site deploys: gorfed.net, gorfmusic, denseware, ssatcy, anal0g, blackpixelrecords, rowanmcarthur, subrythm and the promptboi site.
+- **Stage 4: Sunday 15 November.** MoonMan deploy.
 
 Rules for moving on:
 
