@@ -25,3 +25,7 @@ test("janitor posts the digest after the session sweep", () => {
   assert.ok(prompt.indexOf("\n4. Session sweep") < prompt.indexOf("\n5. Post the digest"));
   assert.doesNotMatch(prompt, /Archive sessions whose pull request merged/);
 });
+
+test("janitor step 4 proposes, never archives, sessions whose PR closed unmerged", () => {
+  assert.match(prompt, /closed without merging: propose only[^\n]*PR closed unmerged[^\n]*never archive/);
+});

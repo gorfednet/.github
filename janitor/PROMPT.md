@@ -27,6 +27,7 @@ The first 3 runs are `--propose-only`: do steps 1 and 2, then post what you woul
 4. Session sweep, the only place sessions are archived. Call `list_sessions` (limit 60). For every active session:
    - Bound to a merged pull request and idle over 48 hours: archive it.
    - Bound to an open pull request: do nothing. `STATUS.md` covers it.
+   - Bound to a pull request closed without merging: propose only. List it in the digest as `PR closed unmerged`, never archive it automatically. The guard below still applies.
    - No pull request and idle over 48 hours: read its last 10 events. If it holds unfinished work, write a 10-line `docs/handoff/<date>-<topic>.md` in the repository it belongs to (or `gorfednet.github/docs/handoff/` when it has none), open a DRAFT pull request with a `## Next` line, then archive the session. If it holds nothing unfinished, archive it.
    - Never archive a session that ran in the last 48 hours or that holds a pending owner question. Collect those for the digest in step 5 instead. Collect everything this step archives, writes or proposes for the digest too.
    - Handoff files are under `docs/`, so the step 3 allowlist applies to them, but this step only opens a draft and never labels it.
