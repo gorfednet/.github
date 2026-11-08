@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$comment": "Shape of status.json, written by scripts/fleet-status.mjs. Checked by test/fleetStatus.test.mjs with a small validator (type, required, enum, items, properties, additionalProperties).",
+  "type": "object",
+  "required": ["generatedAt", "repos"],
+  "additionalProperties": false,
+  "properties": {
+    "generatedAt": { "type": "string" },
+    "dirtyLocal": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["dir", "branch", "uncommitted", "unpushed"],
+        "additionalProperties": false,
+        "properties": {
+          "dir": { "type": "string" },
+          "branch": { "type": "string" },
+          "uncommitted": { "type": "integer" },
+          "unpushed": { "type": "integer" }
+        }
+      }
+    },
+    "repos": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["slug"],
+        "additionalProperties": false,
+        "properties": {
+          "slug": { "type": "string" },
+          "unavailable": { "type": "string" },
+          "defaultBranch": { "type": "string" },
+          "mainRed": { "type": "boolean" },
+          "dependabotRed": { "type": "integer" },
+          "incidents7d": { "type": "integer" },
+          "lastDeploy": {
+            "type": ["object", "null"],
+            "required": ["name", "at", "url"],
+            "additionalProperties": false,
+            "properties": { "name": { "type": "string" }, "at": { "type": "string" }, "url": { "type": "string" } }
+          },
+          "lapsedBacklog": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["id", "reviewBy"],
+              "additionalProperties": false,
+              "properties": { "id": { "type": "string" }, "status": { "type": ["string", "null"] }, "reviewBy": { "type": "string" } }
+            }
+          },
+          "branchesAhead": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["branch", "ahead"],
+              "additionalProperties": false,
+              "properties": { "branch": { "type": "string" }, "ahead": { "type": "integer" } }
+            }
+          },
+          "openPrs": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["number", "title", "ageDays", "labels", "draft", "review", "ci", "next"],
+              "additionalProperties": false,
+              "properties": {
+                "number": { "type": "integer" },
+                "title": { "type": "string" },
+                "ageDays": { "type": "integer" },
+                "labels": { "type": "array", "items": { "type": "string" } },
+                "draft": { "type": "boolean" },
+                "review": { "enum": ["clean", "findings", "not-run"] },
+                "ci": { "enum": ["green", "red", "pending", "none"] },
+                "next": { "type": ["string", "null"] },
+                "author": { "type": ["string", "null"] }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

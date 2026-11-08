@@ -1,0 +1,32 @@
+{
+  "generatedAt": "2026-11-07T11:30:00.000Z",
+  "repos": [
+    {
+      "slug": "gorfednet/4thcltr.com",
+      "defaultBranch": "main",
+      "mainRed": false,
+      "openPrs": [
+        { "number": 212, "title": "Fix the nav | pipes", "ageDays": 5, "labels": ["hold"], "draft": false, "review": "findings", "ci": "red", "next": "Owner picks the headline", "author": "gorfednet" },
+        { "number": 227, "title": "Bump vite", "ageDays": 1, "labels": [], "draft": true, "review": "not-run", "ci": "pending", "next": null, "author": "dependabot[bot]" }
+      ],
+      "branchesAhead": [{ "branch": "feat/old", "ahead": 3 }],
+      "lapsedBacklog": [{ "id": "stale-entry", "status": "confirmed-bug", "reviewBy": "2026-10-01" }],
+      "lastDeploy": { "name": "deploy", "at": "2026-11-06T15:00:00Z", "url": "https://github.com/gorfednet/4thcltr.com/actions/runs/1" },
+      "incidents7d": 2,
+      "dependabotRed": 1
+    },
+    {
+      "slug": "gorfednet/career-portfolio",
+      "defaultBranch": "main",
+      "mainRed": true,
+      "openPrs": [{ "number": 68, "title": "Search audit", "ageDays": 0, "labels": ["ready-to-merge"], "draft": false, "review": "clean", "ci": "green", "next": "Merge when green", "author": "gorfednet" }],
+      "branchesAhead": [],
+      "lapsedBacklog": [],
+      "lastDeploy": null,
+      "incidents7d": 0,
+      "dependabotRed": 0
+    },
+    { "slug": "gorfednet/wychwood", "unavailable": "HTTP 404: Not Found" }
+  ],
+  "dirtyLocal": [{ "dir": "MoonMan", "branch": "main", "uncommitted": 2, "unpushed": 0 }]
+}

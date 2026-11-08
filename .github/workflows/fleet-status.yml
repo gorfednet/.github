@@ -1,0 +1,111 @@
+# The fleet's own status report: open pull requests, lapsed backlog items and red
+# mains in one file, so a status report to the owner is read, not hand-counted
+# (owner, 7 November 2026). Writes STATUS.md and status.json to the `status`
+# branch of this repository and posts a short digest to ntfy.
+#
+# Like fleet-audit.yml it needs FLEET_READ_TOKEN (a fine-grained PAT with
+# read-only Contents, Pull requests, Actions and Metadata across gorfednet) and
+# has no fallback: a missing token means nothing was read, so it goes red.
+# A repository it cannot read becomes an "unavailable" row and turns the job
+# red after the file is published, so the gap is visible in both places.
+name: fleet-status
+
+on:
+  schedule:
+    # 06:30 UTC daily.
+    - cron: '30 6 * * *'
+  workflow_dispatch:
+# Not on pull_request: a pull request cannot be given the token.
+
+permissions:
+  contents: write
+
+# Hosted, on purpose, for the same reason as fleet-audit.yml: this repository is
+# public, so the dapyllil pool refuses it by design, and hosted runners are not
+# billed for a public repository. One short job a day.
+jobs:
+  status:
+    # Hosted: public repository, see the note above jobs.
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: A cross-repository token is present
+        env:
+          TOKEN: ${{ secrets.FLEET_READ_TOKEN }}
+        run: |
+          if [ -z "${TOKEN}" ]; then
+            echo "::error::FLEET_READ_TOKEN is not set. Without it this report reads nothing."
+            exit 1
+          fi
+
+      # Written even when a repository was unreadable (it appears as an
+      # unavailable row); the exit code is kept and asserted after publishing.
+      - name: Read the fleet
+        id: read
+        env:
+          FLEET_READ_TOKEN: ${{ secrets.FLEET_READ_TOKEN }}
+        run: |
+          set +e
+          node scripts/fleet-status.mjs --out status.json
+          echo "code=$?" >> "$GITHUB_OUTPUT"
+          test -s status.json
+
+      - name: Render STATUS.md
+        if: ${{ !cancelled() }}
+        run: node scripts/write-status-md.mjs --in status.json --out STATUS.md
+
+      - name: Publish to the status branch
+        if: ${{ !cancelled() }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p "${RUNNER_TEMP}/out"
+          cp STATUS.md status.json "${RUNNER_TEMP}/out/"
+          git config user.name "fleet-status"
+          git config user.email "fleet-status@users.noreply.github.com"
+          if git ls-remote --exit-code --heads origin status >/dev/null 2>&1; then
+            git fetch origin status
+            git checkout -B status origin/status
+          else
+            git checkout --orphan status
+            git rm -rf --quiet . || true
+          fi
+          cp "${RUNNER_TEMP}/out/STATUS.md" "${RUNNER_TEMP}/out/status.json" .
+          git add STATUS.md status.json
+          if git diff --cached --quiet; then
+            echo "status unchanged"
+          else
+            git commit -m "fleet-status $(date -u +%Y-%m-%dT%H:%MZ)"
+          fi
+          git push --force-with-lease origin status
+
+      - name: Post the digest to ntfy
+        if: ${{ !cancelled() }}
+        env:
+          NTFY_URL: https://ntfy.gorfed.net/ops-report
+          NTFY_TOKEN: ${{ secrets.NTFY_TOKEN }}
+        run: |
+          set -euo pipefail
+          node scripts/write-status-md.mjs --in status.json --digest > digest.txt
+          test "$(wc -l < digest.txt)" -le 10
+          args=(-sS --fail --max-time 15 -H "User-Agent: gorfednet-fleet-status (+https://github.com/gorfednet/.github)" -H "Title: Fleet status" -H "Priority: default" -H "Tags: bar_chart")
+          if [ -n "${NTFY_TOKEN:-}" ]; then args+=(-H "Authorization: Bearer ${NTFY_TOKEN}"); fi
+          curl "${args[@]}" --data-binary @digest.txt "${NTFY_URL}"
+
+      # The read's exit code, asserted last so the file and digest go out first.
+      - name: Every repository was readable
+        if: ${{ !cancelled() }}
+        env:
+          CODE: ${{ steps.read.outputs.code }}
+        run: |
+          if [ "${CODE:-1}" != "0" ]; then
+            echo "::error::fleet-status could not read every repository (exit ${CODE:-unset}); see the unavailable rows in STATUS.md"
+            exit 1
+          fi

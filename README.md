@@ -156,3 +156,9 @@ Cursor and Bugbot were retired on 2026-10-16. The Claude reviewer reviews pull r
 
 A repository adopts it with a copy of [`templates/claude-review.yml`](templates/claude-review.yml), a `REVIEW.md` holding its house rules, and a `CLAUDE_CODE_OAUTH_TOKEN` secret (from `claude setup-token`). bindercurve.com keeps its own copy of the workflow, where this one was ported from. Retired checks are listed in [`docs/retired-checks.md`](docs/retired-checks.md).
 
+
+## Fleet status
+
+[`STATUS.md`](https://github.com/gorfednet/.github/blob/status/STATUS.md) on the `status` branch is the one view of open pull requests, lapsed backlog items and red mains across the fleet.
+`.github/workflows/fleet-status.yml` rebuilds it daily at 06:30 UTC with `scripts/fleet-status.mjs` and `scripts/write-status-md.mjs`, and posts a digest to ntfy `ops-report`.
+On the Mac, `scripts/fleet-status-local.sh` (symlinked as `fleet-status`) prints it with dirty local clones added. The daily janitor's prompt is `janitor/PROMPT.md`.

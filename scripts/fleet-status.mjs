@@ -1,0 +1,241 @@
+#!/usr/bin/env node
+/**
+ * One view of the fleet's open work, as status.json (render it with write-status-md.mjs).
+ *
+ *   node scripts/fleet-status.mjs [--out status.json] [--local] [--from status.json] [--only owner/name]
+ *
+ * Per repository: open pull requests (review verdict, CI state, the first unchecked
+ * `## Next` line), branches ahead of the default branch with no pull request, lapsed
+ * backlog dates, the last successful deploy run, incident lines dated in the last
+ * 7 days, dependabot pull requests that are red or unreviewed, and whether the
+ * default branch is red. `--local` adds clones under ~/Developer/gorfednet with
+ * uncommitted or unpushed work. `--from` reuses an earlier status.json for the
+ * repositories (so --local can be added to a fresh copy without asking GitHub again).
+ *
+ * Fails closed: a repository that cannot be read becomes a row with `unavailable`
+ * set to the reason, and the process exits 1 after writing the file. Token:
+ * FLEET_READ_TOKEN or GH_TOKEN.
+ */
+import { execFile, execFileSync } from 'node:child_process'
+import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
+import { homedir } from 'node:os'
+import { join } from 'node:path'
+import { promisify } from 'node:util'
+
+import { isMain } from '../templates/verification-kit/lib/isMain.mjs'
+import { lapsedBacklog } from './fleet-report.mjs'
+import { claudeReviewVerdict } from './lib/reviewVerdict.mjs'
+
+const DAY = 86_400_000
+const FAILED = new Set(['FAILURE', 'TIMED_OUT', 'CANCELLED', 'ACTION_REQUIRED', 'STARTUP_FAILURE', 'ERROR', 'STALE'])
+const INCIDENT_FILES = ['docs/incidents.md', 'docs/ledger.md', 'docs/incident-ledger.md', 'INCIDENTS.md', 'docs/audit/incidents.md', 'docs/audit/ledger.md']
+
+/** The first unchecked `- [ ]` line under a `## Next` heading, else null. */
+export function nextItem(body) {
+  let inNext = false
+  for (const line of String(body ?? '').split(/\r?\n/)) {
+    if (/^#{1,6}\s+/.test(line)) {
+      inNext = /^##\s+Next\s*$/i.test(line.trim())
+      continue
+    }
+    if (!inNext) continue
+    const match = /^\s*[-*]\s+\[ \]\s+(.+?)\s*$/.exec(line)
+    if (match) return match[1]
+  }
+  return null
+}
+
+/** green, red, pending or none, from a pull request's statusCheckRollup (check runs and commit statuses). */
+export function ciState(rollup) {
+  if (!Array.isArray(rollup) || rollup.length === 0) return 'none'
+  let pending = false
+  for (const item of rollup) {
+    if (item.__typename === 'StatusContext' || (item.state && !item.status)) {
+      if (FAILED.has(item.state)) return 'red'
+      if (item.state === 'PENDING' || item.state === 'EXPECTED') pending = true
+      continue
+    }
+    if (item.status !== 'COMPLETED') {
+      pending = true
+      continue
+    }
+    if (FAILED.has(item.conclusion)) return 'red'
+  }
+  return pending ? 'pending' : 'green'
+}
+
+/** Count of lines dated within the 7 days up to `today` (YYYY-MM-DD). */
+export function recentLines(text, today) {
+  const end = Date.parse(`${today}T00:00:00Z`)
+  let count = 0
+  for (const line of String(text).split(/\r?\n/)) {
+    for (const m of line.matchAll(/\b(\d{4}-\d{2}-\d{2})\b/g)) {
+      const t = Date.parse(`${m[1]}T00:00:00Z`)
+      if (Number.isFinite(t) && t <= end && end - t < 7 * DAY) {
+        count += 1
+        break
+      }
+    }
+  }
+  return count
+}
+
+export const isDependabot = (login) => /dependabot/i.test(login ?? '')
+
+/** Dependabot pull requests that are red or lack a clean review. */
+export function dependabotRed(prs) {
+  return prs.filter((p) => isDependabot(p.author) && (p.ci === 'red' || p.review !== 'clean')).length
+}
+
+/** The repositories to cover: fleet.json plus any ship-bot repo it lacks. */
+export function repoList(fleet, shipBotConfig) {
+  const slugs = fleet.projects.map((p) => p.slug)
+  for (const repo of shipBotConfig?.repos ?? []) if (repo.slug && !slugs.includes(repo.slug)) slugs.push(repo.slug)
+  return slugs
+}
+
+const execFileAsync = promisify(execFile)
+
+/** ahead_by for each branch against base, 8 requests at a time (a repository can hold hundreds of branches). */
+export async function aheadCounts(slug, base, names, run = (args) => execFileAsync('gh', args, { encoding: 'utf8' }).then((r) => r.stdout)) {
+  const results = new Array(names.length)
+  let next = 0
+  const worker = async () => {
+    while (next < names.length) {
+      const i = next++
+      results[i] = Number((await run(['api', `repos/${slug}/compare/${base}...${names[i]}`, '--jq', '.ahead_by'])).trim())
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(8, names.length) }, worker))
+  return results
+}
+
+function gh(args) {
+  return execFileSync('gh', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 64 * 1024 * 1024 })
+}
+const ghJson = (args) => JSON.parse(gh(args))
+
+function fileText(slug, path) {
+  try {
+    const out = ghJson(['api', `repos/${slug}/contents/${path}`])
+    if (out.encoding !== 'base64') throw new Error(`${path} came back without content`)
+    return Buffer.from(out.content, 'base64').toString('utf8')
+  } catch (cause) {
+    if (/HTTP 404/.test(String(cause.stderr || cause.message))) return null
+    throw cause
+  }
+}
+
+export async function gatherRepo(slug, now = new Date()) {
+  const today = now.toISOString().slice(0, 10)
+  const repo = ghJson(['api', `repos/${slug}`])
+  const base = repo.default_branch
+  const raw = ghJson([
+    'pr', 'list', '--repo', slug, '--state', 'open', '--limit', '100',
+    '--json', 'number,title,createdAt,labels,isDraft,headRefName,headRefOid,body,statusCheckRollup,author',
+  ])
+  const openPrs = raw.map((p) => {
+    const comments = ghJson(['api', '--paginate', '--slurp', `repos/${slug}/issues/${p.number}/comments?per_page=100`]).flat()
+    return {
+      number: p.number,
+      title: p.title,
+      ageDays: Math.max(0, Math.floor((now - Date.parse(p.createdAt)) / DAY)),
+      labels: p.labels.map((l) => l.name),
+      draft: p.isDraft,
+      review: claudeReviewVerdict(comments, p.headRefOid).state,
+      ci: ciState(p.statusCheckRollup),
+      next: nextItem(p.body),
+      author: p.author?.login ?? null,
+    }
+  })
+  const prBranches = new Set(raw.map((p) => p.headRefName))
+  const branches = ghJson(['api', '--paginate', '--slurp', `repos/${slug}/branches?per_page=100`]).flat()
+  const candidates = branches.map((b) => b.name).filter((n) => n !== base && !prBranches.has(n))
+  const counts = await aheadCounts(slug, base, candidates)
+  const branchesAhead = candidates.map((branch, i) => ({ branch, ahead: counts[i] })).filter((b) => b.ahead > 0)
+  const backlogText = fileText(slug, 'docs/backlog.json')
+  const lapsed = backlogText === null ? [] : lapsedBacklog(JSON.parse(backlogText), today)
+  const runs = ghJson(['api', `repos/${slug}/actions/runs?status=success&per_page=100`]).workflow_runs ?? []
+  const deploy = runs.find((r) => /deploy/i.test(r.name ?? ''))
+  let incidents = 0
+  for (const path of INCIDENT_FILES) {
+    const text = fileText(slug, path)
+    if (text !== null) {
+      incidents = recentLines(text, today)
+      break
+    }
+  }
+  const checks = ghJson(['api', `repos/${slug}/commits/${base}/check-runs?per_page=100`]).check_runs ?? []
+  const mainRed = checks.some((c) => c.status === 'completed' && FAILED.has(String(c.conclusion).toUpperCase()))
+  return {
+    slug,
+    defaultBranch: base,
+    mainRed,
+    openPrs,
+    branchesAhead,
+    lapsedBacklog: lapsed,
+    lastDeploy: deploy ? { name: deploy.name, at: deploy.updated_at, url: deploy.html_url } : null,
+    incidents7d: incidents,
+    dependabotRed: dependabotRed(openPrs),
+  }
+}
+
+/** Clones with uncommitted or unpushed work. */
+export function dirtyLocal(root) {
+  const out = []
+  const git = (dir, ...args) => execFileSync('git', ['-C', dir, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+  for (const name of readdirSync(root).sort()) {
+    const dir = join(root, name)
+    if (!existsSync(join(dir, '.git'))) continue
+    try {
+      const dirty = git(dir, 'status', '--porcelain').split('\n').filter(Boolean).length
+      let unpushed = 0
+      try {
+        unpushed = Number(git(dir, 'rev-list', '--count', '@{u}..HEAD').trim())
+      } catch {
+        unpushed = 0 // no upstream
+      }
+      if (dirty > 0 || unpushed > 0) out.push({ dir: name, branch: git(dir, 'branch', '--show-current').trim() || '(detached)', uncommitted: dirty, unpushed })
+    } catch {
+      /* not a readable clone */
+    }
+  }
+  return out
+}
+
+function arg(name) {
+  const at = process.argv.indexOf(name)
+  return at !== -1 ? process.argv[at + 1] : null
+}
+
+if (isMain(import.meta.url)) {
+  const outPath = arg('--out') ?? 'status.json'
+  const now = new Date()
+  const fleet = JSON.parse(readFileSync(new URL('../fleet.json', import.meta.url), 'utf8'))
+  const ship = JSON.parse(readFileSync(new URL('../ship-bot/config.example.json', import.meta.url), 'utf8'))
+  if (process.env.FLEET_READ_TOKEN && !process.env.GH_TOKEN) process.env.GH_TOKEN = process.env.FLEET_READ_TOKEN
+  let slugs = repoList(fleet, ship)
+  if (arg('--only')) slugs = slugs.filter((s) => s === arg('--only'))
+  let repos = []
+  let failed = 0
+  if (arg('--from')) {
+    repos = JSON.parse(readFileSync(arg('--from'), 'utf8')).repos
+    failed = repos.filter((r) => r.unavailable).length
+  } else {
+    for (const slug of slugs) {
+      try {
+        repos.push(await gatherRepo(slug, now))
+      } catch (cause) {
+        failed += 1
+        const reason = String(cause.stderr || cause.message).trim().split('\n')[0]
+        console.error(`::error::fleet-status could not read ${slug}: ${reason}`)
+        repos.push({ slug, unavailable: reason })
+      }
+    }
+  }
+  const status = { generatedAt: now.toISOString(), repos }
+  if (process.argv.includes('--local')) status.dirtyLocal = dirtyLocal(join(homedir(), 'Developer', 'gorfednet'))
+  writeFileSync(outPath, `${JSON.stringify(status, null, 2)}\n`)
+  console.log(`fleet-status: ${repos.length} repositories, ${failed} unavailable -> ${outPath}`)
+  if (failed > 0) process.exit(1)
+}
