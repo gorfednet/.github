@@ -58,7 +58,13 @@ jobs:
 
       - name: Render STATUS.md
         if: ${{ !cancelled() }}
-        run: node scripts/write-status-md.mjs --in status.json --out STATUS.md
+        run: |
+          set -euo pipefail
+          node scripts/write-status-md.mjs --in status.json --out STATUS.md
+          # The digest is made here, while the scripts exist: the publish step
+          # checks out the `status` branch, which holds only the two output files.
+          mkdir -p "${RUNNER_TEMP}/out"
+          node scripts/write-status-md.mjs --in status.json --digest > "${RUNNER_TEMP}/out/digest.txt"
 
       - name: Publish to the status branch
         if: ${{ !cancelled() }}
@@ -96,11 +102,12 @@ jobs:
           NTFY_TOKEN: ${{ secrets.NTFY_TOKEN }}
         run: |
           set -euo pipefail
-          node scripts/write-status-md.mjs --in status.json --digest > digest.txt
-          test "$(wc -l < digest.txt)" -le 10
+          digest="${RUNNER_TEMP}/out/digest.txt"
+          test -s "${digest}"
+          test "$(wc -l < "${digest}")" -le 10
           args=(-sS --fail --max-time 15 -H "User-Agent: gorfednet-fleet-status (+https://github.com/gorfednet/.github)" -H "Title: Fleet status" -H "Priority: default" -H "Tags: bar_chart")
           if [ -n "${NTFY_TOKEN:-}" ]; then args+=(-H "Authorization: Bearer ${NTFY_TOKEN}"); fi
-          curl "${args[@]}" --data-binary @digest.txt "${NTFY_URL}"
+          curl "${args[@]}" --data-binary @"${digest}" "${NTFY_URL}"
 
       # The read's exit code, asserted last so the file and digest go out first.
       - name: Every repository was readable

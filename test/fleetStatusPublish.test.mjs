@@ -47,6 +47,26 @@ describe('the publish step', () => {
 
 })
 
+describe('step order', () => {
+  const steps = text.split(/\n {6}- /).slice(1)
+  const at = (name) => steps.findIndex((s) => s.startsWith(`name: ${name}`))
+
+  it('no step after the publish step runs a script from the checkout', () => {
+    const publish = at('Publish to the status branch')
+    assert.ok(publish > 0)
+    for (const later of steps.slice(publish + 1)) {
+      assert.doesNotMatch(later, /node scripts\//, later.split('\n')[0])
+    }
+  })
+
+  it('the digest is written before publishing and the ntfy step sends that file', () => {
+    const render = steps[at('Render STATUS.md')]
+    assert.match(render, /--digest > "\$\{RUNNER_TEMP\}\/out\/digest\.txt"/)
+    assert.ok(at('Render STATUS.md') < at('Publish to the status branch'))
+    assert.match(steps[at('Post the digest to ntfy')], /--data-binary @"\$\{digest\}"/)
+  })
+})
+
 describe('fleet-status-local.sh', () => {
   it('still prints the report when the read exits 1, and passes the exit code on', () => {
     const root = mkdtempSync(join(tmpdir(), 'fleet-local-'))
