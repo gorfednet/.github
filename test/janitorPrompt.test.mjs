@@ -29,3 +29,7 @@ test("janitor posts the digest after the session sweep", () => {
 test("janitor step 4 proposes, never archives, sessions whose PR closed unmerged", () => {
   assert.match(prompt, /closed without merging: propose only[^\n]*PR closed unmerged[^\n]*never archive/);
 });
+
+test("janitor step 4 has its own propose-only period and run counter", () => {
+  assert.match(prompt, /own propose-only period[^\n]*sweep-runs/);
+});

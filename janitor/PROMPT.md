@@ -31,7 +31,7 @@ The first 3 runs are `--propose-only`: do steps 1 and 2, then post what you woul
    - No pull request and idle over 48 hours: read its last 10 events. If it holds unfinished work, write a 10-line `docs/handoff/<date>-<topic>.md` in the repository it belongs to (or `gorfednet.github/docs/handoff/` when it has none), open a DRAFT pull request with a `## Next` line, then archive the session. If it holds nothing unfinished, archive it.
    - Never archive a session that ran in the last 48 hours or that holds a pending owner question. Collect those for the digest in step 5 instead. Collect everything this step archives, writes or proposes for the digest too.
    - Handoff files are under `docs/`, so the step 3 allowlist applies to them, but this step only opens a draft and never labels it.
-   - In the first 3 runs (`--propose-only`), post what you would archive or write to ntfy instead of acting.
+   - The sweep has its own propose-only period, separate from step 3's. Count sweep runs in `~/.fleet-janitor/sweep-runs` (append one line each time you reach this step). In the first 3 sweep runs, include what you would archive or write in the digest instead of acting. From the 4th, act.
 5. Post the digest to ntfy `ops-report`, last, after steps 3 and 4: at most 10 lines, what you did (including sessions archived) and what you propose. Times in ET.
 
 ## Only propose, never do
