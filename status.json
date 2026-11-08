@@ -1,0 +1,186 @@
+{
+  "generatedAt": "2026-11-08T14:01:19.973Z",
+  "renderedAt": "2026-11-08T14:01:19.973Z",
+  "repos": [
+    {
+      "slug": "gorfednet/bindercurve.com",
+      "unavailable": "unreadable"
+    },
+    {
+      "slug": "gorfednet/4thcltr.com",
+      "unavailable": "unreadable"
+    },
+    {
+      "slug": "gorfednet/gorfed.net",
+      "unavailable": "unreadable"
+    },
+    {
+      "slug": "gorfednet/subrythm.com",
+      "unavailable": "unreadable"
+    },
+    {
+      "slug": "gorfednet/anal0g.org",
+      "unavailable": "unreadable"
+    },
+    {
+      "slug": "gorfednet/blackpixelrecords.com",
+      "unavailable": "unreadable"
+    },
+    {
+      "slug": "gorfednet/denseware.com",
+      "unavailable": "unreadable"
+    },
+    {
+      "slug": "gorfednet/gorfmusic.com",
+      "unavailable": "unreadable"
+    },
+    {
+      "slug": "gorfednet/promptboi.com",
+      "unavailable": "unreadable"
+    },
+    {
+      "slug": "gorfednet/rowanmcarthur.com",
+      "unavailable": "unreadable"
+    },
+    {
+      "slug": "gorfednet/ssatcy.com",
+      "unavailable": "unreadable"
+    },
+    {
+      "slug": "gorfednet/TowIt",
+      "unavailable": "unreadable"
+    },
+    {
+      "slug": "gorfednet/wychwood",
+      "unavailable": "unreadable"
+    },
+    {
+      "slug": "gorfednet/.github",
+      "defaultBranch": "main",
+      "mainRed": false,
+      "openPrs": [],
+      "branchesAhead": [
+        {
+          "branch": "chore/recapture-promptboi-api-vhost",
+          "ahead": 1
+        },
+        {
+          "branch": "kit/rules-doc-drift",
+          "ahead": 1
+        },
+        {
+          "branch": "kit/v0.27.0",
+          "ahead": 5
+        },
+        {
+          "branch": "kit/v0.28.0",
+          "ahead": 4
+        },
+        {
+          "branch": "kit/v0.29.0",
+          "ahead": 3
+        }
+      ],
+      "lapsedBacklog": [
+        {
+          "id": "towit-open-security-bump",
+          "status": "confirmed-bug",
+          "reviewBy": "2026-10-15"
+        },
+        {
+          "id": "fleet-audit-needs-a-token",
+          "status": "confirmed-bug",
+          "reviewBy": "2026-10-15"
+        },
+        {
+          "id": "fleet-adoption-outstanding",
+          "status": "landed",
+          "reviewBy": "2026-11-01"
+        },
+        {
+          "id": "backlog-status-never-checked-against-github",
+          "status": "landed",
+          "reviewBy": "2026-11-01"
+        },
+        {
+          "id": "citation-scan-walks-untracked-third-party",
+          "status": "landed",
+          "reviewBy": "2026-11-01"
+        },
+        {
+          "id": "tier-2-evidence-proves-nothing",
+          "status": "landed",
+          "reviewBy": "2026-11-01"
+        },
+        {
+          "id": "drift-gate-treats-behind-as-broken",
+          "status": "landed",
+          "reviewBy": "2026-10-15"
+        },
+        {
+          "id": "five-projects-run-tests-with-no-floor",
+          "status": "landed",
+          "reviewBy": "2026-10-15"
+        },
+        {
+          "id": "publish-the-server-never-saw",
+          "status": "confirmed-bug",
+          "reviewBy": "2026-10-15"
+        },
+        {
+          "id": "build-rewrites-tracked-files",
+          "status": "confirmed-bug",
+          "reviewBy": "2026-10-31"
+        },
+        {
+          "id": "paths-named-not-derived",
+          "status": "confirmed-bug",
+          "reviewBy": "2026-10-15"
+        },
+        {
+          "id": "sitemap-rule-text-deferred-by-drift",
+          "status": "confirmed-bug",
+          "reviewBy": "2026-10-31"
+        }
+      ],
+      "lastDeploy": null,
+      "incidents7d": 0,
+      "dependabotRed": 0
+    },
+    {
+      "slug": "gorfednet/MoonMan",
+      "unavailable": "unreadable"
+    },
+    {
+      "slug": "gorfednet/ACID2REAPER",
+      "defaultBranch": "main",
+      "mainRed": false,
+      "openPrs": [],
+      "branchesAhead": [],
+      "lapsedBacklog": [],
+      "lastDeploy": null,
+      "incidents7d": 0,
+      "dependabotRed": 0
+    },
+    {
+      "slug": "gorfednet/career-portfolio",
+      "unavailable": "unreadable"
+    },
+    {
+      "slug": "gorfednet/heuristics.4thcltr.com",
+      "unavailable": "unreadable"
+    },
+    {
+      "slug": "gorfednet/papers.4thcltr.com",
+      "unavailable": "unreadable"
+    },
+    {
+      "slug": "gorfednet/assess",
+      "unavailable": "unreadable"
+    },
+    {
+      "slug": "gorfednet/ops",
+      "unavailable": "unreadable"
+    }
+  ]
+}
