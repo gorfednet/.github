@@ -96,6 +96,20 @@ A pass merges at most `maxMergesPerPass` pull requests (default 2) across all
 repositories; the rest are logged `SKIP ... pass limit` and looked at again two
 minutes later.
 
+## Rollout schedule
+
+Owner-compressed schedule (9 November 2026):
+
+- **Stage 1: live.** `.github`, assess, career-portfolio, heuristics.4thcltr.com, papers.4thcltr.com (merge-only).
+- **Stages 2 and 3 together: Wednesday 12 November.** bindercurve.com and 4thcltr.com merge-only, plus the static site deploys: gorfed.net, gorfmusic, denseware, ssatcy, anal0g, blackpixelrecords, rowanmcarthur, subrythm and the promptboi site.
+- **Stage 4: Saturday 15 November.** MoonMan deploy.
+
+Rules for moving on:
+
+- Each stage needs 3 clean merges in the current stage, no `SKIP` on a red check that should have merged, and no rollback.
+- Before flipping, run `--validate` for the entering repositories and read the last 3 passes of the log.
+- A wrong merge, or a failed deploy that needs a rollback, holds the stage until the cause is fixed and recorded.
+
 ## How a change ships
 
 1. A session finishes the work and adds the **`ready-to-merge`** label.

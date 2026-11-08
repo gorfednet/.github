@@ -13,3 +13,10 @@ test("janitor does not rely on gh pr diff --name-only for the allowlist", () => 
   assert.match(prompt, /gh api --paginate repos\/<owner>\/<repo>\/pulls\/<n>\/files/);
   assert.match(prompt, /neither is enough/);
 });
+
+test("janitor step 6 sweeps sessions with a 48 hour idle rule", () => {
+  const step = prompt.match(/\n6\. Session sweep[\s\S]*?(?=\n## )/);
+  assert.ok(step, "step 6 exists");
+  assert.match(step[0], /48 hours/);
+  assert.match(step[0], /pending owner question/);
+});
