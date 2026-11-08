@@ -14,7 +14,7 @@ The first 3 runs are `--propose-only`: do steps 1 and 2, then post what you woul
 2. Read the output. Work only from it, never from hand counts.
 3. Do (after the propose-only runs):
    - Label `ready-to-merge` only on a pull request that meets all of these:
-     - its changed paths (`gh pr diff <n> --name-only`) exclude `.github/`, `scripts/`, `*.mjs`, `*.ts` and `*.py`
+     - every changed path (`gh pr diff <n> --name-only`) is under `docs/` or ends in `.md` or `.txt`. No exceptions: a workflow, script, source, config, lock, package or Dockerfile path anywhere in the list means no label. An empty list means no label.
      - its review is `clean` and its CI is `green`
      - it isn't a draft and doesn't carry `hold`
    - Prune worktrees that are merged and clean: the branch is merged into `main` and `git status --porcelain` is empty.
@@ -30,7 +30,7 @@ Open a draft pull request or post an ntfy line for each of these:
 - conflict rebuilds
 - closing a pull request
 - any MoonMan action
-- any label on a pull request that touches code (the paths in step 3)
+- any label on a pull request with a changed path outside the step 3 allowlist (`docs/`, `*.md`, `*.txt`)
 
 ## Never
 
