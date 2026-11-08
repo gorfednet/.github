@@ -11,8 +11,10 @@ cd "$repo"
 from=()
 if git fetch --quiet origin status 2>/dev/null; then
   age=$(( $(date +%s) - $(git log -1 --format=%ct origin/status) ))
-  # The published file redacts private repositories to counts. Reuse it only when it holds none, so the local view stays full.
-  if [ "$age" -lt 86400 ] && git show origin/status:status.json > "$work/prior.json" 2>/dev/null && ! grep -q '"redacted": true' "$work/prior.json"; then
+  # Reuse the published file only when it is whole: no private repository redacted to counts (the local
+  # view stays full) and no unavailable row (one bad CI read would otherwise exit 1 here all day).
+  if [ "$age" -lt 86400 ] && git show origin/status:status.json > "$work/prior.json" 2>/dev/null \
+    && node -e 'const s = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")); process.exit(s.repos.some((r) => r.redacted || r.unavailable) ? 1 : 0)' "$work/prior.json"; then
     from=(--from "$work/prior.json")
   fi
 fi

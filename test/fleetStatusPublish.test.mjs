@@ -101,4 +101,53 @@ describe('fleet-status-local.sh', () => {
       rmSync(root, { recursive: true, force: true })
     }
   })
+
+  /** Runs the wrapper against a fresh origin/status holding `snapshot`, and returns the reader's argv. */
+  function readerArgsFor(snapshot) {
+    const root = mkdtempSync(join(tmpdir(), 'fleet-local-from-'))
+    try {
+      const remote = join(root, 'remote.git')
+      git(root, 'init', '-q', '--bare', remote)
+      const seed = join(root, 'seed')
+      git(root, 'init', '-q', seed)
+      writeFileSync(join(seed, 'status.json'), `${JSON.stringify(snapshot)}\n`)
+      git(seed, 'add', 'status.json')
+      git(seed, '-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-q', '-m', 'status')
+      git(seed, 'push', '-q', remote, 'HEAD:status')
+      const repo = join(root, 'repo')
+      mkdirSync(join(repo, 'scripts'), { recursive: true })
+      const wrapper = join(repo, 'scripts', 'fleet-status-local.sh')
+      writeFileSync(wrapper, readFileSync(new URL('../scripts/fleet-status-local.sh', import.meta.url), 'utf8'))
+      chmodSync(wrapper, 0o755)
+      const argv = join(root, 'argv.json')
+      writeFileSync(
+        join(repo, 'scripts', 'fleet-status.mjs'),
+        `import { writeFileSync } from 'node:fs'\nwriteFileSync(${JSON.stringify(argv)}, JSON.stringify(process.argv.slice(2)))\nwriteFileSync(process.argv[process.argv.indexOf('--out') + 1], '{}')\n`,
+      )
+      writeFileSync(
+        join(repo, 'scripts', 'write-status-md.mjs'),
+        "import { writeFileSync } from 'node:fs'\nwriteFileSync(process.argv[process.argv.indexOf('--out') + 1], 'ok\\n')\n",
+      )
+      git(repo, 'init', '-q')
+      git(repo, 'remote', 'add', 'origin', remote)
+      const result = spawnSync('bash', [wrapper], { cwd: repo, encoding: 'utf8' })
+      assert.equal(result.status, 0, result.stderr)
+      return JSON.parse(readFileSync(argv, 'utf8'))
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  }
+  const whole = { generatedAt: 'x', renderedAt: 'x', repos: [{ slug: 'o/a', defaultBranch: 'main', mainRed: false, openPrs: [], branchesAhead: [], lapsedBacklog: [], lastDeploy: null, incidents7d: 0, dependabotRed: 0 }] }
+
+  it('reuses a fresh published snapshot that is whole', () => {
+    const args = readerArgsFor(whole)
+    assert.ok(args.includes('--from'), args.join(' '))
+    assert.ok(args.includes('--include-private'), args.join(' '))
+  })
+  it('reads live instead when the snapshot holds a redacted or an unavailable row', () => {
+    const redacted = { ...whole, repos: [...whole.repos, { slug: 'o/p', redacted: true, mainRed: false, openPrCount: 0, lapsedBacklogCount: 0, dependabotRedCount: 0 }] }
+    assert.ok(!readerArgsFor(redacted).includes('--from'))
+    const unavailable = { ...whole, repos: [...whole.repos, { slug: 'o/p', unavailable: 'unreadable' }] }
+    assert.ok(!readerArgsFor(unavailable).includes('--from'))
+  })
 })
