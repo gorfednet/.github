@@ -9,7 +9,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, it } from 'node:test'
 
-import { aheadCounts, ciState, dependabotRed, nextItem, recentLines, repoList } from '../scripts/fleet-status.mjs'
+import { aheadCounts, ciState, dependabotRed, latestDeploy, nextItem, recentLines, repoList } from '../scripts/fleet-status.mjs'
 import { workflowTriggers } from '../scripts/lib/workflowTriggers.mjs'
 import { digest, etStamp, render, summaryLine } from '../scripts/write-status-md.mjs'
 
@@ -95,6 +95,34 @@ describe('helpers', () => {
     const got = await aheadCounts('o/r', 'main', names, run)
     assert.deepEqual(got, names.map((n) => 'repos/o/r/compare/main...'.length + n.length))
     assert.ok(peak <= 8 && peak > 1, 'peak ' + peak)
+  })
+  it('aheadCounts records a branch with no common ancestor as null and still fails on other errors', async () => {
+    const run = async (args) => {
+      if (args[1].endsWith('...orphan')) throw Object.assign(new Error('x'), { stderr: 'gh: No common ancestor between main and orphan. (HTTP 404)' })
+      if (args[1].endsWith('...boom')) throw Object.assign(new Error('x'), { stderr: 'gh: Server Error (HTTP 500)' })
+      return '3'
+    }
+    assert.deepEqual(await aheadCounts('o/r', 'main', ['feat', 'orphan'], run), [3, null])
+    await assert.rejects(aheadCounts('o/r', 'main', ['boom'], run), /x/)
+  })
+  it('latestDeploy asks each deploy workflow for its own latest success and takes the newest', () => {
+    const asked = []
+    const api = (path) => {
+      asked.push(path)
+      if (path.includes('/workflows?')) {
+        return { workflows: [
+          { id: 1, name: 'ci', path: '.github/workflows/ci.yml', state: 'active' },
+          { id: 2, name: 'Deploy site', path: '.github/workflows/site.yml', state: 'active' },
+          { id: 3, name: 'x', path: '.github/workflows/deploy-api.yml', state: 'active' },
+          { id: 4, name: 'Deploy old', path: '.github/workflows/old.yml', state: 'disabled_manually' },
+        ] }
+      }
+      const id = path.match(/workflows\/(\d+)\/runs/)[1]
+      return { workflow_runs: [{ updated_at: id === '2' ? '2026-11-01T00:00:00Z' : '2026-11-05T00:00:00Z', html_url: 'u' + id }] }
+    }
+    assert.deepEqual(latestDeploy('o/r', api), { name: 'x', at: '2026-11-05T00:00:00Z', url: 'u3' })
+    assert.equal(asked.filter((p) => p.includes('/runs?')).length, 2)
+    assert.equal(latestDeploy('o/r', () => ({ workflows: [] })), null)
   })
   it('repoList adds ship-bot repos that fleet.json lacks, once', () => {
     const list = repoList({ projects: [{ slug: 'a/x' }] }, { repos: [{ slug: 'a/x' }, { slug: 'a/y' }] })

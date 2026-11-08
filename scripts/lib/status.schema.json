@@ -55,7 +55,7 @@
               "type": "object",
               "required": ["branch", "ahead"],
               "additionalProperties": false,
-              "properties": { "branch": { "type": "string" }, "ahead": { "type": "integer" } }
+              "properties": { "branch": { "type": "string" }, "ahead": { "type": "integer" }, "unrelated": { "type": "boolean" } }
             }
           },
           "openPrs": {

@@ -96,14 +96,36 @@ export function repoList(fleet, shipBotConfig) {
 
 const execFileAsync = promisify(execFile)
 
-/** ahead_by for each branch against base, 8 requests at a time (a repository can hold hundreds of branches). */
+/**
+ * The most recent successful run of any workflow whose name or path mentions deploy.
+ * Asks each such workflow for its own latest success, so a busy repository's other runs can't push it out of a page.
+ * `api` takes a path and returns parsed JSON.
+ */
+export function latestDeploy(slug, api) {
+  const workflows = api(`repos/${slug}/actions/workflows?per_page=100`).workflows ?? []
+  let best = null
+  for (const w of workflows) {
+    if (w.state !== 'active' || !/deploy/i.test(`${w.name} ${w.path}`)) continue
+    const run = (api(`repos/${slug}/actions/workflows/${w.id}/runs?status=success&per_page=1`).workflow_runs ?? [])[0]
+    if (run && (!best || run.updated_at > best.at)) best = { name: w.name, at: run.updated_at, url: run.html_url }
+  }
+  return best
+}
+
+/** ahead_by for each branch against base (null when the branch shares no history with it), 8 requests at a time (a repository can hold hundreds of branches). */
 export async function aheadCounts(slug, base, names, run = (args) => execFileAsync('gh', args, { encoding: 'utf8' }).then((r) => r.stdout)) {
   const results = new Array(names.length)
   let next = 0
   const worker = async () => {
     while (next < names.length) {
       const i = next++
-      results[i] = Number((await run(['api', `repos/${slug}/compare/${base}...${names[i]}`, '--jq', '.ahead_by'])).trim())
+      try {
+        results[i] = Number((await run(['api', `repos/${slug}/compare/${base}...${names[i]}`, '--jq', '.ahead_by'])).trim())
+      } catch (cause) {
+        // An orphan or otherwise unrelated branch has no common ancestor: GitHub answers 404. Record it, don't fail the repository.
+        if (!/No common ancestor|HTTP 404/i.test(String(cause.stderr || cause.message))) throw cause
+        results[i] = null
+      }
     }
   }
   await Promise.all(Array.from({ length: Math.min(8, names.length) }, worker))
@@ -150,13 +172,15 @@ export async function gatherRepo(slug, now = new Date()) {
   })
   const prBranches = new Set(raw.map((p) => p.headRefName))
   const branches = ghJson(['api', '--paginate', '--slurp', `repos/${slug}/branches?per_page=100`]).flat()
-  const candidates = branches.map((b) => b.name).filter((n) => n !== base && !prBranches.has(n))
+  // `status` is this report's own orphan branch (fleet-status.yml), with no history in common with main.
+  const candidates = branches.map((b) => b.name).filter((n) => n !== base && n !== 'status' && !prBranches.has(n))
   const counts = await aheadCounts(slug, base, candidates)
-  const branchesAhead = candidates.map((branch, i) => ({ branch, ahead: counts[i] })).filter((b) => b.ahead > 0)
+  const branchesAhead = candidates
+    .map((branch, i) => (counts[i] === null ? { branch, ahead: 0, unrelated: true } : { branch, ahead: counts[i] }))
+    .filter((b) => b.unrelated || b.ahead > 0)
   const backlogText = fileText(slug, 'docs/backlog.json')
   const lapsed = backlogText === null ? [] : lapsedBacklog(JSON.parse(backlogText), today)
-  const runs = ghJson(['api', `repos/${slug}/actions/runs?status=success&per_page=100`]).workflow_runs ?? []
-  const deploy = runs.find((r) => /deploy/i.test(r.name ?? ''))
+  const deploy = latestDeploy(slug, (path) => ghJson(['api', path]))
   let incidents = 0
   for (const path of INCIDENT_FILES) {
     const text = fileText(slug, path)
@@ -174,7 +198,7 @@ export async function gatherRepo(slug, now = new Date()) {
     openPrs,
     branchesAhead,
     lapsedBacklog: lapsed,
-    lastDeploy: deploy ? { name: deploy.name, at: deploy.updated_at, url: deploy.html_url } : null,
+    lastDeploy: deploy,
     incidents7d: incidents,
     dependabotRed: dependabotRed(openPrs),
   }

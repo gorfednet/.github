@@ -74,7 +74,7 @@ export function render(status) {
       }
       out.push('')
     } else out.push('No open pull requests.', '')
-    if (r.branchesAhead.length > 0) out.push(`Branches ahead with no PR: ${r.branchesAhead.map((b) => `${cell(b.branch)} (+${b.ahead})`).join(', ')}`, '')
+    if (r.branchesAhead.length > 0) out.push(`Branches ahead with no PR: ${r.branchesAhead.map((b) => `${cell(b.branch)} (${b.unrelated ? "no shared history" : "+" + b.ahead})`).join(', ')}`, '')
     if (r.lapsedBacklog.length > 0) out.push(`Lapsed backlog: ${r.lapsedBacklog.map((e) => `${cell(e.id)} (${e.reviewBy})`).join(', ')}`, '')
   }
   if (status.dirtyLocal) {
