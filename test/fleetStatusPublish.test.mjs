@@ -47,6 +47,14 @@ describe('the publish step', () => {
 
 })
 
+describe('actions are pinned', () => {
+  it('every action in fleet-status.yml is pinned to a full commit sha with its version in a comment', () => {
+    const uses = text.split('\n').filter((l) => /^\s*(- )?uses:/.test(l))
+    assert.ok(uses.length >= 2)
+    for (const line of uses) assert.match(line, /uses: [\w./-]+@[0-9a-f]{40} # v\d/, line)
+  })
+})
+
 describe('step order', () => {
   const steps = text.split(/\n {6}- /).slice(1)
   const at = (name) => steps.findIndex((s) => s.startsWith(`name: ${name}`))
