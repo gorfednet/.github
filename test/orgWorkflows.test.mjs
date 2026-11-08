@@ -234,6 +234,10 @@ describe('verification-gate composite action', () => {
           "${{ inputs.require-jsonld == 'true' && '--require-jsonld' || '' }}",
           '',
         )
+        filled = filled.replaceAll(
+          "${{ inputs.og-content-addressed == 'true' && '--content-addressed' || '' }}",
+          '',
+        )
         const run = spawnSync('bash', ['-c', filled], {
           encoding: 'utf8',
           env: { ...process.env, VERIFICATION_GATE_KIT: kit },
