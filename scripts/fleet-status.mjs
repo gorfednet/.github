@@ -141,9 +141,9 @@ function gh(args) {
 }
 const ghJson = (args) => JSON.parse(gh(args))
 
-function fileText(slug, path) {
+function fileText(slug, path, json = ghJson) {
   try {
-    const out = ghJson(['api', `repos/${slug}/contents/${path}`])
+    const out = json(['api', `repos/${slug}/contents/${path}`])
     if (out.encoding !== 'base64') throw new Error(`${path} came back without content`)
     return Buffer.from(out.content, 'base64').toString('utf8')
   } catch (cause) {
@@ -163,20 +163,47 @@ export function redactRepo(full) {
     mainRed: full.mainRed,
     openPrCount: full.openPrs.length,
     lapsedBacklogCount: full.lapsedBacklog.length,
+    dependabotRedCount: full.dependabotRed,
   }
 }
 
-export async function gatherRepo(slug, now = new Date(), { includePrivate = false } = {}) {
+/**
+ * One repository's row, with errors turned into an `unavailable` row. Privacy is decided from the
+ * repository record before anything else is parsed, and a failed privacy read counts as private, so a
+ * private repository that then fails to read publishes only the word "unreadable" (an error message can
+ * quote the file it choked on). `json` and `log` are injectable for tests.
+ */
+export async function collectRepo(slug, now = new Date(), { includePrivate = false, json = ghJson, log = console.error } = {}) {
+  let repo
+  let isPrivate = true
+  try {
+    repo = json(['api', `repos/${slug}`])
+    isPrivate = isPrivateRepo(repo)
+  } catch (cause) {
+    repo = cause
+  }
+  try {
+    if (repo instanceof Error) throw repo
+    return await gatherRepo(slug, now, { includePrivate, json, repo })
+  } catch (cause) {
+    const detail = String(cause.stderr || cause.message).trim().split('\n')[0]
+    const reason = isPrivate && !includePrivate ? 'unreadable' : detail
+    log(`::error::fleet-status could not read ${slug}: ${reason}`)
+    return { slug, unavailable: reason }
+  }
+}
+
+export async function gatherRepo(slug, now = new Date(), { includePrivate = false, json = ghJson, repo = null } = {}) {
   const today = now.toISOString().slice(0, 10)
-  const repo = ghJson(['api', `repos/${slug}`])
+  if (repo === null) repo = json(['api', `repos/${slug}`])
   const base = repo.default_branch
   const isPrivate = isPrivateRepo(repo)
-  const raw = ghJson([
+  const raw = json([
     'pr', 'list', '--repo', slug, '--state', 'open', '--limit', '100',
     '--json', 'number,title,createdAt,labels,isDraft,headRefName,headRefOid,body,statusCheckRollup,author',
   ])
   const openPrs = raw.map((p) => {
-    const comments = ghJson(['api', '--paginate', '--slurp', `repos/${slug}/issues/${p.number}/comments?per_page=100`]).flat()
+    const comments = json(['api', '--paginate', '--slurp', `repos/${slug}/issues/${p.number}/comments?per_page=100`]).flat()
     return {
       number: p.number,
       title: p.title,
@@ -190,25 +217,25 @@ export async function gatherRepo(slug, now = new Date(), { includePrivate = fals
     }
   })
   const prBranches = new Set(raw.map((p) => p.headRefName))
-  const branches = ghJson(['api', '--paginate', '--slurp', `repos/${slug}/branches?per_page=100`]).flat()
+  const branches = json(['api', '--paginate', '--slurp', `repos/${slug}/branches?per_page=100`]).flat()
   // `status` is this report's own orphan branch (fleet-status.yml), with no history in common with main.
   const candidates = branches.map((b) => b.name).filter((n) => n !== base && n !== 'status' && !prBranches.has(n))
   const counts = await aheadCounts(slug, base, candidates)
   const branchesAhead = candidates
     .map((branch, i) => (counts[i] === null ? { branch, ahead: 0, unrelated: true } : { branch, ahead: counts[i] }))
     .filter((b) => b.unrelated || b.ahead > 0)
-  const backlogText = fileText(slug, 'docs/backlog.json')
+  const backlogText = fileText(slug, 'docs/backlog.json', json)
   const lapsed = backlogText === null ? [] : lapsedBacklog(JSON.parse(backlogText), today)
-  const deploy = latestDeploy(slug, (path) => ghJson(['api', path]))
+  const deploy = latestDeploy(slug, (path) => json(['api', path]))
   let incidents = 0
   for (const path of INCIDENT_FILES) {
-    const text = fileText(slug, path)
+    const text = fileText(slug, path, json)
     if (text !== null) {
       incidents = recentLines(text, today)
       break
     }
   }
-  const checks = ghJson(['api', `repos/${slug}/commits/${base}/check-runs?per_page=100`]).check_runs ?? []
+  const checks = json(['api', `repos/${slug}/commits/${base}/check-runs?per_page=100`]).check_runs ?? []
   const mainRed = checks.some((c) => c.status === 'completed' && FAILED.has(String(c.conclusion).toUpperCase()))
   const full = {
     slug,
@@ -267,14 +294,9 @@ if (isMain(import.meta.url)) {
     failed = repos.filter((r) => r.unavailable).length
   } else {
     for (const slug of slugs) {
-      try {
-        repos.push(await gatherRepo(slug, now, { includePrivate: process.argv.includes('--include-private') }))
-      } catch (cause) {
-        failed += 1
-        const reason = String(cause.stderr || cause.message).trim().split('\n')[0]
-        console.error(`::error::fleet-status could not read ${slug}: ${reason}`)
-        repos.push({ slug, unavailable: reason })
-      }
+      const row = await collectRepo(slug, now, { includePrivate: process.argv.includes('--include-private') })
+      if (row.unavailable) failed += 1
+      repos.push(row)
     }
   }
   // With --from the repository data is the earlier snapshot's, so its generatedAt is kept.

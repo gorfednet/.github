@@ -27,7 +27,7 @@
       "incidents7d": 0,
       "dependabotRed": 0
     },
-    { "slug": "gorfednet/private-archive", "redacted": true, "mainRed": false, "openPrCount": 2, "lapsedBacklogCount": 1 },
+    { "slug": "gorfednet/private-archive", "redacted": true, "mainRed": false, "openPrCount": 2, "lapsedBacklogCount": 1, "dependabotRedCount": 1 },
     { "slug": "gorfednet/wychwood", "unavailable": "HTTP 404: Not Found" }
   ],
   "dirtyLocal": [{ "dir": "MoonMan", "branch": "main", "uncommitted": 2, "unpushed": 0 }]

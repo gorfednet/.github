@@ -9,7 +9,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, it } from 'node:test'
 
-import { aheadCounts, ciState, dependabotRed, isPrivateRepo, latestDeploy, nextItem, recentLines, redactRepo, repoList } from '../scripts/fleet-status.mjs'
+import { aheadCounts, ciState, collectRepo, dependabotRed, isPrivateRepo, latestDeploy, nextItem, recentLines, redactRepo, repoList } from '../scripts/fleet-status.mjs'
 import { workflowTriggers } from '../scripts/lib/workflowTriggers.mjs'
 import { digest, etStamp, lowerMeridiem, render, summaryLine } from '../scripts/write-status-md.mjs'
 
@@ -159,13 +159,42 @@ describe('STATUS.md', () => {
     assert.ok(isPrivateRepo({ private: false }), 'unknown visibility counts as private')
     assert.ok(!isPrivateRepo({ private: false, visibility: 'public' }))
     const row = redactRepo(full)
-    assert.deepEqual(row, { slug: full.slug, redacted: true, mainRed: false, openPrCount: 2, lapsedBacklogCount: 1 })
+    assert.deepEqual(row, { slug: full.slug, redacted: true, mainRed: false, openPrCount: 2, lapsedBacklogCount: 1, dependabotRedCount: 1 })
     const text = JSON.stringify(row)
     for (const leak of ['title', 'branch', 'url', 'next', 'Fix the nav', 'feat/old', 'stale-entry', 'actions/runs']) assert.ok(!text.includes(leak), leak)
     assert.deepEqual(validate({ generatedAt: 'x', renderedAt: 'x', repos: [row] }, schema), [])
     const md = render(fixture)
-    assert.match(md, /private-archive.*\n\n\(private, counts only\) main ok · 2 open PRs · 1 lapsed backlog items/)
+    assert.match(md, /private-archive.*\n\n\(private, counts only\) main ok · 2 open PRs · 1 lapsed backlog items · 1 dependabot red/)
     assert.ok(!md.includes('private-archive/pull/'))
+  })
+  it('publishes only "unreadable" when a private repository fails to read', async () => {
+    const SECRET = 'secret-backlog-entry'
+    const notFound = () => Object.assign(new Error('gh: Not Found (HTTP 404)'), { stderr: 'gh: Not Found (HTTP 404)' })
+    const fakeJson = (visibility) => (args) => {
+      const path = args[0] === 'pr' ? 'pr list' : args[args.length - 1]
+      if (path === 'repos/o/p') return { private: visibility !== 'public', visibility, default_branch: 'main' }
+      if (path === 'pr list') return []
+      if (path.includes('/branches')) return [[]]
+      if (path.endsWith('contents/docs/backlog.json')) return { encoding: 'base64', content: Buffer.from(`{"id": "${SECRET}"`).toString('base64') }
+      if (path.includes('/contents/')) throw notFound()
+      if (path.endsWith('/workflows?per_page=100')) return { workflows: [] }
+      if (path.includes('/check-runs')) return { check_runs: [] }
+      throw new Error(`unexpected call ${args.join(' ')}`)
+    }
+    const logged = []
+    const log = (line) => logged.push(line)
+    const row = await collectRepo('o/p', new Date('2026-11-07T12:00:00Z'), { json: fakeJson('private'), log })
+    assert.deepEqual(row, { slug: 'o/p', unavailable: 'unreadable' })
+    assert.equal(logged.length, 1)
+    assert.ok(!logged[0].includes(SECRET) && !logged[0].includes('JSON'), logged[0])
+    // The same failure with --include-private, or on a public repository, keeps the detail.
+    const local = await collectRepo('o/p', new Date(), { json: fakeJson('private'), log, includePrivate: true })
+    assert.match(local.unavailable, /JSON/)
+    const pub = await collectRepo('o/p', new Date(), { json: fakeJson('public'), log })
+    assert.match(pub.unavailable, /JSON/)
+    // A failed privacy read counts as private.
+    const dark = await collectRepo('o/p', new Date(), { json: () => { throw new Error('HTTP 500: boom') }, log })
+    assert.deepEqual(dark, { slug: 'o/p', unavailable: 'unreadable' })
   })
   it('shows when the data was read and when it was rendered', () => {
     const later = { ...fixture, renderedAt: '2026-11-08T14:00:00.000Z' }
@@ -174,7 +203,7 @@ describe('STATUS.md', () => {
   it('summarizes the fixture', () => {
     assert.equal(
       summaryLine(fixture),
-      '5 open PRs, oldest 5 days (4thcltr.com #212), 1 red mains, 2 lapsed backlog items, 1 dependabot red, 1 waiting on the owner, 1 repos unreadable.',
+      '5 open PRs, oldest 5 days (4thcltr.com #212), 1 red mains, 2 lapsed backlog items, 2 dependabot red, 1 waiting on the owner, 1 repos unreadable.',
     )
   })
   it('renders every repository, the unavailable row, escaped pipes and the dirty clones', () => {

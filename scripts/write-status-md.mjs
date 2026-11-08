@@ -41,7 +41,7 @@ export function summarize(status) {
     prs,
     redMains: ok.filter((r) => r.mainRed).map((r) => r.slug),
     lapsed: ok.reduce((n, r) => n + (r.redacted ? r.lapsedBacklogCount : r.lapsedBacklog.length), 0),
-    dependabotRed: full.reduce((n, r) => n + r.dependabotRed, 0),
+    dependabotRed: ok.reduce((n, r) => n + (r.redacted ? r.dependabotRedCount : r.dependabotRed), 0),
     waiting: prs.filter(waitingOnOwner).length,
     unavailable: status.repos.filter((r) => r.unavailable).map((r) => r.slug),
   }
@@ -63,7 +63,7 @@ export function render(status) {
       continue
     }
     if (r.redacted) {
-      out.push(`(private, counts only) main ${r.mainRed ? '**red**' : 'ok'} · ${r.openPrCount} open PRs · ${r.lapsedBacklogCount} lapsed backlog items`, '')
+      out.push(`(private, counts only) main ${r.mainRed ? '**red**' : 'ok'} · ${r.openPrCount} open PRs · ${r.lapsedBacklogCount} lapsed backlog items · ${r.dependabotRedCount} dependabot red`, '')
       continue
     }
     const facts = [
