@@ -15,6 +15,11 @@ if git fetch --quiet origin status 2>/dev/null; then
     from=(--from "$work/prior.json")
   fi
 fi
-node scripts/fleet-status.mjs --local --out "$work/status.json" ${from[@]+"${from[@]}"}
-node scripts/write-status-md.mjs --in "$work/status.json" --out "$work/STATUS.md"
-cat "$work/STATUS.md"
+code=0
+node scripts/fleet-status.mjs --local --out "$work/status.json" ${from[@]+"${from[@]}"} || code=$?
+# Exit 1 means some repo was unreadable; the file is still written with an unavailable row, so show it.
+if [ -s "$work/status.json" ]; then
+  node scripts/write-status-md.mjs --in "$work/status.json" --out "$work/STATUS.md"
+  cat "$work/STATUS.md"
+fi
+exit "$code"
