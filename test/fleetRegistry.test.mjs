@@ -596,3 +596,30 @@ describe('a project stood down', () => {
     assert.match(result.stdout, /tier 0: [1-9]/)
   })
 })
+
+describe('backlog date warning', () => {
+  const run = (backlog) =>
+    spawnSync('node', [CHECK, '--offline', '--backlog', backlog], { encoding: 'utf8', env: { ...process.env, GITHUB_ACTIONS: '' } })
+  const entry = (id, extra = {}) => ({ id, ...extra })
+
+  it('warns once, listing entries missing created or updated, and still passes', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'backlog-'))
+    temps.push(dir)
+    const path = join(dir, 'backlog.json')
+    writeFileSync(path, JSON.stringify({ entries: [entry('a'), entry('b', { created: '2026-11-07' }), entry('c', { created: '2026-11-07', updated: '2026-11-07' })] }))
+    const result = run(path)
+    assert.equal(result.status, 0, result.stderr)
+    assert.equal(result.stderr.match(/missing created or updated/g).length, 1)
+    assert.match(result.stderr, /2 backlog entries missing created or updated \(a, b\)/)
+  })
+
+  it('says nothing when every entry is dated', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'backlog-'))
+    temps.push(dir)
+    const path = join(dir, 'backlog.json')
+    writeFileSync(path, JSON.stringify({ entries: [entry('c', { created: '2026-11-07', updated: '2026-11-07' })] }))
+    const result = run(path)
+    assert.equal(result.status, 0, result.stderr)
+    assert.doesNotMatch(result.stderr, /missing created or updated/)
+  })
+})

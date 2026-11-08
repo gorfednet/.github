@@ -8,7 +8,9 @@
       "assignee": "main-model",
       "userSymptom": "Monday production healthchecks went red on sites that were up: gorfed.net because its sitemap is 512 bytes, denseware.com because robots.txt is 67.",
       "evidence": "https://github.com/gorfednet/gorfed.net/actions/runs/35635361413 and https://github.com/gorfednet/denseware.com/actions/runs/35631067723 on 2026-09-21. Shared production-healthcheck.yml ran min-bytes on every path; expect-text already skipped non-HTML.",
-      "reviewBy": "2026-12-01"
+      "reviewBy": "2026-12-01",
+      "created": "2026-09-25",
+      "updated": "2026-09-25"
     },
     {
       "id": "quiet-sites-paid-product-monitor-rates",
@@ -17,7 +19,9 @@
       "assignee": "main-model",
       "userSymptom": "Credit and Actions usage went to weekly Playwright installs and incremental Bugbot on sites last touched by a kit bump.",
       "evidence": "4thcltr.com production-healthcheck.yml passed only site-url, so run-playwright defaulted true. FLEET.md claimed a required Bugbot verdict job that no consumer calls. fleet.json had no monitorClass, so nothing could fail when a quiet site inherited the product default.",
-      "reviewBy": "2026-12-01"
+      "reviewBy": "2026-12-01",
+      "created": "2026-09-25",
+      "updated": "2026-09-25"
     },
     {
       "id": "bugbot-credits-exhausted-unreviewed-prs",
@@ -26,7 +30,9 @@
       "assignee": "human",
       "userSymptom": "MoonMan pull requests 150-153 have CI and no Bugbot check at all, which is how a billing outage looks — not a red Actions job.",
       "evidence": "gh api on MoonMan#153 head e9c06b7: quality/test/e2e/build succeeded, no check-run matching Bugbot. Fleet PRs through 2026-09-20 still had completed Bugbot reviews. FLEET_READ_TOKEN was added 2026-10-10 (gh secret list).",
-      "note": "Declined 2026-10-19: Cursor and Bugbot were retired by the owner on 2026-10-16 and the Claude reviewer replaces them, so there are no credits to restore. docs/retired-checks.md records the retirement."
+      "note": "Declined 2026-10-19: Cursor and Bugbot were retired by the owner on 2026-10-16 and the Claude reviewer replaces them, so there are no credits to restore. docs/retired-checks.md records the retirement.",
+      "created": "2026-09-09",
+      "updated": "2026-10-19"
     },
     {
       "id": "towit-broken-refs",
@@ -37,7 +43,9 @@
       "evidence": "git fetch aborted with `fatal: bad object refs/remotes/origin/HEAD 2`. Five duplicate ref files under .git/refs/remotes/origin/ with a trailing ' 2' — the signature of a file-sync tool copying a directory it does not understand. Removing them restored the fetch, which then pulled d623370..a9f28a6 and showed the branch merged after all.",
       "pr": 3,
       "reviewBy": "2026-12-01",
-      "note": "Recorded rather than just fixed because the class matters: a checkout that cannot reach its remote does not fail loudly, it works from stale refs. That is rule V27 wearing different clothes. Worth checking whether other repos under a synced directory have the same artefacts."
+      "note": "Recorded rather than just fixed because the class matters: a checkout that cannot reach its remote does not fail loudly, it works from stale refs. That is rule V27 wearing different clothes. Worth checking whether other repos under a synced directory have the same artefacts.",
+      "created": "2026-09-09",
+      "updated": "2026-09-09"
     },
     {
       "id": "towit-open-security-bump",
@@ -47,7 +55,9 @@
       "userSymptom": "The site runs a Python HTTP client that is roughly a decade of releases behind, including security releases, on a repo whose owner had no way to see the PR because the local checkout could not fetch.",
       "evidence": "gh pr list on gorfednet/TowIt: PR #3 'Bump requests from 2.6.0 to 2.34.2', OPEN since 2026-09-01. A second, #1 for oauthlib 0.7.2 to 3.3.1, was closed rather than merged.",
       "reviewBy": "2026-10-15",
-      "note": "Needs a human decision: 2.6.0 to 2.34.2 is not a drop-in on a Flask app of that age. Sized, not guessed at."
+      "note": "Needs a human decision: 2.6.0 to 2.34.2 is not a drop-in on a Flask app of that age. Sized, not guessed at.",
+      "created": "2026-09-09",
+      "updated": "2026-09-09"
     },
     {
       "id": "fleet-audit-needs-a-token",
@@ -57,7 +67,9 @@
       "userSymptom": "Nothing is currently checking that a project claiming an adoption tier actually holds the files that tier requires, so the fleet table could drift back into fiction without any job going red.",
       "evidence": "check-fleet.mjs run under CI credentials reports every private sibling as unreadable, because a workflow's default GITHUB_TOKEN is scoped to its own repository. fleet-audit.yml exists and fails closed on the missing secret; the pull-request job runs --offline and says so in its output.",
       "reviewBy": "2026-10-15",
-      "note": "Wants a fine-grained PAT, read-only Contents + Metadata across gorfednet, stored as the repository secret FLEET_READ_TOKEN. Until then the weekly job is red on purpose: unverified is the true state, and a green job that checked nothing is worse. The cause of the original mis-report is now rule V39."
+      "note": "Wants a fine-grained PAT, read-only Contents + Metadata across gorfednet, stored as the repository secret FLEET_READ_TOKEN. Until then the weekly job is red on purpose: unverified is the true state, and a green job that checked nothing is worse. The cause of the original mis-report is now rule V39.",
+      "created": "2026-09-09",
+      "updated": "2026-09-09"
     },
     {
       "id": "fleet-adoption-outstanding",
@@ -68,7 +80,9 @@
       "evidence": "fleet.json: 12 projects at tier 0. Each already inherits a reusable pr-check workflow, so adoption is a one-line change plus the vendored kit.",
       "reviewBy": "2026-11-01",
       "note": "Landed in #14 and the rollout around it; fleet.json now holds no project at tier 0. The entry claimed twelve at tier 0 for weeks after that stopped being true, which is the class --verify-prs catches for pull requests and nothing catches for a count. What remains is not adoption but five projects claiming a tier whose floor never ran — tracked separately as five-projects-run-tests-with-no-floor.",
-      "pr": 14
+      "pr": 14,
+      "created": "2026-09-09",
+      "updated": "2026-09-11"
     },
     {
       "id": "unbounded-jobs-in-shared-workflows",
@@ -79,7 +93,9 @@
       "evidence": "check-ci-headroom reported \"no timeout-minutes found\" on gorfed.net and subrythm.com. Auditing the workflows those repos call found compat-success (browser-compat.yml, 6 callers), audit (fleet-audit.yml) and kit (verification-kit.yml) with no timeout-minutes. GitHub kills an untimed job at six hours.",
       "pr": 5,
       "reviewBy": "2026-12-01",
-      "note": "Fixed and guarded: test/orgWorkflows.test.mjs now requires a timeout on every job that does not delegate with uses:. Guard observed failing by deleting the new timeout from verification-kit.yml. Marked landed 2026-09-10, on the reconciliation --verify-prs now performs: the entry had read in-review since the pull request merged, which is the state that check was written for."
+      "note": "Fixed and guarded: test/orgWorkflows.test.mjs now requires a timeout on every job that does not delegate with uses:. Guard observed failing by deleting the new timeout from verification-kit.yml. Marked landed 2026-09-10, on the reconciliation --verify-prs now performs: the entry had read in-review since the pull request merged, which is the state that check was written for.",
+      "created": "2026-09-09",
+      "updated": "2026-09-11"
     },
     {
       "id": "headroom-blind-to-matrix-jobs",
@@ -90,7 +106,9 @@
       "evidence": "On bindercurve.com, coverage was 38% of declared jobs. GitHub reports the interpolated name (e2e-chromium-1) for a templated name:, which matches neither the template nor the job id, so no matrix job ever joined to its timeout. Two workflows both declaring a job named 'check' also collapsed into one map entry, measuring one against the other's limit.",
       "pr": 4,
       "reviewBy": "2026-12-01",
-      "note": "matchJob turns the template into a pattern, requires at least one literal character so a name that is only an expression cannot claim every job, and resolves by specificity. Coverage went 38% -> over the 80% floor. Marked landed 2026-09-10, on the reconciliation --verify-prs now performs: the entry had read in-review since the pull request merged, which is the state that check was written for."
+      "note": "matchJob turns the template into a pattern, requires at least one literal character so a name that is only an expression cannot claim every job, and resolves by specificity. Coverage went 38% -> over the 80% floor. Marked landed 2026-09-10, on the reconciliation --verify-prs now performs: the entry had read in-review since the pull request merged, which is the state that check was written for.",
+      "created": "2026-09-09",
+      "updated": "2026-09-11"
     },
     {
       "id": "backlog-status-never-checked-against-github",
@@ -101,7 +119,9 @@
       "evidence": "check-backlog.mjs requires an in-review or landed entry to name a pull request, and never asks GitHub what became of it. Confirmed by grep: nothing in verification-kit/lib/backlogSchema.mjs touches gh or the API. Twelve adopted repositories now carry entries in that state, wychwoodresort.com's two from the moment PR #4 merged.",
       "reviewBy": "2026-11-01",
       "note": "The check has to keep working offline and in a fresh clone, so this cannot be unconditional. An opt-in --verify-prs used by the CI gate, where gh and a token are present, fails closed when the API is reachable and disagrees, and skips with a counted, printed reason when it is not. Batch it with the venv entry below into one kit version rather than re-vendoring twelve repositories twice.",
-      "pr": 18
+      "pr": 18,
+      "created": "2026-09-10",
+      "updated": "2026-09-11"
     },
     {
       "id": "citation-scan-walks-untracked-third-party",
@@ -112,7 +132,9 @@
       "evidence": "check-rule-citations.mjs skips .venv but not venv, which is the commoner name and is present unignored at towit.io's root — so the walk descends into a whole third-party site-packages tree. Separately, its citation pattern allows any whitespace including newlines between the word and the number, so a wrapped line in a minified bundle reads as a citation: towit.io's vendored AngularJS produced a citation of a rule numbered zero.",
       "reviewBy": "2026-11-01",
       "note": "Adding vendored paths to the kit's skip list is the wrong fix, since it weakens the check everywhere for one repository's layout — PR #13 exposed rule-sources so a project can scope its own scan instead (V54). Still worth adding venv beside .venv, and worth deciding whether the whitespace class should exclude newlines; a citation genuinely wrapped across two lines of prose is plausible, so measure before tightening.",
-      "pr": 18
+      "pr": 18,
+      "created": "2026-09-10",
+      "updated": "2026-09-11"
     },
     {
       "id": "tier-2-evidence-proves-nothing",
@@ -123,7 +145,9 @@
       "evidence": "TIER_EVIDENCE[2] in scripts/check-fleet.mjs asks for verification-kit/bin/assert-tests-executed.mjs, which ships in every copy of the kit and is therefore present in every tier-1 project. Six projects now claim tier 2; the online run confirmed all six against a file that proves nothing about wiring. Presence read as behaviour, which is the class V20 names.",
       "reviewBy": "2026-11-01",
       "note": "Real evidence is in the caller: fetch .github/workflows/*.yml and require the pr-check job to pass a non-empty test-report together with a min-tests above the default of 1. The check already fetches file contents over the API, so this is a content assertion rather than new machinery. It has to keep its tri-state — an API failure must not read as absent. Note the honest awkwardness this exposes: TowIt has a real floor of 49 that no shared assertion can see, because pytest emits no JSON report either check could read, and it is recorded at tier 1 for that reason.",
-      "pr": 18
+      "pr": 18,
+      "created": "2026-09-10",
+      "updated": "2026-09-11"
     },
     {
       "id": "drift-gate-treats-behind-as-broken",
@@ -134,7 +158,9 @@
       "evidence": "check-kit-drift.mjs fails when a vendored copy does not match the canonical manifest, without distinguishing the two ways that happens. A copy that is *behind* is intact and self-consistent; a copy that has been *edited locally* is a fork pretending to be the shared kit. Only the second is a defect, and the first is the ordinary state of a fleet between an upstream fix and its rollout. Both currently exit 1 with the same instruction.",
       "reviewBy": "2026-10-15",
       "note": "The fix is a judgement call about how much staleness is tolerable, which is why it is assigned to a person rather than taken tonight. The shape that seems right: compare the vendored version against canonical and fail only on local modification or on being more than one minor version behind, warning in between, so a project can merge its own work the day an upstream fix lands and pick the refresh up on its own schedule. That must not become an excuse for a copy drifting for months — a dated ceiling, per the deferral rule, not an open-ended warning. Worth weighing against the alternative of not vendoring at all: a git submodule or an npm package would make the version a single edit, at the cost of the property that made vendoring attractive, which is that every check runs on plain node with nothing installed.",
-      "pr": 18
+      "pr": 18,
+      "created": "2026-09-11",
+      "updated": "2026-09-11"
     },
     {
       "id": "five-projects-run-tests-with-no-floor",
@@ -145,7 +171,9 @@
       "evidence": "Each of the five calls the shared pr-check workflow with a min-tests value and no test-report. verification-gate/action.yml runs the assertion under 'if: inputs.test-report != ''', so the floor they configured has never executed once. Found by the tier-2 content assertion added in this change, which reported all five; their FLEET.md tier is corrected to 1 in the same commit, because the registry must not claim a protection that is not running.",
       "reviewBy": "2026-10-15",
       "note": "The fix per repo is to emit a JSON reporter alongside the existing run and pass it as test-report with a floor measured from a real green run, then raise the tier back to 2 in fleet.json and let the online audit confirm it. Doing that during the v0.27.0 roll keeps it to one PR per repository. wychwoodresort.com is out of scope for site work by the owner's instruction, so it stays at its true tier rather than being wired.",
-      "pr": 18
+      "pr": 18,
+      "created": "2026-09-11",
+      "updated": "2026-09-11"
     },
     {
       "id": "drift-read-its-authority-through-a-cdn",
@@ -155,7 +183,9 @@
       "pr": 19,
       "userSymptom": "A red build with a message saying something impossible: that a site is ahead of the kit it vendors. Nobody can act on that, and the next red one gets less attention.",
       "evidence": "v0.27.0 merged at 03:49:36Z. subrythm.com and blackpixelrecords.com ran at 03:52:32Z and 03:52:52Z and read v0.26.0 from raw.githubusercontent.com, which is CDN-cached for minutes, while the API and the CDN both read 0.27.0 by the time it was checked by hand. distance() correctly called the vendored copy ahead and the check correctly treated that as fatal; the input was wrong. Fixed by confirming an impossible answer against an uncached API read before acting on it, and failing when that read cannot be obtained. Three cases, watched failing first, plus canary drift-believes-a-cached-read. Recorded as V60.",
-      "note": "These two were the only repositories of thirteen that run check-kit-drift at all, so the fleet had been reading the absence of this check as health. Wiring it everywhere is part of the v0.28.0 roll."
+      "note": "These two were the only repositories of thirteen that run check-kit-drift at all, so the fleet had been reading the absence of this check as health. Wiring it everywhere is part of the v0.28.0 roll.",
+      "created": "2026-09-11",
+      "updated": "2026-09-11"
     },
     {
       "id": "two-matchers-fired-on-their-legitimate-neighbour",
@@ -165,7 +195,9 @@
       "pr": 19,
       "userSymptom": "Two checks reporting things that are not true. A suite with a test.fail() case would be described as intermittent, and with a --max-flaky budget would fail over tests behaving exactly as written; a comment naming a Digimon rulebook section would be reported as citing a rule that does not exist.",
       "evidence": "Bugbot found the first on nine consumer pull requests simultaneously: assert-tests-executed counted any failed attempt as a retry, and Playwright marks test.fail() as expected with a failed attempt. The same line also missed timedOut-then-passed, the commonest intermittent shape there is. The second was found by running check-rule-citations against bindercurve.com, where it is vendored and wired to nothing: the prefix class [A-Z0-9]+ accepted a bare digit, so \"comprehensive rules 1-2-1-1-1\" read as local rule 1-2. Both are V10 instances and are recorded there as evidence rather than as new numbers. Three cases watched failing first, three canaries.",
-      "note": "Neither was found by rereading the pattern. One came from an outside reviewer, the other from running the check in a repository that had never run it, which is the argument for both."
+      "note": "Neither was found by rereading the pattern. One came from an outside reviewer, the other from running the check in a repository that had never run it, which is the argument for both.",
+      "created": "2026-09-11",
+      "updated": "2026-09-11"
     },
     {
       "id": "citation-matcher-read-a-zero-as-a-rule",
@@ -174,7 +206,9 @@
       "assignee": "main-model",
       "pr": 20,
       "userSymptom": "A check reporting a rule that does not exist, in a file nobody here wrote. towit.io does not wire this check, so like bindercurve’s rulebook section it was a false failure waiting for whoever wired it first — and the reasonable conclusion on seeing it would be that the check is noise.",
-      "evidence": "Reported by the batch that rolled v0.27.0: towit-admin/static/js/angular/angular.js and its angularjs twin, \"we added three explicit number rules 0, 1 and 2\". No sequence starts at zero, so a number beginning with 0 is prose by definition; the matcher now reads [1-9]\\d* in all three alternatives. Watched failing first, canary citation-reads-a-zero-as-a-rule, and verified against the real towit.io tree that produced it: 91 source files, every citation resolves. Third instance of V10 in two releases, which is why it is recorded there with the note that narrowing a matcher changes behaviour in both directions — the previous narrowing broke 4thcltr’s real 4C- prefix."
+      "evidence": "Reported by the batch that rolled v0.27.0: towit-admin/static/js/angular/angular.js and its angularjs twin, \"we added three explicit number rules 0, 1 and 2\". No sequence starts at zero, so a number beginning with 0 is prose by definition; the matcher now reads [1-9]\\d* in all three alternatives. Watched failing first, canary citation-reads-a-zero-as-a-rule, and verified against the real towit.io tree that produced it: 91 source files, every citation resolves. Third instance of V10 in two releases, which is why it is recorded there with the note that narrowing a matcher changes behaviour in both directions — the previous narrowing broke 4thcltr’s real 4C- prefix.",
+      "created": "2026-09-11",
+      "updated": "2026-09-14"
     },
     {
       "id": "metadata-gate-flagged-correct-markup",
@@ -185,7 +219,9 @@
       "userSymptom": "A red check naming a bug that is not there, on a page whose social card works. The reasonable response is to go and 'fix' correct markup, which is what nearly happened: the finding was carried into a plan and into a delegated task as established fact, and an agent was briefed to expect the failure and repair it.",
       "evidence": "check-page-metadata.mjs: `const doubleEscaped = (raw) => /&amp;|&#38;|%26amp%3B/i.test(raw)` tested the raw attribute. `&amp;` is how `&` is written in an attribute value, so every correctly escaped multi-parameter URL failed. Its own docstring named the right test, 'an entity surviving one decode', and the code never decoded. Settled by fetching rowanmcarthur.com's og:image with the new live checker: the crop applies and the image is 1200x630.",
       "reviewBy": "2026-12-01",
-      "note": "Fixed by decoding once and looking for a survivor, which required decodeEntities to become a single pass - a chain of replaces turns `&amp;lt;` into `<`, so escaped-once and escaped-twice come out identical and the distinction the caller needs is gone before it can be measured. Recorded as a fourth V10 instance. The part that generalises is not the pattern but the protection: a case in the suite asserted the same wrong thing, so checker and test confirmed each other and the suite stayed green. A case watched failing proves the assertion runs, not that it is right - and a near-miss test written by whoever held the wrong belief is worth nothing. When a check reports a defect in something you did not write, observe the thing itself."
+      "note": "Fixed by decoding once and looking for a survivor, which required decodeEntities to become a single pass - a chain of replaces turns `&amp;lt;` into `<`, so escaped-once and escaped-twice come out identical and the distinction the caller needs is gone before it can be measured. Recorded as a fourth V10 instance. The part that generalises is not the pattern but the protection: a case in the suite asserted the same wrong thing, so checker and test confirmed each other and the suite stayed green. A case watched failing proves the assertion runs, not that it is right - and a near-miss test written by whoever held the wrong belief is worth nothing. When a check reports a defect in something you did not write, observe the thing itself.",
+      "created": "2026-09-14",
+      "updated": "2026-09-14"
     },
     {
       "id": "card-replaced-under-a-cached-name",
@@ -196,7 +232,9 @@
       "userSymptom": "Sharing a link keeps showing the old, wrong card long after it was fixed and deployed, and every check says the site is correct. Nobody can find the fault, because there is no fault left in the repository.",
       "evidence": "The vhost template on dapyllil serves image, css and js extensions with `expires 1y` and `add_header Cache-Control \"public, immutable\"`. Confirmed live: `cache-control: public, max-age=31536000, immutable` on favicon.svg across five hosts. ssatcy.com/og-image.png and 4thcltr.com/og-image.png both already existed under that header, one of them jpeg bytes at 768x1024. check-og-image reads the publish set, so a card replaced under its old name is green in the repository, green in the build and stale at the URL.",
       "reviewBy": "2026-12-01",
-      "note": "Two halves, and this pull request is only the second of them. Structurally, a new card lands at a new URL rather than overwriting the old name - 4thcltr.com already does this with `?v=3` and is the pattern to copy. Verification-wise, check-live-og-image.mjs fetches the page, reads the og:image a scraper would read, fetches that, and compares the served bytes against the page's own declared dimensions; a declared size the URL does not serve is the staleness signature. It also reports an immutable Cache-Control as a note, so the next person replacing a card is told why it will not reach anyone. The class is general: any check that reads the artefact a build produced cannot see what a cache in front of it is still serving. Structural half outstanding per site: see cards-at-overwritable-urls."
+      "note": "Two halves, and this pull request is only the second of them. Structurally, a new card lands at a new URL rather than overwriting the old name - 4thcltr.com already does this with `?v=3` and is the pattern to copy. Verification-wise, check-live-og-image.mjs fetches the page, reads the og:image a scraper would read, fetches that, and compares the served bytes against the page's own declared dimensions; a declared size the URL does not serve is the staleness signature. It also reports an immutable Cache-Control as a note, so the next person replacing a card is told why it will not reach anyone. The class is general: any check that reads the artefact a build produced cannot see what a cache in front of it is still serving. Structural half outstanding per site: see cards-at-overwritable-urls.",
+      "created": "2026-09-14",
+      "updated": "2026-09-14"
     },
     {
       "id": "guard-failed-on-its-own-explanation",
@@ -207,7 +245,9 @@
       "userSymptom": "A pull request red on a check naming a file that does nothing wrong, and the check cannot be satisfied by any wording - the deploy script explains in a comment why it does NOT use the forbidden mount, and saying so is what trips it. The only ways out are to delete the explanation or to ignore the check.",
       "evidence": "scripts/no-smb-guard.sh scanned one pattern, smb://|mount_smbfs|\\bcifs\\b|/Volumes/, over prose and code alike, with a single-file exclusion for docs/verification-rules.md. ssatcy.com CI, step No legacy share-mount deploy paths: matched a comment in its deploy script. Because that step precedes Build, the skipped build then gave the verification gate no dist/ to read and it emitted 18 ENOENTs under !cancelled().",
       "reviewBy": "2026-12-01",
-      "note": "Split into two patterns. ACTIONABLE (smb://, mount_smbfs, mount -t cifs, /Volumes/) is copy-pasteable and fails anywhere including inside a comment; the bare filesystem word fails only on lines that are not comments. Four cases pin the directions the allowance must not open, and all were watched red under mutation. The deeper finding is V69: the awk filter added to drop comment lines was rejected by awk, printed nothing, and the guard reported a clean tree - a broken filter emits exactly what a clean scan emits, and the || true absorbing the scanner no-match status swallowed the difference. Its own new test caught that, before CI did. The filter is now fatal and exits 2, so a tooling fault cannot read as a pass or as a finding."
+      "note": "Split into two patterns. ACTIONABLE (smb://, mount_smbfs, mount -t cifs, /Volumes/) is copy-pasteable and fails anywhere including inside a comment; the bare filesystem word fails only on lines that are not comments. Four cases pin the directions the allowance must not open, and all were watched red under mutation. The deeper finding is V69: the awk filter added to drop comment lines was rejected by awk, printed nothing, and the guard reported a clean tree - a broken filter emits exactly what a clean scan emits, and the || true absorbing the scanner no-match status swallowed the difference. Its own new test caught that, before CI did. The filter is now fatal and exits 2, so a tooling fault cannot read as a pass or as a finding.",
+      "created": "2026-09-14",
+      "updated": "2026-09-14"
     },
     {
       "id": "gate-buried-the-cause-it-outlived",
@@ -218,7 +258,9 @@
       "userSymptom": "A failed run whose log is eighteen missing-file errors, every one of them real, none of them the reason. The actual failure is a screen and a half higher and reads as unrelated, so the diagnosis goes to the loud true errors first.",
       "evidence": "ssatcy.com run: the share-mount guard failed, Build was skipped, and check-page-metadata, check-og-image and check-error-pages each reported ENOENT for every page and file they wanted in a dist/ that had never been produced. V18 puts !cancelled() on every gate step deliberately, so this is the cost of a correct decision rather than a bug in it.",
       "reviewBy": "2026-12-01",
-      "note": "Recorded as V70. Fixed with a precondition step in the verification-gate action that fails once when a root it was told to read is absent or empty, and names the likely cause - look for the first failed or skipped step; if Build did not run, that is why. It does not skip: a genuinely missing publish set is still a failure, now a legible one. Guarded by five cases that execute the step’s extracted shell rather than matching its text, since the question is what the script decides; five mutations watched red, including one that renamed the step, which proves the extraction helper throws instead of handing every case an empty script."
+      "note": "Recorded as V70. Fixed with a precondition step in the verification-gate action that fails once when a root it was told to read is absent or empty, and names the likely cause - look for the first failed or skipped step; if Build did not run, that is why. It does not skip: a genuinely missing publish set is still a failure, now a legible one. Guarded by five cases that execute the step’s extracted shell rather than matching its text, since the question is what the script decides; five mutations watched red, including one that renamed the step, which proves the extraction helper throws instead of handing every case an empty script.",
+      "created": "2026-09-14",
+      "updated": "2026-09-14"
     },
     {
       "id": "cards-at-overwritable-urls",
@@ -228,7 +270,9 @@
       "userSymptom": "A social card fixed and deployed keeps showing the old image when a link is shared, with nothing in the repository left to fix.",
       "evidence": "The vhost serves \\.(png|svg|css|js|...)$ with expires 1y and Cache-Control: public, immutable - confirmed live, max-age=31536000. Any card at a fixed name inherits that, so replacing it in place reaches nobody for up to a year. ssatcy.com is fixed: scripts/generate-og-image.mjs writes og-card-<hash12>.png and rewrites index.html and _headers, so the URL changes exactly when the pixels do. 4thcltr.com/og-image.png is live under the same header and is the next one. The remaining sites are getting a first card, so their URL is new either way - the risk is the SECOND card.",
       "reviewBy": "2026-11-15",
-      "note": "check-live-og-image.mjs catches the symptom after a deploy by comparing the bytes the og:image URL serves against the dimensions the page declares, and notes an immutable Cache-Control so the next person is told why a replacement will not reach anyone. That is detection. Prevention is the content-addressed name, which needs doing per site; ssatcy.com is the pattern to copy."
+      "note": "check-live-og-image.mjs catches the symptom after a deploy by comparing the bytes the og:image URL serves against the dimensions the page declares, and notes an immutable Cache-Control so the next person is told why a replacement will not reach anyone. That is detection. Prevention is the content-addressed name, which needs doing per site; ssatcy.com is the pattern to copy.",
+      "created": "2026-09-14",
+      "updated": "2026-09-14"
     },
     {
       "id": "publish-the-server-never-saw",
@@ -238,7 +282,9 @@
       "userSymptom": "I deployed the fix, every check passed, the file on the server is right - and the live page is still the old one, or the whole site returns 500.",
       "evidence": "2026-09-14. Confirmed on SIX sites, not one. The container does not mount the CIFS share: /proc/mounts inside it shows `/run/host_mark/mnt/gorfednas ... fakeowner ro`, Synology's ownership-remapping layer over the host mount. That layer caches an existing inode's metadata and never revalidates - measured stable across 30s, observed three days stale. The host mounts the share cache=loose,actimeo=1 and sees writes at once, so host-side checks cannot see the defect. ssatcy served 3967 of a 5134-byte index.html, cut mid-JSON-LD, bundle tags never sent, app unable to boot. Then five more deploys, every script reporting `Live check ok (200)`, every one serving the PREVIOUS release: subrythm 8212 vs 7311, gorfmusic 6132 vs 5065, gorfed.net 19816 vs 18579, promptboi 5054 vs 4374, rowanmcarthur 6010 vs 5750. One `docker restart nginx` made all six agree, and all six then verified publicly with correct bytes and branded 404s. `nginx -s reload` does NOT clear it and `sendfile off` does NOT either - both tried, neither changed a byte. New FILENAMES resolve correctly, which is why hashed assets and content-addressed cards looked healthy and hid this for days. Renaming over the target instead returned 500 on 400 of 400 requests until a restart, so both publish strategies fail in opposite directions. V71.",
       "reviewBy": "2026-10-15",
-      "note": "TWO fixes, and they are independent. (1) DETECTION, no permission needed and worth doing regardless: five of five deploy scripts assert only a status code, so they printed a green tick over the exact failure they exist to catch. They must compare the artefact against what the URL returns - ssatcy's bundle diff is the pattern, and it is the only check that caught this. (2) ROOT CAUSE, needs the owner: either stop routing the container's webroot through Synology's fakeowner layer (bind the CIFS mount directly, or serve from local disk), or restart the nginx container as the last step of every deploy - proven to work, ~7s, but bindercurve shares that container. Until one is chosen, no deploy to these sites is trustworthy without a public content check afterwards."
+      "note": "TWO fixes, and they are independent. (1) DETECTION, no permission needed and worth doing regardless: five of five deploy scripts assert only a status code, so they printed a green tick over the exact failure they exist to catch. They must compare the artefact against what the URL returns - ssatcy's bundle diff is the pattern, and it is the only check that caught this. (2) ROOT CAUSE, needs the owner: either stop routing the container's webroot through Synology's fakeowner layer (bind the CIFS mount directly, or serve from local disk), or restart the nginx container as the last step of every deploy - proven to work, ~7s, but bindercurve shares that container. Until one is chosen, no deploy to these sites is trustworthy without a public content check afterwards.",
+      "created": "2026-09-14",
+      "updated": "2026-09-14"
     },
     {
       "id": "build-rewrites-tracked-files",
@@ -248,7 +294,9 @@
       "userSymptom": "CI fails on a commit that passes on my machine, and the failure names a file I did not touch.",
       "evidence": "gorfmusic.com PR #24: `mutation-canary: 4/5 caught` in CI, 5/5 locally, same commit. Cause chain: `npm run build` ran the card generator, whose filename hashed the rendered PNG, so CI's libvips produced a different name; the generator rewrote src/app/seo/siteMeta.ts to match; the tree went dirty; the canary that guards that file refused to mutate it. Fixed in gorfmusic by hashing the SVG source plus render settings and moving the build onto a `--check` mode that fails instead of writing. Watched red on three mutations, green on restore, and `git status --porcelain` is empty after a full build. V72.",
       "reviewBy": "2026-10-31",
-      "note": "The generalisable gate is one step in the shared pr-check workflows: run the build, then `git diff --exit-code`. It is deliberately NOT added yet - six repos hashed rendered output (4thcltr, anal0g, blackpixelrecords, denseware, gorfmusic, ssatcy) and adding the gate first would red-line five of them at once, which is the inherited-failure mistake. Order: land the per-repo fixes, then add the shared step, then prove it by reverting one repo. Same sequencing as shared-healthcheck-strictness."
+      "note": "The generalisable gate is one step in the shared pr-check workflows: run the build, then `git diff --exit-code`. It is deliberately NOT added yet - six repos hashed rendered output (4thcltr, anal0g, blackpixelrecords, denseware, gorfmusic, ssatcy) and adding the gate first would red-line five of them at once, which is the inherited-failure mistake. Order: land the per-repo fixes, then add the shared step, then prove it by reverting one repo. Same sequencing as shared-healthcheck-strictness.",
+      "created": "2026-09-14",
+      "updated": "2026-09-14"
     },
     {
       "id": "paths-named-not-derived",
@@ -258,7 +306,9 @@
       "userSymptom": "A check passes on my laptop and fails in CI saying it cannot find sharp, and regenerating an asset fails with a path I do not recognise.",
       "evidence": "anal0g.org PR #13 CI: `Cannot find module '/home/runner/work/anal0g.org/ssatcy.com/node_modules/sharp'` — scripts/generate-og-image.mjs resolved its renderer from a sibling checkout. blackpixelrecords.com had the absolute form in two scripts (generate-og-image.mjs, generate-favicons.mjs) with an absolute path under a developer home directory committed, and it had never failed because check:og-card was defined in package.json and the Makefile and invoked by nothing CI runs — now in its verify-command. denseware.com/scripts/build-new-hero.py read from a .cursor/projects path whose workspace was renamed, so it could not run anywhere; it takes DENSEWARE_HERO_ASSETS now and says so. Closed by verification-kit/bin/check-machine-paths.mjs at kit 0.40.0: 13 tests, 8 mutations watched red. V73.",
       "reviewBy": "2026-10-15",
-      "note": "Two things the check had to get right, both proven by test. It scans the git index rather than the working tree, because build output is full of absolute paths nobody wrote. And it ignores comment lines, because the comments explaining this defect quote the paths that caused it (V69's split). Its first fleet run produced the V10 shape immediately: businesswire.com/news/home/20180227005360/ is a URL with a segment called home, and correct press links in gorfed.net and 4thcltr.com were flagged, so an absolute path must be anchored to the start of a path. RESOLVED 2026-10-03 by the right-sizing (docs/verification-rules.md): the gate now runs the checker from its own checkout, so there is no vendored copy to lack it, and the step warns instead of failing, so the dated grace window (MACHINE_PATHS_GRACE_UNTIL) was deleted."
+      "note": "Two things the check had to get right, both proven by test. It scans the git index rather than the working tree, because build output is full of absolute paths nobody wrote. And it ignores comment lines, because the comments explaining this defect quote the paths that caused it (V69's split). Its first fleet run produced the V10 shape immediately: businesswire.com/news/home/20180227005360/ is a URL with a segment called home, and correct press links in gorfed.net and 4thcltr.com were flagged, so an absolute path must be anchored to the start of a path. RESOLVED 2026-10-03 by the right-sizing (docs/verification-rules.md): the gate now runs the checker from its own checkout, so there is no vendored copy to lack it, and the step warns instead of failing, so the dated grace window (MACHINE_PATHS_GRACE_UNTIL) was deleted.",
+      "created": "2026-09-14",
+      "updated": "2026-10-03"
     },
     {
       "id": "dormant-projects-kept-claiming-coverage",
@@ -269,7 +319,9 @@
       "evidence": "Both repos reduced ci.yml to workflow_dispatch only and deleted .github/dependabot.yml. fleet.json still recorded tier 1 for each, and tier 1 asserts a drift check, a tracked-artifacts check and a backlog firing on a pull request. check-fleet.mjs now requires a dormant project to sit at tier 0, which fleet.json already defines as having not adopted with the gate off in its workflow, and to carry a dormantUntil that parses and has not passed plus a dormantReason of real length. The summary went from tier 1: 10 to tier 0: 2, tier 1: 8. Six mutations watched red: a lapsed date accepted, an undated stand-down accepted, an unexplained one accepted, a dormant project still claiming a tier, a dormant project still pressed to re-verify, and every project treated as dormant.",
       "reviewBy": "2027-03-14",
       "note": "Their note fields had to be rewritten too. Both still opened with \"Tier 1 rather than 2 on purpose\", a sentence the tier beside it now contradicted, and that is stale prose which would have read as current for a year. The reverify pressure is deliberately lifted while dormant, because pressing a switched-off project to re-verify only invites moving a date to describe a check that does not run; the dormantUntil date carries the deferral instead. Recorded as V74. Nothing was weakened to get here: no assertion deleted, no floor lowered, no failing check made to pass.",
-      "pr": 35
+      "pr": 35,
+      "created": "2026-09-14",
+      "updated": "2026-09-15"
     },
     {
       "id": "sitemap-checked-only-its-envelope",
@@ -280,7 +332,9 @@
       "evidence": "promptboi.com/explorations and /about both returned HTTP 404 to a direct request while public/sitemap.xml listed them, and src/app/App.tsx lines 731-732 push those pathnames into history with lines 786-787 reading them back on load. The build emits no shell for either path and nginx serves try_files $uri $uri/ =404. The expect-sitemap step checked only that robots.txt named a sitemap which resolved, so the envelope was verified and the payload never was. It now fetches every <loc> and requires 200 deliberately without following redirects, because a sitemap is a list of canonical addresses: 4thcltr.com listed /manifesto, which 301s to /manifesto/. An empty sitemap and a run that verifies zero URLs both fail rather than reading as clean.",
       "reviewBy": "2026-11-30",
       "note": "Four mutations red, but only after two of them were first found blind, and both for the same reason: the subject of the guard rather than its assertion. The curl stub accepted and ignored -L, so a mutation making the step follow redirects passed against it - a stub blind to the flag cannot test a rule about the flag. And the final tally was unreachable while the per-sitemap emptiness check fired first, so it needed a case where a Sitemap: directive has no value. The per-site fixes are tracked separately; this entry is the gate.",
-      "pr": 36
+      "pr": 36,
+      "created": "2026-09-15",
+      "updated": "2026-09-15"
     },
     {
       "id": "guards-nobody-had-watched-fail",
@@ -291,7 +345,9 @@
       "evidence": "Mutating the HTTP health step's \"Zero paths checked. This job proved nothing.\" guard changed no test result, so it had never been executed by anything. Found by accident while mutating a different step. Two cases now run that step's extracted shell with health-paths empty and with only separators; the mutation is red. Pinning it also showed it does not work the way it reads: IFS=, read -ra paths <<< \"\" yields a one-element array holding the empty string, so the ${#paths[@]} -eq 0 guard never fires for an empty input and the protection that actually bites is the checked tally after blank entries are skipped.",
       "reviewBy": "2026-11-30",
       "note": "The same session also found the V69 shape in my own mutation harness: the helper did not read the patch step's exit status, so an anchor matching zero times, or matching an older step elsewhere in the file, produced exactly what a blind guard produces. One verdict was wrong for that reason - the anchor hit a different step 200 lines earlier. The helper now requires the anchor to match exactly once and aborts otherwise.",
-      "pr": 36
+      "pr": 36,
+      "created": "2026-09-15",
+      "updated": "2026-09-15"
     },
     {
       "id": "sitemap-rule-text-deferred-by-drift",
@@ -301,7 +357,9 @@
       "userSymptom": "Nobody sees this on a site. The cost is that the next person to meet this class has the gate but not the explanation, so they can see what fails without seeing why it was added.",
       "evidence": "docs/verification-rules.md is a hashed companion of the verification kit, so adding a rule to it forces a minor version bump. Canonical is at 0.42.0 and all ten live repos are at 0.41.0, which check-kit-drift treats as one minor behind and passes with a warning. A bump to 0.43.0 would make all ten more than one minor behind, which drift treats as far behind and fails, red-lining the whole fleet at once for a documentation change.",
       "reviewBy": "2026-10-31",
-      "note": "Deliberately dated rather than left to be remembered. The sequence is: refresh the ten consumers to 0.42.0, then land the rule text as 0.43.0. The substance is not lost - it is recorded in the two entries above and in the comments in the step itself. This is the same constraint that already caught me once this session, when write-manifest.mjs bumped a version I had already bumped by hand and produced 0.43.0."
+      "note": "Deliberately dated rather than left to be remembered. The sequence is: refresh the ten consumers to 0.42.0, then land the rule text as 0.43.0. The substance is not lost - it is recorded in the two entries above and in the comments in the step itself. This is the same constraint that already caught me once this session, when write-manifest.mjs bumped a version I had already bumped by hand and produced 0.43.0.",
+      "created": "2026-09-15",
+      "updated": "2026-09-15"
     },
     {
       "id": "live-vhosts-were-unversioned",
@@ -312,7 +370,9 @@
       "userSymptom": "A visitor sees nothing until it goes wrong, and then sees everything go wrong at once. The nginx configuration for all ten live sites existed only on the host, with no history and no copy. A bad edit, a lost disk or a mistaken overwrite would take down every site with nothing to restore from and no record of what the working version had been.",
       "evidence": "The serving container bind-mounts its conf.d read-only from an unversioned host directory - the path is recorded in infra/nginx/CAPTURE.json rather than repeated here - and that directory had no .git. It also held backup tarballs and dated .bak files, the shape a directory takes when someone has been editing it carefully with no version control to help. All twelve loaded .conf files are now recorded in infra/nginx/vhosts/ with a per-file sha256 in CAPTURE.json. Scanned for secrets before committing: the only match was server_tokens off.",
       "reviewBy": "2027-03-14",
-      "note": "The gate is deliberately not a diff against the host, because the host is reachable only over Tailscale and a runner has no route to it - and a check that cannot run reports the same green as one that passed. So it is a hash per file plus a dated recaptureBy. The hash is not protecting the bytes; it is stopping someone editing a config in the repo, watching CI pass, and believing production changed. Seven mutations red. Superseded 2026-10-20: the record moved to gorfednet/ops hosts/dapyllil/webserver/conf.d/ (ops#13), and the copy and its check were retired here (docs/retired-checks.md)."
+      "note": "The gate is deliberately not a diff against the host, because the host is reachable only over Tailscale and a runner has no route to it - and a check that cannot run reports the same green as one that passed. So it is a hash per file plus a dated recaptureBy. The hash is not protecting the bytes; it is stopping someone editing a config in the repo, watching CI pass, and believing production changed. Seven mutations red. Superseded 2026-10-20: the record moved to gorfednet/ops hosts/dapyllil/webserver/conf.d/ (ops#13), and the copy and its check were retired here (docs/retired-checks.md).",
+      "created": "2026-09-15",
+      "updated": "2026-10-20"
     },
     {
       "id": "org-checkers-had-no-wiring-gate",
@@ -322,7 +382,9 @@
       "pr": 37,
       "userSymptom": "Nobody sees this on a site. It decides whether a check in this repository is a check or just a file that looks like one.",
       "evidence": "scripts/lib/selfAppliedCheckers.mjs was built earlier this session because a kit checker was added and never wired into this repo's CI. The identical hole was still open one level up for this repo's own scripts/check-*.mjs: no registry, no gate, and it merely happened that the only one that existed was invoked. Every scripts/check-*.mjs must now be named by a workflow AND exit 0 against this repository, because a workflow can name a script that fails the moment it runs. Two mutations red: the wired step reduced to an echo, and the checker itself made to fail.",
-      "reviewBy": "2026-12-31"
+      "reviewBy": "2026-12-31",
+      "created": "2026-09-15",
+      "updated": "2026-09-15"
     },
     {
       "id": "vhost-record-should-be-the-source",
@@ -333,7 +395,9 @@
       "evidence": "This host already does it the better way for a different site. bindercurve-dev-nginx-1 mounts its configuration out of a git checkout: bindercurve.com-repo/infra/nginx/templates/bindercurve-dev.conf.template. Its tracked config IS its live config, so no snapshot, no hashes and no expiry are needed. Pointing the nginx container at a checkout the same way would make infra/nginx/vhosts/ the source of truth and delete the drift problem rather than dating it. Landed 2026-10-20 the other way round: rather than mounting this repository into the container, gorfednet/ops#13 keeps the live conf.d as a record that deploys (`webserver-conf apply` with nginx -t, reload and rollback; `pull` for a change made on the host; `diff` against the host). This PR deletes the copy and check-vhost-capture.mjs, as this entry predicted.",
       "reviewBy": "2027-03-14",
       "note": "Deliberately not folded into the capture change. It needs the container recreated, which is a production action on the thing serving all ten sites, and it should be its own change with its own verification rather than a step inside a bookkeeping commit. If it lands, most of check-vhost-capture.mjs can be deleted, which is the good outcome.",
-      "pr": 68
+      "pr": 68,
+      "created": "2026-09-15",
+      "updated": "2026-10-20"
     },
     {
       "id": "tracked-nginx-conf-describes-nothing",
@@ -344,7 +408,9 @@
       "evidence": "The captured live vhosts in infra/nginx/vhosts/ contain no listen 443, no HSTS and no security headers, and a test now asserts that and fails if a captured vhost ever claims 443. The nginx conf tracked inside the 4thcltr.com repository claims all three. Only one of the two can be true, and the captured one came off the running host. Fixed 2026-10-16 by gorfednet/4thcltr.com#153: the cause of missing headers on the live site was exactly this file never having been installed. That repository's nginx/4thcltr.com.conf is now the live vhost byte for byte (port 80, no 443) plus the security headers, installed on dapyllil with a backup, nginx -t and a reload, and re-captured here (sha eeaa4e42…, hashed on the host).",
       "reviewBy": "2026-11-30",
       "note": "Fixed by making the 4thcltr.com repository file the live vhost rather than deleting it (gorfednet/4thcltr.com#153). gorfednet/4thcltr.com#177 makes DEPLOY.md install it from the repository and checks the served headers against it on a schedule.",
-      "pr": 55
+      "pr": 55,
+      "created": "2026-09-15",
+      "updated": "2026-10-20"
     },
     {
       "id": "vhost-capture-drift-gorfed-work-and-assist",
@@ -355,7 +421,9 @@
       "evidence": "2026-10-16, sha256sum of dapyllil's live nginx conf.d (the container's bind mount) against CAPTURE.json: gorfed.net.conf differs (83 added lines, the /work, /work/private and /work/_view locations, dated 2026-10-12); assist.gorfed.net.conf (2026-10-11) and 00-work-tiers.conf (2026-10-12) are live and not captured. The other nine match. check-vhost-capture passes regardless, because it hashes the tracked copy, not the host. Resolved 2026-10-20 by moving the record rather than re-capturing it: gorfednet/ops#13 (merged 2026-10-20) holds hosts/dapyllil/webserver/conf.d/ with gorfed.net.conf and assist.gorfed.net.conf as they are live and 00-work-tiers.conf left out (it holds email addresses), and `webserver-conf diff` compares that record with the host itself. This PR removes the stale copy here.",
       "reviewBy": "2026-11-15",
       "note": "00-work-tiers.conf stays out of every repository; ops#13 excludes it by name.",
-      "pr": 68
+      "pr": 68,
+      "created": "2026-10-16",
+      "updated": "2026-10-20"
     },
     {
       "id": "fleet-analytics-one-service",
@@ -365,7 +433,9 @@
       "userSymptom": "The owner cannot tell which site, page or button produces work or sign-ups. Every site reports visits through Cloudflare Web Analytics and nothing reports an outcome: a submitted form, an opened assistant, an outbound click to a client.",
       "evidence": "2026-10-16, each fleet homepage fetched with a Safari user agent: all eleven (bindercurve.com, 4thcltr.com, gorfed.net, subrythm.com, anal0g.org, blackpixelrecords.com, denseware.com, gorfmusic.com, promptboi.com, rowanmcarthur.com, ssatcy.com) carry Cloudflare's beacon, injected at the edge; bindercurve.com also loads Google Tag Manager GTM-WHPZ4PZD from index.html. No site loads Plausible. 4thcltr.com has Plausible wired with four events but never sets VITE_PLAUSIBLE_DOMAIN (its backlog: analytics-plausible-wired-but-never-loads).",
       "reviewBy": "2026-11-30",
-      "note": "Owner decision 2026-10-16: Plausible is the one analytics service for the eleven static sites. Blocked on the owner creating the Plausible account and adding the sites (Claude cannot create accounts). Then per site: the Plausible script (or 4thcltr.com's build variable), a CSP entry where the site has a CSP, events for outcomes only (contact submitted, assistant opened, outbound client links) not every click, and privacy copy that names Plausible. Consider serving the script and event endpoint from each site's own domain, since blockers drop the third-party call. After a few weeks of overlap the owner turns off Cloudflare Web Analytics per zone. BinderCurve's Google Tag Manager is out of scope until the owner decides what it feeds; it likely sets cookies and so carries consent obligations the static sites do not. Deferred by the owner 2026-10-16 (\"skip Plausible for now\"); a one-time reminder runs 2026-11-02."
+      "note": "Owner decision 2026-10-16: Plausible is the one analytics service for the eleven static sites. Blocked on the owner creating the Plausible account and adding the sites (Claude cannot create accounts). Then per site: the Plausible script (or 4thcltr.com's build variable), a CSP entry where the site has a CSP, events for outcomes only (contact submitted, assistant opened, outbound client links) not every click, and privacy copy that names Plausible. Consider serving the script and event endpoint from each site's own domain, since blockers drop the third-party call. After a few weeks of overlap the owner turns off Cloudflare Web Analytics per zone. BinderCurve's Google Tag Manager is out of scope until the owner decides what it feeds; it likely sets cookies and so carries consent obligations the static sites do not. Deferred by the owner 2026-10-16 (\"skip Plausible for now\"); a one-time reminder runs 2026-11-02.",
+      "created": "2026-09-15",
+      "updated": "2026-10-16"
     },
     {
       "id": "backlog-dates-failed-unrelated-prs",
@@ -375,7 +445,9 @@
       "pr": 56,
       "userSymptom": "A pull request that changed nothing in the backlog went red on the day a date in it passed, and stayed red until somebody renewed dates that were never that pull request's to decide.",
       "evidence": "On 2026-10-16 #55 failed 'Fleet backlog describes reality' and 'Every backlog entry agrees with its pull request' on seven entries dated 2026-10-15 that it did not touch; main had been green on 2026-10-11 only because the dates had not arrived. The right-sizing had moved the gate's backlog step to a warning but left the date inside validateBacklog. Now lapsedReviewDates() reports it as a warning and fleet-report.mjs lists it on the schedule; canaries backlog-lets-a-deferral-lapse and backlog-fails-a-pr-on-the-calendar both watched red.",
-      "reviewBy": "2026-12-31"
+      "reviewBy": "2026-12-31",
+      "created": "2026-09-09",
+      "updated": "2026-10-16"
     }
   ]
 }

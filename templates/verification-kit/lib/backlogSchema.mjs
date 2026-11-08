@@ -40,6 +40,9 @@ export const PLACEHOLDER_ID = 'example-entry'
 
 const REVIEW_DATE = /^\d{4}-\d{2}-\d{2}$/
 
+/** Optional ISO dates: when the entry was written, and when it last changed. */
+export const DATE_FIELDS = ['created', 'updated']
+
 /** Today at day resolution, so a `reviewBy` of today has not yet lapsed. */
 export function todayUtc(now = new Date()) {
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()))
@@ -151,6 +154,14 @@ export function validateBacklog(doc) {
     if (entry.reviewBy != null && !REVIEW_DATE.test(entry.reviewBy)) {
       problems.push(`${where} has an unparseable reviewBy "${entry.reviewBy}"; use YYYY-MM-DD`)
     }
+
+    // Optional, so a session can see how old an entry is and when anyone last
+    // touched it. Missing is a warning (missingDates); malformed is a problem.
+    for (const field of DATE_FIELDS) {
+      if (entry[field] != null && !REVIEW_DATE.test(entry[field])) {
+        problems.push(`${where} has an unparseable ${field} "${entry[field]}"; use YYYY-MM-DD`)
+      }
+    }
   }
 
   return problems
@@ -190,4 +201,20 @@ export function lapsedReviewDates(doc, options = {}) {
         new Date(`${entry.reviewBy}T00:00:00Z`) < now,
     )
     .map((entry) => ({ id: entry.id, status: entry.status, reviewBy: entry.reviewBy }))
+}
+
+/**
+ * Entries missing `created` or `updated`, as a finding to report rather than a
+ * problem to fail on. The fields are optional, so adding them to a backlog that
+ * predates them must not turn its build red.
+ *
+ * @param {unknown} doc parsed backlog.json
+ * @returns {{id: string, missing: string[]}[]}
+ */
+export function missingDates(doc) {
+  const entries = Array.isArray(doc?.entries) ? doc.entries : []
+  return entries
+    .filter((entry) => entry !== null && typeof entry === 'object' && entry.id !== PLACEHOLDER_ID)
+    .map((entry) => ({ id: entry.id, missing: DATE_FIELDS.filter((field) => entry[field] == null) }))
+    .filter((found) => found.missing.length > 0)
 }

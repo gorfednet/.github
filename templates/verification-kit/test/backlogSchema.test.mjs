@@ -1,6 +1,6 @@
 import { strict as assert } from 'node:assert'
 import { describe, it } from 'node:test'
-import { PLACEHOLDER_ID, lapsedReviewDates, validateBacklog } from '../lib/backlogSchema.mjs'
+import { PLACEHOLDER_ID, lapsedReviewDates, missingDates, validateBacklog } from '../lib/backlogSchema.mjs'
 
 const PROSE = 'a sentence long enough to clear the twenty character floor'
 
@@ -138,5 +138,27 @@ describe('lapsedReviewDates', () => {
     assert.deepEqual(lapsedReviewDates({ entries: [entry({ reviewBy: 'last week' })] }, { now }), [])
     assert.deepEqual(lapsedReviewDates({ entries: [null, 'x'] }, { now }), [])
     assert.deepEqual(lapsedReviewDates([], { now }), [])
+  })
+})
+
+describe('created and updated dates', () => {
+  it('accepts well-formed dates and entries without them', () => {
+    assert.deepEqual(validateBacklog({ entries: [entry({ created: '2026-11-07', updated: '2026-11-07' })] }), [])
+    assert.deepEqual(validateBacklog({ entries: [entry({})] }), [])
+  })
+
+  it('rejects a malformed created or updated date', () => {
+    const problems = validateBacklog({ entries: [entry({ created: '7 Nov', updated: '2026-1-1' })] })
+    assert.ok(problems.some((p) => /unparseable created/.test(p)))
+    assert.ok(problems.some((p) => /unparseable updated/.test(p)))
+  })
+
+  it('lists what is missing without failing validation', () => {
+    const doc = { entries: [entry({ id: 'a' }), entry({ id: 'b', created: '2026-11-07' }), entry({ id: 'c', created: '2026-11-07', updated: '2026-11-07' })] }
+    assert.deepEqual(missingDates(doc), [
+      { id: 'a', missing: ['created', 'updated'] },
+      { id: 'b', missing: ['updated'] },
+    ])
+    assert.deepEqual(validateBacklog(doc), [])
   })
 })
