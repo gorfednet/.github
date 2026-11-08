@@ -13,6 +13,7 @@ import { evaluatePull, ineligibleReason, unmergeableReason } from './gates.mjs'
 import { guardWrites } from './github.mjs'
 import { Redactor } from './redact.mjs'
 import { guardCommands, succeeded } from './runner.mjs'
+import { StateStore } from './state.mjs'
 
 const short = (sha) => String(sha ?? '').slice(0, 7)
 const marker = (key, sha) => `<!-- ship-bot:${key}:${sha} -->`
@@ -54,7 +55,10 @@ export async function runOnce(deps) {
     fsx: deps.fsx ?? realFs,
     nodePath: deps.nodePath ?? process.execPath,
     baseEnv: deps.baseEnv ?? {},
+    fetchImpl: deps.fetchImpl ?? globalThis.fetch,
     decisions: [],
+    /** Shared across repo contexts: merges decided this pass (live: attempted; dry: "would merge"), against maxMergesPerPass. */
+    pass: { merges: 0 },
     say(level, text) {
       const line = redactor.apply(text)
       this.decisions.push({ level, text: line })
@@ -70,7 +74,7 @@ export async function runOnce(deps) {
       continue
     }
     try {
-      await processRepo(ctx, repo)
+      await processRepo(repoContext(ctx, repo, deps), repo)
     } catch (cause) {
       ctx.say('error', `${repo.slug}: stopped on an unexpected error: ${cause.message}`)
     }
@@ -78,6 +82,31 @@ export async function runOnce(deps) {
   }
   stateStore.save()
   return ctx.decisions
+}
+
+/**
+ * The context one repository is processed with. In a live pass, a repository
+ * whose own `live` is false is observed: the same reads and gate scripts, no
+ * merge, no comment, no notification, and nothing it decides reaches the
+ * state file (a "would comment" mark saved there would stop the real comment
+ * once the repository goes live). Its lines are marked OBSERVE, like a pass
+ * whose global live is false.
+ */
+function repoContext(ctx, repo, deps) {
+  if (ctx.dry || repo.live) return ctx
+  const shadow = new StateStore(ctx.state.path, { persist: false })
+  shadow.data = structuredClone(ctx.state.data)
+  const observed = {
+    ...ctx,
+    dry: true,
+    github: guardWrites(deps.github),
+    runner: guardCommands(deps.runner),
+    state: shadow,
+    say(level, text) {
+      ctx.say(level, `OBSERVE (repo not live) ${text}`)
+    },
+  }
+  return observed
 }
 
 /**
@@ -99,7 +128,14 @@ function recoverInterruptedDeploys(ctx) {
   }
 }
 
+/** Has this pass decided as many merges as the config allows? */
+const passLimitReached = (ctx) => ctx.pass.merges >= ctx.config.maxMergesPerPass
+
 async function processRepo(ctx, repo) {
+  if (passLimitReached(ctx)) {
+    ctx.say('info', `${repo.slug}: SKIP: pass limit of ${ctx.config.maxMergesPerPass} merge(s) reached; looked at again next pass`)
+    return
+  }
   const rs = ctx.state.repo(repo.slug)
   if (rs.blocked) {
     ctx.say('warn', `${repo.slug}: blocked since ${rs.blocked.at}: ${rs.blocked.reason}. Nothing will merge here until someone runs: ship-bot --unblock ${repo.name}`)
@@ -186,6 +222,12 @@ async function processPull(ctx, repo, pr, defaultBranch) {
     }
   }
 
+  // A merge in this repo may have been decided since processRepo checked.
+  if (passLimitReached(ctx)) {
+    ctx.say('info', `${tag}: SKIP: ready, but the pass limit of ${ctx.config.maxMergesPerPass} merge(s) is reached; looked at again next pass`)
+    return true
+  }
+  ctx.pass.merges += 1
   if (ctx.dry) {
     await dryRunMerge(ctx, repo, pr, tag)
     return true
@@ -376,9 +418,52 @@ export function tailscaleApprovalLink(text) {
 
 async function notify(ctx, message, loud = false) {
   if (!ctx.config.notify) return
-  const script = `display notification "${escapeAppleScript(ctx.redactor.apply(message))}" with title "ship bot"${loud ? ' sound name "Basso"' : ''}`
+  const text = ctx.redactor.apply(message)
+  const script = `display notification "${escapeAppleScript(text)}" with title "ship bot"${loud ? ' sound name "Basso"' : ''}`
   const result = await ctx.runner.run({ kind: 'notify', cmd: 'osascript', args: ['-e', script], env: ctx.baseEnv, timeoutMs: 15_000 })
   if (result.code !== 0) ctx.say('warn', `notification failed: ${result.stderr ?? result.error ?? ''}`)
+  await notifyNtfy(ctx, text, loud)
+}
+
+/** ntfy turns a longer body into an attachment the phone shows without the text (ops' cta-watch). */
+const NTFY_MAX_BYTES = 4000
+
+/**
+ * The same message to the owner's phone through ntfy, when `ntfy` is
+ * configured. Same shape as ops' scripts/cta-watch.mjs: POST to
+ * <url>/<topic>, Title, Priority and Tags headers, a bearer token when
+ * there is one (the server is deny-all, so without a token it answers 403).
+ * A failed POST is one warning line, never a thrown error: the merge or
+ * deploy it reports has already happened.
+ */
+async function notifyNtfy(ctx, text, loud) {
+  const ntfy = ctx.config.ntfy
+  if (!ntfy) return
+  const headers = {
+    'User-Agent': 'gorfednet-ship-bot',
+    Title: 'ship bot',
+    Priority: loud ? 'high' : 'default',
+    Tags: loud ? 'rotating_light' : 'package',
+  }
+  try {
+    if (ntfy.tokenFile) {
+      const token = ctx.fsx.read(ntfy.tokenFile).trim()
+      if (token) {
+        ctx.redactor.add([token])
+        headers.Authorization = `Bearer ${token}`
+      }
+    }
+    const res = await ctx.fetchImpl(`${ntfy.url}/${ntfy.topic}`, {
+      method: 'POST',
+      headers,
+      body: Buffer.from(text, 'utf8').subarray(0, NTFY_MAX_BYTES).toString('utf8'),
+      signal: AbortSignal.timeout(15_000),
+    })
+    if (res.status === 401 || res.status === 403) throw new Error(`ntfy answered HTTP ${res.status}: ntfy.tokenFile must hold a token the topic accepts`)
+    if (!res.ok) throw new Error(`ntfy answered HTTP ${res.status}`)
+  } catch (cause) {
+    ctx.say('warn', `ntfy notification failed: ${cause.message}`)
+  }
 }
 
 /**

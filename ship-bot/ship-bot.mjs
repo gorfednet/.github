@@ -5,7 +5,14 @@
  *   node ship-bot.mjs                      dry run (the default): say what it would do
  *   node ship-bot.mjs --dry-run --once     the same, once
  *   node ship-bot.mjs --live --once        act when the config says "live": true; observe when it says false
- *   node ship-bot.mjs --set-live true      switch the config to acting (false: back to observing); runs no pass
+ *   node ship-bot.mjs --set-live true      switch the config to acting (false: back to observing); runs no pass.
+ *                                          Per-repo "live" flags are left as they are.
+ *   node ship-bot.mjs --set-repo-live <slug> true|false
+ *                                          switch one repo's own "live" flag; a repo merges only when both are true
+ *   node ship-bot.mjs --validate           compare each repo's expectedChecks with the checks on its last 3 merged PRs;
+ *                                          exit 1 when any repo differs. Read-only.
+ *   node ship-bot.mjs --check-preflight    run the config's preflight steps once and print pass or fail per step
+ *                                          (preflight-launchd.sh runs this inside a LaunchAgent)
  *   node ship-bot.mjs --repo MoonMan       only this repo (repeatable)
  *   node ship-bot.mjs --unblock MoonMan    clear a block left by a failed deploy
  *   node ship-bot.mjs --config <path>      default ~/.ship-bot/config.json
@@ -20,17 +27,37 @@ import { join } from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { runOnce, selectRepos } from './lib/bot.mjs'
 import { ConfigError, expandHome, loadConfig, validateConfig } from './lib/config.mjs'
-import { createGitHubClient } from './lib/github.mjs'
+import { createGitHubClient, guardWrites } from './lib/github.mjs'
 import { Redactor } from './lib/redact.mjs'
 import { realRunner, succeeded } from './lib/runner.mjs'
 import { rotateLog } from './lib/logs.mjs'
 import { StateStore, acquireLock, lockPath } from './lib/state.mjs'
 import { isMain } from './lib/isMain.mjs'
+import { formatValidation, validateExpectedChecks } from './lib/validate.mjs'
 
-const USAGE = 'usage: ship-bot.mjs [--dry-run | --live] [--once] [--repo <name>]... [--config <path>] [--verbose] [--unblock <name>] [--rotate-log <path>] [--set-live true|false]'
+const USAGE =
+  'usage: ship-bot.mjs [--dry-run | --live] [--once] [--repo <name>]... [--config <path>] [--verbose] [--unblock <name>] [--rotate-log <path>]\n' +
+  '       ship-bot.mjs --set-live true|false | --set-repo-live <slug> true|false | --validate [--repo <name>]... | --check-preflight'
+
+const parseBool = (flag, v) => {
+  if (v !== 'true' && v !== 'false') throw new Error(`${flag} takes true or false`)
+  return v === 'true'
+}
 
 export function parseArgs(argv) {
-  const args = { mode: undefined, once: false, repos: [], config: '~/.ship-bot/config.json', verbose: false, unblock: undefined, rotateLog: undefined, setLive: undefined }
+  const args = {
+    mode: undefined,
+    once: false,
+    repos: [],
+    config: '~/.ship-bot/config.json',
+    verbose: false,
+    unblock: undefined,
+    rotateLog: undefined,
+    setLive: undefined,
+    setRepoLive: undefined,
+    validate: false,
+    checkPreflight: false,
+  }
   for (let i = 0; i < argv.length; i += 1) {
     const flag = argv[i]
     const value = () => {
@@ -49,11 +76,12 @@ export function parseArgs(argv) {
     else if (flag === '--verbose') args.verbose = true
     else if (flag === '--unblock') args.unblock = value()
     else if (flag === '--rotate-log') args.rotateLog = value()
-    else if (flag === '--set-live') {
-      const v = value()
-      if (v !== 'true' && v !== 'false') throw new Error('--set-live takes true or false')
-      args.setLive = v === 'true'
-    }
+    else if (flag === '--set-live') args.setLive = parseBool(flag, value())
+    else if (flag === '--set-repo-live') {
+      const slug = value()
+      args.setRepoLive = { slug, live: parseBool(flag, value()) }
+    } else if (flag === '--validate') args.validate = true
+    else if (flag === '--check-preflight') args.checkPreflight = true
     else if (flag === '--help' || flag === '-h') args.help = true
     else throw new Error(`unknown argument ${flag}`)
   }
@@ -112,6 +140,7 @@ export async function main(argv, overrides = {}) {
   }
 
   if (args.setLive !== undefined) return setLive(expandHome(args.config), args.setLive, deps)
+  if (args.setRepoLive) return setRepoLive(expandHome(args.config), args.setRepoLive, deps)
 
   for (let pass = 0; ; pass += 1) {
     let config
@@ -123,6 +152,8 @@ export async function main(argv, overrides = {}) {
     }
 
     if (args.unblock) return unblock(config, args.unblock, deps)
+    if (args.checkPreflight) return checkPreflight(config, deps)
+    if (args.validate) return validate(config, args, deps, print)
 
     // Read again on every pass, so "live": false stops a running bot's merges
     // and deploys at its next pass. --live with "live": false does not refuse:
@@ -213,12 +244,13 @@ async function readToken(config, deps, print) {
 }
 
 /**
- * Rewrite "live" in the config file and nothing else: same keys in the same
+ * Rewrite one value in the config file and nothing else: same keys in the same
  * order, 2-space JSON, written to a temporary file and renamed into place with
  * the original's permissions. A config that would not validate afterwards is
- * left untouched.
+ * left untouched. `mutate(raw)` changes the parsed config in place and returns
+ * the line to print, or throws with the reason nothing was changed.
  */
-function setLive(path, value, deps) {
+function rewriteConfig(path, mutate, deps) {
   let raw
   try {
     raw = JSON.parse(readFileSync(path, 'utf8'))
@@ -230,7 +262,13 @@ function setLive(path, value, deps) {
     deps.out(`ship-bot: ${path} is not a config object. Nothing was changed.`)
     return 2
   }
-  raw.live = value
+  let message
+  try {
+    message = mutate(raw)
+  } catch (cause) {
+    deps.out(`ship-bot: ${cause.message}. Nothing was changed.`)
+    return 2
+  }
   const problems = validateConfig(raw)
   if (problems.length > 0) {
     deps.out(`${new ConfigError(problems).message}\nNothing was changed.`)
@@ -240,8 +278,83 @@ function setLive(path, value, deps) {
   writeFileSync(tmp, `${JSON.stringify(raw, null, 2)}\n`, { mode: 0o600 })
   chmodSync(tmp, statSync(path).mode & 0o777)
   renameSync(tmp, path)
-  deps.out(`live is now ${value} in ${path}. ${value ? 'The next pass merges and deploys.' : 'The next pass only observes.'}`)
+  deps.out(message)
   return 0
+}
+
+/** The global switch. Each repo's own "live" is left as it is: a repo merges only when both are true. */
+function setLive(path, value, deps) {
+  return rewriteConfig(
+    path,
+    (raw) => {
+      raw.live = value
+      const liveRepos = (Array.isArray(raw.repos) ? raw.repos : []).filter((r) => r?.live === true).map((r) => r.slug)
+      const which = liveRepos.length > 0 ? `the ${liveRepos.length} repo(s) with their own "live": true merge: ${liveRepos.join(', ')}` : 'no repo has its own "live": true yet, so nothing merges until --set-repo-live'
+      return `live is now ${value} in ${path}. ${value ? `The next pass acts: ${which}.` : 'The next pass only observes.'}`
+    },
+    deps,
+  )
+}
+
+/** One repo's own switch, matched by slug, name or dir like --repo. */
+function setRepoLive(path, { slug, live }, deps) {
+  return rewriteConfig(
+    path,
+    (raw) => {
+      const repos = Array.isArray(raw.repos) ? raw.repos : []
+      const n = slug.toLowerCase()
+      const repo = repos.find((r) => [r?.slug, r?.slug?.split('/')[1], r?.dir].some((v) => typeof v === 'string' && v.toLowerCase() === n))
+      if (!repo) throw new Error(`--set-repo-live ${slug}: no configured repository by that name`)
+      if (repo.mode === 'off') throw new Error(`--set-repo-live ${slug}: that repo is mode "off"`)
+      repo.live = live
+      const global = raw.live === true ? 'and the global live is true, so it merges from the next pass' : 'but the global live is false, so it still only observes (--set-live true)'
+      return `${repo.slug} live is now ${live} in ${path}${live ? `, ${global}` : '. The next pass only observes it'}.`
+    },
+    deps,
+  )
+}
+
+/**
+ * `--check-preflight`: run the config's preflight steps the way a pass would
+ * (same runner, same environment) and print pass or fail per step. Exit 1 if
+ * any failed. preflight-launchd.sh runs this inside a LaunchAgent, where the
+ * keychain-held ssh key and a terminal's Tailscale login may be missing.
+ */
+async function checkPreflight(config, deps) {
+  if (config.preflight.length === 0) {
+    deps.out('preflight: no steps configured')
+    return 0
+  }
+  let failed = 0
+  for (const step of config.preflight) {
+    const minutes = step.timeoutMinutes ?? 1
+    const result = await deps.runner.run({ kind: 'preflight', cmd: step.command[0], args: step.command.slice(1), env: deps.baseEnv, timeoutMs: minutes * 60 * 1000 })
+    if (succeeded(result)) {
+      deps.out(`preflight ${step.name}: pass (${step.command.join(' ')})`)
+      continue
+    }
+    failed += 1
+    const how = result.timedOut ? `timed out after ${minutes} min` : result.error ? `could not start (${result.error})` : `exit ${result.code}`
+    const detail = new Redactor([]).apply(`${result.stderr ?? ''}`.trim().split('\n').pop() ?? '').slice(0, 300)
+    deps.out(`preflight ${step.name}: FAIL ${how}${detail ? `: ${detail}` : ''} (${step.command.join(' ')})`)
+  }
+  deps.out(failed === 0 ? `preflight: ${config.preflight.length} step(s) passed` : `preflight: ${failed} of ${config.preflight.length} step(s) failed`)
+  return failed === 0 ? 0 : 1
+}
+
+/** `--validate`: read-only, so it takes a token like a pass but never the lock. */
+async function validate(config, args, deps, print) {
+  try {
+    selectRepos(config.repos, args.repos)
+  } catch (cause) {
+    deps.out(`ship-bot: ${cause.message}`)
+    return 2
+  }
+  const token = await readToken(config, deps, print)
+  if (!token) return 1
+  const results = await validateExpectedChecks({ config, github: guardWrites(deps.makeGithub(token)), repoNames: args.repos, selectRepos })
+  deps.out(new Redactor([token]).apply(formatValidation(results)))
+  return results.every((r) => r.ok) ? 0 : 1
 }
 
 function unblock(config, name, deps) {

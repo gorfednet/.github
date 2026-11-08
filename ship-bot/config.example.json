@@ -1,6 +1,7 @@
 {
-  "note": "Copy to ~/.ship-bot/config.json (install.sh does this once). Every repo with a non-empty todo list is refused by a live run until a person has confirmed and deleted each item. Paths may start with ~.",
+  "note": "Copy to ~/.ship-bot/config.json (install.sh does this once). Every repo with a non-empty todo list is refused by a live run until a person has confirmed and deleted each item. Paths may start with ~. The gate scripts live in the gorfednet/.github clone (scripts/); a path that does not exist is a config error. ntfy is optional: delete the key to notify through macOS only; its tokenFile holds the topic's token on one line. A repo merges only when \"live\" here and its own \"live\" are both true (--set-repo-live).",
   "live": false,
+  "maxMergesPerPass": 2,
   "allowedAuthors": [
     "gorfednet"
   ],
@@ -12,6 +13,11 @@
   "defaultStepTimeoutMinutes": 20,
   "gateTimeoutSeconds": 180,
   "notify": true,
+  "ntfy": {
+    "url": "https://ntfy.gorfed.net",
+    "topic": "ops-report",
+    "tokenFile": "~/.ship-bot/ntfy.token"
+  },
   "preflight": [
     {
       "name": "nas",
@@ -43,9 +49,9 @@
   ],
   "ghPath": "~/bin/gh",
   "scripts": {
-    "assertChecksStarted": "~/Developer/gorfednet/TowIt/verification-kit/bin/assert-checks-started.mjs",
-    "reviewStatus": "~/Developer/gorfednet/bindercurve.com/scripts/review-status.mjs",
-    "checkClosingKeywords": "~/Developer/gorfednet/bindercurve.com/scripts/check-closing-keywords.mjs"
+    "assertChecksStarted": "~/Developer/gorfednet/gorfednet.github/scripts/assert-checks-started.mjs",
+    "reviewStatus": "~/Developer/gorfednet/gorfednet.github/scripts/review-status.mjs",
+    "checkClosingKeywords": "~/Developer/gorfednet/gorfednet.github/scripts/check-closing-keywords.mjs"
   },
   "repos": [
     {
@@ -53,6 +59,7 @@
       "dir": "MoonMan",
       "mode": "deploy",
       "claudeReview": true,
+      "live": false,
       "expectedChecks": [
         "quality",
         "test",
@@ -103,6 +110,7 @@
       "dir": "gorfed.net",
       "mode": "deploy",
       "claudeReview": true,
+      "live": false,
       "expectedChecks": [
         "check / check",
         "browser-compat / compat-success"
@@ -144,6 +152,7 @@
       "dir": "gorfmusic.com",
       "mode": "deploy",
       "claudeReview": true,
+      "live": false,
       "expectedChecks": [
         "check / check",
         "browser-compat / compat-success",
@@ -178,6 +187,7 @@
       "dir": "denseware.com",
       "mode": "deploy",
       "claudeReview": true,
+      "live": false,
       "expectedChecks": [
         "check / check",
         "browser-compat / compat-success"
@@ -219,6 +229,7 @@
       "dir": "ssatcy.com",
       "mode": "deploy",
       "claudeReview": true,
+      "live": false,
       "expectedChecks": [
         "check / check",
         "browser-compat / compat-success",
@@ -261,6 +272,7 @@
       "dir": "anal0g.org",
       "mode": "deploy",
       "claudeReview": true,
+      "live": false,
       "expectedChecks": [
         "check / check"
       ],
@@ -295,6 +307,7 @@
       "dir": "blackpixelrecords.com",
       "mode": "deploy",
       "claudeReview": true,
+      "live": false,
       "expectedChecks": [
         "check / check"
       ],
@@ -324,6 +337,7 @@
       "dir": "rowanmcarthur.com",
       "mode": "deploy",
       "claudeReview": true,
+      "live": false,
       "expectedChecks": [
         "check / check"
       ],
@@ -353,6 +367,7 @@
       "dir": "subrythm.com",
       "mode": "deploy",
       "claudeReview": true,
+      "live": false,
       "expectedChecks": [
         "check / check"
       ],
@@ -384,6 +399,7 @@
       "dir": "promptboi.com",
       "mode": "deploy",
       "claudeReview": true,
+      "live": false,
       "expectedChecks": [
         "check / check",
         "browser-compat / compat-success"
@@ -432,6 +448,7 @@
       "mode": "merge-only",
       "reason": "it ships as a tagged release via /ship",
       "claudeReview": true,
+      "live": false,
       "requireChecksAfterLabel": true,
       "expectedChecks": [
         "changes",
@@ -455,6 +472,7 @@
       "mode": "merge-only",
       "reason": "it ships with a release note and a tag",
       "claudeReview": true,
+      "live": false,
       "requireChecksAfterLabel": true,
       "expectedChecks": [
         "check / check",
@@ -477,6 +495,7 @@
       "mode": "merge-only",
       "reason": "it ships as a tagged release",
       "claudeReview": true,
+      "live": false,
       "expectedChecks": [
         "test (ubuntu-latest, 3.9)",
         "test (ubuntu-latest, 3.11)",
@@ -501,9 +520,61 @@
       "mode": "merge-only",
       "reason": "merging is the fleet rollout: every repository's CI uses these workflows at @main",
       "claudeReview": true,
+      "live": false,
       "expectedChecks": [
         "kit"
       ]
+    },
+    {
+      "slug": "gorfednet/assess",
+      "dir": "assess",
+      "mode": "merge-only",
+      "reason": "stage 1 of the go-live is merge-only (owner, 7 November 2026); putting it live stays a session's job",
+      "claudeReview": true,
+      "live": false,
+      "expectedChecks": [
+        "check",
+        "capture"
+      ],
+      "note": "Check names from #70, #69 and #68 (merged by 7 November 2026). heavy-runner-preflight is left out, as everywhere."
+    },
+    {
+      "slug": "gorfednet/career-portfolio",
+      "dir": "career-portfolio",
+      "mode": "merge-only",
+      "reason": "stage 1 of the go-live is merge-only (owner, 7 November 2026); putting it live stays a session's job",
+      "claudeReview": true,
+      "live": false,
+      "expectedChecks": [
+        "check"
+      ],
+      "note": "Check name from #68, #67 and #66."
+    },
+    {
+      "slug": "gorfednet/heuristics.4thcltr.com",
+      "dir": "heuristics.4thcltr.com",
+      "mode": "merge-only",
+      "reason": "stage 1 of the go-live is merge-only (owner, 7 November 2026); putting it live stays a session's job",
+      "claudeReview": true,
+      "live": false,
+      "expectedChecks": [
+        "check / check",
+        "derive"
+      ],
+      "note": "Check names from #73, #71 and #70."
+    },
+    {
+      "slug": "gorfednet/papers.4thcltr.com",
+      "dir": "papers.4thcltr.com",
+      "mode": "merge-only",
+      "reason": "stage 1 of the go-live is merge-only (owner, 7 November 2026); putting it live stays a session's job",
+      "claudeReview": true,
+      "live": false,
+      "expectedChecks": [
+        "check / check",
+        "derive"
+      ],
+      "note": "Check names from #27 (the current ci.yml: derive feeds check). #26 and #25 merged before derive existed, so --validate reports derive on 1 of 3 until newer merges replace them in the sample."
     },
     {
       "slug": "gorfednet/TowIt",
@@ -516,6 +587,12 @@
       "dir": "wychwoodresort.com",
       "mode": "off",
       "note": "Dormant until 2027-03-14. GitHub renamed the repo from wychwoodresort.com."
+    },
+    {
+      "slug": "gorfednet/ops",
+      "dir": "ops",
+      "mode": "off",
+      "note": "Stage 1 wants merge-only here, but ops has no pull-request CI: its only workflow is the Claude review caller, and its last 3 merged pull requests (#44, #43, #42) carried no check at all, so there is no expectedChecks list to gate on and assert-checks-started would refuse every head. Switch to merge-only once ops has a pull_request workflow that posts a check."
     }
   ]
 }

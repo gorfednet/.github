@@ -346,10 +346,11 @@ export async function evaluatePull(ctx, repo, pr, { headState }) {
     ])
   }
 
-  // (e) closing keywords. The script reads its repository from
-  // GITHUB_REPOSITORY and defaults to bindercurve.com without it, so it is
-  // always set here.
-  const closing = await runGateScript(ctx, ctx.config.scripts.checkClosingKeywords, ['--pr', String(pr.number)], {
+  // (e) closing keywords. The repository is named twice, by --repo and by
+  // GITHUB_REPOSITORY: the script in gorfednet/.github reads the flag, and an
+  // older copy (bindercurve.com before 2026-10-20) read only the variable and
+  // otherwise defaulted to bindercurve.com.
+  const closing = await runGateScript(ctx, ctx.config.scripts.checkClosingKeywords, ['--pr', String(pr.number), '--repo', repo.slug], {
     GITHUB_REPOSITORY: repo.slug,
   })
   const closingText = `${closing.stdout ?? ''}${closing.stderr ?? ''}`

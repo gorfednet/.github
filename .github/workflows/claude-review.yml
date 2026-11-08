@@ -7,6 +7,12 @@
 # comment with a line that is exactly "claude review" (any case; other lines may explain): once at open, once more on the final head after a push that changed code someone
 # wrote, which keeps reviews inside the Max plan's limits.
 #
+# A pull request Dependabot opens is not reviewed on `pull_request` (7 November 2026): GitHub runs
+# that event for dependabot[bot] with read-only secrets, so the review job could not read
+# CLAUDE_CODE_OAUTH_TOKEN and failed on every Dependabot pull request fleet-wide. A `claude review`
+# comment from an owner, member or collaborator still reviews one (the `issue_comment` path is
+# unchanged, and that event carries the secret).
+#
 # It authenticates with whatever the caller passes as CLAUDE_CODE_OAUTH_TOKEN: the owner's Claude
 # subscription token (from `claude setup-token`, `sk-ant-oat...`) or an Anthropic API key
 # (`sk-ant-api...`) with its own spending cap. The "Pick the credential" step tells them apart by
@@ -52,7 +58,8 @@ jobs:
   # cancel a real request queued behind a running review).
   trigger:
     if: >-
-      (github.event_name == 'pull_request' && !github.event.pull_request.draft) ||
+      (github.event_name == 'pull_request' && !github.event.pull_request.draft &&
+       github.event.pull_request.user.login != 'dependabot[bot]') ||
       (github.event_name == 'issue_comment' && github.event.issue.pull_request &&
        github.event.comment.user.type != 'Bot' &&
        contains(github.event.comment.body, 'claude review') &&

@@ -332,6 +332,20 @@ describe('the review trigger', () => {
     assert.doesNotMatch(workflow, /startsWith\(github\.event\.comment\.body/)
   })
 
+  it('skips the pull_request path for Dependabot, whose event cannot read the secret, and leaves the comment path alone', () => {
+    // GitHub runs `pull_request` for dependabot[bot] with read-only secrets, so the review job
+    // failed on every Dependabot pull request fleet-wide (7 November 2026). The guard sits in the
+    // pull_request clause only: a `claude review` comment from a person still reviews one.
+    const trigger = job('trigger')
+    const condition = trigger.slice(0, trigger.indexOf('\n    runs-on:'))
+    const [pullClause, commentClause] = condition.split('||')
+    assert.match(pullClause, /github\.event_name == 'pull_request'/)
+    assert.match(pullClause, /github\.event\.pull_request\.user\.login != 'dependabot\[bot\]'/)
+    assert.match(commentClause, /github\.event_name == 'issue_comment'/)
+    assert.doesNotMatch(commentClause, /dependabot/)
+    assert.match(workflow, /Dependabot opens is not reviewed on `pull_request` \(7 November 2026\)/, 'the header says why')
+  })
+
   it('a comment that is not a request never enters the review concurrency group', () => {
     // The group lets a newer pending run replace an older queued one, so a prose mention that
     // reached it could cancel a real request queued behind a running review.

@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, it } from 'node:test'
-import { ConfigError, normalizeConfig, validateConfig } from '../lib/config.mjs'
+import { ConfigError, loadConfig, missingScripts, normalizeConfig, validateConfig } from '../lib/config.mjs'
 
 // A home directory derived at run time, never a named one (check-machine-paths).
 const HOME = join(tmpdir(), 'ship-bot-home')
@@ -51,9 +51,83 @@ describe('config validation', () => {
       '4thcltr.com': 'merge-only',
       ACID2REAPER: 'merge-only',
       '.github': 'merge-only',
+      assess: 'merge-only',
+      'career-portfolio': 'merge-only',
+      'heuristics.4thcltr.com': 'merge-only',
+      'papers.4thcltr.com': 'merge-only',
       TowIt: 'off',
       wychwood: 'off',
+      // Stage 1 of the go-live names ops merge-only, but it has no pull-request CI to gate on (its note says so).
+      ops: 'off',
     })
+  })
+
+  it('the example ships with every repo off its own live switch, the pass limit at 2, and the scripts in the .github clone', () => {
+    const config = normalizeConfig(example(), { home: HOME })
+    assert.deepEqual(config.repos.filter((r) => r.mode !== 'off' && r.live !== false).map((r) => r.slug), [], 'no repo is live until --set-repo-live')
+    assert.deepEqual(example().repos.filter((r) => r.mode !== 'off' && r.live !== false).map((r) => r.slug), [], 'the flag is written out, not defaulted')
+    assert.equal(config.maxMergesPerPass, 2)
+    for (const [key, path] of Object.entries(config.scripts)) {
+      assert.match(path, /\/Developer\/gorfednet\/gorfednet\.github\/scripts\/[a-z-]+\.mjs$/, `${key}: ${path}`)
+    }
+    assert.deepEqual(config.ntfy, { url: 'https://ntfy.gorfed.net', topic: 'ops-report', tokenFile: join(HOME, '.ship-bot', 'ntfy.token') })
+  })
+
+  it('the stage-1 rows are merge-only, reviewed, not live, each with its checks', () => {
+    const rows = Object.fromEntries(example().repos.map((r) => [r.slug, r]))
+    const stage1 = {
+      'gorfednet/assess': ['check', 'capture'],
+      'gorfednet/career-portfolio': ['check'],
+      'gorfednet/heuristics.4thcltr.com': ['check / check', 'derive'],
+      'gorfednet/papers.4thcltr.com': ['check / check', 'derive'],
+    }
+    for (const [slug, checks] of Object.entries(stage1)) {
+      const r = rows[slug]
+      assert.ok(r, slug)
+      assert.equal(r.mode, 'merge-only', slug)
+      assert.equal(r.claudeReview, true, slug)
+      assert.equal(r.live, false, slug)
+      assert.deepEqual(r.expectedChecks, checks, slug)
+    }
+    assert.match(rows['gorfednet/ops'].note, /no pull-request CI/)
+  })
+
+  it('validates the per-repo live flag, the pass limit, ignoredChecks and ntfy', () => {
+    assert.match(problemsFor(base([deployRepo({ live: 'yes' })])), /repos\[0\] \(gorfednet\/site\)\.live: must be true or false/)
+    assert.match(problemsFor({ ...base([deployRepo()]), maxMergesPerPass: 0 }), /maxMergesPerPass: must be a positive whole number/)
+    assert.match(problemsFor({ ...base([deployRepo()]), maxMergesPerPass: 1.5 }), /maxMergesPerPass: must be a positive whole number/)
+    assert.match(problemsFor({ ...base([deployRepo()]), ignoredChecks: 'kit' }), /ignoredChecks: must be an array/)
+    assert.match(problemsFor({ ...base([deployRepo()]), ntfy: 'https://ntfy.gorfed.net/ops-report' }), /ntfy: must be an object/)
+    assert.match(problemsFor({ ...base([deployRepo()]), ntfy: { url: 'https://ntfy.gorfed.net/ops-report', topic: 'ops-report' } }), /ntfy\.url: required, the server origin/)
+    assert.match(problemsFor({ ...base([deployRepo()]), ntfy: { url: 'https://ntfy.gorfed.net' } }), /ntfy\.topic: required/)
+    assert.match(problemsFor({ ...base([deployRepo()]), ntfy: { url: 'https://ntfy.gorfed.net', topic: 'ops-report', token: 'x' } }), /ntfy: unknown key "token"/)
+    assert.deepEqual(validateConfig({ ...base([deployRepo({ live: true })]), maxMergesPerPass: 3, ignoredChecks: [], ntfy: { url: 'https://ntfy.gorfed.net/', topic: 'ops-report' } }), [])
+    const config = normalizeConfig({ ...base([deployRepo()]), ntfy: { url: 'https://ntfy.gorfed.net/', topic: 'ops-report' } }, { home: HOME })
+    assert.deepEqual(config.ntfy, { url: 'https://ntfy.gorfed.net', topic: 'ops-report', tokenFile: null })
+    assert.equal(config.repos[0].live, false, 'a repo is not live unless it says so')
+    assert.deepEqual(config.ignoredChecks, ['heavy-runner-preflight', 'review / trigger', 'review / review'])
+    assert.equal(normalizeConfig(base([deployRepo()]), { home: HOME }).ntfy, null)
+  })
+
+  it('loadConfig refuses a script path that does not exist, naming the key and the path', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ship-bot-config-'))
+    const present = join(dir, 'present.mjs')
+    writeFileSync(present, '')
+    const path = join(dir, 'config.json')
+    const raw = base([deployRepo()])
+    raw.scripts = { assertChecksStarted: present, reviewStatus: join(dir, 'gone', 'review-status.mjs'), checkClosingKeywords: present }
+    writeFileSync(path, JSON.stringify(raw))
+    assert.throws(
+      () => loadConfig(path),
+      (e) => e instanceof ConfigError && e.problems.length === 1 && e.problems[0] === `scripts.reviewStatus: no file at ${join(dir, 'gone', 'review-status.mjs')} (the bot cannot gate a merge without it)`,
+    )
+    assert.equal(loadConfig(path, { exists: () => true }).scripts.reviewStatus, join(dir, 'gone', 'review-status.mjs'), 'the check is the only thing in the way')
+    raw.scripts.reviewStatus = present
+    writeFileSync(path, JSON.stringify(raw))
+    assert.equal(loadConfig(path).scripts.reviewStatus, present)
+    assert.deepEqual(missingScripts({ scripts: { assertChecksStarted: 'a', reviewStatus: 'b', checkClosingKeywords: 'c' } }, (p) => p !== 'c'), [
+      'scripts.checkClosingKeywords: no file at c (the bot cannot gate a merge without it)',
+    ])
   })
 
   it('rejects an unknown top-level key', () => {
