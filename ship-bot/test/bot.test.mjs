@@ -1024,6 +1024,25 @@ describe('maxMergesPerPass', () => {
     ])
   })
 
+  it('an observed (not-live) repo listed first never uses up the limit: the live repos after it still merge', async () => {
+    // Reviewer finding on #92: the observed context shared the pass counter,
+    // so two ready pull requests in not-live repos ahead of the stage-1 rows
+    // reached the limit on every pass and the live repos never merged.
+    const s = scenario({
+      github: new FakeGitHub({ pullsBySlug: { [A]: [prFor(A)], [B]: [prFor(B)], [C]: [prFor(C)] } }),
+      repos: [{ ...mergeOnly(A), live: false }, { ...mergeOnly(B), live: false }, mergeOnly(C)],
+      configOverrides: { maxMergesPerPass: 2 },
+    })
+    await s.run()
+    assert.deepEqual(merges(s.github).map((m) => m.slug), [C])
+    assert.ok(s.logs.some((l) => /OBSERVE \(repo not live\) gorfednet\/a#7 .*would merge/.test(l)), s.logs.join('\n'))
+    assert.ok(s.logs.some((l) => /OBSERVE \(repo not live\) gorfednet\/b#7 .*would merge/.test(l)), s.logs.join('\n'))
+    assert.ok(!s.logs.some((l) => /gorfednet\/c: SKIP/.test(l)), s.logs.join('\n'))
+    // And again next pass: the observed pull requests are still ready, the limit is still free.
+    await s.run()
+    assert.ok(!s.logs.some((l) => /SKIP/.test(l)), s.logs.join('\n'))
+  })
+
   it('the default is 2', async () => {
     const s = scenario({
       github: new FakeGitHub({ pullsBySlug: { [A]: [prFor(A)], [B]: [prFor(B)], [C]: [prFor(C)] } }),

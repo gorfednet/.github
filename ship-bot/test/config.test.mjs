@@ -67,9 +67,12 @@ describe('config validation', () => {
     assert.deepEqual(config.repos.filter((r) => r.mode !== 'off' && r.live !== false).map((r) => r.slug), [], 'no repo is live until --set-repo-live')
     assert.deepEqual(example().repos.filter((r) => r.mode !== 'off' && r.live !== false).map((r) => r.slug), [], 'the flag is written out, not defaulted')
     assert.equal(config.maxMergesPerPass, 2)
-    for (const [key, path] of Object.entries(config.scripts)) {
-      assert.match(path, /\/Developer\/gorfednet\/gorfednet\.github\/scripts\/[a-z-]+\.mjs$/, `${key}: ${path}`)
-    }
+    // review-status.mjs is the fleet's shared copy in scripts/; the two gates the bot alone runs
+    // live in scripts/gates/, outside the org-checker contract (test/orgWorkflows.test.mjs runs
+    // every scripts/check-*.mjs with no arguments, and a PR gate needs a token and the network).
+    assert.match(config.scripts.reviewStatus, /\/Developer\/gorfednet\/gorfednet\.github\/scripts\/review-status\.mjs$/)
+    assert.match(config.scripts.assertChecksStarted, /\/Developer\/gorfednet\/gorfednet\.github\/scripts\/gates\/assert-checks-started\.mjs$/)
+    assert.match(config.scripts.checkClosingKeywords, /\/Developer\/gorfednet\/gorfednet\.github\/scripts\/gates\/check-closing-keywords\.mjs$/)
     assert.deepEqual(config.ntfy, { url: 'https://ntfy.gorfed.net', topic: 'ops-report', tokenFile: join(HOME, '.ship-bot', 'ntfy.token') })
   })
 

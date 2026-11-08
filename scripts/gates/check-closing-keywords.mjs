@@ -8,15 +8,15 @@
  * Fails on any closing phrase unless this PR's body carries the opt-in marker.
  * See closing-keywords-lib.mjs for the incident this guards.
  *
- *   GH_TOKEN=... node scripts/check-closing-keywords.mjs --pr 123 [--repo owner/name]
- *   GH_TOKEN=... node scripts/check-closing-keywords.mjs   (in Actions: reads GITHUB_EVENT_PATH)
+ *   GH_TOKEN=... node scripts/gates/check-closing-keywords.mjs --pr 123 [--repo owner/name]
+ *   GH_TOKEN=... node scripts/gates/check-closing-keywords.mjs   (in Actions: reads GITHUB_EVENT_PATH)
  *
  * The repository is --repo, else GITHUB_REPOSITORY, else the github.com origin of the clone it
  * runs in; with none of those it refuses (see resolveTarget).
  */
 import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
-import { evaluatePull, fetchWithRetry, formatReport, resolveTarget } from './lib/closing-keywords-lib.mjs'
+import { evaluatePull, fetchWithRetry, formatReport, resolveTarget } from '../lib/closing-keywords-lib.mjs'
 
 const token = process.env.GH_TOKEN ?? process.env.GITHUB_TOKEN
 /** How many recent PRs (any state) to test for "head is in this PR's commits". */

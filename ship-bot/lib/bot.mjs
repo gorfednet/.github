@@ -102,6 +102,12 @@ function repoContext(ctx, repo, deps) {
     github: guardWrites(deps.github),
     runner: guardCommands(deps.runner),
     state: shadow,
+    // Its own counter: an observed repository never merges, so its "would
+    // merge" must not use up the pass limit. Otherwise two ready pull requests
+    // in not-live repositories listed first would reach maxMergesPerPass on
+    // every pass and the live repositories after them would never merge
+    // (reviewer finding on #92). The pass limit still applies within it.
+    pass: { merges: 0 },
     say(level, text) {
       ctx.say(level, `OBSERVE (repo not live) ${text}`)
     },

@@ -111,13 +111,13 @@ jobs:
       # with "fixes #N" when it merges (scripts/lib/closing-keywords-lib.mjs
       # has the incident). The same script is the ship bot's gate (e) for every
       # repository (ship-bot/config.example.json, scripts.checkClosingKeywords),
-      # and running it here is what makes the copy in scripts/ a checked one.
+      # and running it here is what makes the copy in scripts/gates/ a checked one.
       # On a push to main there is no pull request and it says so and exits 0.
       - name: No closing keyword closes an issue by accident
         if: ${{ !cancelled() }}
         env:
           GH_TOKEN: ${{ github.token }}
-        run: node scripts/check-closing-keywords.mjs
+        run: node scripts/gates/check-closing-keywords.mjs
 
       - name: FLEET.md matches the registry it is generated from
         if: ${{ !cancelled() }}

@@ -191,9 +191,11 @@ The config lives outside this repository at `~/.ship-bot/config.json`;
 [`config.example.json`](config.example.json) documents every field and the
 per-repository settings. An unknown or misspelt key is an error, never ignored,
 and so is a `scripts.*` path with no file behind it: the three gate scripts
-live in this repository's `scripts/` (`assert-checks-started.mjs`,
-`check-closing-keywords.mjs`, `review-status.mjs`), and the example points at
-the `~/Developer/gorfednet/gorfednet.github` clone.
+live in this repository (`scripts/review-status.mjs`, shared by every
+repository's merge gate, and `scripts/gates/assert-checks-started.mjs` and
+`scripts/gates/check-closing-keywords.mjs`, which only the bot and this
+repository's own CI run), and the example points at the
+`~/Developer/gorfednet/gorfednet.github` clone.
 
 ### The rules it follows
 

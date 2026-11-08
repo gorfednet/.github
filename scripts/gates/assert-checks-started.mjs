@@ -19,7 +19,7 @@
  * outside the workflow, which is what this is.
  *
  * Usage:
- *   node scripts/assert-checks-started.mjs --pr <number>
+ *   node scripts/gates/assert-checks-started.mjs --pr <number>
  *                                       [--repo owner/name]
  *                                       [--min-runs <n>]
  *
@@ -30,8 +30,8 @@
  * Requires the `gh` CLI, authenticated.
  */
 import { execFileSync } from 'node:child_process'
-import { currentRepoSlug } from './lib/githubSlug.mjs'
-import { isMain } from './lib/isMain.mjs'
+import { currentRepoSlug } from '../lib/githubSlug.mjs'
+import { isMain } from '../lib/isMain.mjs'
 
 function parseArgs(argv) {
   const args = { minRuns: 1 }

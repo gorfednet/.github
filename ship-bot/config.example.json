@@ -49,9 +49,9 @@
   ],
   "ghPath": "~/bin/gh",
   "scripts": {
-    "assertChecksStarted": "~/Developer/gorfednet/gorfednet.github/scripts/assert-checks-started.mjs",
+    "assertChecksStarted": "~/Developer/gorfednet/gorfednet.github/scripts/gates/assert-checks-started.mjs",
     "reviewStatus": "~/Developer/gorfednet/gorfednet.github/scripts/review-status.mjs",
-    "checkClosingKeywords": "~/Developer/gorfednet/gorfednet.github/scripts/check-closing-keywords.mjs"
+    "checkClosingKeywords": "~/Developer/gorfednet/gorfednet.github/scripts/gates/check-closing-keywords.mjs"
   },
   "repos": [
     {
