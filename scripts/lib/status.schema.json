@@ -30,6 +30,9 @@
         "properties": {
           "slug": { "type": "string" },
           "unavailable": { "type": "string" },
+          "redacted": { "type": "boolean", "$comment": "A private repository published on the public status branch: slug and counts only." },
+          "openPrCount": { "type": "integer" },
+          "lapsedBacklogCount": { "type": "integer" },
           "defaultBranch": { "type": "string" },
           "mainRed": { "type": "boolean" },
           "dependabotRed": { "type": "integer" },

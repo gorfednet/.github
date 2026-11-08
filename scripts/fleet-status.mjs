@@ -2,7 +2,7 @@
 /**
  * One view of the fleet's open work, as status.json (render it with write-status-md.mjs).
  *
- *   node scripts/fleet-status.mjs [--out status.json] [--local] [--from status.json] [--only owner/name]
+ *   node scripts/fleet-status.mjs [--out status.json] [--local] [--from status.json] [--only owner/name] [--include-private]
  *
  * Per repository: open pull requests (review verdict, CI state, the first unchecked
  * `## Next` line), branches ahead of the default branch with no pull request, lapsed
@@ -11,6 +11,10 @@
  * default branch is red. `--local` adds clones under ~/Developer/gorfednet with
  * uncommitted or unpushed work. `--from` reuses an earlier status.json for the
  * repositories (so --local can be added to a fresh copy without asking GitHub again).
+ *
+ * A private repository's row is reduced to its slug and counts (`redacted: true`),
+ * because the workflow publishes status.json on a public branch. `--include-private`
+ * keeps the full row (the local wrapper passes it; nothing it prints is published).
  *
  * Fails closed: a repository that cannot be read becomes a row with `unavailable`
  * set to the reason, and the process exits 1 after writing the file. Token:
@@ -148,10 +152,25 @@ function fileText(slug, path) {
   }
 }
 
-export async function gatherRepo(slug, now = new Date()) {
+/** True when the repository API says the repository is not public. Unknown visibility counts as private. */
+export const isPrivateRepo = (repo) => repo.private === true || (repo.visibility ?? 'private') !== 'public'
+
+/** The slug and counts only: no title, branch, next line, backlog id or run URL leaves a private repository. */
+export function redactRepo(full) {
+  return {
+    slug: full.slug,
+    redacted: true,
+    mainRed: full.mainRed,
+    openPrCount: full.openPrs.length,
+    lapsedBacklogCount: full.lapsedBacklog.length,
+  }
+}
+
+export async function gatherRepo(slug, now = new Date(), { includePrivate = false } = {}) {
   const today = now.toISOString().slice(0, 10)
   const repo = ghJson(['api', `repos/${slug}`])
   const base = repo.default_branch
+  const isPrivate = isPrivateRepo(repo)
   const raw = ghJson([
     'pr', 'list', '--repo', slug, '--state', 'open', '--limit', '100',
     '--json', 'number,title,createdAt,labels,isDraft,headRefName,headRefOid,body,statusCheckRollup,author',
@@ -191,7 +210,7 @@ export async function gatherRepo(slug, now = new Date()) {
   }
   const checks = ghJson(['api', `repos/${slug}/commits/${base}/check-runs?per_page=100`]).check_runs ?? []
   const mainRed = checks.some((c) => c.status === 'completed' && FAILED.has(String(c.conclusion).toUpperCase()))
-  return {
+  const full = {
     slug,
     defaultBranch: base,
     mainRed,
@@ -202,6 +221,7 @@ export async function gatherRepo(slug, now = new Date()) {
     incidents7d: incidents,
     dependabotRed: dependabotRed(openPrs),
   }
+  return isPrivate && !includePrivate ? redactRepo(full) : full
 }
 
 /** Clones with uncommitted or unpushed work. */
@@ -248,7 +268,7 @@ if (isMain(import.meta.url)) {
   } else {
     for (const slug of slugs) {
       try {
-        repos.push(await gatherRepo(slug, now))
+        repos.push(await gatherRepo(slug, now, { includePrivate: process.argv.includes('--include-private') }))
       } catch (cause) {
         failed += 1
         const reason = String(cause.stderr || cause.message).trim().split('\n')[0]

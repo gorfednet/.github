@@ -105,9 +105,15 @@ jobs:
           digest="${RUNNER_TEMP}/out/digest.txt"
           test -s "${digest}"
           test "$(wc -l < "${digest}")" -le 10
-          args=(-sS --fail --max-time 15 -H "User-Agent: gorfednet-fleet-status (+https://github.com/gorfednet/.github)" -H "Title: Fleet status" -H "Priority: default" -H "Tags: bar_chart")
-          if [ -n "${NTFY_TOKEN:-}" ]; then args+=(-H "Authorization: Bearer ${NTFY_TOKEN}"); fi
-          curl "${args[@]}" --data-binary @"${digest}" "${NTFY_URL}"
+          if [ -z "${NTFY_TOKEN:-}" ]; then
+            echo "::warning::NTFY_TOKEN missing, digest not posted"
+            exit 0
+          fi
+          curl -sS --fail --max-time 15 \
+            -H "User-Agent: gorfednet-fleet-status (+https://github.com/gorfednet/.github)" \
+            -H "Title: Fleet status" -H "Priority: default" -H "Tags: bar_chart" \
+            -H "Authorization: Bearer ${NTFY_TOKEN}" \
+            --data-binary @"${digest}" "${NTFY_URL}"
 
       # The read's exit code, asserted last so the file and digest go out first.
       - name: Every repository was readable

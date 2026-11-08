@@ -11,14 +11,14 @@ import { readFileSync, writeFileSync } from 'node:fs'
 
 import { isMain } from '../templates/verification-kit/lib/isMain.mjs'
 
+/** "6:30 AM" or "6:30\u202fAM" (ICU 72+ puts a narrow no-break space before the meridiem) -> "6:30 am". */
+export const lowerMeridiem = (s) => s.replace(/\s(AM|PM)$/, (_, m) => ' ' + m.toLowerCase())
+
 /** "7 November 2026, 6:30 am ET" */
 export function etStamp(iso) {
   const d = new Date(iso)
   const date = new Intl.DateTimeFormat('en-GB', { timeZone: 'America/Toronto', day: 'numeric', month: 'long', year: 'numeric' }).format(d)
-  const time = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Toronto', hour: 'numeric', minute: '2-digit' })
-    .format(d)
-    .replace(' AM', ' am')
-    .replace(' PM', ' pm')
+  const time = lowerMeridiem(new Intl.DateTimeFormat('en-US', { timeZone: 'America/Toronto', hour: 'numeric', minute: '2-digit' }).format(d))
   return `${date}, ${time} ET`
 }
 
@@ -31,15 +31,17 @@ const short = (slug) => slug.replace(/^gorfednet\//, '')
 
 export function summarize(status) {
   const ok = status.repos.filter((r) => !r.unavailable)
-  const prs = ok.flatMap((r) => r.openPrs.map((p) => ({ ...p, slug: r.slug })))
+  const full = ok.filter((r) => !r.redacted)
+  const prs = full.flatMap((r) => r.openPrs.map((p) => ({ ...p, slug: r.slug })))
   const oldest = prs.reduce((a, p) => (a === null || p.ageDays > a.ageDays ? p : a), null)
   return {
-    openPrs: prs.length,
+    // A private repository's row carries counts only (fleet-status.mjs redactRepo), so count those too.
+    openPrs: prs.length + ok.reduce((n, r) => n + (r.redacted ? r.openPrCount : 0), 0),
     oldest,
     prs,
     redMains: ok.filter((r) => r.mainRed).map((r) => r.slug),
-    lapsed: ok.reduce((n, r) => n + r.lapsedBacklog.length, 0),
-    dependabotRed: ok.reduce((n, r) => n + r.dependabotRed, 0),
+    lapsed: ok.reduce((n, r) => n + (r.redacted ? r.lapsedBacklogCount : r.lapsedBacklog.length), 0),
+    dependabotRed: full.reduce((n, r) => n + r.dependabotRed, 0),
     waiting: prs.filter(waitingOnOwner).length,
     unavailable: status.repos.filter((r) => r.unavailable).map((r) => r.slug),
   }
@@ -58,6 +60,10 @@ export function render(status) {
     out.push(`## [${r.slug}](https://github.com/${r.slug})`, '')
     if (r.unavailable) {
       out.push(`**Unavailable:** ${cell(r.unavailable)}`, '')
+      continue
+    }
+    if (r.redacted) {
+      out.push(`(private, counts only) main ${r.mainRed ? '**red**' : 'ok'} · ${r.openPrCount} open PRs · ${r.lapsedBacklogCount} lapsed backlog items`, '')
       continue
     }
     const facts = [
