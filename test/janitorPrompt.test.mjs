@@ -13,3 +13,23 @@ test("janitor does not rely on gh pr diff --name-only for the allowlist", () => 
   assert.match(prompt, /gh api --paginate repos\/<owner>\/<repo>\/pulls\/<n>\/files/);
   assert.match(prompt, /neither is enough/);
 });
+
+test("janitor step 4 sweeps sessions with a 48 hour idle rule", () => {
+  const step = prompt.match(/\n4\. Session sweep[\s\S]*?(?=\n## )/);
+  assert.ok(step, "step 4 exists");
+  assert.match(step[0], /48 hours/);
+  assert.match(step[0], /pending owner question/);
+});
+
+test("janitor posts the digest after the session sweep", () => {
+  assert.ok(prompt.indexOf("\n4. Session sweep") < prompt.indexOf("\n5. Post the digest"));
+  assert.doesNotMatch(prompt, /Archive sessions whose pull request merged/);
+});
+
+test("janitor step 4 proposes, never archives, sessions whose PR closed unmerged", () => {
+  assert.match(prompt, /closed without merging: propose only[^\n]*PR closed unmerged[^\n]*never archive/);
+});
+
+test("janitor step 4 has its own propose-only period and run counter", () => {
+  assert.match(prompt, /own propose-only period[^\n]*sweep-runs/);
+});
