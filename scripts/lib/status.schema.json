@@ -2,10 +2,11 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$comment": "Shape of status.json, written by scripts/fleet-status.mjs. Checked by test/fleetStatus.test.mjs with a small validator (type, required, enum, items, properties, additionalProperties).",
   "type": "object",
-  "required": ["generatedAt", "repos"],
+  "required": ["generatedAt", "renderedAt", "repos"],
   "additionalProperties": false,
   "properties": {
     "generatedAt": { "type": "string" },
+    "renderedAt": { "type": "string" },
     "dirtyLocal": {
       "type": "array",
       "items": {

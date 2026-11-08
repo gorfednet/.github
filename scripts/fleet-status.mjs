@@ -233,7 +233,9 @@ if (isMain(import.meta.url)) {
       }
     }
   }
-  const status = { generatedAt: now.toISOString(), repos }
+  // With --from the repository data is the earlier snapshot's, so its generatedAt is kept.
+  const prior = arg('--from') ? JSON.parse(readFileSync(arg('--from'), 'utf8')).generatedAt : null
+  const status = { generatedAt: prior ?? now.toISOString(), renderedAt: now.toISOString(), repos }
   if (process.argv.includes('--local')) status.dirtyLocal = dirtyLocal(join(homedir(), 'Developer', 'gorfednet'))
   writeFileSync(outPath, `${JSON.stringify(status, null, 2)}\n`)
   console.log(`fleet-status: ${repos.length} repositories, ${failed} unavailable -> ${outPath}`)

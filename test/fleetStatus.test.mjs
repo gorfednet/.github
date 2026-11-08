@@ -3,7 +3,10 @@
  * STATUS.md, and the workflow that publishes it.
  */
 import { strict as assert } from 'node:assert'
-import { readFileSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
+import { mkdtempSync, readFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { describe, it } from 'node:test'
 
 import { aheadCounts, ciState, dependabotRed, nextItem, recentLines, repoList } from '../scripts/fleet-status.mjs'
@@ -99,10 +102,30 @@ describe('helpers', () => {
   })
 })
 
+describe('--from', () => {
+  it('keeps the earlier snapshot\'s generatedAt and stamps its own renderedAt', () => {
+    const out = join(mkdtempSync(join(tmpdir(), 'fs-from-')), 'status.json')
+    const from = new URL('./fixtures/status.fixture.json', import.meta.url).pathname
+    try {
+      execFileSync('node', ['scripts/fleet-status.mjs', '--from', from, '--out', out], { encoding: 'utf8', stdio: 'pipe' })
+    } catch (error) {
+      assert.equal(error.status, 1) // the fixture holds an unavailable row, so exit 1 is right
+    }
+    const got = JSON.parse(readFileSync(out, 'utf8'))
+    assert.equal(got.generatedAt, fixture.generatedAt)
+    assert.ok(got.renderedAt > fixture.generatedAt)
+    assert.deepEqual(validate(got, schema), [])
+  })
+})
+
 describe('STATUS.md', () => {
   it('shows times in Toronto time labelled ET', () => {
     assert.equal(etStamp('2026-11-07T11:30:00Z'), '7 November 2026, 6:30 am ET')
     assert.equal(etStamp('2026-07-07T11:30:00Z'), '7 July 2026, 7:30 am ET')
+  })
+  it('shows when the data was read and when it was rendered', () => {
+    const later = { ...fixture, renderedAt: '2026-11-08T14:00:00.000Z' }
+    assert.match(render(later), /Data from 7 November 2026, 6:30 am ET, rendered 8 November 2026, 9:00 am ET\./)
   })
   it('summarizes the fixture', () => {
     assert.equal(
