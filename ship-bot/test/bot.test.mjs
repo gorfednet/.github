@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { readFileSync, readdirSync, existsSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, it } from 'node:test'
 import {
@@ -522,7 +522,7 @@ describe('merging', () => {
   })
 
   it('in merge-only mode: merges, comments the reason, runs no workspace or deploy command', async () => {
-    const s = scenario({ repos: [{ slug: SLUG, dir: 'site', mode: 'merge-only', reason: 'tagged release via /ship', claudeReview: false, expectedChecks: ['check / check'] }] })
+    const s = scenario({ repos: [{ slug: SLUG, dir: 'site', mode: 'merge-only', reason: 'tagged release via /ship', live: true, claudeReview: false, expectedChecks: ['check / check'] }] })
     await s.run()
     assert.equal(merges(s.github).length, 1)
     assert.match(bodies(s.github)[0], /^Merged as bbbbbbb; deploying is a session's job for this repo \(tagged release via \/ship\)\./)
@@ -771,7 +771,7 @@ describe('deploy preflight', () => {
       repos: [
         repoEntry(),
         repoEntry({ slug: SITE2, dir: 'site2' }),
-        { slug: LIB, dir: 'lib', mode: 'merge-only', reason: 'tagged release', claudeReview: false, expectedChecks: ['check / check'] },
+        { slug: LIB, dir: 'lib', mode: 'merge-only', reason: 'tagged release', live: true, claudeReview: false, expectedChecks: ['check / check'] },
       ],
     })
   }
@@ -833,5 +833,224 @@ describe('deploy preflight', () => {
     assert.equal(s.runner.ofKind('preflight').length, 0)
     assert.ok(decisions.some((t) => /would run the deploy preflight before merging: ssh -o BatchMode=yes .* gorfednas true/.test(t)), decisions.join('\n'))
     assert.ok(decisions.some((t) => /gorfednet\/site#7 .*would merge/.test(t)))
+  })
+})
+
+describe('ntfy', () => {
+  const NTFY_TOKEN = ['tk', '_ops_', 'FAKEntfytoken0123456789'].join('')
+  /** A deploy scenario with ntfy configured and a token file in its home. */
+  const withNtfy = (fetchImpl, { tokenFile = true } = {}) => {
+    const fetches = []
+    const s = scenario({ configOverrides: { ntfy: { url: 'https://ntfy.example.test/', topic: 'ops-report', ...(tokenFile ? { tokenFile: '~/ntfy.token' } : {}) } } })
+    if (tokenFile) writeFileSync(join(s.home, 'ntfy.token'), `${NTFY_TOKEN}\n`)
+    const run = (mode) =>
+      s.run(mode, {
+        fetchImpl: async (url, init) => {
+          fetches.push({ url, init })
+          return fetchImpl(url, init)
+        },
+      })
+    return { s, fetches, run }
+  }
+
+  it('posts the same message as the Mac notification to <url>/<topic>, with the token, title, priority and tags', async () => {
+    const { s, fetches, run } = withNtfy(async () => ({ ok: true, status: 200 }))
+    await run()
+    assert.equal(merges(s.github).length, 1)
+    assert.equal(s.runner.ofKind('notify').length, 1, 'osascript still runs')
+    assert.equal(fetches.length, 1)
+    assert.equal(fetches[0].url, 'https://ntfy.example.test/ops-report')
+    assert.equal(fetches[0].init.method, 'POST')
+    assert.equal(fetches[0].init.body, 'site #7 merged and deployed')
+    assert.deepEqual(fetches[0].init.headers, {
+      'User-Agent': 'gorfednet-ship-bot',
+      Title: 'ship bot',
+      Priority: 'default',
+      Tags: 'package',
+      Authorization: `Bearer ${NTFY_TOKEN}`,
+    })
+    assert.ok(fetches[0].init.signal instanceof AbortSignal, 'a timeout is set')
+    assert.ok(!s.logs.some((l) => / warn /.test(l)), s.logs.join('\n'))
+  })
+
+  it('a loud notification is high priority', async () => {
+    const fetches = []
+    const gh = new FakeGitHub()
+    gh.mergeResult = () => {
+      const e = new Error('upstream timeout')
+      e.status = 504
+      return e
+    }
+    const s = scenario({ github: gh, configOverrides: { ntfy: { url: 'https://ntfy.example.test', topic: 'ops-report' } } })
+    await s.run('live', {
+      fetchImpl: async (url, init) => {
+        fetches.push({ url, init })
+        return { ok: true, status: 200 }
+      },
+    })
+    assert.equal(fetches.length, 1)
+    assert.equal(fetches[0].init.headers.Priority, 'high')
+    assert.equal(fetches[0].init.headers.Tags, 'rotating_light')
+    assert.equal(fetches[0].init.headers.Authorization, undefined, 'no tokenFile, no header')
+    assert.match(fetches[0].init.body, /merge outcome unknown/)
+  })
+
+  it('a failed POST is one warning and never stops the pass, and the token stays out of the log', async () => {
+    const { s, run } = withNtfy(async () => {
+      throw new Error(`fetch failed for ${NTFY_TOKEN}`)
+    })
+    await run()
+    assert.equal(merges(s.github).length, 1)
+    assert.equal(s.state().repo(SLUG).lastDeployedSha, MERGE, 'the deploy was reported as done')
+    const warns = s.logs.filter((l) => /ntfy notification failed/.test(l))
+    assert.equal(warns.length, 1, s.logs.join('\n'))
+    assert.match(warns[0], /ntfy notification failed: fetch failed for \[REDACTED\]/)
+    assert.ok(!s.logs.join('\n').includes(NTFY_TOKEN))
+
+    const denied = withNtfy(async () => ({ ok: false, status: 403 }))
+    await denied.run()
+    assert.ok(denied.s.logs.some((l) => /ntfy notification failed: ntfy answered HTTP 403: ntfy\.tokenFile must hold a token/.test(l)), denied.s.logs.join('\n'))
+
+    const missingFile = withNtfy(async () => assert.fail('must not post without reading the token'), { tokenFile: true })
+    rmSync(join(missingFile.s.home, 'ntfy.token'))
+    await missingFile.run()
+    assert.ok(missingFile.s.logs.some((l) => /ntfy notification failed: ENOENT/.test(l)), missingFile.s.logs.join('\n'))
+  })
+
+  it('without an ntfy key nothing is fetched, and a dry run never notifies at all', async () => {
+    const s = scenario()
+    await s.run('live', {
+      fetchImpl: async () => assert.fail('no ntfy configured'),
+    })
+    assert.equal(merges(s.github).length, 1)
+    const { fetches, run } = withNtfy(async () => assert.fail('dry run'))
+    await run('dry-run')
+    assert.equal(fetches.length, 0)
+  })
+})
+
+describe('per-repo live', () => {
+  const LIB = 'gorfednet/lib'
+  const prFor = (slug) => makePr({ head: { sha: HEAD, repo: { full_name: slug } } })
+  const two = (siteLive, libLive) =>
+    scenario({
+      github: new FakeGitHub({ pullsBySlug: { [SLUG]: [prFor(SLUG)], [LIB]: [prFor(LIB)] } }),
+      repos: [
+        repoEntry({ live: siteLive }),
+        { slug: LIB, dir: 'lib', mode: 'merge-only', reason: 'tagged release', live: libLive, claudeReview: false, expectedChecks: ['check / check'] },
+      ],
+    })
+
+  it('in a live pass, a repo whose own live is false is observed: gates read, no merge, no comment, lines marked OBSERVE', async () => {
+    const s = two(true, false)
+    await s.run()
+    assert.deepEqual(merges(s.github).map((m) => m.slug), [SLUG])
+    assert.deepEqual(s.github.commentsPosted().map((c) => c.slug), [SLUG])
+    const libLines = s.logs.filter((l) => l.includes(LIB))
+    assert.ok(libLines.length > 0)
+    assert.ok(libLines.every((l) => l.includes('OBSERVE (repo not live) ')), libLines.join('\n'))
+    assert.ok(libLines.some((l) => /gorfednet\/lib#7 \(aaaaaaa\): would merge/.test(l)), libLines.join('\n'))
+    assert.ok(libLines.some((l) => /would comment "Merged; deploying is a session's job/.test(l)))
+    assert.ok(s.runner.ofKind('gate').some((c) => c.args.includes(LIB)), 'the gate scripts still ran for it')
+    const siteLines = s.logs.filter((l) => l.includes(SLUG))
+    assert.ok(siteLines.every((l) => !l.includes('OBSERVE')), siteLines.join('\n'))
+  })
+
+  it('what an observed repo would have said is not written to the state file, so the real comment lands once it goes live', async () => {
+    const gh = new FakeGitHub({ pullsBySlug: { [SLUG]: [prFor(SLUG)], [LIB]: [prFor(LIB)] }, runs: [{ name: 'check / check', status: 'completed', conclusion: 'failure', started_at: '2026-10-09T12:00:00Z' }] })
+    const s = scenario({
+      github: gh,
+      repos: [{ slug: LIB, dir: 'lib', mode: 'merge-only', reason: 'tagged release', live: false, claudeReview: false, expectedChecks: ['check / check'] }],
+    })
+    await s.run()
+    assert.equal(gh.commentsPosted().length, 0)
+    assert.ok(s.logs.some((l) => /OBSERVE \(repo not live\) gorfednet\/lib#7: would comment: Ship bot is not merging this yet/.test(l)), s.logs.join('\n'))
+    assert.deepEqual(s.state().data.prs, {}, 'nothing about #7 was remembered')
+    // Flip it live (a fresh config, as --set-repo-live would produce) and the comment is posted.
+    s.config.repos[0].live = true
+    await s.run()
+    assert.equal(gh.commentsPosted().length, 1)
+    assert.match(gh.commentsPosted()[0].body, /checks did not pass on this head: check \/ check \(failure\)/)
+  })
+
+  it('a dry run and an observe pass treat every repo alike, whatever its own flag says', async () => {
+    const s = two(false, false)
+    const decisions = (await s.run('dry-run')).map((d) => d.text)
+    assert.ok(decisions.some((t) => /gorfednet\/site#7 .*would merge/.test(t)))
+    assert.ok(decisions.some((t) => /gorfednet\/lib#7 .*would merge/.test(t)))
+    assert.ok(decisions.every((t) => !t.includes('(repo not live)')), decisions.join('\n'))
+    assert.equal(merges(s.github).length, 0)
+  })
+
+  it('a live pass with both switches on merges', async () => {
+    const s = two(true, true)
+    await s.run()
+    assert.deepEqual(merges(s.github).map((m) => m.slug).sort(), [LIB, SLUG])
+  })
+})
+
+describe('maxMergesPerPass', () => {
+  const A = 'gorfednet/a'
+  const B = 'gorfednet/b'
+  const C = 'gorfednet/c'
+  const prFor = (slug) => makePr({ head: { sha: HEAD, repo: { full_name: slug } } })
+  const mergeOnly = (slug) => ({ slug, dir: slug.split('/')[1], mode: 'merge-only', reason: 'tagged release', live: true, claudeReview: false, expectedChecks: ['check / check'] })
+  const three = (limit) =>
+    scenario({
+      github: new FakeGitHub({ pullsBySlug: { [A]: [prFor(A)], [B]: [prFor(B)], [C]: [prFor(C)] } }),
+      repos: [mergeOnly(A), mergeOnly(B), mergeOnly(C)],
+      configOverrides: { maxMergesPerPass: limit },
+    })
+
+  it('stops after the configured number of merges and logs SKIP ... pass limit for the rest of the pass', async () => {
+    const s = three(2)
+    await s.run()
+    assert.deepEqual(merges(s.github).map((m) => m.slug), [A, B])
+    const skip = s.logs.filter((l) => /SKIP/.test(l))
+    assert.deepEqual(skip, ['info gorfednet/c: SKIP: pass limit of 2 merge(s) reached; looked at again next pass'])
+    assert.ok(!s.github.calls.some((c) => c.name === 'listOpenPulls' && c.args[0] === C), 'a skipped repo is not even read')
+    // Next pass: the first two are merged and gone, so c gets its turn.
+    await s.run()
+    assert.deepEqual(merges(s.github).map((m) => m.slug), [A, B, C])
+  })
+
+  it('counts a dry run\'s "would merge" the same, so the observe log shows the limit', async () => {
+    const s = three(1)
+    const decisions = (await s.run('dry-run')).map((d) => d.text)
+    assert.equal(decisions.filter((t) => /would merge/.test(t)).length, 1)
+    assert.deepEqual(decisions.filter((t) => /SKIP/.test(t)), [
+      'gorfednet/b: SKIP: pass limit of 1 merge(s) reached; looked at again next pass',
+      'gorfednet/c: SKIP: pass limit of 1 merge(s) reached; looked at again next pass',
+    ])
+  })
+
+  it('an observed (not-live) repo listed first never uses up the limit: the live repos after it still merge', async () => {
+    // Reviewer finding on #92: the observed context shared the pass counter,
+    // so two ready pull requests in not-live repos ahead of the stage-1 rows
+    // reached the limit on every pass and the live repos never merged.
+    const s = scenario({
+      github: new FakeGitHub({ pullsBySlug: { [A]: [prFor(A)], [B]: [prFor(B)], [C]: [prFor(C)] } }),
+      repos: [{ ...mergeOnly(A), live: false }, { ...mergeOnly(B), live: false }, mergeOnly(C)],
+      configOverrides: { maxMergesPerPass: 2 },
+    })
+    await s.run()
+    assert.deepEqual(merges(s.github).map((m) => m.slug), [C])
+    assert.ok(s.logs.some((l) => /OBSERVE \(repo not live\) gorfednet\/a#7 .*would merge/.test(l)), s.logs.join('\n'))
+    assert.ok(s.logs.some((l) => /OBSERVE \(repo not live\) gorfednet\/b#7 .*would merge/.test(l)), s.logs.join('\n'))
+    assert.ok(!s.logs.some((l) => /gorfednet\/c: SKIP/.test(l)), s.logs.join('\n'))
+    // And again next pass: the observed pull requests are still ready, the limit is still free.
+    await s.run()
+    assert.ok(!s.logs.some((l) => /SKIP/.test(l)), s.logs.join('\n'))
+  })
+
+  it('the default is 2', async () => {
+    const s = scenario({
+      github: new FakeGitHub({ pullsBySlug: { [A]: [prFor(A)], [B]: [prFor(B)], [C]: [prFor(C)] } }),
+      repos: [mergeOnly(A), mergeOnly(B), mergeOnly(C)],
+      configOverrides: { maxMergesPerPass: undefined },
+    })
+    assert.equal(s.config.maxMergesPerPass, 2)
+    await s.run()
+    assert.equal(merges(s.github).length, 2)
   })
 })

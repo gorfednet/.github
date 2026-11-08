@@ -56,11 +56,34 @@ out what it would merge and deploy and writes that to its log
 (`~/.ship-bot/logs/ship-bot.log`, lines starting `OBSERVE`), but it changes
 nothing: no merges, no comments, no deploys.
 
-When the log looks right, let it act:
+When the log looks right, let it act. There are two switches, and a repository
+merges only when both are on: the global `live`, and that repository's own
+`live` (every row ships with `false`):
 
 ```bash
-node ~/.ship-bot/app/ship-bot.mjs --set-live true
+node ~/.ship-bot/app/ship-bot.mjs --set-repo-live gorfednet/assess true   # one repository
+node ~/.ship-bot/app/ship-bot.mjs --set-live true                          # the global switch
 ```
+
+`--set-live` never touches the per-repository flags, so turning the global
+switch on acts only in the repositories already switched on. Stage 1 of the
+go-live (owner, 7 November 2026) is merge-only in `.github`, assess,
+career-portfolio, heuristics.4thcltr.com and papers.4thcltr.com; ops waits for
+pull-request CI (its row says why). In a live pass a repository whose own flag
+is off is still read and logged, with `OBSERVE (repo not live)` on each line.
+
+Before switching a repository on, check that its `expectedChecks` still match
+what its CI posts (a renamed job would make the bot wait forever):
+
+```bash
+node ~/.ship-bot/app/ship-bot.mjs --validate                  # every repository that is not off
+node ~/.ship-bot/app/ship-bot.mjs --validate --repo assess    # one
+```
+
+It reads the check names on the last 3 merged pull requests, prints what is
+missing or unexpected per repository, and exits 1 when any differ.
+`ignoredChecks` (default: `heavy-runner-preflight`, `review / trigger`,
+`review / review`) names the checks every row leaves out on purpose.
 
 To stop merges and deploys again, at once (from the next pass, within two
 minutes):
@@ -68,6 +91,10 @@ minutes):
 ```bash
 node ~/.ship-bot/app/ship-bot.mjs --set-live false
 ```
+
+A pass merges at most `maxMergesPerPass` pull requests (default 2) across all
+repositories; the rest are logged `SKIP ... pass limit` and looked at again two
+minutes later.
 
 ## How a change ships
 
@@ -81,7 +108,11 @@ node ~/.ship-bot/app/ship-bot.mjs --set-live false
 4. For MoonMan and the websites, it first checks it can reach the NAS and the
    Docker host, then puts the change live and checks the live site.
 5. It comments on the pull request saying what happened, and shows a Mac
-   notification when something went live or went wrong.
+   notification when something went live or went wrong. With `ntfy` in the
+   config (`{ "url": "https://ntfy.gorfed.net", "topic": "ops-report",
+   "tokenFile": "~/.ship-bot/ntfy.token" }`) the same message goes to your
+   phone through ntfy as well; a failed send is one line in the log, never a
+   stopped pass.
 
 To stop it: add the **`hold`** label to a pull request, or run
 `node ~/.ship-bot/app/ship-bot.mjs --set-live false` to stop everything, or run
@@ -138,7 +169,16 @@ node ship-bot/ship-bot.mjs --dry-run --once --repo MoonMan
 ship-bot/check.sh                                      # the bot's tests (no network); install.sh runs this first
 ship-bot/install.sh                                    # install or update the LaunchAgent (refuses if check.sh fails)
 ship-bot/protect-branches.sh --dry-run                 # print the branch-protection calls
+node ship-bot/ship-bot.mjs --validate                  # expectedChecks against the last 3 merged PRs (read-only; exit 1 on a difference)
+node ship-bot/ship-bot.mjs --check-preflight           # run the config's preflight steps once, pass or fail per step
+ship-bot/preflight-launchd.sh                          # the same, inside a one-shot LaunchAgent with the installed agent's environment
+node ship-bot/ship-bot.mjs --set-repo-live <slug> true|false
 ```
+
+`preflight-launchd.sh` answers the question a terminal cannot: does the ssh to
+the NAS and the Docker host work from launchd's context, where the keychain-held
+key and a terminal's Tailscale login may be missing? It never touches the real
+agent; run it before switching any deploy-mode repository on.
 
 A dry run reads GitHub (it runs the verification kit's read-only gate scripts)
 but posts nothing, merges nothing and runs no deploy. `--live` acts only when
@@ -149,15 +189,25 @@ a `todo` list is refused in live mode until each item is confirmed and removed.
 
 The config lives outside this repository at `~/.ship-bot/config.json`;
 [`config.example.json`](config.example.json) documents every field and the
-per-repository settings. An unknown or misspelt key is an error, never ignored.
+per-repository settings. An unknown or misspelt key is an error, never ignored,
+and so is a `scripts.*` path with no file behind it: the three gate scripts
+live in this repository (`scripts/review-status.mjs`, shared by every
+repository's merge gate, and `scripts/gates/assert-checks-started.mjs` and
+`scripts/gates/check-closing-keywords.mjs`, which only the bot and this
+repository's own CI run), and the example points at the
+`~/Developer/gorfednet/gorfednet.github` clone.
 
 ### The rules it follows
 
 - Gates are evaluated on the pull request's current head commit, and the merge
   is pinned to that commit (`sha`), so a push in between makes GitHub refuse
   the merge instead of shipping unchecked code.
-- At most one merge per repository per run, and one deploy at a time across
-  all repositories (a lock file, `~/.ship-bot/run.lock`).
+- At most one merge per repository per run, at most `maxMergesPerPass` (default
+  2) per run across all repositories, and one deploy at a time across all
+  repositories (a lock file, `~/.ship-bot/run.lock`).
+- A repository merges only when the global `live` and its own `live` are both
+  true; otherwise a live pass observes it (reads, no writes, lines marked
+  `OBSERVE (repo not live)`, nothing remembered in the state file).
 - Before the first merge in a deploy-mode repository each run, the config's
   `preflight` steps (ssh to the NAS and to the Docker host) must succeed; if
   not, only merge-only repositories merge that run.

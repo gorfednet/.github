@@ -6,9 +6,9 @@ import { describe, it } from 'node:test'
 import { childEnv, main, parseArgs } from '../ship-bot.mjs'
 import { ConfigError, normalizeConfig } from '../lib/config.mjs'
 import { StateStore } from '../lib/state.mjs'
-import { FakeGitHub, TOKEN, makePr, makeRunner, repoEntry } from './fakes.mjs'
+import { FakeGitHub, TOKEN, greenRuns, makePr, makeRunner, repoEntry } from './fakes.mjs'
 
-function harness({ live = true, lock, pulls = [] } = {}) {
+function harness({ live = true, lock, pulls = [], github = new FakeGitHub({ pulls }), configOverrides = {}, handle } = {}) {
   const home = mkdtempSync(join(tmpdir(), 'ship-bot-cli-'))
   const config = normalizeConfig(
     {
@@ -17,6 +17,7 @@ function harness({ live = true, lock, pulls = [] } = {}) {
       sourceRoot: join(home, 'src'),
       scripts: { assertChecksStarted: 'a.mjs', reviewStatus: 'b.mjs', checkClosingKeywords: 'c.mjs' },
       repos: [repoEntry({ envFiles: [] })],
+      ...configOverrides,
     },
     { home },
   )
@@ -25,8 +26,7 @@ function harness({ live = true, lock, pulls = [] } = {}) {
     writeFileSync(join(config.stateDir, 'run.lock'), JSON.stringify(lock))
   }
   const out = []
-  const github = new FakeGitHub({ pulls })
-  const runner = makeRunner({ handle: (cmd) => (cmd.kind === 'auth' ? { stdout: `${TOKEN}\n` } : undefined) })
+  const runner = makeRunner({ handle: (cmd) => (cmd.kind === 'auth' ? { stdout: `${TOKEN}\n` } : handle?.(cmd)) })
   let constructed = 0
   const deps = {
     loadConfig: () => config,
@@ -273,5 +273,162 @@ describe('--set-live', () => {
 
   it('takes only true or false', () => {
     assert.throws(() => parseArgs(['--set-live', 'yes']), /takes true or false/)
+  })
+
+  it('leaves every per-repo live flag as it was, and says which repos will merge', async () => {
+    // The example with assess's own flag flipped: the first "live": false after its slug line.
+    const row = example.indexOf('"slug": "gorfednet/assess"')
+    const flag = example.indexOf('"live": false', row)
+    assert.ok(row !== -1 && flag !== -1, 'the example has an assess row with a live flag')
+    const withOne = `${example.slice(0, flag)}"live": true${example.slice(flag + '"live": false'.length)}`
+    const path = file(withOne)
+    const on = await set(path, 'true')
+    assert.equal(on.code, 0, on.out)
+    assert.match(on.out, /The next pass acts: the 1 repo\(s\) with their own "live": true merge: gorfednet\/assess\./)
+    const after = readFileSync(path, 'utf8')
+    const changed = after.split('\n').filter((line, i) => line !== withOne.split('\n')[i])
+    assert.deepEqual(changed, ['  "live": true,'], 'only the global line moved')
+    const noneYet = await set(file(), 'true')
+    assert.match(noneYet.out, /no repo has its own "live": true yet, so nothing merges until --set-repo-live/)
+  })
+})
+
+describe('--set-repo-live', () => {
+  const example = readFileSync(new URL('../config.example.json', import.meta.url), 'utf8')
+  const file = (text = example) => {
+    const path = join(mkdtempSync(join(tmpdir(), 'ship-bot-repolive-')), 'config.json')
+    writeFileSync(path, text, { mode: 0o600 })
+    return path
+  }
+  const set = async (path, name, value) => {
+    const out = []
+    const code = await main(['--set-repo-live', name, value, '--config', path], { out: (l) => out.push(l), runner: { run: () => assert.fail('no command may run') } })
+    return { code, out: out.join('\n') }
+  }
+
+  it('flips one repo by slug, name or dir, changing only its line, and says whether the global switch lets it merge', async () => {
+    const path = file()
+    const on = await set(path, 'assess', 'true')
+    assert.equal(on.code, 0, on.out)
+    assert.match(on.out, /gorfednet\/assess live is now true .*but the global live is false, so it still only observes \(--set-live true\)/)
+    const after = readFileSync(path, 'utf8')
+    const lines = example.split('\n')
+    const changed = after.split('\n').map((line, i) => [i, line]).filter(([i, line]) => line !== lines[i])
+    assert.equal(changed.length, 1)
+    assert.equal(changed[0][1], '      "live": true,')
+    assert.match(lines.slice(changed[0][0] - 6, changed[0][0]).join('\n'), /"slug": "gorfednet\/assess"/, 'the changed line is inside the assess row')
+    assert.equal(statSync(path).mode & 0o777, 0o600)
+    const off = await set(path, 'gorfednet/assess', 'false')
+    assert.equal(off.code, 0)
+    assert.match(off.out, /gorfednet\/assess live is now false .*The next pass only observes it\./)
+    assert.equal(readFileSync(path, 'utf8'), example)
+    const globalOn = file(example.replace('"live": false,\n  "maxMergesPerPass"', '"live": true,\n  "maxMergesPerPass"'))
+    const both = await set(globalOn, 'papers.4thcltr.com', 'true')
+    assert.match(both.out, /and the global live is true, so it merges from the next pass/)
+  })
+
+  it('refuses an unknown repo or an "off" repo, and writes nothing', async () => {
+    const path = file()
+    const unknown = await set(path, 'nope', 'true')
+    assert.equal(unknown.code, 2)
+    assert.match(unknown.out, /no configured repository by that name.*Nothing was changed/)
+    const off = await set(path, 'ops', 'true')
+    assert.equal(off.code, 2)
+    assert.match(off.out, /mode "off".*Nothing was changed/)
+    assert.equal(readFileSync(path, 'utf8'), example)
+    assert.throws(() => parseArgs(['--set-repo-live', 'assess', 'yes']), /takes true or false/)
+    assert.throws(() => parseArgs(['--set-repo-live', 'assess']), /needs a value/)
+  })
+})
+
+describe('--validate', () => {
+  const merged = (number, sha) => ({ number, merged_at: '2026-11-07T12:00:00Z', head: { sha } })
+  const validate = async (github, extra = []) => {
+    const h = harness({ live: false, github })
+    const code = await main(['--validate', ...extra], h.deps)
+    return { h, code, out: h.out.join('\n') }
+  }
+
+  it('reads the checks on the last 3 merged pull requests and reports what differs from expectedChecks, exit 1', async () => {
+    const gh = new FakeGitHub({
+      mergedPulls: [merged(5, 's1'), merged(4, 's2'), merged(3, 's3'), merged(2, 's4')],
+      runsBySha: {
+        s1: greenRuns(['check / check', 'heavy-runner-preflight', 'review / trigger']),
+        s2: greenRuns(['check / check', 'extra-job']),
+        s3: greenRuns(['heavy-runner-preflight']),
+      },
+    })
+    const { h, code, out } = await validate(gh)
+    assert.equal(code, 1, out)
+    assert.match(out, /gorfednet\/site: differs \(last 3 merged: #5, #4, #3\)/)
+    assert.match(out, /  missing    check \/ check \(on 2 of 3\)/)
+    assert.match(out, /  unexpected extra-job \(on 1 of 3\)/)
+    assert.doesNotMatch(out, /heavy-runner-preflight|review \/ trigger/, 'the agreed exclusions are not noise')
+    assert.match(out, /validate: 1 of 1 repo\(s\) differ/)
+    assert.deepEqual(gh.calls.filter((c) => c.name === 'listMergedPulls').map((c) => c.args), [['gorfednet/site', 3]])
+    assert.equal(gh.writes.length, 0)
+    assert.equal(existsSync(join(h.config.stateDir, 'run.lock')), false, 'read-only: no lock, no state')
+    assert.ok(!out.includes(TOKEN))
+  })
+
+  it('is quiet and exits 0 when every sampled pull request carried exactly the expected checks', async () => {
+    const gh = new FakeGitHub({ mergedPulls: [merged(5, 's1'), merged(4, 's2'), merged(3, 's3')], runs: greenRuns(['check / check', 'heavy-runner-preflight']) })
+    const { code, out } = await validate(gh)
+    assert.equal(code, 0, out)
+    assert.match(out, /gorfednet\/site: ok \(last 3 merged: #5, #4, #3\)/)
+    assert.match(out, /validate: 1 repo\(s\) match their expectedChecks/)
+  })
+
+  it('a repo with no merged pull request, or an API error, is a failure to validate, not a pass', async () => {
+    const { code, out } = await validate(new FakeGitHub({ mergedPulls: [] }))
+    assert.equal(code, 1)
+    assert.match(out, /gorfednet\/site: could not validate: no merged pull request to sample/)
+    const broken = new FakeGitHub({ mergedPulls: [merged(5, 's1')] })
+    broken.listCheckRuns = async () => {
+      throw new Error('HTTP 502')
+    }
+    const r = await validate(broken)
+    assert.equal(r.code, 1)
+    assert.match(r.out, /could not validate: HTTP 502/)
+  })
+
+  it('a commit status counts as a check, and an unknown --repo fails closed', async () => {
+    const gh = new FakeGitHub({ mergedPulls: [merged(5, 's1')], runs: [], statuses: [{ context: 'check / check', state: 'success', created_at: '2026-11-07T12:00:00Z' }] })
+    assert.equal((await validate(gh)).code, 0)
+    assert.equal((await validate(gh, ['--repo', 'nope'])).code, 2)
+  })
+})
+
+describe('--check-preflight', () => {
+  const preflight = [
+    { name: 'nas', command: ['ssh', '-o', 'BatchMode=yes', 'gorfednas', 'true'] },
+    { name: 'docker host', command: ['ssh', '-o', 'BatchMode=yes', 'dapyllil', 'true'], timeoutMinutes: 2 },
+  ]
+
+  it('runs every preflight step with the real runner kind and prints pass or fail per step', async () => {
+    const h = harness({
+      live: false,
+      configOverrides: { preflight },
+      handle: (cmd) => (cmd.kind === 'preflight' && cmd.args.includes('dapyllil') ? { code: 255, stderr: 'Warning: no agent\nPermission denied (publickey).\n' } : undefined),
+    })
+    const code = await main(['--check-preflight'], h.deps)
+    const out = h.out.join('\n')
+    assert.equal(code, 1, out)
+    assert.deepEqual(h.runner.commandLines('preflight'), ['ssh -o BatchMode=yes gorfednas true', 'ssh -o BatchMode=yes dapyllil true'])
+    assert.equal(h.runner.ofKind('preflight')[1].timeoutMs, 120_000)
+    assert.match(out, /^preflight nas: pass \(ssh -o BatchMode=yes gorfednas true\)$/m)
+    assert.match(out, /^preflight docker host: FAIL exit 255: Permission denied \(publickey\)\. \(ssh -o BatchMode=yes dapyllil true\)$/m)
+    assert.match(out, /^preflight: 1 of 2 step\(s\) failed$/m)
+    assert.equal(h.constructed(), 0, 'no GitHub client, no token read')
+    assert.equal(h.runner.ofKind('auth').length, 0)
+  })
+
+  it('exits 0 when every step passes, and says so when there are none', async () => {
+    const ok = harness({ live: false, configOverrides: { preflight } })
+    assert.equal(await main(['--check-preflight'], ok.deps), 0)
+    assert.match(ok.out.join('\n'), /preflight: 2 step\(s\) passed/)
+    const none = harness({ live: false })
+    assert.equal(await main(['--check-preflight'], none.deps), 0)
+    assert.match(none.out.join('\n'), /no steps configured/)
   })
 })

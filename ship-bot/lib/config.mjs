@@ -5,16 +5,28 @@
  * ignore, because a misspelt "pausedIfChanged" that is silently dropped would
  * deploy exactly what it was written to hold back.
  */
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
 
 export const READY_LABEL = 'ready-to-merge'
 export const HOLD_LABEL = 'hold'
 
+/**
+ * Check names `--validate` does not report as unexpected when they appear on
+ * a merged pull request without being in a repo's expectedChecks: the
+ * runner-pool preflight (every listed job needs it, so it proves nothing on
+ * its own) and the Claude reviewer's own jobs (gate (d) reads the review
+ * verdict, not these check runs). Overridable with `ignoredChecks`.
+ */
+export const DEFAULT_IGNORED_CHECKS = ['heavy-runner-preflight', 'review / trigger', 'review / review']
+
 const TOP_KEYS = new Set([
   'note',
   'live',
+  'maxMergesPerPass',
+  'ignoredChecks',
+  'ntfy',
   'allowedAuthors',
   'stateDir',
   'workRoot',
@@ -31,7 +43,8 @@ const TOP_KEYS = new Set([
 ])
 const SCRIPT_KEYS = ['assertChecksStarted', 'reviewStatus', 'checkClosingKeywords']
 
-const COMMON_REPO_KEYS = ['slug', 'dir', 'mode', 'note', 'todo', 'claudeReview', 'expectedChecks', 'requireChecksAfterLabel']
+const COMMON_REPO_KEYS = ['slug', 'dir', 'mode', 'note', 'todo', 'live', 'claudeReview', 'expectedChecks', 'requireChecksAfterLabel']
+const NTFY_KEYS = new Set(['url', 'topic', 'tokenFile'])
 const DEPLOY_REPO_KEYS = [
   'sourceDir',
   'workDir',
@@ -160,6 +173,7 @@ function validateRepo(repo, i, problems, seen) {
   if (repo.requireChecksAfterLabel !== undefined && typeof repo.requireChecksAfterLabel !== 'boolean') {
     problems.push(`${label}.requireChecksAfterLabel: must be true or false`)
   }
+  if (repo.live !== undefined && typeof repo.live !== 'boolean') problems.push(`${label}.live: must be true or false`)
 
   if (repo.mode === 'off') return
 
@@ -229,6 +243,22 @@ export function validateConfig(raw) {
   }
   if (raw.notify !== undefined && typeof raw.notify !== 'boolean') problems.push('notify: must be true or false')
   if (raw.note !== undefined && typeof raw.note !== 'string') problems.push('note: must be a string')
+  if (raw.maxMergesPerPass !== undefined && !(Number.isInteger(raw.maxMergesPerPass) && raw.maxMergesPerPass > 0)) {
+    problems.push('maxMergesPerPass: must be a positive whole number (default 2)')
+  }
+  if (raw.ignoredChecks !== undefined && !Array.isArray(raw.ignoredChecks)) problems.push('ignoredChecks: must be an array of check names')
+  else if (Array.isArray(raw.ignoredChecks) && !raw.ignoredChecks.every(isNonEmptyString)) problems.push('ignoredChecks: must be an array of check names')
+  if (raw.ntfy !== undefined) {
+    if (!isObject(raw.ntfy)) problems.push('ntfy: must be an object { url, topic } (optional tokenFile)')
+    else {
+      checkUnknownKeys(raw.ntfy, NTFY_KEYS, 'ntfy', problems)
+      if (!isNonEmptyString(raw.ntfy.url) || !/^https?:\/\/[^/\s]+\/?$/.test(raw.ntfy.url.trim())) {
+        problems.push('ntfy.url: required, the server origin such as https://ntfy.gorfed.net (the topic goes in ntfy.topic)')
+      }
+      if (!isNonEmptyString(raw.ntfy.topic) || !/^[\w-]+$/.test(raw.ntfy.topic.trim())) problems.push('ntfy.topic: required, a topic name such as ops-report')
+      if (raw.ntfy.tokenFile !== undefined && !isNonEmptyString(raw.ntfy.tokenFile)) problems.push('ntfy.tokenFile: must be a path')
+    }
+  }
 
   if (!isObject(raw.scripts)) problems.push(`scripts: required, an object with ${SCRIPT_KEYS.join(', ')}`)
   else {
@@ -263,6 +293,15 @@ export function normalizeConfig(raw, { home = homedir() } = {}) {
   const sourceRoot = x(raw.sourceRoot ?? '~/Developer/gorfednet')
   return {
     live: raw.live,
+    maxMergesPerPass: raw.maxMergesPerPass ?? 2,
+    ignoredChecks: raw.ignoredChecks ?? [...DEFAULT_IGNORED_CHECKS],
+    ntfy: raw.ntfy
+      ? {
+          url: raw.ntfy.url.trim().replace(/\/+$/, ''),
+          topic: raw.ntfy.topic.trim(),
+          tokenFile: raw.ntfy.tokenFile ? x(raw.ntfy.tokenFile) : null,
+        }
+      : null,
     allowedAuthors: raw.allowedAuthors ?? ['gorfednet'],
     stateDir,
     workRoot,
@@ -282,6 +321,8 @@ export function normalizeConfig(raw, { home = homedir() } = {}) {
         dir: repo.dir,
         mode: repo.mode,
         todo: repo.todo ?? [],
+        // A repo merges only when the global live and its own live are both true.
+        live: repo.live ?? false,
         note: repo.note ?? '',
         claudeReview: repo.claudeReview ?? false,
         expectedChecks: repo.expectedChecks ?? [],
@@ -312,7 +353,27 @@ export function normalizeConfig(raw, { home = homedir() } = {}) {
   }
 }
 
-export function loadConfig(path, opts) {
+/**
+ * Every gate script the config names must exist. Without this, a moved or
+ * deleted script fails every gate run with "cannot find module", which the
+ * bot reads as "not ready" on every pull request, for every pass, quietly.
+ *
+ * @param {{scripts: Record<string,string>}} config a normalized config
+ * @param {(p: string) => boolean} [exists]
+ * @returns {string[]} one problem per missing script, naming the key and the path
+ */
+export function missingScripts(config, exists = existsSync) {
+  return SCRIPT_KEYS.filter((key) => !exists(config.scripts[key])).map(
+    (key) => `scripts.${key}: no file at ${config.scripts[key]} (the bot cannot gate a merge without it)`,
+  )
+}
+
+/**
+ * @param {string} path
+ * @param {{home?: string, exists?: (p: string) => boolean}} [opts] `exists`
+ *   answers whether a script path is on disk (tests inject it).
+ */
+export function loadConfig(path, { exists = existsSync, ...opts } = {}) {
   let text
   try {
     text = readFileSync(path, 'utf8')
@@ -325,5 +386,8 @@ export function loadConfig(path, opts) {
   } catch (cause) {
     throw new ConfigError([`${path} is not valid JSON: ${cause.message}`])
   }
-  return normalizeConfig(raw, opts)
+  const config = normalizeConfig(raw, opts)
+  const missing = missingScripts(config, exists)
+  if (missing.length > 0) throw new ConfigError(missing)
+  return config
 }
