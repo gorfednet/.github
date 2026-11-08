@@ -22,7 +22,7 @@
  */
 import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
-import { lapsedReviewDates, validateBacklog } from '../lib/backlogSchema.mjs'
+import { lapsedReviewDates, missingDates, validateBacklog } from '../lib/backlogSchema.mjs'
 import { rejectUnknownArgument } from '../lib/cliArgs.mjs'
 import { resolveRepoSlug } from '../lib/githubSlug.mjs'
 
@@ -152,6 +152,17 @@ if (lapsed.length > 0) {
       '  pull request can change, so it does not fail this check; the scheduled fleet\n' +
       '  audit lists these until they are decided.',
   )
+}
+
+/*
+ * One line per file, not per entry: a backlog that predates `created` and
+ * `updated` would otherwise bury everything else in its output.
+ */
+const undated = missingDates(doc)
+if (undated.length > 0) {
+  const ids = undated.map((found) => found.id).join(', ')
+  const text = `${file}: ${undated.length} entr${undated.length === 1 ? 'y' : 'ies'} missing created or updated (${ids}). Add ISO dates.`
+  console.log(process.env.GITHUB_ACTIONS ? `::warning title=Backlog dates missing::${text}` : `⚠ ${text} (reported, not enforced)`)
 }
 
 const problems = validateBacklog(doc)

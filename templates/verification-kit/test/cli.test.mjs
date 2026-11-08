@@ -357,6 +357,15 @@ describe('check-backlog', () => {
     assert.match(actions.stdout, /^::warning title=Backlog reviewBy has passed::entry "deferred-and-forgotten"/m)
   })
 
+  it('warns once per file about entries missing created or updated, and still passes', () => {
+    const entry = (id, extra = {}) => ({ id, title: PROSE, status: 'confirmed-bug', assignee: 'human', userSymptom: PROSE, evidence: PROSE, ...extra })
+    const dir = backlogAt({ entries: [entry('one'), entry('two'), entry('three', { created: '2026-11-07', updated: '2026-11-07' })] })
+    const result = spawnSync('node', [bin('check-backlog.mjs')], { cwd: dir, encoding: 'utf8', env: { ...process.env, GITHUB_ACTIONS: '' } })
+    assert.equal(result.status, 0, result.stderr)
+    assert.equal(result.stdout.match(/missing created or updated/g).length, 1)
+    assert.match(result.stdout, /2 entries missing created or updated \(one, two\)/)
+  })
+
   // The near miss: a shape problem beside a lapsed date still fails, and the
   // warning is still printed so the failing run shows both.
   it('still fails on a shape problem in a backlog that also has a lapsed date', () => {

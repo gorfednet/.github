@@ -29,6 +29,7 @@ import { join } from 'node:path'
 import { FLOOR_ABOVE, tierTwoWiring } from './tier-two-wiring.mjs'
 import { MONITOR_CLASSES, assertMonitorWorkflow } from './monitor-class.mjs'
 import { dateWarnings } from './lib/fleetDates.mjs'
+import { missingDates } from '../templates/verification-kit/lib/backlogSchema.mjs'
 
 const ARCHETYPES = new Set([
   'react-spa-plus-api',
@@ -63,6 +64,7 @@ function parseArgs(argv) {
     record: argv.includes('--record'),
     report: argv.includes('--report'),
     file: argv.includes('--file') ? argv[argv.indexOf('--file') + 1] : 'fleet.json',
+    backlog: argv.includes('--backlog') ? argv[argv.indexOf('--backlog') + 1] : 'docs/backlog.json',
   }
 }
 
@@ -203,7 +205,7 @@ function repoHasFile(slug, path) {
   }
 }
 
-const { offline, file, record, report } = parseArgs(process.argv.slice(2))
+const { offline, file, record, report, backlog } = parseArgs(process.argv.slice(2))
 
 let doc
 try {
@@ -509,6 +511,17 @@ if (unreadable.size > 0) {
 const warnings = offline ? [] : dateWarnings(projects, today)
 const say = (kind, text) =>
   console.error(process.env.GITHUB_ACTIONS ? `::${kind}::${text}` : `  ${kind}: ${text}`)
+
+// `created` and `updated` are optional on backlog entries. One warning per file
+// lists the entries without them; it never changes the exit code.
+try {
+  const undated = missingDates(JSON.parse(readFileSync(backlog, 'utf8')))
+  if (undated.length > 0) {
+    say('warning', `${backlog}: ${undated.length} backlog entr${undated.length === 1 ? 'y' : 'ies'} missing created or updated (${undated.map((found) => found.id).join(', ')})`)
+  }
+} catch {
+  // No backlog here is the tier check's business, not this warning's.
+}
 
 if (report) {
   // The scheduled audit: findings are information, inability to look is failure.
