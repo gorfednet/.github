@@ -294,9 +294,9 @@
       "userSymptom": "CI fails on a commit that passes on my machine, and the failure names a file I did not touch.",
       "evidence": "gorfmusic.com PR #24: `mutation-canary: 4/5 caught` in CI, 5/5 locally, same commit. Cause chain: `npm run build` ran the card generator, whose filename hashed the rendered PNG, so CI's libvips produced a different name; the generator rewrote src/app/seo/siteMeta.ts to match; the tree went dirty; the canary that guards that file refused to mutate it. Fixed in gorfmusic by hashing the SVG source plus render settings and moving the build onto a `--check` mode that fails instead of writing. Watched red on three mutations, green on restore, and `git status --porcelain` is empty after a full build. V72.",
       "reviewBy": "2026-10-31",
-      "note": "The generalisable gate is one step in the shared pr-check workflows: run the build, then `git diff --exit-code`. It is deliberately NOT added yet - six repos hashed rendered output (4thcltr, anal0g, blackpixelrecords, denseware, gorfmusic, ssatcy) and adding the gate first would red-line five of them at once, which is the inherited-failure mistake. Order: land the per-repo fixes, then add the shared step, then prove it by reverting one repo. Same sequencing as shared-healthcheck-strictness.",
+      "note": "The generalisable gate is one step in the shared pr-check workflows: run the build, then `git diff --exit-code`. It is deliberately NOT added yet - six repos hashed rendered output (4thcltr, anal0g, blackpixelrecords, denseware, gorfmusic, ssatcy) and adding the gate first would red-line five of them at once, which is the inherited-failure mistake. Order: land the per-repo fixes, then add the shared step, then prove it by reverting one repo. Same sequencing as shared-healthcheck-strictness. 2026-11-08: the shared step now exists as an opt-in input `clean-tree-after-build` (default \"false\") in pr-check-static, -static-verify, -vite-spa and -fullstack, tested in test/buildCleanTree.test.mjs. No repo has turned it on. Stays confirmed-bug until the per-repo fixes land and callers opt in (4thcltr, anal0g, blackpixelrecords, denseware, ssatcy), then prove it by reverting one.",
       "created": "2026-09-14",
-      "updated": "2026-09-14"
+      "updated": "2026-11-08"
     },
     {
       "id": "paths-named-not-derived",
