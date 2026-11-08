@@ -4,13 +4,14 @@
     {
       "id": "html-min-bytes-applied-to-assets",
       "title": "The live healthcheck applied the HTML size floor to sitemaps and robots.txt",
-      "status": "confirmed-bug",
+      "status": "landed",
       "assignee": "main-model",
       "userSymptom": "Monday production healthchecks went red on sites that were up: gorfed.net because its sitemap is 512 bytes, denseware.com because robots.txt is 67.",
       "evidence": "https://github.com/gorfednet/gorfed.net/actions/runs/35635361413 and https://github.com/gorfednet/denseware.com/actions/runs/35631067723 on 2026-09-21. Shared production-healthcheck.yml ran min-bytes on every path; expect-text already skipped non-HTML.",
+      "note": "Fixed in 62e9b54: the floor runs only in the text/html arm; other types need a non-empty body. Guarded by the test 'looks at the body, not only the status code' and canary healthcheck-html-floor-on-xml. Re-verified 2026-11-08: suite 119 pass; widening the arm to xml fails 3 tests.",
       "reviewBy": "2026-12-01",
       "created": "2026-09-25",
-      "updated": "2026-09-25"
+      "updated": "2026-11-08"
     },
     {
       "id": "quiet-sites-paid-product-monitor-rates",
