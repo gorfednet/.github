@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-11-09T06:48:30.401Z",
-  "renderedAt": "2026-11-09T06:48:30.401Z",
+  "generatedAt": "2026-11-09T20:31:08.224Z",
+  "renderedAt": "2026-11-09T20:31:08.224Z",
   "repos": [
     {
       "slug": "gorfednet/bindercurve.com",
@@ -57,7 +57,7 @@
     {
       "slug": "gorfednet/.github",
       "defaultBranch": "main",
-      "mainRed": false,
+      "mainRed": true,
       "openPrs": [],
       "branchesAhead": [
         {
