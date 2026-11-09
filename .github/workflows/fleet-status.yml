@@ -4,7 +4,9 @@
 # branch of this repository and posts a short digest to ntfy.
 #
 # Like fleet-audit.yml it needs FLEET_READ_TOKEN (a fine-grained PAT with
-# read-only Contents, Pull requests, Actions and Metadata across gorfednet) and
+# read-only Actions, Commit statuses, Contents, Issues, Metadata and Pull requests across
+# gorfednet; there is no Checks permission for a fine-grained token, so CI state comes
+# from Actions runs and commit statuses) and
 # has no fallback: a missing token means nothing was read, so it goes red.
 # A repository it cannot read becomes an "unavailable" row and turns the job
 # red after the file is published, so the gap is visible in both places.

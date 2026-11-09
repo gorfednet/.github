@@ -207,7 +207,8 @@ export async function collectRepo(slug, now = new Date(), { includePrivate = fal
 
 /** CI state of a commit from the Actions and commit-status REST endpoints (no Checks permission needed). */
 function ciForCommit(slug, sha, json) {
-  const runs = json(['api', `repos/${slug}/actions/runs?head_sha=${sha}&per_page=100`]).workflow_runs ?? []
+  // Paginated: comment-triggered runs (claude-review) record the default branch head as head_sha and can bury main's push run past page 1.
+  const runs = json(['api', '--paginate', '--slurp', `repos/${slug}/actions/runs?head_sha=${sha}&per_page=100`]).flatMap((pg) => pg.workflow_runs ?? [])
   const status = json(['api', `repos/${slug}/commits/${sha}/status`])
   return ciState(runs, status)
 }
