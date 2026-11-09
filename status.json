@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-11-08T14:01:19.973Z",
-  "renderedAt": "2026-11-08T14:01:19.973Z",
+  "generatedAt": "2026-11-09T06:48:30.401Z",
+  "renderedAt": "2026-11-09T06:48:30.401Z",
   "repos": [
     {
       "slug": "gorfednet/bindercurve.com",
@@ -79,6 +79,22 @@
         {
           "branch": "kit/v0.29.0",
           "ahead": 3
+        },
+        {
+          "branch": "worktree-crystalline-weaving-tarjan",
+          "ahead": 1
+        },
+        {
+          "branch": "worktree-fancy-sleeping-tower",
+          "ahead": 1
+        },
+        {
+          "branch": "worktree-harmonic-marinating-harp",
+          "ahead": 1
+        },
+        {
+          "branch": "worktree-twinkling-wondering-naur",
+          "ahead": 1
         }
       ],
       "lapsedBacklog": [
