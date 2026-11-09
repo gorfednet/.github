@@ -1,63 +1,115 @@
 {
-  "generatedAt": "2026-11-09T20:39:20.609Z",
-  "renderedAt": "2026-11-09T20:39:20.609Z",
+  "generatedAt": "2026-11-09T20:57:54.028Z",
+  "renderedAt": "2026-11-09T20:57:54.028Z",
   "repos": [
     {
       "slug": "gorfednet/bindercurve.com",
-      "unavailable": "unreadable"
+      "redacted": true,
+      "mainRed": true,
+      "openPrCount": 5,
+      "lapsedBacklogCount": 0,
+      "dependabotRedCount": 4
     },
     {
       "slug": "gorfednet/4thcltr.com",
-      "unavailable": "unreadable"
+      "redacted": true,
+      "mainRed": false,
+      "openPrCount": 4,
+      "lapsedBacklogCount": 8,
+      "dependabotRedCount": 2
     },
     {
       "slug": "gorfednet/gorfed.net",
-      "unavailable": "unreadable"
+      "redacted": true,
+      "mainRed": true,
+      "openPrCount": 2,
+      "lapsedBacklogCount": 0,
+      "dependabotRedCount": 1
     },
     {
       "slug": "gorfednet/subrythm.com",
-      "unavailable": "unreadable"
+      "redacted": true,
+      "mainRed": false,
+      "openPrCount": 2,
+      "lapsedBacklogCount": 3,
+      "dependabotRedCount": 0
     },
     {
       "slug": "gorfednet/anal0g.org",
-      "unavailable": "unreadable"
+      "redacted": true,
+      "mainRed": false,
+      "openPrCount": 3,
+      "lapsedBacklogCount": 0,
+      "dependabotRedCount": 0
     },
     {
       "slug": "gorfednet/blackpixelrecords.com",
-      "unavailable": "unreadable"
+      "redacted": true,
+      "mainRed": false,
+      "openPrCount": 2,
+      "lapsedBacklogCount": 0,
+      "dependabotRedCount": 0
     },
     {
       "slug": "gorfednet/denseware.com",
-      "unavailable": "unreadable"
+      "redacted": true,
+      "mainRed": false,
+      "openPrCount": 2,
+      "lapsedBacklogCount": 0,
+      "dependabotRedCount": 0
     },
     {
       "slug": "gorfednet/gorfmusic.com",
-      "unavailable": "unreadable"
+      "redacted": true,
+      "mainRed": false,
+      "openPrCount": 2,
+      "lapsedBacklogCount": 0,
+      "dependabotRedCount": 0
     },
     {
       "slug": "gorfednet/promptboi.com",
-      "unavailable": "unreadable"
+      "redacted": true,
+      "mainRed": false,
+      "openPrCount": 1,
+      "lapsedBacklogCount": 4,
+      "dependabotRedCount": 1
     },
     {
       "slug": "gorfednet/rowanmcarthur.com",
-      "unavailable": "unreadable"
+      "redacted": true,
+      "mainRed": false,
+      "openPrCount": 0,
+      "lapsedBacklogCount": 0,
+      "dependabotRedCount": 0
     },
     {
       "slug": "gorfednet/ssatcy.com",
-      "unavailable": "unreadable"
+      "redacted": true,
+      "mainRed": false,
+      "openPrCount": 4,
+      "lapsedBacklogCount": 1,
+      "dependabotRedCount": 1
     },
     {
       "slug": "gorfednet/TowIt",
-      "unavailable": "unreadable"
+      "redacted": true,
+      "mainRed": false,
+      "openPrCount": 0,
+      "lapsedBacklogCount": 2,
+      "dependabotRedCount": 0
     },
     {
       "slug": "gorfednet/wychwood",
-      "unavailable": "unreadable"
+      "redacted": true,
+      "mainRed": false,
+      "openPrCount": 0,
+      "lapsedBacklogCount": 0,
+      "dependabotRedCount": 0
     },
     {
       "slug": "gorfednet/.github",
       "defaultBranch": "main",
-      "mainRed": true,
+      "mainRed": false,
       "openPrs": [],
       "branchesAhead": [
         {
@@ -165,7 +217,11 @@
     },
     {
       "slug": "gorfednet/MoonMan",
-      "unavailable": "unreadable"
+      "redacted": true,
+      "mainRed": true,
+      "openPrCount": 3,
+      "lapsedBacklogCount": 0,
+      "dependabotRedCount": 0
     },
     {
       "slug": "gorfednet/ACID2REAPER",
@@ -180,23 +236,43 @@
     },
     {
       "slug": "gorfednet/career-portfolio",
-      "unavailable": "unreadable"
+      "redacted": true,
+      "mainRed": false,
+      "openPrCount": 1,
+      "lapsedBacklogCount": 0,
+      "dependabotRedCount": 0
     },
     {
       "slug": "gorfednet/heuristics.4thcltr.com",
-      "unavailable": "unreadable"
+      "redacted": true,
+      "mainRed": false,
+      "openPrCount": 7,
+      "lapsedBacklogCount": 4,
+      "dependabotRedCount": 0
     },
     {
       "slug": "gorfednet/papers.4thcltr.com",
-      "unavailable": "unreadable"
+      "redacted": true,
+      "mainRed": false,
+      "openPrCount": 1,
+      "lapsedBacklogCount": 0,
+      "dependabotRedCount": 0
     },
     {
       "slug": "gorfednet/assess",
-      "unavailable": "unreadable"
+      "redacted": true,
+      "mainRed": false,
+      "openPrCount": 1,
+      "lapsedBacklogCount": 9,
+      "dependabotRedCount": 0
     },
     {
       "slug": "gorfednet/ops",
-      "unavailable": "unreadable"
+      "redacted": true,
+      "mainRed": false,
+      "openPrCount": 0,
+      "lapsedBacklogCount": 0,
+      "dependabotRedCount": 0
     }
   ]
 }
