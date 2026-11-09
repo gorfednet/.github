@@ -1022,6 +1022,23 @@ on OS, Playwright version and browser list, with no `restore-keys`. It prints
 on every hosted path, which is its item 3 line: the version is in the key, and
 the browser builds on disk are the tree to compare.
 
+**V76. A sitemap answering 200 is the envelope; the URLs it lists are the
+payload.** A check on a sitemap has to open what the sitemap says. promptboi.com
+listed `/explorations` and `/about` while both returned 404, and the monitor
+called the sitemap healthy because the file itself resolved. Crawlers were handed
+two dead pages by a check that was green.
+
+1. Fetch every `<loc>` and require HTTP 200. A sitemap is a list of canonical
+   addresses, so do not follow redirects: a 301 is a defect to report.
+   4thcltr.com listed `/manifesto`, which redirects to `/manifesto/`.
+2. A sitemap with no `<loc>` entries fails, and so does a run that verified zero
+   URLs. An empty list makes the loop run zero times and read as clean (V1).
+3. A stub that accepts and ignores `-L` cannot test a rule about `-L`. Watch the
+   mutation that follows redirects go red against a stub that honours the flag
+   (V6).
+
+The step is `expect-sitemap` in `production-healthcheck.yml`.
+
 ## Provenance
 
 Every rule above was first written in

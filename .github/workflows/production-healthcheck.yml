@@ -404,7 +404,7 @@ jobs:
           # promptboi.com advertised /explorations and /about while both returned
           # 404 to a direct request, so crawlers were being handed two dead pages
           # by a file this step reported as healthy. The URLs are the payload; the
-          # sitemap answering 200 is only the envelope.
+          # sitemap answering 200 is only the envelope (V76).
           checked=0
           for sitemap in "${sitemaps[@]}"; do
             [ -z "$sitemap" ] && continue
