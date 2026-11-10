@@ -14,7 +14,7 @@ Goal: infra first, then 4thcltr, gorfed.net, resumes (paused), MoonMan, BinderCu
 - 21 Herdr jobs are owned by fleet-coordinator-5 (heuristics deep-3, PR jobs): fleet-coordinator-6 (`local_c28083bf-5ef3-4746-adda-38290c7114f8`) decides release or close.
 - 3 red mains on the board, causes not traced (coordinator 6 asked).
 - deep-3 train: push Wed 11 Nov, merge Thu 12 Nov 9 AM ET, deploy 10 AM ET. Risk: usage above 85% before then.
-- Ship-bot stages 2 and 3 Wed 12 Nov; MoonMan deploy Sat 15 Nov.
+- Ship-bot stages 2 and 3 Thu 12 Nov; MoonMan deploy Sun 15 Nov.
 - Assess parity plan: Sonnet drafts after the Friday 5 AM ET reset; one Fable review at the end.
 
 ## Rules learned
