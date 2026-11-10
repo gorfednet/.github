@@ -296,7 +296,8 @@
       "reviewBy": "2026-10-31",
       "note": "The generalisable gate is one step in the shared pr-check workflows: run the build, then `git diff --exit-code`. It is deliberately NOT added yet - six repos hashed rendered output (4thcltr, anal0g, blackpixelrecords, denseware, gorfmusic, ssatcy) and adding the gate first would red-line five of them at once, which is the inherited-failure mistake. Order: land the per-repo fixes, then add the shared step, then prove it by reverting one repo. Same sequencing as shared-healthcheck-strictness. UPDATE 2026-11-09: the shared step landed as an opt-in input, `fail-on-build-edits` (default \"false\"), in pr-check-static, pr-check-static-verify, pr-check-vite-spa and pr-check-fullstack: after the build it runs `git diff --exit-code` and fails with the diff. Opt-in, not default, because the per-repo fixes for the other five hashing repos are not confirmed here. test/buildEditsGuard.test.mjs runs the step script on a clean and a rewritten tree. STILL OPEN: each caller sets it to \"true\" once its build leaves the tree clean (gorfmusic first, then prove by reverting one).",
       "created": "2026-09-14",
-      "updated": "2026-11-09"
+      "updated": "2026-11-09",
+      "pr": 104
     },
     {
       "id": "paths-named-not-derived",
