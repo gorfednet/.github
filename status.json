@@ -1,12 +1,12 @@
 {
-  "generatedAt": "2026-11-09T20:57:54.028Z",
-  "renderedAt": "2026-11-09T20:57:54.028Z",
+  "generatedAt": "2026-11-10T06:39:49.212Z",
+  "renderedAt": "2026-11-10T06:39:49.212Z",
   "repos": [
     {
       "slug": "gorfednet/bindercurve.com",
       "redacted": true,
-      "mainRed": true,
-      "openPrCount": 5,
+      "mainRed": false,
+      "openPrCount": 4,
       "lapsedBacklogCount": 0,
       "dependabotRedCount": 4
     },
@@ -14,15 +14,15 @@
       "slug": "gorfednet/4thcltr.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 4,
+      "openPrCount": 12,
       "lapsedBacklogCount": 8,
       "dependabotRedCount": 2
     },
     {
       "slug": "gorfednet/gorfed.net",
       "redacted": true,
-      "mainRed": true,
-      "openPrCount": 2,
+      "mainRed": false,
+      "openPrCount": 3,
       "lapsedBacklogCount": 0,
       "dependabotRedCount": 1
     },
@@ -30,7 +30,7 @@
       "slug": "gorfednet/subrythm.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 2,
+      "openPrCount": 3,
       "lapsedBacklogCount": 3,
       "dependabotRedCount": 0
     },
@@ -38,7 +38,7 @@
       "slug": "gorfednet/anal0g.org",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 3,
+      "openPrCount": 5,
       "lapsedBacklogCount": 0,
       "dependabotRedCount": 0
     },
@@ -46,7 +46,7 @@
       "slug": "gorfednet/blackpixelrecords.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 2,
+      "openPrCount": 3,
       "lapsedBacklogCount": 0,
       "dependabotRedCount": 0
     },
@@ -54,7 +54,7 @@
       "slug": "gorfednet/denseware.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 2,
+      "openPrCount": 3,
       "lapsedBacklogCount": 0,
       "dependabotRedCount": 0
     },
@@ -62,7 +62,7 @@
       "slug": "gorfednet/gorfmusic.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 2,
+      "openPrCount": 4,
       "lapsedBacklogCount": 0,
       "dependabotRedCount": 0
     },
@@ -70,7 +70,7 @@
       "slug": "gorfednet/promptboi.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 1,
+      "openPrCount": 12,
       "lapsedBacklogCount": 4,
       "dependabotRedCount": 1
     },
@@ -86,7 +86,7 @@
       "slug": "gorfednet/ssatcy.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 4,
+      "openPrCount": 6,
       "lapsedBacklogCount": 1,
       "dependabotRedCount": 1
     },
@@ -110,7 +110,151 @@
       "slug": "gorfednet/.github",
       "defaultBranch": "main",
       "mainRed": false,
-      "openPrs": [],
+      "openPrs": [
+        {
+          "number": 113,
+          "title": ".github: Mostly-static sites inherited product-site Playwright and Bugbot settings",
+          "ageDays": 0,
+          "labels": [],
+          "draft": true,
+          "review": "not-run",
+          "ci": "green",
+          "next": "Main session: merge this branch's one-line backlog change via a PR",
+          "author": "gorfednet"
+        },
+        {
+          "number": 112,
+          "title": ".github: A script that names a location instead of deriving one runs on exactly one machine",
+          "ageDays": 0,
+          "labels": [],
+          "draft": true,
+          "review": "not-run",
+          "ci": "green",
+          "next": "Main session: open the PR, merge when the gates pass.",
+          "author": "gorfednet"
+        },
+        {
+          "number": 111,
+          "title": ".github: The online half of the fleet check cannot run until FLEET_READ_TOKEN exists",
+          "ageDays": 0,
+          "labels": [],
+          "draft": true,
+          "review": "not-run",
+          "ci": "green",
+          "next": "Owner: create a fine-grained PAT (read-only Contents, Actions, Metadata on gorfednet) and add it as the secret FLEET_READ_TOKEN on gorfednet/.github",
+          "author": "gorfednet"
+        },
+        {
+          "number": 110,
+          "title": ".github: Most sites still declare a social card at a URL that cannot be replaced",
+          "ageDays": 0,
+          "labels": [],
+          "draft": true,
+          "review": "not-run",
+          "ci": "green",
+          "next": "Push, open the PR, then set the entry to `in-review` with the PR number",
+          "author": "gorfednet"
+        },
+        {
+          "number": 107,
+          "title": ".github: The rule for the sitemap class is written but cannot ship yet",
+          "ageDays": 0,
+          "labels": [],
+          "draft": true,
+          "review": "not-run",
+          "ci": "green",
+          "next": "Open the PR; fix `pr` in the backlog entry if it is not 98, set status `landed`",
+          "author": "gorfednet"
+        },
+        {
+          "number": 106,
+          "title": ".github: Every deploy to the ten NAS sites reached the filesystem and not the visitor",
+          "ageDays": 0,
+          "labels": [],
+          "draft": true,
+          "review": "not-run",
+          "ci": "red",
+          "next": "Main session: read the backlog diff, open the PR, merge.",
+          "author": "gorfednet"
+        },
+        {
+          "number": 105,
+          "title": ".github: The live healthcheck applied the HTML size floor to sitemaps and robots.txt",
+          "ageDays": 0,
+          "labels": [],
+          "draft": true,
+          "review": "not-run",
+          "ci": "red",
+          "next": "Main session: merge the backlog stamp (PR, docs-only).",
+          "author": "gorfednet"
+        },
+        {
+          "number": 103,
+          "title": "Handoff: recovery of 38 failed Herdr jobs",
+          "ageDays": 0,
+          "labels": [],
+          "draft": true,
+          "review": "not-run",
+          "ci": "green",
+          "next": "Main session: run the gates and merge (docs-only).",
+          "author": "gorfednet"
+        },
+        {
+          "number": 102,
+          "title": "build-rewrites-tracked-files",
+          "ageDays": 0,
+          "labels": [],
+          "draft": true,
+          "review": "not-run",
+          "ci": "green",
+          "next": "Review and merge the PR",
+          "author": "gorfednet"
+        },
+        {
+          "number": 101,
+          "title": "quiet-sites-paid-product-monitor-rates",
+          "ageDays": 0,
+          "labels": [],
+          "draft": true,
+          "review": "not-run",
+          "ci": "red",
+          "next": "Main session: merge the one-commit backlog change",
+          "author": "gorfednet"
+        },
+        {
+          "number": 100,
+          "title": "html-min-bytes-applied-to-assets",
+          "ageDays": 0,
+          "labels": [],
+          "draft": true,
+          "review": "not-run",
+          "ci": "red",
+          "next": "Main session: merge the docs-only branch.",
+          "author": "gorfednet"
+        },
+        {
+          "number": 99,
+          "title": "fleet-audit-needs-a-token: stopped, no code change",
+          "ageDays": 0,
+          "labels": [],
+          "draft": true,
+          "review": "not-run",
+          "ci": "red",
+          "next": "Owner: create the PAT and run `gh secret set FLEET_READ_TOKEN --repo gorfednet/.github`",
+          "author": "gorfednet"
+        },
+        {
+          "number": 98,
+          "title": "cards-at-overwritable-urls",
+          "ageDays": 0,
+          "labels": [],
+          "draft": true,
+          "review": "not-run",
+          "ci": "red",
+          "next": "Review the diff and open a PR (`claude review`).",
+          "author": "gorfednet"
+        }
+      ],
       "branchesAhead": [
         {
           "branch": "chore/recapture-promptboi-api-vhost",
@@ -131,22 +275,6 @@
         {
           "branch": "kit/v0.29.0",
           "ahead": 3
-        },
-        {
-          "branch": "worktree-crystalline-weaving-tarjan",
-          "ahead": 1
-        },
-        {
-          "branch": "worktree-fancy-sleeping-tower",
-          "ahead": 1
-        },
-        {
-          "branch": "worktree-harmonic-marinating-harp",
-          "ahead": 1
-        },
-        {
-          "branch": "worktree-twinkling-wondering-naur",
-          "ahead": 1
         }
       ],
       "lapsedBacklog": [
@@ -197,7 +325,7 @@
         },
         {
           "id": "build-rewrites-tracked-files",
-          "status": "confirmed-bug",
+          "status": "landed",
           "reviewBy": "2026-10-31"
         },
         {
@@ -247,14 +375,14 @@
       "redacted": true,
       "mainRed": false,
       "openPrCount": 7,
-      "lapsedBacklogCount": 4,
+      "lapsedBacklogCount": 6,
       "dependabotRedCount": 0
     },
     {
       "slug": "gorfednet/papers.4thcltr.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 1,
+      "openPrCount": 3,
       "lapsedBacklogCount": 0,
       "dependabotRedCount": 0
     },
