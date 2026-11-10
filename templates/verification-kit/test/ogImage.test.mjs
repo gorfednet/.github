@@ -68,6 +68,22 @@ const run = ({ dir, pagePath }, extra = []) =>
   )
 
 describe('check-og-image', () => {
+  it('--require-hashed-name fails a card at a fixed, overwritable name', () => {
+    const fixture = project({ file: 'og-image.png' , html: page({ image: `${SITE}/og-image.png` }) })
+    const result = run(fixture, ['--require-hashed-name'])
+    assert.equal(result.status, 1)
+    assert.match(result.stderr, /no content hash in its name/)
+  })
+
+  it('--require-hashed-name passes a hashed name and a near-miss word is not a hash', () => {
+    const ok = project({ file: 'og-card-0a1b2c3d4e5f.png', html: page({ image: `${SITE}/og-card-0a1b2c3d4e5f.png` }) })
+    assert.equal(run(ok, ['--require-hashed-name']).status, 0)
+    const near = project({ file: 'og-card-latest.png', html: page({ image: `${SITE}/og-card-latest.png` }) })
+    assert.equal(run(near, ['--require-hashed-name']).status, 1)
+    // Without the flag a fixed name still passes: the check is opt-in per site.
+    assert.equal(run(project({ file: 'og-image.png', html: page({ image: `${SITE}/og-image.png` }) })).status, 0)
+  })
+
   it('passes a 1200x630 PNG that matches its name and declarations', () => {
     const fixture = project({
       html: page({ width: '1200', height: '630', type: 'image/png' }),

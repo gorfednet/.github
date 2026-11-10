@@ -19,14 +19,19 @@
  *     --root dist                  where the site's URL paths resolve on disk
  *     --page dist/index.html [--page ...]
  *     [--width 1200] [--height 630] [--max-bytes 300000] [--min-pages <n>]
+ *     [--require-hashed-name]   the file name must carry a content hash (og-card-<hex8+>.png)
+ *
+ * The vhost serves images with `Cache-Control: public, immutable` for a year, so a
+ * card replaced at a fixed name reaches nobody. --require-hashed-name makes the URL
+ * change when the pixels do (ssatcy.com's scripts/generate-og-image.mjs is the pattern).
  */
 import { readFileSync, statSync } from 'node:fs'
-import { extname, join } from 'node:path'
+import { basename, extname, join } from 'node:path'
 import { EXTENSION_FORMATS, FORMAT_MIME, imageMeta } from '../lib/imageMeta.mjs'
 import { headOf, metaValues } from '../lib/htmlHead.mjs'
 
 function parseArgs(argv) {
-  const args = { siteUrl: '', root: '.', pages: [], width: 1200, height: 630, maxBytes: 300_000, minPages: 1 }
+  const args = { siteUrl: '', root: '.', pages: [], width: 1200, height: 630, maxBytes: 300_000, minPages: 1, hashedName: false }
   for (let i = 0; i < argv.length; i += 1) {
     const next = () => {
       const value = argv[i + 1] ?? ''
@@ -39,12 +44,13 @@ function parseArgs(argv) {
     else if (argv[i] === '--width') args.width = Number.parseInt(next(), 10)
     else if (argv[i] === '--height') args.height = Number.parseInt(next(), 10)
     else if (argv[i] === '--max-bytes') args.maxBytes = Number.parseInt(next(), 10)
+    else if (argv[i] === '--require-hashed-name') args.hashedName = true
     else if (argv[i] === '--min-pages') args.minPages = Number.parseInt(next(), 10)
   }
   return args
 }
 
-const { siteUrl, root, pages, width, height, maxBytes, minPages } = parseArgs(process.argv.slice(2))
+const { siteUrl, root, pages, width, height, maxBytes, minPages, hashedName } = parseArgs(process.argv.slice(2))
 const problems = []
 const fail = (where, message) => problems.push(`${where}: ${message}`)
 
@@ -117,6 +123,14 @@ for (const { url, declared, pages: sources } of referencedBy.values()) {
     continue
   }
   checked += 1
+
+  if (hashedName && !/[-_.][0-9a-f]{8,}\.[a-z0-9]+$/i.test(basename(path))) {
+    fail(
+      where,
+      `${path} has no content hash in its name. Images are served immutable for a year, ` +
+        'so replacing a card at this URL reaches nobody; name it og-card-<hash>.png and change the name when the pixels change',
+    )
+  }
 
   const extension = extname(path).toLowerCase()
   const allowed = EXTENSION_FORMATS[extension]
