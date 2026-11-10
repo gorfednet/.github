@@ -21,3 +21,9 @@ Goal: infra first, then 4thcltr, gorfed.net, resumes (paused), MoonMan, BinderCu
 - Rerunning only failed jobs fails when the build artifact has expired: update the branch or push a fresh run.
 - Fine-grained tokens cannot read `statusCheckRollup`; use Actions runs and commit statuses.
 - Gate pushes on the test exit code (`cmd && git push`), not a chain that continues on failure.
+
+## Tracking gaps found 9 Nov (night)
+- Red mains, traced: MoonMan `CI` red since 7 Nov (#291 and #296 self-heal); gorfed.net `production-healthcheck` failed Monday 9 Nov and Monday 2 Nov (a weekly live-site check: real fault or flake, undecided; denseware #29 shows the same Monday pattern); bindercurve.com showed red on the board but has no failing main run in its last 30, so likely a stale run (recheck on the next board).
+- bindercurve.com and MoonMan have no `docs/backlog.json` (plan item D not done): their open work lives in PRs and Markdown only.
+- The public STATUS.md redacts private repos to counts, so per-PR checks (`## Next`, age, labels) need `fleet-status --local`.
+- A `## Next` item on a merged PR is lost: ops #57's Low follow-up (the claiming gate should exclude only `done`) needs an entry in ops `docs/operating-backlog.json`.
