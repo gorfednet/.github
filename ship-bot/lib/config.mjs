@@ -241,6 +241,11 @@ function validateRepo(repo, i, problems, seen) {
       }
     }
   }
+  if (repo.release !== undefined) {
+    // A release deploy diffs only its own merge commit, so an earlier merge with no Release line (merged, never deployed) would escape both.
+    if (Array.isArray(repo.pausedIfChanged) && repo.pausedIfChanged.length > 0) problems.push(`${label}.release: cannot be combined with pausedIfChanged (a release deploys everything merged since the last one, not just its own diff)`)
+    if (Array.isArray(repo.deploy) && repo.deploy.some((d) => d?.onlyIfChanged)) problems.push(`${label}.release: cannot be combined with onlyIfChanged deploy steps (same reason)`)
+  }
   validateSteps(repo.setup ?? [], `${label}.setup`, problems, { allowOnlyIfChanged: false })
   validateSteps(repo.deploy, `${label}.deploy`, problems, { allowOnlyIfChanged: true })
   if (Array.isArray(repo.deploy) && repo.deploy.length === 0) problems.push(`${label}.deploy: needs at least one step`)

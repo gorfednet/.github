@@ -69,6 +69,8 @@ describe('config validation', () => {
     assert.match(problemsFor(base([deployRepo({ release: { tagPrefix: 'v/1' } })])), /tagPrefix: must be up to 8 letters/)
     assert.match(problemsFor(base([deployRepo({ release: { tag: 'v' } })])), /unknown key "tag"/)
     assert.match(problemsFor(base([deployRepo({ release: true })])), /release: must be an object/)
+    assert.match(problemsFor(base([deployRepo({ release: {}, pausedIfChanged: ['server/'] })])), /cannot be combined with pausedIfChanged/)
+    assert.match(problemsFor(base([deployRepo({ release: {}, deploy: [{ name: 'a', command: ['x'] }, { name: 'b', command: ['y'], onlyIfChanged: ['s/'] }] })])), /cannot be combined with onlyIfChanged/)
     const [withRelease, without] = normalizeConfig(base([deployRepo({ release: {} }), { ...deployRepo({ slug: 'gorfednet/b', dir: 'b' }) }]), { home: HOME }).repos
     assert.deepEqual(withRelease.release, { tagPrefix: 'v' })
     assert.equal(without.release, null)
