@@ -1,11 +1,11 @@
 {
-  "generatedAt": "2026-11-11T06:40:58.369Z",
-  "renderedAt": "2026-11-11T06:40:58.369Z",
+  "generatedAt": "2026-11-11T13:46:54.259Z",
+  "renderedAt": "2026-11-11T13:46:54.259Z",
   "repos": [
     {
       "slug": "gorfednet/bindercurve.com",
       "redacted": true,
-      "mainRed": false,
+      "mainRed": true,
       "openPrCount": 2,
       "lapsedBacklogCount": 0,
       "dependabotRedCount": 1
@@ -22,9 +22,9 @@
       "slug": "gorfednet/gorfed.net",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 2,
+      "openPrCount": 1,
       "lapsedBacklogCount": 0,
-      "dependabotRedCount": 1
+      "dependabotRedCount": 0
     },
     {
       "slug": "gorfednet/subrythm.com",
@@ -38,7 +38,7 @@
       "slug": "gorfednet/anal0g.org",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 2,
+      "openPrCount": 1,
       "lapsedBacklogCount": 0,
       "dependabotRedCount": 0
     },
@@ -62,7 +62,7 @@
       "slug": "gorfednet/gorfmusic.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 1,
+      "openPrCount": 0,
       "lapsedBacklogCount": 0,
       "dependabotRedCount": 0
     },
@@ -70,7 +70,7 @@
       "slug": "gorfednet/promptboi.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 5,
+      "openPrCount": 2,
       "lapsedBacklogCount": 3,
       "dependabotRedCount": 1
     },
@@ -111,6 +111,28 @@
       "defaultBranch": "main",
       "mainRed": false,
       "openPrs": [
+        {
+          "number": 115,
+          "title": "ship-bot: deploy rows for heuristics and papers (observation) and the flip plan",
+          "ageDays": 0,
+          "labels": [],
+          "draft": false,
+          "review": "clean",
+          "ci": "green",
+          "next": "`claude review`, triage",
+          "author": "gorfednet"
+        },
+        {
+          "number": 114,
+          "title": "Handoff: release loop 2 (11 Nov)",
+          "ageDays": 0,
+          "labels": [],
+          "draft": false,
+          "review": "not-run",
+          "ci": "green",
+          "next": "Merge when checks are green.",
+          "author": "gorfednet"
+        },
         {
           "number": 113,
           "title": ".github: Mostly-static sites inherited product-site Playwright and Bugbot settings",
@@ -347,7 +369,7 @@
       "slug": "gorfednet/MoonMan",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 2,
+      "openPrCount": 1,
       "lapsedBacklogCount": 0,
       "dependabotRedCount": 0
     },
@@ -374,7 +396,7 @@
       "slug": "gorfednet/heuristics.4thcltr.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 3,
+      "openPrCount": 4,
       "lapsedBacklogCount": 10,
       "dependabotRedCount": 0
     },
@@ -390,7 +412,7 @@
       "slug": "gorfednet/assess",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 1,
+      "openPrCount": 2,
       "lapsedBacklogCount": 10,
       "dependabotRedCount": 0
     },
