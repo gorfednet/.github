@@ -483,8 +483,7 @@
     {
       "slug": "gorfednet/4thcltr.com",
       "dir": "4thcltr.com",
-      "mode": "merge-only",
-      "reason": "it ships on a release tag, and the bot deploys merge commits, which are never tagged",
+      "mode": "deploy",
       "claudeReview": true,
       "live": false,
       "requireChecksAfterLabel": true,
@@ -501,7 +500,75 @@
         "e2e (8)",
         "e2e-gate"
       ],
-      "note": "The e2e sweep runs only when the PR carries ready-to-merge (CI listens for `labeled`). e2e-gate passes when e2e was skipped, so each shard is listed and must be a success, and the checks must post-date the label. heavy-runner-preflight is left out (a pool preflight, duplicated by label re-runs); the shards and e2e-gate prove the sweep ran. Deploy stays a session's job until the bot can deploy a tag (README, Deploy automation plan): make deploy refuses any HEAD that is not on an exact release tag, so a deploy of the merge commit would be refused every time."
+      "envFiles": [
+        ".deploy-env"
+      ],
+      "release": {
+        "tagPrefix": "v"
+      },
+      "siblings": [
+        {
+          "dir": "gorfednet.github",
+          "slug": "gorfednet/.github",
+          "branch": "main"
+        }
+      ],
+      "setup": [
+        {
+          "name": "build",
+          "command": [
+            "make",
+            "build"
+          ],
+          "timeoutMinutes": 30,
+          "note": "make build = npm ci, then npm run build (typecheck, i18n, routes, release:check, Vite, analytics, urls, build stamp). It runs after the bot has tagged the merge commit, because the build stamps the version from git describe."
+        },
+        {
+          "name": "recommendations check",
+          "command": [
+            "npm",
+            "run",
+            "--silent",
+            "recommendations:check"
+          ],
+          "timeoutMinutes": 10
+        }
+      ],
+      "deploy": [
+        {
+          "name": "upload",
+          "command": [
+            "./deploy.sh"
+          ],
+          "timeoutMinutes": 20,
+          "note": "deploy.sh runs require-release-tag.sh (HEAD on an exact tag, clean tree), then the shared engine: refuses anything but the merged tip of origin/main and an upload not built from HEAD, uploads an immutable release, switches current, prunes, and compares the live index.html byte for byte (switching back itself on a mismatch)."
+        },
+        {
+          "name": "live check",
+          "command": [
+            "npm",
+            "run",
+            "headers:live"
+          ],
+          "timeoutMinutes": 15,
+          "note": "DEPLOY.md runs this after every release. It reads the live site through Cloudflare, so a header change that needs a cache purge can fail it on a good release; a first live week may show a false alarm."
+        }
+      ],
+      "rollback": [
+        {
+          "name": "previous release",
+          "command": [
+            "make",
+            "rollback"
+          ],
+          "timeoutMinutes": 10,
+          "onlyAfterFailureOf": [
+            "live check"
+          ],
+          "note": "Switches current back to the previous release. Only after the live check fails, the one step that fails after the release went live; a failure in upload either published nothing or switched itself back. The default (redeploy the previous commit) cannot work for this engine."
+        }
+      ],
+      "note": "A pull request is a release only when its description has a line `Release: X.Y.Z One sentence.` (lib/release.mjs). The bot then merges, tags the merge commit with that sentence (annotated, pushed, never forced, never deleted), builds, deploys and creates the GitHub release, as `npm run release` plus `make deploy` do by hand. A pull request with no such line is merged and nothing else. The version must be higher than the newest tag. `npm run rates` is not run by the bot: the labelling session commits it in the pull request first (DEPLOY.md, step 1). The e2e sweep runs only when the PR carries ready-to-merge (CI listens for `labeled`). e2e-gate passes when e2e was skipped, so each shard is listed and must be a success, and the checks must post-date the label. heavy-runner-preflight is left out (a pool preflight, duplicated by label re-runs)."
     },
     {
       "slug": "gorfednet/ACID2REAPER",

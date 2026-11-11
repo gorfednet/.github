@@ -53,9 +53,29 @@ describe('config validation', () => {
     // The job-folder tests (verify.sh local) need the owner's assess jobs folder.
     assert.equal(rows['heuristics.4thcltr.com'].env.ASSESS_JOBS, '~/Developer/gorfednet/assess/jobs')
     assert.equal(rows['heuristics.4thcltr.com'].deploy.at(-1).name, 'live check')
-    assert.equal(rows['4thcltr.com'].mode, 'merge-only', 'it ships on a release tag, which a merge commit never is')
+    // 4thcltr.com ships only from a release tag: the row says so, and its tag gate runs after the bot's tag (setup is build, not deploy).
+    const site = rows['4thcltr.com']
+    assert.equal(site.mode, 'deploy')
+    assert.deepEqual(site.release, { tagPrefix: 'v' })
+    assert.deepEqual(site.deploy.map((d) => d.name), ['upload', 'live check'])
+    assert.deepEqual(site.rollback.map((r) => [r.command.join(' '), r.onlyAfterFailureOf.join()]), [['make rollback', 'live check']])
     const config = normalizeConfig(example(), { home: HOME })
     assert.equal(config.repos.find((r) => r.name === 'heuristics.4thcltr.com').env.ASSESS_JOBS, join(HOME, 'Developer', 'gorfednet', 'assess', 'jobs'))
+  })
+
+  it('release: an optional object with a letters-only tagPrefix; defaults to v; off for every other row', () => {
+    assert.deepEqual(validateConfig(base([deployRepo({ release: {} })])), [])
+    assert.deepEqual(validateConfig(base([deployRepo({ release: { tagPrefix: 'rel' } })])), [])
+    assert.match(problemsFor(base([deployRepo({ release: { tagPrefix: 'v/1' } })])), /tagPrefix: must be up to 8 letters/)
+    assert.match(problemsFor(base([deployRepo({ release: { tag: 'v' } })])), /unknown key "tag"/)
+    assert.match(problemsFor(base([deployRepo({ release: true })])), /release: must be an object/)
+    assert.match(problemsFor(base([deployRepo({ release: {}, pausedIfChanged: ['server/'] })])), /cannot be combined with pausedIfChanged/)
+    assert.match(problemsFor(base([deployRepo({ release: {}, deploy: [{ name: 'a', command: ['x'] }, { name: 'b', command: ['y'], onlyIfChanged: ['s/'] }] })])), /cannot be combined with onlyIfChanged/)
+    const [withRelease, without] = normalizeConfig(base([deployRepo({ release: {} }), { ...deployRepo({ slug: 'gorfednet/b', dir: 'b' }) }]), { home: HOME }).repos
+    assert.deepEqual(withRelease.release, { tagPrefix: 'v' })
+    assert.equal(without.release, null)
+    const mergeOnly = { slug: 'gorfednet/m', dir: 'm', mode: 'merge-only', reason: 'x', claudeReview: true, expectedChecks: ['c'], release: {} }
+    assert.match(problemsFor(base([mergeOnly])), /unknown key "release"/)
   })
 
   it('env: names and values are checked, and a GitHub token is refused', () => {
@@ -89,7 +109,7 @@ describe('config validation', () => {
       'subrythm.com': 'deploy',
       'promptboi.com': 'deploy',
       'bindercurve.com': 'merge-only',
-      '4thcltr.com': 'merge-only',
+      '4thcltr.com': 'deploy',
       ACID2REAPER: 'merge-only',
       '.github': 'merge-only',
       assess: 'merge-only',
