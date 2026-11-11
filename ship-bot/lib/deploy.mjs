@@ -206,10 +206,11 @@ async function rollBack(ctx, log, repo, { parent, selected, failedStep }) {
  * push names the one tag and never forces. A tag the bot has pushed is never
  * deleted, even when the deploy that follows fails and rolls back.
  */
-async function tagRelease(ctx, log, repo, mergeSha, release) {
+async function tagRelease(ctx, log, repo, mergeSha, release, onPushing = () => {}) {
   const path = repo.workDir
   log.write(`\n[ship-bot] tagging ${mergeSha.slice(0, 7)} as ${release.tag}\n`)
   await git(ctx, log, path, `tag ${release.tag}`, ['-c', 'user.name=ship-bot', '-c', 'user.email=ship-bot@gorfed.net', 'tag', '-f', '-a', release.tag, '-m', release.message, mergeSha])
+  onPushing()
   await git(ctx, log, path, `push ${release.tag}`, ['push', 'origin', `refs/tags/${release.tag}`])
   await git(ctx, log, path, `${release.tag} is on HEAD`, ['describe', '--tags', '--exact-match', 'HEAD'])
 }
@@ -243,8 +244,10 @@ export async function deployMerged(ctx, repo, { mergeSha, log, release = null })
   let tagged = 'no'
   if (release) {
     try {
-      tagged = 'maybe'
-      await tagRelease(ctx, log, repo, mergeSha, release)
+      // 'maybe' only once the push has started: a failure of the local tag step reached nothing on GitHub.
+      await tagRelease(ctx, log, repo, mergeSha, release, () => {
+        tagged = 'maybe'
+      })
       tagged = 'yes'
     } catch (cause) {
       // Nothing live changed. The tag may exist on GitHub if only the check after the push failed; the report says to look.
