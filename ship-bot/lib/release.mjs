@@ -39,7 +39,7 @@ export function parseRelease(body) {
   const text = String(body ?? '').replace(/\r\n?/g, '\n')
   const lines = [...text.matchAll(LINE)]
   // A line that starts "Release:" but does not parse is a typo to report, not a pull request to merge as a non-release.
-  const attempted = text.split('\n').filter((l) => /^Release:/.test(l)).length
+  const attempted = text.split('\n').filter((l) => /^\s*(?:[-*>]\s*)?\**release\s*:\**\s*v?\d/i.test(l)).length
   if (attempted === 0) return { kind: 'none' }
   if (attempted > 1) return { kind: 'invalid', reason: `the description has ${attempted} "Release:" lines; it must have exactly one` }
   if (lines.length === 0) return { kind: 'invalid', reason: 'the "Release:" line needs a version and a sentence: `Release: 3.9.7 One sentence.`' }

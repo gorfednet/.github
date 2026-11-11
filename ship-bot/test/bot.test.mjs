@@ -1153,6 +1153,10 @@ describe('release tags (a repository that ships only from a tag)', () => {
       'Release: v3.9.7 Leading v.': /not a bare X\.Y\.Z/,
       'Release: 3.9.7 One.\nRelease: 3.9.8 Two.': /2 "Release:" lines/,
       'Release: 3.9.7': /needs a version and a sentence/,
+      'release: 3.9.7 Lower case.': /needs a version and a sentence/,
+      '- Release: 3.9.7 In a list.': /needs a version and a sentence/,
+      '**Release:** 3.9.7 Bold.': /needs a version and a sentence/,
+      ' Release: 3.9.7 Leading space.': /needs a version and a sentence/,
       'Release 3.9.7 No colon, so it is a plain description.': null,
     }
     for (const [body, expected] of Object.entries(bad)) {
