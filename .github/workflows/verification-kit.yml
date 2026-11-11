@@ -38,11 +38,21 @@ jobs:
       # (the runner image ships a Chrome source this build has no use for), the
       # install may not.
       - name: Install ripgrep
+        # From the release tarball, not apt: on 11 November 2026 ubuntu-latest
+        # moved to the 26.04 image, which ships no rg and whose apt could not
+        # resolve security.ubuntu.com, and 24.04's apt hung the same way. Every
+        # kit run from 9:02 AM ET that day, main included, failed here. The
+        # tarball is pinned by version and sha256.
+        env:
+          RG_VERSION: 14.1.1
+          RG_SHA256: 4cf9f2741e6c465ffdb7c26f38056a59e2a2544b51f7cc128ef28337eeae4d8e
         run: |
           set -euo pipefail
           if ! command -v rg >/dev/null 2>&1; then
-            sudo apt-get update -qq || echo "apt-get update reported errors; continuing"
-            sudo apt-get install -y -qq ripgrep
+            curl -fsSL -o /tmp/rg.tgz "https://github.com/BurntSushi/ripgrep/releases/download/${RG_VERSION}/ripgrep-${RG_VERSION}-x86_64-unknown-linux-musl.tar.gz"
+            echo "${RG_SHA256}  /tmp/rg.tgz" | sha256sum -c -
+            tar -xzf /tmp/rg.tgz -C /tmp
+            sudo install -m 0755 "/tmp/ripgrep-${RG_VERSION}-x86_64-unknown-linux-musl/rg" /usr/local/bin/rg
           fi
           rg --version | head -1
 
