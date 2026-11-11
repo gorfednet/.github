@@ -12,16 +12,15 @@ Fleet close-out plan item R6 / 1.1 (`docs/handoff/2026-11-11-fleet-close-out.md`
 - Verification rule 4, local half: with both claims in `draftClaim` replaced by `false` (on db9f174's `drafts.mjs`), 6 of the then 15 draft tests failed; restored, all pass. The dry-run half on PR 119 itself: the refusing line while checks ran is in the PR body; the review-not-run and accepting lines are still to be captured once the PR's kit run is green.
 
 ## Next
-- [ ] Once PR 123 is merged, merge `origin/main` into `claude/ship-bot-draft-rule-2fa386` and push (229dae1 plus the merge). Comment `claude review` on that head, on a line by itself. Expect clean: the merge of main carries no ship-bot code and 229dae1 answers the last finding.
-- [ ] Reply to review thread 4539791532 on PR 119 with the commit that fixed it.
-- [ ] From the worktree, run `node ship-bot/ship-bot.mjs --dry-run --once --verbose --repo .github` twice: once while review-status says `not-run` on the head (expect `would comment: claude review`), once after it says `clean` (expect `would mark ready and add ready-to-merge`). Paste both lines into the PR body under "Dry-run proof".
+- [ ] Review round 7 finding on 8a274b6 (thread 4539845276), the one piece of code left: once the bot labels a draft, nothing re-reads `## Next`, so a wait written there after the label is ignored and a later head merges on the label alone. Fix: in `takeDraft` mark the head state (`labelledByBot: true`, with the sha); in `processPull`, for a pull request whose state says the bot labelled it, call `draftClaim(pr)` again before merging and refuse (log, and remove `ready-to-merge` live) when the claim is gone or the head moved. Test both. Then comment `claude review` on that head.
+- [ ] Set the PR body's `## Next` first unchecked line to `- [ ] merge` (the dry run on 11 November at 11:36 AM ET read the rewritten `## Next` and said `draft left alone (no merge line under ## Next)`, which is the rule working, not the proof wanted). Then run `node ship-bot/ship-bot.mjs --dry-run --once --verbose --repo .github` twice: once while review-status says `not-run` on the head (expect `would comment: claude review`), once after it says `clean` (expect `would mark ready and add ready-to-merge`). Paste both lines into the PR body under "Dry-run proof".
 - [ ] Read the gates: `scripts/gates/assert-checks-started.mjs --pr 119`, `scripts/review-status.mjs --pr 119`, `GH_TOKEN=$(gh auth token) GITHUB_REPOSITORY=gorfednet/.github scripts/gates/check-closing-keywords.mjs --pr 119`. Then `gh pr ready 119` and `gh pr edit 119 --add-label ready-to-merge`. Ship-bot merges.
 - [ ] After the merge: `ship-bot/install.sh` so the launchd copy carries the rule (it runs `check.sh` first). Then plan step 0.5, the config rows.
 - [ ] Later, its own PR if wanted: the docs-only branch, with the edge cases from rounds 2 to 5 (renames, `src/content/*.md`, a `docs/` route, a wait line beside a docs diff) as its tests.
 
 ## Open PRs
-- gorfednet/.github#119: draft, review findings on a4d0c6f (fixed locally in 229dae1, unpushed), kit run red only because the branch predates PR 123's ripgrep fix. Needs the merge of main, one review, gates, ready, label.
-- gorfednet/.github#123: green, review clean, `ready-to-merge`; ship-bot merges.
+- gorfednet/.github#119: draft, head 8a274b6, kit green, review round 7 has 1 finding (above). Needs that fix, one review, the dry-run proof, gates, ready, label.
+- gorfednet/.github#123: merged by ship-bot at about 10:55 AM ET.
 - gorfednet/.github#121 (another session, draft): "no-smb-guard: no apt ripgrep install". Overlaps PR 123 in intent; whoever picks it up should rebase on PR 123's step or close it.
 
 ## Blockers
@@ -30,5 +29,5 @@ Fleet close-out plan item R6 / 1.1 (`docs/handoff/2026-11-11-fleet-close-out.md`
 ## Decisions
 - 11 November 2026: the bot comments `claude review` on a draft and marks it ready once clean, as the brief said. Marking ready fires a second review (`ready_for_review`), so a head the bot readied is held for `reviewGraceMinutes` and that review's check is waited on. The alternative, mark ready first and let `ready_for_review` be the only review, halves review spend and is for the owner to choose later.
 - 11 November 2026: label before `markReady`, so a failed `markReady` leaves a labelled draft the next pass retries.
-- 11 November 2026: the docs-only branch is cut from this PR (coordinating session, after 5 review rounds). The stop line in the brief was round 4; round 6 was taken to close the last Medium rather than merge a known hole.
+- 11 November 2026: the docs-only branch is cut from this PR (coordinating session, after 5 review rounds). The stop line in the brief was round 4; rounds 6 and 7 were taken to close Medium findings rather than merge a known hole, and the session stopped after round 7's finding as the coordinating session asked.
 - 11 November 2026: the kit job stays on `ubuntu-latest`; ripgrep comes from the release tarball, pinned by version and sha256. A pin to `ubuntu-24.04` was tried first and sat in the same apt step.
