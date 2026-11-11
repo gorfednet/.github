@@ -1155,6 +1155,7 @@ describe('release tags (a repository that ships only from a tag)', () => {
       'Release: 3.9.7': /needs a version and a sentence/,
       'release: 3.9.7 Lower case.': /needs a version and a sentence/,
       '- Release: 3.9.7 In a list.': /needs a version and a sentence/,
+      'Release: next One sentence.': /is not a bare X\.Y\.Z/,
       '`Release: 3.9.7 In backticks.`': /needs a version and a sentence/,
       '## Release: 3.9.7 Heading.': /needs a version and a sentence/,
       '1. Release: 3.9.7 Numbered.': /needs a version and a sentence/,
