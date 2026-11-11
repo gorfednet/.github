@@ -14,7 +14,8 @@ const MERGE_INSTRUCTION = /^\W*(merge|open the pr)\b/i
 /** "Merge later" or "merge once the owner answers" starts with merge and is not an instruction to. */
 const NOT_YET = /\b(not|no|don[’']?t|dont|never|wait|until|unless|after|before|hold|once|if|yet|later)\b/i
 export const isMergeInstruction = (line) => MERGE_INSTRUCTION.test(line) && !NOT_YET.test(line)
-const DOCS_FILE = /(\.md$|^(.*\/)?docs\/)/i
+/** Top-level *.md and anything under the repository's docs/. A .md under src/content/ is a published page, not documentation. */
+const DOCS_FILE = /^(docs\/.+|[^/]+\.md)$/i
 
 /**
  * Cheap filters on a draft, mirroring gates.mjs ineligibleReason without the
@@ -49,7 +50,7 @@ export function firstNextItem(body) {
   return null
 }
 
-/** Every file is documentation or backlog: `*.md`, anything under `docs/`. An empty diff is not docs-only. */
+/** Every file is documentation or backlog: a top-level `*.md`, anything under `docs/`. An empty diff is not docs-only. */
 export const isDocsOnly = (files) => files.length > 0 && files.every((f) => DOCS_FILE.test(f))
 
 /**

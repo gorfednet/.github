@@ -19,9 +19,10 @@ describe('which drafts are the bot\'s', () => {
     assert.equal(firstNextItem('no section'), null)
     assert.equal(firstNextItem(null), null)
   })
-  it('docs-only means every file is *.md or under docs/, and an empty diff is not', () => {
-    assert.equal(isDocsOnly(['README.md', 'docs/backlog.json', 'ship-bot/docs/x.yml']), true)
+  it('docs-only means every file is a top-level *.md or under docs/; content pages, a docs route and an empty diff are not', () => {
+    assert.equal(isDocsOnly(['README.md', 'docs/backlog.json', 'docs/handoff/2026-11-11-x.md']), true)
     assert.equal(isDocsOnly(['docs/a.md', 'ship-bot/lib/bot.mjs']), false)
+    for (const f of ['src/content/blog/unpublished.md', 'src/app/docs/page.tsx', 'ship-bot/docs/x.yml', 'ship-bot/README.md']) assert.equal(isDocsOnly([f]), false, f)
     assert.equal(isDocsOnly([]), false)
   })
   it('claims by merge line ("merge", "open the PR") or by docs-only diff, else not; files are listed only when the line did not claim it', async () => {
