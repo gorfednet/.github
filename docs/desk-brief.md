@@ -55,3 +55,7 @@ Plan items 1.2 (herdr registry) and 1.1 (ship-bot draft rule) run first. Then:
 2. 1.3: check and reviewer onto the pool, Sonnet.
 3. The deep-4 train for Costco 76 and Verizon 77: one Sonnet session per study, AI Use Levels tag at import, one Fable review on the train.
 4. The remaining tracks.
+
+## Starting sessions
+
+The app lets a session start sessions only in a turn the owner began. A turn begun by another session's message, a CI wake or a timer can only leave cards, so propose every ready card in one batch at the start of such a turn and say plainly which cards wait on the owner's click. Never tell the owner a start is 'queued for the next pass' without a card or a background wait that will fire. Long-run dispatch belongs to the Herdr dispatcher (plan item 11), not to this chat.
