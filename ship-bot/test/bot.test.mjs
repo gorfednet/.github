@@ -584,8 +584,22 @@ describe('deploying', () => {
     await b.run()
     assert.deepEqual(afterUpload.commandLines('rollback'), [])
     assert.equal(afterUpload.ofKind('deploy').length, 1, 'the live check never ran after the failed upload')
-    assert.match(bodies(b.github)[0], /leaving the live site as it was \(no rollback step applies to a failure in "upload"\)/)
-    assert.ok(b.state().repo(SLUG).blocked, 'the repository is still blocked until a person has looked')
+    // Nothing was rolled back, and the comment must not say it was: the site may be on the new release.
+    const [body] = bodies(b.github)
+    assert.match(body, /DEPLOY FAILED AND NOTHING WAS ROLLED BACK/)
+    assert.match(body, /may be on the new release/)
+    assert.doesNotMatch(body, /Rolled back by|back on the previous release/)
+    assert.match(b.runner.ofKind('notify')[0].args[1], /nothing rolled back; check the site/)
+    assert.match(b.state().repo(SLUG).blocked.reason, /nothing was rolled back/)
+  })
+
+  it('an explicit empty rollback list rolls nothing back (the default redeploy is only for a row with no list)', async () => {
+    const runner = makeRunner({ handle: (cmd) => (cmd.kind === 'deploy' ? { code: 1 } : undefined) })
+    const s = scenario({ runner, repos: [repoEntry({ rollback: [] })] })
+    await s.run()
+    assert.deepEqual(runner.commandLines('rollback'), [])
+    assert.ok(!runner.commandLines('workspace').some((l) => l.endsWith(`checkout --force --detach ${PARENT}`)), 'the previous commit is not checked out')
+    assert.match(bodies(s.github)[0], /NOTHING WAS ROLLED BACK/)
   })
 
   it('env is given to setup, deploy and rollback steps, on top of the bot environment', async () => {

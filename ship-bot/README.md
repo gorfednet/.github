@@ -144,13 +144,13 @@ make rollback          # switches current back one release and checks the live i
 make rollback ID=<the id that was current>   # switches forward again, same check
 ```
 
-Both must print `current -> releases/...` and pass the live check. The bot-side wiring (a rollback step that runs only after a failure past the upload; a failed setup rolls nothing back) is held by `test/bot.test.mjs`, watched failing with the filter removed.
+Both must print `current -> releases/...` and pass the live check. The bot-side wiring (a rollback step that runs only after a failure past the upload; a failure it does not cover says nothing was rolled back; a failed setup rolls nothing back) is held by `test/bot.test.mjs`, watched failing with the filter removed.
 
 **How the `heuristics` and `papers` rows run `make deploy`.** The bot cannot run `make deploy` as one step: a failure inside it after the upload would roll back the wrong thing, and a failure before the upload must roll back nothing. The rows split the same sequence in two:
 
 - `setup` (a failure here deploys nothing and rolls nothing back): `make verify` (npm ci, the build, `verify.sh`; heuristics runs `verify.sh local`), `check-release.mjs`, `indexnow.mjs plan`.
 - `deploy`: the shared engine's `deploy dist`, `indexnow.mjs ping` (its failure is reported in the log and does not undo the deploy, as the Makefile's leading dash), and for heuristics `check-live-release.mjs`.
-- `rollback`: `make rollback`, marked `onlyAfterFailureOf` the last step that can fail after the release went live (heuristics: `live check`). The default rollback, a redeploy of the previous commit, cannot work with this engine: it refuses a HEAD behind `origin/main`.
+- `rollback`: heuristics has `make rollback` marked `onlyAfterFailureOf` its `live check`, the one step that can fail after the release went live and be wrong about it. Papers has an explicit empty list: nothing after its upload can fail the release. The default rollback, a redeploy of the previous commit, cannot work with this engine (it refuses a HEAD behind `origin/main`), so both rows name a list. A failure in any step no rollback step covers (an upload that refused, an IndexNow ping that hung) is reported as **deploy failed and nothing was rolled back**, loudly, with the repository blocked until a person has checked the site.
 
 No check is skipped. `make verify` runs the job-folder tests (`tests/*.local.test.ts`) that read the assess jobs; the heuristics row gives them `ASSESS_JOBS=~/Developer/gorfednet/assess/jobs` through its `env`, so the bot reads the owner's folder exactly as a hand deploy does, and the tests fail rather than skip when it is missing. If the sequence in a site's Makefile changes, change its row in the same pull request.
 
@@ -247,7 +247,7 @@ decisions are logged as `OBSERVE` lines (only a missing or invalid config makes
 it refuse), and any repository whose config entry still has
 a `todo` list is refused in live mode until each item is confirmed and removed.
 
-A deploy row can also carry `env` (name to value, a leading `~/` is the home directory; given to every setup, deploy and rollback step, never a GitHub token) and, on a rollback step, `onlyAfterFailureOf` (the deploy step names whose failure it undoes; a failure in any other step runs no rollback step, and the comment says so).
+A deploy row can also carry `env` (name to value, a leading `~/` is the home directory; given to every setup, deploy and rollback step, never a GitHub token) and, on a rollback step, `onlyAfterFailureOf` (the deploy step names whose failure it undoes). A `rollback` list, even an empty one, replaces the default redeploy of the previous commit; a failure no listed step covers rolls nothing back, and the pull-request comment and the notification say exactly that (the site may be on the new release) and block the repository.
 
 The config lives outside this repository at `~/.ship-bot/config.json`;
 [`config.example.json`](config.example.json) documents every field and the

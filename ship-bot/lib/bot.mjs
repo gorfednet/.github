@@ -407,6 +407,11 @@ async function report(ctx, repo, pr, mergeSha, outcome, deployLog) {
     body = `Merged as ${short(mergeSha)}, but the deploy **failed**: ${outcome.error}.\n\nRolled back by ${outcome.rollback.method}: that succeeded. The merge is still on the default branch; the live site is back on the previous release.\n\n${unblock}\n\n${logTail}`
     ctx.say('error', `${tag}: deploy failed, rolled back by ${outcome.rollback.method}`)
     await notify(ctx, `${repo.name} #${pr.number}: deploy FAILED, rolled back`, true)
+  } else if (outcome.status === 'failed-not-rolled-back') {
+    block(`deploy of #${pr.number} failed and nothing was rolled back: ${outcome.error}`)
+    body = `**DEPLOY FAILED AND NOTHING WAS ROLLED BACK.** Merged as ${short(mergeSha)}; step "${outcome.failedStep}" failed (${outcome.error}). The rollback is configured to undo only a failure after the release went live, so the live site may be on the new release, or on a half-switched one. A person needs to check it now.\n\n${unblock}\n\n${logTail}`
+    ctx.say('error', `${tag}: DEPLOY FAILED, NOTHING ROLLED BACK (step "${outcome.failedStep}"): ${outcome.error}`)
+    await notify(ctx, `${repo.name} #${pr.number}: DEPLOY FAILED, nothing rolled back; check the site`, true)
   } else {
     block(`deploy of #${pr.number} failed and the rollback failed too`)
     body = `**DEPLOY FAILED AND THE ROLLBACK FAILED TOO.** Merged as ${short(mergeSha)}; the deploy failed (${outcome.error}), then ${outcome.rollback.method} failed (${outcome.rollback.error}). The live site may be broken or half-updated. A person needs to look now.\n\n${unblock}\n\n${logTail}`

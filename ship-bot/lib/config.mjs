@@ -376,7 +376,8 @@ export function normalizeConfig(raw, { home = homedir() } = {}) {
         })),
         setup: repo.setup ?? [],
         deploy: repo.deploy,
-        rollback: repo.rollback ?? [],
+        // null: no list given, so a failure redeploys the previous commit. An explicit [] (or a list no step of which applies) rolls nothing back.
+        rollback: repo.rollback ?? null,
         pausedIfChanged: repo.pausedIfChanged ?? [],
       }
     }),

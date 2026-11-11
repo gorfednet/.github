@@ -44,9 +44,12 @@ describe('config validation', () => {
       assert.deepEqual(r.setup.map((s) => s.name), ['verify', 'release check', 'indexnow plan'])
       assert.equal(r.deploy[0].name, 'upload')
       assert.deepEqual(r.deploy[0].command.slice(-2), ['deploy', 'dist'])
-      assert.deepEqual(r.rollback.map((s) => s.command.join(' ')), ['make rollback'])
-      assert.ok(r.rollback[0].onlyAfterFailureOf.every((n) => r.deploy.some((d) => d.name === n)))
+      // Never the default (redeploy the previous commit): the engine refuses a HEAD behind origin/main.
+      assert.ok(Array.isArray(r.rollback), `${name} names its rollback list`)
+      for (const step of r.rollback) assert.ok(step.onlyAfterFailureOf.every((n) => r.deploy.some((d) => d.name === n)))
     }
+    assert.deepEqual(rows['heuristics.4thcltr.com'].rollback.map((s) => [s.command.join(' '), s.onlyAfterFailureOf.join()]), [['make rollback', 'live check']])
+    assert.deepEqual(rows['papers.4thcltr.com'].rollback, [], 'nothing after the upload can fail papers')
     // The job-folder tests (verify.sh local) need the owner's assess jobs folder.
     assert.equal(rows['heuristics.4thcltr.com'].env.ASSESS_JOBS, '~/Developer/gorfednet/assess/jobs')
     assert.equal(rows['heuristics.4thcltr.com'].deploy.at(-1).name, 'live check')
