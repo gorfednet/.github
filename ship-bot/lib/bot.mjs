@@ -6,6 +6,7 @@
  * fakes. In a dry run both the GitHub client and the runner are wrapped so a
  * write or a non-gate command throws, whatever the logic below decides.
  */
+import { createHash } from 'node:crypto'
 import { join } from 'node:path'
 import { HOLD_LABEL } from './config.mjs'
 import { DeployLog, deployMerged, envSecrets, matchingFiles, preflight, realFs, selectSteps } from './deploy.mjs'
@@ -230,7 +231,7 @@ async function processPull(ctx, repo, pr, defaultBranch) {
     plan = planRelease(repo.release, again.body, await ctx.github.listTags(repo.slug))
     if (plan.kind === 'invalid') {
       ctx.say('warn', `${tag}: ready, but not merging: the Release line is wrong: ${plan.reason}`)
-      await postOnce(ctx, repo, pr.number, sha, 'release-invalid', `Ship bot is not merging this: the \`Release:\` line in the description is wrong: ${plan.reason}.\n\nThe line is \`Release: X.Y.Z One sentence.\` on its own line. Fix the description; it checks again every couple of minutes. A pull request with no \`Release:\` line is merged without a tag or a deploy.`)
+      await postOnce(ctx, repo, pr.number, sha, `release-invalid-${createHash('sha1').update(plan.reason).digest('hex').slice(0, 8)}`, `Ship bot is not merging this: the \`Release:\` line in the description is wrong: ${plan.reason}.\n\nThe line is \`Release: X.Y.Z One sentence.\` on its own line. Fix the description; it checks again every couple of minutes. A pull request with no \`Release:\` line is merged without a tag or a deploy.`)
       return false
     }
   }
@@ -408,7 +409,7 @@ async function report(ctx, repo, pr, mergeSha, outcome, deployLog, release = nul
   const block = (reason) => {
     rs.blocked = { reason, at: ctx.clock.now().toISOString(), pr: pr.number }
   }
-  const tagNote = release && !['deployed', 'paused'].includes(outcome.status) ? ` The tag ${release.tag} was ${outcome.status === 'not-started' ? 'possibly ' : ''}pushed to the merge commit and stays there (the bot never deletes a tag); the next release needs a higher version.` : ''
+  const tagNote = release && outcome.tagged && outcome.tagged !== 'no' ? ` The tag ${release.tag} was ${outcome.tagged === 'maybe' ? 'possibly ' : ''}pushed to the merge commit and stays there (the bot never deletes a tag); the next release needs a higher version.` : ''
   const unblock = `${tagNote.trim()}${tagNote ? '\n\n' : ''}The bot will not merge or deploy anything else in this repo until someone checks the site and runs \`ship-bot --unblock ${repo.name}\`.`
   let body
   if (outcome.status === 'deployed') {

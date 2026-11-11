@@ -240,12 +240,15 @@ export async function deployMerged(ctx, repo, { mergeSha, log, release = null })
   const paused = matchingFiles(changed, repo.pausedIfChanged)
   if (paused.length > 0) return { status: 'paused', paused }
 
+  let tagged = 'no'
   if (release) {
     try {
+      tagged = 'maybe'
       await tagRelease(ctx, log, repo, mergeSha, release)
+      tagged = 'yes'
     } catch (cause) {
       // Nothing live changed. The tag may exist on GitHub if only the check after the push failed; the report says to look.
-      return { status: 'not-started', error: `tagging ${release.tag} failed: ${cause.message}` }
+      return { status: 'not-started', tagged, error: `tagging ${release.tag} failed: ${cause.message}` }
     }
   }
 
@@ -253,7 +256,7 @@ export async function deployMerged(ctx, repo, { mergeSha, log, release = null })
     await runSteps(ctx, log, repo, repo.setup, 'setup')
   } catch (cause) {
     // Nothing has been deployed yet, so there is nothing to roll back.
-    return { status: 'not-started', error: `setup failed: ${cause.message}` }
+    return { status: 'not-started', tagged, error: `setup failed: ${cause.message}` }
   }
 
   const selected = selectSteps(repo.deploy, changed)
@@ -264,7 +267,7 @@ export async function deployMerged(ctx, repo, { mergeSha, log, release = null })
     } catch (cause) {
       const rollback = await rollBack(ctx, log, repo, { parent, selected, failedStep: step.name })
       const status = !rollback.applied ? 'failed-not-rolled-back' : rollback.ok ? 'rolled-back' : 'rollback-failed'
-      return { status, steps, error: cause.message, failedStep: step.name, rollback }
+      return { status, tagged, steps, error: cause.message, failedStep: step.name, rollback }
     }
   }
   return { status: 'deployed', steps, skipped: repo.deploy.filter((s) => !selected.includes(s)).map((s) => s.name) }

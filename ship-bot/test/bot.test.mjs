@@ -1186,6 +1186,24 @@ describe('release tags (a repository that ships only from a tag)', () => {
     assert.equal(s.github.writes.filter((w) => w.name === 'createRelease').length, 0)
   })
 
+  it('the tag note follows what happened: nothing before the tag, "possibly" at the push, definite after it', async () => {
+    const early = relScenario(RELEASE_LINE, { runner: makeRunner({ handle: (cmd) => (cmd.args?.includes('fetch') ? { code: 1 } : undefined) }) })
+    await early.run()
+    assert.doesNotMatch(bodies(early.github)[0], /tag v3\.9\.7 was/)
+    const late = relScenario(RELEASE_LINE, { runner: makeRunner({ handle: (cmd) => (cmd.kind === 'setup' ? { code: 1 } : undefined) }) })
+    await late.run()
+    assert.match(bodies(late.github)[0], /tag v3\.9\.7 was pushed to the merge commit/)
+  })
+
+  it('an edited description that is wrong for a new reason gets a new comment', async () => {
+    const s = relScenario('Release: 3.9.6 x')
+    await s.run()
+    s.github.pulls[0].body = 'Release: v3.9.7 x'
+    await s.run()
+    assert.equal(bodies(s.github).length, 2)
+    assert.match(bodies(s.github)[1], /not a bare X\.Y\.Z/)
+  })
+
   it('a failed deploy after the tag is rolled back, keeps the tag, creates no GitHub release and blocks the repo', async () => {
     const runner = makeRunner({ handle: (cmd) => (cmd.kind === 'deploy' ? { code: 1 } : undefined) })
     const s = relScenario(RELEASE_LINE, { runner })
