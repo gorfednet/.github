@@ -172,8 +172,9 @@ describe('branch protection plan', () => {
     const raw = JSON.parse(readFileSync(new URL('../config.example.json', import.meta.url), 'utf8'))
     const plan = protectionPlan(normalizeConfig(raw, { home: tmpdir() }))
     const slugs = plan.map((p) => p.slug)
-    assert.ok(!slugs.includes('gorfednet/TowIt') && !slugs.includes('gorfednet/wychwood') && !slugs.includes('gorfednet/ops'))
-    assert.equal(slugs.length, 18)
+    assert.ok(!slugs.includes('gorfednet/TowIt') && !slugs.includes('gorfednet/wychwood'))
+    assert.equal(slugs.length, 19)
+    assert.deepEqual(plan.find((p) => p.slug === 'gorfednet/ops').body.required_status_checks, { strict: false, contexts: ['review / review'] })
     const moon = plan.find((p) => p.slug === 'gorfednet/MoonMan').body
     assert.deepEqual(moon, {
       required_status_checks: { strict: false, contexts: ['quality', 'test', 'server', 'build', 'e2e', 'e2e-webkit', 'visual'] },

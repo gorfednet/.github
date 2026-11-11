@@ -68,8 +68,8 @@ node ~/.ship-bot/app/ship-bot.mjs --set-live true                          # the
 `--set-live` never touches the per-repository flags, so turning the global
 switch on acts only in the repositories already switched on. Stage 1 of the
 go-live (owner, 7 November 2026) is merge-only in `.github`, assess,
-career-portfolio, heuristics.4thcltr.com and papers.4thcltr.com; ops waits for
-pull-request CI (its row says why). In a live pass a repository whose own flag
+career-portfolio, heuristics.4thcltr.com and papers.4thcltr.com, and ops since
+11 November 2026 (its row says what its one check proves). In a live pass a repository whose own flag
 is off is still read and logged, with `OBSERVE (repo not live)` on each line.
 
 Before switching a repository on, check that its `expectedChecks` still match
