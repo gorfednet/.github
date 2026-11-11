@@ -21,7 +21,11 @@ jobs:
     # repositories by design (a fork's pull request would run its code on that
     # host). Hosted minutes are not billed for a public repository. The full
     # reason is in fleet-audit.yml, above its jobs.
-    runs-on: ubuntu-latest
+    # Pinned 11 November 2026: ubuntu-latest moved to the 26.04 image, which
+    # ships no ripgrep and whose apt mirrors did not resolve (every kit run
+    # from 9:02 AM ET that day, main included, failed at "Install ripgrep").
+    # 24.04 has rg preinstalled, so the apt step below is skipped there.
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
