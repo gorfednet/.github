@@ -98,6 +98,9 @@ fi
 
 xml() { sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g' <<<"$1"; }
 
+# No ProcessType key: Background throttles the CPU and timers of every child, and papers' deploy
+# `make verify` (Playwright, flicker timing) failed 18 specs under it on 11 November 2026 and passed
+# without it. A deploy step must run at normal priority.
 # launchd starts jobs with a bare PATH; give it the one this shell has, so
 # git, gh, npm, make, python3 and rsync resolve the same way they do by hand.
 cat >"${PLIST}.tmp" <<EOF
@@ -135,8 +138,6 @@ cat >"${PLIST}.tmp" <<EOF
   <string>$(xml "${BOT_HOME}/logs/ship-bot.log")</string>
   <key>StandardErrorPath</key>
   <string>$(xml "${BOT_HOME}/logs/ship-bot.log")</string>
-  <key>ProcessType</key>
-  <string>Background</string>
 </dict>
 </plist>
 EOF
