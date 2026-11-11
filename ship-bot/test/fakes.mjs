@@ -93,7 +93,7 @@ export class FakeGitHub {
 
   async listPullFiles(slug, n) {
     this.log('listPullFiles', slug, n)
-    return this.files.map((filename) => ({ filename }))
+    return this.files.map((f) => (typeof f === 'string' ? { filename: f } : f))
   }
 
   async listCheckRuns(slug, sha) {

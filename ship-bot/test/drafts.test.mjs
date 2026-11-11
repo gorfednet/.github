@@ -99,6 +99,14 @@ describe('a draft the bot owns', () => {
     assert.ok(s.logs.some((l) => /#7: draft left alone after an error: .*too-many/.test(l)), s.logs.join('\n'))
   })
 
+  it('a file renamed into docs/ from the source tree is not docs-only', async () => {
+    const gh = new FakeGitHub({ pulls: [draft({ body: NEXT_OTHER })], files: [{ filename: 'docs/server.mjs', previous_filename: 'src/server.mjs', status: 'renamed' }] })
+    const s = scenario({ repos: reviewed(), github: gh })
+    await s.run()
+    assert.equal(gh.writes.length, 0)
+    assert.equal(s.runner.calls.length, 0)
+  })
+
   it('whose review has findings stays draft: no ready, no label, no `claude review`', async () => {
     const runner = makeRunner({ handle: (cmd) => (isStatus(cmd) ? { code: 1, stdout: '#7  findings  Claude reviewed aaaaaaaaa: 1 finding(s)\n' } : undefined) })
     const gh = new FakeGitHub({ pulls: [draft()], files: ['src/a.ts'], threads: [{ isResolved: false, author: 'github-actions', path: 'src/a.ts', url: 'u1', comments: [{ author: 'github-actions', createdAt: '2026-10-09T11:00:00Z' }] }] })
