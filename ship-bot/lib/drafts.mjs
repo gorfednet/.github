@@ -10,6 +10,9 @@
 import { HOLD_LABEL } from './config.mjs'
 
 const MERGE_INSTRUCTION = /\b(merge|open the pr)\b/i
+/** "Do not merge until the owner answers" names merge and is not an instruction to. */
+const NOT_YET = /\b(not|don't|dont|never|wait|until|unless|after|before|hold|once|if)\b/i
+export const isMergeInstruction = (line) => MERGE_INSTRUCTION.test(line) && !NOT_YET.test(line)
 const DOCS_FILE = /(\.md$|^(.*\/)?docs\/)/i
 
 /**
@@ -54,7 +57,7 @@ export const isDocsOnly = (files) => files.length > 0 && files.every((f) => DOCS
  */
 export function draftClaim(pr, files) {
   const next = firstNextItem(pr.body)
-  if (next && MERGE_INSTRUCTION.test(next)) return `## Next says "${next.slice(0, 80)}"`
+  if (next && isMergeInstruction(next)) return `## Next says "${next.slice(0, 80)}"`
   if (isDocsOnly(files)) return `docs-only diff (${files.length} file(s))`
   return null
 }

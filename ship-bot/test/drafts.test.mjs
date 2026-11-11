@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import { DRAFT_READY_COMMENT } from '../lib/bot.mjs'
-import { draftClaim, firstNextItem, isDocsOnly } from '../lib/drafts.mjs'
+import { draftClaim, firstNextItem, isDocsOnly, isMergeInstruction } from '../lib/drafts.mjs'
 import { FakeGitHub, HEAD, SLUG, makePr, makeRunner, repoEntry, scenario } from './fakes.mjs'
 
 const NEXT_MERGE = '## Summary\n\nx\n\n## Next\n\n- [x] tests\n- [ ] merge\n'
@@ -29,6 +29,12 @@ describe('which drafts are the bot\'s', () => {
     assert.match(draftClaim({ body: '## Next\n- [ ] Open the PR and merge it\n' }, ['src/a.ts']), /## Next says/)
     assert.match(draftClaim({ body: NEXT_OTHER }, ['docs/plan.md']), /docs-only diff \(1 file\(s\)\)/)
     assert.equal(draftClaim({ body: NEXT_OTHER }, ['src/a.ts']), null)
+  })
+  it('a line that names merge but says not yet is not an instruction', () => {
+    for (const line of ['Do not merge until the owner answers', "don't merge before Thursday", 'merge once PR 118 lands', 'hold the merge', 'wait, then open the PR']) {
+      assert.equal(isMergeInstruction(line), false, line)
+    }
+    for (const line of ['merge', 'Merge this', 'open the PR', 'Open the PR and merge it']) assert.equal(isMergeInstruction(line), true, line)
   })
 })
 
