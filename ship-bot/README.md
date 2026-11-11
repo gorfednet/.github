@@ -169,11 +169,13 @@ bot now takes a draft itself when **all** of these hold:
   documentation and backlog files (`*.md`, anything under `docs/`);
 - every check is green on its latest commit, the same expected checks as for
   a labelled pull request;
-- the Claude reviewer is `clean` on that commit. A draft gets no automatic
-  review, so when `review-status.mjs` says `not-run` the bot comments
-  `claude review` once per commit, on a line by itself, and waits for the next
-  pass. It never asks twice for the same commit. A review with findings keeps
-  the draft a draft; nothing is said on the pull request, the log says why;
+- the Claude reviewer has reviewed that commit: `clean`, or with every one of
+  its comment threads answered or resolved, the same reading as for a labelled
+  pull request. A draft gets no automatic review, so when `review-status.mjs`
+  says `not-run` the bot comments `claude review` once per commit, on a line
+  by itself, and waits for the next pass. It never asks twice for the same
+  commit. Findings with an unanswered thread keep the draft a draft; nothing
+  is said on the pull request, the log says why;
 - no `hold` label, no merge conflict, not opened by Dependabot, and the author
   is allowlisted.
 

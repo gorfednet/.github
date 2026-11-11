@@ -53,6 +53,25 @@ describe('a draft the bot owns', () => {
     assert.equal(readyComments(gh).length, 1)
   })
 
+  it('labels before marking ready, so a failed markReady is retried next pass instead of leaving a ready pull request with no label', async () => {
+    const gh = new FakeGitHub({ pulls: [draft()], files: ['docs/a.md'] })
+    let fail = true
+    const realMarkReady = gh.markReady.bind(gh)
+    gh.markReady = async (id) => {
+      if (fail) throw Object.assign(new Error('boom'), { status: 502 })
+      return realMarkReady(id)
+    }
+    const s = scenario({ repos: reviewed(), github: gh })
+    await s.run()
+    assert.deepEqual(gh.writes.map((w) => w.name), ['createComment', 'addLabels'])
+    assert.equal(gh.pulls[0].draft, true)
+    fail = false
+    await s.run()
+    assert.deepEqual(gh.writes.map((w) => w.name), ['createComment', 'addLabels', 'addLabels', 'markReady'])
+    assert.equal(gh.pulls[0].draft, false)
+    assert.equal(readyComments(gh).length, 1)
+  })
+
   it('whose review has findings stays draft: no ready, no label, no `claude review`', async () => {
     const runner = makeRunner({ handle: (cmd) => (isStatus(cmd) ? { code: 1, stdout: '#7  findings  Claude reviewed aaaaaaaaa: 1 finding(s)\n' } : undefined) })
     const gh = new FakeGitHub({ pulls: [draft()], files: ['src/a.ts'], threads: [{ isResolved: false, author: 'github-actions', path: 'src/a.ts', url: 'u1', comments: [{ author: 'github-actions', createdAt: '2026-10-09T11:00:00Z' }] }] })

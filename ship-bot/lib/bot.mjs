@@ -291,8 +291,11 @@ async function processDraft(ctx, repo, listed, defaultBranch) {
     ctx.say('info', `${tag}: would mark ready and add ${READY_LABEL}`)
     return
   }
-  await ctx.github.markReady(pr.node_id)
+  // Label first: a labelled draft is retried next pass if marking ready
+  // fails, while a ready pull request with no label would never be looked at
+  // again (reviewer finding on #119).
   await ctx.github.addLabels(repo.slug, pr.number, [READY_LABEL])
+  await ctx.github.markReady(pr.node_id)
   ctx.say('info', `${tag}: marked ready and labelled ${READY_LABEL}; the merge path takes it next pass`)
 }
 
