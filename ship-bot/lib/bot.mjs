@@ -298,12 +298,9 @@ async function takeDraft(ctx, repo, listed, defaultBranch) {
     ctx.say('debug', `${tag}: draft ignored (${skip2})`)
     return
   }
-  // A renamed file counts by both paths: moving src/x.mjs to docs/x.mjs is not a docs-only change.
-  const claim = await draftClaim(pr, async () =>
-    (await ctx.github.listPullFiles(repo.slug, pr.number)).flatMap((f) => [f.filename, f.previous_filename].filter(Boolean)),
-  )
+  const { claim, refused } = draftClaim(pr)
   if (!claim) {
-    ctx.say('debug', `${tag}: draft left alone (no merge line under ## Next, diff not docs-only)`)
+    ctx.say('debug', `${tag}: draft left alone (${refused ?? 'no merge line under ## Next'})`)
     return
   }
   const headState = ctx.state.head(repo.slug, pr.number, sha, ctx.clock.now().toISOString())

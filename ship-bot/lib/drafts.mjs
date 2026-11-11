@@ -4,19 +4,18 @@
  * sat still because their session could not run `gh pr ready` or add a label).
  *
  * A draft is the bot's when its `## Next` section's first unchecked line is a
- * merge instruction, or when its diff touches only documentation and backlog
- * files. Everything here is pure; the gates and the writes are in bot.mjs.
+ * merge instruction and no unchecked line there says to wait. Everything here
+ * is pure; the gates and the writes are in bot.mjs. (A docs-only branch was
+ * cut on 11 November 2026 after five review rounds of edge cases; it can be
+ * its own pull request later.)
  */
 import { HOLD_LABEL } from './config.mjs'
 
 /** The line starts with the instruction: "fix the merge conflict" and "owner picks the merge strategy" name merge and are not one. */
 const MERGE_INSTRUCTION = /^\W*(merge|open the pr)\b/i
-const MERGE_INSTRUCTION_WORDS = /\b(merge|open the pr)\b/i
 /** "Merge later" or "merge once the owner answers" starts with merge and is not an instruction to. */
 const NOT_YET = /\b(not|no|don[’']?t|dont|never|wait|until|unless|after|before|hold|once|if|yet|later)\b/i
 export const isMergeInstruction = (line) => MERGE_INSTRUCTION.test(line) && !NOT_YET.test(line)
-/** Top-level *.md and anything under the repository's docs/. A .md under src/content/ is a published page, not documentation. */
-const DOCS_FILE = /^(docs\/.+|[^/]+\.md)$/i
 
 /**
  * Cheap filters on a draft, mirroring gates.mjs ineligibleReason without the
@@ -38,34 +37,36 @@ export function draftIneligibleReason(pr, repo, defaultBranch, allowedAuthors) {
   return null
 }
 
-/** The text of the first `- [ ]` line under `## Next`, or null when there is no such section or line. */
-export function firstNextItem(body) {
+/** Every `- [ ]` line under `## Next`, in order, stopping at the next heading. */
+export function uncheckedNextItems(body) {
   const lines = String(body ?? '').split(/\r?\n/)
   const start = lines.findIndex((l) => /^##\s+Next\s*$/i.test(l.trim()))
-  if (start < 0) return null
+  if (start < 0) return []
+  const items = []
   for (const line of lines.slice(start + 1)) {
-    if (/^##?\s/.test(line)) return null
+    if (/^##?\s/.test(line)) break
     const m = /^\s*[-*]\s+\[ \]\s+(.*\S)/.exec(line)
-    if (m) return m[1]
+    if (m) items.push(m[1])
   }
-  return null
+  return items
 }
 
-/** Every file is documentation or backlog: a top-level `*.md`, anything under `docs/`. An empty diff is not docs-only. */
-export const isDocsOnly = (files) => files.length > 0 && files.every((f) => DOCS_FILE.test(f))
+/** The text of the first `- [ ]` line under `## Next`, or null when there is no such section or line. */
+export const firstNextItem = (body) => uncheckedNextItems(body)[0] ?? null
+
+/** Any unchecked line that hands the decision to a person: the bot refuses the whole draft. */
+const WAIT_WORDS = /\b(do not|don[’']?t|dont|wait|hold|owner|needs? (a )?decision|decision needed|decide)\b/i
 
 /**
- * Why this draft is the bot's to mark ready, or null when it is not. The
- * reason is quoted in the log so a person can see which rule took it. The
- * file list is fetched only when the `## Next` line has not already claimed
- * the draft (a list of 3000 or more files refuses to answer).
+ * Why this draft is the bot's to mark ready, or why it is refused.
+ * `{claim}` names the line that took it; `{refused}` names the line that
+ * stopped it; `{}` is a draft the rule does not cover.
  */
-export async function draftClaim(pr, listFiles) {
-  const next = firstNextItem(pr.body)
-  if (next && isMergeInstruction(next)) return `## Next says "${next.slice(0, 80)}"`
-  // "Do not merge yet" under ## Next is the author's word on it, whatever the diff touches.
-  if (next && MERGE_INSTRUCTION_WORDS.test(next)) return null
-  const files = await listFiles()
-  if (isDocsOnly(files)) return `docs-only diff (${files.length} file(s))`
-  return null
+export function draftClaim(pr) {
+  const items = uncheckedNextItems(pr.body)
+  const waiting = items.find((l) => WAIT_WORDS.test(l))
+  if (waiting) return { refused: `## Next says "${waiting.slice(0, 80)}"` }
+  const first = items[0]
+  if (first && isMergeInstruction(first)) return { claim: `## Next says "${first.slice(0, 80)}"` }
+  return {}
 }

@@ -10,8 +10,8 @@ Every two minutes it looks at each of your repositories and, for every open
 pull request, asks:
 
 1. Did **you** open it, is it **not a draft** (a draft that says merge in its
-   `## Next`, or changes only docs, is marked ready by the bot first: see
-   "Drafts the bot marks ready itself"), does it carry the
+   `## Next` is marked ready by the bot first: see "Drafts the bot marks ready
+   itself"), does it carry the
    **`ready-to-merge`** label, and does it **not** carry **`hold`**?
 2. Did **every check pass** on the latest commit, including the specific
    checks that repository is supposed to run? A check that is still running,
@@ -172,11 +172,12 @@ add a label, so 30 `worktree-*` drafts sat still until 11 November 2026. The
 bot now takes a draft itself when **all** of these hold:
 
 - its description has a `## Next` section whose first unchecked `- [ ]` line
-  says "merge" or "open the PR" (any case), **or** its diff touches only
-  documentation and backlog files: top-level `*.md` and anything under the
-  repository's `docs/` (a `.md` under `src/content/` is a page, not docs). A
-  `## Next` line that names merging but says not yet ("do not merge until
-  the owner answers") keeps a docs-only draft a draft;
+  is an instruction to merge: it starts with "merge" or "open the PR" (any
+  case) and does not say later ("merge once PR 118 lands" is not one), and no
+  unchecked line under `## Next` hands the decision to a person (do not,
+  don't, wait, hold, owner, needs a decision, decide). A diff that touches only
+  documentation is **not** enough on its own: that branch was cut after five
+  review rounds of edge cases and can be its own change later;
 - every check is green on its latest commit, the same expected checks as for
   a labelled pull request;
 - the Claude reviewer has reviewed that commit: `clean`, or with every one of
@@ -196,12 +197,12 @@ Leaving draft fires `ready_for_review`, which starts a second Claude review of
 the same commit, so the bot holds that commit for `reviewGraceMinutes` (15 by
 default) and then waits for that review's check like any other; its verdict,
 if it finds something, keeps the pull request from merging until each thread
-is answered. The merge line must start the item ("merge", "Open the PR and
-merge it"); "fix the merge conflict" or "merge later" does not count. A repository in observation (`live`
-false) logs `would mark ready and add ready-to-merge` and does nothing.
+is answered. A repository in observation (`live` false) logs `would mark ready
+and add ready-to-merge` and does nothing.
 
-To keep a draft a draft, add the **`hold`** label. To keep a whole repository
-out of this, set `"draftReady": false` on its row in `~/.ship-bot/config.json`.
+To keep a draft a draft, add the **`hold`** label or write the wait under
+`## Next`. To keep a whole repository out of this, set `"draftReady": false`
+on its row in `~/.ship-bot/config.json`.
 
 ## How a change ships
 
@@ -233,8 +234,8 @@ To stop it: add the **`hold`** label to a pull request, or run
   again), it merges nothing that would need a deploy and tells you, at most
   once an hour.
 - Merge a pull request without the `ready-to-merge` label, or one with `hold`.
-- Mark a draft ready unless its `## Next` says merge or its diff is docs-only,
-  and its gates are clean (above).
+- Mark a draft ready unless its `## Next` says merge and its gates are clean
+  (above).
 - Retry a deploy that failed. It puts the previous version back and waits for
   a person.
 
