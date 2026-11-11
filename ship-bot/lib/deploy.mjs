@@ -159,6 +159,7 @@ async function runSteps(ctx, log, repo, steps, kind) {
       cmd: step.command[0],
       args: step.command.slice(1),
       cwd: repo.workDir,
+      env: { ...ctx.baseEnv, ...repo.env },
       timeoutMs: minutes * 60 * 1000,
     })
     ran.push(step.name)
@@ -166,11 +167,19 @@ async function runSteps(ctx, log, repo, steps, kind) {
   return ran
 }
 
-async function rollBack(ctx, log, repo, { parent, selected }) {
+async function rollBack(ctx, log, repo, { parent, selected, failedStep }) {
   if (repo.rollback.length > 0) {
+    // A rollback step marked onlyAfterFailureOf runs only for a failure in one of
+    // those deploy steps. This is how a step that undoes a publish (switching the
+    // site back a release) stays out of a failure that published nothing.
+    const steps = repo.rollback.filter((s) => !s.onlyAfterFailureOf || s.onlyAfterFailureOf.includes(failedStep))
+    if (steps.length === 0) {
+      log.write(`\n[ship-bot] no rollback step applies to a failure in "${failedStep}"\n`)
+      return { method: `leaving the live site as it was (no rollback step applies to a failure in "${failedStep}")`, ok: true }
+    }
     log.write('\n[ship-bot] rolling back with the configured rollback steps\n')
     try {
-      await runSteps(ctx, log, repo, repo.rollback, 'rollback')
+      await runSteps(ctx, log, repo, steps, 'rollback')
       return { method: 'rollback steps', ok: true }
     } catch (cause) {
       return { method: 'rollback steps', ok: false, error: cause.message }
@@ -223,7 +232,7 @@ export async function deployMerged(ctx, repo, { mergeSha, log }) {
     try {
       steps.push(...(await runSteps(ctx, log, repo, [step], 'deploy')))
     } catch (cause) {
-      const rollback = await rollBack(ctx, log, repo, { parent, selected })
+      const rollback = await rollBack(ctx, log, repo, { parent, selected, failedStep: step.name })
       return { status: rollback.ok ? 'rolled-back' : 'rollback-failed', steps, error: cause.message, failedStep: step.name, rollback }
     }
   }

@@ -30,8 +30,46 @@ describe('config validation', () => {
     const config = normalizeConfig(example(), { home: HOME })
     assert.equal(config.live, false, 'the example must never ship live')
     assert.deepEqual(config.repos.filter((r) => r.todo.length > 0).map((r) => r.slug), [], 'every decision is recorded as a note, none left open')
-    assert.deepEqual(config.preflight.map((s) => s.command.at(-2)), ['gorfednas', 'dapyllil'])
+    assert.deepEqual(config.preflight.map((s) => s.command.at(-2)), ['gorfednas', 'dapyllil', 'sitedeploy@dapyllil'])
     assert.equal(config.repos.find((r) => r.name === 'gorfed.net').siblings[0].path, join(HOME, '.ship-bot', 'work', 'gorfednet.github'))
+  })
+
+  it('the example never ships a repository live, and the 4thcltr family deploys only what fits the row shape', () => {
+    const rows = Object.fromEntries(example().repos.map((r) => [r.slug.split('/')[1], r]))
+    for (const r of Object.values(rows)) assert.ok(r.live !== true, `${r.slug} must ship with live false`)
+    for (const name of ['heuristics.4thcltr.com', 'papers.4thcltr.com']) {
+      const r = rows[name]
+      // Everything that gates the upload is setup (a failure there deploys and rolls back nothing);
+      // only the steps that touch the live site are deploy steps.
+      assert.deepEqual(r.setup.map((s) => s.name), ['verify', 'release check', 'indexnow plan'])
+      assert.equal(r.deploy[0].name, 'upload')
+      assert.deepEqual(r.deploy[0].command.slice(-2), ['deploy', 'dist'])
+      assert.deepEqual(r.rollback.map((s) => s.command.join(' ')), ['make rollback'])
+      assert.ok(r.rollback[0].onlyAfterFailureOf.every((n) => r.deploy.some((d) => d.name === n)))
+    }
+    // The job-folder tests (verify.sh local) need the owner's assess jobs folder.
+    assert.equal(rows['heuristics.4thcltr.com'].env.ASSESS_JOBS, '~/Developer/gorfednet/assess/jobs')
+    assert.equal(rows['heuristics.4thcltr.com'].deploy.at(-1).name, 'live check')
+    assert.equal(rows['4thcltr.com'].mode, 'merge-only', 'it ships on a release tag, which a merge commit never is')
+    const config = normalizeConfig(example(), { home: HOME })
+    assert.equal(config.repos.find((r) => r.name === 'heuristics.4thcltr.com').env.ASSESS_JOBS, join(HOME, 'Developer', 'gorfednet', 'assess', 'jobs'))
+  })
+
+  it('env: names and values are checked, and a GitHub token is refused', () => {
+    assert.deepEqual(validateConfig(base([deployRepo({ env: { ASSESS_JOBS: '~/x' } })])), [])
+    assert.match(problemsFor(base([deployRepo({ env: { lower: 'x' } })])), /env\.lower: a name is capital letters/)
+    assert.match(problemsFor(base([deployRepo({ env: { GH_TOKEN: 'x' } })])), /never hands a step a GitHub token/)
+    assert.match(problemsFor(base([deployRepo({ env: { A: '' } })])), /env\.A: must be a non-empty string/)
+    assert.match(problemsFor(base([deployRepo({ env: ['A'] })])), /env: must be an object/)
+  })
+
+  it('onlyAfterFailureOf: only on rollback steps, and only naming real deploy steps', () => {
+    const rollback = (onlyAfterFailureOf) => [{ name: 'back', command: ['make', 'rollback'], onlyAfterFailureOf }]
+    assert.deepEqual(validateConfig(base([deployRepo({ rollback: rollback(['site']) })])), [])
+    assert.match(problemsFor(base([deployRepo({ rollback: rollback(['sit']) })])), /"sit" is not a deploy step/)
+    assert.match(problemsFor(base([deployRepo({ rollback: rollback([]) })])), /non-empty array of deploy step names/)
+    const onDeploy = deployRepo({ deploy: [{ name: 'site', command: ['make', 'deploy'], onlyAfterFailureOf: ['site'] }] })
+    assert.match(problemsFor(base([onDeploy])), /only rollback steps can be conditional/)
   })
 
   it('the example covers every repository, with the agreed modes', () => {
@@ -53,8 +91,8 @@ describe('config validation', () => {
       '.github': 'merge-only',
       assess: 'merge-only',
       'career-portfolio': 'merge-only',
-      'heuristics.4thcltr.com': 'merge-only',
-      'papers.4thcltr.com': 'merge-only',
+      'heuristics.4thcltr.com': 'deploy',
+      'papers.4thcltr.com': 'deploy',
       TowIt: 'off',
       wychwood: 'off',
       // Stage 1 of the go-live names ops merge-only, but it has no pull-request CI to gate on (its note says so).
@@ -76,7 +114,7 @@ describe('config validation', () => {
     assert.deepEqual(config.ntfy, { url: 'https://ntfy.gorfed.net', topic: 'ops-report', tokenFile: join(HOME, '.ship-bot', 'ntfy.token') })
   })
 
-  it('the stage-1 rows are merge-only, reviewed, not live, each with its checks', () => {
+  it('the stage-1 rows are reviewed, not live, each with its checks; heuristics and papers are deploy rows in observation', () => {
     const rows = Object.fromEntries(example().repos.map((r) => [r.slug, r]))
     const stage1 = {
       'gorfednet/assess': ['check', 'capture'],
@@ -87,7 +125,7 @@ describe('config validation', () => {
     for (const [slug, checks] of Object.entries(stage1)) {
       const r = rows[slug]
       assert.ok(r, slug)
-      assert.equal(r.mode, 'merge-only', slug)
+      assert.equal(r.mode, slug.includes('4thcltr') ? 'deploy' : 'merge-only', slug)
       assert.equal(r.claudeReview, true, slug)
       assert.equal(r.live, false, slug)
       assert.deepEqual(r.expectedChecks, checks, slug)

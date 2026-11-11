@@ -45,6 +45,20 @@
       ],
       "timeoutMinutes": 1,
       "note": "Tailscale SSH to dapyllil can demand a browser re-login, and the ssh key's passphrase lives in the keychain/agent; a LaunchAgent may have neither. Checked once per pass before the first deploy-mode merge."
+    },
+    {
+      "name": "site deploy host",
+      "command": [
+        "ssh",
+        "-o",
+        "BatchMode=yes",
+        "-o",
+        "ConnectTimeout=10",
+        "sitedeploy@dapyllil",
+        "true"
+      ],
+      "timeoutMinutes": 1,
+      "note": "The shared site engine (site-deploy.sh) uploads as sitedeploy@dapyllil, a different login from the docker host step above. Before this step the bot checked ssh dapyllil as the owner, which says nothing about the key the engine uses (heuristics, papers)."
     }
   ],
   "ghPath": "~/bin/gh",
@@ -470,7 +484,7 @@
       "slug": "gorfednet/4thcltr.com",
       "dir": "4thcltr.com",
       "mode": "merge-only",
-      "reason": "it ships with a release note and a tag",
+      "reason": "it ships on a release tag, and the bot deploys merge commits, which are never tagged",
       "claudeReview": true,
       "live": false,
       "requireChecksAfterLabel": true,
@@ -487,7 +501,7 @@
         "e2e (8)",
         "e2e-gate"
       ],
-      "note": "The e2e sweep runs only when the PR carries ready-to-merge (CI listens for `labeled`). e2e-gate passes when e2e was skipped, so each shard is listed and must be a success, and the checks must post-date the label. heavy-runner-preflight is left out (a pool preflight, duplicated by label re-runs); the shards and e2e-gate prove the sweep ran."
+      "note": "The e2e sweep runs only when the PR carries ready-to-merge (CI listens for `labeled`). e2e-gate passes when e2e was skipped, so each shard is listed and must be a success, and the checks must post-date the label. heavy-runner-preflight is left out (a pool preflight, duplicated by label re-runs); the shards and e2e-gate prove the sweep ran. Deploy stays a session's job until the bot can deploy a tag (README, Deploy automation plan): make deploy refuses any HEAD that is not on an exact release tag, so a deploy of the merge commit would be refused every time."
     },
     {
       "slug": "gorfednet/ACID2REAPER",
@@ -553,28 +567,187 @@
     {
       "slug": "gorfednet/heuristics.4thcltr.com",
       "dir": "heuristics.4thcltr.com",
-      "mode": "merge-only",
-      "reason": "stage 1 of the go-live is merge-only (owner, 7 November 2026); putting it live stays a session's job",
+      "mode": "deploy",
       "claudeReview": true,
       "live": false,
       "expectedChecks": [
         "check / check",
         "derive"
       ],
-      "note": "Check names from #73, #71 and #70."
+      "envFiles": [
+        ".deploy-env"
+      ],
+      "env": {
+        "ASSESS_JOBS": "~/Developer/gorfednet/assess/jobs"
+      },
+      "siblings": [
+        {
+          "dir": "gorfednet.github",
+          "slug": "gorfednet/.github",
+          "branch": "main"
+        }
+      ],
+      "setup": [
+        {
+          "name": "verify",
+          "command": [
+            "make",
+            "verify"
+          ],
+          "timeoutMinutes": 45,
+          "note": "make verify = npm ci, the build, then verify.sh local: every gate CI runs plus the job-folder tests (tests/*.local.test.ts) that only this Mac can run. Those tests read ASSESS_JOBS, set in this row's env to the owner's assess jobs folder, and fail rather than skip when it is missing. They are the same checks make deploy runs; the bot runs them as setup so a failure here deploys nothing and rolls nothing back."
+        },
+        {
+          "name": "release check",
+          "command": [
+            "node",
+            "scripts/check-release.mjs"
+          ],
+          "timeoutMinutes": 10
+        },
+        {
+          "name": "indexnow plan",
+          "command": [
+            "node",
+            "scripts/indexnow.mjs",
+            "plan"
+          ],
+          "timeoutMinutes": 10
+        }
+      ],
+      "deploy": [
+        {
+          "name": "upload",
+          "command": [
+            "bash",
+            "../gorfednet.github/scripts/site-deploy.sh",
+            "deploy",
+            "dist"
+          ],
+          "timeoutMinutes": 20,
+          "note": "The shared engine: refuses anything but the merged tip of origin/main and an upload not built from HEAD, uploads an immutable release, switches current, prunes, and compares the live index.html byte for byte (switching back itself on a mismatch)."
+        },
+        {
+          "name": "indexnow ping",
+          "command": [
+            "sh",
+            "-c",
+            "node scripts/indexnow.mjs ping || true"
+          ],
+          "timeoutMinutes": 10,
+          "note": "make deploy runs this with a leading dash: a refused or unreachable IndexNow is reported in the log and the deploy stands. make indexnow sends the list again."
+        },
+        {
+          "name": "live check",
+          "command": [
+            "node",
+            "scripts/check-live-release.mjs"
+          ],
+          "timeoutMinutes": 15
+        }
+      ],
+      "rollback": [
+        {
+          "name": "previous release",
+          "command": [
+            "make",
+            "rollback"
+          ],
+          "timeoutMinutes": 10,
+          "onlyAfterFailureOf": [
+            "live check"
+          ],
+          "note": "Switches current back to the previous release. Only after the live check fails, because that is the only step that fails after the release went live; a failure in upload either published nothing or switched itself back, and make rollback there would step the live site back one release for no reason. The default (redeploy the previous commit) cannot work for this engine: the engine refuses a HEAD behind origin/main."
+        }
+      ],
+      "note": "Observation first (live false). Equivalent to make deploy (verify, check-release, indexnow plan, upload, ping, live check), split so every pre-upload gate is setup and every step that touches the site is a deploy step. A failed live check is rolled back and blocks the repo; DEPLOY.md calls it a stale cache that leaves the release standing, so a first live week may show false alarms. The step to check at flip time is that the bot's launchd context can run Playwright (smoke) and reach sitedeploy@dapyllil."
     },
     {
       "slug": "gorfednet/papers.4thcltr.com",
       "dir": "papers.4thcltr.com",
-      "mode": "merge-only",
-      "reason": "stage 1 of the go-live is merge-only (owner, 7 November 2026); putting it live stays a session's job",
+      "mode": "deploy",
       "claudeReview": true,
       "live": false,
       "expectedChecks": [
         "check / check",
         "derive"
       ],
-      "note": "Check names from #27 (the current ci.yml: derive feeds check). #26 and #25 merged before derive existed, so --validate reports derive on 1 of 3 until newer merges replace them in the sample."
+      "envFiles": [
+        ".deploy-env"
+      ],
+      "siblings": [
+        {
+          "dir": "gorfednet.github",
+          "slug": "gorfednet/.github",
+          "branch": "main"
+        }
+      ],
+      "setup": [
+        {
+          "name": "verify",
+          "command": [
+            "make",
+            "verify"
+          ],
+          "timeoutMinutes": 45,
+          "note": "make verify = npm ci, the build, then verify.sh: every gate CI runs. Nothing private is read by any papers test, so there is no local-only half to reproduce."
+        },
+        {
+          "name": "release check",
+          "command": [
+            "node",
+            "scripts/check-release.mjs"
+          ],
+          "timeoutMinutes": 10
+        },
+        {
+          "name": "indexnow plan",
+          "command": [
+            "node",
+            "scripts/indexnow.mjs",
+            "plan"
+          ],
+          "timeoutMinutes": 10
+        }
+      ],
+      "deploy": [
+        {
+          "name": "upload",
+          "command": [
+            "bash",
+            "../gorfednet.github/scripts/site-deploy.sh",
+            "deploy",
+            "dist"
+          ],
+          "timeoutMinutes": 20,
+          "note": "The shared engine, as for heuristics. Its byte-for-byte live compare uses SITE_LIVE_URL from .deploy-env."
+        },
+        {
+          "name": "indexnow ping",
+          "command": [
+            "sh",
+            "-c",
+            "node scripts/indexnow.mjs ping || true"
+          ],
+          "timeoutMinutes": 10,
+          "note": "Optional as in make deploy: reported in the log, never undoes a deploy."
+        }
+      ],
+      "rollback": [
+        {
+          "name": "previous release",
+          "command": [
+            "make",
+            "rollback"
+          ],
+          "timeoutMinutes": 10,
+          "onlyAfterFailureOf": [
+            "indexnow ping"
+          ],
+          "note": "Unreachable while the ping ends in || true. It is here so a step added after the upload gets a switch-back, not the default redeploy of the previous commit, which the engine refuses (HEAD behind origin/main)."
+        }
+      ],
+      "note": "Observation first (live false). Equivalent to make deploy (verify, check-release, indexnow plan, upload, ping), split so the pre-upload gates are setup."
     },
     {
       "slug": "gorfednet/TowIt",

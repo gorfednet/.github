@@ -564,6 +564,43 @@ describe('deploying', () => {
     assert.match(bodies(s.github)[0], /Rolled back by redeploying the previous commit ccccccc: that succeeded/)
   })
 
+  it('rollback steps marked onlyAfterFailureOf run only after a failure in a listed deploy step', async () => {
+    const steps = [
+      { name: 'upload', command: ['npm', 'run', 'upload'] },
+      { name: 'live check', command: ['npm', 'run', 'live'] },
+    ]
+    const rollback = [{ name: 'previous release', command: ['make', 'rollback'], onlyAfterFailureOf: ['live check'] }]
+    const failing = (name) => makeRunner({ handle: (cmd) => (cmd.kind === 'deploy' && cmd.args.at(-1) === name ? { code: 1 } : undefined) })
+
+    const afterLive = failing('live')
+    const a = scenario({ runner: afterLive, repos: [repoEntry({ deploy: steps, rollback })] })
+    await a.run()
+    assert.deepEqual(afterLive.commandLines('rollback'), ['make rollback'])
+    assert.match(bodies(a.github)[0], /Rolled back by rollback steps: that succeeded/)
+
+    // A failure in the upload publishes nothing that make rollback should undo: it must not step the live site back.
+    const afterUpload = failing('upload')
+    const b = scenario({ runner: afterUpload, repos: [repoEntry({ deploy: steps, rollback })] })
+    await b.run()
+    assert.deepEqual(afterUpload.commandLines('rollback'), [])
+    assert.equal(afterUpload.ofKind('deploy').length, 1, 'the live check never ran after the failed upload')
+    assert.match(bodies(b.github)[0], /leaving the live site as it was \(no rollback step applies to a failure in "upload"\)/)
+    assert.ok(b.state().repo(SLUG).blocked, 'the repository is still blocked until a person has looked')
+  })
+
+  it('env is given to setup, deploy and rollback steps, on top of the bot environment', async () => {
+    const runner = makeRunner({ handle: (cmd) => (cmd.kind === 'deploy' ? { code: 1 } : undefined) })
+    const s = scenario({
+      runner,
+      repos: [repoEntry({ env: { ASSESS_JOBS: '/jobs' }, rollback: [{ name: 'back', command: ['make', 'rollback'] }] })],
+    })
+    await s.run()
+    for (const kind of ['setup', 'deploy', 'rollback']) {
+      const [call] = runner.ofKind(kind)
+      assert.equal(call.env.ASSESS_JOBS, '/jobs', `${kind} step`)
+    }
+  })
+
   it('reports loudly when the rollback fails too, and never retries', async () => {
     const runner = makeRunner({ handle: (cmd) => (cmd.kind === 'deploy' || cmd.kind === 'rollback' ? { code: 1 } : undefined) })
     const s = scenario({ runner })

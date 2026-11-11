@@ -50,6 +50,7 @@ const DEPLOY_REPO_KEYS = [
   'workDir',
   'cloneUrl',
   'envFiles',
+  'env',
   'copyFromSource',
   'preserve',
   'siblings',
@@ -74,7 +75,7 @@ const RETIRED_KEYS = {
   bugbotGraceMinutes: 'renamed "reviewGraceMinutes"',
   bugbotWaitMinutes: 'removed: the bot no longer asks for a review, so there is no request to time out',
 }
-const STEP_KEYS = new Set(['name', 'command', 'timeoutMinutes', 'onlyIfChanged', 'note'])
+const STEP_KEYS = new Set(['name', 'command', 'timeoutMinutes', 'onlyIfChanged', 'onlyAfterFailureOf', 'note'])
 const SIBLING_KEYS = new Set(['dir', 'slug', 'branch'])
 
 export class ConfigError extends Error {
@@ -113,7 +114,7 @@ function checkUnknownKeys(obj, allowed, where, problems) {
   }
 }
 
-function validateSteps(steps, where, problems, { allowOnlyIfChanged }) {
+function validateSteps(steps, where, problems, { allowOnlyIfChanged, allowOnlyAfterFailureOf = false }) {
   if (!Array.isArray(steps)) {
     problems.push(`${where}: must be an array of steps`)
     return
@@ -139,6 +140,12 @@ function validateSteps(steps, where, problems, { allowOnlyIfChanged }) {
       if (!allowOnlyIfChanged) problems.push(`${at}.onlyIfChanged: only deploy steps can be conditional`)
       else if (!isStringArray(step.onlyIfChanged) || step.onlyIfChanged.length === 0) {
         problems.push(`${at}.onlyIfChanged: must be a non-empty array of paths`)
+      }
+    }
+    if (step.onlyAfterFailureOf !== undefined) {
+      if (!allowOnlyAfterFailureOf) problems.push(`${at}.onlyAfterFailureOf: only rollback steps can be conditional on a failed deploy step`)
+      else if (!isStringArray(step.onlyAfterFailureOf) || step.onlyAfterFailureOf.length === 0) {
+        problems.push(`${at}.onlyAfterFailureOf: must be a non-empty array of deploy step names`)
       }
     }
     if (step.note !== undefined && typeof step.note !== 'string') problems.push(`${at}.note: must be a string`)
@@ -200,6 +207,16 @@ function validateRepo(repo, i, problems, seen) {
       problems.push(`${label}.${key}: must be an array of relative paths inside the repository (no "..", no leading "/")`)
     }
   }
+  if (repo.env !== undefined) {
+    if (!isObject(repo.env)) problems.push(`${label}.env: must be an object of NAME: "value" strings`)
+    else {
+      for (const [name, value] of Object.entries(repo.env)) {
+        if (!/^[A-Z][A-Z0-9_]*$/.test(name)) problems.push(`${label}.env.${name}: a name is capital letters, digits and "_"`)
+        else if (/^(GH|GITHUB)_/.test(name)) problems.push(`${label}.env.${name}: the bot never hands a step a GitHub token`)
+        if (!isNonEmptyString(value)) problems.push(`${label}.env.${name}: must be a non-empty string (a leading ~/ is the home directory)`)
+      }
+    }
+  }
   if (repo.siblings !== undefined) {
     if (!Array.isArray(repo.siblings)) problems.push(`${label}.siblings: must be an array`)
     else {
@@ -219,7 +236,19 @@ function validateRepo(repo, i, problems, seen) {
   if (Array.isArray(repo.deploy) && repo.deploy.length > 0 && repo.deploy.every((s) => s?.onlyIfChanged)) {
     problems.push(`${label}.deploy: every step is conditional, so a merge could deploy nothing and report success`)
   }
-  if (repo.rollback !== undefined) validateSteps(repo.rollback, `${label}.rollback`, problems, { allowOnlyIfChanged: false })
+  if (repo.rollback !== undefined) {
+    validateSteps(repo.rollback, `${label}.rollback`, problems, { allowOnlyIfChanged: false, allowOnlyAfterFailureOf: true })
+    // A misspelt step name would leave the rollback that was meant to run after
+    // a failure silently never running, so every name must be a real deploy step.
+    const deployNames = new Set(Array.isArray(repo.deploy) ? repo.deploy.map((d) => d?.name) : [])
+    if (Array.isArray(repo.rollback)) {
+      repo.rollback.forEach((step, j) => {
+        for (const name of Array.isArray(step?.onlyAfterFailureOf) ? step.onlyAfterFailureOf : []) {
+          if (!deployNames.has(name)) problems.push(`${label}.rollback[${j}].onlyAfterFailureOf: "${name}" is not a deploy step of this repository`)
+        }
+      })
+    }
+  }
 }
 
 /**
@@ -337,6 +366,7 @@ export function normalizeConfig(raw, { home = homedir() } = {}) {
         workDir,
         cloneUrl: repo.cloneUrl ?? `https://github.com/${repo.slug}.git`,
         envFiles: repo.envFiles ?? [],
+        env: Object.fromEntries(Object.entries(repo.env ?? {}).map(([k, v]) => [k, expandHome(v, home)])),
         copyFromSource: repo.copyFromSource ?? [],
         preserve: repo.preserve ?? [],
         siblings: (repo.siblings ?? []).map((s) => ({
