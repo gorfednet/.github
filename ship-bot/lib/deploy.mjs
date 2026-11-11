@@ -199,12 +199,31 @@ async function rollBack(ctx, log, repo, { parent, selected, failedStep }) {
 }
 
 /**
+ * Tag the merge commit and push the tag, so the repository's own release gate
+ * (require-release-tag.sh) sees HEAD on an exact tag. `tag -f` replaces only a
+ * leftover local tag of the same name (a push that failed last time): the
+ * caller has checked, against GitHub, that the tag does not exist there. The
+ * push names the one tag and never forces. A tag the bot has pushed is never
+ * deleted, even when the deploy that follows fails and rolls back.
+ */
+async function tagRelease(ctx, log, repo, mergeSha, release) {
+  const path = repo.workDir
+  log.write(`\n[ship-bot] tagging ${mergeSha.slice(0, 7)} as ${release.tag}\n`)
+  await git(ctx, log, path, `tag ${release.tag}`, ['-c', 'user.name=ship-bot', '-c', 'user.email=ship-bot@gorfed.net', 'tag', '-f', '-a', release.tag, '-m', release.message, mergeSha])
+  await git(ctx, log, path, `push ${release.tag}`, ['push', 'origin', `refs/tags/${release.tag}`])
+  await git(ctx, log, path, `${release.tag} is on HEAD`, ['describe', '--tags', '--exact-match', 'HEAD'])
+}
+
+/**
  * Deploy one merge commit. Never retries.
+ * With `release` ({tag, message}) the merge commit is tagged and the tag pushed
+ * first, after the pause check and before setup (the build stamps the version
+ * from the tag). A tagging failure deploys nothing.
  *
  * @returns {Promise<{status: 'deployed'|'paused'|'not-started'|'rolled-back'|'rollback-failed'|'failed-not-rolled-back',
  *   steps?: string[], paused?: string[], error?: string, rollback?: object}>}
  */
-export async function deployMerged(ctx, repo, { mergeSha, log }) {
+export async function deployMerged(ctx, repo, { mergeSha, log, release = null }) {
   let parent
   let changed
   try {
@@ -220,6 +239,15 @@ export async function deployMerged(ctx, repo, { mergeSha, log }) {
 
   const paused = matchingFiles(changed, repo.pausedIfChanged)
   if (paused.length > 0) return { status: 'paused', paused }
+
+  if (release) {
+    try {
+      await tagRelease(ctx, log, repo, mergeSha, release)
+    } catch (cause) {
+      // Nothing live changed. The tag may exist on GitHub if only the check after the push failed; the report says to look.
+      return { status: 'not-started', error: `tagging ${release.tag} failed: ${cause.message}` }
+    }
+  }
 
   try {
     await runSteps(ctx, log, repo, repo.setup, 'setup')

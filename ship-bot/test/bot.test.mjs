@@ -1105,3 +1105,126 @@ describe('maxMergesPerPass', () => {
     assert.equal(merges(s.github).length, 2)
   })
 })
+
+describe('release tags (a repository that ships only from a tag)', () => {
+  const REL = { tagPrefix: 'v' }
+  const withBody = (body) => new FakeGitHub({ pulls: [makePr({ body })] })
+  const relScenario = (body, { tags = ['v3.9.5', 'v3.9.6'], runner = makeRunner(), ...rest } = {}) => {
+    const github = withBody(body)
+    github.tags = tags
+    return scenario({ github, runner, repos: [repoEntry({ release: REL, rollback: [{ name: 'previous release', command: ['make', 'rollback'] }], ...rest })] })
+  }
+  const RELEASE_LINE = 'Adds the thing.\n\nRelease: 3.9.7 The site reads the new figures.\n'
+
+  it('merges, tags the merge commit with the sentence, pushes the tag, then deploys, in that order', async () => {
+    const s = relScenario(RELEASE_LINE)
+    await s.run()
+    assert.equal(merges(s.github).length, 1)
+    const ws = s.runner.commandLines('workspace')
+    const tagAt = ws.findIndex((l) => l.includes('tag -f -a v3.9.7 -m The site reads the new figures. ' + MERGE))
+    const pushAt = ws.findIndex((l) => l.endsWith('push origin refs/tags/v3.9.7'))
+    const describeAt = ws.findIndex((l) => l.endsWith('describe --tags --exact-match HEAD'))
+    assert.ok(tagAt > 0 && pushAt > tagAt && describeAt > pushAt, ws.join('\n'))
+    // The tag exists before the build, which stamps the version from it.
+    const order = s.runner.calls.map((c) => c.kind)
+    assert.ok(order.indexOf('workspace') < order.indexOf('setup') && describeAt < ws.length)
+    assert.ok(s.runner.calls.findIndex((c) => c.args?.includes('describe')) < s.runner.calls.findIndex((c) => c.kind === 'setup'))
+    assert.deepEqual(s.runner.commandLines('deploy'), ['make deploy'])
+    assert.match(bodies(s.github)[0], /deployed: site\. Tagged v3\.9\.7\./)
+    assert.deepEqual(s.github.writes.filter((w) => w.name === 'createRelease'), [{ name: 'createRelease', slug: SLUG, release: { tag: 'v3.9.7', name: 'v3.9.7', body: 'The site reads the new figures.' } }])
+    assert.ok(!s.runner.calls.some((c) => c.args?.some((a) => a === '--force' || a === '-f') && c.args.includes('push')), 'the push never forces')
+  })
+
+  it('a pull request with no Release line is merged and nothing else: no tag, no deploy, no ssh preflight', async () => {
+    const s = relScenario('Just a fix.\n')
+    await s.run()
+    assert.equal(merges(s.github).length, 1)
+    assert.equal(s.runner.ofKind('workspace').length, 0)
+    assert.equal(s.runner.ofKind('deploy').length, 0)
+    assert.equal(s.runner.ofKind('preflight').length, 0)
+    assert.match(bodies(s.github)[0], /not tagged and not deployed/)
+    assert.equal(s.state().repo(SLUG).blocked, undefined)
+  })
+
+  it('refuses to merge a wrong declaration: not higher than the newest tag, a tag that exists, a bad version, two lines, no sentence', async () => {
+    const bad = {
+      'Release: 3.9.6 Same as the newest.': /tag v3\.9\.6 already exists/,
+      'Release: 3.9.2 Older than the newest.': /must be higher than the newest tag v3\.9\.6/,
+      'Release: v3.9.7 Leading v.': /not a bare X\.Y\.Z/,
+      'Release: 3.9.7 One.\nRelease: 3.9.8 Two.': /2 "Release:" lines/,
+      'Release: 3.9.7': /needs a version and a sentence/,
+      'Release 3.9.7 No colon, so it is a plain description.': null,
+    }
+    for (const [body, expected] of Object.entries(bad)) {
+      const s = relScenario(body)
+      await s.run()
+      if (expected === null) {
+        assert.equal(merges(s.github).length, 1, 'a description without the colon is not a declaration')
+        continue
+      }
+      assert.equal(merges(s.github).length, 0, body)
+      assert.equal(s.runner.ofKind('deploy').length, 0, body)
+      assert.match(bodies(s.github)[0], expected, body)
+    }
+    const exists = relScenario('Release: 3.9.7 Taken.', { tags: ['v3.9.6', 'v3.9.7'] })
+    await exists.run()
+    assert.equal(merges(exists.github).length, 0)
+    assert.match(bodies(exists.github)[0], /tag v3\.9\.7 already exists/)
+  })
+
+  it('a tag that cannot be pushed deploys nothing, blocks the repo and says nothing live changed', async () => {
+    const runner = makeRunner({ handle: (cmd) => (cmd.kind === 'workspace' && cmd.args.includes('push') ? { code: 1, stderr: 'rejected' } : undefined) })
+    const s = relScenario(RELEASE_LINE, { runner })
+    await s.run()
+    assert.equal(runner.ofKind('setup').length, 0)
+    assert.equal(runner.ofKind('deploy').length, 0)
+    const [body] = bodies(s.github)
+    assert.match(body, /did not start\*\*: tagging v3\.9\.7 failed/)
+    assert.match(body, /Nothing live was changed/)
+    assert.match(body, /possibly pushed/)
+    assert.ok(s.state().repo(SLUG).blocked)
+    assert.equal(s.github.writes.filter((w) => w.name === 'createRelease').length, 0)
+  })
+
+  it('a failed deploy after the tag is rolled back, keeps the tag, creates no GitHub release and blocks the repo', async () => {
+    const runner = makeRunner({ handle: (cmd) => (cmd.kind === 'deploy' ? { code: 1 } : undefined) })
+    const s = relScenario(RELEASE_LINE, { runner })
+    await s.run()
+    assert.deepEqual(runner.commandLines('rollback'), ['make rollback'])
+    const [body] = bodies(s.github)
+    assert.match(body, /Rolled back by rollback steps/)
+    assert.match(body, /tag v3\.9\.7 was pushed to the merge commit and stays there/)
+    assert.equal(s.github.writes.filter((w) => w.name === 'createRelease').length, 0)
+    assert.ok(s.state().repo(SLUG).blocked)
+    assert.ok(!runner.commandLines('workspace').some((l) => l.includes('tag -d') || l.includes('--delete') || l.includes(':refs/tags')), 'a pushed tag is never deleted')
+  })
+
+  it('a GitHub release that fails to create is one warning; the deploy still counts', async () => {
+    const s = relScenario(RELEASE_LINE)
+    s.github.createRelease = async () => {
+      throw new Error('boom')
+    }
+    await s.run()
+    assert.match(bodies(s.github)[0], /deployed: site/)
+    assert.ok(s.logs.some((l) => /creating its GitHub release failed: boom/.test(l)))
+    assert.equal(s.state().repo(SLUG).blocked, undefined)
+  })
+
+  it('a dry run (observe) says it would tag and deploy, and changes nothing', async () => {
+    const s = relScenario(RELEASE_LINE)
+    await s.run('dry-run')
+    assert.equal(s.github.writes.length, 0)
+    assert.equal(s.runner.calls.filter((c) => c.kind !== 'gate' && c.kind !== 'auth').length, 0)
+    assert.ok(s.logs.some((l) => /would tag the merge commit v3\.9\.7 \("The site reads the new figures\."\), push the tag, then deploy it/.test(l)), s.logs.join('\n'))
+    const none = relScenario('plain')
+    await none.run('dry-run')
+    assert.ok(none.logs.some((l) => /would merge only: no Release line/.test(l)))
+  })
+
+  it('a row with no release key still deploys every merge (nothing changes for other repositories)', async () => {
+    const s = scenario({ github: withBody('Release: nonsense') })
+    await s.run()
+    assert.deepEqual(s.runner.commandLines('deploy'), ['make deploy'])
+    assert.equal(s.runner.commandLines('workspace').filter((l) => l.includes(' tag ')).length, 0)
+  })
+})
