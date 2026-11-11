@@ -9,9 +9,10 @@
  */
 import { HOLD_LABEL } from './config.mjs'
 
-const MERGE_INSTRUCTION = /\b(merge|open the pr)\b/i
-/** "Do not merge until the owner answers" names merge and is not an instruction to. */
-const NOT_YET = /\b(not|don't|dont|never|wait|until|unless|after|before|hold|once|if)\b/i
+/** The line starts with the instruction: "fix the merge conflict" and "owner picks the merge strategy" name merge and are not one. */
+const MERGE_INSTRUCTION = /^\W*(merge|open the pr)\b/i
+/** "Merge later" or "merge once the owner answers" starts with merge and is not an instruction to. */
+const NOT_YET = /\b(not|no|don[’']?t|dont|never|wait|until|unless|after|before|hold|once|if|yet|later)\b/i
 export const isMergeInstruction = (line) => MERGE_INSTRUCTION.test(line) && !NOT_YET.test(line)
 const DOCS_FILE = /(\.md$|^(.*\/)?docs\/)/i
 
@@ -53,11 +54,14 @@ export const isDocsOnly = (files) => files.length > 0 && files.every((f) => DOCS
 
 /**
  * Why this draft is the bot's to mark ready, or null when it is not. The
- * reason is quoted in the log so a person can see which rule took it.
+ * reason is quoted in the log so a person can see which rule took it. The
+ * file list is fetched only when the `## Next` line has not already claimed
+ * the draft (a list of 3000 or more files refuses to answer).
  */
-export function draftClaim(pr, files) {
+export async function draftClaim(pr, listFiles) {
   const next = firstNextItem(pr.body)
   if (next && isMergeInstruction(next)) return `## Next says "${next.slice(0, 80)}"`
+  const files = await listFiles()
   if (isDocsOnly(files)) return `docs-only diff (${files.length} file(s))`
   return null
 }

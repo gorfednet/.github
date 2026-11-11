@@ -24,17 +24,21 @@ describe('which drafts are the bot\'s', () => {
     assert.equal(isDocsOnly(['docs/a.md', 'ship-bot/lib/bot.mjs']), false)
     assert.equal(isDocsOnly([]), false)
   })
-  it('claims by merge line ("merge", "open the PR") or by docs-only diff, else not', () => {
-    assert.match(draftClaim({ body: NEXT_MERGE }, ['src/a.ts']), /## Next says "merge"/)
-    assert.match(draftClaim({ body: '## Next\n- [ ] Open the PR and merge it\n' }, ['src/a.ts']), /## Next says/)
-    assert.match(draftClaim({ body: NEXT_OTHER }, ['docs/plan.md']), /docs-only diff \(1 file\(s\)\)/)
-    assert.equal(draftClaim({ body: NEXT_OTHER }, ['src/a.ts']), null)
+  it('claims by merge line ("merge", "open the PR") or by docs-only diff, else not; files are listed only when the line did not claim it', async () => {
+    let listed = 0
+    const files = (list) => async () => (listed += 1, list)
+    assert.match(await draftClaim({ body: NEXT_MERGE }, files(['src/a.ts'])), /## Next says "merge"/)
+    assert.equal(listed, 0, 'no file list when ## Next already claims it')
+    assert.match(await draftClaim({ body: '## Next\n- [ ] Open the PR and merge it\n' }, files(['src/a.ts'])), /## Next says/)
+    assert.match(await draftClaim({ body: NEXT_OTHER }, files(['docs/plan.md'])), /docs-only diff \(1 file\(s\)\)/)
+    assert.equal(await draftClaim({ body: NEXT_OTHER }, files(['src/a.ts'])), null)
+    assert.equal(listed, 2)
   })
-  it('a line that names merge but says not yet is not an instruction', () => {
-    for (const line of ['Do not merge until the owner answers', "don't merge before Thursday", 'merge once PR 118 lands', 'hold the merge', 'wait, then open the PR']) {
+  it('a line that names merge but is not an instruction to merge now is not one', () => {
+    for (const line of ['Do not merge until the owner answers', "don't merge before Thursday", 'Don’t merge yet', 'No merge yet, owner decides', 'merge later', 'merge once PR 118 lands', 'hold the merge', 'wait, then open the PR', 'fix the merge conflict with main', 'owner picks the merge strategy', 'check the merge result on staging']) {
       assert.equal(isMergeInstruction(line), false, line)
     }
-    for (const line of ['merge', 'Merge this', 'open the PR', 'Open the PR and merge it']) assert.equal(isMergeInstruction(line), true, line)
+    for (const line of ['merge', 'Merge this', 'open the PR', 'Open the PR and merge it', '**merge**']) assert.equal(isMergeInstruction(line), true, line)
   })
 })
 
@@ -48,6 +52,7 @@ describe('a draft the bot owns', () => {
     assert.equal(readyComments(gh).length, 1)
     assert.equal(writes(gh, 'mergePull').length, 0, 'the merge waits for the next pass')
     assert.ok(s.logs.some((l) => /#7 \(aaaaaaa, draft\): gates clean \(docs-only diff/.test(l)), s.logs.join('\n'))
+    s.clock.advance(s.config.reviewGraceMinutes)
     await s.run()
     assert.deepEqual(writes(gh, 'mergePull').map((w) => w.sha), [HEAD])
     assert.equal(readyComments(gh).length, 1)
@@ -70,6 +75,28 @@ describe('a draft the bot owns', () => {
     assert.deepEqual(gh.writes.map((w) => w.name), ['createComment', 'addLabels', 'addLabels', 'markReady'])
     assert.equal(gh.pulls[0].draft, false)
     assert.equal(readyComments(gh).length, 1)
+  })
+
+  it('is held for reviewGraceMinutes after the bot readied it, so the ready-for-review review can start, then merges', async () => {
+    const gh = new FakeGitHub({ pulls: [draft()], files: ['docs/a.md'] })
+    const s = scenario({ repos: reviewed(), github: gh })
+    await s.run()
+    assert.equal(writes(gh, 'markReady').length, 1)
+    await s.run()
+    assert.equal(writes(gh, 'mergePull').length, 0)
+    assert.ok(s.logs.some((l) => /giving the ready-for-review review time to start/.test(l)), s.logs.join('\n'))
+    s.clock.advance(s.config.reviewGraceMinutes)
+    await s.run()
+    assert.equal(writes(gh, 'mergePull').length, 1)
+  })
+
+  it('that cannot be read (a 3000-file diff) is left alone and the labelled pull request after it still merges', async () => {
+    const gh = new FakeGitHub({ pulls: [draft({ number: 7, body: NEXT_OTHER }), makePr({ number: 8 })], files: ['docs/a.md'] })
+    gh.listPullFiles = async () => { throw Object.assign(new Error('GET /pulls/7/files -> too-many: more than 3000 items'), { status: 'too-many' }) }
+    const s = scenario({ repos: reviewed(), github: gh })
+    await s.run()
+    assert.deepEqual(writes(gh, 'mergePull').map((w) => w.n), [8])
+    assert.ok(s.logs.some((l) => /#7: draft left alone after an error: .*too-many/.test(l)), s.logs.join('\n'))
   })
 
   it('whose review has findings stays draft: no ready, no label, no `claude review`', async () => {
@@ -99,6 +126,7 @@ describe('a draft the bot owns', () => {
     state = 'clean'
     await s.run()
     assert.equal(writes(gh, 'markReady').length, 1)
+    assert.ok(s.state().pr(SLUG, 7).heads[HEAD].readiedAt, 'remembers when it readied the head')
     assert.equal(readyComments(gh).length, 1)
   })
 

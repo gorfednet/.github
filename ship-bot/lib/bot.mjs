@@ -190,6 +190,10 @@ async function processPull(ctx, repo, pr, defaultBranch) {
   const tag = `${repo.slug}#${pr.number} (${short(sha)})`
 
   const result = await evaluatePull(ctx, repo, pr, { headState })
+  if (result.ready && headState.readiedAt && (ctx.clock.now() - new Date(headState.readiedAt)) / 60000 < ctx.config.reviewGraceMinutes) {
+    ctx.say('debug', `${tag}: not merging: the bot marked this draft ready at ${headState.readiedAt}; giving the ready-for-review review time to start`)
+    return false
+  }
 
   if (!result.ready) {
     for (const block of result.blocks) {
@@ -260,6 +264,16 @@ async function processDraft(ctx, repo, listed, defaultBranch) {
     ctx.say('debug', `${repo.slug}#${listed.number}: draft ignored (${skip})`)
     return
   }
+  // A draft that cannot be read or written is logged and left; it must not
+  // stop the labelled pull requests after it in the same repository.
+  try {
+    await takeDraft(ctx, repo, listed, defaultBranch)
+  } catch (cause) {
+    ctx.say('warn', `${repo.slug}#${listed.number}: draft left alone after an error: ${ctx.redactor.apply(cause.message)}`)
+  }
+}
+
+async function takeDraft(ctx, repo, listed, defaultBranch) {
   const pr = await ctx.github.getPull(repo.slug, listed.number)
   const sha = pr.head?.sha
   const tag = `${repo.slug}#${pr.number} (${short(sha)}, draft)`
@@ -268,8 +282,7 @@ async function processDraft(ctx, repo, listed, defaultBranch) {
     ctx.say('debug', `${tag}: draft ignored (${skip2})`)
     return
   }
-  const files = (await ctx.github.listPullFiles(repo.slug, pr.number)).map((f) => f.filename)
-  const claim = draftClaim(pr, files)
+  const claim = await draftClaim(pr, async () => (await ctx.github.listPullFiles(repo.slug, pr.number)).map((f) => f.filename))
   if (!claim) {
     ctx.say('debug', `${tag}: draft left alone (no merge line under ## Next, diff not docs-only)`)
     return
@@ -296,6 +309,11 @@ async function processDraft(ctx, repo, listed, defaultBranch) {
   // again (reviewer finding on #119).
   await ctx.github.addLabels(repo.slug, pr.number, [READY_LABEL])
   await ctx.github.markReady(pr.node_id)
+  // Leaving draft fires ready_for_review, which starts a second Claude review
+  // of this head; processPull holds the head until that run has had time to
+  // appear among the checks (reviewer finding on #119).
+  headState.readiedAt = ctx.clock.now().toISOString()
+  ctx.state.save()
   ctx.say('info', `${tag}: marked ready and labelled ${READY_LABEL}; the merge path takes it next pass`)
 }
 
