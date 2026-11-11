@@ -25,12 +25,14 @@ runs:
           # check red on two pull requests at once, while ripgrep sat in
           # Ubuntu's own universe repo entirely unaffected.
           #
-          # So the refresh is allowed to be partially bad and the install is
-          # not: if the index we actually need is missing, apt-get install
-          # fails and `set -e` stops the job. The failure that matters still
-          # fails; the one that does not, no longer does.
+          # The install may fail too. On 11 November 2026 hosted runners could
+          # not resolve security.ubuntu.com for over 1.5 hours, and a hard
+          # install failure took every `check` job red before any build ran.
+          # ripgrep is a speed-up, not the guard: without it the guard script
+          # falls back to grep with the same verdict (commit 582d8ac), so a
+          # failed install says why and carries on.
           sudo apt-get update -qq || echo "apt-get update reported errors; continuing to install"
-          sudo apt-get install -y -qq ripgrep
+          sudo apt-get install -y -qq ripgrep || echo "ripgrep could not be installed; the guard falls back to grep"
         fi
     - name: Run no-smb guard
       shell: bash
