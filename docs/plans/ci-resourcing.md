@@ -13,7 +13,7 @@ Written 11 November 2026 from 14 days of measured data (28 October to 11 Novembe
 - **The 7 November fallback is still on.** assess, MoonMan and gorfed.net set `HEAVY_RUNS_ON` to `"ubuntu-latest"` on 7 November and nobody switched them back. Since then MoonMan used 4,410 hosted minutes and assess 763. That is 51% of November's hosted use.
 - **Hosted spend.** About 10,200 billed minutes from 1 to 11 November across the private repositories (job-level, rounded up per job), counting about 1,075 for the reviewer. Allowing 2,000 to 3,000 included minutes, that is about US$43 to 49 so far, on course for about US$150 for November. The ceiling is US$50. The exact bill needs the `user` scope on the `gh` token, which no session has.
 - **Failures, by cause** (job-level failing step, 14 days):
-  - Infra, hosted: `Install ripgrep` (apt, `security.ubuntu.com`) failed 20 times in `verification-kit` and blocked heuristics PR 85. PR 121 removes the apt install.
+  - Infra, hosted: `Install ripgrep` (apt, `security.ubuntu.com`) failed 20 times in `verification-kit`, fixed by #123 (pinned tarball). The same apt install in `no-smb-guard` blocked heuristics PR 85; PR 121 removes it.
   - Infra, pool: 57 orphaned jobs. Playwright install or decision steps failed 17 times on 4thcltr and BinderCurve.
   - Roll-up echoes, not causes: BinderCurve's "Confirm all E2E matrix jobs passed" (35) and "canary shard" (19), 4thcltr's sweep (12).
   - Code: MoonMan formatting (13) and coverage floors (9). BinderCurve vendored kit drift (11). heuristics `Verify` (7) and share-mount guard (5).
@@ -39,7 +39,7 @@ Steady state: about 6,800 hosted minutes a month, about US$23 to 29 after the in
 1. **Restore the pool on assess and MoonMan** (runner, done 11 November with this plan): `HEAVY_RUNS_ON` back to `as-heavy` and `mm-heavy`. Both ran on the pool until 6 November, and the pool is up (rebooted 11 November, 9:54 ET).
 2. **Honest heartbeat** (Sonnet builder, BinderCurve `infra/ci-runner/supervisor.sh`). Write a heartbeat only when `firewall.sh --check` passes and a runner could start. Post to ntfy `ops-report` when the rules are missing or a queue has had no start for 30 minutes. On 3 to 5 November this alone would have sent the work to hosted after 30 minutes, not after 2 days.
 3. **Reap orphaned jobs** (Sonnet builder, same script). Set `timeout-minutes` on every pool job (60 for a shard). The supervisor cancels a run whose container is gone or past that limit. That frees the 794 lost slot-hours and stops 24-hour hangs.
-4. **Merge PR 121** (no apt in `no-smb-guard`). This fixes the 20 ripgrep failures and heuristics' block.
+4. **Land PR 121's `no-smb-guard` change** (runner): rebase it on main and drop its `verification-kit.yml` edit, which #123 superseded. This ends the apt dependency behind heuristics' block.
 5. **heuristics and papers onto the pool** (backlog `ci-on-the-pool`; after step 2). Their rows and labels (`hx-heavy`, `pp-heavy`) are in `pools.conf` and their CI has the preflight. Missing: a token each (the owner) and `HEAVY_RUNS_ON` (runner).
 6. **gorfed.net onto the pool** (runner). Its token is live. Set `["self-hosted","linux","gn-heavy"]` and add the hosted preflight its `ci.yml` lacks.
 7. **Stop or cut** (Sonnet, BinderCurve): pause `nightly-main` until it can go green. Move `production-monitor` (722 runs in 7 days, 321 cancelled by its own concurrency) to a dapyllil systemd timer, like `cta-watch`.
