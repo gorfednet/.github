@@ -332,7 +332,7 @@ describe('--set-repo-live', () => {
     const unknown = await set(path, 'nope', 'true')
     assert.equal(unknown.code, 2)
     assert.match(unknown.out, /no configured repository by that name.*Nothing was changed/)
-    const off = await set(path, 'ops', 'true')
+    const off = await set(path, 'wychwood', 'true')
     assert.equal(off.code, 2)
     assert.match(off.out, /mode "off".*Nothing was changed/)
     assert.equal(readFileSync(path, 'utf8'), example)
