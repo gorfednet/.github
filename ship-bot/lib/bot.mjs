@@ -7,8 +7,9 @@
  * write or a non-gate command throws, whatever the logic below decides.
  */
 import { join } from 'node:path'
-import { HOLD_LABEL } from './config.mjs'
+import { HOLD_LABEL, READY_LABEL } from './config.mjs'
 import { DeployLog, deployMerged, envSecrets, matchingFiles, preflight, realFs, selectSteps } from './deploy.mjs'
+import { draftClaim, draftIneligibleReason } from './drafts.mjs'
 import { evaluatePull, ineligibleReason, unmergeableReason } from './gates.mjs'
 import { guardWrites } from './github.mjs'
 import { Redactor } from './redact.mjs'
@@ -161,6 +162,10 @@ async function processRepo(ctx, repo) {
   const pulls = [...(await ctx.github.listOpenPulls(repo.slug))].sort((a, b) => a.number - b.number)
 
   for (const listed of pulls) {
+    if (listed.draft) {
+      await processDraft(ctx, repo, listed, defaultBranch)
+      continue
+    }
     const skip = ineligibleReason(listed, repo, defaultBranch, ctx.config.allowedAuthors)
     if (skip) {
       ctx.say('debug', `${repo.slug}#${listed.number}: ignored (${skip})`)
@@ -239,6 +244,56 @@ async function processPull(ctx, repo, pr, defaultBranch) {
     return true
   }
   return liveMerge(ctx, repo, pr, tag)
+}
+
+export const DRAFT_READY_COMMENT = 'Ship-bot: gates clean, marking ready and labelling; merges on the next pass'
+
+/**
+ * A draft the bot owns (lib/drafts.mjs) is marked ready and labelled once the
+ * same gates a labelled pull request must pass are clean on its head; the
+ * merge path takes it on the next pass. Marking ready is a write, so an
+ * observed repository and a dry run only say what they would do.
+ */
+async function processDraft(ctx, repo, listed, defaultBranch) {
+  const skip = draftIneligibleReason(listed, repo, defaultBranch, ctx.config.allowedAuthors)
+  if (skip) {
+    ctx.say('debug', `${repo.slug}#${listed.number}: draft ignored (${skip})`)
+    return
+  }
+  const pr = await ctx.github.getPull(repo.slug, listed.number)
+  const sha = pr.head?.sha
+  const tag = `${repo.slug}#${pr.number} (${short(sha)}, draft)`
+  const skip2 = draftIneligibleReason(pr, repo, defaultBranch, ctx.config.allowedAuthors) ?? unmergeableReason(pr)
+  if (skip2) {
+    ctx.say('debug', `${tag}: draft ignored (${skip2})`)
+    return
+  }
+  const files = (await ctx.github.listPullFiles(repo.slug, pr.number)).map((f) => f.filename)
+  const claim = draftClaim(pr, files)
+  if (!claim) {
+    ctx.say('debug', `${tag}: draft left alone (no merge line under ## Next, diff not docs-only)`)
+    return
+  }
+  const headState = ctx.state.head(repo.slug, pr.number, sha, ctx.clock.now().toISOString())
+  const result = await evaluatePull(ctx, repo, pr, { headState, draft: true })
+  if (!result.ready) {
+    for (const block of result.blocks) {
+      ctx.say(block.kind === 'wait' ? 'debug' : 'info', `${tag}: not marking ready (${claim}): ${block.reason}`)
+      // Once per head: the review request is a plain `claude review` line (the
+      // trigger matches a whole line), followed only by the hidden marker.
+      if (block.kind === 'request') await postOnce(ctx, repo, pr.number, sha, block.key, 'claude review')
+    }
+    return
+  }
+  ctx.say('info', `${tag}: gates clean (${claim}): marking ready and labelling ${READY_LABEL}`)
+  await postOnce(ctx, repo, pr.number, sha, 'draft-ready', DRAFT_READY_COMMENT)
+  if (ctx.dry) {
+    ctx.say('info', `${tag}: would mark ready and add ${READY_LABEL}`)
+    return
+  }
+  await ctx.github.markReady(pr.node_id)
+  await ctx.github.addLabels(repo.slug, pr.number, [READY_LABEL])
+  ctx.say('info', `${tag}: marked ready and labelled ${READY_LABEL}; the merge path takes it next pass`)
 }
 
 /**

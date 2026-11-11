@@ -43,7 +43,7 @@ const TOP_KEYS = new Set([
 ])
 const SCRIPT_KEYS = ['assertChecksStarted', 'reviewStatus', 'checkClosingKeywords']
 
-const COMMON_REPO_KEYS = ['slug', 'dir', 'mode', 'note', 'todo', 'live', 'claudeReview', 'expectedChecks', 'requireChecksAfterLabel']
+const COMMON_REPO_KEYS = ['slug', 'dir', 'mode', 'note', 'todo', 'live', 'claudeReview', 'expectedChecks', 'requireChecksAfterLabel', 'draftReady']
 const NTFY_KEYS = new Set(['url', 'topic', 'tokenFile'])
 const DEPLOY_REPO_KEYS = [
   'sourceDir',
@@ -181,6 +181,7 @@ function validateRepo(repo, i, problems, seen) {
     problems.push(`${label}.requireChecksAfterLabel: must be true or false`)
   }
   if (repo.live !== undefined && typeof repo.live !== 'boolean') problems.push(`${label}.live: must be true or false`)
+  if (repo.draftReady !== undefined && typeof repo.draftReady !== 'boolean') problems.push(`${label}.draftReady: must be true or false`)
 
   if (repo.mode === 'off') return
 
@@ -356,6 +357,8 @@ export function normalizeConfig(raw, { home = homedir() } = {}) {
         claudeReview: repo.claudeReview ?? false,
         expectedChecks: repo.expectedChecks ?? [],
         requireChecksAfterLabel: repo.requireChecksAfterLabel ?? false,
+        // false opts a repo out of marking its own drafts ready (lib/drafts.mjs).
+        draftReady: repo.draftReady ?? true,
         reason: repo.reason ?? '',
       }
       if (repo.mode !== 'deploy') return base

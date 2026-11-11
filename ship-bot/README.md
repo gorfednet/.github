@@ -9,7 +9,9 @@ minutes, and needs nothing from you beyond the label you already use.
 Every two minutes it looks at each of your repositories and, for every open
 pull request, asks:
 
-1. Did **you** open it, is it **not a draft**, does it carry the
+1. Did **you** open it, is it **not a draft** (a draft that says merge in its
+   `## Next`, or changes only docs, is marked ready by the bot first: see
+   "Drafts the bot marks ready itself"), does it carry the
    **`ready-to-merge`** label, and does it **not** carry **`hold`**?
 2. Did **every check pass** on the latest commit, including the specific
    checks that repository is supposed to run? A check that is still running,
@@ -156,6 +158,34 @@ No check is skipped. `make verify` runs the job-folder tests (`tests/*.local.tes
 
 **4thcltr.com needs a change the bot does not have yet.** `scripts/require-release-tag.sh` refuses any HEAD that is not on an exact tag, and the tag is made by `npm run release` after the merge. Deploying the merge commit is therefore refused every time. The fix is a separate, small pull request to this bot: for a row with `deployOnTag`, each pass lists the repository's release tags, and when the newest is not the one in the state file it checks out that tag (not a merge commit) in the workspace and runs the same deploy steps, with the same rollback and block-on-failure rules; a merge to a repository with that setting only merges. It stays out of this change because it alters when the bot deploys, which is the most sensitive kind of change here.
 
+## Drafts the bot marks ready itself
+
+Builder jobs open their pull requests as drafts and cannot run `gh pr ready` or
+add a label, so 30 `worktree-*` drafts sat still until 11 November 2026. The
+bot now takes a draft itself when **all** of these hold:
+
+- its description has a `## Next` section whose first unchecked `- [ ]` line
+  says "merge" or "open the PR" (any case), **or** its diff touches only
+  documentation and backlog files (`*.md`, anything under `docs/`);
+- every check is green on its latest commit, the same expected checks as for
+  a labelled pull request;
+- the Claude reviewer is `clean` on that commit. A draft gets no automatic
+  review, so when `review-status.mjs` says `not-run` the bot comments
+  `claude review` once per commit, on a line by itself, and waits for the next
+  pass. It never asks twice for the same commit. A review with findings keeps
+  the draft a draft; nothing is said on the pull request, the log says why;
+- no `hold` label, no merge conflict, not opened by Dependabot, and the author
+  is allowlisted.
+
+Then it comments once, "Ship-bot: gates clean, marking ready and labelling;
+merges on the next pass", marks the pull request ready and adds
+`ready-to-merge`. The ordinary merge path takes it on the next pass, two
+minutes later, re-reading every gate. A repository in observation (`live`
+false) logs `would mark ready and add ready-to-merge` and does nothing.
+
+To keep a draft a draft, add the **`hold`** label. To keep a whole repository
+out of this, set `"draftReady": false` on its row in `~/.ship-bot/config.json`.
+
 ## How a change ships
 
 1. A session finishes the work and adds the **`ready-to-merge`** label.
@@ -186,6 +216,8 @@ To stop it: add the **`hold`** label to a pull request, or run
   again), it merges nothing that would need a deploy and tells you, at most
   once an hour.
 - Merge a pull request without the `ready-to-merge` label, or one with `hold`.
+- Mark a draft ready unless its `## Next` says merge or its diff is docs-only,
+  and its gates are clean (above).
 - Retry a deploy that failed. It puts the previous version back and waits for
   a person.
 

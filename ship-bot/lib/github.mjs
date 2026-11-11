@@ -2,14 +2,14 @@
  * The real GitHub client: REST and one GraphQL query, over Node's fetch.
  *
  * Tests never construct this; they inject a fake with the same methods. The
- * method list below is the whole surface, and only `createComment` and
- * `mergePull` write. `guardWrites` wraps any client so a dry run cannot reach
+ * method list below is the whole surface, and only `createComment`,
+ * `mergePull`, `markReady` and `addLabels` write. `guardWrites` wraps any client so a dry run cannot reach
  * them even if the bot's own logic were wrong.
  */
 
 const API = 'https://api.github.com'
 
-export const WRITE_METHODS = new Set(['createComment', 'mergePull'])
+export const WRITE_METHODS = new Set(['createComment', 'mergePull', 'markReady', 'addLabels'])
 
 export class GitHubError extends Error {
   constructor(method, path, status, message) {
@@ -122,6 +122,13 @@ export function createGitHubClient({ token, fetchImpl = globalThis.fetch, api = 
       throw new GitHubError('POST', '/graphql', 'too-many', 'more than 2000 review threads')
     },
     createComment: (slug, n, body) => request('POST', `/repos/${slug}/issues/${n}/comments`, { body }),
+    addLabels: (slug, n, labels) => request('POST', `/repos/${slug}/issues/${n}/labels`, { labels }),
+    /** Takes a draft out of draft (what `gh pr ready` does). REST has no endpoint for it; `nodeId` is the pull's `node_id`. */
+    markReady: (nodeId) =>
+      graphql(`mutation($id:ID!){markPullRequestReadyForReview(input:{pullRequestId:$id}){pullRequest{isDraft}}}`, { id: nodeId }).then((d) => {
+        if (d?.markPullRequestReadyForReview?.pullRequest?.isDraft !== false) throw new GitHubError('POST', '/graphql', 'not-ready', 'GitHub did not confirm the pull request left draft')
+        return true
+      }),
     mergePull: (slug, n, { sha }) =>
       request('PUT', `/repos/${slug}/pulls/${n}/merge`, { merge_method: 'merge', sha }),
   }

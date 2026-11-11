@@ -138,6 +138,22 @@ export class FakeGitHub {
     return { id: this.comments.length }
   }
 
+  async addLabels(slug, n, labels) {
+    this.log('addLabels', slug, n, labels)
+    this.writes.push({ name: 'addLabels', slug, n, labels })
+    const pr = this.pullsFor(slug).find((p) => p.number === n)
+    for (const name of labels) if (!pr.labels.some((l) => l.name === name)) pr.labels.push({ name })
+    return pr.labels
+  }
+
+  async markReady(nodeId) {
+    this.log('markReady', nodeId)
+    this.writes.push({ name: 'markReady', nodeId })
+    const pr = Object.values(this.pullsBySlug ?? { x: this.pulls }).flat().find((p) => p.node_id === nodeId)
+    if (pr) pr.draft = false
+    return true
+  }
+
   async mergePull(slug, n, opts) {
     this.log('mergePull', slug, n, opts)
     this.writes.push({ name: 'mergePull', slug, n, ...opts })
