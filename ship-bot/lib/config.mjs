@@ -58,6 +58,7 @@ const DEPLOY_REPO_KEYS = [
   'deploy',
   'rollback',
   'pausedIfChanged',
+  'release',
 ]
 const ALLOWED_REPO_KEYS = {
   deploy: new Set([...COMMON_REPO_KEYS, ...DEPLOY_REPO_KEYS]),
@@ -77,6 +78,7 @@ const RETIRED_KEYS = {
 }
 const STEP_KEYS = new Set(['name', 'command', 'timeoutMinutes', 'onlyIfChanged', 'onlyAfterFailureOf', 'note'])
 const SIBLING_KEYS = new Set(['dir', 'slug', 'branch'])
+const RELEASE_KEYS = new Set(['tagPrefix'])
 
 export class ConfigError extends Error {
   constructor(problems) {
@@ -230,6 +232,20 @@ function validateRepo(repo, i, problems, seen) {
       })
     }
   }
+  if (repo.release !== undefined) {
+    if (!isObject(repo.release)) problems.push(`${label}.release: must be an object, { } or { "tagPrefix": "v" }`)
+    else {
+      checkUnknownKeys(repo.release, RELEASE_KEYS, `${label}.release`, problems)
+      if (repo.release.tagPrefix !== undefined && !(typeof repo.release.tagPrefix === 'string' && /^[A-Za-z]{0,8}$/.test(repo.release.tagPrefix))) {
+        problems.push(`${label}.release.tagPrefix: must be up to 8 letters, such as "v" (the default)`)
+      }
+    }
+  }
+  if (repo.release !== undefined) {
+    // A release deploy diffs only its own merge commit, so an earlier merge with no Release line (merged, never deployed) would escape both.
+    if (Array.isArray(repo.pausedIfChanged) && repo.pausedIfChanged.length > 0) problems.push(`${label}.release: cannot be combined with pausedIfChanged (a release deploys everything merged since the last one, not just its own diff)`)
+    if (Array.isArray(repo.deploy) && repo.deploy.some((d) => d?.onlyIfChanged)) problems.push(`${label}.release: cannot be combined with onlyIfChanged deploy steps (same reason)`)
+  }
   validateSteps(repo.setup ?? [], `${label}.setup`, problems, { allowOnlyIfChanged: false })
   validateSteps(repo.deploy, `${label}.deploy`, problems, { allowOnlyIfChanged: true })
   if (Array.isArray(repo.deploy) && repo.deploy.length === 0) problems.push(`${label}.deploy: needs at least one step`)
@@ -379,6 +395,8 @@ export function normalizeConfig(raw, { home = homedir() } = {}) {
         // null: no list given, so a failure redeploys the previous commit. An explicit [] (or a list no step of which applies) rolls nothing back.
         rollback: repo.rollback ?? null,
         pausedIfChanged: repo.pausedIfChanged ?? [],
+        // null: every merge deploys. An object: only a pull request whose description says `Release: X.Y.Z sentence` is tagged and deployed (lib/release.mjs).
+        release: repo.release ? { tagPrefix: repo.release.tagPrefix ?? 'v' } : null,
       }
     }),
   }

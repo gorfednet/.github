@@ -2,14 +2,14 @@
  * The real GitHub client: REST and one GraphQL query, over Node's fetch.
  *
  * Tests never construct this; they inject a fake with the same methods. The
- * method list below is the whole surface, and only `createComment` and
- * `mergePull` write. `guardWrites` wraps any client so a dry run cannot reach
+ * method list below is the whole surface, and only `createComment`,
+ * `mergePull` and `createRelease` write. `guardWrites` wraps any client so a dry run cannot reach
  * them even if the bot's own logic were wrong.
  */
 
 const API = 'https://api.github.com'
 
-export const WRITE_METHODS = new Set(['createComment', 'mergePull'])
+export const WRITE_METHODS = new Set(['createComment', 'mergePull', 'createRelease'])
 
 export class GitHubError extends Error {
   constructor(method, path, status, message) {
@@ -87,6 +87,8 @@ export function createGitHubClient({ token, fetchImpl = globalThis.fetch, api = 
       paginate(`/repos/${slug}/commits/${sha}/check-runs?filter=latest`, (d) => d?.check_runs),
     listStatuses: (slug, sha) => paginate(`/repos/${slug}/commits/${sha}/status`, (d) => d?.statuses),
     listReviews: (slug, n) => paginate(`/repos/${slug}/pulls/${n}/reviews`),
+    /** Every tag name, for a release's "higher than the newest tag" check. */
+    listTags: (slug) => paginate(`/repos/${slug}/tags`, (d) => d, 5000).then((tags) => tags.map((t) => t.name)),
     listIssueComments: (slug, n) => paginate(`/repos/${slug}/issues/${n}/comments`),
     listIssueEvents: (slug, n) => paginate(`/repos/${slug}/issues/${n}/events`),
     async listReviewThreads(slug, n) {
@@ -122,6 +124,7 @@ export function createGitHubClient({ token, fetchImpl = globalThis.fetch, api = 
       throw new GitHubError('POST', '/graphql', 'too-many', 'more than 2000 review threads')
     },
     createComment: (slug, n, body) => request('POST', `/repos/${slug}/issues/${n}/comments`, { body }),
+    createRelease: (slug, { tag, name, body }) => request('POST', `/repos/${slug}/releases`, { tag_name: tag, name, body }),
     mergePull: (slug, n, { sha }) =>
       request('PUT', `/repos/${slug}/pulls/${n}/merge`, { merge_method: 'merge', sha }),
   }
