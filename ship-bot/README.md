@@ -98,17 +98,63 @@ minutes later.
 
 ## Rollout schedule
 
-Owner-compressed schedule (9 November 2026):
+Owner-compressed schedule (9 November 2026), extended 11 November 2026 ("deploy automation for all"):
 
 - **Stage 1: live.** `.github`, assess, career-portfolio, heuristics.4thcltr.com, papers.4thcltr.com (merge-only).
 - **Stages 2 and 3 together: Thursday 12 November.** bindercurve.com and 4thcltr.com merge-only, plus the static site deploys: gorfed.net, gorfmusic, denseware, ssatcy, anal0g, blackpixelrecords, rowanmcarthur, subrythm and the promptboi site.
 - **Stage 4: Sunday 15 November.** MoonMan deploy.
+- **Stage 5: the 4thcltr family** (heuristics, papers, 4thcltr.com), dated in "Deploy automation plan" below.
 
 Rules for moving on:
 
 - Each stage needs 3 clean merges in the current stage, no `SKIP` on a red check that should have merged, and no rollback.
 - Before flipping, run `--validate` for the entering repositories and read the last 3 passes of the log.
 - A wrong merge, or a failed deploy that needs a rollback, holds the stage until the cause is fixed and recorded.
+
+## Deploy automation plan (11 November 2026)
+
+Every site deploys through the bot, in observation first (`live` false: the log says what it would deploy and nothing runs). What each repository needs, and when it goes live:
+
+| Repository | Row | Goes live | Why then |
+|---|---|---|---|
+| gorfed.net, gorfmusic, denseware, ssatcy, anal0g, blackpixelrecords, rowanmcarthur, subrythm, promptboi (site only) | in the example since 9 October | Thu 12 Nov (stages 2 and 3) | unchanged |
+| MoonMan | in the example | Sun 15 Nov (stage 4) | unchanged |
+| papers.4thcltr.com | `deploy`, observation | **Fri 13 Nov** | no private tests, static, the lowest-risk site on the shared engine; it is the one that proves the engine's rollback |
+| heuristics.4thcltr.com | `deploy`, observation | **Mon 16 Nov** | needs papers live first (one real deploy, no rollback), and its gate reads the owner's assess jobs folder |
+| 4thcltr.com | stays `merge-only` | **Mon 23 Nov**, if the tag-deploy change (below) lands by Thu 19 Nov | `make deploy` refuses any HEAD that is not on an exact release tag, and a merge commit never is |
+| bindercurve.com | `merge-only`, no deploy | not before the 1.0 plan (week of 2 Feb 2027) | release hold; it deploys through its own release workflow |
+| assess, career-portfolio, .github | `merge-only` | stay merge-only | not websites: assess is a command-line engine with no published site, career-portfolio a tool, .github the fleet's shared CI |
+| intake, propose | no row yet | when each has a pull-request CI and a deploy command | services with no site-deploy path and no DNS yet; a row needs `expectedChecks`, and these two have no CI posted to sample |
+
+Each flip needs all of this, read from the log and `--validate`, not remembered:
+
+1. `--validate --repo <name>` clean (a named, known difference is acceptable only when the row's note names it; papers shows `derive` on 1 of 3 until two newer merges replace the older samples).
+2. 3 clean merges in the repository (the stage-1 history counts for heuristics and papers: they have merged through the bot since 7 November) and no `SKIP` on a red check that should have merged.
+3. The last 3 log passes after the row went into observation show no config or preflight error and, for at least one real pull request, a line `would deploy from ... setup [...] then [...]` with the steps you expect.
+4. `ship-bot/preflight-launchd.sh` passes every step, including `site deploy host` (`ssh sitedeploy@dapyllil true`, the login the engine uploads as), from launchd's context.
+5. For the first site only (papers): the rollback rehearsal below.
+6. For each later site: the earlier site has deployed live at least once through the bot with no rollback.
+
+**Rollback rehearsal (papers, before its first live deploy).** It proves the engine's rollback over the real key, with no code change and about 10 seconds on a static site. From the papers clone, after `make releases` shows at least two releases:
+
+```bash
+cd ~/Developer/gorfednet/papers.4thcltr.com
+make releases          # note the current release id (top) and the one below it
+make rollback          # switches current back one release and checks the live index.html
+make rollback ID=<the id that was current>   # switches forward again, same check
+```
+
+Both must print `current -> releases/...` and pass the live check. The bot-side wiring (a rollback step that runs only after a failure past the upload; a failure it does not cover says nothing was rolled back; a failed setup rolls nothing back) is held by `test/bot.test.mjs`, watched failing with the filter removed.
+
+**How the `heuristics` and `papers` rows run `make deploy`.** The bot cannot run `make deploy` as one step: a failure inside it after the upload would roll back the wrong thing, and a failure before the upload must roll back nothing. The rows split the same sequence in two:
+
+- `setup` (a failure here deploys nothing and rolls nothing back): `make verify` (npm ci, the build, `verify.sh`; heuristics runs `verify.sh local`), `check-release.mjs`, `indexnow.mjs plan`.
+- `deploy`: the shared engine's `deploy dist`, `indexnow.mjs ping` (its failure is reported in the log and does not undo the deploy, as the Makefile's leading dash), and for heuristics `check-live-release.mjs`.
+- `rollback`: heuristics has `make rollback` marked `onlyAfterFailureOf` its `live check`, the one step that can fail after the release went live and be wrong about it. Papers has an explicit empty list: nothing after its upload can fail the release. The default rollback, a redeploy of the previous commit, cannot work with this engine (it refuses a HEAD behind `origin/main`), so both rows name a list. A failure in any step no rollback step covers (an upload that refused, an IndexNow ping that hung) is reported as **deploy failed and nothing was rolled back**, loudly, with the repository blocked until a person has checked the site.
+
+No check is skipped. `make verify` runs the job-folder tests (`tests/*.local.test.ts`) that read the assess jobs; the heuristics row gives them `ASSESS_JOBS=~/Developer/gorfednet/assess/jobs` through its `env`, so the bot reads the owner's folder exactly as a hand deploy does, and the tests fail rather than skip when it is missing. If the sequence in a site's Makefile changes, change its row in the same pull request.
+
+**4thcltr.com needs a change the bot does not have yet.** `scripts/require-release-tag.sh` refuses any HEAD that is not on an exact tag, and the tag is made by `npm run release` after the merge. Deploying the merge commit is therefore refused every time. The fix is a separate, small pull request to this bot: for a row with `deployOnTag`, each pass lists the repository's release tags, and when the newest is not the one in the state file it checks out that tag (not a merge commit) in the workspace and runs the same deploy steps, with the same rollback and block-on-failure rules; a merge to a repository with that setting only merges. It stays out of this change because it alters when the bot deploys, which is the most sensitive kind of change here.
 
 ## How a change ships
 
@@ -200,6 +246,8 @@ the config says `"live": true`; otherwise it observes, which is a dry run whose
 decisions are logged as `OBSERVE` lines (only a missing or invalid config makes
 it refuse), and any repository whose config entry still has
 a `todo` list is refused in live mode until each item is confirmed and removed.
+
+A deploy row can also carry `env` (name to value, a leading `~/` is the home directory; given to every setup, deploy and rollback step, never a GitHub token) and, on a rollback step, `onlyAfterFailureOf` (the deploy step names whose failure it undoes). A `rollback` list, even an empty one, replaces the default redeploy of the previous commit; a failure no listed step covers rolls nothing back, and the pull-request comment and the notification say exactly that (the site may be on the new release) and block the repository.
 
 The config lives outside this repository at `~/.ship-bot/config.json`;
 [`config.example.json`](config.example.json) documents every field and the

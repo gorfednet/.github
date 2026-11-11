@@ -159,6 +159,7 @@ async function runSteps(ctx, log, repo, steps, kind) {
       cmd: step.command[0],
       args: step.command.slice(1),
       cwd: repo.workDir,
+      env: { ...ctx.baseEnv, ...repo.env },
       timeoutMs: minutes * 60 * 1000,
     })
     ran.push(step.name)
@@ -166,14 +167,24 @@ async function runSteps(ctx, log, repo, steps, kind) {
   return ran
 }
 
-async function rollBack(ctx, log, repo, { parent, selected }) {
-  if (repo.rollback.length > 0) {
+async function rollBack(ctx, log, repo, { parent, selected, failedStep }) {
+  if (repo.rollback !== null) {
+    // An explicit list is the whole answer, even an empty one: the default
+    // (redeploy the previous commit) is only for a row that names no list.
+    // A rollback step marked onlyAfterFailureOf runs only for a failure in one of
+    // those deploy steps. This is how a step that undoes a publish (switching the
+    // site back a release) stays out of a failure that published nothing.
+    const steps = repo.rollback.filter((s) => !s.onlyAfterFailureOf || s.onlyAfterFailureOf.includes(failedStep))
+    if (steps.length === 0) {
+      log.write(`\n[ship-bot] no rollback step applies to a failure in "${failedStep}"; nothing was rolled back\n`)
+      return { applied: false, method: 'no rollback', ok: false, error: `no rollback step applies to a failure in "${failedStep}"` }
+    }
     log.write('\n[ship-bot] rolling back with the configured rollback steps\n')
     try {
-      await runSteps(ctx, log, repo, repo.rollback, 'rollback')
-      return { method: 'rollback steps', ok: true }
+      await runSteps(ctx, log, repo, steps, 'rollback')
+      return { applied: true, method: 'rollback steps', ok: true }
     } catch (cause) {
-      return { method: 'rollback steps', ok: false, error: cause.message }
+      return { applied: true, method: 'rollback steps', ok: false, error: cause.message }
     }
   }
   log.write(`\n[ship-bot] no rollback steps configured; redeploying the previous commit ${parent}\n`)
@@ -181,16 +192,16 @@ async function rollBack(ctx, log, repo, { parent, selected }) {
     await prepareWorkspace(ctx, log, repo, parent)
     await runSteps(ctx, log, repo, repo.setup, 'rollback')
     await runSteps(ctx, log, repo, selected, 'rollback')
-    return { method: `redeploying the previous commit ${parent.slice(0, 7)}`, ok: true }
+    return { applied: true, method: `redeploying the previous commit ${parent.slice(0, 7)}`, ok: true }
   } catch (cause) {
-    return { method: `redeploying the previous commit ${parent.slice(0, 7)}`, ok: false, error: cause.message }
+    return { applied: true, method: `redeploying the previous commit ${parent.slice(0, 7)}`, ok: false, error: cause.message }
   }
 }
 
 /**
  * Deploy one merge commit. Never retries.
  *
- * @returns {Promise<{status: 'deployed'|'paused'|'not-started'|'rolled-back'|'rollback-failed',
+ * @returns {Promise<{status: 'deployed'|'paused'|'not-started'|'rolled-back'|'rollback-failed'|'failed-not-rolled-back',
  *   steps?: string[], paused?: string[], error?: string, rollback?: object}>}
  */
 export async function deployMerged(ctx, repo, { mergeSha, log }) {
@@ -223,8 +234,9 @@ export async function deployMerged(ctx, repo, { mergeSha, log }) {
     try {
       steps.push(...(await runSteps(ctx, log, repo, [step], 'deploy')))
     } catch (cause) {
-      const rollback = await rollBack(ctx, log, repo, { parent, selected })
-      return { status: rollback.ok ? 'rolled-back' : 'rollback-failed', steps, error: cause.message, failedStep: step.name, rollback }
+      const rollback = await rollBack(ctx, log, repo, { parent, selected, failedStep: step.name })
+      const status = !rollback.applied ? 'failed-not-rolled-back' : rollback.ok ? 'rolled-back' : 'rollback-failed'
+      return { status, steps, error: cause.message, failedStep: step.name, rollback }
     }
   }
   return { status: 'deployed', steps, skipped: repo.deploy.filter((s) => !selected.includes(s)).map((s) => s.name) }
