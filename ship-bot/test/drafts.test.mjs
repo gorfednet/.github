@@ -36,6 +36,11 @@ describe("which drafts are the bot's", () => {
       assert.equal(r.claim, undefined, later)
       assert.match(r.refused, /## Next says/, later)
     }
+    // A wait written as prose, a `+ [ ]` item or a numbered item counts too; a done `- [x]` item does not.
+    for (const body of ["## Next\nDon't merge until the owner answers.\n- [ ] merge\n", '## Next\n- [ ] merge\n+ [ ] wait for PR 118\n', '## Next\n- [ ] merge\n1. [ ] owner decides\n']) {
+      assert.equal(draftClaim({ body }).claim, undefined, body)
+    }
+    assert.match(draftClaim({ body: '## Next\n- [x] owner decided the name\n- [ ] merge\n' }).claim, /## Next says "merge"/)
   })
 })
 

@@ -37,24 +37,29 @@ export function draftIneligibleReason(pr, repo, defaultBranch, allowedAuthors) {
   return null
 }
 
-/** Every `- [ ]` line under `## Next`, in order, stopping at the next heading. */
-export function uncheckedNextItems(body) {
+/** Every line under `## Next` up to the next heading, blank lines dropped. */
+export function nextSectionLines(body) {
   const lines = String(body ?? '').split(/\r?\n/)
   const start = lines.findIndex((l) => /^##\s+Next\s*$/i.test(l.trim()))
   if (start < 0) return []
-  const items = []
+  const out = []
   for (const line of lines.slice(start + 1)) {
     if (/^##?\s/.test(line)) break
-    const m = /^\s*[-*]\s+\[ \]\s+(.*\S)/.exec(line)
-    if (m) items.push(m[1])
+    if (line.trim()) out.push(line)
   }
-  return items
+  return out
 }
+
+/** The `- [ ]` items under `## Next`, in order. */
+export const uncheckedNextItems = (body) =>
+  nextSectionLines(body)
+    .map((l) => /^\s*[-*]\s+\[ \]\s+(.*\S)/.exec(l)?.[1])
+    .filter(Boolean)
 
 /** The text of the first `- [ ]` line under `## Next`, or null when there is no such section or line. */
 export const firstNextItem = (body) => uncheckedNextItems(body)[0] ?? null
 
-/** Any unchecked line that hands the decision to a person: the bot refuses the whole draft. */
+/** Any line under `## Next` that is not a done item and hands the decision to a person: the bot refuses the whole draft. Prose counts, a `- [x]` does not. */
 const WAIT_WORDS = /\b(do not|don[’']?t|dont|wait|hold|owner|needs? (a )?decision|decision needed|decide)\b/i
 
 /**
@@ -63,10 +68,11 @@ const WAIT_WORDS = /\b(do not|don[’']?t|dont|wait|hold|owner|needs? (a )?decis
  * stopped it; `{}` is a draft the rule does not cover.
  */
 export function draftClaim(pr) {
-  const items = uncheckedNextItems(pr.body)
-  const waiting = items.find((l) => WAIT_WORDS.test(l))
-  if (waiting) return { refused: `## Next says "${waiting.slice(0, 80)}"` }
-  const first = items[0]
+  const waiting = nextSectionLines(pr.body)
+    .filter((l) => !/^\s*(?:[-*]|\d+[.)])\s+\[[xX]\]/.test(l))
+    .find((l) => WAIT_WORDS.test(l))
+  if (waiting) return { refused: `## Next says "${waiting.replace(/^\s*(?:[-*+]|\d+[.)])?\s*(?:\[ \])?\s*/, '').slice(0, 80)}"` }
+  const first = uncheckedNextItems(pr.body)[0]
   if (first && isMergeInstruction(first)) return { claim: `## Next says "${first.slice(0, 80)}"` }
   return {}
 }
