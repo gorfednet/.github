@@ -11,6 +11,7 @@ import { HOLD_LABEL } from './config.mjs'
 
 /** The line starts with the instruction: "fix the merge conflict" and "owner picks the merge strategy" name merge and are not one. */
 const MERGE_INSTRUCTION = /^\W*(merge|open the pr)\b/i
+const MERGE_INSTRUCTION_WORDS = /\b(merge|open the pr)\b/i
 /** "Merge later" or "merge once the owner answers" starts with merge and is not an instruction to. */
 const NOT_YET = /\b(not|no|don[’']?t|dont|never|wait|until|unless|after|before|hold|once|if|yet|later)\b/i
 export const isMergeInstruction = (line) => MERGE_INSTRUCTION.test(line) && !NOT_YET.test(line)
@@ -62,6 +63,8 @@ export const isDocsOnly = (files) => files.length > 0 && files.every((f) => DOCS
 export async function draftClaim(pr, listFiles) {
   const next = firstNextItem(pr.body)
   if (next && isMergeInstruction(next)) return `## Next says "${next.slice(0, 80)}"`
+  // "Do not merge yet" under ## Next is the author's word on it, whatever the diff touches.
+  if (next && MERGE_INSTRUCTION_WORDS.test(next)) return null
   const files = await listFiles()
   if (isDocsOnly(files)) return `docs-only diff (${files.length} file(s))`
   return null

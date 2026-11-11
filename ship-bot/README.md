@@ -174,7 +174,9 @@ bot now takes a draft itself when **all** of these hold:
 - its description has a `## Next` section whose first unchecked `- [ ]` line
   says "merge" or "open the PR" (any case), **or** its diff touches only
   documentation and backlog files: top-level `*.md` and anything under the
-  repository's `docs/` (a `.md` under `src/content/` is a page, not docs);
+  repository's `docs/` (a `.md` under `src/content/` is a page, not docs). A
+  `## Next` line that names merging but says not yet ("do not merge until
+  the owner answers") keeps a docs-only draft a draft;
 - every check is green on its latest commit, the same expected checks as for
   a labelled pull request;
 - the Claude reviewer has reviewed that commit: `clean`, or with every one of

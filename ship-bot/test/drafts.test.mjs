@@ -34,6 +34,8 @@ describe('which drafts are the bot\'s', () => {
     assert.match(await draftClaim({ body: NEXT_OTHER }, files(['docs/plan.md'])), /docs-only diff \(1 file\(s\)\)/)
     assert.equal(await draftClaim({ body: NEXT_OTHER }, files(['src/a.ts'])), null)
     assert.equal(listed, 2)
+    assert.equal(await draftClaim({ body: '## Next\n- [ ] Do not merge yet, owner decides\n' }, files(['docs/a.md'])), null, 'a docs-only diff does not override a not-yet line')
+    assert.equal(listed, 2, 'and the files are not even listed')
   })
   it('a line that names merge but is not an instruction to merge now is not one', () => {
     for (const line of ['Do not merge until the owner answers', "don't merge before Thursday", 'Don’t merge yet', 'No merge yet, owner decides', 'merge later', 'merge once PR 118 lands', 'hold the merge', 'wait, then open the PR', 'fix the merge conflict with main', 'owner picks the merge strategy', 'check the merge result on staging']) {
