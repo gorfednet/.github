@@ -250,8 +250,11 @@ agent; run it before switching any deploy-mode repository on.
 **12 November 2026:** the agent runs at launchd's default process class. A
 `ProcessType Background` throttled every child process, Playwright and its
 browsers included, and failed 18 papers verify specs on 11 November 2026 (PR
-128). If `launchctl print gui/501/net.gorfed.ship-bot` shows `active count = 0`,
-re-run `ship-bot/install.sh` so the loaded plist matches this file.
+128). To check an install, run
+`plutil -extract ProcessType raw ~/Library/LaunchAgents/net.gorfed.ship-bot.plist`.
+It should fail with "No value at that key path". If it prints `Background`,
+re-run `ship-bot/install.sh` so the loaded plist matches this file. (`active
+count` in `launchctl print` is no use here: the job is idle between runs.)
 
 A dry run reads GitHub (it runs the verification kit's read-only gate scripts)
 but posts nothing, merges nothing and runs no deploy. `--live` acts only when
