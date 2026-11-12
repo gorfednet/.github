@@ -125,6 +125,9 @@
       "mode": "deploy",
       "claudeReview": true,
       "live": false,
+      "coveredChecks": [
+        "browser-compat / compat ("
+      ],
       "expectedChecks": [
         "check / check",
         "browser-compat / compat-success"
@@ -167,6 +170,9 @@
       "mode": "deploy",
       "claudeReview": true,
       "live": false,
+      "coveredChecks": [
+        "browser-compat / compat ("
+      ],
       "expectedChecks": [
         "check / check",
         "browser-compat / compat-success",
@@ -202,6 +208,9 @@
       "mode": "deploy",
       "claudeReview": true,
       "live": false,
+      "coveredChecks": [
+        "browser-compat / compat ("
+      ],
       "expectedChecks": [
         "check / check",
         "browser-compat / compat-success"
@@ -244,6 +253,9 @@
       "mode": "deploy",
       "claudeReview": true,
       "live": false,
+      "coveredChecks": [
+        "browser-compat / compat ("
+      ],
       "expectedChecks": [
         "check / check",
         "browser-compat / compat-success",
@@ -414,6 +426,9 @@
       "mode": "deploy",
       "claudeReview": true,
       "live": false,
+      "coveredChecks": [
+        "browser-compat / compat ("
+      ],
       "expectedChecks": [
         "check / check",
         "browser-compat / compat-success"

@@ -43,7 +43,7 @@ const TOP_KEYS = new Set([
 ])
 const SCRIPT_KEYS = ['assertChecksStarted', 'reviewStatus', 'checkClosingKeywords']
 
-const COMMON_REPO_KEYS = ['slug', 'dir', 'mode', 'note', 'todo', 'live', 'claudeReview', 'expectedChecks', 'requireChecksAfterLabel']
+const COMMON_REPO_KEYS = ['slug', 'dir', 'mode', 'note', 'todo', 'live', 'claudeReview', 'expectedChecks', 'coveredChecks', 'requireChecksAfterLabel']
 const NTFY_KEYS = new Set(['url', 'topic', 'tokenFile'])
 const DEPLOY_REPO_KEYS = [
   'sourceDir',
@@ -183,6 +183,11 @@ function validateRepo(repo, i, problems, seen) {
     problems.push(`${label}.requireChecksAfterLabel: must be true or false`)
   }
   if (repo.live !== undefined && typeof repo.live !== 'boolean') problems.push(`${label}.live: must be true or false`)
+
+  // coveredChecks only quiets `--validate`; the merge gate never reads it.
+  if (repo.coveredChecks !== undefined && !isStringArray(repo.coveredChecks)) {
+    problems.push(`${label}.coveredChecks: must be an array of check names or name prefixes`)
+  }
 
   if (repo.mode === 'off') return
 
@@ -371,6 +376,7 @@ export function normalizeConfig(raw, { home = homedir() } = {}) {
         note: repo.note ?? '',
         claudeReview: repo.claudeReview ?? false,
         expectedChecks: repo.expectedChecks ?? [],
+        coveredChecks: repo.coveredChecks ?? [],
         requireChecksAfterLabel: repo.requireChecksAfterLabel ?? false,
         reason: repo.reason ?? '',
       }

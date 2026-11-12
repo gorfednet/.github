@@ -162,6 +162,14 @@ describe('config validation', () => {
     assert.match(rows['gorfednet/ops'].note, /not on a push/)
   })
 
+  it('validates coveredChecks like ignoredChecks: an array of non-empty strings, and it is a known repo key', () => {
+    assert.match(problemsFor(base([deployRepo({ coveredChecks: 'x' })])), /coveredChecks: must be an array/)
+    assert.match(problemsFor(base([deployRepo({ coveredChecks: [''] })])), /coveredChecks: must be an array/)
+    assert.deepEqual(validateConfig(base([deployRepo({ coveredChecks: ['browser-compat / compat ('] })])), [])
+    const config = normalizeConfig(base([deployRepo({ coveredChecks: ['a'] }), deployRepo({ slug: 'gorfednet/b', dir: 'b' })]), { home: HOME })
+    assert.deepEqual(config.repos.map((r) => r.coveredChecks), [['a'], []])
+  })
+
   it('validates the per-repo live flag, the pass limit, ignoredChecks and ntfy', () => {
     assert.match(problemsFor(base([deployRepo({ live: 'yes' })])), /repos\[0\] \(gorfednet\/site\)\.live: must be true or false/)
     assert.match(problemsFor({ ...base([deployRepo()]), maxMergesPerPass: 0 }), /maxMergesPerPass: must be a positive whole number/)
