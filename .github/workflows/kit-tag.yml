@@ -1,0 +1,46 @@
+# Tags each kit release, so "which kit is this" is answered by `git tag` and not
+# by reading a manifest. A kit change merges with a MANIFEST.json version bump
+# (write-manifest --check holds that in verification-kit.yml); this tags the
+# commit that carried it as `kit-v<version>`.
+#
+# Hosted, like the other jobs here: this repository is public, and the pool
+# refuses public repositories by design (see fleet-audit.yml).
+name: kit-tag
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'templates/verification-kit/MANIFEST.json'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  tag:
+    # Hosted: public repository, which the pool refuses by design; free for a public repository.
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Tag the release
+        if: ${{ !cancelled() }}
+        run: |
+          set -euo pipefail
+          version="$(node -p "require('./templates/verification-kit/MANIFEST.json').version")"
+          case "$version" in
+            [0-9]*.[0-9]*.[0-9]*) ;;
+            *) echo "::error::MANIFEST.json version is not major.minor.patch: '$version'"; exit 1 ;;
+          esac
+          tag="kit-v${version}"
+          if git ls-remote --exit-code --tags origin "refs/tags/${tag}" >/dev/null 2>&1; then
+            echo "${tag} already exists"
+            exit 0
+          fi
+          git config user.name "kit-tag"
+          git config user.email "kit-tag@users.noreply.github.com"
+          git tag -a "${tag}" -m "verification kit ${version}"
+          git push origin "refs/tags/${tag}"
+          echo "tagged ${tag}"

@@ -176,6 +176,8 @@ export function redactRepo(full) {
     openPrCount: full.openPrs.length,
     lapsedBacklogCount: full.lapsedBacklog.length,
     dependabotRedCount: full.dependabotRed,
+    // A version number is not private; the fleet-wide check needs it from every row.
+    kitVersion: full.kitVersion,
   }
 }
 
@@ -256,6 +258,9 @@ export async function gatherRepo(slug, now = new Date(), { includePrivate = fals
       break
     }
   }
+  // null: the repository carries no kit. An unreadable manifest is a thrown error, so the row is `unavailable`, never null.
+  const manifestText = fileText(slug, 'verification-kit/MANIFEST.json', json)
+  const kitVersion = manifestText === null ? null : (JSON.parse(manifestText).version ?? '')
   const mainSha = json(['api', `repos/${slug}/commits/${base}`]).sha
   const mainRed = ciForCommit(slug, mainSha, json) === 'red'
   const full = {
@@ -268,6 +273,7 @@ export async function gatherRepo(slug, now = new Date(), { includePrivate = fals
     lastDeploy: deploy,
     incidents7d: incidents,
     dependabotRed: dependabotRed(openPrs),
+    kitVersion,
   }
   return isPrivate && !includePrivate ? redactRepo(full) : full
 }
