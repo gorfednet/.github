@@ -488,7 +488,12 @@ jobs:
               # still one match. grep -o with || true: no match is an answer here,
               # not a failure of the step.
               flat="$(mktemp)"
-              tr '\n\r' '  ' < "$page" > "$flat"
+              # Same view as the offline checker (headOf): HTML comments stripped and
+              # only the part before </head> read, so a commented-out canonical or
+              # noindex cannot fail a page the PR gate passed.
+              tr '\n\r' '  ' < "$page" \
+                | sed -E 's/<!--([^-]|-[^-]|--[^>])*-->//g' \
+                | sed -E 's#</[Hh][Ee][Aa][Dd]>.*##' > "$flat"
 
               if grep -iE '^x-robots-tag:.*noindex' "$hdrs" > /dev/null; then
                 echo "::error::$loc answers 200 with an X-Robots-Tag of noindex, and" \

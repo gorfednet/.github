@@ -1311,6 +1311,11 @@ describe("the sitemap step's verdict on what a sitemap lists", () => {
       assert.match(yaml, /already queued[\s\S]*?\*" \$child "\*\) continue/)
     })
 
+    it('the live sitemap step reads pages the way the offline checker does', () => {
+      const yaml = readFileSync(join(WORKFLOWS, 'production-healthcheck.yml'), 'utf8')
+      assert.match(yaml, /sed -E 's\/<!--[\s\S]*?<\/\[Hh\]\[Ee\]\[Aa\]\[Dd\]>/)
+    })
+
     it('both steps are off unless their input is true', () => {
       const yaml = readFileSync(join(WORKFLOWS, 'production-healthcheck.yml'), 'utf8')
       assert.match(yaml, /if: \$\{\{ !cancelled\(\) && inputs\.expect-www-redirect \}\}/)
