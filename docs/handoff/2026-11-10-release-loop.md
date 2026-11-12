@@ -32,3 +32,27 @@ Blocked: ssatcy 34-38 (webkit `toHaveCount(0)` on the Privacy dialog at the smok
 - [ ] Owner: run the 649 runbook on dapyllil, then merge 649 and rebase 639.
 - [ ] Ship-bot stages 2 and 3 go live Thu 12 Nov: Wednesday evening, confirm `~/.ship-bot/config.json` rows and `--validate`.
 - [ ] Find the cause of the Playwright 1.64 Linux WebKit failures (ssatcy smoke, promptboi 64's note) before the Dependabot bumps move.
+
+## Loop 4 (Wed 11 Nov 2026, 3:07 PM to 7:20 PM ET; stopped at the owner's 90% usage hold)
+
+Merged: ssatcy.com 39 and 40 (40 pins `motion` at 13.4.4: 14.10.1 grows the main chunk 454.7 to 469.9 kB, past the 450 KiB budget), MoonMan 291 (lockfile-only; its red was a GitHub artifact-upload outage, 294 test files passed). Sessions handed the owner merge commands for these; that was wrong, labels are the route (rule restated 6:30 PM ET).
+
+Labelled `ready-to-merge` at 7:15 PM ET (gates: checks started, review clean on the head, no closing keywords): ssatcy.com 34 (a351d06b) and 35 (1f5f1718). Both show `browser-compat / compat-success` QUEUED, a ghost job like promptboi's earlier stuck run; ship-bot waits for it. If it stays queued, push an empty commit to the branch for a fresh run. ssatcy is `live: false`, so the bot merges from Thu 12 Nov once stage 2/3 go live.
+
+Open:
+- ssatcy.com 36, 37, 38 are drafts with main merged (conflicts in `ci.yml` resolved by keeping both sides' verify commands). 38 has a Medium finding: `verify-production.mjs` runs after the deploy switched live. Mark ready one at a time, gates, label.
+- promptboi 56 (Dependabot group, 45 updates): blocked on the bundle budget. Main plus Vite 8 and esbuild shrinks the bundle (896,079 to 881,221 raw). `@supabase/supabase-js` 2.91.1 to 2.118.0 alone adds about 55,000 raw / 14,800 gzip bytes; holding it and the radix group at main's versions still leaves 961,760 raw against the 902,491 ceiling, so another transitive bump is involved. WebKit timeouts (archive, chat-column, csp, feed specs) are not attributed. Split: Vite 8, esbuild and the test tools first, runtime deps one at a time. Never refresh the budget.
+- BinderCurve 651 (entry chunk 113,348 vs 78,000 gzip): bisect the same way, main plus bumps in groups. Priority 6.
+- Not touched: static-site worktree-* drafts, .github 117 to 120, ops 62, heuristics 85.
+- Owner closes: `gh pr close 121 --repo gorfednet/.github`; ai-use-levels 3 is stale; `ssh dapyllil 'rm -rf ~/repro-owned'`.
+
+Ship-bot stage 2/3 pre-flip evidence (6:03 PM ET, `--validate`, preflight-launchd passes including `site deploy host`):
+- ok: anal0g, blackpixelrecords, rowanmcarthur, subrythm (3 recent merges each: 30/29/28, 26/25/24, 17/15/16, 23/22/21).
+- differ: gorfed.net, gorfmusic, denseware, ssatcy, promptboi, bindercurve.com, 4thcltr.com, MoonMan (expected-check name differences; ssatcy and promptboi lists carry stale matrix names).
+- Criterion 3 is NOT met for any static site: the log has no `would deploy from ...` line for a real pull request in them since observation began, and the last passes show only the 9 and 11 Nov rate-limit errors. Papers and heuristics do have such lines. No flip command was given.
+- 4thcltr.com row in `~/.ship-bot/config.json` is `live: true`, mode `deploy`, `release.tagPrefix v` (file changed about 3:07 PM ET). The README plan says observation until Mon 23 Nov. The bot merged 4thcltr.com 256 at 4:03 PM ET with no deploy line. Confirm that was intended.
+
+## Next
+- [ ] Ship-bot merges ssatcy.com 34 and 35 after Thu 12 Nov stage flip; then label 36, 37, 38 in turn.
+- [ ] Decide the 4thcltr.com row (live deploy now, or back to observation until 23 Nov).
+- [ ] Split promptboi 56 and bisect BinderCurve 651 after the usage reset (Fri 13 Nov 5 AM ET).
