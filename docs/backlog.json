@@ -355,7 +355,7 @@
       "title": "The rule for the sitemap class is written but cannot ship yet",
       "status": "in-review",
       "assignee": "main-model",
-      "pr": 98,
+      "pr": 132,
       "userSymptom": "Nobody sees this on a site. The cost is that the next person to meet this class has the gate but not the explanation, so they can see what fails without seeing why it was added.",
       "evidence": "docs/verification-rules.md is a hashed companion of the verification kit, so adding a rule to it forces a minor version bump. Canonical is at 0.42.0 and all ten live repos are at 0.41.0, which check-kit-drift treats as one minor behind and passes with a warning. A bump to 0.43.0 would make all ten more than one minor behind, which drift treats as far behind and fails, red-lining the whole fleet at once for a documentation change.",
       "reviewBy": "2027-03-14",

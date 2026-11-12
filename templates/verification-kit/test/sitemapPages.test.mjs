@@ -174,7 +174,18 @@ describe('check-sitemap-pages', () => {
 
   it('does not treat a longer host as the origin', () => {
     const dir = site({}, { sitemap: urlset(`https://example.test.evil.test/`) })
-    assert.equal(run(dir).status, 1)
+    const result = run(dir)
+    assert.equal(result.status, 1)
+    assert.match(result.stderr, /\[off-origin\]/)
+  })
+
+  it('passes a flat page listed with its .html extension', () => {
+    const dir = site(
+      { 'pricing.html': page({ canonical: `${ORIGIN}/pricing.html` }) },
+      { sitemap: urlset(`${ORIGIN}/pricing.html`) },
+    )
+    const result = run(dir)
+    assert.equal(result.status, 0, result.stderr)
   })
 
   it('fails a loc that maps to no file', () => {

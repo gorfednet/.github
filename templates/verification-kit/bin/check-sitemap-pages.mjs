@@ -193,6 +193,9 @@ for (const { loc } of pageLocs) {
       fail(loc, 'slash', `${loc} ends in a slash but the build only has ${stem}.html. The server answers /${stem}/ with a 404 or a redirect; list /${stem}.`)
       continue
     }
+  } else if (isFile(join(root, relative))) {
+    // Listed with its extension (/about.html): nginx's `try_files $uri` serves the file itself.
+    file = join(root, relative)
   } else if (isFile(asFile)) {
     file = asFile
   } else if (isFile(asIndex)) {
