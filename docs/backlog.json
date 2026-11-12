@@ -353,7 +353,7 @@
     {
       "id": "sitemap-rule-text-deferred-by-drift",
       "title": "The rule for the sitemap class is written but cannot ship yet",
-      "status": "in-review",
+      "status": "landed",
       "assignee": "main-model",
       "pr": 132,
       "userSymptom": "Nobody sees this on a site. The cost is that the next person to meet this class has the gate but not the explanation, so they can see what fails without seeing why it was added.",
