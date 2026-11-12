@@ -400,6 +400,16 @@ describe('--validate', () => {
     assert.match(out, /  unexpected regenerate \(on 3 of 3\)/)
   })
 
+  it('an expected check that was skipped on a sampled pull request is missing, since it gated nothing there', async () => {
+    const gh = new FakeGitHub({
+      mergedPulls: threeMerged,
+      runsBySha: { s1: [run('check / check', 'success')], s2: [run('check / check', 'skipped')], s3: [run('check / check', 'success')] },
+    })
+    const { code, out } = await validate(gh)
+    assert.equal(code, 1, out)
+    assert.match(out, /  missing    check \/ check \(on 2 of 3, skipped or neutral on 1\)/)
+  })
+
   it('a failed unlisted check is still unexpected', async () => {
     const gh = new FakeGitHub({ mergedPulls: threeMerged, runs: [run('check / check', 'success'), run('extra-job', 'failure')] })
     const { code, out } = await validate(gh)

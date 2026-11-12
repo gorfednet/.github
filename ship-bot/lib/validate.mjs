@@ -51,8 +51,17 @@ export async function validateExpectedChecks({ config, github, repoNames, select
         ])
         for (const name of gated) gatedOn.set(name, (gatedOn.get(name) ?? 0) + 1)
       }
-      // Missing: an expected check that any sampled pull request merged without.
-      result.missing = repo.expectedChecks.filter((name) => (seenOn.get(name) ?? 0) < pulls.length).map((name) => `${name} (on ${seenOn.get(name) ?? 0} of ${pulls.length})`)
+      // Missing: an expected check that gated less than every sampled pull
+      // request: absent, or skipped or neutral, which the merge gate accepts
+      // as passing although it decided nothing.
+      result.missing = repo.expectedChecks
+        .filter((name) => (gatedOn.get(name) ?? 0) < pulls.length)
+        .map((name) => {
+          const seen = seenOn.get(name) ?? 0
+          const gated = gatedOn.get(name) ?? 0
+          const skipped = seen > gated ? `, skipped or neutral on ${seen - gated}` : ''
+          return `${name} (on ${gated} of ${pulls.length}${skipped})`
+        })
       // Unexpected: a check CI posts that no one listed, minus the agreed exclusions.
       result.unexpected = [...seenOn.keys()]
         .filter((name) => !repo.expectedChecks.includes(name) && !ignored.has(name))

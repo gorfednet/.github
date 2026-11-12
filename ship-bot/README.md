@@ -89,8 +89,10 @@ on the sampled pull requests (it gated nothing), and any check matching a
 repository's optional `coveredChecks`: exact names or name prefixes whose runs
 another listed check gates, for example `["browser-compat / compat ("]` for
 matrix children behind the `browser-compat / compat-success` aggregate. Both
-only quiet `--validate`; a skipped expected check still shows as missing, and
-the merge gate still requires every `expectedChecks` entry as before.
+only quiet `--validate`. An expected check that was skipped or neutral on a
+sampled pull request shows as missing ("skipped or neutral on N"): the merge
+gate accepts a skipped run as passing, so that check gated nothing there. The
+merge gate still requires every `expectedChecks` entry as before.
 
 To stop merges and deploys again, at once (from the next pass, within two
 minutes):
