@@ -1316,6 +1316,71 @@ describe("the sitemap step's verdict on what a sitemap lists", () => {
       assert.match(yaml, /sed -E 's\/<!--[\s\S]*?<\/\[Hh\]\[Ee\]\[Aa\]\[Dd\]>/)
     })
 
+    describe('sitemap indexes and page markup, run through the step', () => {
+      const idx = (...children) =>
+        `<sitemapindex>${children.map((c) => `<sitemap><loc>${c}</loc></sitemap>`).join('')}</sitemapindex>`
+      const urlset = (...locs) => `<urlset>${locs.map((l) => `<url><loc>${l}</loc></url>`).join('')}</urlset>`
+      const CHILD = 'https://example.test/pages.xml'
+      const run = (sitemap, pages = {}, extra = {}) =>
+        runStep({
+          robots: ROBOTS,
+          sitemap,
+          codes: {
+            'https://example.test/robots.txt': 200,
+            'https://example.test/sitemap.xml': 200,
+            [CHILD]: 200,
+            [PAGE]: 200,
+            ...extra,
+          },
+          pages,
+        })
+
+      it('follows an index to its child sitemap and checks the pages there', () => {
+        const result = run(idx(CHILD), { [CHILD]: urlset(PAGE) })
+        assert.equal(result.status, 0, result.stdout + result.stderr)
+        assert.match(result.stdout, /1 URL\(s\) listed/)
+      })
+
+      it('does not probe the child sitemap as a page', () => {
+        const result = run(idx(CHILD), { [CHILD]: urlset(PAGE) })
+        assert.doesNotMatch(result.stdout + result.stderr, /0 canonical links/)
+      })
+
+      it('fails a page listed by a child sitemap that is noindex', () => {
+        const result = run(idx(CHILD), {
+          [CHILD]: urlset(PAGE),
+          [PAGE]: page(`${canon(PAGE)}<meta name="robots" content="noindex">`),
+        })
+        assert.equal(result.status, 1)
+        assert.match(result.stdout, /meta robots noindex/)
+      })
+
+      it('ends on an index that lists itself', () => {
+        const result = run(idx('https://example.test/sitemap.xml', CHILD), { [CHILD]: urlset(PAGE) })
+        assert.equal(result.status, 0, result.stdout + result.stderr)
+      })
+
+      it('fails an empty index', () => {
+        const result = run('<sitemapindex></sitemapindex>')
+        assert.equal(result.status, 1)
+        assert.match(result.stdout, /contains no <loc> entries/)
+      })
+
+      it('ignores a commented-out noindex and canonical', () => {
+        const html = page(
+          `<!-- <meta name="robots" content="noindex"> ${canon('https://example.test/old/')} -->${canon(PAGE)}`,
+        )
+        const result = run(urlset(PAGE), { [PAGE]: html })
+        assert.equal(result.status, 0, result.stdout + result.stderr)
+      })
+
+      it('ignores a canonical that appears only after </head>', () => {
+        const html = `<html><head>${canon(PAGE)}</head><body>${canon('https://example.test/x/')}</body></html>`
+        const result = run(urlset(PAGE), { [PAGE]: html })
+        assert.equal(result.status, 0, result.stdout + result.stderr)
+      })
+    })
+
     it('both steps are off unless their input is true', () => {
       const yaml = readFileSync(join(WORKFLOWS, 'production-healthcheck.yml'), 'utf8')
       assert.match(yaml, /if: \$\{\{ !cancelled\(\) && inputs\.expect-www-redirect \}\}/)
