@@ -102,7 +102,31 @@ on:
           one advertising nothing, and only a live fetch can tell — Cloudflare
           appends its own managed content-signal policy to the origin file, so
           what a crawler reads here is not byte-identical to what the repository
-          ships.
+          ships. Every page the sitemap lists (children of a sitemap index
+          included) must also answer 200 without a redirect, carry exactly one
+          canonical equal to its own URL, and carry no noindex (meta or
+          X-Robots-Tag) and no meta refresh (V76, V77). A site that turns this
+          on with pages lacking a canonical will fail its next scheduled run.
+        required: false
+        type: boolean
+        default: false
+      expect-www-redirect:
+        description: >-
+          When true, https://www.<host>/ must answer 301 or 308 with a Location
+          on the apex host. A www that serves the site itself is a second copy
+          of every page, each canonical to the other, and search engines pick
+          one at random (V77). Off by default: only sites whose DNS and vhost
+          carry a www name can pass.
+        required: false
+        type: boolean
+        default: false
+      expect-error-pages-hidden:
+        description: >-
+          When true, /404.html and /500.html requested by name must answer 404.
+          nginx serves the error page for a missing URL through error_page, and
+          the same file also answering 200 at its own address puts the error
+          page in the index as a real page, a soft 404 (V77). Off by default:
+          a site that has not marked those locations internal would fail.
         required: false
         type: boolean
         default: false
@@ -404,9 +428,12 @@ jobs:
           # promptboi.com advertised /explorations and /about while both returned
           # 404 to a direct request, so crawlers were being handed two dead pages
           # by a file this step reported as healthy. The URLs are the payload; the
-          # sitemap answering 200 is only the envelope.
+          # sitemap answering 200 is only the envelope (V76).
           checked=0
-          for sitemap in "${sitemaps[@]}"; do
+          # A sitemap index lists child sitemaps, not pages: queue the children
+          # (appended to this array) instead of probing them as pages.
+          for ((si = 0; si < ${#sitemaps[@]}; si++)); do
+            sitemap="${sitemaps[$si]}"
             [ -z "$sitemap" ] && continue
             xml="$(mktemp)"
             scode="$(curl -sS -o "$xml" -w '%{http_code}' -L --max-time 30 "$sitemap" || true)"
@@ -421,8 +448,7 @@ jobs:
             locs=()
             while IFS= read -r line; do
               locs+=("$line")
-            done < <(tr '>' '>\n' < "$xml" | grep -oE '<loc>[^<]+' | sed 's/<loc>//' | tr -d '\r' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-
+            done < <(tr '>' '>\n' < "$xml" | grep -oE '<loc>[^<]+' | sed 's/<loc>//' | tr -d '\r' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | sed 's/&amp;/\&/g')
             # A sitemap listing nothing is not a passing sitemap. Without this the
             # loop below would iterate zero times and report success, which is the
             # same shape as a clean scan.
@@ -432,12 +458,28 @@ jobs:
               exit 1
             fi
 
+            if grep -qi '<sitemapindex' "$xml"; then
+              for child in "${locs[@]}"; do
+                # Skip a sitemap already queued, so an index that lists itself
+                # (or two that list each other) cannot loop until the timeout.
+                case " ${sitemaps[*]} " in *" $child "*) continue ;; esac
+                sitemaps+=("$child")
+              done
+              continue
+            fi
+
             for loc in "${locs[@]}"; do
               [ -z "$loc" ] && continue
               # Deliberately NOT -L. A sitemap is a list of canonical addresses,
               # so a 301 is a defect to report rather than a hop to follow:
               # 4thcltr.com listed /manifesto, which redirects to /manifesto/.
-              lcode="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 30 "$loc" || true)"
+              # Body and headers are kept, because 200 is only the envelope: a page
+              # that answers 200 and says noindex, names another canonical or
+              # bounces the reader on is what Search Console reports as a soft 404
+              # (V77).
+              page="$(mktemp)"
+              hdrs="$(mktemp)"
+              lcode="$(curl -sS -o "$page" -D "$hdrs" -w '%{http_code}' --max-time 30 "$loc" || true)"
               if [ "$lcode" != "200" ]; then
                 echo "::error::$sitemap lists $loc, which answered HTTP $lcode" \
                      "without following redirects. A sitemap must list the canonical" \
@@ -445,9 +487,49 @@ jobs:
                      "and a 301 asks it to index an address that is not the real one."
                 exit 1
               fi
+
+              # Newlines and returns folded to spaces so a tag split over lines is
+              # still one match. grep -o with || true: no match is an answer here,
+              # not a failure of the step.
+              flat="$(mktemp)"
+              # Same view as the offline checker (headOf): HTML comments stripped and
+              # only the part before </head> read, so a commented-out canonical or
+              # noindex cannot fail a page the PR gate passed.
+              tr '\n\r' '  ' < "$page" \
+                | sed -E 's/<!--([^-]|-[^-]|--[^>])*-->//g' \
+                | sed -E 's#</[Hh][Ee][Aa][Dd]>.*##' > "$flat"
+
+              if grep -iE '^x-robots-tag:.*noindex' "$hdrs" > /dev/null; then
+                echo "::error::$loc answers 200 with an X-Robots-Tag of noindex, and" \
+                     "$sitemap lists it. A sitemap must not list a page that forbids indexing."
+                exit 1
+              fi
+              if grep -oiE '<meta[^>]*name=.?(robots|googlebot)[^>]*>' "$flat" | grep -qi noindex; then
+                echo "::error::$loc carries a meta robots noindex, and $sitemap lists it."
+                exit 1
+              fi
+              if grep -qiE '<meta[^>]*http-equiv=.?refresh' "$flat"; then
+                echo "::error::$loc is a meta-refresh redirect, and $sitemap lists it." \
+                     "A crawler follows the refresh and drops this URL; list the destination."
+                exit 1
+              fi
+
+              canons="$(grep -oiE '<link[^>]*rel=.?canonical[^>]*>' "$flat" || true)"
+              ncanon="$(printf '%s' "$canons" | grep -c . || true)"
+              if [ "$ncanon" != "1" ]; then
+                echo "::error::$loc has $ncanon canonical links; a listed page needs exactly one."
+                exit 1
+              fi
+              canon="$(printf '%s' "$canons" | sed -E 's/.*href[[:space:]]*=[[:space:]]*//' | sed -E "s/^[\"']//; s/[\"' >].*\$//" | sed 's/&amp;/\&/g')"
+              if [ "$canon" != "$loc" ]; then
+                echo "::error::$loc names $canon as its canonical, and $sitemap lists" \
+                     "$loc. A listed URL must be its own canonical, to the character:" \
+                     "a crawler indexes the other address and calls this one a duplicate."
+                exit 1
+              fi
               checked=$((checked + 1))
             done
-            echo "  ${#locs[@]} URL(s) listed, all answering 200 directly"
+            echo "  ${#locs[@]} URL(s) listed, all answering 200 directly, indexable and self-canonical"
           done
 
           if [ "$checked" -eq 0 ]; then
@@ -455,6 +537,58 @@ jobs:
                  "over an empty set, which proves nothing."
             exit 1
           fi
+
+      - name: www redirects to the apex
+        if: ${{ !cancelled() && inputs.expect-www-redirect }}
+        run: |
+          set -euo pipefail
+          base="${{ inputs.site-url }}"
+          host="${base#*://}"
+          host="${host%%/*}"
+          case "$host" in
+            www.*)
+              echo "::error::site-url $base is already a www host, so there is no apex to redirect to."
+              exit 1
+              ;;
+          esac
+          hdrs="$(mktemp)"
+          code="$(curl -sS -o /dev/null -D "$hdrs" -w '%{http_code}' --max-time 30 "https://www.${host}/" || true)"
+          case "$code" in
+            301|308) ;;
+            *)
+              echo "::error::https://www.${host}/ answered HTTP $code, not 301 or 308." \
+                   "A www host that serves the site is a second copy of every page (V77)."
+              exit 1
+              ;;
+          esac
+          location="$(grep -i '^location:' "$hdrs" | head -n 1 | sed 's/^[Ll]ocation:[[:space:]]*//' | tr -d '\r' || true)"
+          case "$location" in
+            "https://${host}"|"https://${host}/"*) echo "  www redirects to $location" ;;
+            *)
+              echo "::error::https://www.${host}/ answered HTTP $code but its Location is" \
+                   "'${location}', not the apex https://${host}/."
+              exit 1
+              ;;
+          esac
+
+      - name: Error pages requested by name answer 404
+        if: ${{ !cancelled() && inputs.expect-error-pages-hidden }}
+        run: |
+          set -euo pipefail
+          base="${{ inputs.site-url }}"
+          probed=0
+          for path in /404.html /500.html; do
+            code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 30 "${base}${path}" || true)"
+            if [ "$code" != "404" ]; then
+              echo "::error::${base}${path} answered HTTP $code, not 404. An error page" \
+                   "that is also a 200 page at its own address gets indexed as a real" \
+                   "page, which is a soft 404 (V77). Mark the location internal in the vhost."
+              exit 1
+            fi
+            echo "  ${path} answers 404 by name"
+            probed=$((probed + 1))
+          done
+          [ "$probed" -eq 2 ]
 
       # The live half of the social-card fix. Its companion is check-og-image.mjs,
       # which asserts the bytes in the publish set; this asserts the bytes at the
