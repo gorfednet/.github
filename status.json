@@ -1,12 +1,12 @@
 {
-  "generatedAt": "2026-11-11T13:46:54.259Z",
-  "renderedAt": "2026-11-11T13:46:54.259Z",
+  "generatedAt": "2026-11-12T06:41:21.217Z",
+  "renderedAt": "2026-11-12T06:41:21.217Z",
   "repos": [
     {
       "slug": "gorfednet/bindercurve.com",
       "redacted": true,
-      "mainRed": true,
-      "openPrCount": 2,
+      "mainRed": false,
+      "openPrCount": 1,
       "lapsedBacklogCount": 0,
       "dependabotRedCount": 1
     },
@@ -86,9 +86,9 @@
       "slug": "gorfednet/ssatcy.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 6,
+      "openPrCount": 5,
       "lapsedBacklogCount": 1,
-      "dependabotRedCount": 1
+      "dependabotRedCount": 0
     },
     {
       "slug": "gorfednet/TowIt",
@@ -112,31 +112,99 @@
       "mainRed": false,
       "openPrs": [
         {
-          "number": 115,
-          "title": "ship-bot: deploy rows for heuristics and papers (observation) and the flip plan",
+          "number": 129,
+          "title": "Handoff: release loop 4",
+          "ageDays": 0,
+          "labels": [],
+          "draft": true,
+          "review": "not-run",
+          "ci": "green",
+          "next": null,
+          "author": "gorfednet"
+        },
+        {
+          "number": 128,
+          "title": "ship-bot: run the agent at normal priority",
+          "ageDays": 0,
+          "labels": [],
+          "draft": true,
+          "review": "not-run",
+          "ci": "pending",
+          "next": "Merge, then \\`ship-bot/install.sh\\`",
+          "author": "gorfednet"
+        },
+        {
+          "number": 127,
+          "title": "Handoff: release loop 3",
           "ageDays": 0,
           "labels": [],
           "draft": false,
           "review": "clean",
           "ci": "green",
-          "next": "`claude review`, triage",
+          "next": "Merge when kit is green.",
           "author": "gorfednet"
         },
         {
-          "number": 114,
-          "title": "Handoff: release loop 2 (11 Nov)",
+          "number": 121,
+          "title": "no-smb-guard: no apt ripgrep install (fleet close-out 1.3)",
           "ageDays": 0,
           "labels": [],
-          "draft": false,
+          "draft": true,
+          "review": "clean",
+          "ci": "green",
+          "next": "Fable `reviewer` reads the diff",
+          "author": "gorfednet"
+        },
+        {
+          "number": 120,
+          "title": "Desk brief: session-start rule",
+          "ageDays": 0,
+          "labels": [],
+          "draft": true,
+          "review": "not-run",
+          "ci": "red",
+          "next": "Merge when checks are green (docs-only).",
+          "author": "gorfednet"
+        },
+        {
+          "number": 119,
+          "title": "ship-bot: mark a draft ready and label it when its ## Next says merge and the gates are clean",
+          "ageDays": 0,
+          "labels": [],
+          "draft": true,
           "review": "not-run",
           "ci": "green",
-          "next": "Merge when checks are green.",
+          "next": "Review round 7 finding (thread 4539845276): once the bot labels a draft, `## Next` is never re-read, so a wait written after the label is ignored. Record on the head state that the bot labelled it; in `processPull` re-run `draftClaim` on every bot-labelled pull request before merging and refuse (dropping the label live) when the claim is gone or the head moved. Tests for both. Then `claude review` on that head.",
+          "author": "gorfednet"
+        },
+        {
+          "number": 118,
+          "title": "Desk standing brief",
+          "ageDays": 0,
+          "labels": [
+            "ready-to-merge"
+          ],
+          "draft": false,
+          "review": "findings",
+          "ci": "red",
+          "next": "Merge when checks are green (docs-only).",
+          "author": "gorfednet"
+        },
+        {
+          "number": 117,
+          "title": "Handoff: fleet close-out plan and 4-week assessment (11 Nov)",
+          "ageDays": 0,
+          "labels": [],
+          "draft": true,
+          "review": "not-run",
+          "ci": "red",
+          "next": "Merge when checks are green (docs-only).",
           "author": "gorfednet"
         },
         {
           "number": 113,
           "title": ".github: Mostly-static sites inherited product-site Playwright and Bugbot settings",
-          "ageDays": 1,
+          "ageDays": 2,
           "labels": [],
           "draft": true,
           "review": "not-run",
@@ -147,7 +215,7 @@
         {
           "number": 112,
           "title": ".github: A script that names a location instead of deriving one runs on exactly one machine",
-          "ageDays": 1,
+          "ageDays": 2,
           "labels": [],
           "draft": true,
           "review": "not-run",
@@ -158,7 +226,7 @@
         {
           "number": 111,
           "title": ".github: The online half of the fleet check cannot run until FLEET_READ_TOKEN exists",
-          "ageDays": 1,
+          "ageDays": 2,
           "labels": [],
           "draft": true,
           "review": "not-run",
@@ -169,7 +237,7 @@
         {
           "number": 110,
           "title": ".github: Most sites still declare a social card at a URL that cannot be replaced",
-          "ageDays": 1,
+          "ageDays": 2,
           "labels": [],
           "draft": true,
           "review": "not-run",
@@ -180,7 +248,7 @@
         {
           "number": 107,
           "title": ".github: The rule for the sitemap class is written but cannot ship yet",
-          "ageDays": 1,
+          "ageDays": 2,
           "labels": [],
           "draft": true,
           "review": "not-run",
@@ -191,7 +259,7 @@
         {
           "number": 106,
           "title": ".github: Every deploy to the ten NAS sites reached the filesystem and not the visitor",
-          "ageDays": 1,
+          "ageDays": 2,
           "labels": [],
           "draft": true,
           "review": "not-run",
@@ -202,7 +270,7 @@
         {
           "number": 105,
           "title": ".github: The live healthcheck applied the HTML size floor to sitemaps and robots.txt",
-          "ageDays": 1,
+          "ageDays": 2,
           "labels": [],
           "draft": true,
           "review": "not-run",
@@ -213,7 +281,7 @@
         {
           "number": 103,
           "title": "Handoff: recovery of 38 failed Herdr jobs",
-          "ageDays": 1,
+          "ageDays": 2,
           "labels": [],
           "draft": true,
           "review": "not-run",
@@ -224,7 +292,7 @@
         {
           "number": 102,
           "title": "build-rewrites-tracked-files",
-          "ageDays": 1,
+          "ageDays": 2,
           "labels": [],
           "draft": true,
           "review": "not-run",
@@ -235,7 +303,7 @@
         {
           "number": 101,
           "title": "quiet-sites-paid-product-monitor-rates",
-          "ageDays": 1,
+          "ageDays": 2,
           "labels": [],
           "draft": true,
           "review": "not-run",
@@ -246,7 +314,7 @@
         {
           "number": 100,
           "title": "html-min-bytes-applied-to-assets",
-          "ageDays": 1,
+          "ageDays": 2,
           "labels": [],
           "draft": true,
           "review": "not-run",
@@ -257,7 +325,7 @@
         {
           "number": 99,
           "title": "fleet-audit-needs-a-token: stopped, no code change",
-          "ageDays": 1,
+          "ageDays": 2,
           "labels": [],
           "draft": true,
           "review": "not-run",
@@ -268,7 +336,7 @@
         {
           "number": 98,
           "title": "cards-at-overwritable-urls",
-          "ageDays": 1,
+          "ageDays": 2,
           "labels": [],
           "draft": true,
           "review": "not-run",
@@ -369,7 +437,7 @@
       "slug": "gorfednet/MoonMan",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 1,
+      "openPrCount": 0,
       "lapsedBacklogCount": 0,
       "dependabotRedCount": 0
     },
@@ -396,7 +464,7 @@
       "slug": "gorfednet/heuristics.4thcltr.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 4,
+      "openPrCount": 3,
       "lapsedBacklogCount": 10,
       "dependabotRedCount": 0
     },
@@ -411,8 +479,8 @@
     {
       "slug": "gorfednet/assess",
       "redacted": true,
-      "mainRed": false,
-      "openPrCount": 2,
+      "mainRed": true,
+      "openPrCount": 1,
       "lapsedBacklogCount": 10,
       "dependabotRedCount": 0
     },
@@ -420,7 +488,7 @@
       "slug": "gorfednet/ops",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 0,
+      "openPrCount": 1,
       "lapsedBacklogCount": 0,
       "dependabotRedCount": 0
     }
