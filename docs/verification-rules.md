@@ -1039,6 +1039,35 @@ two dead pages by a check that was green.
 
 The step is `expect-sitemap` in `production-healthcheck.yml`.
 
+**V77. A sitemap lists only pages that deserve to be indexed, at the address the
+server actually answers.** V76 asks that a listed URL answer 200, and that is
+only the envelope. Search Console flagged Soft 404 on gorfmusic.com, and a sweep
+of the fleet on 12 November 2026 found the same class elsewhere, every check
+green. 4thcltr.com listed translated pages that say noindex. denseware.com and
+ssatcy.com listed `/x/` while the page's canonical said `/x`: nginx answers `/x`
+with a 301 to `/x/` and the client script sent the reader back, a loop.
+bindercurve.com's locale pages canonicalize to the base page, and `/creators`
+canonicalized to the home page. anal0g's `/legal/` was a meta-refresh stub.
+
+1. Every `<loc>` serves a page that names itself as its one canonical, exactly,
+   trailing slash included; has no `noindex` in a robots or googlebot meta tag or
+   an `X-Robots-Tag`; has no meta refresh; has real text (150 words unless the
+   path is allow-listed with a reason); and is not byte-for-byte the 404 page or
+   the home page under another address.
+2. The listed URL is in the form the server answers 200 to. A directory page is
+   listed with its slash, a flat page without.
+3. A made-up URL and the error pages requested by name (`/404.html`, `/500.html`)
+   answer 404, and `www` redirects to the apex with a 301 or 308.
+4. No rule looks for "not found" wording. A good page can say it and a bad page
+   need not. The checks read canonical, robots, refresh, length and body identity.
+
+Checked offline on every pull request by `check-sitemap-pages.mjs` against the
+build output, and live on a schedule by `production-healthcheck.yml` (the sitemap
+step, plus the opt-in `expect-www-redirect` and `expect-error-pages-hidden`
+steps). The live half is never a pull request gate: a pull request check fails
+only on what the pull request can change (the 2026-10 right-sizing), and a live
+site is not that.
+
 ## Provenance
 
 Every rule above was first written in

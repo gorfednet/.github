@@ -23,9 +23,9 @@ test('V76 is defined with its three clauses', () => {
   assert.match(body, /ignores `-L`/)
 })
 
-test('the shared sequence is gapless through V76', () => {
+test('the shared sequence is gapless through V77', () => {
   const nums = [...rules.matchAll(/^\*\*V(\d+)\./gm)].map((m) => Number(m[1]))
-  assert.ok(nums.includes(76))
+  assert.ok(nums.includes(76) && nums.includes(77))
   assert.deepEqual(
     [...new Set(nums)].sort((a, b) => a - b),
     Array.from({ length: Math.max(...nums) }, (_, i) => i + 1),
@@ -34,4 +34,23 @@ test('the shared sequence is gapless through V76', () => {
 
 test('the expect-sitemap step cites V76', () => {
   assert.match(workflow, /envelope \(V76\)/)
+})
+
+test('V77 is defined with its clauses and names both halves', () => {
+  const start = rules.indexOf('**V77.')
+  assert.ok(start > rules.indexOf('**V76.'), 'V77 must follow V76')
+  const body = rules.slice(start, rules.indexOf('## Provenance', start))
+  assert.match(body, /names itself as its one canonical/)
+  assert.match(body, /noindex/)
+  assert.match(body, /meta refresh/)
+  assert.match(body, /`\/404\.html`, `\/500\.html`/)
+  assert.match(body, /`www` redirects to the apex/)
+  assert.match(body, /check-sitemap-pages\.mjs/)
+  assert.match(body, /production-healthcheck\.yml/)
+})
+
+test('the live sitemap and opt-in steps cite V77', () => {
+  assert.match(workflow, /soft 404\s+\(V77\)/)
+  assert.match(workflow, /second copy\s+of every page \(V77\)/)
+  assert.match(workflow, /soft 404 \(V77\)/)
 })
