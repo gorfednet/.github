@@ -1061,8 +1061,9 @@ canonicalized to the home page. anal0g's `/legal/` was a meta-refresh stub.
 4. No rule looks for "not found" wording. A good page can say it and a bad page
    need not. The checks read canonical, robots, refresh, length and body identity.
 
-Checked offline on every pull request by `check-sitemap-pages.mjs` against the
-build output, and live on a schedule by `production-healthcheck.yml` (the sitemap
+Checked offline by `check-sitemap-pages.mjs` against the build output, in the
+pull request checks of each site that runs it (the shared verification gate does
+not call it yet: backlog `sitemap-pages-not-in-gate`), and live on a schedule by `production-healthcheck.yml` (the sitemap
 step, plus the opt-in `expect-www-redirect` and `expect-error-pages-hidden`
 steps). The live half is never a pull request gate: a pull request check fails
 only on what the pull request can change (the 2026-10 right-sizing), and a live

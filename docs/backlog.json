@@ -449,6 +449,16 @@
       "reviewBy": "2026-12-31",
       "created": "2026-09-09",
       "updated": "2026-10-16"
+    },
+    {
+      "id": "sitemap-pages-not-in-gate",
+      "title": "check-sitemap-pages ships in the kit but the shared verification gate does not run it",
+      "status": "confirmed-bug",
+      "assignee": "main-model",
+      "userSymptom": "A site can still list a noindex, redirecting or non-self-canonical page in its sitemap and pass every pull request check, unless that repository calls the checker itself.",
+      "evidence": "Review finding on #132 (2026-11-12): .github/actions/verification-gate/action.yml runs check-page-metadata, check-og-image and check-error-pages against publish-root, but no step or scripts/lib/verificationInputs.mjs input calls check-sitemap-pages. Fix: an opt-in `sitemap-origin` input wired through verificationInputs.mjs and the pr-check-* workflows, then turned on per site after a kit refresh.",
+      "reviewBy": "2026-12-01",
+      "updated": "2026-11-12"
     }
   ]
 }

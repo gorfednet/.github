@@ -441,7 +441,7 @@ jobs:
             locs=()
             while IFS= read -r line; do
               locs+=("$line")
-            done < <(tr '>' '>\n' < "$xml" | grep -oE '<loc>[^<]+' | sed 's/<loc>//' | tr -d '\r' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+            done < <(tr '>' '>\n' < "$xml" | grep -oE '<loc>[^<]+' | sed 's/<loc>//' | tr -d '\r' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | sed 's/&amp;/\&/g')
 
             # A sitemap listing nothing is not a passing sitemap. Without this the
             # loop below would iterate zero times and report success, which is the
