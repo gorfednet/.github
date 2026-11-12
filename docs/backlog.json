@@ -461,6 +461,237 @@
       "reviewBy": "2026-12-12",
       "created": "2026-11-12",
       "updated": "2026-11-12"
+    },
+    {
+      "id": "assess-1112-a1-kit-copied-not-distributed-drift-warns-only",
+      "title": "A1: Kit refresh: every active repo on one version; check-kit-drift fails when more than one minor behind",
+      "status": "confirmed-bug",
+      "assignee": "main-model",
+      "userSymptom": "Seven repos run kit 0.49 and three have no kit while main is 0.59",
+      "evidence": "Installed versions read from each repo's origin/main, 12 Nov 2026 audit; rules cite V77 which is only on kit/soft404-sitemap-pages. Plan: docs/assessment-2026-11-12-output-quality.md. Who: runner; main session merges PR 132.",
+      "reviewBy": "2026-12-01",
+      "created": "2026-11-12",
+      "updated": "2026-11-12"
+    },
+    {
+      "id": "assess-1112-a2-skills-and-agents-still-name-cursor",
+      "title": "A2: Rewrite the five files, move 4thcltr .cursor skills, add skill evals",
+      "status": "confirmed-bug",
+      "assignee": "main-model",
+      "userSymptom": "self-heal, verification-bootstrap, full-codebase-assessment, runner and builder still cite Cursor, Bugbot and V1 to V38",
+      "evidence": "12 Nov 2026 audit of ~/.claude and repo .cursor dirs. Plan: docs/assessment-2026-11-12-output-quality.md. Who: Sonnet builder drafts; main session reviews.",
+      "reviewBy": "2026-12-01",
+      "created": "2026-11-12",
+      "updated": "2026-11-12"
+    },
+    {
+      "id": "assess-1112-a3-design-and-security-plugins-not-installed",
+      "title": "A3: Install seven official plugins, remove the dead MCP, run fewer-permission-prompts and consolidate-memory",
+      "status": "confirmed-bug",
+      "assignee": "main-model",
+      "userSymptom": "The frontend-design skill and other official plugins are not installed, and figma-desktop fails in every session",
+      "evidence": "Plugin catalogue and ~/.claude/plugins, 12 Nov 2026; 11 Nov assessment section 3. Plan: docs/assessment-2026-11-12-output-quality.md. Who: main session.",
+      "reviewBy": "2026-12-01",
+      "created": "2026-11-12",
+      "updated": "2026-11-12"
+    },
+    {
+      "id": "assess-1112-a4-must-rules-live-in-prose",
+      "title": "A4: hookify them into PreToolUse and Stop hooks, each shown failing once",
+      "status": "confirmed-bug",
+      "assignee": "main-model",
+      "userSymptom": "Rules that must always hold (label gate, review trigger line, no skip without id, builder brief) are prose a session can forget",
+      "evidence": "11 Nov assessment item 2 not landed; incident pattern 8 (7 entries). Plan: docs/assessment-2026-11-12-output-quality.md. Who: main session; runner for tests.",
+      "reviewBy": "2026-12-01",
+      "created": "2026-11-12",
+      "updated": "2026-11-12"
+    },
+    {
+      "id": "assess-1112-b1-no-shared-design-system",
+      "title": "B1: Design package distributed by the kit refresh, seeded from BinderCurve tokens.css",
+      "status": "confirmed-bug",
+      "assignee": "main-model",
+      "userSymptom": "None of my sites look current because each copies fonts, tokens and footer by hand",
+      "evidence": "Design audit 12 Nov 2026: kit holds no styles; 4thcltr trio vendored by hand. Plan: docs/assessment-2026-11-12-output-quality.md. Who: main session designs; Sonnet builder builds; reviewer reads.",
+      "reviewBy": "2026-12-01",
+      "created": "2026-11-12",
+      "updated": "2026-11-12"
+    },
+    {
+      "id": "assess-1112-b2-no-design-direction-per-property",
+      "title": "B2: design-direction.md per property via frontend-design two-pass method; owner approves each",
+      "status": "confirmed-bug",
+      "assignee": "main-model",
+      "userSymptom": "Builders reach for defaults because only BinderCurve has a design direction document",
+      "evidence": "Design audit 12 Nov 2026. Plan: docs/assessment-2026-11-12-output-quality.md. Who: editor (Fable); owner approves.",
+      "reviewBy": "2026-12-01",
+      "created": "2026-11-12",
+      "updated": "2026-11-12"
+    },
+    {
+      "id": "assess-1112-b3-no-design-review-in-gate",
+      "title": "B3: design-reviewer agent plus check-design-tells lint, watched failing once",
+      "status": "confirmed-bug",
+      "assignee": "main-model",
+      "userSymptom": "Visual mediocrity passes every gate because reviewers read code and pixel diffs only catch change",
+      "evidence": "Reviewer reads code only; frontend-design calibration list names the tells. Plan: docs/assessment-2026-11-12-output-quality.md. Who: main session writes checklist; runner wires.",
+      "reviewBy": "2026-12-01",
+      "created": "2026-11-12",
+      "updated": "2026-11-12"
+    },
+    {
+      "id": "assess-1112-b4-heroes-are-text-on-flat-background",
+      "title": "B4: One property per session: 4thcltr, gorfed.net, MoonMan landing, BinderCurve, four Figma-scaffold sites, music sites",
+      "status": "confirmed-bug",
+      "assignee": "main-model",
+      "userSymptom": "I see full-screen imagery from Claude and none of my work looks like that",
+      "evidence": "Only subrythm, BinderCurve and MoonMan use real imagery; 2.8k renders, 5.5k captures unused as heroes. Plan: docs/assessment-2026-11-12-output-quality.md. Who: Sonnet builder per property with frontend-design; design-reviewer; editor for copy.",
+      "reviewBy": "2026-12-01",
+      "created": "2026-11-12",
+      "updated": "2026-11-12"
+    },
+    {
+      "id": "assess-1112-b5-og-and-image-pipelines-copied-nine-times",
+      "title": "B5: One pipeline in the design package, gated by check-og-image and check-live-og-image",
+      "status": "confirmed-bug",
+      "assignee": "main-model",
+      "userSymptom": "Nine near-identical OG generators and five image optimisers drift apart",
+      "evidence": "Design audit 12 Nov 2026; overlaps cards-at-overwritable-urls. Plan: docs/assessment-2026-11-12-output-quality.md. Who: Sonnet builder; runner migrates.",
+      "reviewBy": "2026-12-01",
+      "created": "2026-11-12",
+      "updated": "2026-11-12"
+    },
+    {
+      "id": "assess-1112-c1-moonman-main-red-and-repo-clutter",
+      "title": "C1: heal-drift root-cause fix, backlog sync, CLAUDE.md, gitignore, move renders, install kit",
+      "status": "confirmed-bug",
+      "assignee": "main-model",
+      "userSymptom": "MoonMan main is red, backlog statuses are wrong, no CLAUDE.md, 6.4 GB untracked .claude and loose renders at the root",
+      "evidence": "MoonMan audit 12 Nov 2026. Plan: docs/assessment-2026-11-12-output-quality.md. Who: Sonnet builder; main session for CLAUDE.md and gitignore.",
+      "reviewBy": "2026-12-01",
+      "created": "2026-11-12",
+      "updated": "2026-11-12"
+    },
+    {
+      "id": "assess-1112-c2-wall-clock-in-tests",
+      "title": "C2: check-test-clock and check-fail-closed lints in the kit",
+      "status": "confirmed-bug",
+      "assignee": "main-model",
+      "userSymptom": "Tests that read the clock fail on a date, not a defect (MoonMan heal-drift, BinderCurve PR 652)",
+      "evidence": "Incident pattern 5, about 6 entries. Plan: docs/assessment-2026-11-12-output-quality.md. Who: runner; main session writes near-miss case.",
+      "reviewBy": "2026-12-01",
+      "created": "2026-11-12",
+      "updated": "2026-11-12"
+    },
+    {
+      "id": "assess-1112-c3-five-projects-no-executed-floor-and-no-device-proof",
+      "title": "C3: assert-tests-executed in five repos; required device artifact on MoonMan release PRs",
+      "status": "confirmed-bug",
+      "assignee": "main-model",
+      "userSymptom": "Five repos can run zero tests and pass, and MoonMan device faults were fixed on the simulator five times",
+      "evidence": "Existing backlog entry five-projects-run-tests-with-no-floor; incident pattern 3. Plan: docs/assessment-2026-11-12-output-quality.md. Who: runner; main session for release gate.",
+      "reviewBy": "2026-12-01",
+      "created": "2026-11-12",
+      "updated": "2026-11-12"
+    },
+    {
+      "id": "assess-1112-c4-runner-image-drifts-from-lockfiles",
+      "title": "C4: Derive the image from lockfiles, report queue depth, decide a second host from data",
+      "status": "confirmed-bug",
+      "assignee": "main-model",
+      "userSymptom": "The pool image is built by hand and drifts from each repo's pins, forcing hosted-runner flips",
+      "evidence": "Incident patterns 1 and 4, about 19 entries. Plan: docs/assessment-2026-11-12-output-quality.md. Who: Sonnet builder in ops; main session for the deploy.",
+      "reviewBy": "2026-12-01",
+      "created": "2026-11-12",
+      "updated": "2026-11-12"
+    },
+    {
+      "id": "assess-1112-c5-declared-facts-drift",
+      "title": "C5: Inventory and derive declared facts; sync checks only where drift reached users",
+      "status": "confirmed-bug",
+      "assignee": "main-model",
+      "userSymptom": "Two sources of the same fact drift apart and reach visitors",
+      "evidence": "Incident pattern 6, about 6 entries. Plan: docs/assessment-2026-11-12-output-quality.md. Who: scout inventories; runner converts; reviewer reads guards.",
+      "reviewBy": "2026-12-01",
+      "created": "2026-11-12",
+      "updated": "2026-11-12"
+    },
+    {
+      "id": "assess-1112-d1-security-headers-dropped-or-missing",
+      "title": "D1: check-security-headers in kit and healthcheck; deploy engine carries headers",
+      "status": "confirmed-bug",
+      "assignee": "main-model",
+      "userSymptom": "ssatcy drops every header it declares and anal0g serves none",
+      "evidence": "ssatcy PR 38, anal0g PR 32. Plan: docs/assessment-2026-11-12-output-quality.md. Who: main session specifies; Sonnet builder; reviewer reads.",
+      "reviewBy": "2026-12-01",
+      "created": "2026-11-12",
+      "updated": "2026-11-12"
+    },
+    {
+      "id": "assess-1112-d2-no-vuln-scan-on-money-and-server-repos",
+      "title": "D2: claude-security on those paths, security-guidance everywhere, actions pinned by SHA",
+      "status": "confirmed-bug",
+      "assignee": "main-model",
+      "userSymptom": "MoonMan server, BinderCurve api and worker and 4thcltr Stripe flow have no automated vulnerability scan",
+      "evidence": "12 Nov 2026 audit. Plan: docs/assessment-2026-11-12-output-quality.md. Who: main session; runner for pinning.",
+      "reviewBy": "2026-12-01",
+      "created": "2026-11-12",
+      "updated": "2026-11-12"
+    },
+    {
+      "id": "assess-1112-d3-dependabot-and-branch-protection-open",
+      "title": "D3: Group updates, ship-bot labels green bumps, protect-branches on six repos",
+      "status": "confirmed-bug",
+      "assignee": "main-model",
+      "userSymptom": "Dependabot takes 7 days to merge and six repos have no required checks on main",
+      "evidence": "11 Nov assessment section 4. Plan: docs/assessment-2026-11-12-output-quality.md. Who: runner; main session reads the script first.",
+      "reviewBy": "2026-12-01",
+      "created": "2026-11-12",
+      "updated": "2026-11-12"
+    },
+    {
+      "id": "assess-1112-d4-settings-local-allowlists-uncommitted-and-stale",
+      "title": "D4: Committed .claude/settings.json per repo from fewer-permission-prompts",
+      "status": "confirmed-bug",
+      "assignee": "main-model",
+      "userSymptom": "A new session starts with a stale 145-entry allowlist or none",
+      "evidence": "11 Nov assessment section 1. Plan: docs/assessment-2026-11-12-output-quality.md. Who: main session.",
+      "reviewBy": "2026-12-01",
+      "created": "2026-11-12",
+      "updated": "2026-11-12"
+    },
+    {
+      "id": "assess-1112-e1-eleven-nov-phases-b-and-c-open",
+      "title": "E1: Execute as tiered in the 11 Nov plan after A1 to A4",
+      "status": "confirmed-bug",
+      "assignee": "main-model",
+      "userSymptom": "Desk session, ntfy hook, review re-runs, reviewer on pool, janitor and Herdr stall are still open",
+      "evidence": "STATUS.md 12 Nov 2026; .github PR 117, 118, 120. Plan: docs/assessment-2026-11-12-output-quality.md. Who: as tiered in the 11 Nov plan.",
+      "reviewBy": "2026-12-01",
+      "created": "2026-11-12",
+      "updated": "2026-11-12"
+    },
+    {
+      "id": "assess-1112-e2-loose-worktrees-and-scripts-beside-repos",
+      "title": "E2: List pass, then prune merged and clean worktrees a day later",
+      "status": "confirmed-bug",
+      "assignee": "main-model",
+      "userSymptom": "115 directories and 63 GB beside the repos, 32 worktrees idle over 14 days",
+      "evidence": "12 Nov 2026 audit. Plan: docs/assessment-2026-11-12-output-quality.md. Who: runner.",
+      "reviewBy": "2026-12-01",
+      "created": "2026-11-12",
+      "updated": "2026-11-12"
+    },
+    {
+      "id": "assess-1112-e3-session-cost-not-measured",
+      "title": "E3: Monthly session-report into docs/usage, act on the top item",
+      "status": "confirmed-bug",
+      "assignee": "main-model",
+      "userSymptom": "Cost awareness is a rule, not a number",
+      "evidence": "11 Nov assessment section 3. Plan: docs/assessment-2026-11-12-output-quality.md. Who: runner runs; main session reads.",
+      "reviewBy": "2026-12-01",
+      "created": "2026-11-12",
+      "updated": "2026-11-12"
     }
   ]
 }
