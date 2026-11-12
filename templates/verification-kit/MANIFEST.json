@@ -15,7 +15,7 @@
     "bin/check-og-image.mjs": "52bfa44361eebecaa6518b9960d3634ab8336a9bfd1a10b9ac6e50cc484176d1",
     "bin/check-page-metadata.mjs": "f876e3fdfa5d3cc03e993bac8e351d4c4b54aa180a662b2752309c7d84e65998",
     "bin/check-rule-citations.mjs": "be89e3cc348acd56f4f8a99e817393b91bd3d0c46ff6a2a58d0669776ed0493f",
-    "bin/check-sitemap-pages.mjs": "b061dc7f15fdaa4bb1481bfa56e2e281cf70af8bf44a5d0bfa95c30489f3631e",
+    "bin/check-sitemap-pages.mjs": "b7c743031fb000ae94e8f51413ea10043ec4434a69137cf9a3a84124e86f8a44",
     "bin/check-tracked-artifacts.mjs": "ef4a8e1d674c2d883db4e37781167c9fab1f6a3b0461b16d0a4b067cd1dc6e9c",
     "bin/check-voice.mjs": "e7df2a4e316fab6136ffb634c2d0173c796e02b9df61ddae54956d13cbc0ae76",
     "bin/mutation-canary.mjs": "fafb50a15854c5273e262915baaef4b63328ccb5b631f4a5f3341c0915d0b6e6",
@@ -49,7 +49,7 @@
     "test/refreshKitHandoff.test.mjs": "58f2380adcc2829e66ddb9654d95441eb25de716af2574f1e2f741dbc5f34336",
     "test/reportIssues.test.mjs": "1e9829bab43d2a5207ddd98e5c1f110a551dcc1aacd9a8d77a9912a31c9e6b61",
     "test/ruleCitations.test.mjs": "adca35331c0a5b6b6b62ff5c51aa4e7229bba09f4b9420d152fb45f9c98821ba",
-    "test/sitemapPages.test.mjs": "d605d18ac5d654bf221170fd9b6ca2f4037281ff874aa6217c5c5ecf9ac861e9",
+    "test/sitemapPages.test.mjs": "554b7252f10030fadca354cefcee737b1020920024d9fbe5afc2f512df40c3fc",
     "test/voice.test.mjs": "8ce138614a44b4f918066f0dc6391b741589b6e3bb7a70aff501b8b7fd8b2eed"
   },
   "companions": {

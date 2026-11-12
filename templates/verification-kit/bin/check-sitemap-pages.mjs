@@ -148,8 +148,15 @@ function visibleWords(html) {
   return decodeEntities(text).split(/\s+/).filter(Boolean).length
 }
 
+/**
+ * The whole document, not just the body. A client-rendered site ships the same
+ * empty `<div id="root">` in every page, so body-only hashes would call every
+ * route a copy of the home page. A real duplicate (the error page or the home
+ * page served at another address) is byte-for-byte the same document; a shell
+ * that differs from home only in its head is the canonical rule's business.
+ */
 const bodyHash = (html) =>
-  createHash('sha256').update(bodyOf(html).replace(/\s+/g, ' ').trim()).digest('hex')
+  createHash('sha256').update(html.replace(/<!--[\s\S]*?-->/g, '').replace(/\s+/g, ' ').trim()).digest('hex')
 
 /** The error page and the home page, for the "same body as" comparisons. */
 const hashOfFile = (name) => {

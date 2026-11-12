@@ -133,20 +133,36 @@ describe('check-sitemap-pages', () => {
     assert.equal(run(dir, ['--min-words', '2']).status, 0)
   })
 
-  it('fails a page whose body is the 404 page', () => {
-    const body = prose('error page', 30)
-    const dir = site(about({ text: body }), { sitemap: urlset(`${ORIGIN}/about/`) })
+  it('fails a page that is the 404 page served at another address', () => {
+    const notFound = page({ robots: 'noindex', text: prose('error page', 30) })
+    const dir = site({ 'about/index.html': notFound }, { sitemap: urlset(`${ORIGIN}/about/`) })
     const result = run(dir, ['--min-words', '10'])
     assert.equal(result.status, 1)
     assert.match(result.stderr, /\[same-as-404\]/)
   })
 
-  it('fails a page whose body is the home page, but not the home page itself', () => {
-    const dir = site(about({ text: prose('home page') }), { sitemap: urlset(`${ORIGIN}/`, `${ORIGIN}/about/`) })
+  it('fails a page that is the home page served at another address, but not the home page itself', () => {
+    const home = page({ canonical: `${ORIGIN}/`, text: prose('home page') })
+    const dir = site({ 'about/index.html': home }, { sitemap: urlset(`${ORIGIN}/`, `${ORIGIN}/about/`) })
     const result = run(dir)
     assert.equal(result.status, 1)
     assert.match(result.stderr, /\[same-as-home\] .*about\//)
     assert.doesNotMatch(result.stderr, /\[same-as-home\] https:\/\/example\.test\/ /)
+  })
+
+  // Near miss: a client-rendered site ships one empty body for every route, and
+  // only the head differs. That is a real page per route, not a copy of home.
+  it('passes client-rendered shells that share a body but each name themselves', () => {
+    const shell = '<div id="root"></div>'
+    const dir = site(
+      {
+        'index.html': page({ canonical: `${ORIGIN}/`, text: shell }),
+        'about/index.html': page({ canonical: `${ORIGIN}/about/`, text: shell }),
+      },
+      { sitemap: urlset(`${ORIGIN}/`, `${ORIGIN}/about/`) },
+    )
+    const result = run(dir, ['--min-words', '0'])
+    assert.equal(result.status, 0, result.stderr)
   })
 
   it('fails a loc on another origin', () => {
