@@ -68,8 +68,8 @@ node ~/.ship-bot/app/ship-bot.mjs --set-live true                          # the
 `--set-live` never touches the per-repository flags, so turning the global
 switch on acts only in the repositories already switched on. Stage 1 of the
 go-live (owner, 7 November 2026) is merge-only in `.github`, assess,
-career-portfolio, heuristics.4thcltr.com and papers.4thcltr.com; ops waits for
-pull-request CI (its row says why). In a live pass a repository whose own flag
+career-portfolio, heuristics.4thcltr.com and papers.4thcltr.com, and ops since
+11 November 2026 (its row says what its one check proves). In a live pass a repository whose own flag
 is off is still read and logged, with `OBSERVE (repo not live)` on each line.
 
 Before switching a repository on, check that its `expectedChecks` still match
@@ -84,6 +84,15 @@ It reads the check names on the last 3 merged pull requests, prints what is
 missing or unexpected per repository, and exits 1 when any differ.
 `ignoredChecks` (default: `heavy-runner-preflight`, `review / trigger`,
 `review / review`) names the checks every row leaves out on purpose.
+`--validate` also leaves out a check whose runs were all `skipped` or `neutral`
+on the sampled pull requests (it gated nothing), and any check matching a
+repository's optional `coveredChecks`: exact names or name prefixes whose runs
+another listed check gates, for example `["browser-compat / compat ("]` for
+matrix children behind the `browser-compat / compat-success` aggregate. Both
+only quiet `--validate`. An expected check that was skipped or neutral on a
+sampled pull request shows as missing ("skipped or neutral on N"): the merge
+gate accepts a skipped run as passing, so that check gated nothing there. The
+merge gate still requires every `expectedChecks` entry as before.
 
 To stop merges and deploys again, at once (from the next pass, within two
 minutes):
@@ -98,17 +107,70 @@ minutes later.
 
 ## Rollout schedule
 
-Owner-compressed schedule (9 November 2026):
+Owner-compressed schedule (9 November 2026), extended 11 November 2026 ("deploy automation for all"):
 
 - **Stage 1: live.** `.github`, assess, career-portfolio, heuristics.4thcltr.com, papers.4thcltr.com (merge-only).
 - **Stages 2 and 3 together: Thursday 12 November.** bindercurve.com and 4thcltr.com merge-only, plus the static site deploys: gorfed.net, gorfmusic, denseware, ssatcy, anal0g, blackpixelrecords, rowanmcarthur, subrythm and the promptboi site.
 - **Stage 4: Sunday 15 November.** MoonMan deploy.
+- **Stage 5: the 4thcltr family** (heuristics, papers, 4thcltr.com), dated in "Deploy automation plan" below.
 
 Rules for moving on:
 
 - Each stage needs 3 clean merges in the current stage, no `SKIP` on a red check that should have merged, and no rollback.
 - Before flipping, run `--validate` for the entering repositories and read the last 3 passes of the log.
 - A wrong merge, or a failed deploy that needs a rollback, holds the stage until the cause is fixed and recorded.
+
+## Deploy automation plan (11 November 2026)
+
+Every site deploys through the bot, in observation first (`live` false: the log says what it would deploy and nothing runs). What each repository needs, and when it goes live:
+
+| Repository | Row | Goes live | Why then |
+|---|---|---|---|
+| gorfed.net, gorfmusic, denseware, ssatcy, anal0g, blackpixelrecords, rowanmcarthur, subrythm, promptboi (site only) | in the example since 9 October | Thu 12 Nov (stages 2 and 3) | unchanged |
+| MoonMan | in the example | Sun 15 Nov (stage 4) | unchanged |
+| papers.4thcltr.com | `deploy`, observation | **Fri 13 Nov** | no private tests, static, the lowest-risk site on the shared engine; it is the one that proves the engine's rollback |
+| heuristics.4thcltr.com | `deploy`, observation | **Mon 16 Nov** | needs papers live first (one real deploy, no rollback), and its gate reads the owner's assess jobs folder |
+| 4thcltr.com | `deploy`, observation, release tags | **Mon 23 Nov**, if the release-tag change (below) lands by Thu 19 Nov | `make deploy` refuses any HEAD that is not on an exact release tag; the bot tags the merge commit of a pull request that declares a release |
+| bindercurve.com | `merge-only`, no deploy | not before the 1.0 plan (week of 2 Feb 2027) | release hold; it deploys through its own release workflow |
+| assess, career-portfolio, .github | `merge-only` | stay merge-only | not websites: assess is a command-line engine with no published site, career-portfolio a tool, .github the fleet's shared CI |
+| intake, propose | no row yet | when each has a pull-request CI and a deploy command | services with no site-deploy path and no DNS yet; a row needs `expectedChecks`, and these two have no CI posted to sample |
+
+Each flip needs all of this, read from the log and `--validate`, not remembered:
+
+1. `--validate --repo <name>` clean (a named, known difference is acceptable only when the row's note names it; papers shows `derive` on 1 of 3 until two newer merges replace the older samples).
+2. 3 clean merges in the repository (the stage-1 history counts for heuristics and papers: they have merged through the bot since 7 November) and no `SKIP` on a red check that should have merged.
+3. The last 3 log passes after the row went into observation show no config or preflight error and, for at least one real pull request, a line `would deploy from ... setup [...] then [...]` with the steps you expect.
+4. `ship-bot/preflight-launchd.sh` passes every step, including `site deploy host` (`ssh sitedeploy@dapyllil true`, the login the engine uploads as), from launchd's context.
+5. For the first site only (papers): the rollback rehearsal below.
+6. For each later site: the earlier site has deployed live at least once through the bot with no rollback.
+
+**Rollback rehearsal (papers, before its first live deploy).** It proves the engine's rollback over the real key, with no code change and about 10 seconds on a static site. From the papers clone, after `make releases` shows at least two releases:
+
+```bash
+cd ~/Developer/gorfednet/papers.4thcltr.com
+make releases          # note the current release id (top) and the one below it
+make rollback          # switches current back one release and checks the live index.html
+make rollback ID=<the id that was current>   # switches forward again, same check
+```
+
+Both must print `current -> releases/...` and pass the live check. The bot-side wiring (a rollback step that runs only after a failure past the upload; a failure it does not cover says nothing was rolled back; a failed setup rolls nothing back) is held by `test/bot.test.mjs`, watched failing with the filter removed.
+
+**How the `heuristics` and `papers` rows run `make deploy`.** The bot cannot run `make deploy` as one step: a failure inside it after the upload would roll back the wrong thing, and a failure before the upload must roll back nothing. The rows split the same sequence in two:
+
+- `setup` (a failure here deploys nothing and rolls nothing back): `make verify` (npm ci, the build, `verify.sh`; heuristics runs `verify.sh local`), `check-release.mjs`, `indexnow.mjs plan`.
+- `deploy`: the shared engine's `deploy dist`, `indexnow.mjs ping` (its failure is reported in the log and does not undo the deploy, as the Makefile's leading dash), and for heuristics `check-live-release.mjs`.
+- `rollback`: heuristics has `make rollback` marked `onlyAfterFailureOf` its `live check`, the one step that can fail after the release went live and be wrong about it. Papers has an explicit empty list: nothing after its upload can fail the release. The default rollback, a redeploy of the previous commit, cannot work with this engine (it refuses a HEAD behind `origin/main`), so both rows name a list. A failure in any step no rollback step covers (an upload that refused, an IndexNow ping that hung) is reported as **deploy failed and nothing was rolled back**, loudly, with the repository blocked until a person has checked the site.
+
+No check is skipped. `make verify` runs the job-folder tests (`tests/*.local.test.ts`) that read the assess jobs; the heuristics row gives them `ASSESS_JOBS=~/Developer/gorfednet/assess/jobs` through its `env`, so the bot reads the owner's folder exactly as a hand deploy does, and the tests fail rather than skip when it is missing. If the sequence in a site's Makefile changes, change its row in the same pull request.
+
+**4thcltr.com ships only from a release tag, so its row carries `release`.** `scripts/require-release-tag.sh` refuses any HEAD that is not on an exact tag, and a merge commit never is. By hand, a release is three things in order (DEPLOY.md): `npm run rates` committed, `npm run release -- X.Y.Z "One sentence."` (annotated tag, push, GitHub release), then `make deploy`. What the bot does alone and what it does not:
+
+- **The bot tags and deploys only a pull request that declares a release**, with a line of its own in the description: `Release: 3.9.7 One sentence in the site's voice.` The sentence is editorial copy; the labelling session writes it (an editor pass for anything a visitor reads) and it is read in the pull request. The bot reads the description at merge time, so editing it after labelling changes what is tagged; only the owner's own pull requests are eligible (`allowedAuthors`), so the people who can edit it are the people who could label it. Do not edit the `Release:` line after labelling. A pull request with no `Release:` line is merged and nothing else, and says so in its comment. A `Release:` line that is wrong (a second one, no sentence, a version that is not a bare X.Y.Z, a tag that exists, or a version not higher than the newest tag) stops the merge with a comment saying why: a typo never becomes a quiet non-release.
+- **After the merge** the bot checks the merge commit out in its workspace, creates the annotated tag on it with that sentence, pushes that one tag (never forced), confirms `git describe --exact-match HEAD`, then runs the row's setup and deploy steps (build, `deploy.sh`, `headers:live`) with the same rollback and block-on-failure rules as the other rows, and on success creates the GitHub release. A tag that cannot be pushed deploys nothing and blocks the repository. A tag the bot has pushed is never deleted, even if the deploy that follows rolls back; the next release then needs a higher version.
+- **The bot does not run `npm run rates`** (a network fetch that rewrites a tracked file). The labelling session runs it and commits it in the pull request before labelling, as DEPLOY.md step 1 says. There is no version bump commit: the tag is the version.
+- **Rollback.** The engine's `make rollback` is the same one papers rehearses on Fri 13 November (above); before 4thcltr.com goes live, run the same two commands from its clone once, because it is the main site: `make rollback`, then `make rollback ID=<the id that was current>` (`make releases` lists the ids), and read the live site after each. The bot-side wiring (tag pushed, deploy fails, `make rollback` runs after a `live check` failure only, the tag is kept, the repository blocks) is held by `test/bot.test.mjs` and was run once with real git against a local bare remote. A tag the remote refuses deploys nothing.
+- **A `release` row cannot also use `pausedIfChanged` or `onlyIfChanged`** (config validation refuses it): a release deploys everything merged since the last one, but those keys look only at the release's own merge commit, so an earlier merge with no `Release:` line would slip past them.
+- **The unavoidable human step** is writing the `Release:` line. Nothing else in the release needs the owner.
 
 ## How a change ships
 
@@ -194,12 +256,23 @@ the NAS and the Docker host work from launchd's context, where the keychain-held
 key and a terminal's Tailscale login may be missing? It never touches the real
 agent; run it before switching any deploy-mode repository on.
 
+**12 November 2026:** the agent runs at launchd's default process class. A
+`ProcessType Background` throttled every child process, Playwright and its
+browsers included, and failed 18 papers verify specs on 11 November 2026 (PR
+128). To check an install, run
+`plutil -extract ProcessType raw ~/Library/LaunchAgents/net.gorfed.ship-bot.plist`.
+It should fail with "No value at that key path". If it prints `Background`,
+re-run `ship-bot/install.sh` so the loaded plist matches this file. (`active
+count` in `launchctl print` is no use here: the job is idle between runs.)
+
 A dry run reads GitHub (it runs the verification kit's read-only gate scripts)
 but posts nothing, merges nothing and runs no deploy. `--live` acts only when
 the config says `"live": true`; otherwise it observes, which is a dry run whose
 decisions are logged as `OBSERVE` lines (only a missing or invalid config makes
 it refuse), and any repository whose config entry still has
 a `todo` list is refused in live mode until each item is confirmed and removed.
+
+A deploy row can also carry `env` (name to value, a leading `~/` is the home directory; given to every setup, deploy and rollback step, never a GitHub token) and, on a rollback step, `onlyAfterFailureOf` (the deploy step names whose failure it undoes). A `rollback` list, even an empty one, replaces the default redeploy of the previous commit; a failure no listed step covers rolls nothing back, and the pull-request comment and the notification say exactly that (the site may be on the new release) and block the repository.
 
 The config lives outside this repository at `~/.ship-bot/config.json`;
 [`config.example.json`](config.example.json) documents every field and the

@@ -45,6 +45,20 @@
       ],
       "timeoutMinutes": 1,
       "note": "Tailscale SSH to dapyllil can demand a browser re-login, and the ssh key's passphrase lives in the keychain/agent; a LaunchAgent may have neither. Checked once per pass before the first deploy-mode merge."
+    },
+    {
+      "name": "site deploy host",
+      "command": [
+        "ssh",
+        "-o",
+        "BatchMode=yes",
+        "-o",
+        "ConnectTimeout=10",
+        "sitedeploy@dapyllil",
+        "true"
+      ],
+      "timeoutMinutes": 1,
+      "note": "The shared site engine (site-deploy.sh) uploads as sitedeploy@dapyllil, a different login from the docker host step above. Before this step the bot checked ssh dapyllil as the owner, which says nothing about the key the engine uses (heuristics, papers)."
     }
   ],
   "ghPath": "~/bin/gh",
@@ -111,6 +125,9 @@
       "mode": "deploy",
       "claudeReview": true,
       "live": false,
+      "coveredChecks": [
+        "browser-compat / compat ("
+      ],
       "expectedChecks": [
         "check / check",
         "browser-compat / compat-success"
@@ -153,6 +170,9 @@
       "mode": "deploy",
       "claudeReview": true,
       "live": false,
+      "coveredChecks": [
+        "browser-compat / compat ("
+      ],
       "expectedChecks": [
         "check / check",
         "browser-compat / compat-success",
@@ -188,6 +208,9 @@
       "mode": "deploy",
       "claudeReview": true,
       "live": false,
+      "coveredChecks": [
+        "browser-compat / compat ("
+      ],
       "expectedChecks": [
         "check / check",
         "browser-compat / compat-success"
@@ -230,6 +253,9 @@
       "mode": "deploy",
       "claudeReview": true,
       "live": false,
+      "coveredChecks": [
+        "browser-compat / compat ("
+      ],
       "expectedChecks": [
         "check / check",
         "browser-compat / compat-success",
@@ -400,6 +426,9 @@
       "mode": "deploy",
       "claudeReview": true,
       "live": false,
+      "coveredChecks": [
+        "browser-compat / compat ("
+      ],
       "expectedChecks": [
         "check / check",
         "browser-compat / compat-success"
@@ -469,8 +498,7 @@
     {
       "slug": "gorfednet/4thcltr.com",
       "dir": "4thcltr.com",
-      "mode": "merge-only",
-      "reason": "it ships with a release note and a tag",
+      "mode": "deploy",
       "claudeReview": true,
       "live": false,
       "requireChecksAfterLabel": true,
@@ -487,7 +515,75 @@
         "e2e (8)",
         "e2e-gate"
       ],
-      "note": "The e2e sweep runs only when the PR carries ready-to-merge (CI listens for `labeled`). e2e-gate passes when e2e was skipped, so each shard is listed and must be a success, and the checks must post-date the label. heavy-runner-preflight is left out (a pool preflight, duplicated by label re-runs); the shards and e2e-gate prove the sweep ran."
+      "envFiles": [
+        ".deploy-env"
+      ],
+      "release": {
+        "tagPrefix": "v"
+      },
+      "siblings": [
+        {
+          "dir": "gorfednet.github",
+          "slug": "gorfednet/.github",
+          "branch": "main"
+        }
+      ],
+      "setup": [
+        {
+          "name": "build",
+          "command": [
+            "make",
+            "build"
+          ],
+          "timeoutMinutes": 30,
+          "note": "make build = npm ci, then npm run build (typecheck, i18n, routes, release:check, Vite, analytics, urls, build stamp). It runs after the bot has tagged the merge commit, because the build stamps the version from git describe."
+        },
+        {
+          "name": "recommendations check",
+          "command": [
+            "npm",
+            "run",
+            "--silent",
+            "recommendations:check"
+          ],
+          "timeoutMinutes": 10
+        }
+      ],
+      "deploy": [
+        {
+          "name": "upload",
+          "command": [
+            "./deploy.sh"
+          ],
+          "timeoutMinutes": 20,
+          "note": "deploy.sh runs require-release-tag.sh (HEAD on an exact tag, clean tree), then the shared engine: refuses anything but the merged tip of origin/main and an upload not built from HEAD, uploads an immutable release, switches current, prunes, and compares the live index.html byte for byte (switching back itself on a mismatch)."
+        },
+        {
+          "name": "live check",
+          "command": [
+            "npm",
+            "run",
+            "headers:live"
+          ],
+          "timeoutMinutes": 15,
+          "note": "DEPLOY.md runs this after every release. It reads the live site through Cloudflare, so a header change that needs a cache purge can fail it on a good release; a first live week may show a false alarm."
+        }
+      ],
+      "rollback": [
+        {
+          "name": "previous release",
+          "command": [
+            "make",
+            "rollback"
+          ],
+          "timeoutMinutes": 10,
+          "onlyAfterFailureOf": [
+            "live check"
+          ],
+          "note": "Switches current back to the previous release. Only after the live check fails, the one step that fails after the release went live; a failure in upload either published nothing or switched itself back. The default (redeploy the previous commit) cannot work for this engine."
+        }
+      ],
+      "note": "A pull request is a release only when its description has a line `Release: X.Y.Z One sentence.` (lib/release.mjs). The bot then merges, tags the merge commit with that sentence (annotated, pushed, never forced, never deleted), builds, deploys and creates the GitHub release, as `npm run release` plus `make deploy` do by hand. A pull request with no such line is merged and nothing else. The version must be higher than the newest tag. `npm run rates` is not run by the bot: the labelling session commits it in the pull request first (DEPLOY.md, step 1). The e2e sweep runs only when the PR carries ready-to-merge (CI listens for `labeled`). e2e-gate passes when e2e was skipped, so each shard is listed and must be a success, and the checks must post-date the label. heavy-runner-preflight is left out (a pool preflight, duplicated by label re-runs)."
     },
     {
       "slug": "gorfednet/ACID2REAPER",
@@ -553,28 +649,174 @@
     {
       "slug": "gorfednet/heuristics.4thcltr.com",
       "dir": "heuristics.4thcltr.com",
-      "mode": "merge-only",
-      "reason": "stage 1 of the go-live is merge-only (owner, 7 November 2026); putting it live stays a session's job",
+      "mode": "deploy",
       "claudeReview": true,
       "live": false,
       "expectedChecks": [
         "check / check",
         "derive"
       ],
-      "note": "Check names from #73, #71 and #70."
+      "envFiles": [
+        ".deploy-env"
+      ],
+      "env": {
+        "ASSESS_JOBS": "~/Developer/gorfednet/assess/jobs"
+      },
+      "siblings": [
+        {
+          "dir": "gorfednet.github",
+          "slug": "gorfednet/.github",
+          "branch": "main"
+        }
+      ],
+      "setup": [
+        {
+          "name": "verify",
+          "command": [
+            "make",
+            "verify"
+          ],
+          "timeoutMinutes": 45,
+          "note": "make verify = npm ci, the build, then verify.sh local: every gate CI runs plus the job-folder tests (tests/*.local.test.ts) that only this Mac can run. Those tests read ASSESS_JOBS, set in this row's env to the owner's assess jobs folder, and fail rather than skip when it is missing. They are the same checks make deploy runs; the bot runs them as setup so a failure here deploys nothing and rolls nothing back."
+        },
+        {
+          "name": "release check",
+          "command": [
+            "node",
+            "scripts/check-release.mjs"
+          ],
+          "timeoutMinutes": 10
+        },
+        {
+          "name": "indexnow plan",
+          "command": [
+            "node",
+            "scripts/indexnow.mjs",
+            "plan"
+          ],
+          "timeoutMinutes": 10
+        }
+      ],
+      "deploy": [
+        {
+          "name": "upload",
+          "command": [
+            "bash",
+            "../gorfednet.github/scripts/site-deploy.sh",
+            "deploy",
+            "dist"
+          ],
+          "timeoutMinutes": 20,
+          "note": "The shared engine: refuses anything but the merged tip of origin/main and an upload not built from HEAD, uploads an immutable release, switches current, prunes, and compares the live index.html byte for byte (switching back itself on a mismatch)."
+        },
+        {
+          "name": "indexnow ping",
+          "command": [
+            "sh",
+            "-c",
+            "node scripts/indexnow.mjs ping || true"
+          ],
+          "timeoutMinutes": 10,
+          "note": "make deploy runs this with a leading dash: a refused or unreachable IndexNow is reported in the log and the deploy stands. make indexnow sends the list again."
+        },
+        {
+          "name": "live check",
+          "command": [
+            "node",
+            "scripts/check-live-release.mjs"
+          ],
+          "timeoutMinutes": 15
+        }
+      ],
+      "rollback": [
+        {
+          "name": "previous release",
+          "command": [
+            "make",
+            "rollback"
+          ],
+          "timeoutMinutes": 10,
+          "onlyAfterFailureOf": [
+            "live check"
+          ],
+          "note": "Switches current back to the previous release. Only after the live check fails, because that is the only step that fails after the release went live; a failure in upload either published nothing or switched itself back, and make rollback there would step the live site back one release for no reason. The default (redeploy the previous commit) cannot work for this engine: the engine refuses a HEAD behind origin/main."
+        }
+      ],
+      "note": "Observation first (live false). Equivalent to make deploy (verify, check-release, indexnow plan, upload, ping, live check), split so every pre-upload gate is setup and every step that touches the site is a deploy step. A failed live check is rolled back and blocks the repo; DEPLOY.md calls it a stale cache that leaves the release standing, so a first live week may show false alarms. The step to check at flip time is that the bot's launchd context can run Playwright (smoke) and reach sitedeploy@dapyllil."
     },
     {
       "slug": "gorfednet/papers.4thcltr.com",
       "dir": "papers.4thcltr.com",
-      "mode": "merge-only",
-      "reason": "stage 1 of the go-live is merge-only (owner, 7 November 2026); putting it live stays a session's job",
+      "mode": "deploy",
       "claudeReview": true,
       "live": false,
       "expectedChecks": [
         "check / check",
         "derive"
       ],
-      "note": "Check names from #27 (the current ci.yml: derive feeds check). #26 and #25 merged before derive existed, so --validate reports derive on 1 of 3 until newer merges replace them in the sample."
+      "envFiles": [
+        ".deploy-env"
+      ],
+      "siblings": [
+        {
+          "dir": "gorfednet.github",
+          "slug": "gorfednet/.github",
+          "branch": "main"
+        }
+      ],
+      "setup": [
+        {
+          "name": "verify",
+          "command": [
+            "make",
+            "verify"
+          ],
+          "timeoutMinutes": 45,
+          "note": "make verify = npm ci, the build, then verify.sh: every gate CI runs. Nothing private is read by any papers test, so there is no local-only half to reproduce."
+        },
+        {
+          "name": "release check",
+          "command": [
+            "node",
+            "scripts/check-release.mjs"
+          ],
+          "timeoutMinutes": 10
+        },
+        {
+          "name": "indexnow plan",
+          "command": [
+            "node",
+            "scripts/indexnow.mjs",
+            "plan"
+          ],
+          "timeoutMinutes": 10
+        }
+      ],
+      "deploy": [
+        {
+          "name": "upload",
+          "command": [
+            "bash",
+            "../gorfednet.github/scripts/site-deploy.sh",
+            "deploy",
+            "dist"
+          ],
+          "timeoutMinutes": 20,
+          "note": "The shared engine, as for heuristics. Its byte-for-byte live compare uses SITE_LIVE_URL from .deploy-env."
+        },
+        {
+          "name": "indexnow ping",
+          "command": [
+            "sh",
+            "-c",
+            "node scripts/indexnow.mjs ping || true"
+          ],
+          "timeoutMinutes": 10,
+          "note": "Optional as in make deploy: reported in the log, never undoes a deploy."
+        }
+      ],
+      "rollback": [],
+      "note": "Observation first (live false). Equivalent to make deploy (verify, check-release, indexnow plan, upload, ping), split so the pre-upload gates are setup. rollback is an explicit empty list: nothing after the upload can fail the release (the ping ends in || true, and the engine switches itself back on a live mismatch), so a failure anywhere is reported and the repository blocked, never a redeploy of the previous commit (the engine refuses it) and never a make rollback that would step a verified release back. A ping that hangs past its timeout is such a failure: the release stands, the log says why."
     },
     {
       "slug": "gorfednet/TowIt",
@@ -591,8 +833,14 @@
     {
       "slug": "gorfednet/ops",
       "dir": "ops",
-      "mode": "off",
-      "note": "Stage 1 wants merge-only here, but ops has no pull-request CI: its only workflow is the Claude review caller, and its last 3 merged pull requests (#44, #43, #42) carried no check at all, so there is no expectedChecks list to gate on and assert-checks-started would refuse every head. Switch to merge-only once ops has a pull_request workflow that posts a check."
+      "mode": "merge-only",
+      "reason": "host configuration and installers; applying them on dapyllil stays a session's job (owner, 11 November 2026: merge-only, gated on the Claude review check)",
+      "claudeReview": true,
+      "live": false,
+      "expectedChecks": [
+        "review / review"
+      ],
+      "note": "ops has no test CI. Its one workflow is the Claude review caller, which posts review / review on the head when a pull request opens or leaves draft, not on a push (a `claude review` comment reruns the review but posts no check on the head, so a head pushed after ready needs draft and ready again). The check proves the workflow ran on this head; the verdict still comes from review-status.mjs (claudeReview). Switched on for ops#63 on 11 November 2026; #59 merged as a draft with no check, so --validate reports review / review on 2 of 3 until it ages out."
     }
   ]
 }

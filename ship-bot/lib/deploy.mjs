@@ -159,6 +159,7 @@ async function runSteps(ctx, log, repo, steps, kind) {
       cmd: step.command[0],
       args: step.command.slice(1),
       cwd: repo.workDir,
+      env: { ...ctx.baseEnv, ...repo.env },
       timeoutMs: minutes * 60 * 1000,
     })
     ran.push(step.name)
@@ -166,14 +167,24 @@ async function runSteps(ctx, log, repo, steps, kind) {
   return ran
 }
 
-async function rollBack(ctx, log, repo, { parent, selected }) {
-  if (repo.rollback.length > 0) {
+async function rollBack(ctx, log, repo, { parent, selected, failedStep }) {
+  if (repo.rollback !== null) {
+    // An explicit list is the whole answer, even an empty one: the default
+    // (redeploy the previous commit) is only for a row that names no list.
+    // A rollback step marked onlyAfterFailureOf runs only for a failure in one of
+    // those deploy steps. This is how a step that undoes a publish (switching the
+    // site back a release) stays out of a failure that published nothing.
+    const steps = repo.rollback.filter((s) => !s.onlyAfterFailureOf || s.onlyAfterFailureOf.includes(failedStep))
+    if (steps.length === 0) {
+      log.write(`\n[ship-bot] no rollback step applies to a failure in "${failedStep}"; nothing was rolled back\n`)
+      return { applied: false, method: 'no rollback', ok: false, error: `no rollback step applies to a failure in "${failedStep}"` }
+    }
     log.write('\n[ship-bot] rolling back with the configured rollback steps\n')
     try {
-      await runSteps(ctx, log, repo, repo.rollback, 'rollback')
-      return { method: 'rollback steps', ok: true }
+      await runSteps(ctx, log, repo, steps, 'rollback')
+      return { applied: true, method: 'rollback steps', ok: true }
     } catch (cause) {
-      return { method: 'rollback steps', ok: false, error: cause.message }
+      return { applied: true, method: 'rollback steps', ok: false, error: cause.message }
     }
   }
   log.write(`\n[ship-bot] no rollback steps configured; redeploying the previous commit ${parent}\n`)
@@ -181,19 +192,39 @@ async function rollBack(ctx, log, repo, { parent, selected }) {
     await prepareWorkspace(ctx, log, repo, parent)
     await runSteps(ctx, log, repo, repo.setup, 'rollback')
     await runSteps(ctx, log, repo, selected, 'rollback')
-    return { method: `redeploying the previous commit ${parent.slice(0, 7)}`, ok: true }
+    return { applied: true, method: `redeploying the previous commit ${parent.slice(0, 7)}`, ok: true }
   } catch (cause) {
-    return { method: `redeploying the previous commit ${parent.slice(0, 7)}`, ok: false, error: cause.message }
+    return { applied: true, method: `redeploying the previous commit ${parent.slice(0, 7)}`, ok: false, error: cause.message }
   }
 }
 
 /**
+ * Tag the merge commit and push the tag, so the repository's own release gate
+ * (require-release-tag.sh) sees HEAD on an exact tag. `tag -f` replaces only a
+ * leftover local tag of the same name (a push that failed last time): the
+ * caller has checked, against GitHub, that the tag does not exist there. The
+ * push names the one tag and never forces. A tag the bot has pushed is never
+ * deleted, even when the deploy that follows fails and rolls back.
+ */
+async function tagRelease(ctx, log, repo, mergeSha, release, onPushing = () => {}) {
+  const path = repo.workDir
+  log.write(`\n[ship-bot] tagging ${mergeSha.slice(0, 7)} as ${release.tag}\n`)
+  await git(ctx, log, path, `tag ${release.tag}`, ['-c', 'user.name=ship-bot', '-c', 'user.email=ship-bot@gorfed.net', 'tag', '-f', '-a', release.tag, '-m', release.message, mergeSha])
+  onPushing()
+  await git(ctx, log, path, `push ${release.tag}`, ['push', 'origin', `refs/tags/${release.tag}`])
+  await git(ctx, log, path, `${release.tag} is on HEAD`, ['describe', '--tags', '--exact-match', 'HEAD'])
+}
+
+/**
  * Deploy one merge commit. Never retries.
+ * With `release` ({tag, message}) the merge commit is tagged and the tag pushed
+ * first, after the pause check and before setup (the build stamps the version
+ * from the tag). A tagging failure deploys nothing.
  *
- * @returns {Promise<{status: 'deployed'|'paused'|'not-started'|'rolled-back'|'rollback-failed',
+ * @returns {Promise<{status: 'deployed'|'paused'|'not-started'|'rolled-back'|'rollback-failed'|'failed-not-rolled-back',
  *   steps?: string[], paused?: string[], error?: string, rollback?: object}>}
  */
-export async function deployMerged(ctx, repo, { mergeSha, log }) {
+export async function deployMerged(ctx, repo, { mergeSha, log, release = null }) {
   let parent
   let changed
   try {
@@ -210,11 +241,25 @@ export async function deployMerged(ctx, repo, { mergeSha, log }) {
   const paused = matchingFiles(changed, repo.pausedIfChanged)
   if (paused.length > 0) return { status: 'paused', paused }
 
+  let tagged = 'no'
+  if (release) {
+    try {
+      // 'maybe' only once the push has started: a failure of the local tag step reached nothing on GitHub.
+      await tagRelease(ctx, log, repo, mergeSha, release, () => {
+        tagged = 'maybe'
+      })
+      tagged = 'yes'
+    } catch (cause) {
+      // Nothing live changed. The tag may exist on GitHub if only the check after the push failed; the report says to look.
+      return { status: 'not-started', tagged, error: `tagging ${release.tag} failed: ${cause.message}` }
+    }
+  }
+
   try {
     await runSteps(ctx, log, repo, repo.setup, 'setup')
   } catch (cause) {
     // Nothing has been deployed yet, so there is nothing to roll back.
-    return { status: 'not-started', error: `setup failed: ${cause.message}` }
+    return { status: 'not-started', tagged, error: `setup failed: ${cause.message}` }
   }
 
   const selected = selectSteps(repo.deploy, changed)
@@ -223,8 +268,9 @@ export async function deployMerged(ctx, repo, { mergeSha, log }) {
     try {
       steps.push(...(await runSteps(ctx, log, repo, [step], 'deploy')))
     } catch (cause) {
-      const rollback = await rollBack(ctx, log, repo, { parent, selected })
-      return { status: rollback.ok ? 'rolled-back' : 'rollback-failed', steps, error: cause.message, failedStep: step.name, rollback }
+      const rollback = await rollBack(ctx, log, repo, { parent, selected, failedStep: step.name })
+      const status = !rollback.applied ? 'failed-not-rolled-back' : rollback.ok ? 'rolled-back' : 'rollback-failed'
+      return { status, tagged, steps, error: cause.message, failedStep: step.name, rollback }
     }
   }
   return { status: 'deployed', steps, skipped: repo.deploy.filter((s) => !selected.includes(s)).map((s) => s.name) }
