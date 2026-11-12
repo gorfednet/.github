@@ -446,7 +446,12 @@ jobs:
               locs+=("$line")
             done < <(tr '>' '>\n' < "$xml" | grep -oE '<loc>[^<]+' | sed 's/<loc>//' | tr -d '\r' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | sed 's/&amp;/\&/g')
             if grep -qi '<sitemapindex' "$xml"; then
-              for child in "${locs[@]}"; do sitemaps+=("$child"); done
+              for child in "${locs[@]}"; do
+                # Skip a sitemap already queued, so an index that lists itself
+                # (or two that list each other) cannot loop until the timeout.
+                case " ${sitemaps[*]} " in *" $child "*) continue ;; esac
+                sitemaps+=("$child")
+              done
               continue
             fi
 

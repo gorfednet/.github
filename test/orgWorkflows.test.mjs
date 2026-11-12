@@ -1308,6 +1308,7 @@ describe("the sitemap step's verdict on what a sitemap lists", () => {
     it('the live sitemap step queues a sitemap index\'s children instead of probing them as pages', () => {
       const yaml = readFileSync(join(WORKFLOWS, 'production-healthcheck.yml'), 'utf8')
       assert.match(yaml, /grep -qi '<sitemapindex'[\s\S]*?sitemaps\+=\("\$child"\)/)
+      assert.match(yaml, /already queued[\s\S]*?\*" \$child "\*\) continue/)
     })
 
     it('both steps are off unless their input is true', () => {
