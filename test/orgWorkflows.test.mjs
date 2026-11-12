@@ -1305,12 +1305,17 @@ describe("the sitemap step's verdict on what a sitemap lists", () => {
       assert.match(result.stdout, /500\.html answered HTTP 200/)
     })
 
+    it('the live sitemap step queues a sitemap index\'s children instead of probing them as pages', () => {
+      const yaml = readFileSync(join(WORKFLOWS, 'production-healthcheck.yml'), 'utf8')
+      assert.match(yaml, /grep -qi '<sitemapindex'[\s\S]*?sitemaps\+=\("\$child"\)/)
+    })
+
     it('both steps are off unless their input is true', () => {
       const yaml = readFileSync(join(WORKFLOWS, 'production-healthcheck.yml'), 'utf8')
       assert.match(yaml, /if: \$\{\{ !cancelled\(\) && inputs\.expect-www-redirect \}\}/)
       assert.match(yaml, /if: \$\{\{ !cancelled\(\) && inputs\.expect-error-pages-hidden \}\}/)
-      assert.match(yaml, /expect-www-redirect:[\s\S]*?default: false/)
-      assert.match(yaml, /expect-error-pages-hidden:[\s\S]*?default: false/)
+      assert.match(yaml, /expect-www-redirect:\n(?:(?!\n      \S)[\s\S])*?default: false/)
+      assert.match(yaml, /expect-error-pages-hidden:\n(?:(?!\n      \S)[\s\S])*?default: false/)
     })
   })
 })

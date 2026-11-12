@@ -426,7 +426,10 @@ jobs:
           # by a file this step reported as healthy. The URLs are the payload; the
           # sitemap answering 200 is only the envelope (V76).
           checked=0
-          for sitemap in "${sitemaps[@]}"; do
+          # A sitemap index lists child sitemaps, not pages: queue the children
+          # (appended to this array) instead of probing them as pages.
+          for ((si = 0; si < ${#sitemaps[@]}; si++)); do
+            sitemap="${sitemaps[$si]}"
             [ -z "$sitemap" ] && continue
             xml="$(mktemp)"
             scode="$(curl -sS -o "$xml" -w '%{http_code}' -L --max-time 30 "$sitemap" || true)"
@@ -442,6 +445,10 @@ jobs:
             while IFS= read -r line; do
               locs+=("$line")
             done < <(tr '>' '>\n' < "$xml" | grep -oE '<loc>[^<]+' | sed 's/<loc>//' | tr -d '\r' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | sed 's/&amp;/\&/g')
+            if grep -qi '<sitemapindex' "$xml"; then
+              for child in "${locs[@]}"; do sitemaps+=("$child"); done
+              continue
+            fi
 
             # A sitemap listing nothing is not a passing sitemap. Without this the
             # loop below would iterate zero times and report success, which is the
