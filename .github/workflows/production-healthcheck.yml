@@ -102,7 +102,11 @@ on:
           one advertising nothing, and only a live fetch can tell — Cloudflare
           appends its own managed content-signal policy to the origin file, so
           what a crawler reads here is not byte-identical to what the repository
-          ships.
+          ships. Every page the sitemap lists (children of a sitemap index
+          included) must also answer 200 without a redirect, carry exactly one
+          canonical equal to its own URL, and carry no noindex (meta or
+          X-Robots-Tag) and no meta refresh (V76, V77). A site that turns this
+          on with pages lacking a canonical will fail its next scheduled run.
         required: false
         type: boolean
         default: false
