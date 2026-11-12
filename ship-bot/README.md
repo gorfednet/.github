@@ -247,6 +247,12 @@ the NAS and the Docker host work from launchd's context, where the keychain-held
 key and a terminal's Tailscale login may be missing? It never touches the real
 agent; run it before switching any deploy-mode repository on.
 
+**12 November 2026:** the agent runs at launchd's default process class. A
+`ProcessType Background` throttled every child process, Playwright and its
+browsers included, and failed 18 papers verify specs on 11 November 2026 (PR
+128). If `launchctl print gui/501/net.gorfed.ship-bot` shows `active count = 0`,
+re-run `ship-bot/install.sh` so the loaded plist matches this file.
+
 A dry run reads GitHub (it runs the verification kit's read-only gate scripts)
 but posts nothing, merges nothing and runs no deploy. `--live` acts only when
 the config says `"live": true`; otherwise it observes, which is a dry run whose
