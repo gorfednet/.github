@@ -68,3 +68,8 @@ test("janitor sets up its own checkout, so the scheduled task's older starter te
   assert.match(prompt, /worktree add --detach \.claude\/worktrees\/janitor-main origin\/main/);
   assert.match(prompt, /This file takes precedence over the scheduled task's own text/);
 });
+
+test("janitor never rescues a session whose branch has an open pull request, and rescues commits pushed after a merge", () => {
+  assert.match(prompt, /`dirty`:[^\n]*first make the `gh pr list` call[^\n]*On `OPEN`, propose only/);
+  assert.match(prompt, /`MERGED`: an older pull request[^\n]*Treat it like the no-PR case/);
+});
