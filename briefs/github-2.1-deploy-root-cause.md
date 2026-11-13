@@ -15,6 +15,8 @@ Ship-bot has four repos blocked because deploy and rollback both failed. Establi
 
 Evidence: `~/.ship-bot/logs/deploys/*`, `~/.ship-bot/state.json` (`repos.*.blocked`), `ship-bot/lib/` (`prepareWorkspace`), each repo's ship-bot config row. Never read `~/.ship-bot/config.json` secrets or any `*.env*`.
 
+Second cause, already known: since 03:12 ET on 13 Nov, ship-bot's deploy preflight has been held on a Tailscale SSH check-mode approval for the docker host. That held denseware 33, ssatcy 42 and anal0g 34. The owner was asked to run `ssh dapyllil true` and approve. Separate this from each repo's own failure. If the preflight is still held, say so in `## Next`; don't work around it.
+
 Hypothesis to confirm or reject: `prepareWorkspace` cleans untracked files, so repos with `setup: []` lose `node_modules` and rely on `make deploy` to install. Rollback claims a previous build it no longer has.
 
 ## Done when
