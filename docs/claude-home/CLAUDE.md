@@ -47,4 +47,4 @@ Agents in `~/.claude/agents/`: `runner` and `scout` (Haiku), `builder` (Sonnet),
 
 ## Settings
 
-One file: `~/.claude/settings.json`. Its deny list blocks `gh pr merge` and the `gh api` merge endpoint (ship-bot is the only merger), `gh api` deletes, and the Read tool on `.env` files (`.env.example` included), the ops `credentials.json` and `~/.ship-bot/config.json`. Bash reads aren't covered, so don't `cat` them either. No `settings.json.bak*` copies beside it: the mirror in `docs/claude-home/` is the record.
+One file: `~/.claude/settings.json`. Its deny list is a backstop: `gh pr merge`, the REST and GraphQL merge calls, `gh api` deletes, force pushes, and the Read tool on `.env` files (`.env.example` included), the ops `credentials.json` and `~/.ship-bot/config.json`. No pattern list catches every spelling. The rules hold where it doesn't: ship-bot is the only merger, and nobody `cat`s those files through Bash. No `settings.json.bak*` copies beside it: the mirror in `docs/claude-home/` is the record.

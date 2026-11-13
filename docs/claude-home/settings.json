@@ -70,7 +70,14 @@
       "Bash(gh api *pulls/*/merge*)",
       "Bash(gh api *-X DELETE*)",
       "Bash(gh api *--method DELETE*)",
-      "Bash(gh api *-XDELETE*)"
+      "Bash(gh api *-XDELETE*)",
+      "Bash(git push * --force*)",
+      "Bash(git push * -f*)",
+      "Bash(git push *+*)",
+      "Bash(gh api *--method=DELETE*)",
+      "Bash(gh api *-X=DELETE*)",
+      "Bash(gh api *mergePullRequest*)",
+      "Bash(gh api *AutoMerge*)"
     ],
     "defaultMode": "auto"
   },
