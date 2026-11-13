@@ -19,6 +19,8 @@ permissions:
 
 jobs:
   tag:
+    # Only main: a dispatch on a branch would tag an unmerged commit, and the later push run would then find the tag and leave it there.
+    if: ${{ github.ref == 'refs/heads/main' }}
     # Hosted: public repository, which the pool refuses by design; free for a public repository.
     runs-on: ubuntu-latest
     timeout-minutes: 5

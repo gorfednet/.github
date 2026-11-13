@@ -56,7 +56,7 @@ export function kitSummary(repos, canonical) {
   const parts = [
     off.length === 0
       ? `Kit: all ${withKit.length} adopting repos on ${canonical}`
-      : `Kit: canonical ${canonical}; behind: ${off.map((r) => `${r.slug.replace(/^gorfednet\//, '')} ${r.kitVersion}`).join(', ')}`,
+      : `Kit: canonical ${canonical}; not current: ${off.map((r) => `${r.slug.replace(/^gorfednet\//, '')} ${r.kitVersion || '(unreadable)'} (${kitGap(r.kitVersion, canonical)})`).join(', ')}`,
   ]
   if (none.length) parts.push(`no kit: ${none.join(', ')}`)
   return `${parts.join('; ')}.`

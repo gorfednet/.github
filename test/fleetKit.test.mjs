@@ -56,7 +56,8 @@ describe('kitFailures', () => {
   })
   it('the summary names the repositories that are not current', () => {
     const line = kitSummary([{ slug: 'o/a', kitVersion: '0.61.0' }, { slug: 'o/b', kitVersion: '0.49.0' }, { slug: 'o/c', kitVersion: null }], '0.61.0')
-    assert.match(line, /behind: o\/b 0\.49\.0/)
+    assert.match(line, /o\/b 0\.49\.0 \(far-behind\)/)
+    assert.match(kitSummary([{ slug: 'o/c', kitVersion: '0.70.0' }, { slug: 'o/d', kitVersion: '' }], '0.61.0'), /o\/c 0\.70\.0 \(ahead\), o\/d \(unreadable\) \(unknown\)/)
     assert.match(line, /no kit: o\/c/)
   })
 })
