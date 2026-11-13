@@ -21,7 +21,8 @@
 #     first moves ship-bot.log to ship-bot.log.1 once it passes 5 MB.
 #
 # It copies no secrets: the bot reads deploy credentials from each repo's own
-# clone at deploy time and asks `gh auth token` for its GitHub token each run.
+# clone at deploy time, and mints a GitHub App token each run (github-app/,
+# key kept in ~/.ship-bot/), falling back to `gh auth token` until the App exists.
 # No sudo.
 set -euo pipefail
 
