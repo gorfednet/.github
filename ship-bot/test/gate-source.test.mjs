@@ -2,7 +2,10 @@ import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { cpSync, rmSync } from 'node:fs'
+import { unresolvedGateImports } from '../lib/gate-imports.mjs'
 import { describe, it } from 'node:test'
 import { INSTALLED_PATHS, resolveGateScripts } from '../lib/gate-source.mjs'
 import { main } from '../ship-bot.mjs'
@@ -65,7 +68,9 @@ describe('plan row 1.12: where the gate scripts run from', () => {
 
   it('against a real clone: a branch switch is refused, origin/main is accepted', () => {
     const dir = mkdtempSync(join(tmpdir(), 'ship-bot-gates-'))
-    const git = (...a) => execFileSync('git', ['-C', dir, ...a], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })
+    // No global or system git config: a signing hook or template must not decide this test.
+    const env = { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1' }
+    const git = (...a) => execFileSync('git', ['-C', dir, ...a], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], env })
     git('init', '-q', '-b', 'main')
     mkdirSync(join(dir, 'scripts/gates'), { recursive: true })
     for (const f of ['scripts/gates/assert-checks-started.mjs', 'scripts/review-status.mjs', 'scripts/gates/check-closing-keywords.mjs']) writeFileSync(join(dir, f), '// gate\n')
@@ -73,12 +78,13 @@ describe('plan row 1.12: where the gate scripts run from', () => {
     git('-c', 'user.name=t', '-c', 'user.email=t@example.invalid', 'commit', '-q', '-m', 'init')
     git('update-ref', 'refs/remotes/origin/main', 'HEAD')
     const cfg = { scripts: { assertChecksStarted: join(dir, 'scripts/gates/assert-checks-started.mjs'), reviewStatus: join(dir, 'scripts/review-status.mjs'), checkClosingKeywords: join(dir, 'scripts/gates/check-closing-keywords.mjs') } }
-    assert.ok(resolveGateScripts(cfg, { appDir: dir }).scripts)
+    const realGit = (args) => execFileSync('git', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], env }).trim()
+    assert.ok(resolveGateScripts(cfg, { appDir: dir, git: realGit }).scripts)
     git('checkout', '-q', '-b', 'feature')
     writeFileSync(join(dir, 'scripts/review-status.mjs'), 'process.exit(0)\n')
-    assert.match(resolveGateScripts(cfg, { appDir: dir }).problems.join('\n'), /uncommitted changes/)
+    assert.match(resolveGateScripts(cfg, { appDir: dir, git: realGit }).problems.join('\n'), /uncommitted changes/)
     git('-c', 'user.name=t', '-c', 'user.email=t@example.invalid', 'commit', '-q', '-am', 'always clean')
-    assert.match(resolveGateScripts(cfg, { appDir: dir }).problems.join('\n'), /is not origin\/main/)
+    assert.match(resolveGateScripts(cfg, { appDir: dir, git: realGit }).problems.join('\n'), /is not origin\/main/)
   })
 
   it('a refused pass reads no token, calls no GitHub and runs no gate, and exits 1', async () => {
@@ -102,5 +108,17 @@ describe('plan row 1.12: where the gate scripts run from', () => {
     assert.equal(runner.calls.length, 0)
     assert.ok(out.some((l) => /error gate scripts refused: \/clone .*is not origin\/main/.test(l)), out.join('\n'))
     assert.ok(out.some((l) => /pass refused: nothing is checked, readied or merged/.test(l)))
+  })
+
+  it('the gate scripts install.sh copies resolve every import inside the copy; a missing lib file is caught', () => {
+    const scripts = join(dirname(fileURLToPath(import.meta.url)), '../../scripts')
+    const dir = mkdtempSync(join(tmpdir(), 'ship-bot-imports-'))
+    mkdirSync(join(dir, 'gates'))
+    cpSync(join(scripts, 'review-status.mjs'), join(dir, 'review-status.mjs'))
+    for (const f of ['assert-checks-started.mjs', 'check-closing-keywords.mjs']) cpSync(join(scripts, 'gates', f), join(dir, 'gates', f))
+    cpSync(join(scripts, 'lib'), join(dir, 'lib'), { recursive: true })
+    assert.deepEqual(unresolvedGateImports(dir), [])
+    rmSync(join(dir, 'lib/reviewVerdict.mjs'))
+    assert.match(unresolvedGateImports(dir).join('\n'), /missing: .*lib\/reviewVerdict\.mjs/)
   })
 })

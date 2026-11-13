@@ -9,7 +9,7 @@
 #     install if it fails or runs fewer tests than expected (this is the bot's
 #     CI: it costs no GitHub Actions minutes)
 #   - creates ~/.ship-bot/ (config, state, logs, the bot's own workspaces)
-#   - refuses unless this checkout is at origin/main with no tracked changes
+#   - installs origin/main's commit (git archive), never the working tree
 #   - copies the bot's code to ~/.ship-bot/app/, and the gate scripts to
 #     ~/.ship-bot/app/gate-scripts/, so neither changes when a clone switches
 #     branches; re-run to update them
@@ -65,24 +65,21 @@ if [[ "${major}" -lt 22 ]]; then
 fi
 
 # Install only merged code (plan row 1.12): the bot's code and its gate
-# scripts are copied from this checkout, so it must be at origin/main with no
-# tracked changes. Run it from a fresh worktree of origin/main.
+# scripts come from origin/main's commit, exported with git archive, so a
+# branch switch in the checkout while the tests run cannot change what is
+# installed, and untracked files never ride along. Run it from any clone.
 REPO="$(git -C "${HERE}" rev-parse --show-toplevel)"
 git -C "${REPO}" fetch -q origin main
-head_sha="$(git -C "${REPO}" rev-parse HEAD)"
 main_sha="$(git -C "${REPO}" rev-parse --verify refs/remotes/origin/main)"
-if [[ "${head_sha}" != "${main_sha}" ]]; then
-  echo "install.sh: ${REPO} is at ${head_sha:0:7}, not origin/main ${main_sha:0:7}. Install from an origin/main checkout. Nothing was installed." >&2
-  exit 1
-fi
-if [[ -n "$(git -C "${REPO}" status --porcelain --untracked-files=no)" ]]; then
-  echo "install.sh: ${REPO} has uncommitted changes. Install from a clean origin/main checkout. Nothing was installed." >&2
-  exit 1
-fi
+STAGE="$(mktemp -d "${TMPDIR:-/tmp}/ship-bot-install.XXXXXX")"
+trap 'rm -rf "${STAGE}"' EXIT
+git -C "${REPO}" archive "${main_sha}" ship-bot scripts | tar -x -C "${STAGE}"
+SRC="${STAGE}/ship-bot"
+echo "Installing origin/main ${main_sha:0:7}."
 
 # The suite is the gate (check.sh counts what ran, not just the exit code).
 echo "Running the ship bot's tests..."
-if ! NODE_BIN="${NODE_BIN}" "${HERE}/check.sh"; then
+if ! NODE_BIN="${NODE_BIN}" "${SRC}/check.sh"; then
   echo "install.sh: the tests did not pass. Nothing was installed." >&2
   exit 1
 fi
@@ -93,22 +90,29 @@ chmod 700 "${BOT_HOME}"
 # Copy the code: into a fresh directory, then swap, so a half-copied app is never run.
 rm -rf "${APP_DIR}.new"
 mkdir -p "${APP_DIR}.new"
-cp -R "${HERE}/ship-bot.mjs" "${HERE}/lib" "${HERE}/github-app" "${HERE}/config.example.json" "${HERE}/README.md" "${APP_DIR}.new/"
+cp -R "${SRC}/ship-bot.mjs" "${SRC}/lib" "${SRC}/github-app" "${SRC}/config.example.json" "${SRC}/README.md" "${APP_DIR}.new/"
 # The gate scripts, in the layout of scripts/ (lib/gate-source.mjs): the bot
 # runs these and never the main clone, where a session can switch branches.
 GATES="${APP_DIR}.new/gate-scripts"
 mkdir -p "${GATES}/gates"
-cp "${REPO}/scripts/review-status.mjs" "${GATES}/"
-cp "${REPO}/scripts/gates/assert-checks-started.mjs" "${REPO}/scripts/gates/check-closing-keywords.mjs" "${GATES}/gates/"
-cp -R "${REPO}/scripts/lib" "${GATES}/"
-echo "${head_sha}" >"${GATES}/SOURCE"
+cp "${STAGE}/scripts/review-status.mjs" "${GATES}/"
+cp "${STAGE}/scripts/gates/assert-checks-started.mjs" "${STAGE}/scripts/gates/check-closing-keywords.mjs" "${GATES}/gates/"
+cp -R "${STAGE}/scripts/lib" "${GATES}/"
+echo "${main_sha}" >"${GATES}/SOURCE"
+# Every relative import in the installed gates must resolve inside the copy
+# before it replaces the running one (a later gate importing outside
+# scripts/lib would otherwise fail only at merge time).
+if ! "${NODE_BIN}" "${SRC}/lib/gate-imports.mjs" "${GATES}"; then
+  echo "install.sh: the gate scripts import something the copy does not hold. Nothing was installed." >&2
+  exit 1
+fi
 rm -rf "${APP_DIR}.old"
 if [[ -d "${APP_DIR}" ]]; then mv "${APP_DIR}" "${APP_DIR}.old"; fi
 mv "${APP_DIR}.new" "${APP_DIR}"
 rm -rf "${APP_DIR}.old"
 
 if [[ ! -f "${BOT_HOME}/config.json" ]]; then
-  cp "${HERE}/config.example.json" "${BOT_HOME}/config.json"
+  cp "${SRC}/config.example.json" "${BOT_HOME}/config.json"
   chmod 600 "${BOT_HOME}/config.json"
   echo "Wrote ${BOT_HOME}/config.json from the example (\"live\": false)."
 else

@@ -46,7 +46,7 @@ export function resolveGateScripts(config, { appDir, exists = existsSync, readFi
     } catch (cause) {
       missing.push(`cannot read ${sourceFile}: ${cause.message}`)
     }
-    if (sha && !/^[0-9a-f]{40}$/.test(sha)) missing.push(`${sourceFile} does not hold a commit sha`)
+    if (!/^[0-9a-f]{40}$/.test(sha)) missing.push(`${sourceFile} does not hold a commit sha`)
     if (missing.length > 0) return { problems: missing.map((m) => `installed gate scripts are incomplete (re-run install.sh): ${m}`) }
     return { scripts, source: `installed copy of ${sha.slice(0, 7)}` }
   }

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { rmSync } from 'node:fs'
 import { describe, it } from 'node:test'
 import { DRAFT_READY_COMMENT } from '../lib/bot.mjs'
-import { CONTROL_PLANE_PATHS, controlPlaneFiles, draftClaim, firstNextItem, isMergeInstruction, uncheckedNextItems } from '../lib/drafts.mjs'
+import { controlPlaneFiles, draftClaim, firstNextItem, isMergeInstruction, uncheckedNextItems } from '../lib/drafts.mjs'
 import { FakeGitHub, HEAD, SLUG, makePr, makeRunner, repoEntry, scenario } from './fakes.mjs'
 
 const NEXT_MERGE = '## Summary\n\nx\n\n## Next\n\n- [x] tests\n- [ ] merge\n'
@@ -366,11 +366,14 @@ describe('a draft the bot owns', () => {
 
 describe('plan row 1.12: control-plane paths', () => {
   it('names every control-plane path, and only those (near misses pass)', () => {
-    const hits = ['.github/workflows/ci.yml', 'ship-bot/lib/gates.mjs', 'scripts/gates/assert-checks-started.mjs', 'scripts/review-status.mjs', 'REVIEW.md', 'janitor/run.mjs', 'capacity/check.sh', './ship-bot/check.sh']
+    const hits = ['.github/workflows/ci.yml', '.github/actions/review-input/review-input.mjs', '.github/CODEOWNERS', '.claude/settings.json', 'ship-bot/lib/gates.mjs', 'scripts/gates/assert-checks-started.mjs', 'scripts/lib/reviewVerdict.mjs', 'scripts/review-status.mjs', 'REVIEW.md', 'CLAUDE.md', 'docs/REVIEW.md', 'packages/api/AGENTS.md', 'skills/x/SKILL.md', 'janitor/run.mjs', 'capacity/check.sh', './ship-bot/check.sh', 'Ship-Bot/lib/x.mjs', 'Janitor/PROMPT.md', 'capacity', '.github']
     for (const f of hits) assert.deepEqual(controlPlaneFiles([{ filename: f }]), [f], f)
-    const near = ['docs/ship-bot.md', 'docs/REVIEW.md', 'scripts/gates-notes.md', 'scripts/review-status.md', 'scripts/lib/reviewVerdict.mjs', '.github/workflow-notes.md', '.github/CODEOWNERS', 'src/janitor/x.ts', 'ship-bot.md', 'docs/capacity/plan.md']
+    const near = ['docs/ship-bot.md', 'docs/review.mdx', 'scripts/gates-notes.md', 'scripts/review-status.md', 'scripts/site-deploy.sh', 'github/workflows/x.yml', 'src/janitor/x.ts', 'ship-bot.md', 'docs/capacity/plan.md', 'capacityx/a', 'src/claude.ts']
     for (const f of near) assert.deepEqual(controlPlaneFiles([{ filename: f }]), [], f)
-    assert.equal(CONTROL_PLANE_PATHS.length, 7)
+  })
+  it('in gorfednet/.github every script is control plane, deploy scripts included', () => {
+    assert.deepEqual(controlPlaneFiles([{ filename: 'scripts/site-deploy.sh' }], 'gorfednet/.github'), ['scripts/site-deploy.sh'])
+    assert.deepEqual(controlPlaneFiles([{ filename: 'scripts/site-deploy.sh' }], 'gorfednet/site'), [])
   })
   it('counts a rename by its old name, and fails closed on an entry or list it cannot read', () => {
     assert.deepEqual(controlPlaneFiles([{ filename: 'docs/old-gate.mjs', previous_filename: 'scripts/gates/assert-checks-started.mjs', status: 'renamed' }]), ['scripts/gates/assert-checks-started.mjs'])
@@ -383,14 +386,19 @@ describe('plan row 1.12: control-plane paths', () => {
       const gh = new FakeGitHub({ pulls: [draft()], files: ['src/app.ts', file] })
       const s = scenario({ repos: reviewed(), github: gh })
       await s.run()
-      assert.equal(gh.writes.length, 0)
+      assert.equal(writes(gh, 'markReady').length + writes(gh, 'addLabels').length, 0)
       assert.equal(s.runner.ofKind('gate').length, 0)
+      const said = gh.commentsPosted().filter((c) => /Ship bot will not mark this draft ready: it changes control-plane paths/.test(c.body))
+      assert.equal(said.length, 1)
+      assert.ok(said[0].body.includes(file))
+      await s.run()
+      assert.equal(gh.commentsPosted().length, 1, 'said once per head')
       assert.ok(s.logs.some((l) => new RegExp(`draft left alone \\(## Next says "merge"\\): it changes control-plane paths \\(${file.replace(/[.]/g, '\\.')}\\); a person labels it`).test(l)), s.logs.join('\n'))
     })
   }
 
   it('the near miss: a draft that changes only docs about the bot is still the bot\'s', async () => {
-    const gh = new FakeGitHub({ pulls: [draft()], files: ['docs/ship-bot.md', 'docs/REVIEW.md'] })
+    const gh = new FakeGitHub({ pulls: [draft()], files: ['docs/ship-bot.md', 'docs/review-notes.md'] })
     const s = scenario({ repos: reviewed(), github: gh })
     await s.run()
     assert.equal(writes(gh, 'markReady').length, 1)
@@ -457,5 +465,56 @@ describe('plan row 1.12: a bot-readied draft in a deploy repo needs a clean revi
     await s.run()
     assert.equal(writes(gh, 'markReady').length, 0)
     assert.ok(s.logs.some((l) => /needs a clean Claude review, but this repo has no Claude reviewer/.test(l)), s.logs.join('\n'))
+  })
+
+  it('with the state file lost after readying, answered findings in a deploy repo still do not merge', async () => {
+    let state = 'clean'
+    const runner = makeRunner({ handle: (cmd) => (isStatus(cmd) && state === 'findings' ? { code: 1, stdout: '#7  findings  Claude reviewed aaaaaaaaa: 1 finding(s)\n' } : undefined) })
+    const gh = new FakeGitHub({ pulls: [draft()] })
+    const s = scenario({ repos: reviewed(), github: gh, runner })
+    await s.run()
+    assert.equal(writes(gh, 'markReady').length, 1)
+    rmSync(s.config.stateDir, { recursive: true, force: true })
+    state = 'findings'
+    gh.threads = answered()
+    s.clock.advance(s.config.reviewGraceMinutes)
+    await s.run()
+    assert.equal(writes(gh, 'mergePull').length, 0)
+    assert.ok(s.logs.some((l) => /merges only on a clean review/.test(l)), s.logs.join('\n'))
+  })
+
+  it('a draft a person labelled, readied by the bot, keeps its guards when a new head touches control-plane paths', async () => {
+    const gh = new FakeGitHub({ pulls: [draft({ labels: [{ name: 'ready-to-merge' }] })] })
+    const s = scenario({ repos: reviewed(), github: gh })
+    await s.run()
+    assert.equal(writes(gh, 'markReady').length, 1)
+    const NEW = 'd'.repeat(40)
+    gh.pulls = [makePr({ head: { sha: NEW, repo: { full_name: SLUG } }, labels: [{ name: 'ready-to-merge' }], body: NEXT_MERGE })]
+    gh.files = ['ship-bot/lib/bot.mjs']
+    s.clock.advance(s.config.reviewGraceMinutes)
+    await s.run()
+    assert.equal(writes(gh, 'mergePull').length, 0)
+    assert.ok(gh.commentsPosted().some((c) => /Ship bot will not merge this: it changes control-plane paths/.test(c.body)), gh.commentsPosted().map((c) => c.body).join('\n---\n'))
+  })
+
+  it('with the state file lost, the bot knows it readied a person-labelled draft from its own comment', async () => {
+    const gh = new FakeGitHub({ pulls: [draft({ labels: [{ name: 'ready-to-merge' }] })] })
+    const s = scenario({ repos: reviewed(), github: gh })
+    await s.run()
+    assert.equal(writes(gh, 'markReady').length, 1)
+    rmSync(s.config.stateDir, { recursive: true, force: true })
+    gh.pulls = [makePr({ labels: [{ name: 'ready-to-merge' }], body: NEXT_MERGE })]
+    gh.files = ['.github/workflows/ci.yml']
+    s.clock.advance(s.config.reviewGraceMinutes)
+    await s.run()
+    assert.equal(writes(gh, 'mergePull').length, 0)
+    assert.ok(s.logs.some((l) => /not merging: the bot readied it and this head changes control-plane paths/.test(l)), s.logs.join('\n'))
+  })
+
+  it('a ready pull request no bot ever touched merges with control-plane changes (a person labelled it)', async () => {
+    const gh = new FakeGitHub({ pulls: [makePr()], files: ['ship-bot/lib/bot.mjs'] })
+    const s = scenario({ repos: reviewed(), github: gh })
+    await s.run()
+    assert.equal(writes(gh, 'mergePull').length, 1)
   })
 })

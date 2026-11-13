@@ -198,15 +198,24 @@ bot now takes a draft itself when **all** of these hold:
   is said on the pull request, the log says why;
 - no `hold` label, no merge conflict, not opened by Dependabot, and the author
   is allowlisted;
-- it changes no control-plane path: `.github/workflows/`, `ship-bot/`,
-  `scripts/gates/`, `scripts/review-status.mjs`, `REVIEW.md`, `janitor/` or
-  `capacity/` (a rename counts by its old name too). Such a draft changes what
-  merges unattended, so a person labels it after reading it (plan row 1.12);
+- it changes no control-plane path (`CONTROL_PLANE_PATHS` and
+  `CONTROL_PLANE_BASENAMES` in `lib/drafts.mjs`): anything under `.github/`,
+  `.claude/`, `ship-bot/`, `scripts/gates/`, `scripts/lib/`, `janitor/` or
+  `capacity/`, `scripts/review-status.mjs`, any `REVIEW.md`, `CLAUDE.md`,
+  `AGENTS.md` or `SKILL.md`, and in `gorfednet/.github` all of `scripts/`.
+  Matching ignores case, and a rename counts by its old name too. Such a draft
+  changes what merges unattended, so the bot comments once per commit naming
+  the paths and leaves it to the owning session (plan row 1.12);
 - in a repository that deploys, its review is `clean`. Answered findings are
   not enough there: every session posts as the owner's login, so an answer
-  proves no person read the finding. The same holds on the merge path for a
-  pull request whose `ready-to-merge` is the bot's own, and a deploy
-  repository with no Claude reviewer never has a draft readied.
+  proves no person read the finding. A deploy repository with no Claude
+  reviewer never has a draft readied.
+
+A pull request the bot readied stays under both guards on the merge path,
+whoever owns its label: each later commit is checked for control-plane paths
+again, and in a deploy repository merges only on a clean review. The bot
+knows it readied one from its state file or, if that is lost, from its own
+draft-ready comment. A person who takes the bot's label off takes it back.
 
 Then it comments once, "Ship-bot: gates clean, marking ready and labelling;
 merges on the next pass", adds `ready-to-merge` and marks the pull request
@@ -393,10 +402,12 @@ repository's own CI run), and the example points at the
 `~/Developer/gorfednet/gorfednet.github` clone.
 
 The bot does not run them from that clone, where a session can switch
-branches (plan row 1.12). `install.sh` refuses a checkout that is not at
-`origin/main` with no tracked changes, and copies the three scripts and
-`scripts/lib/` into `~/.ship-bot/app/gate-scripts/` with the commit in
-`SOURCE`. While that copy exists the bot runs it and nothing else, and an
+branches (plan row 1.12). `install.sh` exports `origin/main`'s commit with
+`git archive` (never the working tree), runs the suite from it, and copies the
+three scripts and `scripts/lib/` into `~/.ship-bot/app/gate-scripts/` with the
+commit in `SOURCE`, after `lib/gate-imports.mjs` confirms every import
+resolves inside the copy. A fix to a bot too broken to merge it is merged by
+the owner on GitHub, then installed the same way. While that copy exists the bot runs it and nothing else, and an
 incomplete copy refuses the pass. Run from a checkout with no installed copy,
 the bot checks that each configured script's clone is at `origin/main` and
 clean, and otherwise refuses the pass: no gate runs, nothing is readied or
