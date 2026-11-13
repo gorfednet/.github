@@ -58,6 +58,8 @@ test("janitor rescues dirty work through a draft held from ship-bot before archi
   assert.ok(rescue, "rescue procedure exists");
   assert.match(rescue[0], /--draft[^\n]*--label hold/);
   assert.match(rescue[0], /looks secret/);
+  assert.match(rescue[0], /--untracked-files=all/);
+  assert.match(rescue[0], /HEAD --not --remotes/);
   assert.match(rescue[0], /only once the push and the draft both succeeded/);
   assert.doesNotMatch(rescue[0].split("## Next")[1] ?? "", /merge/i);
 });

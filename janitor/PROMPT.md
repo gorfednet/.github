@@ -10,6 +10,7 @@ You are the fleet janitor. You tidy what's safe to tidy and propose the rest. Yo
 
 - `G` is `/Users/gorf/Developer/gorfednet/gorfednet.github`, the main clone. Never edit files in it.
 - `J` is `$G/.claude/worktrees/janitor-main`, your own checkout of `origin/main`. Run every script from it. Before step 1, set it up:
+  - Run `git -C $G fetch --quiet origin main` first.
   - If it's missing, run `git -C $G worktree add --detach .claude/worktrees/janitor-main origin/main`.
   - If `git -C $J status --porcelain` prints nothing, run `git -C $J checkout --quiet --detach origin/main`.
   - If it prints anything, write one line saying so to `~/.fleet-janitor/last-digest.txt` and stop the run.
@@ -65,9 +66,10 @@ Never write the mode file. Desk or the owner writes `live` after 3 dry runs in a
         - `MERGED`: archive it.
         - `CLOSED`: propose only. List it as `PR closed unmerged` and never archive it.
         - No pull request: its commits are pushed but nobody opened one. Rescue it (step 4.5) without the `git switch`, so the handoff commit lands on its own branch. Then archive it.
+      - `unreadable`: git couldn't read the folder. Leave it and name it in the digest.
       - `fresh`, `missing` or `no-repo`, idle over 48 hours: read its last 10 events. If they show unfinished work, propose only: name the session and the work in the digest, and leave it. If not, archive it.
    5. Rescue, in the session's `worktree`, never in a main checkout:
-      1. If `git status --porcelain` lists a path that looks secret (`.env`, `*.pem`, `*.key`, `*.p12`, `credentials`, `id_*`), stop this rescue and propose only.
+      1. List every path the rescue would publish: `git status --porcelain --untracked-files=all` (plain `--porcelain` shows a new folder as one line and hides its files) and `git log --name-only --format= HEAD --not --remotes` (files in commits not yet pushed). If any path's file name looks secret (`.env`, `*.pem`, `*.key`, `*.p12`, `credentials`, `id_*`), stop this rescue and propose only.
       2. Write `docs/handoff/<YYYY-MM-DD>-rescue-<id8>.md`, where `<id8>` is the first 8 characters of the session id after `local_`. At most 10 lines: what the session was doing (from its last 10 events), what's uncommitted, and the next step.
       3. Write the commit message `Rescue uncommitted work from session <title>` to `$R/commit-<id8>.txt`. Run these 4 commands in order: `git switch -c janitor/rescue-<YYYYMMDD>-<id8>`, `git add -A`, `git commit -F $R/commit-<id8>.txt` and `git push -u origin HEAD`.
       4. Write the body to `$R/pr-<id8>.md`. It links the handoff file and has a `## Next` section whose first line is `- [ ] Desk: finish this work or close it. Nothing here was reviewed.` Run `gh label create hold --repo <slug> --force`, then `gh pr create --draft --repo <slug> --base <defaultBranch> --head <the branch you pushed> --title "Rescue: <title>" --body-file $R/pr-<id8>.md --label hold`.

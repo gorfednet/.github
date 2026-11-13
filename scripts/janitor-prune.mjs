@@ -8,7 +8,7 @@
  * The `sessions` form reads the array `list_sessions` returns (sessionId, cwd, branch) and prints,
  * for each, the state of its folder: `merged` (its tip reached the default branch through a merge
  * commit, so its pull request merged), `fresh` (no commits of its own), `unmerged`, `dirty`
- * (uncommitted or unpushed work), `missing` or `no-repo`. It reads git only, never the GitHub API.
+ * (uncommitted or unpushed work), `unreadable` (git status failed), `missing` or `no-repo`. It reads git only, never the GitHub API.
  *
  * Reads every clone under the root, lists its linked worktrees and prints one JSON
  * line per worktree with a verdict. Without `--apply` it changes nothing.
@@ -154,7 +154,9 @@ export function sessionState(cwd, { fetched = new Set(), fetch = true } = {}) {
   // A session in a clone's main checkout shares it with every later session: the janitor never rescues or prunes there.
   const base = { repo: basename(mainPath), slug: parseGitHubSlug(tryGit(cwd, 'remote', 'get-url', 'origin').out), defaultBranch: defaultBranch(cwd), branch, worktree: canonical(top.out), mainCheckout: canonical(mainPath) === canonical(top.out) }
   const status = tryGit(cwd, 'status', '--porcelain')
-  const uncommitted = status.ok && status.out ? status.out.split('\n').length : 0
+  // Fail closed: a folder git can't read may hold work, so it is never classed clean.
+  if (!status.ok) return { ...base, state: 'unreadable', reason: status.out.split('\n')[0] }
+  const uncommitted = status.out ? status.out.split('\n').length : 0
   const ahead = tryGit(cwd, 'rev-list', '--count', '@{u}..HEAD')
   const unpushed = ahead.ok ? Number(ahead.out) : 0
   const head = tryGit(cwd, 'rev-parse', 'HEAD').out
