@@ -1,21 +1,17 @@
-# Brief: land the Desk brief and briefs dir (plan row 1.1)
+# Brief: land the briefs dir (plan row 1.1)
 
-Model: Fable (`reviewer` role). Why: these docs set what Desk and ship-bot do unattended.
+Model: Fable (`reviewer` role). Why: these docs set what Desk and sessions do unattended.
 Folder: `~/Developer/gorfednet/gorfednet.github`, own worktree.
 
 ## Objective
-Three labelled .github PRs can't merge:
-- 118 "Desk standing brief": open reviewer threads (ship-bot comment `review-threads` at 03:12 UTC 13 Nov).
-- 133 "Assessment 12 Nov…": open reviewer threads.
-- 120 "Desk brief: session-start rule" (draft): fold into 118, then close 120 with a note naming 118.
-- 129 is being rebased by its own session (Release loop 4); leave it alone.
+.github 133 ("Assessment 12 Nov…", adds `briefs/`) carries `ready-to-merge` but has open reviewer threads, so ship-bot won't merge it. For each thread: decide whether it's a real finding. Fix real ones on the branch, and answer and resolve the rest with a one-line reason. Where 133 contradicts `docs/desk/brief.md` or `docs/plan-of-record.md` (from .github 138), those win.
 
-For each thread on 118 and 133: decide whether it is a real finding. Fix real ones on the branch, answer and resolve the rest with a one-line reason. 118 must agree with `docs/desk/brief.md` from .github 138 (13 Nov plan of record); where they conflict, 138 wins, and 118 may be closed as superseded with a note if 138 already covers it.
+Not yours: 118 and 120 close as superseded (Desk does that once 138 merges). 129 is being rebased by its own session.
 
 ## Done when
-- No unresolved threads on 118 and 133; `review-status.mjs --pr <n>` clean or triaged on each head (run with `GITHUB_REPOSITORY=gorfednet/.github`; scripts in `scripts/` and `scripts/gates/`).
+- No unresolved threads on 133. `review-status.mjs --pr 133` is clean or triaged on its head (run it with `GITHUB_REPOSITORY=gorfednet/.github`; the scripts are in `scripts/` and `scripts/gates/`).
 - `assert-checks-started` and `check-closing-keywords` pass.
-- `## Next` on each says merge. They keep `ready-to-merge`; ship-bot merges.
+- `## Next` says merge, and the PR keeps `ready-to-merge`. Ship-bot merges.
 
 ## Boundaries
-Never `gh pr merge`. Docs only. A push that changes text a person wrote gets one `claude review` comment. Return PR links with `## Next`.
+Never `gh pr merge`. Docs only. A push that changes text a person wrote gets one `claude review` comment. Return the PR link with `## Next`.
