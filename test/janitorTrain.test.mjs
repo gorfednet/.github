@@ -185,6 +185,17 @@ describe('buildTrain', () => {
     assert.ok(verdict.claim)
   })
 
+  it('a piece already on an open train from an earlier week is not carried again', () => {
+    const f = fixture()
+    const prs = [f.pr(91, 'kit: one', 'd1', 'd1.txt', '1\n')]
+    buildTrain({ clone: f.clone, repo: REPO, prs, week: '2026-W46', apply: true, gh: () => {} })
+    const calls = []
+    const next = buildTrain({ clone: f.clone, repo: REPO, prs, week: '2026-W47', apply: true, gh: (a) => calls.push(a) })
+    assert.equal(next.head, null)
+    assert.match(next.left[0].reason, /already rides janitor\/train-site-2026-W46/)
+    assert.equal(calls.length, 0)
+  })
+
   it('builds nothing when nothing qualifies', () => {
     const f = fixture()
     const r = buildTrain({ clone: f.clone, repo: REPO, prs: [f.pr(41, 'Feature', 'ft', 'ft.txt', 'f\n')] })

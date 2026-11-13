@@ -159,6 +159,11 @@ export function buildTrain({ clone, repo, prs, week = isoWeek(), base = 'main', 
         left.push({ number: pr.number, reason: 'head moved since it was read' })
         continue
       }
+      const riding = git(clone, 'for-each-ref', '--contains', sha, '--format=%(refname:short)', 'refs/remotes/origin/janitor/train-*').split('\n').filter(Boolean)
+      if (riding.length > 0) {
+        left.push({ number: pr.number, reason: `already rides ${riding[0].replace(/^origin\//, '')}` })
+        continue
+      }
       const shared = sharedCommits(clone, sha, pr.headRef, base)
       if (shared) {
         left.push({ number: pr.number, reason: `shares commit ${shared.slice(0, 8)} with another branch (cut from unmerged work)` })
