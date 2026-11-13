@@ -73,6 +73,7 @@ export function select(prs, repo) {
     else if (pr.review !== 'clean') reason = `review is ${pr.review ?? 'unknown'}, not clean`
     else if (!/^[A-Za-z0-9][A-Za-z0-9._\/-]*$/.test(pr.headRef ?? '') || !/^[0-9a-f]{40}$/.test(pr.headSha ?? '')) reason = 'head unknown'
     else if (typeof pr.body !== 'string') reason = 'body unknown'
+    else if (pr.reviewedSha !== pr.headSha) reason = 'the clean review was for another head (reviewedSha is status.json headSha, headSha is the later read)'
     if (reason) left.push({ number: pr.number, reason })
     else carry.push({ ...pr, kind })
   }
@@ -82,6 +83,21 @@ export function select(prs, repo) {
 
 const IDENT = ['-c', 'user.name=fleet-janitor', '-c', 'user.email=janitor@gorfed.net']
 const git = (dir, ...args) => execFileSync('git', ['-C', dir, ...IDENT, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim()
+
+/**
+ * A commit this head brings (not on origin/base) that any other origin branch also holds means
+ * the piece was cut from, or shares history with, unmerged work. Returns the first such sha.
+ * Other train branches are ignored. Needs every origin branch fetched.
+ */
+function sharedCommits(clone, sha, headRef, base) {
+  const commits = git(clone, 'rev-list', `origin/${base}..${sha}`).split('\n').filter(Boolean)
+  for (const c of commits) {
+    const refs = git(clone, 'for-each-ref', '--contains', c, '--format=%(refname)', 'refs/remotes/origin').split('\n').filter(Boolean)
+    const others = refs.filter((r) => r !== `refs/remotes/origin/${headRef}` && r !== 'refs/remotes/origin/HEAD' && !r.startsWith('refs/remotes/origin/janitor/train-'))
+    if (others.length > 0) return c
+  }
+  return null
+}
 
 /** Is `a` an unmerged commit that `b` contains? (a merged one is on origin/base and harmless) */
 function isAncestor(clone, a, b, base) {
@@ -123,7 +139,7 @@ export function buildTrain({ clone, repo, prs, week = isoWeek(), base = 'main', 
   const carried = []
   if (carry.length === 0) return { branch, carried, left, head: null, applied: false }
 
-  git(clone, 'fetch', '--quiet', 'origin', base)
+  git(clone, 'fetch', '--quiet', 'origin')
   const work = mkdtempSync(join(tmpdir(), 'janitor-train-'))
   const tree = join(work, 'tree')
   git(clone, 'worktree', 'add', '--quiet', '--detach', tree, `origin/${base}`)
@@ -139,6 +155,11 @@ export function buildTrain({ clone, repo, prs, week = isoWeek(), base = 'main', 
       const sha = git(clone, 'rev-parse', 'FETCH_HEAD')
       if (sha !== pr.headSha) {
         left.push({ number: pr.number, reason: 'head moved since it was read' })
+        continue
+      }
+      const shared = sharedCommits(clone, sha, pr.headRef, base)
+      if (shared) {
+        left.push({ number: pr.number, reason: `shares commit ${shared.slice(0, 8)} with another branch (cut from unmerged work)` })
         continue
       }
       const stowaway = prs.find((o) => o.number !== pr.number && o.headSha && !carry.some((c) => c.number === o.number) && o.headSha !== sha && isAncestor(clone, o.headSha, sha, base))
@@ -174,7 +195,13 @@ export function buildTrain({ clone, repo, prs, week = isoWeek(), base = 'main', 
     git(tree, 'push', '--quiet', 'origin', `HEAD:refs/heads/${branch}`)
     const bodyFile = join(work, 'body.md')
     writeFileSync(bodyFile, body)
-    gh(['pr', 'create', '--draft', '--repo', repo, '--base', base, '--head', branch, '--title', `Housekeeping train ${week}: ${carried.length} pull requests`, '--body-file', bodyFile])
+    try {
+      gh(['pr', 'create', '--draft', '--repo', repo, '--base', base, '--head', branch, '--title', `Housekeeping train ${week}: ${carried.length} pull requests`, '--body-file', bodyFile])
+    } catch (error) {
+      // No pull request: take the branch back so a rerun this week can build the train again.
+      try { git(tree, 'push', '--quiet', 'origin', `:refs/heads/${branch}`) } catch { /* nothing more to do */ }
+      throw error
+    }
     for (const pr of carried) {
       const note = join(work, `note-${pr.number}.md`)
       writeFileSync(note, `Rides the housekeeping train \`${branch}\`. This pull request merges with it and is marked merged then; no separate merge.\n`)

@@ -252,6 +252,7 @@ export async function gatherRepo(slug, now = new Date(), { includePrivate = fals
       labels: p.labels.map((l) => l.name),
       draft: p.isDraft,
       review: claudeReviewVerdict(comments, p.headRefOid).state,
+      headSha: p.headRefOid,
       ci,
       next: nextItem(p.body),
       author: p.author?.login ?? null,

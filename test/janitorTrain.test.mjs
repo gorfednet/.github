@@ -37,10 +37,10 @@ function fixture() {
     git(clone, 'switch', '--quiet', 'main')
     return sha
   }
-  const pr = (number, title, name, file, content, extra = {}) => ({
-    number, repo: REPO, title, body: '', labels: [], draft: false, review: 'clean',
-    headRef: name, headSha: branch(name, file, content, extra.message), ...extra,
-  })
+  const pr = (number, title, name, file, content, extra = {}) => {
+    const headSha = branch(name, file, content, extra.message)
+    return { number, repo: REPO, title, body: '', labels: [], draft: false, review: 'clean', headRef: name, headSha, reviewedSha: headSha, ...extra }
+  }
   return { clone, origin, pr, branch }
 }
 
@@ -60,7 +60,7 @@ describe('classify', () => {
 
 describe('select', () => {
   it('fails closed on kind, hold and review', () => {
-    const base = { repo: REPO, labels: [], review: 'clean', body: '', headRef: 'a', headSha: 'b'.repeat(40) }
+    const base = { repo: REPO, labels: [], review: 'clean', body: '', headRef: 'a', headSha: 'b'.repeat(40), reviewedSha: 'b'.repeat(40) }
     const { carry, left } = select([
       { ...base, number: 1, title: 'kit: refresh' },
       { ...base, number: 2, title: 'Add feature' },
@@ -104,7 +104,7 @@ describe('buildTrain', () => {
     const c = f.pr(23, 'incident: line', 'inc', 'inc.txt', 'i\n', { message: 'incident, fixes #127' })
     const d = f.pr(24, 'backlog: moved', 'bm', 'bm.txt', 'b\n')
     const e = f.pr(25, 'backlog: fine', 'bf', 'bf.txt', 'b\n')
-    const r = buildTrain({ clone: f.clone, repo: REPO, prs: [a, b, c, { ...d, headSha: 'f'.repeat(40) }, e], week: '2026-W46' })
+    const r = buildTrain({ clone: f.clone, repo: REPO, prs: [a, b, c, { ...d, headSha: 'f'.repeat(40), reviewedSha: 'f'.repeat(40) }, e], week: '2026-W46' })
     assert.deepEqual(r.carried.map((p) => p.number), [21, 25])
     assert.deepEqual(Object.fromEntries(r.left.map((l) => [l.number, l.reason])), {
       22: 'conflicts with the train', 23: 'a closing phrase in its title, body or commits', 24: 'head moved since it was read',
@@ -135,12 +135,18 @@ describe('buildTrain', () => {
     git(f.clone, 'add', '.')
     git(f.clone, 'commit', '--quiet', '-m', 'kit')
     git(f.clone, 'push', '--quiet', 'origin', 'stacked')
-    const stacked = { number: 52, repo: REPO, title: 'kit: stacked', body: '', labels: [], review: 'clean', headRef: 'stacked', headSha: git(f.clone, 'rev-parse', 'HEAD') }
+    const stacked = { number: 52, repo: REPO, title: 'kit: stacked', body: '', labels: [], review: 'clean', headRef: 'stacked', headSha: git(f.clone, 'rev-parse', 'HEAD'), reviewedSha: git(f.clone, 'rev-parse', 'HEAD') }
+    // the feature moves on after the housekeeping branch was cut, so its listed head is no ancestor
+    git(f.clone, 'switch', '--quiet', 'feat')
+    writeFileSync(join(f.clone, 'more.txt'), 'm\n')
+    git(f.clone, 'add', '.')
+    git(f.clone, 'commit', '--quiet', '-m', 'more')
+    git(f.clone, 'push', '--quiet', 'origin', 'feat')
     git(f.clone, 'switch', '--quiet', 'main')
     const held = f.pr(53, 'kit: held', 'hh', 'hh.txt', 'h\n', { labels: [{ name: 'hold' }] })
     const r = buildTrain({ clone: f.clone, repo: REPO, prs: [feat, stacked, held], gh: () => { throw new Error('no gh') } })
     assert.equal(r.head, null)
-    assert.match(r.left.find((l) => l.number === 52).reason, /contains the commits of #51/)
+    assert.match(r.left.find((l) => l.number === 52).reason, /shares commit/)
     assert.equal(r.left.find((l) => l.number === 53).reason, 'hold')
   })
 
@@ -152,6 +158,23 @@ describe('buildTrain', () => {
     const again = buildTrain({ clone: f.clone, repo: REPO, prs, week: '2026-W46', apply: true, gh: (a) => calls.push(a) })
     assert.equal(again.applied, false)
     assert.equal(calls.length, 2)
+  })
+
+  it('refuses a head the clean review did not cover', () => {
+    const f = fixture()
+    const p = f.pr(71, 'kit: pushed after review', 'pr71', 'p.txt', 'p\n', { reviewedSha: 'c'.repeat(40) })
+    const r = buildTrain({ clone: f.clone, repo: REPO, prs: [p], gh: () => { throw new Error('no gh') } })
+    assert.equal(r.head, null)
+    assert.match(r.left[0].reason, /clean review was for another head/)
+  })
+
+  it('a failed pr create takes the pushed branch back so a rerun can build the train', () => {
+    const f = fixture()
+    const prs = [f.pr(81, 'kit: one', 'c1', 'c1.txt', '1\n')]
+    assert.throws(() => buildTrain({ clone: f.clone, repo: REPO, prs, week: '2026-W46', apply: true, gh: () => { throw new Error('quota') } }), /quota/)
+    assert.equal(git(f.clone, 'ls-remote', '--heads', 'origin', 'janitor/train-site-2026-W46'), '')
+    const r = buildTrain({ clone: f.clone, repo: REPO, prs, week: '2026-W46', apply: true, gh: () => {} })
+    assert.equal(r.applied, true)
   })
 
   it('builds nothing when nothing qualifies', () => {
