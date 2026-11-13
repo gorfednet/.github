@@ -64,13 +64,13 @@ Each row: owner agent and model; root cause to verify (hypothesis, not finding);
 | 0.1 | Write `docs/handoff/2026-11-13-fleet-reassessment.md` in `.github` with the six scout reports condensed, this plan's table, and the access list; draft PR | this session | n/a | PR open, `## Next` says merge, docs-only so the janitor labels it | none |
 | 0.2 | Access list to the owner in one message: Tailscale SSH approval for the docker host from ship-bot's launchd context; `FLEET_READ_TOKEN` PAT (read on all org repos) and `admin:org` read for billing; folder trust for the parked Herdr jobs; Mac Energy setting "prevent sleep when display off"; GitHub org runner read; RED upload credit decision | this session | n/a | each granted item recorded in the handoff | owner |
 | 0.3 | Unblock the four ship-bot repos only after 2.1 proves each cause fixed; until then leave them blocked (a blocked repo is correct behaviour) | Desk (Opus) via `runner` | see 2.1 | `~/.ship-bot/state.json` has no `blocked`; the next labelled PR in each repo deploys green | 0.2 Tailscale |
-| 0.4 | Start Desk from a 30-line brief (`docs/desk-brief.md` rewritten per the architecture above, on main through PR 118's successor) with Remote Control on, then end this session | this session | n/a | `list_sessions` shows Desk with `remoteControlActive: true`; owner opens it on the phone | owner accepted RC |
+| 0.4 | Start Desk from a 30-line brief (`docs/desk/brief.md`, landed by this PR; 118 and 120 close as superseded) with Remote Control on, then end this session | this session | n/a | `list_sessions` shows Desk with `remoteControlActive: true`; owner opens it on the phone | owner accepted RC |
 
 ### Phase 1: control plane and hygiene (days 1 to 3)
 
 | # | Item | Agent / model | Root cause to verify | Proof | Access |
 |---|---|---|---|---|---|
-| 1.1 | Land Desk brief, briefs dir and release-loop handoff: answer the 5 reviewer threads on 118 and 133, resolve 129's conflicts, fold 120 into 118 | `reviewer` Fable answers threads; `runner` Haiku rebases | threads are real findings or not; 129 conflicts with merged loop-3 text | all three merged by ship-bot; `briefs/` and `docs/desk-brief.md` on main | none |
+| 1.1 | Land the briefs dir and release-loop handoff: answer the reviewer threads on 133, resolve 129's conflicts; close 118 and 120 as superseded by `docs/desk/brief.md` | `reviewer` Fable answers threads; `runner` Haiku rebases | threads are real findings or not; 129 conflicts with merged loop-3 text | 133 and 129 merged by ship-bot, 118 and 120 closed with a note; `briefs/` and `docs/desk/brief.md` on main | none |
 | 1.2 | Ship-bot draft rule: finish PR 119 at reduced scope (label and ready when first `## Next` line says merge, gates clean, no human hand-off line; `draftReady` per repo; the round-7 finding fixed by re-reading `## Next` after labelling). One more review round max, else close and Desk keeps the rule in prose | `builder` on Fable (changes what merges unattended) | round-7: a wait line added after labelling is never re-read | 16+ tests green, `check.sh` floor raised, dry-run log shows one draft readied, `install.sh` rerun | none |
 | 1.3 | Ship-bot rate limit: conditional requests (`If-None-Match`), read `X-RateLimit-Remaining` and back off under 200, one GraphQL query per pass for PR lists | `builder` Fable | `lib/github.mjs` polls 21 repos every 120 s with uncached REST | unit test with fake fetch asserting the 304 path and the backoff; 7 days of log with no 403 | none |
 | 1.4 | Ship-bot deploy preflight: refuse a deploy whose steps call npm or vite unless `setup` runs `npm ci` or `preserve` lists `node_modules`; rollback must verify the previous build is still present before claiming success | `builder` Fable, root-cause read by Opus first | `prepareWorkspace` cleans untracked files; repos with `setup: []` rely on `make deploy` to install | `test-site-deploy.sh` case: npm step with no setup fails validate; the four blocked repos redeploy green on their next merge | none |
@@ -159,9 +159,9 @@ Everything else is decided by Desk under the rules.
 ## Milestones (ET)
 
 - Day 0 (today, 13 Nov): handoff PR open, access list sent, Desk running on Remote Control, this session ended.
-- Day 3 (Sun 16 Nov): control plane live (1.1 to 1.9), four repos unblocked, labelled PRs merged, dirty worktrees drained.
-- Day 7 (Thu 20 Nov, the weekly reset): red mains green, pool resized and measured, backlogs reconciled, drift guard in CI.
-- Day 10 (Sun 23 Nov): BinderCurve triage done, plan of record generated daily, bootstrap-for-new-repo proven, media stack items done except RED.
+- Day 3 (Mon 16 Nov): control plane live (1.1 to 1.9), four repos unblocked, labelled PRs merged, dirty worktrees drained.
+- Day 7 (Fri 20 Nov, the weekly reset): red mains green, pool resized and measured, backlogs reconciled, drift guard in CI.
+- Day 10 (Mon 23 Nov): BinderCurve triage done, plan of record generated daily, bootstrap-for-new-repo proven, media stack items done except RED.
 
 ## Cost estimate
 
