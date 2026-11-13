@@ -1,0 +1,18 @@
+{
+  "name": "gorfednet-ship-bot",
+  "description": "Merges the owner's ready-to-merge pull requests in the gorfednet repositories and deploys them. Runs on the owner's Mac.",
+  "url": "https://github.com/gorfednet/.github/tree/main/ship-bot",
+  "public": false,
+  "hook_attributes": { "url": "https://github.com/gorfednet/.github", "active": false },
+  "default_events": [],
+  "default_permissions": {
+    "metadata": "read",
+    "contents": "write",
+    "pull_requests": "write",
+    "issues": "read",
+    "checks": "read",
+    "statuses": "read",
+    "actions": "read",
+    "workflows": "write"
+  }
+}

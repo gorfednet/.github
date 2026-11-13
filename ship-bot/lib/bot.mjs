@@ -11,7 +11,7 @@ import { join } from 'node:path'
 import { HOLD_LABEL } from './config.mjs'
 import { DeployLog, deployMerged, envSecrets, matchingFiles, preflight, realFs, selectSteps } from './deploy.mjs'
 import { evaluatePull, ineligibleReason, unmergeableReason } from './gates.mjs'
-import { guardWrites } from './github.mjs'
+import { RateLimitError, guardWrites } from './github.mjs'
 import { planRelease } from './release.mjs'
 import { Redactor } from './redact.mjs'
 import { guardCommands, succeeded } from './runner.mjs'
@@ -58,6 +58,11 @@ export async function runOnce(deps) {
     nodePath: deps.nodePath ?? process.execPath,
     baseEnv: deps.baseEnv ?? {},
     fetchImpl: deps.fetchImpl ?? globalThis.fetch,
+    /** cache.mjs ReadCache: gate script answers reused across passes. Optional. */
+    readCache: deps.readCache ?? null,
+    /** Who the pass calls GitHub as; a quota pause is that identity's only. */
+    authAs: deps.authAs ?? 'default',
+    gateStats: { ran: 0, cached: 0 },
     decisions: [],
     /** Shared across repo contexts: merges decided this pass (live: attempted; dry: "would merge"), against maxMergesPerPass. */
     pass: { merges: 0 },
@@ -70,6 +75,11 @@ export async function runOnce(deps) {
 
   const repos = selectRepos(config.repos, deps.repoNames)
   recoverInterruptedDeploys(ctx)
+  if (quotaPaused(ctx)) {
+    stateStore.save()
+    return ctx.decisions
+  }
+  let limited = null
   for (const repo of repos) {
     if (repo.mode === 'off') {
       ctx.say('info', `${repo.slug}: mode off, not looked at`)
@@ -78,12 +88,69 @@ export async function runOnce(deps) {
     try {
       await processRepo(repoContext(ctx, repo, deps), repo)
     } catch (cause) {
+      if (cause instanceof RateLimitError) {
+        limited = cause
+        break
+      }
       ctx.say('error', `${repo.slug}: stopped on an unexpected error: ${cause.message}`)
     }
     stateStore.save()
   }
+  if (limited) await quotaLow(ctx, limited)
+  else delete stateStore.data.rateLimits?.[ctx.authAs]
+  sayUsage(ctx)
   stateStore.save()
   return ctx.decisions
+}
+
+/** A time as the owner reads it: Toronto local, labelled ET. */
+export function easternTime(iso) {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return 'an unknown time'
+  return `${new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Toronto', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(d)} ET`
+}
+
+/**
+ * An earlier pass found the quota (nearly) spent and its reset is still
+ * ahead: this pass makes no GitHub call at all. Returns true when paused.
+ */
+function quotaPaused(ctx) {
+  // One record per identity: the App's quota and the owner's (after a failed mint) are separate.
+  const rl = ctx.state.data.rateLimits?.[ctx.authAs]
+  if (!rl?.resetAt || ctx.clock.now().getTime() >= new Date(rl.resetAt).getTime()) return false
+  ctx.say('warn', `GitHub quota low (${rl.remaining} left at ${easternTime(rl.at)}): not calling GitHub until it resets at ${easternTime(rl.resetAt)}`)
+  return true
+}
+
+/**
+ * Stop the pass on a low quota: one log line every time, the owner's phone
+ * once per episode (an episode ends at the first pass that finishes without
+ * reaching the floor). With no reset time from GitHub, wait 15 minutes.
+ */
+async function quotaLow(ctx, err) {
+  const now = ctx.clock.now()
+  const resetAt = err.resetAt && new Date(err.resetAt) > now ? err.resetAt : new Date(now.getTime() + 15 * 60 * 1000).toISOString()
+  const all = (ctx.state.data.rateLimits ??= {})
+  const first = !all[ctx.authAs]
+  const rl = (all[ctx.authAs] = { at: now.toISOString(), remaining: err.remaining, resetAt, notified: all[ctx.authAs]?.notified ?? false })
+  const text = `GitHub ${err.resource} quota low: ${err.remaining} left. Ship bot stopped this pass and makes no GitHub call until ${easternTime(resetAt)}.`
+  ctx.say('warn', text)
+  if (!first && rl.notified) return
+  if (ctx.dry) {
+    ctx.say('info', `would notify: ${text}`)
+    return
+  }
+  rl.notified = true
+  ctx.state.save()
+  await notify(ctx, text, true)
+}
+
+/** What this pass cost in GitHub calls, one line, so a pass's cost is in the log. */
+function sayUsage(ctx) {
+  const s = ctx.github.stats ?? { requests: '?', notModified: '?' }
+  const core = s.rate?.core
+  const quota = core ? `; core quota ${core.remaining} of ${core.limit} left, resets ${easternTime(core.resetAt)}` : ''
+  ctx.say('info', `GitHub calls this pass: ${s.requests} (${s.notModified} answered 304, which cost nothing); gate scripts run ${ctx.gateStats.ran}, reused ${ctx.gateStats.cached}${quota}`)
 }
 
 /**
@@ -136,6 +203,15 @@ function recoverInterruptedDeploys(ctx) {
   }
 }
 
+/**
+ * The quota floor, checked where stopping loses nothing: before a repository
+ * and before a pull request, never between a merge and what follows it.
+ */
+function checkQuota(ctx) {
+  const low = ctx.github.lowQuota?.()
+  if (low) throw new RateLimitError(low)
+}
+
 /** Has this pass decided as many merges as the config allows? */
 const passLimitReached = (ctx) => ctx.pass.merges >= ctx.config.maxMergesPerPass
 
@@ -157,6 +233,7 @@ async function processRepo(ctx, repo) {
     ctx.say('warn', `${repo.slug}: a live run would refuse this repo until its ${repo.todo.length} TODO(s) are confirmed and removed`)
   }
 
+  checkQuota(ctx)
   const info = await ctx.github.getRepo(repo.slug)
   const defaultBranch = info?.default_branch
   if (!defaultBranch) throw new Error('GitHub did not report a default branch')
@@ -168,6 +245,7 @@ async function processRepo(ctx, repo) {
       ctx.say('debug', `${repo.slug}#${listed.number}: ignored (${skip})`)
       continue
     }
+    checkQuota(ctx)
     const pr = await ctx.github.getPull(repo.slug, listed.number)
     const skip2 = ineligibleReason(pr, repo, defaultBranch, ctx.config.allowedAuthors) ?? unmergeableReason(pr)
     if (skip2) {
@@ -186,7 +264,9 @@ async function processPull(ctx, repo, pr, defaultBranch) {
   const headState = ctx.state.head(repo.slug, pr.number, sha, nowIso)
   const tag = `${repo.slug}#${pr.number} (${short(sha)})`
 
-  const result = await evaluatePull(ctx, repo, pr, { headState })
+  let result = await evaluatePull(ctx, repo, pr, { headState })
+  // A merge never rests on a remembered gate answer: run every script again.
+  if (result.ready && result.cached) result = await evaluatePull(ctx, repo, pr, { headState, fresh: true })
 
   if (!result.ready) {
     for (const block of result.blocks) {
@@ -357,6 +437,14 @@ async function liveMerge(ctx, repo, pr, tag, plan) {
     if (!res?.merged || !res?.sha) throw new Error(res?.message ?? 'GitHub did not confirm the merge')
     mergeSha = res.sha
   } catch (cause) {
+    // GitHub refused the merge for its rate limit: definitely not merged.
+    // Nothing to block or comment (that would spend more); the pass stops.
+    if (cause instanceof RateLimitError) {
+      delete rs.deployInProgress
+      ctx.state.save()
+      ctx.say('warn', `${tag}: not merged: GitHub refused for its rate limit`)
+      throw cause
+    }
     // Only a definite answer from GitHub means "not merged". A timeout or a
     // 5xx may have merged anyway, and a merged commit nobody deploys is worse
     // than a stopped repo, so that case blocks the repo for a person.

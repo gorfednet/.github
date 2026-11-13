@@ -215,6 +215,37 @@ To stop it: add the **`hold`** label to a pull request, or run
   logs. `--set-live true` resumes.
 - **Remove it from the Mac:** `ship-bot/install.sh --uninstall`.
 
+## GitHub quota (13 November 2026)
+
+GitHub allows 5,000 REST calls an hour per account. Until the GitHub App
+exists the bot calls GitHub as the owner, with `gh auth token`, so it shares
+that quota with every session. It keeps its share small:
+
+- **Conditional requests.** Every read carries the ETag of the last answer
+  (`~/.ship-bot/read-cache.json`). GitHub answers an unchanged resource with
+  304, which costs nothing.
+- **Gate scripts reused.** A pull request that waits pass after pass (for a
+  review, say) gets the same answer from the three gate scripts while its head,
+  its last change (`updated_at`) and its checks are unchanged, for up to 10
+  minutes. Before any merge every script runs again for real.
+- **A floor.** Under 200 calls left, the bot stops the pass, logs
+  `GitHub core quota low`, notifies once (Mac and ntfy `ops-report`), and makes
+  no call until the quota resets.
+- **One line per pass** says what it spent: `GitHub calls this pass: N (M
+  answered 304, which cost nothing); gate scripts run K, reused J; core quota
+  R of L left`.
+
+**Its own quota: the GitHub App.** `github-app/manifest.json` describes a
+private App with only what the bot needs (read metadata, checks, commit
+statuses, Actions and issues; write contents, pull requests and workflow
+files, since merging a pull request that changes a workflow needs it).
+`node ~/.ship-bot/app/github-app/create.mjs` creates it in one browser step,
+saves its private key to `~/.ship-bot/github-app.pem` (mode 600, outside every
+repository) and adds `githubApp: { appId, privateKeyFile }` to the config.
+Once the App is installed on the gorfednet account (a user account, so the script uses the user "new App" page), each pass mints an installation
+token and the log's pass line ends `as GitHub App <id>`. If minting fails, the
+pass logs an error and falls back to `gh auth token`.
+
 ## Where to look
 
 - **What it decided and why:** `~/.ship-bot/logs/ship-bot.log` (one line per

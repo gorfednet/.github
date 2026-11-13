@@ -38,6 +38,7 @@ const TOP_KEYS = new Set([
   'notify',
   'preflight',
   'ghPath',
+  'githubApp',
   'scripts',
   'repos',
 ])
@@ -45,6 +46,7 @@ const SCRIPT_KEYS = ['assertChecksStarted', 'reviewStatus', 'checkClosingKeyword
 
 const COMMON_REPO_KEYS = ['slug', 'dir', 'mode', 'note', 'todo', 'live', 'claudeReview', 'expectedChecks', 'coveredChecks', 'requireChecksAfterLabel']
 const NTFY_KEYS = new Set(['url', 'topic', 'tokenFile'])
+const GITHUB_APP_KEYS = new Set(['appId', 'privateKeyFile', 'owner', 'installationId'])
 const DEPLOY_REPO_KEYS = [
   'sourceDir',
   'workDir',
@@ -310,6 +312,19 @@ export function validateConfig(raw) {
     }
   }
 
+  if (raw.githubApp !== undefined) {
+    const app = raw.githubApp
+    if (!isObject(app)) problems.push('githubApp: must be an object { appId, privateKeyFile } (optional owner, installationId)')
+    else {
+      checkUnknownKeys(app, GITHUB_APP_KEYS, 'githubApp', problems)
+      if (!(Number.isInteger(app.appId) && app.appId > 0)) problems.push('githubApp.appId: required, the App ID number from the App\'s settings page')
+      if (!isNonEmptyString(app.privateKeyFile)) problems.push('githubApp.privateKeyFile: required, the path to the App\'s private key (.pem), outside every repository')
+      else if (/^(\.|[^~/])/.test(app.privateKeyFile.trim())) problems.push('githubApp.privateKeyFile: must be an absolute path or start with ~/')
+      if (app.owner !== undefined && !(isNonEmptyString(app.owner) && /^[\w.-]+$/.test(app.owner))) problems.push('githubApp.owner: must be a GitHub account name')
+      if (app.installationId !== undefined && !(Number.isInteger(app.installationId) && app.installationId > 0)) problems.push('githubApp.installationId: must be a positive whole number')
+    }
+  }
+
   if (!isObject(raw.scripts)) problems.push(`scripts: required, an object with ${SCRIPT_KEYS.join(', ')}`)
   else {
     checkUnknownKeys(raw.scripts, new Set(SCRIPT_KEYS), 'scripts', problems)
@@ -380,6 +395,14 @@ export function normalizeConfig(raw, { home = homedir() } = {}) {
     notify: raw.notify ?? true,
     preflight: raw.preflight ?? [],
     ghPath: raw.ghPath ? expandHome(raw.ghPath, home) : 'gh',
+    githubApp: raw.githubApp
+      ? {
+          appId: raw.githubApp.appId,
+          privateKeyFile: x(raw.githubApp.privateKeyFile),
+          owner: raw.githubApp.owner ?? raw.repos[0].slug.split('/')[0],
+          installationId: raw.githubApp.installationId ?? null,
+        }
+      : null,
     scripts: Object.fromEntries(SCRIPT_KEYS.map((k) => [k, x(raw.scripts[k])])),
     repos: raw.repos.map((repo) => {
       const base = {
