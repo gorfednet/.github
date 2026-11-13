@@ -164,6 +164,14 @@ async function processRepo(ctx, repo) {
   const pulls = [...(await ctx.github.listOpenPulls(repo.slug))].sort((a, b) => a.number - b.number)
 
   for (const listed of pulls) {
+    // A person who took the bot's label off has taken the pull request back:
+    // any label they add later is their own sign-off (round 9 on #119).
+    const labels = (listed.labels ?? []).map((l) => l.name)
+    if (!labels.includes(READY_LABEL) && ctx.state.data.prs[`${repo.slug}#${listed.number}`]?.botLabelled) {
+      delete ctx.state.pr(repo.slug, listed.number).botLabelled
+      ctx.state.save()
+      ctx.say('debug', `${repo.slug}#${listed.number}: ${READY_LABEL} the bot added is gone; the pull request is a person's again`)
+    }
     if (listed.draft) {
       await processDraft(ctx, repo, listed, defaultBranch)
       continue

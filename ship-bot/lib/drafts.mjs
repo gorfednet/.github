@@ -15,7 +15,9 @@ import { HOLD_LABEL } from './config.mjs'
 const MERGE_INSTRUCTION = /^\W*(merge|open the pr)\b/i
 /** "Merge later" or "merge once the owner answers" starts with merge and is not an instruction to. */
 const NOT_YET = /\b(not|no|don[’']?t|dont|never|wait|until|unless|after|before|hold|once|if|yet|later)\b/i
-export const isMergeInstruction = (line) => MERGE_INSTRUCTION.test(line) && !NOT_YET.test(line)
+/** "Merge main into the branch" merges something into the branch, not the pull request. */
+const MERGE_OF_SOMETHING = /\b(main|master|origin|upstream|into|from|branch|rebase|conflicts?)\b/i
+export const isMergeInstruction = (line) => MERGE_INSTRUCTION.test(line) && !NOT_YET.test(line) && !MERGE_OF_SOMETHING.test(line)
 
 /**
  * Cheap filters on a draft, mirroring gates.mjs ineligibleReason without the

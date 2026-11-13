@@ -24,7 +24,10 @@ describe("which drafts are the bot's", () => {
     for (const line of ['Do not merge until the owner answers', "don't merge before Thursday", 'Don’t merge yet', 'No merge yet, owner decides', 'merge later', 'merge once PR 118 lands', 'hold the merge', 'wait, then open the PR', 'fix the merge conflict with main', 'owner picks the merge strategy', 'check the merge result on staging']) {
       assert.equal(isMergeInstruction(line), false, line)
     }
-    for (const line of ['merge', 'Merge this', 'open the PR', 'Open the PR and merge it', '**merge**']) assert.equal(isMergeInstruction(line), true, line)
+    for (const line of ['Merge main into the branch and rerun the e2e suite', 'merge origin/main to pick up #123', 'Merge upstream', 'merge, after rebasing on main', 'merge the conflicts']) {
+      assert.equal(isMergeInstruction(line), false, line)
+    }
+    for (const line of ['merge', 'Merge this', 'open the PR', 'Open the PR and merge it', '**merge**', 'Merge the PR']) assert.equal(isMergeInstruction(line), true, line)
   })
   it('claims only when the first unchecked line is a merge instruction, and refuses when any unchecked line hands the decision to a person', () => {
     assert.match(draftClaim({ body: NEXT_MERGE }).claim, /## Next says "merge"/)
@@ -106,6 +109,22 @@ describe('a draft the bot owns', () => {
     await s.run()
     assert.equal(writes(gh, 'mergePull').length, 0)
     assert.equal(writes(gh, 'removeLabel').length, 1)
+  })
+
+  it('once a person removes the bot\'s label, a label they add on a new head is their own and merges', async () => {
+    const gh = new FakeGitHub({ pulls: [draft()] })
+    const s = scenario({ repos: reviewed(), github: gh })
+    await s.run()
+    assert.ok(s.state().pr(SLUG, 7).botLabelled)
+    gh.pulls[0].labels = []
+    await s.run()
+    assert.equal(s.state().pr(SLUG, 7).botLabelled, undefined)
+    gh.pulls[0].head.sha = 'd'.repeat(40)
+    gh.pulls[0].labels = [{ name: 'ready-to-merge' }]
+    s.clock.advance(s.config.reviewGraceMinutes)
+    await s.run()
+    assert.equal(writes(gh, 'removeLabel').length, 0)
+    assert.deepEqual(writes(gh, 'mergePull').map((w) => w.sha), ['d'.repeat(40)])
   })
 
   it('a ready-to-merge a person added is never touched by the re-read', async () => {
