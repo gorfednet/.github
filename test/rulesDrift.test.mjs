@@ -65,6 +65,8 @@ describe('check-rules-drift', () => {
     ['an old-style Claude name', 'Use Claude 3.5 Sonnet for this.'],
     ['a Claude generation with no family', 'Use Claude 2.1 for summaries.'],
     ['Claude Instant', 'Claude Instant is enough here.'],
+    ['a lowercase vendor model id', 'model: gpt-4o'],
+    ['a lowercase Gemini id', 'model: gemini-1.5-pro'],
   ]) {
     it(`fails on ${what} planted in a skill`, () => {
       const r = run(repo({ 'templates/x-skill/SKILL.md': `---\nname: x\n---\n${line}\n` }))

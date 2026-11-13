@@ -121,7 +121,7 @@ const MODEL_ID = /\bclaude-([a-z]+)-(\d+)(?:-(\d{1,2})\b)?/g
 const OLD_STYLE = /\bClaude (\d+(?:\.\d+)?) (Haiku|Sonnet|Opus|Fable)\b/g
 const BARE_GENERATION = /\bClaude (Instant|\d+(?:\.\d+)?)(?!\.?\d)\b(?! (?:Haiku|Sonnet|Opus|Fable)\b)/g
 const LEGACY_ID = /\bclaude-(?:instant|\d)(?:[-.]\w+)*/g
-const OTHER_VENDOR = /\b(?:GPT-?\d[\w.-]*|ChatGPT|Gemini(?: [\d.]+\w*)?|Llama ?\d[\w.]*)/g
+const OTHER_VENDOR = /\b(?:GPT-?\d[\w.-]*|ChatGPT|Gemini(?: [\d.]+\w*)?|Llama ?\d[\w.]*)/gi
 
 function capitalize(word) {
   return word.charAt(0).toUpperCase() + word.slice(1)
