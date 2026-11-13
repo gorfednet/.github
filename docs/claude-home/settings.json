@@ -116,7 +116,22 @@
       "Bash(git push* -uf*)",
       "Bash(gh api *repos/*/merges*)",
       "Bash(hc *git push* -uf*)",
-      "Bash(gate-run *git push* -uf*)"
+      "Bash(gate-run *git push* -uf*)",
+      "Bash(git push* -qf*)",
+      "Bash(git push* -vf*)",
+      "Bash(gh api *mergeBranch*)",
+      "Bash(gh api *enqueuePullRequest*)",
+      "Bash(gh api *git/refs*force*)",
+      "Bash(hc *git push* -qf*)",
+      "Bash(hc *git push* -vf*)",
+      "Bash(hc *gh api*mergeBranch*)",
+      "Bash(hc *gh api*enqueuePullRequest*)",
+      "Bash(hc *gh api*git/refs*force*)",
+      "Bash(gate-run *git push* -qf*)",
+      "Bash(gate-run *git push* -vf*)",
+      "Bash(gate-run *gh api*mergeBranch*)",
+      "Bash(gate-run *gh api*enqueuePullRequest*)",
+      "Bash(gate-run *gh api*git/refs*force*)"
     ],
     "defaultMode": "auto"
   },
