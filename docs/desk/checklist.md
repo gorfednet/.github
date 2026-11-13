@@ -1,6 +1,6 @@
 # Fleet checklist (Desk keeps this current; posted to the owner on every pass and every deploy)
 
-Updated 13 Nov 2026, 11:21 ET.
+Updated 13 Nov 2026, 11:49 ET.
 
 ## Bottlenecks
 - [x] Ship-bot API use cut from about 1,800 to about 100 calls an hour (.github 143, merged 10:35 ET; reinstall in progress)
@@ -15,9 +15,15 @@ Updated 13 Nov 2026, 11:21 ET.
 - [x] Gate commands on PATH (1.7, .github 141, merged 10:35 ET, installed)
 - [ ] Briefs folder and handoff (1.1, .github 133)
 - [ ] Rules drift guard (5.4, .github 144, final review requested)
-- [ ] Janitor live with auto-close (1.5, .github 148, 2 findings being fixed; then 3 dry runs 14 to 16 Nov)
-- [ ] Hygiene counts in STATUS (1.6, .github 147, 1 finding being fixed)
+- [ ] Janitor live with auto-close (1.5, .github 148, re-review running; then 3 dry runs 14 to 16 Nov 07:00 ET)
+- [x] Hygiene counts in STATUS (1.6, .github 147, merged)
 - [x] Herdr fixes (1.8, ops 70 merged)
+- [ ] One queue and starter in Herdr (1.11, running)
+- [ ] Ship-bot unattended-merge guards (1.12, running)
+- [ ] Heartbeats and usage pushes (1.13), detect and repair loop (1.14): next when capacity frees
+- [ ] Capacity check (1.9, .github 152, 1 finding being fixed)
+- [ ] Rules, skills, settings sweep (5.x, .github 153, re-review running)
+- [ ] ssatcy security headers: ops 72 merged, owner applies on dapyllil
 
 ## Repos
 - [ ] Kit refresh to 0.61 across 10 repos (2.9): 3 merged (blackpixel, subrythm, gorfed.net), 6 labelled, bindercurve in CI
