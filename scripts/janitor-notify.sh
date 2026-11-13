@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Post the fleet janitor's digest to ntfy ops-report (janitor/PROMPT.md, step 6).
+# Post the fleet janitor's digest to ntfy ops-report (janitor/PROMPT.md, step 8).
 #   bash scripts/janitor-notify.sh <digest-file>
 # The token is read here, from ~/.fleet-janitor/ntfy.token or ~/.ship-bot/ntfy.token, so it never
 # appears in the janitor's transcript. With no token file the digest stays where it is and this

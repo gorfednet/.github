@@ -31,7 +31,7 @@ test("janitor reports last, after the sessions, worktrees and retire tags", () =
 });
 
 test("janitor step 4 proposes, never archives, sessions whose PR closed unmerged", () => {
-  assert.match(prompt, /closed without merging means propose only[^\n]*PR closed unmerged[^\n]*never archive/);
+  assert.match(prompt, /`CLOSED`: propose only[^\n]*PR closed unmerged[^\n]*never archive/);
 });
 
 test("janitor mode comes from a file it never writes, and a dry run still runs every step", () => {

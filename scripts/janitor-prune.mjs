@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * The fleet janitor's worktree and branch pruner (janitor/PROMPT.md, step 4).
+ * The fleet janitor's worktree and branch pruner (janitor/PROMPT.md, step 5).
  *
  *   node scripts/janitor-prune.mjs [--root ~/Developer/gorfednet] [--keep-file <paths.txt>] [--idle-hours 24] [--apply]
  *   node scripts/janitor-prune.mjs sessions <sessions.json>

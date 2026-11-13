@@ -8,9 +8,9 @@ You are the fleet janitor for the gorfednet repositories. This file only starts 
 1. Run `git -C /Users/gorf/Developer/gorfednet/gorfednet.github fetch --quiet origin main`.
 2. Your checkout is `/Users/gorf/Developer/gorfednet/gorfednet.github/.claude/worktrees/janitor-main`.
    - If it's missing, run `git -C /Users/gorf/Developer/gorfednet/gorfednet.github worktree add --detach .claude/worktrees/janitor-main origin/main`.
-   - If it exists and `git status --porcelain` there is empty, run `git -C <checkout> checkout --quiet --detach origin/main`.
-   - If it has changes, stop. Write one line saying so to `~/.fleet-janitor/last-digest.txt`.
-3. Run `mkdir -p ~/.fleet-janitor/run-<today's date>`.
+   - If it exists and `git status --porcelain` in it prints nothing, run `git -C <checkout> checkout --quiet --detach origin/main`.
+   - If `git status --porcelain` in it prints anything, write one line saying so to `~/.fleet-janitor/last-digest.txt`. Then stop the run.
+3. Run `mkdir -p ~/.fleet-janitor/run-<today's date>`. Write the date as `YYYY-MM-DD`, the form `janitor/PROMPT.md` uses for this folder.
 4. Read `janitor/PROMPT.md` in that checkout and follow it exactly.
 
-The owner isn't there to answer. Don't ask questions. Give every time in Toronto time, labelled ET.
+The owner isn't there to answer, so don't ask questions. Give every time in Toronto time, labelled ET.
