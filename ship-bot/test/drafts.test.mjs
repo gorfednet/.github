@@ -94,6 +94,11 @@ describe('a draft the bot owns', () => {
     assert.equal(writes(gh, 'mergePull').length, 0)
     assert.equal(writes(gh, 'removeLabel').length, 1)
     assert.ok(s.logs.some((l) => /the head moved from aaaaaaa to ddddddd after the bot labelled it/.test(l)), s.logs.join('\n'))
+    // A person then labels the new head themselves: it is theirs, the old marker notwithstanding.
+    gh.pulls[0].labels = [{ name: 'ready-to-merge' }]
+    await s.run()
+    assert.equal(writes(gh, 'removeLabel').length, 1, 'not removed again')
+    assert.equal(writes(gh, 'mergePull').length, 1)
   })
 
   it('a wait written under ## Next while the gates ran is caught at the pre-merge re-read', async () => {

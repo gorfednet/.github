@@ -304,6 +304,9 @@ async function botLabelStillEarned(ctx, repo, pr, tag) {
   }
   await ctx.github.removeLabel(repo.slug, pr.number, READY_LABEL)
   delete prState.botLabelled
+  // The comment marker stays on the pull request; without this, a label a
+  // person adds later would be taken for the bot's again on every pass.
+  prState.takenBack = true
   ctx.state.save()
   return false
 }
