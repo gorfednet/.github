@@ -353,14 +353,15 @@
     {
       "id": "sitemap-rule-text-deferred-by-drift",
       "title": "The rule for the sitemap class is written but cannot ship yet",
-      "status": "confirmed-bug",
+      "status": "landed",
       "assignee": "main-model",
+      "pr": 132,
       "userSymptom": "Nobody sees this on a site. The cost is that the next person to meet this class has the gate but not the explanation, so they can see what fails without seeing why it was added.",
       "evidence": "docs/verification-rules.md is a hashed companion of the verification kit, so adding a rule to it forces a minor version bump. Canonical is at 0.42.0 and all ten live repos are at 0.41.0, which check-kit-drift treats as one minor behind and passes with a warning. A bump to 0.43.0 would make all ten more than one minor behind, which drift treats as far behind and fails, red-lining the whole fleet at once for a documentation change.",
-      "reviewBy": "2026-10-31",
-      "note": "Deliberately dated rather than left to be remembered. The sequence is: refresh the ten consumers to 0.42.0, then land the rule text as 0.43.0. The substance is not lost - it is recorded in the two entries above and in the comments in the step itself. This is the same constraint that already caught me once this session, when write-manifest.mjs bumped a version I had already bumped by hand and produced 0.43.0.",
+      "reviewBy": "2027-03-14",
+      "note": "Written 2026-11-09, in review as V76 (kit v0.60.0). The drift gate that forced the sequence was removed in the 2026-10 right-sizing, so a hashed-companion edit no longer red-lines the fleet and the rule shipped directly. test/sitemapRule.test.mjs fails without it. Original reasoning: deliberately dated rather than left to be remembered. The sequence is: refresh the ten consumers to 0.42.0, then land the rule text as 0.43.0. The substance is not lost - it is recorded in the two entries above and in the comments in the step itself. This is the same constraint that already caught me once this session, when write-manifest.mjs bumped a version I had already bumped by hand and produced 0.43.0.",
       "created": "2026-09-15",
-      "updated": "2026-09-15"
+      "updated": "2026-11-09"
     },
     {
       "id": "live-vhosts-were-unversioned",
@@ -449,6 +450,17 @@
       "reviewBy": "2026-12-31",
       "created": "2026-09-09",
       "updated": "2026-10-16"
+    },
+    {
+      "id": "sitemap-pages-not-in-gate",
+      "title": "check-sitemap-pages ships in the kit but the shared verification gate does not run it",
+      "status": "confirmed-bug",
+      "assignee": "main-model",
+      "userSymptom": "A site can still list a noindex, redirecting or non-self-canonical page in its sitemap and pass every pull request check, unless that repository calls the checker itself.",
+      "evidence": "Review finding on #132 (2026-11-12): .github/actions/verification-gate/action.yml runs check-page-metadata, check-og-image and check-error-pages against publish-root, but no step or scripts/lib/verificationInputs.mjs input calls check-sitemap-pages. Fix: an opt-in `sitemap-origin` input wired through verificationInputs.mjs and the pr-check-* workflows, then turned on per site after a kit refresh.",
+      "reviewBy": "2026-12-01",
+      "updated": "2026-11-12",
+      "created": "2026-11-12"
     },
     {
       "id": "papers-deploy-verify-fails-under-load",
