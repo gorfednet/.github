@@ -21,11 +21,19 @@ describe('patch-config', () => {
     it(`${file} names real rows and leaves the example config valid`, () => {
       const patch = JSON.parse(readFileSync(join(patchesDir, file), 'utf8'))
       assert.match(patch.label, /^[a-z0-9-]+$/)
-      const raw = example()
+      // The example config is the state after every patch. A row a patch adds
+      // is already in the example, so take it out first, apply, and require
+      // the added row to match the example's copy exactly.
+      const full = example()
+      const added = new Set((patch.add ?? []).map((r) => r.slug))
+      const raw = { ...full, repos: full.repos.filter((r) => !added.has(r.slug)) }
       const { changed, problems } = applyPatch(raw, patch)
       assert.deepEqual(problems, [])
       assert.ok(changed.length > 0)
       assert.deepEqual(validateConfig(raw), [])
+      for (const slug of added) {
+        assert.deepEqual(raw.repos.find((r) => r.slug === slug), full.repos.find((r) => r.slug === slug), `${slug}: the patch row and config.example.json differ`)
+      }
     })
   }
 
@@ -39,6 +47,31 @@ describe('patch-config', () => {
     assert.throws(() => execFileSync(process.execPath, [script, patch, config], { stdio: 'pipe' }))
     assert.equal(readFileSync(config, 'utf8'), before)
     assert.equal(existsSync(`${config}.bak-t-missing`), false)
+  })
+
+  it('refuses to add a row whose slug is already there and writes nothing', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'patch-config-'))
+    const config = join(dir, 'config.json')
+    const before = `${JSON.stringify(example(), null, 2)}\n`
+    writeFileSync(config, before)
+    const patch = join(dir, 'p.json')
+    writeFileSync(patch, JSON.stringify({ label: 't-dup', add: [{ slug: 'gorfednet/ops', dir: 'ops2', mode: 'off' }] }))
+    // The validator would also refuse a slug listed twice; the message shows add's own check ran.
+    assert.throws(() => execFileSync(process.execPath, [script, patch, config], { stdio: 'pipe' }), /gorfednet\/ops: already has a row/)
+    assert.equal(readFileSync(config, 'utf8'), before)
+  })
+
+  it('adds a new row, validates it, and prints the slug only', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'patch-config-'))
+    const config = join(dir, 'config.json')
+    writeFileSync(config, `${JSON.stringify(example(), null, 2)}\n`)
+    const patch = join(dir, 'p.json')
+    const row = { slug: 'gorfednet/new-thing', dir: 'new-thing', mode: 'merge-only', reason: 'secret-reason-xyz', claudeReview: true, live: false, expectedChecks: ['check / check'] }
+    writeFileSync(patch, JSON.stringify({ label: 't-add', add: [row] }))
+    const out = execFileSync(process.execPath, [script, patch, config], { encoding: 'utf8' })
+    assert.match(out, /gorfednet\/new-thing: added row/)
+    assert.doesNotMatch(out, /secret-reason-xyz/)
+    assert.deepEqual(JSON.parse(readFileSync(config, 'utf8')).repos.at(-1), row)
   })
 
   it('refuses a patch that makes the config invalid and writes nothing', () => {

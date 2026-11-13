@@ -173,7 +173,7 @@ describe('branch protection plan', () => {
     const plan = protectionPlan(normalizeConfig(raw, { home: tmpdir() }))
     const slugs = plan.map((p) => p.slug)
     assert.ok(!slugs.includes('gorfednet/TowIt') && !slugs.includes('gorfednet/wychwood'))
-    assert.equal(slugs.length, 19)
+    assert.equal(slugs.length, 20)
     assert.deepEqual(plan.find((p) => p.slug === 'gorfednet/ops').body.required_status_checks, { strict: false, contexts: ['review / review'] })
     const moon = plan.find((p) => p.slug === 'gorfednet/MoonMan').body
     assert.deepEqual(moon, {
