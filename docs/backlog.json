@@ -468,7 +468,7 @@
       "status": "confirmed-bug",
       "assignee": "main-model",
       "userSymptom": "Seven repos run kit 0.49 and three have no kit while main is 0.59",
-      "evidence": "Installed versions read from each repo's origin/main, 12 Nov 2026 audit; rules cite V77 which is only on kit/soft404-sitemap-pages. Plan: docs/assessment-2026-11-12-output-quality.md. Who: runner; main session merges PR 132.",
+      "evidence": "Installed versions read from each repo's origin/main, 12 Nov 2026 audit; rules cite V77 which is only on kit/soft404-sitemap-pages. Plan: docs/assessment-2026-11-12-output-quality.md. Who: runner; main session labels PR 132 ready-to-merge after reading gates, and ship-bot merges.",
       "reviewBy": "2026-12-01",
       "created": "2026-11-12",
       "updated": "2026-11-12"
