@@ -266,7 +266,7 @@
     {
       "id": "cards-at-overwritable-urls",
       "title": "Most sites still declare a social card at a URL that cannot be replaced",
-      "status": "in-review",
+      "status": "landed",
       "pr": 98,
       "assignee": "main-model",
       "userSymptom": "A social card fixed and deployed keeps showing the old image when a link is shared, with nothing in the repository left to fix.",
