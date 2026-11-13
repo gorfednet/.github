@@ -16,7 +16,7 @@ const run = (repos, canonical = '0.61.0') => {
   writeFileSync(join(dir, 'fleet.json'), JSON.stringify({ projects: [{ slug: 'o/a', tier: 1 }, { slug: 'o/b', tier: 1 }] }))
   return spawnSync(process.execPath, ['scripts/fleet-kit-versions.mjs', '--in', join(dir, 'status.json')], {
     encoding: 'utf8',
-    env: { ...process.env, KIT_CANONICAL_MANIFEST: join(dir, 'MANIFEST.json') },
+    env: { ...process.env, KIT_CANONICAL_MANIFEST: join(dir, 'MANIFEST.json'), KIT_FLEET_JSON: join(dir, 'fleet.json') },
   })
 }
 
@@ -65,6 +65,9 @@ describe('fleet-kit-versions CLI', () => {
   it('exits 1 on a repository ten minors behind, 0 when every repository is within one', () => {
     assert.equal(run([{ slug: 'o/a', kitVersion: '0.61.0' }, { slug: 'o/b', kitVersion: '0.49.0' }]).status, 1)
     assert.equal(run([{ slug: 'o/a', kitVersion: '0.61.0' }, { slug: 'o/b', kitVersion: '0.60.0' }]).status, 0)
+  })
+  it('exits 1 for a missing kit at tier 1, read through the fleet.json wiring', () => {
+    assert.equal(run([{ slug: 'o/a', kitVersion: null }, { slug: 'o/b', kitVersion: '0.61.0' }]).status, 1)
   })
   it('exits 1 when nothing carried a version, rather than printing a tick', () => {
     assert.equal(run([{ slug: 'o/a' }]).status, 1)
