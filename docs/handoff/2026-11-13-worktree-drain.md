@@ -33,7 +33,7 @@ Every dirty worktree and sibling clone under `~/Developer/gorfednet/` was read. 
 | gorfednet.github-kit0482 clone | `drain/gorfednet.github-kit0482` | [.github#149](https://github.com/gorfednet/.github/pull/149) | fleet-report edit |
 | career-portfolio main clone | `drain/career-portfolio` | [career-portfolio#70](https://github.com/gorfednet/career-portfolio/pull/70) | 11 MB resume and LinkedIn docs |
 | ACID2Reaper main clone | `drain/ACID2Reaper` | [ACID2REAPER#8](https://github.com/gorfednet/ACID2REAPER/pull/8) | Acid3 sample fixtures |
-| bindercurve `shimmering-snacking-kitten` | `drain/shimmering-snacking-kitten` | see Open | catalog lookup edits (7 files) |
+| bindercurve `shimmering-snacking-kitten` | local `drain/shimmering-snacking-kitten` (push refused: the repo's pre-push `check:local` failed `test:unit` after 649 s; hook not bypassed) | none yet | catalog identity, name lookup and shop search edits (7 files); source stays in BinderCurve's private repo, so it is not copied here |
 
 ## Not saved: one-line reasons
 
@@ -49,11 +49,12 @@ Every dirty worktree and sibling clone under `~/Developer/gorfednet/` was read. 
 
 ## Open
 
-- [BinderCurve `drain/shimmering-snacking-kitten`: pre-push gate was still running when this was written; PR number added when the push lands.]
+- BinderCurve `shimmering-snacking-kitten`: the work is the local commit on `drain/shimmering-snacking-kitten` in that worktree (a patch copy is in the Desk session notes folder). A builder must find which unit test it breaks, fix it, and open the PR. Do not prune that worktree until then.
 - Pruning (plan 1.9) can start once the PRs above are merged or closed: every worktree listed holds nothing that is not on a pushed branch, except the `promptboi-pr56` clone and the scratch scripts.
 
 ## Next
 
 - [ ] merge this file once gates pass (ship-bot)
+- [ ] BinderCurve: a builder fixes the failing unit test on `drain/shimmering-snacking-kitten` and opens its PR
 - [ ] Desk: decide the 4 full-page-baseline variants (4thcltr #263 to #266, keep one), then close the rest
 - [ ] plan 1.9: prune drained worktrees after their PRs resolve
