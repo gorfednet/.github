@@ -14,22 +14,50 @@ test("janitor does not rely on gh pr diff --name-only for the allowlist", () => 
   assert.match(prompt, /neither is enough/);
 });
 
-test("janitor step 4 sweeps sessions with a 48 hour idle rule", () => {
-  const step = prompt.match(/\n4\. Session sweep[\s\S]*?(?=\n## )/);
+test("janitor step 4 sweeps sessions and guards live ones and owner questions", () => {
+  const step = prompt.match(/\n4\. Sessions\.[\s\S]*?(?=\n5\. Worktrees)/);
   assert.ok(step, "step 4 exists");
-  assert.match(step[0], /48 hours/);
-  assert.match(step[0], /pending owner question/);
+  assert.match(step[0], /`merged`: its pull request merged\. Archive it/);
+  assert.match(step[0], /isRunning/);
+  assert.match(step[0], /question or a decision for the owner/);
+  assert.match(step[0], /idle over 48 hours/);
 });
 
-test("janitor posts the digest after the session sweep", () => {
-  assert.ok(prompt.indexOf("\n4. Session sweep") < prompt.indexOf("\n5. Post the digest"));
+test("janitor reports last, after the sessions, worktrees and retire tags", () => {
+  const order = ["\n4. Sessions.", "\n5. Worktrees.", "\n6. Retire tags.", "\n8. Report, last."].map((s) => prompt.indexOf(s));
+  assert.ok(order.every((i) => i > 0), "every step exists");
+  assert.deepEqual([...order].sort((a, b) => a - b), order);
   assert.doesNotMatch(prompt, /Archive sessions whose pull request merged/);
 });
 
 test("janitor step 4 proposes, never archives, sessions whose PR closed unmerged", () => {
-  assert.match(prompt, /closed without merging: propose only[^\n]*PR closed unmerged[^\n]*never archive/);
+  assert.match(prompt, /closed without merging means propose only[^\n]*PR closed unmerged[^\n]*never archive/);
 });
 
-test("janitor step 4 has its own propose-only period and run counter", () => {
-  assert.match(prompt, /own propose-only period[^\n]*sweep-runs/);
+test("janitor mode comes from a file it never writes, and a dry run still runs every step", () => {
+  assert.match(prompt, /Read `~\/\.fleet-janitor\/mode`\. If it says `live`, act\. Anything else, or no file, means `dry`/);
+  assert.match(prompt, /In a dry run, do every step/);
+  assert.match(prompt, /Never write the mode file/);
+});
+
+test("janitor reads the whole status file and carries on past an unreadable repository", () => {
+  assert.match(prompt, /--save \$R/);
+  assert.match(prompt, /Never pipe it through `head` or `tail`/);
+  assert.match(prompt, /run it once more/);
+  assert.doesNotMatch(prompt, /If it exits non-zero, post the unreadable repositories to ntfy and stop/);
+});
+
+test("janitor never prunes the gate or desk worktrees, and prunes only through the script", () => {
+  assert.match(prompt, /Remove `gates-main`, `desk-log` or `janitor-main`/);
+  assert.match(prompt, /Never remove a worktree any other way/);
+  assert.match(prompt, /git worktree remove --force/);
+});
+
+test("janitor rescues dirty work through a draft held from ship-bot before archiving", () => {
+  const rescue = prompt.match(/\n   5\. Rescue,[\s\S]*?(?=\n5\. Worktrees)/);
+  assert.ok(rescue, "rescue procedure exists");
+  assert.match(rescue[0], /--draft[^\n]*--label hold/);
+  assert.match(rescue[0], /looks secret/);
+  assert.match(rescue[0], /only once the push and the draft both succeeded/);
+  assert.doesNotMatch(rescue[0].split("## Next")[1] ?? "", /merge/i);
 });
