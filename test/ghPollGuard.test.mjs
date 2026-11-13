@@ -57,6 +57,8 @@ test('blocks other 13 November loop shapes', () => {
   blocked('until test -f /tmp/x; do true; done');
   // multi-line loop
   blocked('while :\ndo\n  gh pr checks 12\n  sleep "$WAIT"\ndone');
+  // a quoted sleep in a counted for loop (round-3 Low)
+  blocked('for i in $(seq 1 30); do gh pr view 5 --json state; sleep "$WAIT"; done');
 });
 
 test('passes the waits and reads the rules tell sessions to use', () => {
@@ -104,6 +106,11 @@ test('blocks default-interval watchers and watch(1) on gh', () => {
   blocked('gh run watch 123 --interval 3 --exit-status');
   blocked('gh pr checks 12 --watch');
   blocked('watch -n 30 gh pr checks 12');
+  blocked("watch -n 30 'gh pr checks 12'");
+  blocked('watch -n 30 "gh pr checks 12 | head -3"');
+  blocked("/usr/local/bin/watch -d -n 60 'gh run list --limit 3'");
+  allowed("watch -n 5 'ls -l build'");
+  allowed('gh pr comment 5 --body "watch -n 30 gh pr checks 12"');
   allowed('gh pr checks 12 --watch --interval 60');
   allowed('gh pr checks 12');
 });

@@ -37,7 +37,7 @@ _KEYWORD = re.compile(
 )
 _GH = re.compile(r"(?<![\w.-])(?:[\w.~/-]*/)?gh[ \t]+[a-z]")
 _REVIEW_STATUS = re.compile(r"review-status(?:\.mjs)?\b")
-_SLEEP = re.compile(r"(?<![\w./-])sleep[ \t]+[\d.$\"']")
+_SLEEP = re.compile(r"(?<![\w./-])sleep[ \t]+(?:[\d.$\"']|_q_)")
 _ONE_PASS_COND = re.compile(r"^\s*(?:!\s*)?(?:IFS=\S*\s+)?(?:read|wait)\b")
 _COUNTER = re.compile(r"\bseq\b|\{-?\d+\.\.-?\d+|^\s*\(\(")
 _INTERVAL = re.compile(r"(?:--interval|-i)(?:=|[ \t]+)(\d+)")
@@ -46,6 +46,8 @@ _SHELL_ARG = re.compile(
     rf"(?:(?:^|[\s/]){_SHELLS}(?:[ \t]+-\w+)*[ \t]+-\w*c\w*[ \t]+(?:-\w+[ \t]+)*"
     r"|\beval[ \t]+|\bssh(?:[ \t]+\S+)+[ \t]+|^[ \t]*(?:\S*/)?watch(?:[ \t]+\S+)*[ \t]+)$"
 )
+# `watch` reruns its argument: keep a quoted one inline so `watch ... gh` is seen.
+_WATCH_ARG = re.compile(r"^[ \t(]*(?:\S*/)?watch(?:[ \t]+\S+)*[ \t]+$")
 _CODE_HEREDOC_LINE = re.compile(
     rf"(?:^|[\s;|&(/]){_SHELLS}(?![\w.-])|>[ \t]*\S+\.(?:sh|bash|zsh)\b"
 )
@@ -129,9 +131,12 @@ def code_view(text: str, extras: list[str] | None = None, depth: int = 0) -> str
         elif c == "'":
             j = text.find("'", i + 1)
             j = n if j < 0 else j
-            if _SHELL_ARG.search(_segment(out)) and depth < 4:
-                extras.append(text[i + 1 : j])
-            out.append("_q_")
+            if _WATCH_ARG.match(_segment(out)):
+                out.append(" " + text[i + 1 : j].replace("\n", " ") + " ")
+            else:
+                if _SHELL_ARG.search(_segment(out)) and depth < 4:
+                    extras.append(text[i + 1 : j])
+                out.append("_q_")
             i = j + 1
         elif c == '"':
             j, parts, raw = i + 1, [], []
@@ -153,9 +158,12 @@ def code_view(text: str, extras: list[str] | None = None, depth: int = 0) -> str
                 else:
                     raw.append(text[j])
                     j += 1
-            if _SHELL_ARG.search(_segment(out)) and depth < 4:
-                extras.append("".join(raw))
-            out.append("_q_" + "".join(parts))
+            if _WATCH_ARG.match(_segment(out)):
+                out.append(" " + "".join(raw).replace("\n", " ") + " ")
+            else:
+                if _SHELL_ARG.search(_segment(out)) and depth < 4:
+                    extras.append("".join(raw))
+                out.append("_q_" + "".join(parts))
             i = j + 1
         elif text.startswith("<<<", i):  # a here-string, not a heredoc
             out.append("<<<")
