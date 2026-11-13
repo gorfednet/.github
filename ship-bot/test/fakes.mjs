@@ -95,7 +95,7 @@ export class FakeGitHub {
 
   async listPullFiles(slug, n) {
     this.log('listPullFiles', slug, n)
-    return this.files.map((filename) => ({ filename }))
+    return this.files.map((f) => (typeof f === 'string' ? { filename: f } : f))
   }
 
   async listCheckRuns(slug, sha) {
@@ -151,6 +151,30 @@ export class FakeGitHub {
     this.writes.push({ name: 'createComment', slug, n, body })
     this.comments.push({ pr: n, body, created_at: '2026-10-09T12:00:00Z', user: { login: 'gorfednet' } })
     return { id: this.comments.length }
+  }
+
+  async addLabels(slug, n, labels) {
+    this.log('addLabels', slug, n, labels)
+    this.writes.push({ name: 'addLabels', slug, n, labels })
+    const pr = this.pullsFor(slug).find((p) => p.number === n)
+    for (const name of labels) if (!pr.labels.some((l) => l.name === name)) pr.labels.push({ name })
+    return pr.labels
+  }
+
+  async removeLabel(slug, n, label) {
+    this.log('removeLabel', slug, n, label)
+    this.writes.push({ name: 'removeLabel', slug, n, label })
+    const pr = this.pullsFor(slug).find((p) => p.number === n)
+    pr.labels = pr.labels.filter((l) => l.name !== label)
+    return pr.labels
+  }
+
+  async markReady(nodeId) {
+    this.log('markReady', nodeId)
+    this.writes.push({ name: 'markReady', nodeId })
+    const pr = Object.values(this.pullsBySlug ?? { x: this.pulls }).flat().find((p) => p.node_id === nodeId)
+    if (pr) pr.draft = false
+    return true
   }
 
   async mergePull(slug, n, opts) {
@@ -229,7 +253,7 @@ export function repoEntry(overrides = {}) {
  * `run()` that performs one bot pass with a fresh StateStore read from disk,
  * the way consecutive launchd runs would.
  */
-export function scenario({ repos = [repoEntry()], configOverrides = {}, github = new FakeGitHub(), runner = makeRunner(), now = '2026-10-09T12:00:00Z' } = {}) {
+export function scenario({ repos = [repoEntry()], configOverrides = {}, github = new FakeGitHub(), runner = makeRunner(), now = '2026-10-09T12:00:00Z', machine = { load: 1, cores: 10 } } = {}) {
   const home = mkdtempSync(join(tmpdir(), 'ship-bot-test-'))
   for (const r of repos) {
     const src = join(home, 'src', r.dir)
@@ -263,6 +287,8 @@ export function scenario({ repos = [repoEntry()], configOverrides = {}, github =
     runner,
     clock,
     logs,
+    /** What the bot reads as this Mac's load; a test may reassign the fields between passes. */
+    machine,
     statePath: join(config.stateDir, 'state.json'),
     state() {
       return new StateStore(join(config.stateDir, 'state.json')).load()
@@ -279,6 +305,7 @@ export function scenario({ repos = [repoEntry()], configOverrides = {}, github =
         token: TOKEN,
         baseEnv: { PATH: '/usr/bin:/bin', HOME: home },
         nodePath: '/fake/node',
+        machineLoad: () => ({ ...s.machine }),
         log: (level, text) => logs.push(`${level} ${text}`),
         ...extra,
       })

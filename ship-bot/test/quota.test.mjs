@@ -330,7 +330,7 @@ describe('GitHub App token', () => {
     assert.deepEqual(validateConfig(base), [])
     assert.equal(normalizeConfig(base, { home: '/h' }).githubApp, null)
     const ok = normalizeConfig({ ...base, githubApp: { appId: 9, privateKeyFile: '~/.ship-bot/github-app.pem' } }, { home: '/h' })
-    assert.deepEqual(ok.githubApp, { appId: 9, privateKeyFile: '/h/.ship-bot/github-app.pem', owner: 'gorfednet', installationId: null })
+    assert.deepEqual(ok.githubApp, { appId: 9, privateKeyFile: '/h/.ship-bot/github-app.pem', owner: 'gorfednet', installationId: null, slug: null })
     assert.ok(validateConfig({ ...base, githubApp: { appId: '9', privateKeyFile: 'key.pem' } }).some((p) => /appId/.test(p)))
     assert.ok(validateConfig({ ...base, githubApp: { appId: 9, privateKeyFile: 'key.pem' } }).some((p) => /absolute path/.test(p)))
     assert.ok(validateConfig({ ...base, githubApp: { appId: 9, privateKeyFile: '/k', secret: 'x' } }).some((p) => /secret/.test(p)))
@@ -348,6 +348,7 @@ describe('GitHub App token', () => {
     const runner = makeRunner({ handle: (cmd) => (cmd.kind === 'auth' ? { stdout: `${TOKEN}\n` } : undefined) })
     const code = await main(['--live', '--once'], {
       loadConfig: () => config,
+      gateScripts: (c) => ({ scripts: c.scripts, source: 'test' }),
       makeGithub: (token) => (tokens.push(token), new FakeGitHub({ pulls: [] })),
       makeReadCache: () => new ReadCache(null),
       appToken,

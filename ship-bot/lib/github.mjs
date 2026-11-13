@@ -3,7 +3,7 @@
  *
  * Tests never construct this; they inject a fake with the same methods. The
  * method list below is the whole surface, and only `createComment`,
- * `mergePull` and `createRelease` write. `guardWrites` wraps any client so a dry run cannot reach
+ * `mergePull`, `createRelease`, `markReady` and `addLabels` write. `guardWrites` wraps any client so a dry run cannot reach
  * them even if the bot's own logic were wrong.
  *
  * Quota (plan row 1.3, 13 November 2026: the owner's 5,000 an hour ran out at
@@ -21,7 +21,7 @@
 const API = 'https://api.github.com'
 export const MIN_REMAINING = 200
 
-export const WRITE_METHODS = new Set(['createComment', 'mergePull', 'createRelease'])
+export const WRITE_METHODS = new Set(['createComment', 'mergePull', 'createRelease', 'markReady', 'addLabels', 'removeLabel'])
 
 export class GitHubError extends Error {
   constructor(method, path, status, message) {
@@ -199,6 +199,14 @@ export function createGitHubClient({ token, fetchImpl = globalThis.fetch, api = 
       throw new GitHubError('POST', '/graphql', 'too-many', 'more than 2000 review threads')
     },
     createComment: (slug, n, body) => request('POST', `/repos/${slug}/issues/${n}/comments`, { body }),
+    addLabels: (slug, n, labels) => request('POST', `/repos/${slug}/issues/${n}/labels`, { labels }),
+    removeLabel: (slug, n, label) => request('DELETE', `/repos/${slug}/issues/${n}/labels/${encodeURIComponent(label)}`),
+    /** Takes a draft out of draft (what `gh pr ready` does). REST has no endpoint for it; `nodeId` is the pull's `node_id`. */
+    markReady: (nodeId) =>
+      graphql(`mutation($id:ID!){markPullRequestReadyForReview(input:{pullRequestId:$id}){pullRequest{isDraft}}}`, { id: nodeId }).then((d) => {
+        if (d?.markPullRequestReadyForReview?.pullRequest?.isDraft !== false) throw new GitHubError('POST', '/graphql', 'not-ready', 'GitHub did not confirm the pull request left draft')
+        return true
+      }),
     createRelease: (slug, { tag, name, body }) => request('POST', `/repos/${slug}/releases`, { tag_name: tag, name, body }),
     mergePull: (slug, n, { sha }) =>
       request('PUT', `/repos/${slug}/pulls/${n}/merge`, { merge_method: 'merge', sha }),

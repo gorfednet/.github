@@ -22,6 +22,7 @@
         }
       }
     },
+    "local": {"type": "object", "$comment": "Present only when the run looked at the Mac. A null row could not be measured (render: not measured, never 0).", "required": ["measuredAt", "dirtyClones", "behindClones", "behindFetchFailed", "oldWorktrees", "idleSessions", "unread"], "additionalProperties": false, "properties": {"measuredAt": {"type": "string"}, "dirtyClones": {"type": ["array", "null"], "items": {"type": "object", "required": ["dir", "branch", "uncommitted", "unpushed"], "additionalProperties": false, "properties": {"dir": {"type": "string"}, "branch": {"type": "string"}, "uncommitted": {"type": "integer"}, "unpushed": {"type": "integer"}}}}, "behindClones": {"type": ["array", "null"], "items": {"type": "object", "required": ["dir", "branch", "behind"], "additionalProperties": false, "properties": {"dir": {"type": "string"}, "branch": {"type": "string"}, "behind": {"type": "integer"}}}}, "behindFetchFailed": {"type": "array", "items": {"type": "string"}}, "unread": {"type": "array", "items": {"type": "string"}}, "oldWorktrees": {"type": ["array", "null"], "items": {"type": "object", "required": ["clone", "path", "ageDays"], "additionalProperties": false, "properties": {"clone": {"type": "string"}, "path": {"type": "string"}, "ageDays": {"type": ["integer", "null"]}}}}, "idleSessions": {"type": ["array", "null"], "items": {"type": "object", "required": ["id", "title", "idleHours"], "additionalProperties": false, "properties": {"id": {"type": "string"}, "title": {"type": "string"}, "idleHours": {"type": "integer"}}}}}},
     "repos": {
       "type": "array",
       "items": {
@@ -35,6 +36,11 @@
           "openPrCount": { "type": "integer" },
           "lapsedBacklogCount": { "type": "integer" },
           "dependabotRedCount": { "type": "integer" },
+          "noPrCount": {"type":"integer"},
+          "idlePrCount": {"type":"integer"},
+          "duplicatePrCount": {"type":"integer"},
+          "idlePrs": {"type": "array", "items": {"type": "object", "required": ["number", "idleDays"], "additionalProperties": false, "properties": {"number": {"type": "integer"}, "idleDays": {"type": "integer"}}}},
+          "duplicatePrs": {"type": "array", "items": {"type": "object", "required": ["id", "prs"], "additionalProperties": false, "properties": {"id": {"type": "string"}, "prs": {"type": "array", "items": {"type": "integer"}}}}},
           "defaultBranch": { "type": "string" },
           "mainRed": { "type": "boolean" },
           "kitVersion": { "type": ["string", "null"], "$comment": "verification-kit/MANIFEST.json version in the repository; null when it carries no kit." },

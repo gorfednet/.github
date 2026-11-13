@@ -9,7 +9,9 @@ minutes, and needs nothing from you beyond the label you already use.
 Every two minutes it looks at each of your repositories and, for every open
 pull request, asks:
 
-1. Did **you** open it, is it **not a draft**, does it carry the
+1. Did **you** open it, is it **not a draft** (a draft that says merge in its
+   `## Next` is marked ready by the bot first: see "Drafts the bot marks ready
+   itself"), does it carry the
    **`ready-to-merge`** label, and does it **not** carry **`hold`**?
 2. Did **every check pass** on the latest commit, including the specific
    checks that repository is supposed to run? A check that is still running,
@@ -172,6 +174,77 @@ No check is skipped. `make verify` runs the job-folder tests (`tests/*.local.tes
 - **A `release` row cannot also use `pausedIfChanged` or `onlyIfChanged`** (config validation refuses it): a release deploys everything merged since the last one, but those keys look only at the release's own merge commit, so an earlier merge with no `Release:` line would slip past them.
 - **The unavoidable human step** is writing the `Release:` line. Nothing else in the release needs the owner.
 
+## Drafts the bot marks ready itself
+
+Builder jobs open their pull requests as drafts and cannot run `gh pr ready` or
+add a label, so 30 `worktree-*` drafts sat still until 11 November 2026. The
+bot now takes a draft itself when **all** of these hold:
+
+- its description has a `## Next` section whose first unchecked `- [ ]` line
+  is an instruction to merge: it starts with "merge" or "open the PR" (any
+  case) and does not say later ("merge once PR 118 lands" is not one), and no
+  unchecked line under `## Next` hands the decision to a person (do not,
+  don't, wait, hold, owner, needs a decision, decide). A diff that touches only
+  documentation is **not** enough on its own: that branch was cut after five
+  review rounds of edge cases and can be its own change later;
+- every check is green on its latest commit, the same expected checks as for
+  a labelled pull request;
+- the Claude reviewer has reviewed that commit: `clean`, or with every one of
+  its comment threads answered or resolved, the same reading as for a labelled
+  pull request. A draft gets no automatic review, so when `review-status.mjs`
+  says `not-run` the bot comments `claude review` once per commit, on a line
+  by itself, and waits for the next pass. It never asks twice for the same
+  commit. Findings with an unanswered thread keep the draft a draft; nothing
+  is said on the pull request, the log says why;
+- no `hold` label, no merge conflict, not opened by Dependabot, and the author
+  is allowlisted;
+- it changes no control-plane path (`CONTROL_PLANE_PATHS` and
+  `CONTROL_PLANE_BASENAMES` in `lib/drafts.mjs`): anything under `.github/`,
+  `.claude/`, `ship-bot/`, `scripts/gates/`, `scripts/lib/`, `janitor/` or
+  `capacity/` or `verification-kit/`, `scripts/review-status.mjs`, any
+  `REVIEW.md`, `CLAUDE.md`, `AGENTS.md`, `SKILL.md` or `canaries.json`, and in
+  `gorfednet/.github` all of `scripts/` and `templates/` and `fleet.json`.
+  Matching ignores case, and a rename counts by its old name too. Such a draft
+  changes what merges unattended, so the bot comments once per commit naming
+  the paths and leaves it to the owning session (plan row 1.12);
+- in a repository that deploys, its review is `clean`. Answered findings are
+  not enough there: every session posts as the owner's login, so an answer
+  proves no person read the finding. A deploy repository with no Claude
+  reviewer never has a draft readied.
+
+A pull request the bot readied stays under both guards on the merge path,
+whoever owns its label: each later commit is checked for control-plane paths
+again, and in a deploy repository merges only on a clean review. The bot
+knows it readied one from its state file or, if that is lost, from its own
+draft-ready comment. That holds even after the label comes off and goes back
+on: every session labels as the owner, so a control-plane change that must
+merge goes in a fresh pull request.
+
+Then it comments once, "Ship-bot: gates clean, marking ready and labelling;
+merges on the next pass", adds `ready-to-merge` and marks the pull request
+ready. The ordinary merge path takes it after that, re-reading every gate.
+Leaving draft fires `ready_for_review`, which starts a second Claude review of
+the same commit, so the bot holds that commit for `reviewGraceMinutes` (15 by
+default) and then waits for that review's check like any other; its verdict,
+if it finds something, keeps the pull request from merging until each thread
+is answered. A repository in observation (`live` false) logs `would mark ready
+and add ready-to-merge` and does nothing.
+
+The label the bot adds is its own, not a person's sign-off: before every
+later pass merges such a pull request, the bot reads `## Next` again and
+checks the head is the one it labelled. A wait written there afterwards, or a
+new push, takes `ready-to-merge` off and leaves the pull request for a person.
+
+When the bot runs as its GitHub App, its `claude review` comment posts as
+`<slug>[bot]`. The shared `claude-review.yml` accepts that login only through
+the org variable `SHIP_BOT_LOGIN` (set to `<slug>[bot]`), and the bot
+recognises its own comments through `githubApp.slug` in the config; without
+the slug, any `[bot]` login of type Bot counts as the bot's.
+
+To keep a draft a draft, add the **`hold`** label or write the wait under
+`## Next`. To keep a whole repository out of this, set `"draftReady": false`
+on its row in `~/.ship-bot/config.json`.
+
 ## How a change ships
 
 1. A session finishes the work and adds the **`ready-to-merge`** label.
@@ -202,6 +275,8 @@ To stop it: add the **`hold`** label to a pull request, or run
   again), it merges nothing that would need a deploy and tells you, at most
   once an hour.
 - Merge a pull request without the `ready-to-merge` label, or one with `hold`.
+- Mark a draft ready unless its `## Next` says merge and its gates are clean
+  (above).
 - Retry a deploy that failed. It puts the previous version back and waits for
   a person.
 
@@ -329,6 +404,18 @@ repository's merge gate, and `scripts/gates/assert-checks-started.mjs` and
 repository's own CI run), and the example points at the
 `~/Developer/gorfednet/gorfednet.github` clone.
 
+The bot does not run them from that clone, where a session can switch
+branches (plan row 1.12). `install.sh` exports `origin/main`'s commit with
+`git archive` (never the working tree), runs the suite from it, and copies the
+three scripts and `scripts/lib/` into `~/.ship-bot/app/gate-scripts/` with the
+commit in `SOURCE`, after `lib/gate-imports.mjs` confirms every import
+resolves inside the copy. A fix to a bot too broken to merge it is merged by
+the owner on GitHub, then installed the same way. While that copy exists the bot runs it and nothing else, and an
+incomplete copy refuses the pass. Run from a checkout with no installed copy,
+the bot checks that each configured script's clone is at `origin/main` and
+clean, and otherwise refuses the pass: no gate runs, nothing is readied or
+merged. Each pass logs `gate scripts from the ...` with the source.
+
 ### The rules it follows
 
 - Gates are evaluated on the pull request's current head commit, and the merge
@@ -343,6 +430,12 @@ repository's own CI run), and the example points at the
 - Before the first merge in a deploy-mode repository each run, the config's
   `preflight` steps (ssh to the NAS and to the Docker host) must succeed; if
   not, only merge-only repositories merge that run.
+- A deploy row with `"needsHeadroom": true` merges only while this Mac's
+  1-minute load average is at or below its core count. Use it for a row whose
+  setup or deploy steps are timing-sensitive, such as a local Playwright suite
+  (papers.4thcltr.com). Above that, or when either number can't be read, the
+  bot logs the load and looks again next pass. It posts nothing on the pull
+  request and never blocks the repository for it. The default is false.
 - When a check name appears more than once on a commit (a re-run), only its
   latest run counts.
 - `~/.ship-bot/logs/ship-bot.log` moves to `ship-bot.log.1` once it passes 5 MB.

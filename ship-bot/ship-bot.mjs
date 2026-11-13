@@ -23,12 +23,14 @@
  * runs it with --once and lets launchd do the scheduling.
  */
 import { chmodSync, existsSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { runOnce, selectRepos } from './lib/bot.mjs'
 import { ConfigError, expandHome, loadConfig, validateConfig } from './lib/config.mjs'
 import { mintInstallationToken } from './lib/app-auth.mjs'
 import { ReadCache } from './lib/cache.mjs'
+import { resolveGateScripts } from './lib/gate-source.mjs'
 import { createGitHubClient, guardWrites } from './lib/github.mjs'
 import { Redactor } from './lib/redact.mjs'
 import { realRunner, succeeded } from './lib/runner.mjs'
@@ -98,8 +100,12 @@ export function childEnv(env = process.env) {
   return out
 }
 
+const APP_DIR = dirname(fileURLToPath(import.meta.url))
+
 const defaultDeps = () => ({
   loadConfig,
+  /** Which gate scripts this pass runs (lib/gate-source.mjs): the installed copy, or a clone at origin/main. */
+  gateScripts: (config) => resolveGateScripts(config, { appDir: APP_DIR }),
   makeGithub: (token, { cache } = {}) => createGitHubClient({ token, cache }),
   makeReadCache: (path, clock) => new ReadCache(path, { now: () => clock.now() }).load(),
   appToken: readAppToken,
@@ -176,8 +182,17 @@ export async function main(argv, overrides = {}) {
   }
 }
 
-async function onePass(config, args, deps, print) {
+async function onePass(loaded, args, deps, print) {
   const live = args.mode === 'live'
+  // Fail closed on a gate script that could be an unmerged branch's: no gate
+  // runs this pass, so nothing is readied or merged (plan row 1.12).
+  const gates = deps.gateScripts(loaded)
+  if (gates.problems) {
+    for (const p of gates.problems) print('error', `gate scripts refused: ${p}`)
+    print('error', 'pass refused: nothing is checked, readied or merged until the gate scripts are at origin/main (re-run ship-bot/install.sh from an origin/main checkout)')
+    return 1
+  }
+  const config = { ...loaded, scripts: gates.scripts }
   let lock = { ok: true, release: () => {} }
   if (live) {
     lock = acquireLock(lockPath(config.stateDir))
@@ -196,6 +211,7 @@ async function onePass(config, args, deps, print) {
     const observe = args.mode === 'observe'
     const banner = live ? 'LIVE' : observe ? 'OBSERVE (config says "live": false: no writes, no deploys)' : 'DRY RUN (no writes, no deploys)'
     print('info', `${banner} pass over ${config.repos.length} configured repo(s), as ${auth.as}`)
+    print('info', `gate scripts from the ${gates.source}`)
     await runOnce({
       config,
       // Observe is a dry run in every respect but where its decisions go.

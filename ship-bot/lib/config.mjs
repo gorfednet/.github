@@ -44,9 +44,9 @@ const TOP_KEYS = new Set([
 ])
 const SCRIPT_KEYS = ['assertChecksStarted', 'reviewStatus', 'checkClosingKeywords']
 
-const COMMON_REPO_KEYS = ['slug', 'dir', 'mode', 'note', 'todo', 'live', 'claudeReview', 'expectedChecks', 'coveredChecks', 'requireChecksAfterLabel']
+const COMMON_REPO_KEYS = ['slug', 'dir', 'mode', 'note', 'todo', 'live', 'claudeReview', 'expectedChecks', 'coveredChecks', 'requireChecksAfterLabel', 'draftReady']
 const NTFY_KEYS = new Set(['url', 'topic', 'tokenFile'])
-const GITHUB_APP_KEYS = new Set(['appId', 'privateKeyFile', 'owner', 'installationId'])
+const GITHUB_APP_KEYS = new Set(['appId', 'privateKeyFile', 'owner', 'installationId', 'slug'])
 const DEPLOY_REPO_KEYS = [
   'sourceDir',
   'workDir',
@@ -61,6 +61,7 @@ const DEPLOY_REPO_KEYS = [
   'rollback',
   'pausedIfChanged',
   'release',
+  'needsHeadroom',
 ]
 const ALLOWED_REPO_KEYS = {
   deploy: new Set([...COMMON_REPO_KEYS, ...DEPLOY_REPO_KEYS]),
@@ -185,6 +186,7 @@ function validateRepo(repo, i, problems, seen) {
     problems.push(`${label}.requireChecksAfterLabel: must be true or false`)
   }
   if (repo.live !== undefined && typeof repo.live !== 'boolean') problems.push(`${label}.live: must be true or false`)
+  if (repo.draftReady !== undefined && typeof repo.draftReady !== 'boolean') problems.push(`${label}.draftReady: must be true or false`)
 
   // coveredChecks only quiets `--validate`; the merge gate never reads it.
   if (repo.coveredChecks !== undefined && !isStringArray(repo.coveredChecks)) {
@@ -226,6 +228,7 @@ function validateRepo(repo, i, problems, seen) {
       }
     }
   }
+  if (repo.needsHeadroom !== undefined && typeof repo.needsHeadroom !== 'boolean') problems.push(`${label}.needsHeadroom: must be true or false`)
   if (repo.siblings !== undefined) {
     if (!Array.isArray(repo.siblings)) problems.push(`${label}.siblings: must be an array`)
     else {
@@ -322,6 +325,7 @@ export function validateConfig(raw) {
       else if (/^(\.|[^~/])/.test(app.privateKeyFile.trim())) problems.push('githubApp.privateKeyFile: must be an absolute path or start with ~/')
       if (app.owner !== undefined && !(isNonEmptyString(app.owner) && /^[\w.-]+$/.test(app.owner))) problems.push('githubApp.owner: must be a GitHub account name')
       if (app.installationId !== undefined && !(Number.isInteger(app.installationId) && app.installationId > 0)) problems.push('githubApp.installationId: must be a positive whole number')
+      if (app.slug !== undefined && !(isNonEmptyString(app.slug) && /^[\w.-]+$/.test(app.slug))) problems.push('githubApp.slug: must be the App\'s URL slug (its comments post as <slug>[bot])')
     }
   }
 
@@ -401,6 +405,7 @@ export function normalizeConfig(raw, { home = homedir() } = {}) {
           privateKeyFile: x(raw.githubApp.privateKeyFile),
           owner: raw.githubApp.owner ?? raw.repos[0].slug.split('/')[0],
           installationId: raw.githubApp.installationId ?? null,
+          slug: raw.githubApp.slug ?? null,
         }
       : null,
     scripts: Object.fromEntries(SCRIPT_KEYS.map((k) => [k, x(raw.scripts[k])])),
@@ -418,6 +423,8 @@ export function normalizeConfig(raw, { home = homedir() } = {}) {
         expectedChecks: repo.expectedChecks ?? [],
         coveredChecks: repo.coveredChecks ?? [],
         requireChecksAfterLabel: repo.requireChecksAfterLabel ?? false,
+        // false opts a repo out of marking its own drafts ready (lib/drafts.mjs).
+        draftReady: repo.draftReady ?? true,
         reason: repo.reason ?? '',
       }
       if (repo.mode !== 'deploy') return base
@@ -443,6 +450,8 @@ export function normalizeConfig(raw, { home = homedir() } = {}) {
         pausedIfChanged: repo.pausedIfChanged ?? [],
         // null: every merge deploys. An object: only a pull request whose description says `Release: X.Y.Z sentence` is tagged and deployed (lib/release.mjs).
         release: repo.release ? { tagPrefix: repo.release.tagPrefix ?? 'v' } : null,
+        // true: a merge waits while this Mac's 1-minute load is above its core count (the row's setup or deploy is timing-sensitive).
+        needsHeadroom: repo.needsHeadroom ?? false,
       }
     }),
   }

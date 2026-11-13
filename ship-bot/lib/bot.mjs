@@ -7,9 +7,11 @@
  * write or a non-gate command throws, whatever the logic below decides.
  */
 import { createHash } from 'node:crypto'
+import os from 'node:os'
 import { join } from 'node:path'
-import { HOLD_LABEL } from './config.mjs'
+import { HOLD_LABEL, READY_LABEL } from './config.mjs'
 import { DeployLog, deployMerged, envSecrets, matchingFiles, preflight, realFs, selectSteps } from './deploy.mjs'
+import { controlPlaneFiles, draftClaim, draftIneligibleReason } from './drafts.mjs'
 import { evaluatePull, ineligibleReason, unmergeableReason } from './gates.mjs'
 import { RateLimitError, guardWrites } from './github.mjs'
 import { planRelease } from './release.mjs'
@@ -58,6 +60,8 @@ export async function runOnce(deps) {
     nodePath: deps.nodePath ?? process.execPath,
     baseEnv: deps.baseEnv ?? {},
     fetchImpl: deps.fetchImpl ?? globalThis.fetch,
+    /** This Mac's 1-minute load average and core count, for rows marked needsHeadroom. */
+    machineLoad: deps.machineLoad ?? (() => ({ load: os.loadavg()[0], cores: os.availableParallelism?.() ?? os.cpus().length })),
     /** cache.mjs ReadCache: gate script answers reused across passes. Optional. */
     readCache: deps.readCache ?? null,
     /** Who the pass calls GitHub as; a quota pause is that identity's only. */
@@ -240,6 +244,21 @@ async function processRepo(ctx, repo) {
   const pulls = [...(await ctx.github.listOpenPulls(repo.slug))].sort((a, b) => a.number - b.number)
 
   for (const listed of pulls) {
+    // A person who took the bot's label off has taken the pull request back:
+    // any label they add later is their own sign-off (round 9 on #119).
+    const labels = (listed.labels ?? []).map((l) => l.name)
+    if (!labels.includes(READY_LABEL) && ctx.state.data.prs[`${repo.slug}#${listed.number}`]?.botLabelled) {
+      const prState = ctx.state.pr(repo.slug, listed.number)
+      delete prState.botLabelled
+      // Remembered, so the comment marker below does not make it the bot's again.
+      prState.takenBack = true
+      ctx.state.save()
+      ctx.say('debug', `${repo.slug}#${listed.number}: ${READY_LABEL} the bot added is gone; the pull request is a person's again`)
+    }
+    if (listed.draft) {
+      await processDraft(ctx, repo, listed, defaultBranch)
+      continue
+    }
     const skip = ineligibleReason(listed, repo, defaultBranch, ctx.config.allowedAuthors)
     if (skip) {
       ctx.say('debug', `${repo.slug}#${listed.number}: ignored (${skip})`)
@@ -264,9 +283,30 @@ async function processPull(ctx, repo, pr, defaultBranch) {
   const headState = ctx.state.head(repo.slug, pr.number, sha, nowIso)
   const tag = `${repo.slug}#${pr.number} (${short(sha)})`
 
-  let result = await evaluatePull(ctx, repo, pr, { headState })
+  const own = await botLabelStillEarned(ctx, repo, pr, tag)
+  if (!own) return false
+
+  // A pull request the bot readied or labelled itself is no person's
+  // sign-off (plan row 1.12). Its head must change no control-plane path, and
+  // in a repo that deploys its review must be clean: a reply from an
+  // allowlisted login (every session posts as the owner) is not a triage.
+  const byBot = await botReadiedIt(ctx, repo, pr)
+  if (byBot) {
+    const touched = controlPlaneFiles(await ctx.github.listPullFiles(repo.slug, pr.number), repo.slug)
+    if (touched.length > 0) {
+      ctx.say('info', `${tag}: not merging: the bot readied it and this head changes control-plane paths (${listPaths(touched)}); a person labels it`)
+      await postOnce(ctx, repo, pr.number, sha, 'control-plane', controlPlaneComment(touched, 'merge this'))
+      return false
+    }
+  }
+  const requireClean = repo.mode === 'deploy' && byBot
+  let result = await evaluatePull(ctx, repo, pr, { headState, requireClean })
   // A merge never rests on a remembered gate answer: run every script again.
-  if (result.ready && result.cached) result = await evaluatePull(ctx, repo, pr, { headState, fresh: true })
+  if (result.ready && result.cached) result = await evaluatePull(ctx, repo, pr, { headState, fresh: true, requireClean })
+  if (result.ready && headState.readiedAt && (ctx.clock.now() - new Date(headState.readiedAt)) / 60000 < ctx.config.reviewGraceMinutes) {
+    ctx.say('debug', `${tag}: not merging: the bot marked this draft ready at ${headState.readiedAt}; giving the ready-for-review review time to start`)
+    return false
+  }
 
   if (!result.ready) {
     for (const block of result.blocks) {
@@ -291,12 +331,27 @@ async function processPull(ctx, repo, pr, defaultBranch) {
       await postOnce(ctx, repo, pr.number, sha, 'deploy-preflight', `Ship bot is not merging this: every gate passed, but the deploy for this repo could not run:\n\n${problems.map((p) => `- ${p}`).join('\n')}`)
       return false
     }
+    // A row whose setup or deploy is timing-sensitive waits for a quiet Mac
+    // (papers 35, INCIDENTS.md). Unreadable numbers defer too. Nothing is
+    // posted and the repo is not blocked: the next pass looks again.
+    if (repo.needsHeadroom) {
+      const { load, cores } = ctx.machineLoad()
+      const readable = [load, cores].every((n) => Number.isFinite(n) && n > 0)
+      if (!readable || load > cores) {
+        const why = readable ? `the 1-minute load ${load.toFixed(2)} is above ${cores} cores` : `the load (${load}) or core count (${cores}) could not be read`
+        ctx.say('info', `${tag}: ready, but not merging yet: this row needs headroom and ${why}; looked at again next pass`)
+        return false
+      }
+    }
   }
 
   // Re-read right before merging: a push or a hold label since the gates ran
   // means start again next run.
   const again = await ctx.github.getPull(repo.slug, pr.number)
   const changed = again.head?.sha !== sha ? 'the head moved' : ineligibleReason(again, repo, defaultBranch, ctx.config.allowedAuthors)
+  // A bot-labelled pull request re-earns its label here too: a wait written
+  // under ## Next while the gates ran (round 8 on #119) must not merge.
+  if (!changed && ctx.state.pr(repo.slug, pr.number).botLabelled && !(await botLabelStillEarned(ctx, repo, again, tag))) return false
   if (changed) {
     ctx.say('info', `${tag}: changed while being checked (${changed}); will look again next run`)
     return false
@@ -335,6 +390,206 @@ async function processPull(ctx, repo, pr, defaultBranch) {
     return true
   }
   return liveMerge(ctx, repo, pr, tag, plan)
+}
+
+/**
+ * A `ready-to-merge` the bot added itself is no person's sign-off. Before the
+ * gates run on such a pull request, the `## Next` claim must still hold and
+ * the head must be the one the bot labelled; otherwise the label comes off
+ * (live) and the pull request is left for a person. Dry run and observation
+ * only say so.
+ */
+async function botLabelStillEarned(ctx, repo, pr, tag) {
+  const prState = ctx.state.pr(repo.slug, pr.number)
+  const bl = prState.botLabelled ?? (await botLabelFromMarker(ctx, repo, pr, prState))
+  if (!bl) return true
+  const { claim, refused } = draftClaim(pr)
+  const why = bl.sha !== pr.head.sha ? `the head moved from ${short(bl.sha)} to ${short(pr.head.sha)} after the bot labelled it` : claim ? null : refused ?? 'the ## Next merge line is gone'
+  if (!why) return true
+  ctx.say('info', `${tag}: not merging: ${READY_LABEL} was the bot's own and ${why}; removing the label and leaving it for a person`)
+  if (ctx.dry) {
+    ctx.say('info', `${tag}: would remove ${READY_LABEL}`)
+    return false
+  }
+  await ctx.github.removeLabel(repo.slug, pr.number, READY_LABEL)
+  delete prState.botLabelled
+  // The comment marker stays on the pull request; without this, a label a
+  // person adds later would be taken for the bot's again on every pass.
+  prState.takenBack = true
+  ctx.state.save()
+  return false
+}
+
+const listPaths = (paths) => `${paths.slice(0, 5).join(', ')}${paths.length > 5 ? ', ...' : ''}`
+
+const controlPlaneComment = (paths, what) =>
+  `Ship bot will not ${what}: it changes control-plane paths, which change what merges unattended (plan row 1.12):\n\n${paths.slice(0, 20).map((p) => `- \`${p}\``).join('\n')}${paths.length > 20 ? '\n- ...' : ''}\n\n${
+    what === 'merge this'
+      ? `The bot readied this pull request, so relabelling it does not lift this on any later commit. A session that has read the diff moves the change to a fresh pull request and labels that one.`
+      : `The session that owns this pull request marks it ready and adds \`${READY_LABEL}\` itself, after reading the diff and a clean or triaged review.`
+  }`
+
+/**
+ * Did the bot ready or label this pull request itself? From the state file,
+ * or, when that was lost, from the bot's own draft-ready comment. Once true it
+ * stays true: `takenBack` (set when a label comes off, by a person or by the
+ * bot itself after a push) decides only who owns a later label, never
+ * whether these guards apply, since every session labels as the owner's
+ * login (round 2 on #156). A control-plane change that must merge goes in a
+ * fresh pull request.
+ */
+async function botReadiedIt(ctx, repo, pr) {
+  const prState = ctx.state.pr(repo.slug, pr.number)
+  if (prState.botLabelled || prState.botReadied) return true
+  const comments = await ctx.github.listIssueComments(repo.slug, pr.number)
+  const found = comments.some((c) => isBotLogin(ctx, c.user) && (c.body ?? '').startsWith(DRAFT_READY_COMMENT))
+  if (found) {
+    prState.botReadied = { sha: null, at: 'rebuilt-from-draft-ready-comment' }
+    ctx.state.save()
+  }
+  return found
+}
+
+/**
+ * The state file can be lost; the bot's own draft-ready comment cannot. With
+ * no record, a `ship-bot:labelled:<sha>` marker on the pull request (written
+ * with the draft-ready comment only when the bot added the label) means the
+ * label was the bot's, and the record is rebuilt from it. It fails
+ * closed: a person who took the pull request back after a state loss gets
+ * their label removed once and adds it again (the record of the take-back
+ * was in the same file).
+ */
+async function botLabelFromMarker(ctx, repo, pr, prState) {
+  if (prState.takenBack) return null
+  const comments = await ctx.github.listIssueComments(repo.slug, pr.number)
+  const re = /<!-- ship-bot:labelled:([0-9a-f]{40}) -->/
+  // Only the bot's own comment counts: posted as the bot's login and starting
+  // with its text. Anyone can comment a hidden marker otherwise.
+  const found = comments
+    .filter((c) => isBotLogin(ctx, c.user) && (c.body ?? '').startsWith(DRAFT_READY_COMMENT))
+    .map((c) => re.exec(c.body ?? '')?.[1])
+    .filter(Boolean)
+    .pop()
+  if (!found) return null
+  prState.botLabelled = { sha: found, at: 'rebuilt-from-comment-marker' }
+  ctx.state.save()
+  ctx.say('debug', `${repo.slug}#${pr.number}: ${READY_LABEL} is the bot's own (rebuilt from its comment marker on ${short(found)})`)
+  return prState.botLabelled
+}
+
+/**
+ * Is this comment author the bot itself? With a user token the bot posts as
+ * an allowlisted login. As a GitHub App it posts as `<slug>[bot]`; when the
+ * config has no slug, any `[bot]` login of type Bot is taken as it (only an
+ * App installed on the repository can post as one).
+ */
+function isBotLogin(ctx, user) {
+  const login = user?.login ?? ''
+  if (ctx.config.allowedAuthors.includes(login)) return true
+  const app = ctx.config.githubApp
+  if (!app) return false
+  if (app.slug) return login === `${app.slug}[bot]`
+  return user?.type === 'Bot' && login.endsWith('[bot]')
+}
+
+export const DRAFT_READY_COMMENT = 'Ship-bot: gates clean, marking ready and labelling; merges on the next pass'
+
+/**
+ * A draft the bot owns (lib/drafts.mjs) is marked ready and labelled once the
+ * same gates a labelled pull request must pass are clean on its head; the
+ * merge path takes it on the next pass. Marking ready is a write, so an
+ * observed repository and a dry run only say what they would do.
+ */
+async function processDraft(ctx, repo, listed, defaultBranch) {
+  const skip = draftIneligibleReason(listed, repo, defaultBranch, ctx.config.allowedAuthors)
+  if (skip) {
+    ctx.say('debug', `${repo.slug}#${listed.number}: draft ignored (${skip})`)
+    return
+  }
+  // A draft that cannot be read or written is logged and left; it must not
+  // stop the labelled pull requests after it in the same repository.
+  try {
+    await takeDraft(ctx, repo, listed, defaultBranch)
+  } catch (cause) {
+    ctx.say('warn', `${repo.slug}#${listed.number}: draft left alone after an error: ${ctx.redactor.apply(cause.message)}`)
+  }
+}
+
+async function takeDraft(ctx, repo, listed, defaultBranch) {
+  const pr = await ctx.github.getPull(repo.slug, listed.number)
+  const sha = pr.head?.sha
+  const tag = `${repo.slug}#${pr.number} (${short(sha)}, draft)`
+  const skip2 = draftIneligibleReason(pr, repo, defaultBranch, ctx.config.allowedAuthors) ?? unmergeableReason(pr)
+  if (skip2) {
+    ctx.say('debug', `${tag}: draft ignored (${skip2})`)
+    return
+  }
+  if (ctx.state.data.prs[`${repo.slug}#${pr.number}`]?.takenBack) {
+    ctx.say('debug', `${tag}: draft left alone (a person took ${READY_LABEL} off; it is theirs now)`)
+    return
+  }
+  const { claim, refused } = draftClaim(pr)
+  if (!claim) {
+    ctx.say('debug', `${tag}: draft left alone (${refused ?? 'no merge line under ## Next'})`)
+    return
+  }
+  // A draft that changes the gates, CI or the bot itself waits for a person
+  // (plan row 1.12). The file list is read for this head; a push after it
+  // moves the head, and processPull drops a bot label from a moved head.
+  const touched = controlPlaneFiles(await ctx.github.listPullFiles(repo.slug, pr.number), repo.slug)
+  if (touched.length > 0) {
+    ctx.say('info', `${tag}: draft left alone (${claim}): it changes control-plane paths (${listPaths(touched)}); a person labels it`)
+    await postOnce(ctx, repo, pr.number, sha, 'control-plane', controlPlaneComment(touched, 'mark this draft ready'))
+    return
+  }
+  const headState = ctx.state.head(repo.slug, pr.number, sha, ctx.clock.now().toISOString())
+  const result = await evaluatePull(ctx, repo, pr, { headState, draft: true, requireClean: repo.mode === 'deploy' })
+  if (!result.ready) {
+    for (const block of result.blocks) {
+      ctx.say(block.kind === 'wait' ? 'debug' : 'info', `${tag}: not marking ready (${claim}): ${block.reason}`)
+      // Once per head: the review request is a plain `claude review` line (the
+      // trigger matches a whole line), followed only by the hidden marker.
+      if (block.kind === 'request') await postOnce(ctx, repo, pr.number, sha, block.key, 'claude review')
+    }
+    return
+  }
+  ctx.say('info', `${tag}: gates clean (${claim}): marking ready and labelling ${READY_LABEL}`)
+  // The second marker says the label is the bot's own; it is how the fact
+  // survives a lost state file (botLabelFromMarker). Absent when a person
+  // had already labelled the draft.
+  const prState = ctx.state.pr(repo.slug, pr.number)
+  const botOwnsLabel = Boolean(prState.botLabelled) || !(pr.labels ?? []).some((l) => l.name === READY_LABEL)
+  await postOnce(ctx, repo, pr.number, sha, 'draft-ready', `${DRAFT_READY_COMMENT}${botOwnsLabel ? `\n\n${marker('labelled', sha)}` : ''}`)
+  if (ctx.dry) {
+    ctx.say('info', `${tag}: would mark ready and add ${READY_LABEL}`)
+    return
+  }
+  // Label first: a labelled draft is retried next pass if marking ready
+  // fails, while a ready pull request with no label would never be looked at
+  // again (reviewer finding on #119).
+  // Remembered on the pull request, not the head: the label is the bot's
+  // own, so processPull re-reads ## Next and refuses once the claim is gone
+  // or the head has moved (reviewer finding on #119, round 7).
+  // A label a person had already put on the draft stays theirs. A label the
+  // bot owns is re-recorded with this head: after a failed markReady and a
+  // new push, the old sha would strand the pull request (round 11 on #119).
+  await ctx.github.addLabels(repo.slug, pr.number, [READY_LABEL])
+  // Recorded only once the label is really on: a failed addLabels with a
+  // record already saved would read as a person's take-back next pass.
+  if (botOwnsLabel) {
+    prState.botLabelled = { sha, at: ctx.clock.now().toISOString() }
+    ctx.state.save()
+  }
+  await ctx.github.markReady(pr.node_id)
+  // Remembered whoever owns the label: a draft a person had labelled is still
+  // one the bot readied, so the merge path keeps its guards (round 1 on #156).
+  prState.botReadied = { sha, at: ctx.clock.now().toISOString() }
+  // Leaving draft fires ready_for_review, which starts a second Claude review
+  // of this head; processPull holds the head until that run has had time to
+  // appear among the checks (reviewer finding on #119).
+  headState.readiedAt = ctx.clock.now().toISOString()
+  ctx.state.save()
+  ctx.say('info', `${tag}: marked ready and labelled ${READY_LABEL}; the merge path takes it next pass`)
 }
 
 /**
