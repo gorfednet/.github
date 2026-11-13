@@ -24,28 +24,28 @@ export const daysSince = (iso, now) => Math.max(0, Math.floor((now - Date.parse(
 /** Open PRs untouched for more than IDLE_PR_DAYS days (`updatedAt` is the last push, comment or label). */
 export function idlePrs(prs, now) {
   return prs
+    .filter((p) => now - Date.parse(p.updatedAt) > IDLE_PR_DAYS * DAY)
     .map((p) => ({ number: p.number, idleDays: daysSince(p.updatedAt, now) }))
-    .filter((p) => p.idleDays > IDLE_PR_DAYS)
 }
 
-/** Backlog ids a text names. Ids are short kebab-case words, so only ids of 8+ characters with a hyphen count, matched whole. */
+/** Backlog ids a text names. Only ids of 8+ characters with a hyphen count (shorter ones match unrelated words), matched whole, at any of their occurrences. */
 export function idsNamedIn(text, ids) {
   const hay = String(text ?? '').toLowerCase()
   return ids.filter((id) => {
-    const at = hay.indexOf(id.toLowerCase())
-    if (at === -1) return false
-    const before = hay[at - 1]
-    const after = hay[at + id.length]
-    return !/[a-z0-9-]/.test(before ?? ' ') && !/[a-z0-9-]/.test(after ?? ' ')
+    const needle = id.toLowerCase()
+    for (let at = hay.indexOf(needle); at !== -1; at = hay.indexOf(needle, at + 1)) {
+      if (!/[a-z0-9-]/.test(hay[at - 1] ?? ' ') && !/[a-z0-9-]/.test(hay[at + needle.length] ?? ' ')) return true
+    }
+    return false
   })
 }
 
-/** Backlog ids that two or more open PRs name in their title or branch. [{ id, prs: [numbers] }]. */
+/** Backlog ids that two or more open PRs name in their title, branch or body. [{ id, prs: [numbers] }]. */
 export function duplicatePrs(prs, backlogIds) {
   const ids = backlogIds.filter((id) => typeof id === 'string' && id.length >= 8 && id.includes('-'))
   const byId = new Map()
   for (const p of prs) {
-    for (const id of idsNamedIn(`${p.title}\n${p.headRefName}`, ids)) byId.set(id, [...(byId.get(id) ?? []), p.number])
+    for (const id of idsNamedIn(`${p.title}\n${p.headRefName}\n${p.body ?? ''}`, ids)) byId.set(id, [...(byId.get(id) ?? []), p.number])
   }
   return [...byId].filter(([, nums]) => nums.length > 1).map(([id, nums]) => ({ id, prs: nums }))
 }
@@ -65,12 +65,19 @@ export function cloneDirs(root) {
 
 /** Primary clones only: a linked worktree has a `.git` file, and git lists it from its primary clone. */
 export function primaryClones(root) {
-  return cloneDirs(root).filter((n) => statSync(join(root, n, '.git')).isDirectory())
+  return cloneDirs(root).filter((n) => {
+    try {
+      return statSync(join(root, n, '.git')).isDirectory()
+    } catch {
+      return false // a dangling entry: not a clone
+    }
+  })
 }
 
-/** Clones with uncommitted or unpushed work. */
+/** Clones and linked worktrees with uncommitted or unpushed work, and the ones git could not read. */
 export function dirtyClones(root) {
   const out = []
+  const unread = []
   for (const name of cloneDirs(root)) {
     const dir = join(root, name)
     try {
@@ -83,10 +90,10 @@ export function dirtyClones(root) {
       }
       if (dirty > 0 || unpushed > 0) out.push({ dir: name, branch: git(dir, 'branch', '--show-current').trim() || '(detached)', uncommitted: dirty, unpushed })
     } catch {
-      /* not a readable clone */
+      unread.push(name)
     }
   }
-  return out
+  return { dirty: out, unread }
 }
 
 /**
@@ -157,6 +164,7 @@ export function idleSessions(dir = SESSIONS_DIR, now = Date.now()) {
   if (!existsSync(dir)) return null
   const out = []
   let read = 0
+  let unreadable = 0
   for (const a of readdirSync(dir)) {
     const level1 = join(dir, a)
     if (!statSync(level1).isDirectory()) continue
@@ -168,27 +176,34 @@ export function idleSessions(dir = SESSIONS_DIR, now = Date.now()) {
           const s = JSON.parse(readFileSync(join(level2, f), 'utf8'))
           read += 1
           if (s.isArchived) continue
-          const idleHours = Math.floor((now - Number(s.lastActivityAt ?? s.createdAt)) / HOUR)
-          if (idleHours > IDLE_SESSION_HOURS) out.push({ id: s.sessionId ?? f.replace(/\.json$/, ''), title: String(s.title ?? ''), idleHours })
+          const last = Number(s.lastActivityAt ?? s.createdAt)
+          if (!Number.isFinite(last)) throw new Error('no activity time')
+          const idleHours = Math.floor((now - last) / HOUR)
+          if (now - last > IDLE_SESSION_HOURS * HOUR) out.push({ id: s.sessionId ?? f.replace(/\.json$/, ''), title: String(s.title ?? ''), idleHours })
         } catch {
-          /* an unreadable file is skipped; zero readable files is "not measured" below */
+          unreadable += 1
         }
       }
     }
   }
-  return read === 0 ? null : out
+  // Any unreadable file, or none readable, means the count could be short: not measured.
+  return read === 0 || unreadable > 0 ? null : out
 }
 
 /** The whole `local` object for status.json. Each row is null when it could not be measured. */
 export function collectLocal(root, { fetch = true, now = Date.now(), sessionsDir = SESSIONS_DIR } = {}) {
+  const some = primaryClones(root).length > 0 // an empty clone list is a wrong root, not a clean fleet
+  const d = dirtyClones(root)
   const b = behindClones(root, { fetch })
   const w = oldWorktrees(root, now)
   return {
     measuredAt: new Date(now).toISOString(),
-    dirtyClones: dirtyClones(root),
-    behindClones: b.unread.length === 0 ? b.behind : null,
+    dirtyClones: some && d.unread.length === 0 ? d.dirty : null,
+    // Counts from refs that were not refreshed (no fetch, or a failed one) are not a measurement.
+    behindClones: some && fetch && b.unread.length === 0 && b.fetchFailed.length === 0 ? b.behind : null,
     behindFetchFailed: b.fetchFailed,
-    oldWorktrees: w.unread.length === 0 ? w.old : null,
+    oldWorktrees: some && w.unread.length === 0 ? w.old : null,
+    unread: [...new Set([...d.unread, ...b.unread, ...w.unread])],
     idleSessions: idleSessions(sessionsDir, now),
   }
 }

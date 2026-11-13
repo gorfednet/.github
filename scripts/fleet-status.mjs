@@ -321,7 +321,7 @@ if (isMain(import.meta.url)) {
   if (process.argv.includes('--local')) {
     // The `local` object exists only when this run looked at the Mac; its absence means "not measured".
     status.local = collectLocal(join(homedir(), 'Developer', 'gorfednet'), { fetch: !process.argv.includes('--no-fetch') })
-    status.dirtyLocal = status.local.dirtyClones
+    if (status.local.dirtyClones !== null) status.dirtyLocal = status.local.dirtyClones
   }
   writeFileSync(outPath, `${JSON.stringify(status, null, 2)}\n`)
   console.log(`fleet-status: ${repos.length} repositories, ${failed} unavailable -> ${outPath}`)

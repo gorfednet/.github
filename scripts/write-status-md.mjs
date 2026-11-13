@@ -93,7 +93,7 @@ export function render(status) {
   out.push('## Hygiene', '', '| Row | Count |', '|---|---|')
   for (const h of hygiene(status)) out.push(`| ${h.row} | ${h.count === null ? 'not measured' : h.count} |`)
   const gone = status.repos.filter((r) => r.unavailable).length
-  out.push('', gone > 0 ? `Repository rows exclude ${gone} unreadable repositories.` : 'Repository rows cover every repository.', '')
+  out.push('', gone > 0 ? `Repository rows exclude ${gone} unreadable repositories.` : 'Repository rows cover the repositories listed below.', '')
   for (const r of [...status.repos].sort((a, b) => a.slug.localeCompare(b.slug))) {
     out.push(`## [${r.slug}](https://github.com/${r.slug})`, '')
     if (r.unavailable) {
@@ -133,7 +133,8 @@ export function render(status) {
     ]
     out.push(`## Mac hygiene (measured ${etStamp(l.measuredAt)})`, '')
     for (const [name, list, show] of rows) out.push(`${name}: ${list === null ? 'not measured' : list.length === 0 ? 'none' : list.map(show).map(cell).join('; ')}`, '')
-    if (l.behindFetchFailed.length > 0) out.push(`Fetch failed, behind counts may be stale: ${l.behindFetchFailed.join(', ')}`, '')
+    if (l.unread.length > 0) out.push(`Unreadable clones (their rows are not measured): ${l.unread.join(', ')}`, '')
+    if (l.behindFetchFailed.length > 0) out.push(`Fetch failed, so clones behind origin is not measured: ${l.behindFetchFailed.join(', ')}`, '')
   }
   if (status.dirtyLocal) {
     out.push('## Local clones with unsaved work', '')
@@ -154,7 +155,7 @@ export function digest(status) {
   const rows = hygiene(status)
   const counts = rows.filter((h) => h.count !== null && h.count > 0).map((h) => `${h.row} ${h.count}`)
   const unmeasured = rows.filter((h) => h.count === null).length
-  if (counts.length > 0 || unmeasured > 0) lines.push(`Hygiene: ${counts.join('; ') || 'nothing found'}${unmeasured > 0 ? ` (${unmeasured} rows not measured)` : ''}`.slice(0, 200))
+  if (counts.length > 0 || unmeasured > 0) lines.push(`Hygiene:${unmeasured > 0 ? ` ${unmeasured} rows not measured;` : ''} ${counts.join('; ') || 'nothing found'}`)
   for (const slug of s.redMains) lines.push(`Red main: ${short(slug)}`)
   for (const slug of s.unavailable) lines.push(`Unreadable: ${short(slug)}`)
   for (const p of s.prs.filter(waitingOnOwner).slice(0, 4)) lines.push(`Owner: ${short(p.slug)} #${p.number} ${p.title}`.slice(0, 120))

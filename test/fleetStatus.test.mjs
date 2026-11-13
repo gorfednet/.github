@@ -9,7 +9,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, it } from 'node:test'
 
-import { behindClones, dirtyClones, duplicatePrs, idlePrs, idleSessions, oldWorktrees } from '../scripts/lib/hygiene.mjs'
+import { behindClones, collectLocal, dirtyClones, duplicatePrs, idlePrs, idleSessions, oldWorktrees } from '../scripts/lib/hygiene.mjs'
 import { aheadCounts, ciState, collectRepo, dependabotRed, isPrivateRepo, latestDeploy, nextItem, recentLines, redactRepo, repoList } from '../scripts/fleet-status.mjs'
 import { workflowTriggers } from '../scripts/lib/workflowTriggers.mjs'
 import { digest, etStamp, hygiene, lowerMeridiem, render, summaryLine } from '../scripts/write-status-md.mjs'
@@ -280,7 +280,8 @@ describe('hygiene rows', () => {
   })
   it('idlePrs keeps only PRs untouched over 3 days', () => {
     const at = (d) => new Date(now - d * 86_400_000).toISOString()
-    assert.equal(idlePrs([{ number: 1, updatedAt: at(3.5) }], now).length, 0, 'a whole 3 days is not over 3')
+    assert.equal(idlePrs([{ number: 1, updatedAt: at(3.5) }], now).length, 1, '3.5 days is over 3')
+    assert.equal(idlePrs([{ number: 1, updatedAt: at(3) }, { number: 2, updatedAt: at(2.9) }], now).length, 0, 'exactly 3 days is not over 3')
     assert.equal(idlePrs([{ number: 1, updatedAt: at(4) }, { number: 2, updatedAt: at(1) }], now).length, 1)
   })
   it('duplicatePrs needs two PRs naming the same whole backlog id, and ignores short or partial ids', () => {
@@ -303,6 +304,8 @@ describe('hygiene rows', () => {
     put('local_new.json', { sessionId: 'local_new', lastActivityAt: now - 3_600_000 })
     put('local_arch.json', { sessionId: 'local_arch', isArchived: true, lastActivityAt: now - 99 * 3_600_000 })
     assert.deepEqual(idleSessions(dir, now), [{ id: 'local_old', title: 't', idleHours: 30 }])
+    put('local_bad.json', { sessionId: 'local_bad', lastActivityAt: 'yesterday' })
+    assert.equal(idleSessions(dir, now), null, 'one session with an unreadable time makes the row not measured')
   })
   it('dirty, behind and old-worktree rows read real git state', () => {
     const root = mkdtempSync(join(tmpdir(), 'clones-'))
@@ -315,11 +318,11 @@ describe('hygiene rows', () => {
     sh(clones, 'clone', '-q', origin, 'c')
     sh(c, 'commit', '-q', '--allow-empty', '-m', 'one')
     sh(c, 'push', '-q', 'origin', 'main')
-    assert.deepEqual(dirtyClones(clones), [])
+    assert.deepEqual(dirtyClones(clones).dirty, [])
     assert.deepEqual(behindClones(clones).behind, [])
     // planted: an untracked file, a second clone pushing ahead, and a worktree
     writeFileSync(join(c, 'x'), 'x')
-    assert.equal(dirtyClones(clones)[0].uncommitted, 1)
+    assert.equal(dirtyClones(clones).dirty[0].uncommitted, 1)
     const other = join(root, 'other')
     sh(root, 'clone', '-q', origin, 'other')
     sh(other, 'commit', '-q', '--allow-empty', '-m', 'two')
@@ -339,5 +342,33 @@ describe('hygiene rows', () => {
     mkdirSync(join(clones, 'broken', '.git'), { recursive: true })
     assert.deepEqual(behindClones(clones, { fetch: false }).unread, ['broken'])
     assert.deepEqual(oldWorktrees(clones).unread, ['broken'])
+    assert.deepEqual(dirtyClones(clones).unread, ['broken'])
+  })
+  it('collectLocal nulls every row it could not trust: broken clone, failed fetch, no fetch, empty root', () => {
+    const root = mkdtempSync(join(tmpdir(), 'collect-'))
+    const none = join(root, 'no-sessions')
+    assert.deepEqual(Object.values(collectLocal(root, { sessionsDir: none })).slice(1, 3), [null, null], 'an empty clone root is not a clean fleet')
+    const sh = (cwd, ...a) => spawnSync('git', ['-c', 'user.email=a@b.c', '-c', 'user.name=t', ...a], { cwd, encoding: 'utf8' })
+    const clones = join(root, 'clones')
+    mkdirSync(clones)
+    sh(clones, 'init', '-q', '-b', 'main', 'c')
+    sh(join(clones, 'c'), 'commit', '-q', '--allow-empty', '-m', 'one')
+    // no origin: the fetch fails, so behind is not measured; the other rows are
+    const failed = collectLocal(clones, { sessionsDir: none })
+    assert.equal(failed.behindClones, null)
+    assert.deepEqual(failed.behindFetchFailed, ['c'])
+    assert.equal(failed.idleSessions, null)
+    assert.ok(Array.isArray(failed.dirtyClones))
+    assert.equal(collectLocal(clones, { fetch: false, sessionsDir: none }).behindClones, null, 'refs not refreshed is not a measurement')
+    mkdirSync(join(clones, 'broken', '.git'), { recursive: true })
+    const broke = collectLocal(clones, { sessionsDir: none })
+    assert.equal(broke.dirtyClones, null)
+    assert.equal(broke.oldWorktrees, null)
+    assert.ok(broke.unread.includes('broken'))
+  })
+  it('the digest line leads with the not-measured count and is not cut', () => {
+    const line = digest(fixture).split('\n').find((l) => l.startsWith('Hygiene:'))
+    assert.match(line, /^Hygiene: 1 rows not measured; /)
+    assert.ok(line.length > 150 && /reviewBy/.test(line), line)
   })
 })
