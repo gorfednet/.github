@@ -10,7 +10,8 @@
  * Exit 0 only for `clean` (reviewed this head, no findings). Exit 1 for `findings` (read the
  * inline comments and triage them on the pull request) or `not-run` (comment "claude review" on
  * the pull request and wait). Exit 2 when GitHub cannot be read. This is the merge gate's review
- * check; Cursor Bugbot and its gate were retired on 2026-10-16.
+ * check. A pull request's 4th review round is its last for Low findings (scripts/lib/reviewVerdict.mjs):
+ * from round 5 a Low-only round reads `clean` and the Lows are triaged by reply. Cursor Bugbot and its gate were retired on 2026-10-16.
  */
 import { execFileSync } from 'node:child_process'
 import { claudeReviewVerdict } from './lib/reviewVerdict.mjs'
@@ -37,12 +38,18 @@ try {
   const comments = JSON.parse(gh(['api', '--paginate', '--slurp', `repos/${repo}/issues/${pr}/comments?per_page=100`])).flat()
   const verdict = claudeReviewVerdict(comments, head)
   const short = head.slice(0, 9)
+  const rounds = `round ${verdict.round} of ${verdict.cap}`
   if (verdict.state === 'clean') {
-    console.log(`#${pr}  clean  Claude reviewed ${short}: no findings  ${verdict.url ?? ''}`.trimEnd())
+    if (verdict.triageOnly) {
+      console.log(`#${pr}  clean  Claude reviewed ${short} (${rounds}): ${verdict.findings} Low finding(s), triage by reply  ${verdict.url ?? ''}`.trimEnd())
+      console.log(`  Past the round cap only High or Medium forces a fix. Reply to each Low on the pull request with fix, defer or decline.`)
+      process.exit(0)
+    }
+    console.log(`#${pr}  clean  Claude reviewed ${short} (${rounds}): no findings  ${verdict.url ?? ''}`.trimEnd())
     process.exit(0)
   }
   if (verdict.state === 'findings') {
-    console.log(`#${pr}  findings  Claude reviewed ${short}: ${verdict.findings} finding(s)  ${verdict.url ?? ''}`.trimEnd())
+    console.log(`#${pr}  findings  Claude reviewed ${short} (${rounds}): ${verdict.findings} finding(s)  ${verdict.url ?? ''}`.trimEnd())
     console.log('  Read the inline review comments and triage each on the pull request before merging.')
     process.exit(1)
   }
