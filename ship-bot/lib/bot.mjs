@@ -168,7 +168,10 @@ async function processRepo(ctx, repo) {
     // any label they add later is their own sign-off (round 9 on #119).
     const labels = (listed.labels ?? []).map((l) => l.name)
     if (!labels.includes(READY_LABEL) && ctx.state.data.prs[`${repo.slug}#${listed.number}`]?.botLabelled) {
-      delete ctx.state.pr(repo.slug, listed.number).botLabelled
+      const prState = ctx.state.pr(repo.slug, listed.number)
+      delete prState.botLabelled
+      // Remembered, so the comment marker below does not make it the bot's again.
+      prState.takenBack = true
       ctx.state.save()
       ctx.say('debug', `${repo.slug}#${listed.number}: ${READY_LABEL} the bot added is gone; the pull request is a person's again`)
     }
@@ -289,7 +292,7 @@ async function processPull(ctx, repo, pr, defaultBranch) {
  */
 async function botLabelStillEarned(ctx, repo, pr, tag) {
   const prState = ctx.state.pr(repo.slug, pr.number)
-  const bl = prState.botLabelled
+  const bl = prState.botLabelled ?? (await botLabelFromMarker(ctx, repo, pr, prState))
   if (!bl) return true
   const { claim, refused } = draftClaim(pr)
   const why = bl.sha !== pr.head.sha ? `the head moved from ${short(bl.sha)} to ${short(pr.head.sha)} after the bot labelled it` : claim ? null : refused ?? 'the ## Next merge line is gone'
@@ -303,6 +306,27 @@ async function botLabelStillEarned(ctx, repo, pr, tag) {
   delete prState.botLabelled
   ctx.state.save()
   return false
+}
+
+/**
+ * The state file can be lost; the bot's own draft-ready comment cannot. With
+ * no record, a `ship-bot:labelled:<sha>` marker on the pull request (written
+ * with the draft-ready comment only when the bot added the label) means the
+ * label was the bot's, and the record is rebuilt from it. It fails
+ * closed: a person who took the pull request back after a state loss gets
+ * their label removed once and adds it again (the record of the take-back
+ * was in the same file).
+ */
+async function botLabelFromMarker(ctx, repo, pr, prState) {
+  if (prState.takenBack) return null
+  const comments = await ctx.github.listIssueComments(repo.slug, pr.number)
+  const re = /<!-- ship-bot:labelled:([0-9a-f]{40}) -->/
+  const found = comments.map((c) => re.exec(c.body ?? '')?.[1]).filter(Boolean).pop()
+  if (!found) return null
+  prState.botLabelled = { sha: found, at: 'rebuilt-from-comment-marker' }
+  ctx.state.save()
+  ctx.say('debug', `${repo.slug}#${pr.number}: ${READY_LABEL} is the bot's own (rebuilt from its comment marker on ${short(found)})`)
+  return prState.botLabelled
 }
 
 export const DRAFT_READY_COMMENT = 'Ship-bot: gates clean, marking ready and labelling; merges on the next pass'
@@ -354,7 +378,12 @@ async function takeDraft(ctx, repo, listed, defaultBranch) {
     return
   }
   ctx.say('info', `${tag}: gates clean (${claim}): marking ready and labelling ${READY_LABEL}`)
-  await postOnce(ctx, repo, pr.number, sha, 'draft-ready', DRAFT_READY_COMMENT)
+  // The second marker says the label is the bot's own; it is how the fact
+  // survives a lost state file (botLabelFromMarker). Absent when a person
+  // had already labelled the draft.
+  const prState = ctx.state.pr(repo.slug, pr.number)
+  const botOwnsLabel = Boolean(prState.botLabelled) || !(pr.labels ?? []).some((l) => l.name === READY_LABEL)
+  await postOnce(ctx, repo, pr.number, sha, 'draft-ready', `${DRAFT_READY_COMMENT}${botOwnsLabel ? `\n\n${marker('labelled', sha)}` : ''}`)
   if (ctx.dry) {
     ctx.say('info', `${tag}: would mark ready and add ${READY_LABEL}`)
     return
@@ -365,9 +394,11 @@ async function takeDraft(ctx, repo, listed, defaultBranch) {
   // Remembered on the pull request, not the head: the label is the bot's
   // own, so processPull re-reads ## Next and refuses once the claim is gone
   // or the head has moved (reviewer finding on #119, round 7).
-  // A label a person had already put on the draft stays theirs.
-  if (!(pr.labels ?? []).some((l) => l.name === READY_LABEL)) {
-    ctx.state.pr(repo.slug, pr.number).botLabelled = { sha, at: ctx.clock.now().toISOString() }
+  // A label a person had already put on the draft stays theirs. A label the
+  // bot owns is re-recorded with this head: after a failed markReady and a
+  // new push, the old sha would strand the pull request (round 11 on #119).
+  if (botOwnsLabel) {
+    prState.botLabelled = { sha, at: ctx.clock.now().toISOString() }
     ctx.state.save()
   }
   await ctx.github.addLabels(repo.slug, pr.number, [READY_LABEL])

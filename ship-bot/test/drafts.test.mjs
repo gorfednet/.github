@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { rmSync } from 'node:fs'
 import { describe, it } from 'node:test'
 import { DRAFT_READY_COMMENT } from '../lib/bot.mjs'
 import { draftClaim, firstNextItem, isMergeInstruction, uncheckedNextItems } from '../lib/drafts.mjs'
@@ -134,6 +135,38 @@ describe('a draft the bot owns', () => {
     assert.equal(writes(gh, 'markReady').length, 1)
     assert.equal(s.state().pr(SLUG, 7).botLabelled, undefined)
     gh.pulls[0].head.sha = 'd'.repeat(40)
+    s.clock.advance(s.config.reviewGraceMinutes)
+    await s.run()
+    assert.equal(writes(gh, 'removeLabel').length, 0)
+    assert.equal(writes(gh, 'mergePull').length, 1)
+  })
+
+  it('with the state file lost after labelling, the bot still knows the label is its own from its comment marker', async () => {
+    const gh = new FakeGitHub({ pulls: [draft()] })
+    const s = scenario({ repos: reviewed(), github: gh })
+    await s.run()
+    rmSync(s.statePath)
+    gh.pulls[0].body = '## Next\n- [ ] merge\n- [ ] owner decides\n'
+    await s.run()
+    assert.equal(writes(gh, 'mergePull').length, 0)
+    assert.equal(writes(gh, 'removeLabel').length, 1)
+    assert.ok(s.logs.some((l) => /rebuilt from its comment marker on aaaaaaa/.test(l)), s.logs.join('\n'))
+  })
+
+  it('after a failed markReady and a new push, the record follows the head and the pull request is not stranded', async () => {
+    const gh = new FakeGitHub({ pulls: [draft()] })
+    let fail = true
+    const realMarkReady = gh.markReady.bind(gh)
+    gh.markReady = async (id) => {
+      if (fail) throw Object.assign(new Error('boom'), { status: 502 })
+      return realMarkReady(id)
+    }
+    const s = scenario({ repos: reviewed(), github: gh })
+    await s.run()
+    fail = false
+    gh.pulls[0].head.sha = 'd'.repeat(40)
+    await s.run()
+    assert.equal(s.state().pr(SLUG, 7).botLabelled.sha, 'd'.repeat(40))
     s.clock.advance(s.config.reviewGraceMinutes)
     await s.run()
     assert.equal(writes(gh, 'removeLabel').length, 0)
