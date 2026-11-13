@@ -9,7 +9,9 @@ minutes, and needs nothing from you beyond the label you already use.
 Every two minutes it looks at each of your repositories and, for every open
 pull request, asks:
 
-1. Did **you** open it, is it **not a draft**, does it carry the
+1. Did **you** open it, is it **not a draft** (a draft that says merge in its
+   `## Next` is marked ready by the bot first: see "Drafts the bot marks ready
+   itself"), does it carry the
    **`ready-to-merge`** label, and does it **not** carry **`hold`**?
 2. Did **every check pass** on the latest commit, including the specific
    checks that repository is supposed to run? A check that is still running,
@@ -172,6 +174,56 @@ No check is skipped. `make verify` runs the job-folder tests (`tests/*.local.tes
 - **A `release` row cannot also use `pausedIfChanged` or `onlyIfChanged`** (config validation refuses it): a release deploys everything merged since the last one, but those keys look only at the release's own merge commit, so an earlier merge with no `Release:` line would slip past them.
 - **The unavoidable human step** is writing the `Release:` line. Nothing else in the release needs the owner.
 
+## Drafts the bot marks ready itself
+
+Builder jobs open their pull requests as drafts and cannot run `gh pr ready` or
+add a label, so 30 `worktree-*` drafts sat still until 11 November 2026. The
+bot now takes a draft itself when **all** of these hold:
+
+- its description has a `## Next` section whose first unchecked `- [ ]` line
+  is an instruction to merge: it starts with "merge" or "open the PR" (any
+  case) and does not say later ("merge once PR 118 lands" is not one), and no
+  unchecked line under `## Next` hands the decision to a person (do not,
+  don't, wait, hold, owner, needs a decision, decide). A diff that touches only
+  documentation is **not** enough on its own: that branch was cut after five
+  review rounds of edge cases and can be its own change later;
+- every check is green on its latest commit, the same expected checks as for
+  a labelled pull request;
+- the Claude reviewer has reviewed that commit: `clean`, or with every one of
+  its comment threads answered or resolved, the same reading as for a labelled
+  pull request. A draft gets no automatic review, so when `review-status.mjs`
+  says `not-run` the bot comments `claude review` once per commit, on a line
+  by itself, and waits for the next pass. It never asks twice for the same
+  commit. Findings with an unanswered thread keep the draft a draft; nothing
+  is said on the pull request, the log says why;
+- no `hold` label, no merge conflict, not opened by Dependabot, and the author
+  is allowlisted.
+
+Then it comments once, "Ship-bot: gates clean, marking ready and labelling;
+merges on the next pass", adds `ready-to-merge` and marks the pull request
+ready. The ordinary merge path takes it after that, re-reading every gate.
+Leaving draft fires `ready_for_review`, which starts a second Claude review of
+the same commit, so the bot holds that commit for `reviewGraceMinutes` (15 by
+default) and then waits for that review's check like any other; its verdict,
+if it finds something, keeps the pull request from merging until each thread
+is answered. A repository in observation (`live` false) logs `would mark ready
+and add ready-to-merge` and does nothing.
+
+The label the bot adds is its own, not a person's sign-off: before every
+later pass merges such a pull request, the bot reads `## Next` again and
+checks the head is the one it labelled. A wait written there afterwards, or a
+new push, takes `ready-to-merge` off and leaves the pull request for a person.
+
+When the bot runs as its GitHub App, its `claude review` comment posts as
+`<slug>[bot]`. The shared `claude-review.yml` accepts that login only through
+the org variable `SHIP_BOT_LOGIN` (set to `<slug>[bot]`), and the bot
+recognises its own comments through `githubApp.slug` in the config; without
+the slug, any `[bot]` login of type Bot counts as the bot's.
+
+To keep a draft a draft, add the **`hold`** label or write the wait under
+`## Next`. To keep a whole repository out of this, set `"draftReady": false`
+on its row in `~/.ship-bot/config.json`.
+
 ## How a change ships
 
 1. A session finishes the work and adds the **`ready-to-merge`** label.
@@ -202,6 +254,8 @@ To stop it: add the **`hold`** label to a pull request, or run
   again), it merges nothing that would need a deploy and tells you, at most
   once an hour.
 - Merge a pull request without the `ready-to-merge` label, or one with `hold`.
+- Mark a draft ready unless its `## Next` says merge and its gates are clean
+  (above).
 - Retry a deploy that failed. It puts the previous version back and waits for
   a person.
 

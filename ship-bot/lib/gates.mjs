@@ -274,7 +274,7 @@ export function isTriaged(thread, allowedAuthors) {
  *
  * Returns `{blocks}`.
  */
-export async function evaluateReview(ctx, repo, pr, sha, { headSince, memo }) {
+export async function evaluateReview(ctx, repo, pr, sha, { headSince, memo, draft = false }) {
   const now = ctx.clock.now()
   const script = await gate(ctx, ctx.config.scripts.reviewStatus, ['--pr', String(pr.number), '--repo', repo.slug], {}, memo)
   const status = parseReviewStatus(script, pr.number)
@@ -284,6 +284,9 @@ export async function evaluateReview(ctx, repo, pr, sha, { headSince, memo }) {
   if (status.state === 'clean') return { blocks: [] }
 
   if (status.state === 'not-run') {
+    // A draft gets no automatic review, so the bot asks for one (bot.mjs
+    // comments `claude review` once per head) and waits for the next pass.
+    if (draft) return { blocks: [{ key: 'draft-review-request', kind: 'request', reason: `the Claude reviewer has not run on this head (${sha.slice(0, 7)})` }] }
     if (minutesBetween(headSince, now) < ctx.config.reviewGraceMinutes) {
       return { blocks: [{ key: 'review-grace', kind: 'wait', reason: "giving the Claude reviewer's automatic review time to land" }] }
     }
@@ -346,7 +349,7 @@ export async function evaluateReview(ctx, repo, pr, sha, { headSince, memo }) {
  *
  * @returns {Promise<{ready: boolean, blocks: object[], cached: boolean}>}
  */
-export async function evaluatePull(ctx, repo, pr, { headState, fresh = false }) {
+export async function evaluatePull(ctx, repo, pr, { headState, fresh = false, draft = false }) {
   const sha = pr.head.sha
   const now = ctx.clock.now()
   const memo = { inputs: '', fresh, used: false }
@@ -367,7 +370,8 @@ export async function evaluatePull(ctx, repo, pr, { headState, fresh = false }) 
   const headSince = [headState.firstSeenAt, ...runs.map((r) => r.started_at)].filter(Boolean).sort()[0]
   const graceOver = minutesBetween(headSince, now) >= ctx.config.checksGraceMinutes
   let labeledAt
-  if (repo.requireChecksAfterLabel) {
+  const requireAfterLabel = repo.requireChecksAfterLabel && !draft
+  if (requireAfterLabel) {
     try {
       const events = await ctx.github.listIssueEvents(repo.slug, pr.number)
       labeledAt = events
@@ -386,7 +390,7 @@ export async function evaluatePull(ctx, repo, pr, { headState, fresh = false }) 
     expectedChecks: repo.expectedChecks,
     graceOver,
     labeledAt,
-    requireAfterLabel: repo.requireChecksAfterLabel,
+    requireAfterLabel,
   })
   if (checkBlocks.length > 0) return blocked(checkBlocks)
 
@@ -423,7 +427,7 @@ export async function evaluatePull(ctx, repo, pr, { headState, fresh = false }) 
   if (repo.claudeReview) {
     let result
     try {
-      result = await evaluateReview(ctx, repo, pr, sha, { headSince, memo: scriptMemo })
+      result = await evaluateReview(ctx, repo, pr, sha, { headSince, memo: scriptMemo, draft })
     } catch (cause) {
       if (cause instanceof RateLimitError) throw cause
       return blocked([{ key: 'review-undetermined', kind: 'wait', reason: `could not read the Claude review state: ${ctx.redactor.apply(cause.message)}` }])
