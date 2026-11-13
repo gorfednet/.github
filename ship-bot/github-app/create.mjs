@@ -1,0 +1,124 @@
+#!/usr/bin/env node
+/**
+ * Create the ship bot's GitHub App from manifest.json, in one browser step.
+ *
+ *   node ~/.ship-bot/app/github-app/create.mjs [--org gorfednet] [--port 47321]
+ *
+ * It serves one page on 127.0.0.1 that sends manifest.json to GitHub's "create
+ * a GitHub App from a manifest" page for the organisation. The owner clicks
+ * "Create GitHub App" there. GitHub sends the browser back here with a
+ * one-time code, which this script swaps for the App's ID and private key:
+ *
+ * - the key goes to ~/.ship-bot/github-app.pem, mode 600, never printed;
+ * - the config gets `githubApp: { appId, privateKeyFile }` (setGithubApp);
+ * - the browser moves on to the App's install page, where the owner installs
+ *   it on the organisation for all repositories.
+ *
+ * The App's client secret and webhook secret are not kept: the bot never uses
+ * them. Run once; it refuses if the key file already exists.
+ */
+import { randomBytes } from 'node:crypto'
+import { execFile } from 'node:child_process'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { createServer } from 'node:http'
+import { homedir } from 'node:os'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { setGithubApp } from '../ship-bot.mjs'
+import { isMain } from '../lib/isMain.mjs'
+
+const HERE = dirname(fileURLToPath(import.meta.url))
+
+const escapeHtml = (s) => String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+
+/** The page that posts the manifest to GitHub. */
+export function startPage({ org, state, manifest }) {
+  const action = `https://github.com/organizations/${encodeURIComponent(org)}/settings/apps/new?state=${state}`
+  return `<!doctype html><meta charset="utf-8"><title>Create the ship bot App</title>
+<form id="f" method="post" action="${escapeHtml(action)}">
+<input type="hidden" name="manifest" value="${escapeHtml(JSON.stringify(manifest))}">
+<p>Sending you to GitHub to create the ship bot's App for ${escapeHtml(org)}.</p>
+<button type="submit">Continue to GitHub</button>
+</form><script>document.getElementById('f').submit()</script>`
+}
+
+/** Swap the one-time code for the App. Unauthenticated, as GitHub specifies. */
+export async function convertCode(code, fetchImpl = globalThis.fetch) {
+  const res = await fetchImpl(`https://api.github.com/app-manifests/${encodeURIComponent(code)}/conversions`, {
+    method: 'POST',
+    headers: { Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', 'User-Agent': 'gorfednet-ship-bot' },
+    signal: AbortSignal.timeout(30_000),
+  })
+  const data = await res.json().catch(() => null)
+  if (!res.ok || !data?.id || !data?.pem || !data?.slug) throw new Error(`GitHub did not hand over the App (HTTP ${res.status}${data?.message ? `: ${data.message}` : ''})`)
+  return { id: data.id, slug: data.slug, pem: data.pem }
+}
+
+async function main(argv) {
+  const arg = (name, fallback) => {
+    const i = argv.indexOf(`--${name}`)
+    return i >= 0 && argv[i + 1] ? argv[i + 1] : fallback
+  }
+  const org = arg('org', 'gorfednet')
+  const port = Number(arg('port', '47321'))
+  const botHome = join(homedir(), '.ship-bot')
+  const keyFile = join(botHome, 'github-app.pem')
+  const configPath = join(botHome, 'config.json')
+  if (existsSync(keyFile)) {
+    console.error(`create.mjs: ${keyFile} already exists, so the App was made before. Nothing was changed.`)
+    return 2
+  }
+  const state = randomBytes(16).toString('hex')
+  const manifest = { ...JSON.parse(readFileSync(join(HERE, 'manifest.json'), 'utf8')), redirect_url: `http://127.0.0.1:${port}/done` }
+
+  return new Promise((resolve) => {
+    const finish = (code) => {
+      server.close()
+      clearTimeout(timer)
+      resolve(code)
+    }
+    const server = createServer(async (req, res) => {
+      const url = new URL(req.url, `http://127.0.0.1:${port}`)
+      if (url.pathname === '/') {
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
+        res.end(startPage({ org, state, manifest }))
+        return
+      }
+      if (url.pathname !== '/done') {
+        res.writeHead(404).end()
+        return
+      }
+      if (url.searchParams.get('state') !== state || !url.searchParams.get('code')) {
+        res.writeHead(400, { 'Content-Type': 'text/plain' }).end('This link is not from this run. Nothing was changed.')
+        return
+      }
+      try {
+        const app = await convertCode(url.searchParams.get('code'))
+        writeFileSync(keyFile, app.pem, { mode: 0o600, flag: 'wx' })
+        const code = setGithubApp(configPath, { appId: app.id, privateKeyFile: '~/.ship-bot/github-app.pem' })
+        if (code !== 0) throw new Error(`the key is saved at ${keyFile}, but the config was not changed (see above)`)
+        const install = `https://github.com/apps/${app.slug}/installations/new`
+        console.log(`Created GitHub App ${app.slug} (ID ${app.id}). Key saved to ${keyFile}. Next: install it on ${org}: ${install}`)
+        res.writeHead(302, { Location: install }).end()
+        finish(0)
+      } catch (cause) {
+        console.error(`create.mjs: ${cause.message}`)
+        res.writeHead(500, { 'Content-Type': 'text/plain' }).end(`Something went wrong: ${cause.message}`)
+        finish(1)
+      }
+    })
+    const timer = setTimeout(() => {
+      console.error('create.mjs: no answer from GitHub in 15 minutes. Nothing was changed; run it again.')
+      finish(1)
+    }, 15 * 60 * 1000)
+    server.listen(port, '127.0.0.1', () => {
+      const start = `http://127.0.0.1:${port}/`
+      console.log(`Opening ${start} in your browser. Click "Create GitHub App" on the GitHub page that follows.`)
+      execFile('open', [start], () => {})
+    })
+  })
+}
+
+if (isMain(import.meta.url)) {
+  main(process.argv.slice(2)).then((code) => process.exit(code))
+}

@@ -11,7 +11,7 @@ import { join } from 'node:path'
 import { HOLD_LABEL } from './config.mjs'
 import { DeployLog, deployMerged, envSecrets, matchingFiles, preflight, realFs, selectSteps } from './deploy.mjs'
 import { evaluatePull, ineligibleReason, unmergeableReason } from './gates.mjs'
-import { guardWrites } from './github.mjs'
+import { RateLimitError, guardWrites } from './github.mjs'
 import { planRelease } from './release.mjs'
 import { Redactor } from './redact.mjs'
 import { guardCommands, succeeded } from './runner.mjs'
@@ -58,6 +58,9 @@ export async function runOnce(deps) {
     nodePath: deps.nodePath ?? process.execPath,
     baseEnv: deps.baseEnv ?? {},
     fetchImpl: deps.fetchImpl ?? globalThis.fetch,
+    /** cache.mjs ReadCache: gate script answers reused across passes. Optional. */
+    readCache: deps.readCache ?? null,
+    gateStats: { ran: 0, cached: 0 },
     decisions: [],
     /** Shared across repo contexts: merges decided this pass (live: attempted; dry: "would merge"), against maxMergesPerPass. */
     pass: { merges: 0 },
@@ -70,6 +73,11 @@ export async function runOnce(deps) {
 
   const repos = selectRepos(config.repos, deps.repoNames)
   recoverInterruptedDeploys(ctx)
+  if (quotaPaused(ctx)) {
+    stateStore.save()
+    return ctx.decisions
+  }
+  let limited = null
   for (const repo of repos) {
     if (repo.mode === 'off') {
       ctx.say('info', `${repo.slug}: mode off, not looked at`)
@@ -78,12 +86,67 @@ export async function runOnce(deps) {
     try {
       await processRepo(repoContext(ctx, repo, deps), repo)
     } catch (cause) {
+      if (cause instanceof RateLimitError) {
+        limited = cause
+        break
+      }
       ctx.say('error', `${repo.slug}: stopped on an unexpected error: ${cause.message}`)
     }
     stateStore.save()
   }
+  if (limited) await quotaLow(ctx, limited)
+  else delete stateStore.data.rateLimit
+  sayUsage(ctx)
   stateStore.save()
   return ctx.decisions
+}
+
+/** A time as the owner reads it: Toronto local, labelled ET. */
+export function easternTime(iso) {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return 'an unknown time'
+  return `${new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Toronto', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(d)} ET`
+}
+
+/**
+ * An earlier pass found the quota (nearly) spent and its reset is still
+ * ahead: this pass makes no GitHub call at all. Returns true when paused.
+ */
+function quotaPaused(ctx) {
+  const rl = ctx.state.data.rateLimit
+  if (!rl?.resetAt || ctx.clock.now().getTime() >= new Date(rl.resetAt).getTime()) return false
+  ctx.say('warn', `GitHub quota low (${rl.remaining} left at ${easternTime(rl.at)}): not calling GitHub until it resets at ${easternTime(rl.resetAt)}`)
+  return true
+}
+
+/**
+ * Stop the pass on a low quota: one log line every time, the owner's phone
+ * once per episode (an episode ends at the first pass that finishes without
+ * reaching the floor). With no reset time from GitHub, wait 15 minutes.
+ */
+async function quotaLow(ctx, err) {
+  const now = ctx.clock.now()
+  const resetAt = err.resetAt && new Date(err.resetAt) > now ? err.resetAt : new Date(now.getTime() + 15 * 60 * 1000).toISOString()
+  const first = !ctx.state.data.rateLimit
+  ctx.state.data.rateLimit = { at: now.toISOString(), remaining: err.remaining, resetAt, notified: ctx.state.data.rateLimit?.notified ?? false }
+  const text = `GitHub ${err.resource} quota low: ${err.remaining} left. Ship bot stopped this pass and makes no GitHub call until ${easternTime(resetAt)}.`
+  ctx.say('warn', text)
+  if (!first && ctx.state.data.rateLimit.notified) return
+  if (ctx.dry) {
+    ctx.say('info', `would notify: ${text}`)
+    return
+  }
+  ctx.state.data.rateLimit.notified = true
+  ctx.state.save()
+  await notify(ctx, text, true)
+}
+
+/** What this pass cost in GitHub calls, one line, so a pass's cost is in the log. */
+function sayUsage(ctx) {
+  const s = ctx.github.stats ?? { requests: '?', notModified: '?' }
+  const core = s.rate?.core
+  const quota = core ? `; core quota ${core.remaining} of ${core.limit} left, resets ${easternTime(core.resetAt)}` : ''
+  ctx.say('info', `GitHub calls this pass: ${s.requests} (${s.notModified} answered 304, which cost nothing); gate scripts run ${ctx.gateStats.ran}, reused ${ctx.gateStats.cached}${quota}`)
 }
 
 /**
@@ -186,7 +249,9 @@ async function processPull(ctx, repo, pr, defaultBranch) {
   const headState = ctx.state.head(repo.slug, pr.number, sha, nowIso)
   const tag = `${repo.slug}#${pr.number} (${short(sha)})`
 
-  const result = await evaluatePull(ctx, repo, pr, { headState })
+  let result = await evaluatePull(ctx, repo, pr, { headState })
+  // A merge never rests on a remembered gate answer: run every script again.
+  if (result.ready && result.cached) result = await evaluatePull(ctx, repo, pr, { headState, fresh: true })
 
   if (!result.ready) {
     for (const block of result.blocks) {
