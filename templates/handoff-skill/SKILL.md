@@ -23,4 +23,3 @@ Use when a session ends, runs long, or hands work on. The topic is a short kebab
 7. Report the handoff path and the PR number in two lines.
 
 Never write a handoff only into the chat. Never put secrets or tokens in one.
-9. Then ask the coordinator session to run it on Opus 4.6.
