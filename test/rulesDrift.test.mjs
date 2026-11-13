@@ -32,6 +32,7 @@ function repo(files) {
     'templates/CLAUDE.snippet.md': 'clean\n',
     'templates/handoff.md': 'clean\n',
     'docs/desk/brief.md': 'Model: Opus 5.5, effort high.\n',
+    'docs/handoff/2026-11-01-x.md': 'clean\n',
   }
   for (const [path, body] of Object.entries({ ...base, ...files })) {
     if (body === null) continue
@@ -52,7 +53,7 @@ describe('check-rules-drift', () => {
   it('passes a clean tree and lists what it read', () => {
     const r = run(repo({}))
     assert.equal(r.status, 0, r.out)
-    assert.match(r.out, /scanned 7 file\(s\)/)
+    assert.match(r.out, /scanned 8 file\(s\)/)
   })
 
   for (const [what, line] of [
@@ -61,6 +62,7 @@ describe('check-rules-drift', () => {
     ['a coordinator session', 'Hand it to the coordinator session.'],
     ['an off-roster Opus', 'Use Opus 4.6 for this.'],
     ['an off-roster model id', 'model: claude-3-5-sonnet-20241022'],
+    ['an old-style Claude name', 'Use Claude 3.5 Sonnet for this.'],
   ]) {
     it(`fails on ${what} planted in a skill`, () => {
       const r = run(repo({ 'templates/x-skill/SKILL.md': `---\nname: x\n---\n${line}\n` }))
@@ -78,6 +80,14 @@ describe('check-rules-drift', () => {
     assert.equal(run(repo({ 'REVIEW.md': 'Cursor retired 2026-10-16.\n' })).status, 0)
     assert.equal(run(repo({ 'REVIEW.md': 'Cursor retired, so use it less.\n' })).status, 1)
     assert.equal(run(repo({ 'REVIEW.md': 'Cursor retired 2026-10-16; use Opus 4.6.\n' })).status, 1)
+    assert.equal(run(repo({ 'REVIEW.md': 'Cursor and Bugbot were retired on 2026-10-16.\n' })).status, 0)
+  })
+
+  it('excuses only the clause that states the retirement', () => {
+    const r = run(repo({ 'REVIEW.md': 'Bugbot retired 2026-10-16; hand the PR to the coordinator session.\n' }))
+    assert.equal(r.status, 1, r.out)
+    assert.match(r.out, /coordinator sessions/)
+    assert.doesNotMatch(r.out, /\(Bugbot\)/)
   })
 
   it('excuses a dated archive file, and not an undated one beside it', () => {
@@ -96,6 +106,12 @@ describe('check-rules-drift', () => {
     assert.match(r.out, /matched nothing/)
   })
 
+  it('fails when an archive pattern matches no file in scope', () => {
+    const r = run(repo({ 'docs/handoff/2026-11-01-x.md': null }))
+    assert.equal(r.status, 1)
+    assert.match(r.out, /archive allowlist pattern .* matched no file in scope/)
+  })
+
   it('fails closed when a named file is missing', () => {
     const r = run(repo({ 'REVIEW.md': null }))
     assert.equal(r.status, 1)
@@ -109,7 +125,7 @@ describe('check-rules-drift', () => {
   })
 
   it('keeps tiers, roster versions and pagination cursors out of the findings', () => {
-    for (const ok of ['Opus builder', 'Fable 5.2 reviewer', 'claude-opus-5-5', 'Sonnet 5.5', 'a pagination cursor']) {
+    for (const ok of ['Opus builder', 'Fable 5.2 reviewer', 'claude-opus-5-5', 'Sonnet 5.5', 'Claude 5.5 Sonnet', 'a pagination cursor']) {
       assert.deepEqual(lineFindings(ok), [], ok)
     }
   })

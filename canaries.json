@@ -622,8 +622,8 @@
       "guards": "check-rules-drift fails on a retired term in a rule, skill, agent or memory file. Excusing every line that names a retired term turns the guard into a list of files it read and nothing else (plan row 5.4).",
       "command": "node --test 'test/rulesDrift.test.mjs'",
       "file": "scripts/check-rules-drift.mjs",
-      "find": "if (RETIREMENT_LINE.pattern.test(line) && found.every((f) => f.startsWith('retired term'))) return",
-      "replace": "if (found.every((f) => f.startsWith('retired term'))) return"
+      "find": "if (excuseRetirements && RETIREMENT_LINE.pattern.test(clause)) continue",
+      "replace": "if (excuseRetirements) continue"
     }
   ]
 }

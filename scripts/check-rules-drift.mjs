@@ -19,13 +19,18 @@
  *
  *   - ARCHIVES: dated archive files (a file name that starts with YYYY-MM-DD),
  *     which record what was true on that day and are not edited afterwards;
- *   - a line that states a retirement with its date, e.g.
- *     "Cursor retired 2026-10-16";
+ *   - a clause that states a retirement with its date, e.g.
+ *     "Cursor retired 2026-10-16". Only retired terms in that clause are
+ *     excused: "Bugbot retired 2026-10-16; ask the coordinator session" still
+ *     fails on the coordinator session, and an off-roster model never passes;
  *   - LINES: exact line fragments in a named file.
  *
- * Fails closed: no files in scope (or only excused archives), a named file missing, an allowlist entry
- * without a reason, or an allowlist entry that matched nothing all exit 1.
- * An allowlist entry that excuses nothing is how an allowlist grows wide.
+ * Fails closed. Each of these exits 1: no files in scope, or only excused
+ * archives; a named file missing; an allowlist entry without a reason; a LINES
+ * entry that matches no line in its file; an ARCHIVES pattern that matches no
+ * file in scope. An allowlist entry that excuses nothing is how an allowlist
+ * grows wide. (The retirement-clause rule is a pattern, not an entry, and is
+ * not checked for use.)
  *
  * Usage: node scripts/check-rules-drift.mjs [--root <dir>]
  * Exit:  0 clean, 1 drift or a fail-closed error.
@@ -99,6 +104,7 @@ const RETIRED = [
 
 const FAMILY = /\b(Haiku|Sonnet|Opus|Fable)(?:[ -](\d+(?:\.\d+)?))?\b/g
 const MODEL_ID = /\bclaude-([a-z]+)-(\d+)(?:-(\d{1,2})\b)?/g
+const OLD_STYLE = /\bClaude (\d+(?:\.\d+)?) (Haiku|Sonnet|Opus|Fable)\b/g
 const LEGACY_ID = /\bclaude-(?:instant|\d)(?:[-.]\w+)*/g
 const OTHER_VENDOR = /\b(?:GPT-?\d[\w.-]*|ChatGPT|Gemini(?: [\d.]+\w*)?|Llama ?\d[\w.]*)/g
 
@@ -113,12 +119,22 @@ function rosterVerdict(family, version) {
   return `the roster has ${family} ${pinned}`
 }
 
-/** Every drift finding on one line, before allowlists. */
-export function lineFindings(line) {
-  const found = []
-  for (const term of RETIRED) {
-    if (term.pattern.test(line)) found.push(`retired term (${term.name})`)
+/** A line's clauses, split at `;`, `!`, `?` and a sentence-ending `.` (not the one in `.cursor`). */
+function clauses(line) {
+  return line.split(/[;!?]|\.(?=\s|$)/)
+}
+
+/**
+ * Every drift finding on one line. With `excuseRetirements`, retired terms in a
+ * clause that states a retirement and its date are left out; nothing else is.
+ */
+export function lineFindings(line, { excuseRetirements = false } = {}) {
+  const retired = new Set()
+  for (const clause of clauses(line)) {
+    if (excuseRetirements && RETIREMENT_LINE.pattern.test(clause)) continue
+    for (const term of RETIRED) if (term.pattern.test(clause)) retired.add(`retired term (${term.name})`)
   }
+  const found = [...retired]
   for (const [, family, version] of line.matchAll(FAMILY)) {
     const why = rosterVerdict(family, version)
     if (why) found.push(`model ${family} ${version} outside the roster: ${why}`)
@@ -129,6 +145,10 @@ export function lineFindings(line) {
     const version = minor === undefined ? major : `${major}.${minor}`
     const why = rosterVerdict(family, version)
     if (why) found.push(`model id ${match} outside the roster: ${why}`)
+  }
+  for (const [match, version, family] of line.matchAll(OLD_STYLE)) {
+    const why = rosterVerdict(family, version)
+    if (why) found.push(`model ${match} outside the roster: ${why}`)
   }
   for (const [match] of line.matchAll(LEGACY_ID)) found.push(`model id ${match} outside the roster`)
   for (const [match] of line.matchAll(OTHER_VENDOR)) found.push(`model ${match} outside the roster`)
@@ -188,21 +208,28 @@ export function scan(root, files) {
   const usedArchives = new Set()
   for (const file of files) {
     const archive = ARCHIVES.find((a) => a.pattern.test(file))
+    if (archive) {
+      usedArchives.add(archive)
+      continue
+    }
     const lines = readFileSync(join(root, file), 'utf8').split('\n')
     lines.forEach((line, i) => {
-      const found = lineFindings(line)
-      if (found.length === 0) return
-      if (archive) return void usedArchives.add(archive)
+      if (lineFindings(line).length === 0) return
       const excused = LINES.find((l) => l.file === file && line.includes(l.text))
       if (excused) return void usedLines.add(excused)
-      if (RETIREMENT_LINE.pattern.test(line) && found.every((f) => f.startsWith('retired term'))) return
+      const found = lineFindings(line, { excuseRetirements: true })
       for (const what of found) findings.push(`${file}:${i + 1}: ${what}\n    ${line.trim()}`)
     })
   }
-  const stale = LINES.filter((l) => !usedLines.has(l)).map(
-    (l) => `allowlist entry for ${l.file} matched nothing: "${l.text}". Remove it.`,
-  )
-  return { findings, stale, usedArchives }
+  const stale = [
+    ...LINES.filter((l) => !usedLines.has(l)).map(
+      (l) => `allowlist entry for ${l.file} matched nothing: "${l.text}". Remove it.`,
+    ),
+    ...ARCHIVES.filter((a) => !usedArchives.has(a)).map(
+      (a) => `archive allowlist pattern ${a.pattern} matched no file in scope. Remove it.`,
+    ),
+  ]
+  return { findings, stale }
 }
 
 function main(argv) {
