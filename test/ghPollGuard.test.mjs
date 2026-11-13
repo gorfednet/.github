@@ -115,6 +115,8 @@ test('passes loop text that is data: quotes, data heredocs, searches', () => {
   allowed("grep -rn '`until ...; do :; done`' docs/");
   allowed(`grep -rnF '${fixture('merge-poll.sh').trim().replace(/'/g, '')}' ~/.claude/projects`);
   allowed("printf '%s' 'x; until false; do :; done' | wc -c");
+  // a stray `)` in the heredoc body must not end the substitution early
+  allowed("git commit -m \"$(cat <<'EOF'\nfix 1) the 5\" poll\nwhile true; do gh pr checks 5; sleep 30; done\nEOF\n)\"");
 });
 
 test('passes one-pass loops that throttle or retry', () => {

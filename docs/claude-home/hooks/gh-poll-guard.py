@@ -82,6 +82,19 @@ def _close_paren(text: str, i: int) -> int:
             j = text.find("'", i + 1)
             i = n if j < 0 else j + 1
             continue
+        if c == "<" and text.startswith("<<", i) and not text.startswith("<<<", i):
+            m = _HEREDOC.match(text, i)
+            if m:
+                # A heredoc body is opaque: its parentheses never close ours.
+                line_end = text.find("\n", m.end())
+                if line_end < 0:
+                    return n
+                tabs = "\t*" if m.group(1) else ""
+                end = re.compile(rf"^{tabs}{re.escape(m.group(3))}$", re.M).search(text, line_end + 1)
+                if not end:
+                    return n
+                i = end.end()
+                continue
         if c == "(":
             depth += 1
         elif c == ")":
