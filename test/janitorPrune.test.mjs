@@ -93,6 +93,19 @@ describe('janitor-prune', () => {
     assert.match(rows.find((r) => r.path === f.merged).reason, /merged but touched/)
   })
 
+  it('keeps a merged worktree holding ignored local state, but not one holding only node_modules', () => {
+    const f = fleet()
+    writeFileSync(join(f.clone, '.git', 'info', 'exclude'), '.env\nnode_modules\n')
+    mkdirSync(join(f.merged, 'node_modules'))
+    writeFileSync(join(f.merged, 'node_modules', 'x.js'), '')
+    const opts = { root: f.root, keep: new Set(), idleMs: DAY, apply: false, now: Date.now() + 2 * DAY, fetch: false, log: quiet }
+    assert.equal(run(opts).find((r) => r.path === f.merged).verdict, 'prune')
+    writeFileSync(join(f.merged, '.env'), 'SECRET=1\n')
+    const row = run(opts).find((r) => r.path === f.merged)
+    assert.equal(row.reason, 'ignored files')
+    assert.deepEqual(row.ignored, ['.env'])
+  })
+
   it('keeps a merged worktree with an unpushed commit', () => {
     const f = fleet()
     writeFileSync(join(f.merged, 'd.txt'), 'd\n')
@@ -133,7 +146,9 @@ describe('janitor-prune', () => {
     assert.equal(state(broken), 'unreadable')
     // A clone whose fetch fails is unreadable, never judged against a stale origin.
     git(f.clone, 'remote', 'set-url', 'origin', join(f.root, 'no-such-origin.git'))
-    assert.equal(sessionState(f.merged, { fetch: true }).state, 'unreadable')
+    const failed = sessionState(f.merged, { fetch: true })
+    assert.equal(failed.state, 'unreadable')
+    assert.ok(failed.worktree, 'an unreadable row still names its worktree, so step 5 keeps it')
     // A local commit with no upstream is unpushed work, never "unmerged" and safe to drop.
     writeFileSync(join(f.live, 'e.txt'), 'e\n')
     git(f.live, 'add', '.')

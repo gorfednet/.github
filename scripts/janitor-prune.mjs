@@ -18,6 +18,7 @@
  *   - its name is not protected (gates-main: the gate commands link there; desk-log; janitor-main)
  *   - its path is not in the keep file (the working folders of live sessions)
  *   - `git status --porcelain` is empty and nothing is ahead of its upstream
+ *   - it holds no ignored file except `node_modules` and `.DS_Store` (git removes ignored files silently)
  *   - its HEAD is an ancestor of origin/<default branch>, read after a fetch
  *   - nothing in it changed for `--idle-hours` (default 24), so a session that has
  *     just cut a branch from main is never taken for a merged one
@@ -39,6 +40,8 @@ import { isMain } from './lib/isMain.mjs'
 
 export const PROTECTED_NAMES = new Set(['gates-main', 'desk-log', 'janitor-main'])
 const PROTECTED_BRANCHES = new Set(['main', 'master', 'status', 'desk-log'])
+/** Ignored paths a worktree may hold that are safe to delete with it. Anything else ignored keeps the worktree. */
+const DISPOSABLE = new Set(['node_modules', '.DS_Store'])
 
 function git(dir, ...args) {
   return execFileSync('git', ['-C', dir, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim()
@@ -119,6 +122,10 @@ export function judge(wt, { mainRef, keep, idleMs, now }) {
   if (status.out !== '') return { verdict: 'keep', reason: 'dirty', uncommitted: status.out.split('\n').length }
   const ahead = tryGit(wt.path, 'rev-list', '--count', '@{u}..HEAD')
   if (ahead.ok && Number(ahead.out) > 0) return { verdict: 'keep', reason: 'dirty', unpushed: Number(ahead.out) }
+  // `git worktree remove` deletes ignored files without asking, and they can be local state (.env, settings).
+  const ignored = tryGit(wt.path, 'status', '--porcelain', '--ignored=matching')
+  const kept = ignored.ok ? ignored.out.split('\n').filter((l) => l.startsWith('!! ')).map((l) => l.slice(3).replace(/\/$/, '')).filter((p) => !DISPOSABLE.has(p)) : ['(unreadable)']
+  if (kept.length > 0) return { verdict: 'keep', reason: 'ignored files', ignored: kept.slice(0, 5) }
   if (!tryGit(wt.path, 'merge-base', '--is-ancestor', 'HEAD', mainRef).ok) return { verdict: 'keep', reason: 'not merged' }
   const idle = now - lastTouched(wt.path)
   if (idle < idleMs) return { verdict: 'keep', reason: `merged but touched ${Math.round(idle / 3600000)} h ago` }
@@ -145,14 +152,15 @@ export function sessionState(cwd, { fetched = new Map(), fetch = true } = {}) {
   if (!top.ok) return { state: 'no-repo' }
   const common = tryGit(cwd, 'rev-parse', '--path-format=absolute', '--git-common-dir').out
   if (fetch && !fetched.has(common)) fetched.set(common, tryGit(cwd, 'fetch', '--quiet', 'origin'))
-  // Fail closed: with a stale origin a branch merged since the last fetch would read as unmerged.
   const f = fetch ? fetched.get(common) : { ok: true }
-  if (!f.ok) return { state: 'unreadable', reason: `fetch failed: ${f.out.split('\n')[0]}` }
   const mainRef = `refs/remotes/origin/${defaultBranch(cwd)}`
   const mainPath = parseWorktrees(tryGit(cwd, 'worktree', 'list', '--porcelain').out)[0]?.path ?? top.out
   const branch = tryGit(cwd, 'branch', '--show-current').out || null
   // A session in a clone's main checkout shares it with every later session: the janitor never rescues or prunes there.
   const base = { repo: basename(mainPath), slug: parseGitHubSlug(tryGit(cwd, 'remote', 'get-url', 'origin').out), defaultBranch: defaultBranch(cwd), branch, worktree: canonical(top.out), mainCheckout: canonical(mainPath) === canonical(top.out) }
+  // Fail closed: with a stale origin a branch merged since the last fetch would read as unmerged.
+  // The row keeps `worktree`, so step 5 still puts the folder in the keep file.
+  if (!f.ok) return { ...base, state: 'unreadable', reason: `fetch failed: ${f.out.split('\n')[0]}` }
   const status = tryGit(cwd, 'status', '--porcelain')
   // Fail closed: a folder git can't read may hold work, so it is never classed clean.
   if (!status.ok) return { ...base, state: 'unreadable', reason: status.out.split('\n')[0] }
