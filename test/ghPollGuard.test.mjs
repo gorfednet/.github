@@ -87,6 +87,9 @@ test('blocks loops handed to another shell, and gh loops with no sleep', () => {
   blocked('while true; do /opt/homebrew/bin/gh pr checks 5; sleep 30; done');
   blocked('cat > $TMPDIR/w.sh <<\'EOF\'\nwhile true; do gh pr view 5; sleep 60; done\nEOF\nzsh $TMPDIR/w.sh');
   blocked('bash <<EOF\nuntil gh pr view 5 | grep -q MERGED; do sleep 60; done\nEOF');
+  // a here-string is not a heredoc: the loop on the next line still runs
+  blocked('grep -q ok <<< ok\nwhile true; do gh pr checks 5; sleep 30; done');
+  blocked('s=$(grep -c a <<< abc\nwhile true; do gh pr checks 5; sleep 30; done)');
 });
 
 test('blocks stray keywords and comments inside a real poll loop', () => {

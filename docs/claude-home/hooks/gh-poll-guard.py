@@ -82,7 +82,10 @@ def _close_paren(text: str, i: int) -> int:
             j = text.find("'", i + 1)
             i = n if j < 0 else j + 1
             continue
-        if c == "<" and text.startswith("<<", i) and not text.startswith("<<<", i):
+        if text.startswith("<<<", i):  # a here-string, not a heredoc
+            i += 3
+            continue
+        if c == "<" and text.startswith("<<", i):
             m = _HEREDOC.match(text, i)
             if m:
                 # A heredoc body is opaque: its parentheses never close ours.
@@ -154,7 +157,10 @@ def code_view(text: str, extras: list[str] | None = None, depth: int = 0) -> str
                 extras.append("".join(raw))
             out.append("_q_" + "".join(parts))
             i = j + 1
-        elif c == "<" and text.startswith("<<", i) and not text.startswith("<<<", i):
+        elif text.startswith("<<<", i):  # a here-string, not a heredoc
+            out.append("<<<")
+            i += 3
+        elif c == "<" and text.startswith("<<", i):
             m = _HEREDOC.match(text, i)
             if not m:
                 out.append(c)
