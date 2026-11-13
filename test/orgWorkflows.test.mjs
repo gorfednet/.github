@@ -202,6 +202,7 @@ describe('verification-gate composite action', () => {
       ['Page metadata is per-page and correct', 'check-page-metadata.mjs'],
       ['The social card is the image it says it is', 'check-og-image.mjs'],
       ['Error pages ship with the site', 'check-error-pages.mjs'],
+      ['Sitemap lists only pages worth indexing', 'check-sitemap-pages.mjs'],
       ['Paths are derived, not named', 'check-machine-paths.mjs'],
       ['Backlog describes reality', 'check-backlog.mjs'],
     ]
@@ -222,6 +223,7 @@ describe('verification-gate composite action', () => {
           'inputs.og-max-bytes': '300000',
           'inputs.error-page-root': 'dist',
           'inputs.error-page-markers': '',
+          'inputs.sitemap-origin': 'https://example.test',
           'inputs.source-dirs': '',
           'inputs.allow-machine-paths': '',
           'inputs.backlog': 'docs/backlog.json',
@@ -268,6 +270,22 @@ describe('verification-gate composite action', () => {
       )
       assert.equal(code, 0, output)
       assert.match(output, /--allow\|one\|--allow\|two/)
+    })
+
+    it('passes the origin and the publish root to the sitemap checker', () => {
+      const { code, output } = runWith(
+        'Sitemap lists only pages worth indexing',
+        'console.log(process.argv.slice(2).join("|"))\n',
+      )
+      assert.equal(code, 0, output)
+      assert.match(output, /--root\|dist\|--origin\|https:\/\/example\.test/)
+    })
+
+    it('skips the sitemap step unless a site opts in with sitemap-origin', () => {
+      assert.match(
+        text,
+        /- name: Sitemap lists only pages worth indexing\n\s+if: \$\{\{ !cancelled\(\) && inputs\.sitemap-origin != '' \}\}/,
+      )
     })
 
     it('carries no grace-date logic: a dated tripwire is not something a pull request can change', () => {

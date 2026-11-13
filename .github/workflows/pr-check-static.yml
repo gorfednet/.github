@@ -166,6 +166,14 @@ on:
         required: false
         type: number
         default: 10
+      sitemap-origin:
+        description: >-
+          Production base URL the sitemap lists, no trailing slash. Opts the
+          site in to check-sitemap-pages (V77) against publish-root. Empty
+          skips it; turn it on per site once the site is clean.
+        required: false
+        type: string
+        default: ""
 jobs:
   check:
     runs-on: ${{ fromJSON(inputs.runs-on != '' && inputs.runs-on || '"ubuntu-latest"') }}
@@ -218,3 +226,4 @@ jobs:
           error-page-root: ${{ inputs.error-page-root }}
           error-page-markers: ${{ inputs.error-page-markers }}
           allow-machine-paths: ${{ inputs.allow-machine-paths }}
+          sitemap-origin: ${{ inputs.sitemap-origin }}
