@@ -90,7 +90,7 @@ chmod 700 "${BOT_HOME}"
 # Copy the code: into a fresh directory, then swap, so a half-copied app is never run.
 rm -rf "${APP_DIR}.new"
 mkdir -p "${APP_DIR}.new"
-cp -R "${SRC}/ship-bot.mjs" "${SRC}/lib" "${SRC}/github-app" "${SRC}/config.example.json" "${SRC}/README.md" "${APP_DIR}.new/"
+cp -R "${SRC}/ship-bot.mjs" "${SRC}/patch-config.mjs" "${SRC}/patches" "${SRC}/lib" "${SRC}/github-app" "${SRC}/config.example.json" "${SRC}/README.md" "${APP_DIR}.new/"
 # The gate scripts, in the layout of scripts/ (lib/gate-source.mjs): the bot
 # runs these and never the main clone, where a session can switch branches.
 GATES="${APP_DIR}.new/gate-scripts"

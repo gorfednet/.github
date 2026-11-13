@@ -1,0 +1,23 @@
+{
+  "label": "2026-11-13-deploy-blocks",
+  "note": "Plan row 2.1, second pass. blackpixelrecords.com 29: the row copied no .deploy-env, so site-deploy.sh had no SITE. gorfed.net 140: the row set no WORK_CONTENT_DIR, so /work/ built from the fixture and deploy.sh refused it. papers.4thcltr.com 35: make verify ran its frame-timing e2e specs at a load above the core count. needsHeadroom needs the ship-bot from this pull request installed first.",
+  "repos": {
+    "gorfednet/blackpixelrecords.com": {
+      "envFiles": [".deploy-env"]
+    },
+    "gorfednet/gorfed.net": {
+      "siblings": [
+        { "dir": "gorfednet.github", "slug": "gorfednet/.github", "branch": "main" },
+        { "dir": "career-portfolio", "slug": "gorfednet/career-portfolio", "branch": "main" }
+      ],
+      "env": {
+        "WORK_CONTENT_DIR": "../career-portfolio/content",
+        "WORK_EXPLORE_DIR": "~/Developer/gorfednet/career-portfolio/staging/explore/owner",
+        "WORK_PREVIEWS_DIR": "~/Developer/gorfednet/career-portfolio/staging/previews"
+      }
+    },
+    "gorfednet/papers.4thcltr.com": {
+      "needsHeadroom": true
+    }
+  }
+}
