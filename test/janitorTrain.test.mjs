@@ -60,7 +60,7 @@ describe('classify', () => {
 
 describe('select', () => {
   it('fails closed on kind, hold and review', () => {
-    const base = { repo: REPO, labels: [], review: 'clean', headRef: 'a', headSha: 'b' }
+    const base = { repo: REPO, labels: [], review: 'clean', body: '', headRef: 'a', headSha: 'b'.repeat(40) }
     const { carry, left } = select([
       { ...base, number: 1, title: 'kit: refresh' },
       { ...base, number: 2, title: 'Add feature' },
