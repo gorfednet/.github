@@ -105,6 +105,15 @@ inputs:
       and a placeholder added to turn a check green satisfies it.
     required: false
     default: ""
+  sitemap-origin:
+    description: >-
+      Production base URL the sitemap's addresses are listed under, no trailing
+      slash. Opts the site in to check-sitemap-pages (V77), run against
+      publish-root: every listed URL must be self-canonical, carry no noindex or
+      meta refresh, and have real content. Empty skips the check. Opt-in because
+      a site must be clean first; turn it on per site after a kit refresh.
+    required: false
+    default: ""
 
 runs:
   using: composite
@@ -255,6 +264,16 @@ runs:
           --max-bytes "${{ inputs.og-max-bytes }}" \
           $(for page in ${{ inputs.metadata-pages }}; do printf -- '--page %s ' "$page"; done); then
           echo "::warning title=The social card is the image it says it is::An og:image does not resolve to an image of the stated kind and size. See this step's log."
+        fi
+
+    - name: Sitemap lists only pages worth indexing
+      if: ${{ !cancelled() && inputs.sitemap-origin != '' }}
+      shell: bash
+      run: |
+        if ! node "$VERIFICATION_GATE_KIT/bin/check-sitemap-pages.mjs" \
+          --root "${{ inputs.publish-root }}" \
+          --origin "${{ inputs.sitemap-origin }}"; then
+          echo "::warning title=Sitemap lists only pages worth indexing::A sitemap URL is not a page worth indexing (canonical, noindex, redirect or thin content). See this step's log."
         fi
 
     - name: Error pages ship with the site

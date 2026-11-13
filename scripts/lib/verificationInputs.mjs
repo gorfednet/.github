@@ -141,6 +141,15 @@ export const VERIFICATION_INPUTS = {
         type: string
         default: ""`,
 
+  'sitemap-origin': `      sitemap-origin:
+        description: >-
+          Production base URL the sitemap lists, no trailing slash. Opts the
+          site in to check-sitemap-pages (V77) against publish-root. Empty
+          skips it; turn it on per site once the site is clean.
+        required: false
+        type: string
+        default: ""`,
+
   'allow-machine-paths': `      allow-machine-paths:
         description: >-
           Space-separated substrings waiving a deliberate absolute path from
@@ -173,6 +182,7 @@ export const GATE_ARGUMENTS = {
   'require-jsonld': 'require-jsonld',
   'error-page-root': 'error-page-root',
   'error-page-markers': 'error-page-markers',
+  'sitemap-origin': 'sitemap-origin',
   'allow-machine-paths': 'allow-machine-paths',
 }
 
