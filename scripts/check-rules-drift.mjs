@@ -19,10 +19,12 @@
  *
  *   - ARCHIVES: dated archive files (a file name that starts with YYYY-MM-DD),
  *     which record what was true on that day and are not edited afterwards;
- *   - a clause that states a retirement with its date, e.g.
- *     "Cursor retired 2026-10-16". Only retired terms in that clause are
- *     excused: "Bugbot retired 2026-10-16; ask the coordinator session" still
- *     fails on the coordinator session, and an off-roster model never passes;
+ *   - a retirement statement: a list of retired terms joined to "retired" and
+ *     a date, either way round ("Cursor and Bugbot were retired on
+ *     2026-10-16", "the owner retired Cursor on 2026-10-16"). Only the
+ *     statement itself is excused. The rest of the line is checked, so
+ *     "Bugbot retired 2026-10-16, so ask the coordinator session" still
+ *     fails, and an off-roster model never passes;
  *   - LINES: exact line fragments in a named file. They excuse retired terms
  *     only; an off-roster model on the same line still fails.
  *
@@ -74,9 +76,16 @@ export const ARCHIVES = [
   },
 ]
 
+const TERM = '(?:`?\\.cursor/?`?|Cursor(?: Bugbot)?|Bugbot|coordinator sessions?|coordinators?)'
+const TERMS = `${TERM}(?:\\s*,?\\s*(?:and\\s+)?${TERM})*`
+const DATE = '\\d{4}-\\d{2}-\\d{2}'
 export const RETIREMENT_LINE = {
-  pattern: /\bretired\b.*\b\d{4}-\d{2}-\d{2}\b|\b\d{4}-\d{2}-\d{2}\b.*\bretired\b/i,
-  reason: 'A line that states a retirement and its date is the record of the retirement, not a use of the term.',
+  pattern: new RegExp(
+    `\\b${TERMS}\\s+(?:(?:was|were|is|are|has been|have been)\\s+)?retired(?:\\s+on)?\\s+${DATE}` +
+      `|\\bretired\\s+(?:the\\s+)?${TERMS}\\s+(?:on\\s+)?${DATE}`,
+    'gi',
+  ),
+  reason: 'A statement that names what was retired and when is the record of the retirement, not a use of the term.',
 }
 
 export const LINES = [
@@ -120,22 +129,14 @@ function rosterVerdict(family, version) {
   return `the roster has ${family} ${pinned}`
 }
 
-/** A line's clauses, split at `;`, `!`, `?` and a sentence-ending `.` (not the one in `.cursor`). */
-function clauses(line) {
-  return line.split(/[;!?]|\.(?=\s|$)/)
-}
-
 /**
- * Every drift finding on one line. With `excuseRetirements`, retired terms in a
- * clause that states a retirement and its date are left out; nothing else is.
+ * Every drift finding on one line. With `excuseRetirements`, the text of each
+ * retirement statement is cut out before retired terms are looked for, so only
+ * the statement is excused and the rest of the line is still read.
  */
 export function lineFindings(line, { excuseRetirements = false } = {}) {
-  const retired = new Set()
-  for (const clause of clauses(line)) {
-    if (excuseRetirements && RETIREMENT_LINE.pattern.test(clause)) continue
-    for (const term of RETIRED) if (term.pattern.test(clause)) retired.add(`retired term (${term.name})`)
-  }
-  const found = [...retired]
+  const text = excuseRetirements ? line.replace(RETIREMENT_LINE.pattern, ' ') : line
+  const found = RETIRED.filter((term) => term.pattern.test(text)).map((term) => `retired term (${term.name})`)
   for (const [, family, version] of line.matchAll(FAMILY)) {
     const why = rosterVerdict(family, version)
     if (why) found.push(`model ${family} ${version} outside the roster: ${why}`)
