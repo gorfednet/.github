@@ -30,7 +30,7 @@ gate_has_repo_flag() {
   local arg
   for arg in "$@"; do
     case "$arg" in
-      --repo|--repo=*) return 0 ;;
+      --repo) return 0 ;;
     esac
   done
   return 1

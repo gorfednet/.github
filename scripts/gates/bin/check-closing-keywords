@@ -11,4 +11,6 @@ done
 here=$(cd "$(dirname "$src")" && pwd)
 . "$here/_gate-env.sh"
 gate_prepare_env check-closing-keywords "$@"
+# Every gate gets the same repository: --repo wins, else GITHUB_REPOSITORY (set above).
+if ! gate_has_repo_flag "$@"; then set -- "$@" --repo "$GITHUB_REPOSITORY"; fi
 exec node "$here/../check-closing-keywords.mjs" "$@"

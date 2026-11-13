@@ -1,7 +1,8 @@
 #!/bin/bash
-# Asserts the gate wrappers derive GITHUB_REPOSITORY from the cwd's origin and GH_TOKEN from
-# `gh auth token`, and refuse when the origin is missing. Runs the real wrappers through the
-# real install script; `node` and `gh` are fakes that print what they receive.
+# Asserts the gate wrappers derive GITHUB_REPOSITORY from the cwd's origin, GH_TOKEN from
+# `gh auth token`, pass --repo to every gate, and refuse when the origin is missing. Runs the
+# real wrappers through the real install script; `node` and `gh` are fakes that print what
+# they receive.
 #
 #   bash scripts/gates/test/gate-env.test.sh
 set -u
@@ -14,7 +15,7 @@ fakebin="$work/fakebin"
 linkbin="$work/linkbin"
 mkdir -p "$fakebin" "$linkbin"
 
-# Fake node: prints the env the wrapper handed over and the arguments.
+# Fake node: prints the env the wrapper handed over and the arguments after the script path.
 cat > "$fakebin/node" <<'EOF'
 #!/bin/bash
 echo "REPO=${GITHUB_REPOSITORY-unset}"
@@ -51,10 +52,15 @@ make_clone() {
   if [ -n "$origin" ]; then git -C "$dir" remote add origin "$origin"; fi
 }
 
-# Run a wrapper from a directory with a clean environment apart from the fake PATH.
-run_gate() {
-  local dir=$1 name=$2; shift 2
-  (cd "$dir" && env -i HOME="$HOME" PATH="$fakebin:$linkbin:/usr/bin:/bin:/usr/sbin:/sbin" "$@" "$linkbin/$name" --pr 138) 2>"$work/stderr"
+# invoke <dir> <gate> [VAR=value ...] -- [gate arguments ...]
+# Runs the installed wrapper from <dir> with a clean environment apart from the fake PATH.
+invoke() {
+  local dir=$1 name=$2 envs=() args=()
+  shift 2
+  while [ $# -gt 0 ] && [ "$1" != "--" ]; do envs+=("$1"); shift; done
+  [ "${1-}" = "--" ] && shift
+  args=("$@")
+  (cd "$dir" && env -i HOME="$HOME" PATH="$fakebin:$linkbin:/usr/bin:/bin:/usr/sbin:/sbin" "${envs[@]}" "$linkbin/$name" "${args[@]}") 2>"$work/stderr"
 }
 
 expect_line() {
@@ -67,37 +73,55 @@ clone_https="$work/moonman-https"; make_clone "$clone_https" "https://github.com
 clone_none="$work/no-origin"; make_clone "$clone_none" ""
 clone_gitlab="$work/gitlab"; make_clone "$clone_gitlab" "git@gitlab.com:someone/else.git"
 
-out=$(run_gate "$clone_ssh" check-closing-keywords GITHUB_REPOSITORY= GH_TOKEN=)
+# Derivation and token, with the --repo appended to every gate.
+out=$(invoke "$clone_ssh" check-closing-keywords GITHUB_REPOSITORY= GH_TOKEN= -- --pr 138)
 expect_line "ssh origin derives gorfednet/MoonMan" "$out" "REPO=gorfednet/MoonMan"
 expect_line "unset GH_TOKEN comes from gh auth token" "$out" "TOKEN=tok-from-gh-auth"
-expect_line "arguments pass through" "$out" "ARGS=--pr 138"
+expect_line "arguments pass through, --repo appended (check-closing-keywords)" "$out" "ARGS=--pr 138 --repo gorfednet/MoonMan"
 
-out=$(run_gate "$clone_https" assert-checks-started GITHUB_REPOSITORY= GH_TOKEN=)
+out=$(invoke "$clone_https" assert-checks-started GITHUB_REPOSITORY= GH_TOKEN= -- --pr 138)
 expect_line "https origin derives gorfednet/MoonMan" "$out" "REPO=gorfednet/MoonMan"
+expect_line "--repo appended (assert-checks-started)" "$out" "ARGS=--pr 138 --repo gorfednet/MoonMan"
 
-out=$(run_gate "$clone_ssh" review-status GITHUB_REPOSITORY=gorfednet/other GH_TOKEN=kept)
+out=$(invoke "$clone_ssh" review-status GITHUB_REPOSITORY= GH_TOKEN= -- --pr 138)
+expect_line "--repo appended (review-status)" "$out" "ARGS=--pr 138 --repo gorfednet/MoonMan"
+
+# A preset GITHUB_REPOSITORY is not overridden by the origin, and the gate gets that repo.
+out=$(invoke "$clone_ssh" review-status GITHUB_REPOSITORY=gorfednet/other GH_TOKEN=kept -- --pr 138)
 expect_line "preset GITHUB_REPOSITORY is not overridden" "$out" "REPO=gorfednet/other"
+expect_line "preset GITHUB_REPOSITORY reaches the gate as --repo" "$out" "ARGS=--pr 138 --repo gorfednet/other"
 expect_line "preset GH_TOKEN is kept" "$out" "TOKEN=kept"
 
+out=$(invoke "$clone_ssh" assert-checks-started GITHUB_REPOSITORY=gorfednet/other GH_TOKEN=kept -- --pr 138)
+expect_line "preset GITHUB_REPOSITORY reaches assert-checks-started as --repo" "$out" "ARGS=--pr 138 --repo gorfednet/other"
+
+# An explicit --repo is kept as given; no second --repo is added.
+out=$(invoke "$clone_ssh" review-status GITHUB_REPOSITORY= GH_TOKEN= -- --pr 138 --repo gorfednet/MoonMan)
+expect_line "explicit --repo is not duplicated" "$out" "ARGS=--pr 138 --repo gorfednet/MoonMan"
+out=$(invoke "$clone_ssh" review-status GITHUB_REPOSITORY=gorfednet/other GH_TOKEN=kept -- --pr 138 --repo gorfednet/MoonMan)
+expect_line "explicit --repo beats a preset GITHUB_REPOSITORY" "$out" "ARGS=--pr 138 --repo gorfednet/MoonMan"
+
+# The --repo=owner/name form is not parsed by the gates, so it is not treated as a repo flag.
+out=$(invoke "$clone_ssh" review-status GITHUB_REPOSITORY= GH_TOKEN= -- --pr 138 --repo=gorfednet/other)
+expect_line "--repo=x does not count as --repo: derived --repo is still appended" "$out" "ARGS=--pr 138 --repo=gorfednet/other --repo gorfednet/MoonMan"
+
 # Missing origin: refuse, and never reach node.
-if out=$(run_gate "$clone_none" review-status GITHUB_REPOSITORY= GH_TOKEN=); then
-  fail "missing origin refuses" "exit 0; output: $out"
+out=$(invoke "$clone_none" review-status GITHUB_REPOSITORY= GH_TOKEN= -- --pr 138)
+status=$?
+if [ "$status" -ne 0 ] && grep -q "origin remote" "$work/stderr" && ! printf '%s' "$out" | grep -q '^REPO='; then
+  pass "missing origin refuses before node runs"
 else
-  if grep -q "origin remote" "$work/stderr" && ! printf '%s' "$out" | grep -q '^REPO='; then
-    pass "missing origin refuses before node runs"
-  else
-    fail "missing origin refuses before node runs" "stderr: $(cat "$work/stderr")"
-  fi
+  fail "missing origin refuses before node runs" "exit $status; stderr: $(cat "$work/stderr")"
 fi
 
 # Missing origin with --repo: allowed, the flag decides.
-out=$(cd "$clone_none" && env -i HOME="$HOME" PATH="$fakebin:$linkbin:/usr/bin:/bin" GITHUB_REPOSITORY= GH_TOKEN=x "$linkbin/review-status" --pr 138 --repo gorfednet/MoonMan 2>"$work/stderr")
+out=$(invoke "$clone_none" review-status GITHUB_REPOSITORY= GH_TOKEN=x -- --pr 138 --repo gorfednet/MoonMan)
 status=$?
 if [ "$status" -eq 0 ]; then pass "missing origin with --repo runs"; else fail "missing origin with --repo runs" "exit $status: $(cat "$work/stderr")"; fi
 expect_line "--repo run passes the flag through" "$out" "ARGS=--pr 138 --repo gorfednet/MoonMan"
 
 # Non-GitHub origin: refuse the same way.
-if run_gate "$clone_gitlab" check-closing-keywords GITHUB_REPOSITORY= GH_TOKEN= >/dev/null; then
+if invoke "$clone_gitlab" check-closing-keywords GITHUB_REPOSITORY= GH_TOKEN= -- --pr 138 >/dev/null; then
   fail "non-github origin refuses" "exit 0"
 else
   pass "non-github origin refuses"
