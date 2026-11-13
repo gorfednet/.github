@@ -167,7 +167,17 @@
       "Bash(gate-run *git push* -d*)",
       "Bash(gate-run *git push* :*)",
       "Bash(gate-run *git clean *)",
-      "Bash(gate-run *git -C *)"
+      "Bash(gate-run *git -C *)",
+      "Bash(git push*--mirror*)",
+      "Bash(git push*--prune*)",
+      "Bash(git -C * push*--mirror*)",
+      "Bash(git -C * push*--prune*)",
+      "Bash(git -c * push*--mirror*)",
+      "Bash(git -c * push*--prune*)",
+      "Bash(hc *git push*--mirror*)",
+      "Bash(hc *git push*--prune*)",
+      "Bash(gate-run *git push*--mirror*)",
+      "Bash(gate-run *git push*--prune*)"
     ],
     "defaultMode": "auto"
   },
