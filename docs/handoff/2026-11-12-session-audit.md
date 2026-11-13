@@ -25,7 +25,7 @@ Ship-bot's draft rule (.github 119) is not merged or installed. Every draft whos
 
 | Session | Blocker sent |
 |---|---|
-| Soft 404 indexing issues on gorfmusic.com | gorfmusic.com PR 49 merged but ship-bot's deploy and rollback failed: `make deploy` in the work clone imports `vite` with no `node_modules`. Repo blocked in ship-bot. Fix, deploy, verify through DoH, `ship-bot --unblock gorfmusic.com`. |
+| Soft 404 indexing issues on gorfmusic.com | gorfmusic.com PR 49 merged but ship-bot's deploy and rollback failed: `make deploy` in the work clone imports `vite` with no `node_modules`. Repo blocked in ship-bot. Fix, deploy, verify through DoH, `ship-bot --unblock gorfmusic.com`. Passed on by that session to "Fix gorfmusic.com soft 404s in Search Console" (local_5f091f01-53fd-430f-93f8-18e3a512405f), which owns PR 49 and reports back to the audit session. |
 | Swiss footer: 4thcltr.com, then heuristics, papers | 4thcltr 257 red on `e2e (8)`: `wordmark-fours.spec.ts:275` "rests within 2200ms of the second press". Only thing between 257 and merge. |
 | One footer: finish PRs 257, 87, papers | papers.4thcltr.com blocked in ship-bot since 11 November: deploy of PR 33 failed verify on 18 `wordmark.spec.ts` failures. Fix cause, unblock. Coordinate with the 257 session. |
 | A1: kit refresh and drift check | gorfed.net 139, promptboi 68, MoonMan 326 red. Drafts are not auto-labelled. Mark the green ones ready and label them. (Queued: A1 was mid-turn.) |
