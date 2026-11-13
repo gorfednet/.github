@@ -14,7 +14,8 @@
       "lapsedBacklog": [{ "id": "stale-entry", "status": "confirmed-bug", "reviewBy": "2026-10-01" }],
       "lastDeploy": { "name": "deploy", "at": "2026-11-06T15:00:00Z", "url": "https://github.com/gorfednet/4thcltr.com/actions/runs/1" },
       "incidents7d": 2,
-      "dependabotRed": 1
+      "dependabotRed": 1,
+      "kitVersion": null
     },
     {
       "slug": "gorfednet/career-portfolio",

@@ -379,6 +379,86 @@ describe('--validate', () => {
     assert.match(out, /validate: 1 repo\(s\) match their expectedChecks/)
   })
 
+  const run = (name, conclusion) => ({ name, status: 'completed', conclusion, started_at: '2026-10-09T12:00:00Z' })
+  const threeMerged = [merged(5, 's1'), merged(4, 's2'), merged(3, 's3')]
+
+  it('a check that was skipped or neutral on every sampled pull request gated nothing, so it is not unexpected', async () => {
+    const same = [run('check / check', 'success'), run('heal-drift', 'skipped'), run('info', 'neutral')]
+    const { code, out } = await validate(new FakeGitHub({ mergedPulls: threeMerged, runs: same }))
+    assert.equal(code, 0, out)
+    assert.doesNotMatch(out, /heal-drift|info/)
+  })
+
+  it('near miss: an unlisted check that succeeded on 1 of 3 (skipped on the others) is still unexpected', async () => {
+    const skipped = [run('check / check', 'success'), run('regenerate', 'skipped')]
+    const gh = new FakeGitHub({
+      mergedPulls: threeMerged,
+      runsBySha: { s1: [run('check / check', 'success'), run('regenerate', 'success')], s2: skipped, s3: skipped },
+    })
+    const { code, out } = await validate(gh)
+    assert.equal(code, 1, out)
+    assert.match(out, /  unexpected regenerate \(on 3 of 3\)/)
+  })
+
+  it('an expected check that was skipped on a sampled pull request is missing, since it gated nothing there', async () => {
+    const gh = new FakeGitHub({
+      mergedPulls: threeMerged,
+      runsBySha: { s1: [run('check / check', 'success')], s2: [run('check / check', 'skipped')], s3: [run('check / check', 'success')] },
+    })
+    const { code, out } = await validate(gh)
+    assert.equal(code, 1, out)
+    assert.match(out, /  missing    check \/ check \(on 2 of 3, skipped or neutral on 1\)/)
+  })
+
+  it('a failed unlisted check is still unexpected', async () => {
+    const gh = new FakeGitHub({ mergedPulls: threeMerged, runs: [run('check / check', 'success'), run('extra-job', 'failure')] })
+    const { code, out } = await validate(gh)
+    assert.equal(code, 1)
+    assert.match(out, /  unexpected extra-job \(on 3 of 3\)/)
+  })
+
+  it('a commit status has no skipped state and still counts as unexpected', async () => {
+    const gh = new FakeGitHub({ mergedPulls: threeMerged, runs: greenRuns(['check / check']), statuses: [{ context: 'ci/legacy', state: 'success', created_at: '2026-10-09T12:00:00Z', id: 1 }] })
+    const { out } = await validate(gh)
+    assert.match(out, /  unexpected ci\/legacy \(on 3 of 3\)/)
+  })
+
+  it('coveredChecks drops matched children behind an aggregate; a name that only contains the prefix elsewhere is still reported', async () => {
+    const runs = greenRuns(['check / check', 'browser-compat / compat-success', 'browser-compat / compat (chromium)', 'browser-compat / compat (firefox)', 'other / browser-compat / compat (x)', 'compat ('])
+    const go = async (covered) => {
+      const x = harness({
+        live: false,
+        github: new FakeGitHub({ mergedPulls: threeMerged, runs }),
+        configOverrides: { repos: [repoEntry({ envFiles: [], expectedChecks: ['check / check', 'browser-compat / compat-success'], coveredChecks: covered })] },
+      })
+      const code = await main(['--validate'], x.deps)
+      return { code, out: x.out.join('\n') }
+    }
+    const withCovered = await go(['browser-compat / compat ('])
+    assert.equal(withCovered.code, 1)
+    assert.doesNotMatch(withCovered.out, /unexpected browser-compat \/ compat \(/)
+    assert.match(withCovered.out, /  unexpected compat \( \(on 3 of 3\)/)
+    assert.match(withCovered.out, /  unexpected other \/ browser-compat \/ compat \(x\) \(on 3 of 3\)/)
+    const without = await go([])
+    assert.match(without.out, /unexpected browser-compat \/ compat \(chromium\)/)
+  })
+
+  it('requireChecksAfterLabel samples labelled merges only: an unlabelled merge never ran the full tier', async () => {
+    const lab = (number, sha) => ({ ...merged(number, sha), labels: [{ name: 'ready-to-merge' }] })
+    const full = [run('check / check', 'success'), run('axe-webkit', 'success')]
+    const gh = new FakeGitHub({
+      mergedPulls: [merged(9, 'u1'), lab(8, 's1'), lab(7, 's2'), lab(6, 's3')],
+      runsBySha: { u1: [run('check / check', 'success')], s1: full, s2: full, s3: full },
+    })
+    const x = harness({ live: false, github: gh, configOverrides: { repos: [repoEntry({ envFiles: [], expectedChecks: ['check / check', 'axe-webkit'], requireChecksAfterLabel: true })] } })
+    const code = await main(['--validate'], x.deps)
+    assert.equal(code, 0, x.out.join('\n'))
+    assert.match(x.out.join('\n'), /last 3 merged: #8, #7, #6/)
+    // near miss: without the flag the unlabelled merge is sampled and axe-webkit reads as missing
+    const y = harness({ live: false, github: gh, configOverrides: { repos: [repoEntry({ envFiles: [], expectedChecks: ['check / check', 'axe-webkit'] })] } })
+    assert.equal(await main(['--validate'], y.deps), 1)
+  })
+
   it('a repo with no merged pull request, or an API error, is a failure to validate, not a pass', async () => {
     const { code, out } = await validate(new FakeGitHub({ mergedPulls: [] }))
     assert.equal(code, 1)
