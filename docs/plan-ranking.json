@@ -1,0 +1,42 @@
+{
+  "$comment": "Hand-kept input to scripts/plan-of-record.mjs (plan row 4.1). The owner's priority order, 9 November 2026: infrastructure first, then 4thcltr.com with its subdomains, then gorfed.net, the resume and job engine, MoonMan, BinderCurve. Repositories the owner did not rank sit last. Only repository names live here: entry ids and titles stay in their own repositories, because this one is public.",
+  "tiers": [
+    { "rank": 1, "name": "Infrastructure and automation", "repos": [
+      { "slug": "gorfednet/.github", "dir": "gorfednet.github" },
+      { "slug": "gorfednet/ops", "dir": "ops", "backlog": "docs/operating-backlog.json" }
+    ] },
+    { "rank": 2, "name": "4thcltr.com and its subdomains", "repos": [
+      { "slug": "gorfednet/4thcltr.com", "dir": "4thcltr.com" },
+      { "slug": "gorfednet/heuristics.4thcltr.com", "dir": "heuristics.4thcltr.com" },
+      { "slug": "gorfednet/assess", "dir": "assess" },
+      { "slug": "gorfednet/papers.4thcltr.com", "dir": "papers.4thcltr.com" },
+      { "slug": "gorfednet/intake", "dir": "intake" },
+      { "slug": "gorfednet/propose", "dir": "propose" },
+      { "slug": "gorfednet/broadcast", "dir": "broadcast" }
+    ] },
+    { "rank": 3, "name": "gorfed.net", "repos": [
+      { "slug": "gorfednet/gorfed.net", "dir": "gorfed.net" },
+      { "slug": "gorfednet/ask-collector", "dir": "ask-collector" }
+    ] },
+    { "rank": 4, "name": "Resume and job engine", "repos": [
+      { "slug": "gorfednet/career-portfolio", "dir": "career-portfolio" }
+    ] },
+    { "rank": 5, "name": "MoonMan", "repos": [
+      { "slug": "gorfednet/MoonMan", "dir": "MoonMan" }
+    ] },
+    { "rank": 6, "name": "BinderCurve", "repos": [
+      { "slug": "gorfednet/bindercurve.com", "dir": "bindercurve.com" }
+    ] },
+    { "rank": 7, "name": "Other sites (not ranked by the owner)", "repos": [
+      { "slug": "gorfednet/promptboi.com", "dir": "promptboi.com" },
+      { "slug": "gorfednet/ssatcy.com", "dir": "ssatcy.com" },
+      { "slug": "gorfednet/denseware.com", "dir": "denseware.com" },
+      { "slug": "gorfednet/gorfmusic.com", "dir": "gorfmusic.com" },
+      { "slug": "gorfednet/anal0g.org", "dir": "anal0g.org" },
+      { "slug": "gorfednet/blackpixelrecords.com", "dir": "blackpixelrecords.com" },
+      { "slug": "gorfednet/subrythm.com", "dir": "subrythm.com" },
+      { "slug": "gorfednet/rowanmcarthur.com", "dir": "rowanmcarthur.com" },
+      { "slug": "gorfednet/ACID2REAPER", "dir": "ACID2Reaper" }
+    ] }
+  ]
+}

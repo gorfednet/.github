@@ -108,9 +108,14 @@ export function dependabotRed(prs) {
 export const KIT_MANIFEST = 'verification-kit/MANIFEST.json'
 export const kitPathFor = (project) => project?.evidencePaths?.[KIT_MANIFEST] ?? KIT_MANIFEST
 
+/** fleet.json projects stood down with monitorClass dormant (TowIt, wychwood: archived on GitHub, plan row 4.7). */
+export const dormantRepos = (fleet) => fleet.projects.filter((p) => p.monitorClass === 'dormant').map((p) => p.slug)
+
+/** Dormant projects are left out, from fleet.json and ship-bot alike, and named once in the dormant line instead. */
 export function repoList(fleet, shipBotConfig) {
-  const slugs = fleet.projects.map((p) => p.slug)
-  for (const repo of shipBotConfig?.repos ?? []) if (repo.slug && !slugs.includes(repo.slug)) slugs.push(repo.slug)
+  const dormant = dormantRepos(fleet)
+  const slugs = fleet.projects.map((p) => p.slug).filter((s) => !dormant.includes(s))
+  for (const repo of shipBotConfig?.repos ?? []) if (repo.slug && !slugs.includes(repo.slug) && !dormant.includes(repo.slug)) slugs.push(repo.slug)
   return slugs
 }
 
@@ -332,7 +337,7 @@ if (isMain(import.meta.url)) {
   }
   // With --from the repository data is the earlier snapshot's, so its generatedAt is kept.
   const prior = arg('--from') ? JSON.parse(readFileSync(arg('--from'), 'utf8')).generatedAt : null
-  const status = { generatedAt: prior ?? now.toISOString(), renderedAt: now.toISOString(), repos }
+  const status = { generatedAt: prior ?? now.toISOString(), renderedAt: now.toISOString(), repos, dormant: dormantRepos(fleet) }
   if (process.argv.includes('--local')) status.dirtyLocal = dirtyLocal(join(homedir(), 'Developer', 'gorfednet'))
   writeFileSync(outPath, `${JSON.stringify(status, null, 2)}\n`)
   console.log(`fleet-status: ${repos.length} repositories, ${failed} unavailable -> ${outPath}`)
