@@ -50,3 +50,4 @@ Weekly 9% at 11:21 ET. Full speed, cost-aware. One line to the owner at about 90
 - [ ] Expiry-watch false alarms fixed; owner-only dates sent as one weekly line (ops sweep session)
 - [x] GitHub Actions budget at US$150, stop at limit (owner, 13 Nov 18:20 ET)
 - [ ] 1 Dec morning: remind the owner to set the Actions budget to US$100
+- [ ] 14 Nov 10:07 ET: remind the owner about the 3.9 NAS backup steps (restore drill copy, music yes or no, key in the password manager). He asked; a cron is set in Desk 6, so a successor re-sets it if Desk has rotated.
