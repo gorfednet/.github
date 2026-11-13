@@ -48,3 +48,5 @@ Updated 13 Nov 2026, 11:49 ET.
 ## Usage
 Weekly 9% at 11:21 ET. Full speed, cost-aware. One line to the owner at about 90%, since he has a one-time reset.
 - [ ] Expiry-watch false alarms fixed; owner-only dates sent as one weekly line (ops sweep session)
+- [x] GitHub Actions budget at US$150, stop at limit (owner, 13 Nov 18:20 ET)
+- [ ] 1 Dec morning: remind the owner to set the Actions budget to US$100
