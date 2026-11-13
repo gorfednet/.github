@@ -1,6 +1,6 @@
 # Fleet checklist (Desk keeps this current; posted to the owner on every pass and every deploy)
 
-Updated 13 Nov 2026, 10:40 ET.
+Updated 13 Nov 2026, 10:50 ET.
 
 ## Bottlenecks
 - [x] Ship-bot API use cut from about 1,800 to about 100 calls an hour (.github 143, merged 10:35 ET; reinstall in progress)
@@ -14,9 +14,9 @@ Updated 13 Nov 2026, 10:40 ET.
 - [x] Gate commands on PATH (1.7, .github 141, merged 10:35 ET, installed)
 - [ ] Briefs folder and handoff (1.1, .github 133)
 - [ ] Rules drift guard (5.4, cloud session running)
-- [ ] Janitor live with auto-close (1.5, queued)
+- [ ] Janitor live with auto-close (1.5, running)
 - [ ] Hygiene counts in STATUS (1.6, queued)
-- [ ] Herdr fixes (1.8, queued; ops 62 open)
+- [ ] Herdr fixes (1.8, running; ops 62 open)
 
 ## Repos
 - [ ] Kit refresh to 0.61 across 10 repos (2.9): 3 merged (blackpixel, subrythm, gorfed.net), 6 labelled, bindercurve in CI
@@ -26,10 +26,10 @@ Updated 13 Nov 2026, 10:40 ET.
 - [ ] Backlog entries marked landed, plus reviewer added to 5 repos (4.2/5.3, 9 PRs, 1 labelled)
 - [ ] MoonMan 325 tidy (evidence folders deleted)
 - [ ] heuristics 75 content move, then Costco 76 and Verizon 77 (2.10, captures running); assess 72 closed with a reason (assess 76 labelled)
-- [ ] Drain uncommitted worktrees (2.3, queued)
-- [ ] Close duplicate drafts (2.4, queued)
-- [ ] .github apt DNS red (2.5, queued)
-- [ ] ssatcy and 4thcltr mains green (3.5, queued)
+- [ ] Drain uncommitted worktrees (2.3, running)
+- [ ] Close duplicate drafts (2.4, running)
+- [ ] .github apt DNS red (2.5, running)
+- [ ] ssatcy and 4thcltr mains green (3.5, running)
 - [ ] Dependabot reds on WebKit 1.64: bindercurve 651, promptboi 56 (3.6, queued)
 
 ## Parked or later
