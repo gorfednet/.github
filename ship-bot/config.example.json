@@ -135,10 +135,20 @@
       "envFiles": [
         ".deploy-env"
       ],
+      "env": {
+        "WORK_CONTENT_DIR": "../career-portfolio/content",
+        "WORK_EXPLORE_DIR": "~/Developer/gorfednet/career-portfolio/staging/explore/owner",
+        "WORK_PREVIEWS_DIR": "~/Developer/gorfednet/career-portfolio/staging/previews"
+      },
       "siblings": [
         {
           "dir": "gorfednet.github",
           "slug": "gorfednet/.github",
+          "branch": "main"
+        },
+        {
+          "dir": "career-portfolio",
+          "slug": "gorfednet/career-portfolio",
           "branch": "main"
         }
       ],
@@ -162,7 +172,7 @@
           "timeoutMinutes": 20
         }
       ],
-      "note": "make deploy builds dist/ (npm scripts + python3), requires WEB3FORMS_ACCESS_KEY from .deploy-env, rsyncs, restarts the static nginx container on dapyllil and compares the live index.html byte for byte (nas-ssh-deploy.sh)."
+      "note": "make deploy builds dist/ (npm scripts + python3), with /work/ from career-portfolio main (a sibling) and the owner-only archive from the owner's gitignored staging/ (deploy.sh refuses a fixture build: 13 November 2026, PR 140), requires WEB3FORMS_ACCESS_KEY from .deploy-env, rsyncs, restarts the static nginx container on dapyllil and compares the live index.html byte for byte (nas-ssh-deploy.sh)."
     },
     {
       "slug": "gorfednet/gorfmusic.com",
@@ -349,7 +359,9 @@
       "expectedChecks": [
         "check / check"
       ],
-      "envFiles": [],
+      "envFiles": [
+        ".deploy-env"
+      ],
       "siblings": [
         {
           "dir": "gorfednet.github",
@@ -368,7 +380,7 @@
           "timeoutMinutes": 20
         }
       ],
-      "note": "deploy.sh writes route directories (404/, 500/, <page>/index.html) into the checkout before rsyncing it with --delete; the next deploy's git clean removes them. The owner's clone has no .deploy-env, so this deploys with the shared helper's defaults, as a manual deploy from that clone does today; accepted by the main session 2026-10-09."
+      "note": "deploy.sh writes route directories (404/, 500/, <page>/index.html) into the checkout before rsyncing it with --delete; the next deploy's git clean removes them. site-deploy.sh needs SITE from .deploy-env: without envFiles the cleaned workspace had none and the deploy refused (13 November 2026, PR 29)."
     },
     {
       "slug": "gorfednet/rowanmcarthur.com",
@@ -775,6 +787,7 @@
       "slug": "gorfednet/papers.4thcltr.com",
       "dir": "papers.4thcltr.com",
       "mode": "deploy",
+      "needsHeadroom": true,
       "claudeReview": true,
       "live": false,
       "expectedChecks": [
@@ -843,7 +856,7 @@
         }
       ],
       "rollback": [],
-      "note": "Observation first (live false). Equivalent to make deploy (verify, check-release, indexnow plan, upload, ping), split so the pre-upload gates are setup. rollback is an explicit empty list: nothing after the upload can fail the release (the ping ends in || true, and the engine switches itself back on a live mismatch), so a failure anywhere is reported and the repository blocked, never a redeploy of the previous commit (the engine refuses it) and never a make rollback that would step a verified release back. A ping that hangs past its timeout is such a failure: the release stands, the log says why."
+      "note": "Observation first (live false). Equivalent to make deploy (verify, check-release, indexnow plan, upload, ping), split so the pre-upload gates are setup. rollback is an explicit empty list: nothing after the upload can fail the release (the ping ends in || true, and the engine switches itself back on a live mismatch), so a failure anywhere is reported and the repository blocked, never a redeploy of the previous commit (the engine refuses it) and never a make rollback that would step a verified release back. A ping that hangs past its timeout is such a failure: the release stands, the log says why. needsHeadroom: make verify runs the full Playwright suite on this Mac, and its frame-timing specs fail when the load is above the core count (papers 35, 13 November 2026)."
     },
     {
       "slug": "gorfednet/TowIt",
