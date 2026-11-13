@@ -1,11 +1,11 @@
 {
-  "generatedAt": "2026-11-13T06:41:21.299Z",
-  "renderedAt": "2026-11-13T06:41:21.299Z",
+  "generatedAt": "2026-11-13T13:27:08.565Z",
+  "renderedAt": "2026-11-13T13:27:08.565Z",
   "repos": [
     {
       "slug": "gorfednet/bindercurve.com",
       "redacted": true,
-      "mainRed": false,
+      "mainRed": true,
       "openPrCount": 2,
       "lapsedBacklogCount": 0,
       "dependabotRedCount": 1,
@@ -24,7 +24,7 @@
       "slug": "gorfednet/gorfed.net",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 3,
+      "openPrCount": 5,
       "lapsedBacklogCount": 0,
       "dependabotRedCount": 0,
       "kitVersion": "0.49.0"
@@ -78,7 +78,7 @@
       "slug": "gorfednet/promptboi.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 3,
+      "openPrCount": 4,
       "lapsedBacklogCount": 3,
       "dependabotRedCount": 1,
       "kitVersion": "0.49.0"
@@ -125,6 +125,39 @@
       "mainRed": false,
       "openPrs": [
         {
+          "number": 139,
+          "title": "Desk log and briefs, 13 November",
+          "ageDays": 0,
+          "labels": [],
+          "draft": true,
+          "review": "not-run",
+          "ci": "pending",
+          "next": "Desk appends each pass's line until the 02:00 ET rotation (hold: the log is still being written)",
+          "author": "gorfednet"
+        },
+        {
+          "number": 138,
+          "title": "Plan of record, Desk brief and reassessment handoff, 13 November",
+          "ageDays": 0,
+          "labels": [],
+          "draft": false,
+          "review": "not-run",
+          "ci": "pending",
+          "next": "merge",
+          "author": "gorfednet"
+        },
+        {
+          "number": 137,
+          "title": ".github: check-sitemap-pages ships in the kit but the shared verification gate does not run it",
+          "ageDays": 0,
+          "labels": [],
+          "draft": true,
+          "review": "not-run",
+          "ci": "green",
+          "next": "Push the branch, open the PR, then set the entry to `in-review` with its `pr`.",
+          "author": "gorfednet"
+        },
+        {
           "number": 136,
           "title": "Handoff: session audit 12 November",
           "ageDays": 0,
@@ -156,8 +189,8 @@
             "ready-to-merge"
           ],
           "draft": false,
-          "review": "clean",
-          "ci": "green",
+          "review": "not-run",
+          "ci": "pending",
           "next": null,
           "author": "gorfednet"
         },
@@ -178,18 +211,16 @@
           "ageDays": 1,
           "labels": [],
           "draft": true,
-          "review": "not-run",
-          "ci": "green",
-          "next": "Review round 7 finding (thread 4539845276): once the bot labels a draft, `## Next` is never re-read, so a wait written after the label is ignored. Record on the head state that the bot labelled it; in `processPull` re-run `draftClaim` on every bot-labelled pull request before merging and refuse (dropping the label live) when the claim is gone or the head moved. Tests for both. Then `claude review` on that head.",
+          "review": "findings",
+          "ci": "pending",
+          "next": "merge",
           "author": "gorfednet"
         },
         {
           "number": 118,
           "title": "Desk standing brief",
           "ageDays": 1,
-          "labels": [
-            "ready-to-merge"
-          ],
+          "labels": [],
           "draft": false,
           "review": "findings",
           "ci": "green",
@@ -432,7 +463,7 @@
       "slug": "gorfednet/MoonMan",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 3,
+      "openPrCount": 5,
       "lapsedBacklogCount": 0,
       "dependabotRedCount": 0,
       "kitVersion": null
@@ -451,12 +482,7 @@
     },
     {
       "slug": "gorfednet/career-portfolio",
-      "redacted": true,
-      "mainRed": false,
-      "openPrCount": 1,
-      "lapsedBacklogCount": 0,
-      "dependabotRedCount": 0,
-      "kitVersion": "0.61.0"
+      "unavailable": "unreadable"
     },
     {
       "slug": "gorfednet/heuristics.4thcltr.com",
