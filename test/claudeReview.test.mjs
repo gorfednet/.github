@@ -279,6 +279,13 @@ describe('review round cap (plan row 5.8)', () => {
     assert.equal(claudeReviewVerdict(planted(4, 2, 0), HEAD).state, 'findings')
   })
 
+  it('counts distinct heads: repeat reviews of one head are one round', () => {
+    const comments = Array.from({ length: 5 }, (_, i) => bot(`Reviewed.\n<!-- claude-review head=${HEAD} findings=1 blocking=0 -->`, `2026-11-13T10:0${i}:00Z`))
+    const verdict = claudeReviewVerdict(comments, HEAD)
+    assert.equal(verdict.round, 1)
+    assert.equal(verdict.state, 'findings')
+  })
+
   it('gives a verdict line without blocking no relief', () => {
     const comments = planted(5, 2, 0)
     comments[4].body = `Reviewed.\n<!-- claude-review head=${HEAD} findings=2 -->`

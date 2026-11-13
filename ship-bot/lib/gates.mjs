@@ -234,7 +234,14 @@ const firstLine = (result, redactor) => {
 export function parseReviewStatus(result, prNumber) {
   const m = /^#(\d+)\s+(clean|findings|not-run)\s*(.*)$/m.exec(result.stdout ?? '')
   if (!m || Number(m[1]) !== prNumber) return { state: 'undetermined', detail: 'unrecognised output from review-status' }
-  const state = m[2]
+  let state = m[2]
+  // Past the review round cap a Low-only round prints `clean ... triage by reply` (plan row 5.8).
+  // That is findings with a relief for the human gate, not a clean review: the bot still needs
+  // `requireClean` and every thread answered, so it reads it as findings.
+  if (state === 'clean' && /triage by reply/.test(m[3])) {
+    if (result.code !== 0 || result.timedOut || result.error) return { state: 'undetermined', detail: `printed clean but exited ${result.code}` }
+    return { state: 'findings', detail: m[3] }
+  }
   // Exit code and printed state must agree; if they do not, trust neither.
   if (result.code !== (state === 'clean' ? 0 : 1) || result.timedOut || result.error) {
     return { state: 'undetermined', detail: `printed ${state} but exited ${result.code}` }

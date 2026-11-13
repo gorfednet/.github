@@ -26,21 +26,23 @@ export function claudeReviewVerdict(comments, head) {
   let latest = null
   const reviewedHeads = []
   const stamps = []
+  const heads = []
   for (const comment of comments) {
     if (comment?.user?.login !== REVIEW_BOT_LOGIN) continue
     const match = MARKER.exec(comment.body ?? '')
     if (!match) continue
     reviewedHeads.push(match[1])
     stamps.push(String(comment.created_at ?? ''))
+    heads.push(match[1])
     if (match[1] !== head) continue
     if (!latest || String(comment.created_at ?? '') >= String(latest.created_at ?? '')) {
       latest = { ...comment, findings: Number(match[2]), blocking: match[3] === undefined ? null : Number(match[3]) }
     }
   }
   if (!latest) return { state: 'not-run', findings: 0, round: 0, cap: REVIEW_ROUND_CAP, triageOnly: false, url: null, reviewedHeads }
-  // The round is this verdict's place among every verdict the bot has posted on the pull request.
+  // The round is the number of distinct heads reviewed up to this verdict, so repeat reviews of one head are one round.
   const at = String(latest.created_at ?? '')
-  const round = stamps.filter((stamp) => stamp <= at).length
+  const round = new Set(heads.filter((_, i) => stamps[i] <= at)).size
   const triageOnly = latest.findings > 0 && latest.blocking === 0 && round > REVIEW_ROUND_CAP
   return {
     state: latest.findings === 0 || triageOnly ? 'clean' : 'findings',
