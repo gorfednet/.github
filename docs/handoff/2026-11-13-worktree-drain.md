@@ -50,7 +50,7 @@ Every dirty worktree and sibling clone under `~/Developer/gorfednet/` was read. 
 ## Open
 
 - BinderCurve `shimmering-snacking-kitten`: the work is the local commit on `drain/shimmering-snacking-kitten` in that worktree (a patch copy is in the Desk session notes folder). A builder must find which unit test it breaks, fix it, and open the PR. Do not prune that worktree until then.
-- Pruning (plan 1.9) can start once the PRs above are merged or closed: every worktree listed holds nothing that is not on a pushed branch, except the `promptboi-pr56` clone and the scratch scripts.
+- Pruning (plan 1.9) can start once the PRs above are merged or closed. Never prune three places: the BinderCurve `shimmering-snacking-kitten` worktree and the wychwoodresort.com clone (each holds a commit that exists only locally), and the `promptboi-pr56` clone (live work). The scratch `*.tmp.*` scripts in the assess clones also exist only there.
 
 ## Next
 
