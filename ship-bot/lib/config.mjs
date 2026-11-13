@@ -46,7 +46,7 @@ const SCRIPT_KEYS = ['assertChecksStarted', 'reviewStatus', 'checkClosingKeyword
 
 const COMMON_REPO_KEYS = ['slug', 'dir', 'mode', 'note', 'todo', 'live', 'claudeReview', 'expectedChecks', 'coveredChecks', 'requireChecksAfterLabel', 'draftReady']
 const NTFY_KEYS = new Set(['url', 'topic', 'tokenFile'])
-const GITHUB_APP_KEYS = new Set(['appId', 'privateKeyFile', 'owner', 'installationId'])
+const GITHUB_APP_KEYS = new Set(['appId', 'privateKeyFile', 'owner', 'installationId', 'slug'])
 const DEPLOY_REPO_KEYS = [
   'sourceDir',
   'workDir',
@@ -323,6 +323,7 @@ export function validateConfig(raw) {
       else if (/^(\.|[^~/])/.test(app.privateKeyFile.trim())) problems.push('githubApp.privateKeyFile: must be an absolute path or start with ~/')
       if (app.owner !== undefined && !(isNonEmptyString(app.owner) && /^[\w.-]+$/.test(app.owner))) problems.push('githubApp.owner: must be a GitHub account name')
       if (app.installationId !== undefined && !(Number.isInteger(app.installationId) && app.installationId > 0)) problems.push('githubApp.installationId: must be a positive whole number')
+      if (app.slug !== undefined && !(isNonEmptyString(app.slug) && /^[\w.-]+$/.test(app.slug))) problems.push('githubApp.slug: must be the App\'s URL slug (its comments post as <slug>[bot])')
     }
   }
 
@@ -402,6 +403,7 @@ export function normalizeConfig(raw, { home = homedir() } = {}) {
           privateKeyFile: x(raw.githubApp.privateKeyFile),
           owner: raw.githubApp.owner ?? raw.repos[0].slug.split('/')[0],
           installationId: raw.githubApp.installationId ?? null,
+          slug: raw.githubApp.slug ?? null,
         }
       : null,
     scripts: Object.fromEntries(SCRIPT_KEYS.map((k) => [k, x(raw.scripts[k])])),

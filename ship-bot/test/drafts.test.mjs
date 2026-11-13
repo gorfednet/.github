@@ -196,6 +196,17 @@ describe('a draft the bot owns', () => {
     assert.ok(s.state().pr(SLUG, 7).botLabelled)
   })
 
+  it('as a GitHub App, the marker counts from the App\'s own [bot] login and from no one else', async () => {
+    const app = { appId: 7, privateKeyFile: '/tmp/x.pem', slug: 'gorfed-ship-bot' }
+    const marker = `${DRAFT_READY_COMMENT}\n\n<!-- ship-bot:labelled:${'e'.repeat(40)} -->`
+    for (const [login, type, removed] of [['gorfed-ship-bot[bot]', 'Bot', 1], ['other-app[bot]', 'Bot', 0], ['someone-else', 'User', 0]]) {
+      const gh = new FakeGitHub({ pulls: [makePr()], comments: [{ pr: 7, body: marker, user: { login, type } }] })
+      const s = scenario({ repos: reviewed(), github: gh, configOverrides: { githubApp: app } })
+      await s.run()
+      assert.equal(writes(gh, 'removeLabel').length, removed, login)
+    }
+  })
+
   it('after a failed markReady and a new push, the record follows the head and the pull request is not stranded', async () => {
     const gh = new FakeGitHub({ pulls: [draft()] })
     let fail = true

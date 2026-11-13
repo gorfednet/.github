@@ -404,10 +404,10 @@ async function botLabelFromMarker(ctx, repo, pr, prState) {
   if (prState.takenBack) return null
   const comments = await ctx.github.listIssueComments(repo.slug, pr.number)
   const re = /<!-- ship-bot:labelled:([0-9a-f]{40}) -->/
-  // Only the bot's own comment counts: posted as an allowlisted login and
-  // starting with its text. Anyone can comment a hidden marker otherwise.
+  // Only the bot's own comment counts: posted as the bot's login and starting
+  // with its text. Anyone can comment a hidden marker otherwise.
   const found = comments
-    .filter((c) => ctx.config.allowedAuthors.includes(c.user?.login) && (c.body ?? '').startsWith(DRAFT_READY_COMMENT))
+    .filter((c) => isBotLogin(ctx, c.user) && (c.body ?? '').startsWith(DRAFT_READY_COMMENT))
     .map((c) => re.exec(c.body ?? '')?.[1])
     .filter(Boolean)
     .pop()
@@ -416,6 +416,21 @@ async function botLabelFromMarker(ctx, repo, pr, prState) {
   ctx.state.save()
   ctx.say('debug', `${repo.slug}#${pr.number}: ${READY_LABEL} is the bot's own (rebuilt from its comment marker on ${short(found)})`)
   return prState.botLabelled
+}
+
+/**
+ * Is this comment author the bot itself? With a user token the bot posts as
+ * an allowlisted login. As a GitHub App it posts as `<slug>[bot]`; when the
+ * config has no slug, any `[bot]` login of type Bot is taken as it (only an
+ * App installed on the repository can post as one).
+ */
+function isBotLogin(ctx, user) {
+  const login = user?.login ?? ''
+  if (ctx.config.allowedAuthors.includes(login)) return true
+  const app = ctx.config.githubApp
+  if (!app) return false
+  if (app.slug) return login === `${app.slug}[bot]`
+  return user?.type === 'Bot' && login.endsWith('[bot]')
 }
 
 export const DRAFT_READY_COMMENT = 'Ship-bot: gates clean, marking ready and labelling; merges on the next pass'

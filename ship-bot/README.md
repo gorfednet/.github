@@ -214,6 +214,12 @@ later pass merges such a pull request, the bot reads `## Next` again and
 checks the head is the one it labelled. A wait written there afterwards, or a
 new push, takes `ready-to-merge` off and leaves the pull request for a person.
 
+When the bot runs as its GitHub App, its `claude review` comment posts as
+`<slug>[bot]`. The shared `claude-review.yml` accepts that login only through
+the org variable `SHIP_BOT_LOGIN` (set to `<slug>[bot]`), and the bot
+recognises its own comments through `githubApp.slug` in the config; without
+the slug, any `[bot]` login of type Bot counts as the bot's.
+
 To keep a draft a draft, add the **`hold`** label or write the wait under
 `## Next`. To keep a whole repository out of this, set `"draftReady": false`
 on its row in `~/.ship-bot/config.json`.
