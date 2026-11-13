@@ -18,7 +18,7 @@ Owner, 13 November 2026: "assess, account for, plan for finalization, closing, m
 
 ## Blockers
 - Ship-bot has MoonMan, gorfmusic.com, ssatcy.com and papers.4thcltr.com blocked after failed deploys and rollbacks. They stay blocked until each cause is fixed (plan 2.1).
-- Owner access, asked for on 13 November: Tailscale SSH approval for the docker host, a `FLEET_READ_TOKEN` PAT and `admin:org` read, folder trust for parked Herdr jobs, Mac sleep setting.
+- Owner access, asked for on 13 November: Tailscale SSH approval for the docker host (check period now 7 days, so expect a hold about weekly), folder trust for parked Herdr jobs, Mac sleep setting.
 
 ## Decisions
 - 13 Nov: Desk is a desktop-app session with Remote Control, not a launchd `claude remote-control` server, because the session tools (list, start, message, archive) exist only in the app.

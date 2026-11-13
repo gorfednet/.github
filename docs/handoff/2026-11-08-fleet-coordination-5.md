@@ -18,7 +18,8 @@ Continues `2026-11-08-fleet-coordination-4.md`. Today is Sunday 8 November 2026 
 - [ ] Ship-bot stages 2+3 Thursday 12 November (README weekdays fixed in #93: 12 November is a Thursday, 15 November a Sunday): `--validate` for bindercurve.com, 4thcltr.com, static sites; read the last 3 log passes; flip. Stage 4 (MoonMan) Sunday 15 November.
 - [ ] Session sweep: the janitor does it daily now.
 - [ ] Old 4thcltr.com worktrees with unsaved work (do not touch): agent-a29aa36c65d7ef1cf (1 unpushed commit), agent-aab33cc1cb87375c5 (14 files), v3-baselines (109 files).
-- [ ] Owner-only: `FLEET_READ_TOKEN` scope, `NTFY_TOKEN`, DNS.
+- [ ] Owner-only: `NTFY_TOKEN`, DNS.
+- [x] `FLEET_READ_TOKEN`: secret set 9 Nov 2026, fleet-status run 43380425357 read 21 repos (recorded 13 Nov).
 
 ## Lessons
 `assess` is not on the owner's PATH: use `node src/cli.ts` from the assess checkout. Reboot kills runner jobs: a red shard with no failed step is a rerun. A relayed date can be wrong: trust `TZ=America/Toronto date`.

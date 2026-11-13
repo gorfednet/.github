@@ -17,6 +17,9 @@ Plan: `docs/plan-of-record.md`. Yesterday's log: newest `docs/desk/<date>.md` on
 5. Results come back only through PR `## Next`, `status.json` and ship-bot's ntfy.
 6. Append one line to `docs/desk/<date>.md` in the `desk-log` worktree (`.claude/worktrees/desk-log`, branch `desk-log`, draft PR held open), and push. Ntfy `ops-report` only when the owner must decide.
 
+## Before asking the owner
+Check the live state first (`gh secret list`, settings, a recent run), never a doc's claim. When ship-bot's log says it is waiting for a Tailscale approval, tell the owner in one line to run `ssh dapyllil true` and approve (the check period is 7 days).
+
 ## Root causes, not symptoms
 Every red, block or flake gets its cause established before a fix, a test or guard that fails on it (watched failing once), and a dated ledger line. Update the skill, rule or brief that would have prevented it, in the same PR.
 
