@@ -189,7 +189,16 @@
           "branch": "main"
         }
       ],
-      "setup": [],
+      "setup": [
+        {
+          "name": "install",
+          "command": [
+            "npm",
+            "ci"
+          ],
+          "note": "make deploy runs web3forms-preflight, which imports vite, before its own install: without this the cleaned workspace has no node_modules (12 November 2026, PR 49)."
+        }
+      ],
       "deploy": [
         {
           "name": "site",
@@ -270,6 +279,9 @@
           "slug": "gorfednet/.github",
           "branch": "main"
         }
+      ],
+      "pausedIfChanged": [
+        "deploy/"
       ],
       "setup": [
         {

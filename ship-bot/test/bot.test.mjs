@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { existsSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, it } from 'node:test'
 import {
@@ -695,6 +695,85 @@ describe('deploying', () => {
     await s.run()
     assert.equal(merges(s.github).length, 0)
     assert.match(bodies(s.github)[0], /missing\.js does not exist/)
+  })
+
+  // gorfmusic.com 49, 12 November 2026: setup was [], so the cleaned workspace
+  // had no node_modules and `make deploy` died on "Cannot find package 'vite'",
+  // and so did the rollback. Refused before the merge now, with nothing deployed.
+  describe('a step that needs node_modules with no setup to install them', () => {
+    const withPackages = (s) => writeFileSync(join(s.home, 'src', 'site', 'package.json'), JSON.stringify({ devDependencies: { vite: '^8.0.0' } }))
+
+    it('refuses to merge a make deploy over a package.json with packages and setup: []', async () => {
+      const s = scenario({ repos: [repoEntry({ setup: [] })] })
+      withPackages(s)
+      await s.run()
+      assert.equal(merges(s.github).length, 0)
+      assert.equal(s.runner.ofKind('deploy').length, 0)
+      assert.match(bodies(s.github)[0], /step "site" need node_modules, which the workspace clean removes, and no setup step installs it/)
+      assert.equal(s.state().repo(SLUG).blocked, undefined, 'refused before the merge, so nothing is blocked')
+    })
+
+    it('refuses an npm step whatever package.json says, and names every step that needs packages', async () => {
+      const s = scenario({ repos: [repoEntry({ setup: [], deploy: [{ name: 'site', command: ['npm', 'run', 'deploy'] }, { name: 'ping', command: ['sh', '-c', 'npx indexnow || true'] }] })] })
+      await s.run()
+      assert.equal(merges(s.github).length, 0)
+      assert.match(bodies(s.github)[0], /steps "site", "ping" need node_modules/)
+    })
+
+    it('merges when setup runs npm ci, a make target, or preserve keeps node_modules', async () => {
+      for (const row of [{}, { setup: [{ name: 'verify', command: ['make', 'verify'] }] }, { setup: [], preserve: ['node_modules'] }]) {
+        const s = scenario({ repos: [repoEntry(row)] })
+        withPackages(s)
+        await s.run()
+        assert.equal(merges(s.github).length, 1, JSON.stringify(row))
+      }
+    })
+
+    it('counts an install by program name, after flags and inside sh -c, and not yarn build or npm run ci', async () => {
+      for (const [setup, merged] of [
+        [[{ name: 'i', command: ['/opt/homebrew/bin/npm', 'ci'] }], 1],
+        [[{ name: 'i', command: ['sh', '-c', 'npm ci && npm run build'] }], 1],
+        [[{ name: 'i', command: ['npm', '--prefix', 'app', 'ci'] }], 1],
+        [[{ name: 'b', command: ['yarn', 'build'] }], 0],
+        [[{ name: 'b', command: ['sh', '-c', 'npm run build'] }], 0],
+        [[{ name: 'r', command: ['npm', 'run', 'ci'] }], 0],
+      ]) {
+        const s = scenario({ repos: [repoEntry({ setup, deploy: [{ name: 'site', command: ['npm', 'run', 'deploy'] }] })] })
+        await s.run()
+        assert.equal(merges(s.github).length, merged, JSON.stringify(setup))
+      }
+    })
+
+    it('after setup, refuses to deploy a merge commit whose package.json needs packages that setup did not install', async () => {
+      // The owner clone said no packages, so the merge went ahead; the merge commit adds one.
+      const s = scenario({ repos: [repoEntry({ setup: [] })] })
+      mkdirSync(join(s.home, 'work', 'site'), { recursive: true })
+      writeFileSync(join(s.home, 'work', 'site', 'package.json'), JSON.stringify({ dependencies: { vite: '^8.0.0' } }))
+      await s.run()
+      assert.equal(merges(s.github).length, 1)
+      assert.equal(s.runner.ofKind('deploy').length, 0, 'no deploy step ran')
+      assert.equal(s.runner.ofKind('rollback').length, 0, 'nothing to roll back')
+      assert.match(s.state().repo(SLUG).blocked.reason, /setup left no node_modules/)
+    })
+
+    it('merges a make deploy with setup: [] when package.json declares no packages (a static site)', async () => {
+      const s = scenario({ repos: [repoEntry({ setup: [] })] })
+      writeFileSync(join(s.home, 'src', 'site', 'package.json'), JSON.stringify({ scripts: { deploy: 'rsync' } }))
+      await s.run()
+      assert.equal(merges(s.github).length, 1)
+    })
+  })
+
+  // MoonMan 324, 13 November 2026: its row listed no siblings, so the helper
+  // checkout was whatever an earlier deploy left, behind origin/main, and
+  // site-deploy.sh refused to publish.
+  it('syncs the shared helper checkout for a row that lists no siblings', async () => {
+    const s = scenario({ repos: [repoEntry()] })
+    await s.run()
+    const ws = s.runner.commandLines('workspace')
+    const helper = join(s.home, 'work', 'gorfednet.github')
+    assert.ok(ws.includes(`git -C ${helper} checkout --force --detach origin/main`), ws.join('\n'))
+    assert.ok(ws.indexOf(`git -C ${helper} checkout --force --detach origin/main`) < ws.findIndex((l) => l.endsWith(MERGE)))
   })
 
   it('a git token never appears in argv: it is passed to git through the environment', async () => {
