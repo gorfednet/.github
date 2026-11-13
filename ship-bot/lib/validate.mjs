@@ -9,6 +9,7 @@
  * Read-only: it lists pull requests, check runs and commit statuses, nothing
  * else, so it runs the same in dry, observe and live.
  */
+import { READY_LABEL } from './config.mjs'
 import { latestPerContext, latestPerName } from './gates.mjs'
 
 export const VALIDATE_SAMPLE = 3
@@ -29,7 +30,12 @@ export async function validateExpectedChecks({ config, github, repoNames, select
     const result = { slug: repo.slug, sampled: [], missing: [], unexpected: [], ok: false }
     results.push(result)
     try {
-      const pulls = await github.listMergedPulls(repo.slug, sample)
+      // A repository that runs its full gate only after the ready label is
+      // sampled on labelled pull requests alone: an unlabelled merge (a
+      // dependency bot's, or a hand merge) never ran the tier the bot waits for.
+      const pulls = repo.requireChecksAfterLabel
+        ? await github.listMergedPulls(repo.slug, sample, READY_LABEL)
+        : await github.listMergedPulls(repo.slug, sample)
       if (pulls.length === 0) {
         result.error = 'no merged pull request to sample'
         continue

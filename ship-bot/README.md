@@ -89,7 +89,7 @@ on the sampled pull requests (it gated nothing), and any check matching a
 repository's optional `coveredChecks`: exact names or name prefixes whose runs
 another listed check gates, for example `["browser-compat / compat ("]` for
 matrix children behind the `browser-compat / compat-success` aggregate. Both
-only quiet `--validate`. An expected check that was skipped or neutral on a
+only quiet `--validate`. For a repository with `requireChecksAfterLabel`, `--validate` samples the last merged pull requests that carried `ready-to-merge`, since an unlabelled merge never ran the full tier. An expected check that was skipped or neutral on a
 sampled pull request shows as missing ("skipped or neutral on N"): the merge
 gate accepts a skipped run as passing, so that check gated nothing there. The
 merge gate still requires every `expectedChecks` entry as before.

@@ -443,6 +443,22 @@ describe('--validate', () => {
     assert.match(without.out, /unexpected browser-compat \/ compat \(chromium\)/)
   })
 
+  it('requireChecksAfterLabel samples labelled merges only: an unlabelled merge never ran the full tier', async () => {
+    const lab = (number, sha) => ({ ...merged(number, sha), labels: [{ name: 'ready-to-merge' }] })
+    const full = [run('check / check', 'success'), run('axe-webkit', 'success')]
+    const gh = new FakeGitHub({
+      mergedPulls: [merged(9, 'u1'), lab(8, 's1'), lab(7, 's2'), lab(6, 's3')],
+      runsBySha: { u1: [run('check / check', 'success')], s1: full, s2: full, s3: full },
+    })
+    const x = harness({ live: false, github: gh, configOverrides: { repos: [repoEntry({ envFiles: [], expectedChecks: ['check / check', 'axe-webkit'], requireChecksAfterLabel: true })] } })
+    const code = await main(['--validate'], x.deps)
+    assert.equal(code, 0, x.out.join('\n'))
+    assert.match(x.out.join('\n'), /last 3 merged: #8, #7, #6/)
+    // near miss: without the flag the unlabelled merge is sampled and axe-webkit reads as missing
+    const y = harness({ live: false, github: gh, configOverrides: { repos: [repoEntry({ envFiles: [], expectedChecks: ['check / check', 'axe-webkit'] })] } })
+    assert.equal(await main(['--validate'], y.deps), 1)
+  })
+
   it('a repo with no merged pull request, or an API error, is a failure to validate, not a pass', async () => {
     const { code, out } = await validate(new FakeGitHub({ mergedPulls: [] }))
     assert.equal(code, 1)
