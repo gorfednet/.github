@@ -15,13 +15,15 @@
     {
       "id": "quiet-sites-paid-product-monitor-rates",
       "title": "Mostly-static sites inherited product-site Playwright and Bugbot settings",
-      "status": "confirmed-bug",
+      "status": "landed",
       "assignee": "main-model",
       "userSymptom": "Credit and Actions usage went to weekly Playwright installs and incremental Bugbot on sites last touched by a kit bump.",
       "evidence": "4thcltr.com production-healthcheck.yml passed only site-url, so run-playwright defaulted true. FLEET.md claimed a required Bugbot verdict job that no consumer calls. fleet.json had no monitorClass, so nothing could fail when a quiet site inherited the product default.",
+      "pr": 40,
       "reviewBy": "2026-12-01",
+      "note": "Landed in PR 40: every fleet.json project carries a monitorClass, and check-fleet fails a quiet-class site whose production-healthcheck caller omits run-playwright (scripts/monitor-class.mjs, test/monitorClass.test.mjs). The Bugbot verdict claim is gone from FLEET.md; Bugbot was retired 2026-10-16. The 4thcltr.com caller itself lives in that repository and is held by this check.",
       "created": "2026-09-25",
-      "updated": "2026-09-25"
+      "updated": "2026-11-09"
     },
     {
       "id": "bugbot-credits-exhausted-unreviewed-prs",
