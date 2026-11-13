@@ -229,6 +229,9 @@ async function processPull(ctx, repo, pr, defaultBranch) {
   // means start again next run.
   const again = await ctx.github.getPull(repo.slug, pr.number)
   const changed = again.head?.sha !== sha ? 'the head moved' : ineligibleReason(again, repo, defaultBranch, ctx.config.allowedAuthors)
+  // A bot-labelled pull request re-earns its label here too: a wait written
+  // under ## Next while the gates ran (round 8 on #119) must not merge.
+  if (!changed && ctx.state.pr(repo.slug, pr.number).botLabelled && !(await botLabelStillEarned(ctx, repo, again, tag))) return false
   if (changed) {
     ctx.say('info', `${tag}: changed while being checked (${changed}); will look again next run`)
     return false

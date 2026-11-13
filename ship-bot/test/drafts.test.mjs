@@ -92,6 +92,22 @@ describe('a draft the bot owns', () => {
     assert.ok(s.logs.some((l) => /the head moved from aaaaaaa to ddddddd after the bot labelled it/.test(l)), s.logs.join('\n'))
   })
 
+  it('a wait written under ## Next while the gates ran is caught at the pre-merge re-read', async () => {
+    const gh = new FakeGitHub({ pulls: [draft()] })
+    const s = scenario({ repos: reviewed(), github: gh })
+    await s.run()
+    s.clock.advance(s.config.reviewGraceMinutes)
+    // The first getPull of the next pass sees the merge line; the pre-merge re-read sees a wait.
+    let reads = 0
+    gh.onGetPull = (pr) => {
+      reads += 1
+      if (reads === 2) pr.body = '## Next\n- [ ] merge\n- [ ] owner decides\n'
+    }
+    await s.run()
+    assert.equal(writes(gh, 'mergePull').length, 0)
+    assert.equal(writes(gh, 'removeLabel').length, 1)
+  })
+
   it('a ready-to-merge a person added is never touched by the re-read', async () => {
     const gh = new FakeGitHub({ pulls: [makePr({ body: '## Next\n- [ ] owner decides\n' })] })
     const s = scenario({ repos: reviewed(), github: gh })
