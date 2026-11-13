@@ -147,8 +147,7 @@ export function oldWorktrees(root, now = Date.now()) {
           out.push({ clone: name, path, ageDays: null }) // registered but gone: prunable, so counted
           continue
         }
-        const ageDays = Math.floor((now - created) / DAY)
-        if (ageDays > OLD_WORKTREE_DAYS) out.push({ clone: name, path, ageDays })
+        if (now - created > OLD_WORKTREE_DAYS * DAY) out.push({ clone: name, path, ageDays: Math.floor((now - created) / DAY) })
       }
     } catch {
       unread.push(name)

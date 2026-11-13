@@ -331,6 +331,8 @@ describe('hygiene rows', () => {
     const wt = join(root, 'wt')
     sh(c, 'worktree', 'add', '-q', '-b', 'w', wt)
     assert.deepEqual(oldWorktrees(clones, Date.now()).old, [])
+    assert.equal(oldWorktrees(clones, Date.now() + 7.5 * 86_400_000).old.length, 1, '7.5 days is over 7')
+    assert.deepEqual(oldWorktrees(clones, Date.now() + 6.9 * 86_400_000).old, [])
     const later = oldWorktrees(clones, Date.now() + 8 * 86_400_000).old
     assert.equal(later.length, 1)
     assert.ok(later[0].ageDays >= 8)
