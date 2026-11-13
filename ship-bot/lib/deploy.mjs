@@ -116,11 +116,52 @@ async function syncCheckout(ctx, log, { path, cloneUrl, ref, preserve = [], expe
   }
 }
 
+// Programs that cannot run without the repository's node_modules.
+const NODE_TOOLS = new Set(['npm', 'npx', 'pnpm', 'yarn', 'vite'])
+const NODE_TOOL_IN_SHELL = /(^|[\s;&|(])(npm|npx|pnpm|yarn|vite)\s/
+const INSTALLS = /^(npm (ci|install|i)|pnpm (install|i)|yarn( install)?)(\s|$)/
+
+/** The source clone's package.json declares packages, so a `make` target there is assumed to need them. */
+function declaresPackages(repo, fsx) {
+  const p = join(repo.sourceDir, 'package.json')
+  if (!fsx.exists(p)) return false
+  try {
+    const pkg = JSON.parse(fsx.read(p))
+    return Object.keys(pkg.dependencies ?? {}).length + Object.keys(pkg.devDependencies ?? {}).length > 0
+  } catch {
+    return true // an unreadable package.json is not evidence that nothing is needed
+  }
+}
+
+function needsNodeModules(step, packages) {
+  const [program, ...args] = step.command
+  const name = program.split('/').at(-1)
+  if (NODE_TOOLS.has(name)) return true
+  if ((name === 'sh' || name === 'bash') && args[0] === '-c') return NODE_TOOL_IN_SHELL.test(` ${args[1] ?? ''} `)
+  return name === 'make' && packages
+}
+
+// A setup step that installs: npm ci and its kin, or a make target (papers' and
+// heuristics' `make verify` start with npm ci; the Makefile owns the install).
+const installs = (step) => INSTALLS.test(step.command.join(' ')) || step.command[0].split('/').at(-1) === 'make'
+
 /** What must exist before merging, so a deploy cannot fail for a reason known in advance. */
 export function preflight(repo, fsx = realFs) {
   const problems = []
   for (const f of [...repo.envFiles, ...repo.copyFromSource]) {
     if (!fsx.exists(join(repo.sourceDir, f))) problems.push(`${join(repo.sourceDir, f)} does not exist`)
+  }
+  // The workspace is cleaned of everything untracked before every deploy and
+  // every rollback, node_modules included, unless `preserve` keeps it. A row
+  // whose steps need packages and whose setup installs none fails after the
+  // merge, and its rollback fails the same way (gorfmusic.com 49, 12 November 2026).
+  const packages = declaresPackages(repo, fsx)
+  const steps = [...repo.setup, ...repo.deploy, ...(repo.rollback ?? [])]
+  const needing = steps.filter((s) => needsNodeModules(s, packages)).map((s) => s.name)
+  if (needing.length > 0 && !repo.setup.some(installs) && !repo.preserve.includes('node_modules')) {
+    problems.push(
+      `step${needing.length > 1 ? 's' : ''} ${needing.map((n) => `"${n}"`).join(', ')} need node_modules, which the workspace clean removes, and no setup step installs it: add a setup step running npm ci, or list node_modules in preserve`,
+    )
   }
   return problems
 }

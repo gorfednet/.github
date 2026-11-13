@@ -265,6 +265,17 @@ It should fail with "No value at that key path". If it prints `Background`,
 re-run `ship-bot/install.sh` so the loaded plist matches this file. (`active
 count` in `launchctl print` is no use here: the job is idle between runs.)
 
+**13 November 2026:** two deploy preconditions are checked before the merge.
+A row whose setup, deploy or rollback steps need `node_modules` (an npm, npx,
+pnpm, yarn or vite step, or a `make` step over a package.json that declares
+packages) must install them in setup (`npm ci`, or a `make` target that does)
+or list `node_modules` in `preserve`; the workspace clean removes it before
+every deploy and every rollback (gorfmusic.com 49). And every deploy row syncs
+the `gorfednet.github` helper checkout to `origin/main`, listed in `siblings`
+or not, because `site-deploy.sh` refuses to run from a stale copy of itself
+(MoonMan 324). `docs/handoff/2026-11-13-deploy-root-causes.md` has the four
+causes.
+
 A dry run reads GitHub (it runs the verification kit's read-only gate scripts)
 but posts nothing, merges nothing and runs no deploy. `--live` acts only when
 the config says `"live": true`; otherwise it observes, which is a dry run whose

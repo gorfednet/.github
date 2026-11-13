@@ -334,6 +334,20 @@ export function validateConfig(raw) {
  * @param {unknown} raw
  * @param {{home?: string}} [opts]
  */
+// Every site deploy runs the shared helper from the gorfednet.github checkout
+// next to the workspace (scripts/site-deploy.sh), and the helper refuses to run
+// unless that checkout is origin/main's tip. A row that did not list it as a
+// sibling ran with whatever an earlier deploy left there, and failed when main
+// had moved since (MoonMan 324, 13 November 2026). So every deploy row syncs
+// it, listed or not.
+export const HELPER_SIBLING = Object.freeze({ dir: 'gorfednet.github', slug: 'gorfednet/.github', branch: 'main' })
+
+function withHelper(repo) {
+  const listed = repo.siblings ?? []
+  if (repo.slug === HELPER_SIBLING.slug || listed.some((s) => s.dir === HELPER_SIBLING.dir)) return listed
+  return [{ ...HELPER_SIBLING }, ...listed]
+}
+
 export function normalizeConfig(raw, { home = homedir() } = {}) {
   const problems = validateConfig(raw)
   if (problems.length > 0) throw new ConfigError(problems)
@@ -391,7 +405,7 @@ export function normalizeConfig(raw, { home = homedir() } = {}) {
         env: Object.fromEntries(Object.entries(repo.env ?? {}).map(([k, v]) => [k, expandHome(v, home)])),
         copyFromSource: repo.copyFromSource ?? [],
         preserve: repo.preserve ?? [],
-        siblings: (repo.siblings ?? []).map((s) => ({
+        siblings: withHelper(repo).map((s) => ({
           ...s,
           path: join(dirname(workDir), s.dir),
           cloneUrl: `https://github.com/${s.slug}.git`,

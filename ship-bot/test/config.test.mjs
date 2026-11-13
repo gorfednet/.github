@@ -34,6 +34,19 @@ describe('config validation', () => {
     assert.equal(config.repos.find((r) => r.name === 'gorfed.net').siblings[0].path, join(HOME, '.ship-bot', 'work', 'gorfednet.github'))
   })
 
+  it('every deploy row syncs the shared helper checkout once, listed or not; the helper repo itself does not', () => {
+    const repos = (rows) => normalizeConfig({ ...example(), repos: rows }, { home: HOME }).repos
+    const helper = join(HOME, '.ship-bot', 'work', 'gorfednet.github')
+    const [bare, listed, own] = repos([
+      { slug: 'gorfednet/MoonMan', dir: 'MoonMan', mode: 'deploy', claudeReview: false, expectedChecks: ['c'], deploy: [{ name: 'game', command: ['npm', 'run', 'deploy'] }] },
+      { slug: 'gorfednet/x', dir: 'x', mode: 'deploy', claudeReview: false, expectedChecks: ['c'], siblings: [{ dir: 'gorfednet.github', slug: 'gorfednet/.github', branch: 'main' }], deploy: [{ name: 'd', command: ['true'] }] },
+      { slug: 'gorfednet/.github', dir: 'gorfednet.github', mode: 'deploy', claudeReview: false, expectedChecks: ['c'], deploy: [{ name: 'd', command: ['true'] }] },
+    ])
+    assert.deepEqual(bare.siblings.map((s) => [s.path, s.branch]), [[helper, 'main']])
+    assert.equal(listed.siblings.length, 1)
+    assert.deepEqual(own.siblings, [])
+  })
+
   it('the example never ships a repository live, and the 4thcltr family deploys only what fits the row shape', () => {
     const rows = Object.fromEntries(example().repos.map((r) => [r.slug.split('/')[1], r]))
     for (const r of Object.values(rows)) assert.ok(r.live !== true, `${r.slug} must ship with live false`)
