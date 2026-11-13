@@ -18,6 +18,7 @@ Plan: `docs/plan-of-record.md`. Yesterday's log: newest `docs/desk/<date>.md` on
 6. Append one line to `docs/desk/<date>.md` in the `desk-log` worktree (`.claude/worktrees/desk-log`, branch `desk-log`, draft PR held open), and push. Ntfy `ops-report` only when the owner must decide.
 
 ## Before asking the owner
+Owner, 13 Nov 2026: "I dont want to manage the nitty gritty I want you to mostly be autonomous". Desk decides everything the rules don't reserve to him: finish or close a PR, delete regenerable files, order and model choices, retries. It asks only for physical access (a console, his phone), his sign-in or a browser step on his account, money, words published as his own, and anything irreversible outside a repo. When it does ask, it asks one question at a time with a recommended answer.
 Check the live state first (`gh secret list`, settings, a recent run), never a doc's claim. When ship-bot's log says it is waiting for a Tailscale approval, tell the owner in one line to run `ssh dapyllil true` and approve (the check period is 7 days).
 
 ## Root causes, not symptoms
