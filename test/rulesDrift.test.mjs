@@ -100,6 +100,19 @@ describe('check-rules-drift', () => {
     assert.equal(r.status, 1, r.out)
   })
 
+  it('excuses only retired terms on a named line, not a model added to it', () => {
+    const r = run(repo({
+      'docs/verification-rules.md': [
+        'repositories before Bugbot said so on all nine at once',
+        'showed one Bugbot line and looked ready to merge; rerun with Opus 4.6',
+        '`.cursor/projects/` path whose workspace has since been renamed',
+      ].join('\n'),
+    }))
+    assert.equal(r.status, 1, r.out)
+    assert.match(r.out, /verification-rules\.md:2: model Opus 4\.6/)
+    assert.doesNotMatch(r.out, /retired term/)
+  })
+
   it('fails when an allowlisted line has gone, so the allowlist cannot outlive its reason', () => {
     const r = run(repo({ 'docs/verification-rules.md': 'rewritten\n' }))
     assert.equal(r.status, 1)

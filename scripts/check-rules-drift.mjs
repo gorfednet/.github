@@ -23,7 +23,8 @@
  *     "Cursor retired 2026-10-16". Only retired terms in that clause are
  *     excused: "Bugbot retired 2026-10-16; ask the coordinator session" still
  *     fails on the coordinator session, and an off-roster model never passes;
- *   - LINES: exact line fragments in a named file.
+ *   - LINES: exact line fragments in a named file. They excuse retired terms
+ *     only; an off-roster model on the same line still fails.
  *
  * Fails closed. Each of these exits 1: no files in scope, or only excused
  * archives; a named file missing; an allowlist entry without a reason; a LINES
@@ -215,9 +216,13 @@ export function scan(root, files) {
     const lines = readFileSync(join(root, file), 'utf8').split('\n')
     lines.forEach((line, i) => {
       if (lineFindings(line).length === 0) return
+      // A LINES entry excuses the retired terms on its line and nothing else:
+      // an off-roster model added to an allowlisted line is still reported.
       const excused = LINES.find((l) => l.file === file && line.includes(l.text))
-      if (excused) return void usedLines.add(excused)
-      const found = lineFindings(line, { excuseRetirements: true })
+      if (excused) usedLines.add(excused)
+      const found = lineFindings(line, { excuseRetirements: true }).filter(
+        (f) => !(excused && f.startsWith('retired term')),
+      )
       for (const what of found) findings.push(`${file}:${i + 1}: ${what}\n    ${line.trim()}`)
     })
   }
