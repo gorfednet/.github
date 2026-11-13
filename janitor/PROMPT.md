@@ -60,13 +60,13 @@ Never write the mode file. Desk or the owner writes `live` after 3 dry runs in a
       - its last 10 events (`list_events`) end with a question or a decision for the owner that nobody answered
    4. Otherwise act on its `state`:
       - `merged`: its pull request merged. Archive it. Archiving removes its worktree.
-      - `dirty`: it has uncommitted or unpushed work. Idle under 48 hours: leave it. Idle over 48 hours with `mainCheckout` false: if it has a `branch`, first make the `gh pr list` call given under `unmerged`. On `OPEN`, propose only: name the session and its pull request in the digest, and leave it. Otherwise rescue it (step 4.5), then archive it. With `mainCheckout` true: propose only, whatever the idle time.
+      - `dirty`: it has uncommitted or unpushed work. Idle under 48 hours: leave it. Idle over 48 hours with `mainCheckout` false: if it has a `branch`, first make the `gh pr list` call given under `unmerged`. On `OPEN` or `CLOSED`, propose only: name the session and its pull request in the digest, and leave it. Otherwise rescue it (step 4.5), then archive it. With `mainCheckout` true: propose only, whatever the idle time.
       - `unmerged`, idle under 48 hours: leave it. Idle over 48 hours: make one call, `gh pr list --repo <slug> --head <branch> --state all --limit 1 --json number,state`.
         - `OPEN`: leave it. `STATUS.md` covers it.
         - `MERGED`: an older pull request from this branch merged, and the branch has commits pushed since that aren't on the default branch. Treat it like the no-PR case below.
         - `CLOSED`: propose only. List it as `PR closed unmerged` and never archive it.
         - No pull request: its commits are pushed but nobody opened one. Rescue it (step 4.5) without the `git switch`, so the handoff commit lands on its own branch. Then archive it.
-      - `unreadable`: git couldn't read the folder. Leave it and name it in the digest.
+      - `unreadable`: git couldn't read the folder or fetch its origin. Leave it and name it in the digest.
       - `fresh`, `missing` or `no-repo`, idle over 48 hours: read its last 10 events. If they show unfinished work, propose only: name the session and the work in the digest, and leave it. If not, archive it.
    5. Rescue, in the session's `worktree`, never in a main checkout:
       1. List every path the rescue would publish: `git status --porcelain --untracked-files=all` (plain `--porcelain` shows a new folder as one line and hides its files) and `git log --name-only --format= HEAD --not --remotes` (files in commits not yet pushed). If any path's file name looks secret (`.env`, `*.pem`, `*.key`, `*.p12`, `credentials`, `id_*`), stop this rescue and propose only.

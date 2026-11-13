@@ -139,15 +139,15 @@ export function canonical(path) {
  * whose pull request merged has its tip reachable from main but off main's first-parent line;
  * a branch with no commits of its own has its tip on that line.
  */
-export function sessionState(cwd, { fetched = new Set(), fetch = true } = {}) {
+export function sessionState(cwd, { fetched = new Map(), fetch = true } = {}) {
   if (!cwd || !existsSync(cwd)) return { state: 'missing' }
   const top = tryGit(cwd, 'rev-parse', '--show-toplevel')
   if (!top.ok) return { state: 'no-repo' }
   const common = tryGit(cwd, 'rev-parse', '--path-format=absolute', '--git-common-dir').out
-  if (fetch && !fetched.has(common)) {
-    fetched.add(common)
-    tryGit(cwd, 'fetch', '--quiet', 'origin')
-  }
+  if (fetch && !fetched.has(common)) fetched.set(common, tryGit(cwd, 'fetch', '--quiet', 'origin'))
+  // Fail closed: with a stale origin a branch merged since the last fetch would read as unmerged.
+  const f = fetch ? fetched.get(common) : { ok: true }
+  if (!f.ok) return { state: 'unreadable', reason: `fetch failed: ${f.out.split('\n')[0]}` }
   const mainRef = `refs/remotes/origin/${defaultBranch(cwd)}`
   const mainPath = parseWorktrees(tryGit(cwd, 'worktree', 'list', '--porcelain').out)[0]?.path ?? top.out
   const branch = tryGit(cwd, 'branch', '--show-current').out || null
@@ -222,7 +222,7 @@ function arg(name) {
 
 if (isMain(import.meta.url) && process.argv[2] === 'sessions') {
   const sessions = JSON.parse(readFileSync(process.argv[3], 'utf8'))
-  const fetched = new Set()
+  const fetched = new Map()
   for (const s of sessions) console.log(JSON.stringify({ sessionId: s.sessionId, title: s.title, ...sessionState(s.cwd, { fetched }) }))
 } else if (isMain(import.meta.url)) {
   const root = arg('--root') ?? join(homedir(), 'Developer', 'gorfednet')

@@ -131,6 +131,9 @@ describe('janitor-prune', () => {
     execFileSync('git', ['init', '--quiet', broken])
     writeFileSync(join(broken, '.git', 'index'), 'not an index')
     assert.equal(state(broken), 'unreadable')
+    // A clone whose fetch fails is unreadable, never judged against a stale origin.
+    git(f.clone, 'remote', 'set-url', 'origin', join(f.root, 'no-such-origin.git'))
+    assert.equal(sessionState(f.merged, { fetch: true }).state, 'unreadable')
     // A local commit with no upstream is unpushed work, never "unmerged" and safe to drop.
     writeFileSync(join(f.live, 'e.txt'), 'e\n')
     git(f.live, 'add', '.')
