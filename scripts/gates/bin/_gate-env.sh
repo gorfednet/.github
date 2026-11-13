@@ -55,3 +55,18 @@ gate_prepare_env() {
     fi
   fi
 }
+
+# gate_warn_if_stale <name> <dir>: one line on stderr when the checkout holding the gate
+# scripts is not at the last fetched origin/main. Local refs only, no network call. A stale
+# gate once read `not-run` on clean reviews (ship-bot/INCIDENTS.md, 13 November 2026).
+# Ship-bot advances the checkout after every merge to .github main; this notices when it
+# did not. Never fails the gate.
+gate_warn_if_stale() {
+  local name=$1 dir=$2 head main
+  head=$(git -C "$dir" rev-parse HEAD 2>/dev/null) || return 0
+  main=$(git -C "$dir" rev-parse --verify -q refs/remotes/origin/main 2>/dev/null) || return 0
+  if [ "$head" != "$main" ]; then
+    echo "$name: warning: gate scripts are at ${head:0:7} but origin/main is ${main:0:7}; results may be stale. Run: git -C $(git -C "$dir" rev-parse --show-toplevel) checkout --detach origin/main" >&2
+  fi
+  return 0
+}

@@ -411,7 +411,16 @@ three scripts and `scripts/lib/` into `~/.ship-bot/app/gate-scripts/` with the
 commit in `SOURCE`, after `lib/gate-imports.mjs` confirms every import
 resolves inside the copy. A fix to a bot too broken to merge it is merged by
 the owner on GitHub, then installed the same way. While that copy exists the bot runs it and nothing else, and an
-incomplete copy refuses the pass. Run from a checkout with no installed copy,
+incomplete copy refuses the pass. The gate commands on PATH (`~/.local/bin/review-status` and its siblings,
+plan row 1.7) are a different copy: symlinks into the detached worktree
+`.claude/worktrees/gates-main` of the .github clone. After the bot merges a
+pull request into `gorfednet/.github` it runs `git fetch origin` and
+`git checkout --detach origin/main` there (`lib/gates-worktree.mjs`). A worktree
+with uncommitted changes to tracked files is left alone, logged as an error and
+sent to the phone. Each wrapper also prints one warning line on stderr when its
+checkout is not at the last fetched `origin/main`.
+
+Run from a checkout with no installed copy,
 the bot checks that each configured script's clone is at `origin/main` and
 clean, and otherwise refuses the pass: no gate runs, nothing is readied or
 merged. Each pass logs `gate scripts from the ...` with the source.

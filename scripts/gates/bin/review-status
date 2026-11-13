@@ -11,6 +11,7 @@ done
 here=$(cd "$(dirname "$src")" && pwd)
 . "$here/_gate-env.sh"
 gate_prepare_env review-status "$@"
+gate_warn_if_stale review-status "$here"
 # Every gate gets the same repository: --repo wins, else GITHUB_REPOSITORY (set above).
 if ! gate_has_repo_flag "$@"; then set -- "$@" --repo "$GITHUB_REPOSITORY"; fi
 exec node "$here/../../review-status.mjs" "$@"
