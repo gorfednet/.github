@@ -180,7 +180,9 @@ describe('buildTrain', () => {
 
   it('the train body is one ship-bot takes as a draft', () => {
     const body = trainBody({ repo: REPO, carried: [{ number: 1, kind: 'kit', title: 'kit: x' }], left: [], week: '2026-W46' })
-    assert.notDeepEqual(draftClaim({ body }), {})
+    const verdict = draftClaim({ body })
+    assert.equal(verdict.refused, undefined)
+    assert.ok(verdict.claim)
   })
 
   it('builds nothing when nothing qualifies', () => {

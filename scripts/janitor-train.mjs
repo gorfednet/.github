@@ -118,13 +118,14 @@ export function trainBody({ repo, carried, left, week }) {
   return [
     `Housekeeping train for ${repo}, ${week}. One pull request carries what would have been ${carried.length} (shipping.md, "Release trains").`,
     '',
+    'Merging marks every carried pull request merged, so `check-closing-keywords` scans them too. CI and the review gate this head as for any pull request.',
+    '',
     '## Carries',
     ...carried.map((p) => `- #${p.number} (${p.kind}): ${p.title}`),
     '',
     ...(left.length ? ['## Left out', ...left.map((l) => `- #${l.number}: ${l.reason}`), ''] : []),
     '## Next',
     '- [ ] Merge this pull request.',
-    'The gates (CI green, review clean on this head, `check-closing-keywords`) already hold the merge. It marks every carried pull request merged, so the closing-keywords check scans them too.',
     '- [ ] Any piece listed under Left out stays a pull request of its own.',
     '',
   ].join('\n')
