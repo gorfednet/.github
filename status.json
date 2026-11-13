@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-11-13T13:27:08.565Z",
-  "renderedAt": "2026-11-13T13:27:08.565Z",
+  "generatedAt": "2026-11-13T13:41:02.528Z",
+  "renderedAt": "2026-11-13T13:41:02.528Z",
   "repos": [
     {
       "slug": "gorfednet/bindercurve.com",
@@ -136,17 +136,6 @@
           "author": "gorfednet"
         },
         {
-          "number": 138,
-          "title": "Plan of record, Desk brief and reassessment handoff, 13 November",
-          "ageDays": 0,
-          "labels": [],
-          "draft": false,
-          "review": "not-run",
-          "ci": "pending",
-          "next": "merge",
-          "author": "gorfednet"
-        },
-        {
           "number": 137,
           "title": ".github: check-sitemap-pages ships in the kit but the shared verification gate does not run it",
           "ageDays": 0,
@@ -190,19 +179,8 @@
           ],
           "draft": false,
           "review": "not-run",
-          "ci": "pending",
-          "next": null,
-          "author": "gorfednet"
-        },
-        {
-          "number": 120,
-          "title": "Desk brief: session-start rule",
-          "ageDays": 1,
-          "labels": [],
-          "draft": true,
-          "review": "not-run",
           "ci": "green",
-          "next": "Merge when checks are green (docs-only).",
+          "next": null,
           "author": "gorfednet"
         },
         {
@@ -212,19 +190,8 @@
           "labels": [],
           "draft": true,
           "review": "findings",
-          "ci": "pending",
-          "next": "merge",
-          "author": "gorfednet"
-        },
-        {
-          "number": 118,
-          "title": "Desk standing brief",
-          "ageDays": 1,
-          "labels": [],
-          "draft": false,
-          "review": "findings",
           "ci": "green",
-          "next": "Merge when checks are green (docs-only).",
+          "next": "merge",
           "author": "gorfednet"
         },
         {
@@ -258,17 +225,6 @@
           "review": "not-run",
           "ci": "green",
           "next": "Main session: open the PR, merge when the gates pass.",
-          "author": "gorfednet"
-        },
-        {
-          "number": 111,
-          "title": ".github: The online half of the fleet check cannot run until FLEET_READ_TOKEN exists",
-          "ageDays": 3,
-          "labels": [],
-          "draft": true,
-          "review": "not-run",
-          "ci": "green",
-          "next": "Owner: create a fine-grained PAT (read-only Contents, Actions, Metadata on gorfednet) and add it as the secret FLEET_READ_TOKEN on gorfednet/.github",
           "author": "gorfednet"
         },
         {
@@ -349,17 +305,6 @@
           "author": "gorfednet"
         },
         {
-          "number": 99,
-          "title": "fleet-audit-needs-a-token: stopped, no code change",
-          "ageDays": 3,
-          "labels": [],
-          "draft": true,
-          "review": "not-run",
-          "ci": "red",
-          "next": "Owner: create the PAT and run `gh secret set FLEET_READ_TOKEN --repo gorfednet/.github`",
-          "author": "gorfednet"
-        },
-        {
           "number": 98,
           "title": "cards-at-overwritable-urls",
           "ageDays": 3,
@@ -375,6 +320,14 @@
         {
           "branch": "chore/recapture-promptboi-api-vhost",
           "ahead": 1
+        },
+        {
+          "branch": "docs/desk-brief",
+          "ahead": 1
+        },
+        {
+          "branch": "docs/desk-brief-session-starts",
+          "ahead": 2
         },
         {
           "branch": "fix/no-apt-in-no-smb-guard",
@@ -395,16 +348,19 @@
         {
           "branch": "kit/v0.29.0",
           "ahead": 3
+        },
+        {
+          "branch": "worktree-crystalline-weaving-tarjan",
+          "ahead": 1
+        },
+        {
+          "branch": "worktree-quizzical-sparking-globe",
+          "ahead": 1
         }
       ],
       "lapsedBacklog": [
         {
           "id": "towit-open-security-bump",
-          "status": "confirmed-bug",
-          "reviewBy": "2026-10-15"
-        },
-        {
-          "id": "fleet-audit-needs-a-token",
           "status": "confirmed-bug",
           "reviewBy": "2026-10-15"
         },
@@ -482,7 +438,12 @@
     },
     {
       "slug": "gorfednet/career-portfolio",
-      "unavailable": "unreadable"
+      "redacted": true,
+      "mainRed": false,
+      "openPrCount": 1,
+      "lapsedBacklogCount": 0,
+      "dependabotRedCount": 0,
+      "kitVersion": "0.61.0"
     },
     {
       "slug": "gorfednet/heuristics.4thcltr.com",
