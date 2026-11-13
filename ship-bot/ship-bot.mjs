@@ -27,6 +27,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { runOnce, selectRepos } from './lib/bot.mjs'
+import { ping as heartbeat } from './lib/heartbeat.mjs'
 import { ConfigError, expandHome, loadConfig, validateConfig } from './lib/config.mjs'
 import { mintInstallationToken } from './lib/app-auth.mjs'
 import { ReadCache } from './lib/cache.mjs'
@@ -109,6 +110,7 @@ const defaultDeps = () => ({
   makeGithub: (token, { cache } = {}) => createGitHubClient({ token, cache }),
   makeReadCache: (path, clock) => new ReadCache(path, { now: () => clock.now() }).load(),
   appToken: readAppToken,
+  heartbeat: heartbeat,
   runner: realRunner,
   clock: { now: () => new Date() },
   out: (line) => process.stdout.write(`${line}\n`),
@@ -203,7 +205,10 @@ async function onePass(loaded, args, deps, print) {
   }
   try {
     const auth = await readAuth(config, deps, print)
-    if (!auth) return 1
+    if (!auth) {
+      if (args.mode !== 'dry-run') await deps.heartbeat('ship-bot', { ok: false })
+      return 1
+    }
     const { token } = auth
     const state = new StateStore(join(config.stateDir, 'state.json'), { persist: live }).load()
     // Safe to lose and safe for a dry run to write: it only saves quota.
@@ -235,9 +240,11 @@ async function onePass(loaded, args, deps, print) {
     } catch (cause) {
       print('warn', `could not save the read cache: ${cause.message}`)
     }
+    if (args.mode !== 'dry-run') await deps.heartbeat('ship-bot')
     return 0
   } catch (cause) {
     print('error', `pass failed: ${cause.message}`)
+    if (args.mode !== 'dry-run') await deps.heartbeat('ship-bot', { ok: false })
     return 1
   } finally {
     lock.release()

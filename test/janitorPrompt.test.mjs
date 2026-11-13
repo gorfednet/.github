@@ -77,3 +77,8 @@ test("janitor never rescues a session whose branch has an open pull request, and
 test("janitor never archives a session whose folder holds ignored local state", () => {
   assert.match(prompt, /`ignored` list[^\n]*Propose only/);
 });
+
+test("janitor pings its dead-man check last, after the digest", () => {
+  assert.match(prompt, /\n9\. Last of all, ping the dead-man check: `node \$J\/scripts\/heartbeat\.mjs janitor`/);
+  assert.ok(prompt.indexOf("\n8. Report, last") < prompt.indexOf("\n9. Last of all"));
+});

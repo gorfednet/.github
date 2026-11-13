@@ -87,6 +87,7 @@ Never write the mode file. Desk or the owner writes `live` after 3 dry runs in a
      4. the Herdr lines
    - Run `bash $J/scripts/janitor-notify.sh $R/digest.txt`.
    - Append `<ISO time in UTC> <mode> v4` to `~/.fleet-janitor/runs.log`.
+9. Last of all, ping the dead-man check: `node $J/scripts/heartbeat.mjs janitor`. Do it even when there was nothing to do; a day with no ping is what alerts. It prints `unconfigured` until `~/.heartbeats/janitor.url` exists, which is fine.
 
 ## Only propose, never do
 

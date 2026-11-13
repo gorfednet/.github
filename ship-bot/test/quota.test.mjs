@@ -352,6 +352,7 @@ describe('GitHub App token', () => {
       makeGithub: (token) => (tokens.push(token), new FakeGitHub({ pulls: [] })),
       makeReadCache: () => new ReadCache(null),
       appToken,
+      heartbeat: async () => {},
       runner,
       clock: { now: () => new Date('2026-10-09T12:00:00Z') },
       out: (l) => out.push(l),
