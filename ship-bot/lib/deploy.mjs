@@ -119,15 +119,15 @@ async function syncCheckout(ctx, log, { path, cloneUrl, ref, preserve = [], expe
 // Programs that cannot run without the repository's node_modules.
 const NODE_TOOLS = new Set(['npm', 'npx', 'pnpm', 'yarn', 'vite'])
 const NODE_TOOL_IN_SHELL = /(^|[\s;&|(])(npm|npx|pnpm|yarn|vite)\s/
-const INSTALLS = /^(npm (ci|install|i)|pnpm (install|i)|yarn( install)?)(\s|$)/
+const INSTALLS = /^(npm (ci|clean-install|install|i)|pnpm (install|i)|yarn install|yarn)$/
 
 /** The source clone's package.json declares packages, so a `make` target there is assumed to need them. */
-function declaresPackages(repo, fsx) {
-  const p = join(repo.sourceDir, 'package.json')
+function declaresPackages(dir, fsx) {
+  const p = join(dir, 'package.json')
   if (!fsx.exists(p)) return false
   try {
     const pkg = JSON.parse(fsx.read(p))
-    return Object.keys(pkg.dependencies ?? {}).length + Object.keys(pkg.devDependencies ?? {}).length > 0
+    return ['dependencies', 'devDependencies', 'optionalDependencies'].some((k) => Object.keys(pkg[k] ?? {}).length > 0)
   } catch {
     return true // an unreadable package.json is not evidence that nothing is needed
   }
@@ -143,7 +143,14 @@ function needsNodeModules(step, packages) {
 
 // A setup step that installs: npm ci and its kin, or a make target (papers' and
 // heuristics' `make verify` start with npm ci; the Makefile owns the install).
-const installs = (step) => INSTALLS.test(step.command.join(' ')) || step.command[0].split('/').at(-1) === 'make'
+const program = (step) => step.command[0].split('/').at(-1)
+const installs = (step) => {
+  const args = step.command.slice(1)
+  // A bare `yarn` installs; `yarn build` does not.
+  if (program(step) === 'yarn') return args.length === 0 || args[0] === 'install'
+  return INSTALLS.test([program(step), ...args.slice(0, 1)].join(' ')) || program(step) === 'make'
+}
+const preserves = (repo) => repo.preserve.some((p) => p.replace(/\/+$/, '') === 'node_modules')
 
 /** What must exist before merging, so a deploy cannot fail for a reason known in advance. */
 export function preflight(repo, fsx = realFs) {
@@ -155,15 +162,25 @@ export function preflight(repo, fsx = realFs) {
   // every rollback, node_modules included, unless `preserve` keeps it. A row
   // whose steps need packages and whose setup installs none fails after the
   // merge, and its rollback fails the same way (gorfmusic.com 49, 12 November 2026).
-  const packages = declaresPackages(repo, fsx)
+  // package.json is read from the owner's clone, which is usually but not
+  // always main: deployMerged checks the merge commit itself after setup.
+  const packages = declaresPackages(repo.sourceDir, fsx)
   const steps = [...repo.setup, ...repo.deploy, ...(repo.rollback ?? [])]
   const needing = steps.filter((s) => needsNodeModules(s, packages)).map((s) => s.name)
-  if (needing.length > 0 && !repo.setup.some(installs) && !repo.preserve.includes('node_modules')) {
+  if (needing.length > 0 && !repo.setup.some(installs) && !preserves(repo)) {
     problems.push(
-      `step${needing.length > 1 ? 's' : ''} ${needing.map((n) => `"${n}"`).join(', ')} need node_modules, which the workspace clean removes, and no setup step installs it: add a setup step running npm ci, or list node_modules in preserve`,
+      `step${needing.length > 1 ? 's' : ''} ${needing.map((n) => `"${n}"`).join(', ')} need node_modules, which the workspace clean removes, and no setup step installs it: add a setup step running npm ci`,
     )
   }
   return problems
+}
+
+/** After setup, in the workspace at the merge commit: packages declared, steps that need them, and no node_modules. */
+function missingNodeModules(repo, steps, fsx) {
+  if (!declaresPackages(repo.workDir, fsx)) return null
+  const needing = steps.filter((s) => needsNodeModules(s, true)).map((s) => s.name)
+  if (needing.length === 0 || fsx.exists(join(repo.workDir, 'node_modules'))) return null
+  return `the merge commit's package.json declares packages, setup left no node_modules, and step${needing.length > 1 ? 's' : ''} ${needing.map((n) => `"${n}"`).join(', ')} need them: add a setup step running npm ci`
 }
 
 /** Values from the repo's env files, for the redactor. */
@@ -304,6 +321,12 @@ export async function deployMerged(ctx, repo, { mergeSha, log, release = null })
   }
 
   const selected = selectSteps(repo.deploy, changed)
+  // Nothing has been deployed yet: refuse here rather than fail the first step and roll back.
+  const missing = missingNodeModules(repo, selected, ctx.fsx)
+  if (missing) {
+    log.write(`\n[ship-bot] not deploying: ${missing}\n`)
+    return { status: 'not-started', tagged, error: missing }
+  }
   const steps = []
   for (const step of selected) {
     try {

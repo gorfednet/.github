@@ -265,15 +265,18 @@ It should fail with "No value at that key path". If it prints `Background`,
 re-run `ship-bot/install.sh` so the loaded plist matches this file. (`active
 count` in `launchctl print` is no use here: the job is idle between runs.)
 
-**13 November 2026:** two deploy preconditions are checked before the merge.
-A row whose setup, deploy or rollback steps need `node_modules` (an npm, npx,
-pnpm, yarn or vite step, or a `make` step over a package.json that declares
-packages) must install them in setup (`npm ci`, or a `make` target that does)
-or list `node_modules` in `preserve`; the workspace clean removes it before
-every deploy and every rollback (gorfmusic.com 49). And every deploy row syncs
-the `gorfednet.github` helper checkout to `origin/main`, listed in `siblings`
-or not, because `site-deploy.sh` refuses to run from a stale copy of itself
-(MoonMan 324). `docs/handoff/2026-11-13-deploy-root-causes.md` has the four
+**13 November 2026:** a row whose steps need `node_modules` must install it.
+That means an npm, npx, pnpm, yarn or vite step, or a `make` step over a
+package.json that declares packages. It installs with a setup step (`npm ci`,
+or any `make` target, which is trusted to install) or lists `node_modules` in
+`preserve`. The workspace clean removes it before every deploy, and before the
+default rollback (gorfmusic.com 49). The bot checks this before the merge,
+against the owner's clone. It checks again after setup, against the merge
+commit, before any deploy step runs. Every deploy row in the bot's work root
+also syncs the `gorfednet.github` helper checkout to `origin/main`, listed in
+`siblings` or not, as part of preparing the workspace after the merge.
+`site-deploy.sh` refuses to run from a stale copy of itself (MoonMan 324). A
+row with a custom `workDir` gets no implied sibling. `docs/handoff/2026-11-13-deploy-root-causes.md` has the four
 causes.
 
 A dry run reads GitHub (it runs the verification kit's read-only gate scripts)

@@ -344,7 +344,10 @@ export const HELPER_SIBLING = Object.freeze({ dir: 'gorfednet.github', slug: 'go
 
 function withHelper(repo) {
   const listed = repo.siblings ?? []
-  if (repo.slug === HELPER_SIBLING.slug || listed.some((s) => s.dir === HELPER_SIBLING.dir)) return listed
+  if (repo.slug.toLowerCase() === HELPER_SIBLING.slug || listed.some((s) => s.dir === HELPER_SIBLING.dir)) return listed
+  // A custom workDir could sit next to the owner's own clones, and a sibling
+  // sync force-cleans its directory: only the bot's work root gets it implied.
+  if (repo.workDir !== undefined) return listed
   return [{ ...HELPER_SIBLING }, ...listed]
 }
 

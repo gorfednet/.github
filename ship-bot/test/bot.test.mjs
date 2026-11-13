@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { existsSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, it } from 'node:test'
 import {
@@ -727,6 +727,26 @@ describe('deploying', () => {
         await s.run()
         assert.equal(merges(s.github).length, 1, JSON.stringify(row))
       }
+    })
+
+    it('counts an install by program name, not path, and does not count yarn build', async () => {
+      for (const [setup, merged] of [[[{ name: 'i', command: ['/opt/homebrew/bin/npm', 'ci'] }], 1], [[{ name: 'b', command: ['yarn', 'build'] }], 0]]) {
+        const s = scenario({ repos: [repoEntry({ setup, deploy: [{ name: 'site', command: ['npm', 'run', 'deploy'] }] })] })
+        await s.run()
+        assert.equal(merges(s.github).length, merged, JSON.stringify(setup))
+      }
+    })
+
+    it('after setup, refuses to deploy a merge commit whose package.json needs packages that setup did not install', async () => {
+      // The owner clone said no packages, so the merge went ahead; the merge commit adds one.
+      const s = scenario({ repos: [repoEntry({ setup: [] })] })
+      mkdirSync(join(s.home, 'work', 'site'), { recursive: true })
+      writeFileSync(join(s.home, 'work', 'site', 'package.json'), JSON.stringify({ dependencies: { vite: '^8.0.0' } }))
+      await s.run()
+      assert.equal(merges(s.github).length, 1)
+      assert.equal(s.runner.ofKind('deploy').length, 0, 'no deploy step ran')
+      assert.equal(s.runner.ofKind('rollback').length, 0, 'nothing to roll back')
+      assert.match(s.state().repo(SLUG).blocked.reason, /setup left no node_modules/)
     })
 
     it('merges a make deploy with setup: [] when package.json declares no packages (a static site)', async () => {

@@ -45,6 +45,8 @@ describe('config validation', () => {
     assert.deepEqual(bare.siblings.map((s) => [s.path, s.branch]), [[helper, 'main']])
     assert.equal(listed.siblings.length, 1)
     assert.deepEqual(own.siblings, [])
+    const [custom] = repos([{ slug: 'gorfednet/y', dir: 'y', mode: 'deploy', claudeReview: false, expectedChecks: ['c'], workDir: '~/Developer/gorfednet/y', deploy: [{ name: 'd', command: ['true'] }] }])
+    assert.deepEqual(custom.siblings, [], 'a custom workDir gets no implied sibling: it could be the owner clone')
   })
 
   it('the example never ships a repository live, and the 4thcltr family deploys only what fits the row shape', () => {

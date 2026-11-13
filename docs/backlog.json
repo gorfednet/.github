@@ -475,6 +475,18 @@
       "created": "2026-11-12",
       "updated": "2026-11-13",
       "pr": 128
+    },
+    {
+      "id": "ship-bot-default-rollback-cannot-pass-tip-guard",
+      "title": "Ship-bot's default rollback can never pass site-deploy's merged-tip guard",
+      "status": "confirmed-bug",
+      "assignee": "main-model",
+      "userSymptom": "A deploy that fails after publishing leaves the repo blocked with 'the rollback failed too', and the site stays on the failed release.",
+      "evidence": "A row with no rollback list redeploys the parent commit, and site-deploy.sh refuses it as behind origin/main: ssatcy 35 (deploy log 2026-11-13T03-25-47-166Z) and MoonMan 324 (2026-11-13T03-14-59-833Z). On MoonMan, the rollback re-ran deploy:infra from the parent first and put the parent's nginx conf back live. docs/handoff/2026-11-13-deploy-root-causes.md.",
+      "note": "Fix per row: split make deploy into build, publish and live-check steps, and give the row a make rollback step onlyAfterFailureOf the steps after the publish. Then retire the default, or refuse it for site rows.",
+      "reviewBy": "2026-12-13",
+      "created": "2026-11-13",
+      "updated": "2026-11-13"
     }
   ]
 }
