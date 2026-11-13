@@ -181,7 +181,14 @@ export function idleSessions(dir = SESSIONS_DIR, now = Date.now()) {
   }
   for (const level1 of walk(dir)) {
     for (const level2 of walk(level1)) {
-      for (const f of readdirSync(level2).filter((n) => /^local_.*\.json$/.test(n))) {
+      let files
+      try {
+        files = readdirSync(level2).filter((n) => /^local_.*\.json$/.test(n))
+      } catch {
+        unreadable += 1
+        continue
+      }
+      for (const f of files) {
         try {
           const s = JSON.parse(readFileSync(join(level2, f), 'utf8'))
           read += 1

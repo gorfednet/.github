@@ -4,7 +4,7 @@
  */
 import { strict as assert } from 'node:assert'
 import { spawnSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, it } from 'node:test'
@@ -307,6 +307,13 @@ describe('hygiene rows', () => {
     symlinkSync('/nonexistent-dir', join(dir, 'a', 'dangling'))
     assert.equal(idleSessions(dir, now), null, 'a dangling entry makes the row not measured, not a throw')
     rmSync(join(dir, 'a', 'dangling'))
+    if (process.getuid?.() !== 0) {
+      mkdirSync(join(dir, 'a', 'locked'))
+      chmodSync(join(dir, 'a', 'locked'), 0o000)
+      assert.equal(idleSessions(dir, now), null, 'an unreadable session directory makes the row not measured, not a throw')
+      chmodSync(join(dir, 'a', 'locked'), 0o755)
+      rmSync(join(dir, 'a', 'locked'), { recursive: true })
+    }
     put('local_bad.json', { sessionId: 'local_bad', lastActivityAt: 'yesterday' })
     assert.equal(idleSessions(dir, now), null, 'one session with an unreadable time makes the row not measured')
   })
