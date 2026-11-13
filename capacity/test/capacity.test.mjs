@@ -82,6 +82,28 @@ test('a live session with an unreadable timestamp makes the count unknown', () =
   assert.equal(countWorking(mk(put('local_2.json', '{broken')), now), null)
   assert.equal(countWorking(mk(() => {}), now), 1) // near miss: all readable stays a real count
 })
+test('a store whose files carry no usable timestamp is unknown, not zero', () => {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), 'cap-'))
+  fs.writeFileSync(path.join(d, 'local_1.json'), JSON.stringify({ isArchived: true, lastActivityAt: '2026-11-13T10:00:00Z' }))
+  assert.equal(countWorking(d, 1_000_000_000), null)
+})
+test('an unlistable subdirectory makes the count unknown', { skip: process.getuid?.() === 0 }, () => {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), 'cap-'))
+  fs.mkdirSync(path.join(d, 'ok')); fs.mkdirSync(path.join(d, 'locked'))
+  fs.writeFileSync(path.join(d, 'ok', 'local_1.json'), JSON.stringify({ isArchived: false, lastActivityAt: 1_000_000_000 }))
+  fs.writeFileSync(path.join(d, 'locked', 'local_2.json'), JSON.stringify({ isArchived: false, lastActivityAt: 1_000_000_000 }))
+  fs.chmodSync(path.join(d, 'locked'), 0)
+  try { assert.equal(countWorking(d, 1_000_000_000), null) } finally { fs.chmodSync(path.join(d, 'locked'), 0o755) }
+})
+test('a failed first push (lastPushedState null) is retried', async () => {
+  const h = harness(null, base)
+  h.deps.push = async (t) => { h.pushes.push(t); return false }
+  const first = await run(h.deps)
+  assert.equal(first.lastPushedState, null)
+  h.deps.readPrevious = () => first
+  await run(h.deps)
+  assert.equal(h.pushes.length, 2)
+})
 test('unknown session count never reports headroom', () => {
   assert.equal(classify({ ...base, working: null }).state, 'steady')
   assert.equal(classify({ ...base, working: null, load1: 11 }).state, 'hold')

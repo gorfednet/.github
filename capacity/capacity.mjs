@@ -36,7 +36,7 @@ export function countWorking(root, now, windowMs = THRESHOLDS.workingWindowMs) {
   let unreadable = false
   const walk = (dir, depth) => {
     let entries = []
-    try { entries = fs.readdirSync(dir, { withFileTypes: true }) } catch { return }
+    try { entries = fs.readdirSync(dir, { withFileTypes: true }) } catch { unreadable = true; return } // an unlistable directory may hold live sessions
     for (const e of entries) {
       const p = path.join(dir, e.name)
       if (e.isDirectory() && depth < 3) walk(p, depth + 1)
@@ -44,7 +44,7 @@ export function countWorking(root, now, windowMs = THRESHOLDS.workingWindowMs) {
         try {
           const d = JSON.parse(fs.readFileSync(p, 'utf8'))
           const at = Number(d.lastActivityAt)
-          seen++
+          if (Number.isFinite(at)) seen++ // only a file in the format we understand proves the store was read
           if (d.isArchived) continue
           // A live session whose timestamp we cannot read is unknown, never idle.
           if (d.lastActivityAt == null || d.lastActivityAt === '' || !Number.isFinite(at)) unreadable = true
@@ -77,7 +77,7 @@ export async function run(deps) {
   const out = { state, freeSlots, load1: inputs.load1, cores: inputs.cores, freeGb: Number(inputs.freeGb.toFixed(2)), working: inputs.working, sessionsKnown: inputs.working !== null, poolQueue: queued, weeklyUsage: null, at: new Date(now).toISOString() }
   const prev = readPrevious()
   // Compare with the last state a push actually reached, so a failed POST is retried next run.
-  let lastPushed = prev?.lastPushedState ?? prev?.state ?? null
+  let lastPushed = prev && 'lastPushedState' in prev ? prev.lastPushedState : (prev?.state ?? null)
   const text = message({ state, freeSlots, queued })
   if (shouldPush(lastPushed, state)) {
     if (!text) lastPushed = state // steady: nothing to say, but remember it
