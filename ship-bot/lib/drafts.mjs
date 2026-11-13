@@ -53,14 +53,16 @@ export function draftIneligibleReason(pr, repo, defaultBranch, allowedAuthors) {
  * root. BASENAMES match at any depth. Matching ignores case, since a clone on
  * a case-insensitive disk lands `Ship-bot/x` on `ship-bot/x`.
  */
-export const CONTROL_PLANE_PATHS = ['.github/', '.claude/', 'ship-bot/', 'scripts/gates/', 'scripts/lib/', 'scripts/review-status.mjs', 'janitor/', 'capacity/']
+export const CONTROL_PLANE_PATHS = ['.github/', '.claude/', 'ship-bot/', 'scripts/gates/', 'scripts/lib/', 'scripts/review-status.mjs', 'janitor/', 'capacity/', 'verification-kit/']
 /** Rules files every reviewer or session reads as house rules, wherever they sit. */
-export const CONTROL_PLANE_BASENAMES = ['REVIEW.md', 'CLAUDE.md', 'AGENTS.md', 'SKILL.md']
+export const CONTROL_PLANE_BASENAMES = ['REVIEW.md', 'CLAUDE.md', 'AGENTS.md', 'SKILL.md', 'canaries.json']
 /**
  * In gorfednet/.github every script is fleet control plane: deploy-mode repos
- * check it out at main and run its deploy scripts with their secrets.
+ * check it out at main and run its deploy scripts with their secrets, reading
+ * their per-site safety settings from fleet.json. templates/ holds the
+ * canonical verification kit every project's refresh-kit pulls from main.
  */
-const REPO_EXTRA = { 'gorfednet/.github': ['scripts/'] }
+const REPO_EXTRA = { 'gorfednet/.github': ['scripts/', 'fleet.json', 'templates/'] }
 
 export function touchesControlPlane(path, slug = '') {
   const p = path.replace(/^\.?\//, '').toLowerCase()

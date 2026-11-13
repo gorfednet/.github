@@ -315,7 +315,7 @@ export async function evaluateReview(ctx, repo, pr, sha, { headSince, memo, draf
         {
           key: 'review-not-clean',
           kind: 'fail',
-          reason: `The Claude reviewer reported findings on this head (${ctx.redactor.apply(status.detail)}). The bot readies or readied this pull request itself and the repo deploys, so it merges only on a clean review: fix the findings and push for a fresh review, or the owning session, having read them, marks it ready itself.`,
+          reason: `The Claude reviewer reported findings on this head (${ctx.redactor.apply(status.detail)}). The bot readies or readied this pull request itself and the repo deploys, so it merges only on a clean review: push a fix and get a clean review of the new commit. Relabelling does not lift this; a change that must merge with its findings goes in a fresh pull request that a session labels after reading them.`,
         },
       ],
     }

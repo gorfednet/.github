@@ -366,7 +366,7 @@ describe('a draft the bot owns', () => {
 
 describe('plan row 1.12: control-plane paths', () => {
   it('names every control-plane path, and only those (near misses pass)', () => {
-    const hits = ['.github/workflows/ci.yml', '.github/actions/review-input/review-input.mjs', '.github/CODEOWNERS', '.claude/settings.json', 'ship-bot/lib/gates.mjs', 'scripts/gates/assert-checks-started.mjs', 'scripts/lib/reviewVerdict.mjs', 'scripts/review-status.mjs', 'REVIEW.md', 'CLAUDE.md', 'docs/REVIEW.md', 'packages/api/AGENTS.md', 'skills/x/SKILL.md', 'janitor/run.mjs', 'capacity/check.sh', './ship-bot/check.sh', 'Ship-Bot/lib/x.mjs', 'Janitor/PROMPT.md', 'capacity', '.github']
+    const hits = ['.github/workflows/ci.yml', '.github/actions/review-input/review-input.mjs', '.github/CODEOWNERS', '.claude/settings.json', 'ship-bot/lib/gates.mjs', 'scripts/gates/assert-checks-started.mjs', 'scripts/lib/reviewVerdict.mjs', 'scripts/review-status.mjs', 'REVIEW.md', 'CLAUDE.md', 'docs/REVIEW.md', 'packages/api/AGENTS.md', 'skills/x/SKILL.md', 'janitor/run.mjs', 'capacity/check.sh', './ship-bot/check.sh', 'Ship-Bot/lib/x.mjs', 'Janitor/PROMPT.md', 'capacity', '.github', 'verification-kit/bin/assert-tests-executed.mjs', 'canaries.json', 'e2e/canaries.json']
     for (const f of hits) assert.deepEqual(controlPlaneFiles([{ filename: f }]), [f], f)
     const near = ['docs/ship-bot.md', 'docs/review.mdx', 'scripts/gates-notes.md', 'scripts/review-status.md', 'scripts/site-deploy.sh', 'github/workflows/x.yml', 'src/janitor/x.ts', 'ship-bot.md', 'docs/capacity/plan.md', 'capacityx/a', 'src/claude.ts']
     for (const f of near) assert.deepEqual(controlPlaneFiles([{ filename: f }]), [], f)
@@ -374,6 +374,10 @@ describe('plan row 1.12: control-plane paths', () => {
   it('in gorfednet/.github every script is control plane, deploy scripts included', () => {
     assert.deepEqual(controlPlaneFiles([{ filename: 'scripts/site-deploy.sh' }], 'gorfednet/.github'), ['scripts/site-deploy.sh'])
     assert.deepEqual(controlPlaneFiles([{ filename: 'scripts/site-deploy.sh' }], 'gorfednet/site'), [])
+    for (const f of ['fleet.json', 'templates/verification-kit/bin/assert-tests-executed.mjs']) {
+      assert.deepEqual(controlPlaneFiles([{ filename: f }], 'gorfednet/.github'), [f], f)
+      assert.deepEqual(controlPlaneFiles([{ filename: f }], 'gorfednet/site'), [], f)
+    }
   })
   it('counts a rename by its old name, and fails closed on an entry or list it cannot read', () => {
     assert.deepEqual(controlPlaneFiles([{ filename: 'docs/old-gate.mjs', previous_filename: 'scripts/gates/assert-checks-started.mjs', status: 'renamed' }]), ['scripts/gates/assert-checks-started.mjs'])
@@ -494,7 +498,7 @@ describe('plan row 1.12: a bot-readied draft in a deploy repo needs a clean revi
     s.clock.advance(s.config.reviewGraceMinutes)
     await s.run()
     assert.equal(writes(gh, 'mergePull').length, 0)
-    assert.ok(gh.commentsPosted().some((c) => /Ship bot will not merge this: it changes control-plane paths/.test(c.body)), gh.commentsPosted().map((c) => c.body).join('\n---\n'))
+    assert.ok(gh.commentsPosted().some((c) => /Ship bot will not merge this: it changes control-plane paths[\s\S]*relabelling it does not lift this[\s\S]*fresh pull request/.test(c.body)), gh.commentsPosted().map((c) => c.body).join('\n---\n'))
   })
 
   it('a draft the bot labelled keeps its guards after the bot takes its label off a new head and a session labels it again', async () => {

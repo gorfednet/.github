@@ -201,8 +201,9 @@ bot now takes a draft itself when **all** of these hold:
 - it changes no control-plane path (`CONTROL_PLANE_PATHS` and
   `CONTROL_PLANE_BASENAMES` in `lib/drafts.mjs`): anything under `.github/`,
   `.claude/`, `ship-bot/`, `scripts/gates/`, `scripts/lib/`, `janitor/` or
-  `capacity/`, `scripts/review-status.mjs`, any `REVIEW.md`, `CLAUDE.md`,
-  `AGENTS.md` or `SKILL.md`, and in `gorfednet/.github` all of `scripts/`.
+  `capacity/` or `verification-kit/`, `scripts/review-status.mjs`, any
+  `REVIEW.md`, `CLAUDE.md`, `AGENTS.md`, `SKILL.md` or `canaries.json`, and in
+  `gorfednet/.github` all of `scripts/` and `templates/` and `fleet.json`.
   Matching ignores case, and a rename counts by its old name too. Such a draft
   changes what merges unattended, so the bot comments once per commit naming
   the paths and leaves it to the owning session (plan row 1.12);

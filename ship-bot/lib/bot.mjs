@@ -423,7 +423,11 @@ async function botLabelStillEarned(ctx, repo, pr, tag) {
 const listPaths = (paths) => `${paths.slice(0, 5).join(', ')}${paths.length > 5 ? ', ...' : ''}`
 
 const controlPlaneComment = (paths, what) =>
-  `Ship bot will not ${what}: it changes control-plane paths, which change what merges unattended (plan row 1.12):\n\n${paths.slice(0, 20).map((p) => `- \`${p}\``).join('\n')}${paths.length > 20 ? '\n- ...' : ''}\n\nThe session that owns this pull request marks it ready and adds \`${READY_LABEL}\` itself, after reading the diff and a clean or triaged review.`
+  `Ship bot will not ${what}: it changes control-plane paths, which change what merges unattended (plan row 1.12):\n\n${paths.slice(0, 20).map((p) => `- \`${p}\``).join('\n')}${paths.length > 20 ? '\n- ...' : ''}\n\n${
+    what === 'merge this'
+      ? `The bot readied this pull request, so relabelling it does not lift this on any later commit. A session that has read the diff moves the change to a fresh pull request and labels that one.`
+      : `The session that owns this pull request marks it ready and adds \`${READY_LABEL}\` itself, after reading the diff and a clean or triaged review.`
+  }`
 
 /**
  * Did the bot ready or label this pull request itself? From the state file,
