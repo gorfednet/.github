@@ -63,10 +63,14 @@
       "Bash(gh api -X DELETE *)",
       "Bash(gh api --method DELETE *)",
       "Bash(rm -rf /*)",
-      "Read(**/*.env*)",
+      "Read(//**/*.env*)",
       "Read(~/Developer/gorfednet/ops*/**/credentials.json)",
       "Read(~/.ship-bot/config.json)",
-      "Edit(~/.ship-bot/config.json)"
+      "Edit(~/.ship-bot/config.json)",
+      "Bash(gh api *pulls/*/merge*)",
+      "Bash(gh api *-X DELETE*)",
+      "Bash(gh api *--method DELETE*)",
+      "Bash(gh api *-XDELETE*)"
     ],
     "defaultMode": "auto"
   },
@@ -85,7 +89,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/Users/gorf/.local/bin/herdr-turn-hook",
+            "command": "~/.local/bin/herdr-turn-hook",
             "timeout": 5
           }
         ]
@@ -108,7 +112,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/Users/gorf/.local/bin/herdr-turn-hook",
+            "command": "~/.local/bin/herdr-turn-hook",
             "timeout": 5
           }
         ]
@@ -119,7 +123,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/Users/gorf/.local/bin/herdr-turn-hook",
+            "command": "~/.local/bin/herdr-turn-hook",
             "timeout": 5
           }
         ]
@@ -130,7 +134,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/Users/gorf/.local/bin/herdr-turn-hook",
+            "command": "~/.local/bin/herdr-turn-hook",
             "timeout": 5
           }
         ]
@@ -141,7 +145,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/Users/gorf/.local/bin/herdr-turn-hook",
+            "command": "~/.local/bin/herdr-turn-hook",
             "timeout": 5
           }
         ]

@@ -128,8 +128,9 @@ canary.
 Delete the example entry. Add whatever the checks above surfaced, each with a
 symptom in the user's words and evidence that is a citation rather than a hunch.
 
-Then add the project to `FLEET.md` in `gorfednet/.github` with its archetype,
-tier, owner and today's date. A registry nothing updates becomes fiction, so its
+Then add the project to `fleet.json` in `gorfednet/.github` with its archetype,
+tier, owner and today's date, and run `node scripts/write-fleet-md.mjs`. Never
+hand-edit `FLEET.md`: it is generated. A registry nothing updates becomes fiction, so its
 own check fails a project claiming a tier it does not meet.
 
 ## For a project that does not exist yet
