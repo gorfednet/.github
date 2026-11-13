@@ -4,7 +4,7 @@
  */
 import { strict as assert } from 'node:assert'
 import { spawnSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, it } from 'node:test'
@@ -304,6 +304,9 @@ describe('hygiene rows', () => {
     put('local_new.json', { sessionId: 'local_new', lastActivityAt: now - 3_600_000 })
     put('local_arch.json', { sessionId: 'local_arch', isArchived: true, lastActivityAt: now - 99 * 3_600_000 })
     assert.deepEqual(idleSessions(dir, now), [{ id: 'local_old', title: 't', idleHours: 30 }])
+    symlinkSync('/nonexistent-dir', join(dir, 'a', 'dangling'))
+    assert.equal(idleSessions(dir, now), null, 'a dangling entry makes the row not measured, not a throw')
+    rmSync(join(dir, 'a', 'dangling'))
     put('local_bad.json', { sessionId: 'local_bad', lastActivityAt: 'yesterday' })
     assert.equal(idleSessions(dir, now), null, 'one session with an unreadable time makes the row not measured')
   })
@@ -336,6 +339,14 @@ describe('hygiene rows', () => {
     const later = oldWorktrees(clones, Date.now() + 8 * 86_400_000).old
     assert.equal(later.length, 1)
     assert.ok(later[0].ageDays >= 8)
+    // a clone with no local default branch is skipped, not unreadable
+    const nb = join(clones, 'nb')
+    sh(clones, 'clone', '-q', origin, 'nb')
+    sh(nb, 'checkout', '-q', '-b', 'x')
+    sh(nb, 'branch', '-q', '-D', 'main')
+    assert.deepEqual(behindClones(clones, { fetch: false }).unread, [])
+    assert.deepEqual(behindClones(clones, { fetch: false }).behind.map((b) => b.dir), ['c'])
+    rmSync(nb, { recursive: true })
     // a linked worktree that sits beside the clones is one worktree, not another clone to count behind
     sh(c, 'worktree', 'add', '-q', '-b', 'w2', join(clones, 'w2'))
     assert.deepEqual(behindClones(clones, { fetch: false }).behind.map((b) => b.dir), ['c'])

@@ -120,6 +120,13 @@ export function behindClones(root, { fetch = true } = {}) {
       } catch {
         base = 'main'
       }
+      // A clone used only through worktrees may have no local default branch: nothing local to be behind.
+      git(dir, 'rev-parse', '--git-dir') // an unreadable repository throws here and lands in `unread`
+      try {
+        git(dir, 'rev-parse', '--verify', '--quiet', `refs/heads/${base}`)
+      } catch {
+        continue
+      }
       const count = Number(git(dir, 'rev-list', '--count', `${base}..origin/${base}`).trim())
       if (!Number.isFinite(count)) throw new Error('no count')
       if (count > 0) behind.push({ dir: name, branch: base, behind: count })
@@ -164,12 +171,16 @@ export function idleSessions(dir = SESSIONS_DIR, now = Date.now()) {
   const out = []
   let read = 0
   let unreadable = 0
-  for (const a of readdirSync(dir)) {
-    const level1 = join(dir, a)
-    if (!statSync(level1).isDirectory()) continue
-    for (const b of readdirSync(level1)) {
-      const level2 = join(level1, b)
-      if (!statSync(level2).isDirectory()) continue
+  const walk = (path) => {
+    try {
+      return readdirSync(path).map((n) => join(path, n)).filter((p) => statSync(p).isDirectory())
+    } catch {
+      unreadable += 1 // a dangling link or a directory we cannot read: the count could be short
+      return []
+    }
+  }
+  for (const level1 of walk(dir)) {
+    for (const level2 of walk(level1)) {
       for (const f of readdirSync(level2).filter((n) => /^local_.*\.json$/.test(n))) {
         try {
           const s = JSON.parse(readFileSync(join(level2, f), 'utf8'))
