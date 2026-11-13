@@ -75,6 +75,70 @@ test('passes loops that do not poll GitHub', () => {
   allowed('echo "for each PR, gh pr view, then sleep 60 and done"');
 });
 
+test('blocks loops handed to another shell, and gh loops with no sleep', () => {
+  blocked("bash -c 'while true; do gh pr checks 12; sleep 30; done'");
+  blocked('zsh -c "until gh run view 5 --exit-status; do sleep 30; done"');
+  blocked("hc run --bg --name poll --cwd . -- bash -c 'while true; do gh pr view 5 --json state; sleep 60; done'");
+  blocked("hc run --bg --name poll -- zsh -lc 'for i in $(seq 60); do gh pr view 5; sleep 120; done'");
+  blocked('ssh dapyllil "while true; do gh api rate_limit; sleep 10; done"');
+  blocked("eval 'while :; do gh pr checks 3; sleep 20; done'");
+  blocked('while true; do gh pr view 5 --json state -q .state | grep -q MERGED && break; done');
+  blocked('until gh run view 9 --exit-status >/dev/null; do echo waiting; done');
+  blocked('while true; do /opt/homebrew/bin/gh pr checks 5; sleep 30; done');
+  blocked('cat > $TMPDIR/w.sh <<\'EOF\'\nwhile true; do gh pr view 5; sleep 60; done\nEOF\nzsh $TMPDIR/w.sh');
+  blocked('bash <<EOF\nuntil gh pr view 5 | grep -q MERGED; do sleep 60; done\nEOF');
+});
+
+test('blocks stray keywords and comments inside a real poll loop', () => {
+  blocked('while true; do gh pr checks 5; echo "(for PR 5)"; sleep 60; done');
+  blocked('while true; do gh pr checks 5 && break; echo "pending; while waiting"; sleep 60; done');
+  blocked("while true; do s=$(gh run view 9 --json status -q .status); echo \"$s\" | grep -qE 'completed|done' && break; sleep 30; done");
+  blocked('while true; do\n  # check; for each PR\n  gh pr checks 5\n  sleep 60\ndone');
+});
+
+test('blocks default-interval watchers and watch(1) on gh', () => {
+  assert.match(blocked('gh run watch 123 --exit-status'), /--interval 60/);
+  blocked('gh run watch 123 --interval 3 --exit-status');
+  blocked('gh pr checks 12 --watch');
+  blocked('watch -n 30 gh pr checks 12');
+  allowed('gh pr checks 12 --watch --interval 60');
+  allowed('gh pr checks 12');
+});
+
+test('passes loop text that is data: quotes, data heredocs, searches', () => {
+  allowed('gh pr comment 163 --body "Blocked shape; while true; do gh api x; sleep 1; done"');
+  allowed("gh pr create --title x --body \"$(cat <<'EOF'\nThe loop was:\n    while true; do gh pr checks 12; sleep 30; done\nand `until ...; do :; done`\nEOF\n)\"");
+  allowed("git commit -m \"$(cat <<'EOF'\ngh-poll-guard: refuse `until ...; do :; done` busy-waits\nEOF\n)\"");
+  allowed("cat >> docs/handoff/2026-11-13-quota.md <<'EOF'\nThe loop was:\nuntil [ -f x ]; do :; done\nEOF");
+  allowed(`cat > ~/.claude/hooks/gh-poll-guard.py <<'EOF'\n${readFileSync(HOOK, 'utf8')}\nEOF`);
+  allowed('grep -rnE "(for|while|until) .*; do :; done" scripts/');
+  allowed("grep -rn '`until ...; do :; done`' docs/");
+  allowed(`grep -rnF '${fixture('merge-poll.sh').trim().replace(/'/g, '')}' ~/.claude/projects`);
+  allowed("printf '%s' 'x; until false; do :; done' | wc -c");
+});
+
+test('passes one-pass loops that throttle or retry', () => {
+  allowed('for r in ops ssatcy.com gorfed.net; do gh pr list -R gorfednet/$r --json number; sleep 1; done');
+  allowed('for i in 1 2 3; do gh pr comment 5 --body-file b.md && break; sleep 5; done');
+  allowed('while read -r n; do gh pr view $n --json title -q .title; sleep 1; done < prs.txt');
+  allowed('while wait -n; do :; done');
+  allowed('until grep -q "Ready in" dev.log; do sleep 0.5; done');
+});
+
+test('a whitespace-heavy command finishes well inside the 5 s timeout', () => {
+  const started = Date.now();
+  allowed('echo start' + '\n'.repeat(40000) + 'while true\ndo' + ' '.repeat(40000) + 'sleep 1; done');
+  assert.ok(Date.now() - started < 3000, `took ${Date.now() - started} ms`);
+});
+
+test('covers the Monitor tool too', () => {
+  const r = spawnSync('python3', ['-I', HOOK], {
+    input: JSON.stringify({ tool_name: 'Monitor', tool_input: { command: 'while true; do gh pr checks 5; sleep 30; done' } }),
+    encoding: 'utf8',
+  });
+  assert.equal(JSON.parse(r.stdout).hookSpecificOutput.permissionDecision, 'deny');
+});
+
 test('fails open on input it cannot read', () => {
   const r = spawnSync('python3', ['-I', HOOK], { input: 'not json', encoding: 'utf8' });
   assert.equal(r.status, 0);
