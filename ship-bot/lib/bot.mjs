@@ -191,6 +191,9 @@ async function processPull(ctx, repo, pr, defaultBranch) {
   const headState = ctx.state.head(repo.slug, pr.number, sha, nowIso)
   const tag = `${repo.slug}#${pr.number} (${short(sha)})`
 
+  const own = await botLabelStillEarned(ctx, repo, pr, tag)
+  if (!own) return false
+
   const result = await evaluatePull(ctx, repo, pr, { headState })
   if (result.ready && headState.readiedAt && (ctx.clock.now() - new Date(headState.readiedAt)) / 60000 < ctx.config.reviewGraceMinutes) {
     ctx.say('debug', `${tag}: not merging: the bot marked this draft ready at ${headState.readiedAt}; giving the ready-for-review review time to start`)
@@ -266,6 +269,31 @@ async function processPull(ctx, repo, pr, defaultBranch) {
   return liveMerge(ctx, repo, pr, tag, plan)
 }
 
+/**
+ * A `ready-to-merge` the bot added itself is no person's sign-off. Before the
+ * gates run on such a pull request, the `## Next` claim must still hold and
+ * the head must be the one the bot labelled; otherwise the label comes off
+ * (live) and the pull request is left for a person. Dry run and observation
+ * only say so.
+ */
+async function botLabelStillEarned(ctx, repo, pr, tag) {
+  const prState = ctx.state.pr(repo.slug, pr.number)
+  const bl = prState.botLabelled
+  if (!bl) return true
+  const { claim, refused } = draftClaim(pr)
+  const why = bl.sha !== pr.head.sha ? `the head moved from ${short(bl.sha)} to ${short(pr.head.sha)} after the bot labelled it` : claim ? null : refused ?? 'the ## Next merge line is gone'
+  if (!why) return true
+  ctx.say('info', `${tag}: not merging: ${READY_LABEL} was the bot's own and ${why}; removing the label and leaving it for a person`)
+  if (ctx.dry) {
+    ctx.say('info', `${tag}: would remove ${READY_LABEL}`)
+    return false
+  }
+  await ctx.github.removeLabel(repo.slug, pr.number, READY_LABEL)
+  delete prState.botLabelled
+  ctx.state.save()
+  return false
+}
+
 export const DRAFT_READY_COMMENT = 'Ship-bot: gates clean, marking ready and labelling; merges on the next pass'
 
 /**
@@ -323,6 +351,11 @@ async function takeDraft(ctx, repo, listed, defaultBranch) {
   // Label first: a labelled draft is retried next pass if marking ready
   // fails, while a ready pull request with no label would never be looked at
   // again (reviewer finding on #119).
+  // Remembered on the pull request, not the head: the label is the bot's
+  // own, so processPull re-reads ## Next and refuses once the claim is gone
+  // or the head has moved (reviewer finding on #119, round 7).
+  ctx.state.pr(repo.slug, pr.number).botLabelled = { sha, at: ctx.clock.now().toISOString() }
+  ctx.state.save()
   await ctx.github.addLabels(repo.slug, pr.number, [READY_LABEL])
   await ctx.github.markReady(pr.node_id)
   // Leaving draft fires ready_for_review, which starts a second Claude review

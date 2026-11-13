@@ -161,6 +161,14 @@ export class FakeGitHub {
     return pr.labels
   }
 
+  async removeLabel(slug, n, label) {
+    this.log('removeLabel', slug, n, label)
+    this.writes.push({ name: 'removeLabel', slug, n, label })
+    const pr = this.pullsFor(slug).find((p) => p.number === n)
+    pr.labels = pr.labels.filter((l) => l.name !== label)
+    return pr.labels
+  }
+
   async markReady(nodeId) {
     this.log('markReady', nodeId)
     this.writes.push({ name: 'markReady', nodeId })

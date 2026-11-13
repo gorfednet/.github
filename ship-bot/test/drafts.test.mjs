@@ -64,6 +64,42 @@ describe('a draft the bot owns', () => {
     assert.equal(readyComments(gh).length, 1)
   })
 
+  it('after the bot labelled it, a wait written under ## Next takes the label off instead of merging', async () => {
+    const gh = new FakeGitHub({ pulls: [draft()] })
+    const s = scenario({ repos: reviewed(), github: gh })
+    await s.run()
+    assert.equal(writes(gh, 'markReady').length, 1)
+    gh.pulls[0].body = '## Next\n- [ ] merge\n- [ ] owner decides the flag name\n'
+    s.clock.advance(s.config.reviewGraceMinutes)
+    await s.run()
+    assert.equal(writes(gh, 'mergePull').length, 0)
+    assert.deepEqual(writes(gh, 'removeLabel'), [{ name: 'removeLabel', slug: SLUG, n: 7, label: 'ready-to-merge' }])
+    assert.ok(s.logs.some((l) => /ready-to-merge was the bot's own and ## Next says "owner decides the flag name"; removing the label/.test(l)), s.logs.join('\n'))
+    assert.equal(s.state().pr(SLUG, 7).botLabelled, undefined)
+    await s.run()
+    assert.equal(writes(gh, 'mergePull').length, 0, 'without the label it is an ordinary unlabelled pull request')
+  })
+
+  it('after the bot labelled it, a new head takes the label off instead of merging on the old sign-off', async () => {
+    const gh = new FakeGitHub({ pulls: [draft()] })
+    const s = scenario({ repos: reviewed(), github: gh })
+    await s.run()
+    gh.pulls[0].head.sha = 'd'.repeat(40)
+    s.clock.advance(s.config.reviewGraceMinutes)
+    await s.run()
+    assert.equal(writes(gh, 'mergePull').length, 0)
+    assert.equal(writes(gh, 'removeLabel').length, 1)
+    assert.ok(s.logs.some((l) => /the head moved from aaaaaaa to ddddddd after the bot labelled it/.test(l)), s.logs.join('\n'))
+  })
+
+  it('a ready-to-merge a person added is never touched by the re-read', async () => {
+    const gh = new FakeGitHub({ pulls: [makePr({ body: '## Next\n- [ ] owner decides\n' })] })
+    const s = scenario({ repos: reviewed(), github: gh })
+    await s.run()
+    assert.equal(writes(gh, 'mergePull').length, 1)
+    assert.equal(writes(gh, 'removeLabel').length, 0)
+  })
+
   it('labels before marking ready, so a failed markReady is retried next pass instead of leaving a ready pull request with no label', async () => {
     const gh = new FakeGitHub({ pulls: [draft()] })
     let fail = true

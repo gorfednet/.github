@@ -9,7 +9,7 @@
 
 const API = 'https://api.github.com'
 
-export const WRITE_METHODS = new Set(['createComment', 'mergePull', 'createRelease', 'markReady', 'addLabels'])
+export const WRITE_METHODS = new Set(['createComment', 'mergePull', 'createRelease', 'markReady', 'addLabels', 'removeLabel'])
 
 export class GitHubError extends Error {
   constructor(method, path, status, message) {
@@ -125,6 +125,7 @@ export function createGitHubClient({ token, fetchImpl = globalThis.fetch, api = 
     },
     createComment: (slug, n, body) => request('POST', `/repos/${slug}/issues/${n}/comments`, { body }),
     addLabels: (slug, n, labels) => request('POST', `/repos/${slug}/issues/${n}/labels`, { labels }),
+    removeLabel: (slug, n, label) => request('DELETE', `/repos/${slug}/issues/${n}/labels/${encodeURIComponent(label)}`),
     /** Takes a draft out of draft (what `gh pr ready` does). REST has no endpoint for it; `nodeId` is the pull's `node_id`. */
     markReady: (nodeId) =>
       graphql(`mutation($id:ID!){markPullRequestReadyForReview(input:{pullRequestId:$id}){pullRequest{isDraft}}}`, { id: nodeId }).then((d) => {

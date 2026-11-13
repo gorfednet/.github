@@ -209,6 +209,11 @@ if it finds something, keeps the pull request from merging until each thread
 is answered. A repository in observation (`live` false) logs `would mark ready
 and add ready-to-merge` and does nothing.
 
+The label the bot adds is its own, not a person's sign-off: before every
+later pass merges such a pull request, the bot reads `## Next` again and
+checks the head is the one it labelled. A wait written there afterwards, or a
+new push, takes `ready-to-merge` off and leaves the pull request for a person.
+
 To keep a draft a draft, add the **`hold`** label or write the wait under
 `## Next`. To keep a whole repository out of this, set `"draftReady": false`
 on its row in `~/.ship-bot/config.json`.
