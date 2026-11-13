@@ -34,11 +34,10 @@ test('countWorking skips archived and idle sessions', () => {
   w(1, { isArchived: false, lastActivityAt: now - 1000 })
   w(2, { isArchived: true, lastActivityAt: now - 1000 })
   w(3, { isArchived: false, lastActivityAt: now - 3_600_000 })
-  fs.writeFileSync(path.join(d, 'a', 'b', 'local_4.json'), '{broken')
   assert.equal(countWorking(d, now), 1)
   assert.equal(countWorking(path.join(d, 'missing'), now), null)
-  w(5, { isArchived: false, lastActivityAt: '2026-11-13T10:00:00Z' })
-  assert.equal(countWorking(d, now), 1) // non-numeric timestamp is never counted
+  w(6, { isArchived: true, lastActivityAt: 'garbage' })
+  assert.equal(countWorking(d, now), 1) // an archived file's bad timestamp is irrelevant
 })
 function harness(prevState, inputs) {
   const pushes = []
@@ -68,6 +67,20 @@ test('pushes on a state change only', async () => {
   const hold = harness('headroom', { ...base, load1: 12 })
   await run(hold.deps)
   assert.deepEqual(hold.pushes, ['overloaded, hold'])
+})
+test('a live session with an unreadable timestamp makes the count unknown', () => {
+  const mk = (extra) => {
+    const d = fs.mkdtempSync(path.join(os.tmpdir(), 'cap-'))
+    fs.writeFileSync(path.join(d, 'local_1.json'), JSON.stringify({ isArchived: false, lastActivityAt: 1_000_000_000 - 1000 }))
+    extra(d)
+    return d
+  }
+  const now = 1_000_000_000
+  const put = (name, body) => (d) => fs.writeFileSync(path.join(d, name), body)
+  assert.equal(countWorking(mk(put('local_2.json', JSON.stringify({ isArchived: false, lastActivityAt: '2026-11-13T10:00:00Z' }))), now), null)
+  assert.equal(countWorking(mk(put('local_2.json', JSON.stringify({ isArchived: false }))), now), null)
+  assert.equal(countWorking(mk(put('local_2.json', '{broken')), now), null)
+  assert.equal(countWorking(mk(() => {}), now), 1) // near miss: all readable stays a real count
 })
 test('unknown session count never reports headroom', () => {
   assert.equal(classify({ ...base, working: null }).state, 'steady')

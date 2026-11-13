@@ -33,6 +33,7 @@ export function parseVmStat(text) {
 export function countWorking(root, now, windowMs = THRESHOLDS.workingWindowMs) {
   let n = 0
   let seen = 0
+  let unreadable = false
   const walk = (dir, depth) => {
     let entries = []
     try { entries = fs.readdirSync(dir, { withFileTypes: true }) } catch { return }
@@ -44,14 +45,17 @@ export function countWorking(root, now, windowMs = THRESHOLDS.workingWindowMs) {
           const d = JSON.parse(fs.readFileSync(p, 'utf8'))
           const at = Number(d.lastActivityAt)
           seen++
-          if (!d.isArchived && Number.isFinite(at) && now - at <= windowMs) n++
-        } catch { /* a session file mid-write: skip it this run */ }
+          if (d.isArchived) continue
+          // A live session whose timestamp we cannot read is unknown, never idle.
+          if (d.lastActivityAt == null || d.lastActivityAt === '' || !Number.isFinite(at)) unreadable = true
+          else if (now - at <= windowMs) n++
+        } catch { unreadable = true } // unparseable or mid-write: unknown this run
       }
     }
   }
   walk(root, 0)
   // Zero files read means the store moved or changed shape, not an idle Mac.
-  return seen === 0 ? null : n
+  return seen === 0 || unreadable ? null : n
 }
 
 export function message({ state, freeSlots, queued }) {
