@@ -137,7 +137,7 @@ Each row: owner agent and model; root cause to verify (hypothesis, not finding);
 | # | Item | Agent / model | Done |
 |---|---|---|---|
 | 6.1 | Plex: move transcode temp off the NAS path if it is there; confirm hardware transcode; nothing else, it is healthy | `builder` Sonnet in ops | one evening with a transcode and pool at 4 busy shows no load spike over 8 |
-| 6.2 | arrs and qBittorrent: nothing to fix until the owner restores RED download credit; then the `lidarr-fix` FIX-PLAN steps 6 and 7 (164 rebuilds, 20 length matches) run as one Opus session from `~/Developer/lidarr-fix` | Opus session | FIX-PLAN all steps ticked; moved into ops `hosts/dapyllil/arrs/` |
+| 6.2 | **Parked by the owner, 13 Nov 2026 ("red needs time- park it and lidarr"); Desk asks again only when he raises it.** arrs and qBittorrent: nothing to fix until the owner restores RED download credit; then the `lidarr-fix` FIX-PLAN steps 6 and 7 (164 rebuilds, 20 length matches) run as one Opus session from `~/Developer/lidarr-fix` | Opus session | FIX-PLAN all steps ticked; moved into ops `hosts/dapyllil/arrs/` |
 | 6.3 | Homebridge: healthy; add it to the restic include list and a healthchecks ping | `runner` Haiku | restore drill includes `/opt/homebridge` |
 | 6.4 | Docker engine: watchtower policy (pin the production images: moonman, nginx, cloudflared; auto-update only the arrs), `docker system prune` weekly with the backup; incident ledger `~/incidents` moved into ops | `builder` Sonnet in ops, `reviewer` Fable for the pin list | `docker images` dangling 0 at the Sunday report; pinned images listed in ops |
 
