@@ -50,3 +50,9 @@ Order matters. Make the gorfmusic edit before the new ship-bot is installed, or 
 | gorfed.net | 140 | `2026-11-13T14-38-50-303Z-gorfed.net-pr140.log` (09:38 ET) | The bot's first deploy of this site. `build/build-work.py` renders the committed fixture unless `WORK_CONTENT_DIR` is set, and the row sets no env. `deploy.sh` refused: "dist/work/.source is 'fixture', not 'career-portfolio'". The rollback hit the same refusal. Nothing was published. Fix: the row's env points `WORK_CONTENT_DIR`, `WORK_EXPLORE_DIR` and `WORK_PREVIEWS_DIR` at the owner's career-portfolio clone, as a manual deploy does. |
 
 Neither class is one the bot can see before the merge: what a row's deploy needs from its environment lives in the repository's scripts. Both repositories' own guards refused before publishing, which is the right place to fail. One incident each, so a note, not a check (`shipping.md`).
+
+## Afternoon, 13 November
+
+- Deployed green after the fixes: MoonMan 323 and 325, ssatcy 42 and 44, gorfmusic 50 and 53. gorfmusic.com and ssatcy.com answer 200 through DoH (canary edge.adobedc.net resolved public). ssatcy now serves `x-frame-options: DENY` and HSTS.
+- papers is reopened. #35 (11:33 ET) failed 7 wordmark timing specs at normal priority. Background was part of the cause, not all of it. Backlog `papers-deploy-verify-fails-under-load` is confirmed-bug again, and papers 36's incident line is held.
+- `ship-bot --unblock` lost to a running pass for gorfed.net and blackpixelrecords. They were unblocked again between passes and it held. Backlog `ship-bot-unblock-lost-to-running-pass`.

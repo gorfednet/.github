@@ -469,15 +469,14 @@
     {
       "id": "papers-deploy-verify-fails-under-load",
       "title": "papers deploy fails make verify under load",
-      "status": "landed",
+      "status": "confirmed-bug",
       "assignee": "main-model",
       "userSymptom": "A papers.4thcltr.com deploy from ship-bot fails at make verify when the Mac is under load.",
-      "evidence": "ship-bot deploy log 2026-11-11T19-34-59-231Z-papers.4thcltr.com-pr33 and ~/.ship-bot/work/papers.4thcltr.com/test-results/.last-run.json (18 papers verify specs failed on 11 November 2026). Cause confirmed 13 November 2026: the same wordmark and filter specs fail 27 of 87 under taskpolicy -b (background policy) and pass 87 of 87 at normal priority at a load of 7 on 10 cores, with default and 2 workers. The installed plist (written 12 November 22:10 ET) has no ProcessType. docs/handoff/2026-11-13-deploy-root-causes.md.",
-      "note": "Not load as such: the Background process class. PR 128 dropped it and install.sh was rerun.",
+      "evidence": "ship-bot deploy log 2026-11-11T19-34-59-231Z-papers.4thcltr.com-pr33 and ~/.ship-bot/work/papers.4thcltr.com/test-results/.last-run.json (18 papers verify specs failed on 11 November 2026). Cause confirmed 13 November 2026: the same wordmark and filter specs fail 27 of 87 under taskpolicy -b (background policy) and pass 87 of 87 at normal priority at a load of 7 on 10 cores, with default and 2 workers. The installed plist (written 12 November 22:10 ET) has no ProcessType. docs/handoff/2026-11-13-deploy-root-causes.md. Reopened 13 November 2026: #35's deploy (11:33 ET, normal priority, no ProcessType) failed 7 wordmark timing specs again (deploy log 2026-11-13T16-33-07-039Z-papers.4thcltr.com-pr35). Background made it worse (27 of 87) but was not the whole cause. In the 13 November probe, --workers=2 passed 87 of 87 at a load of 15.8.",
+      "note": "Load, not only the process class. PR 128's fix was necessary, not sufficient. Fix direction: the deploy's verify runs Playwright with 2 workers (the rule for a loaded Mac), or leaves out the frame-timing specs CI already ran on the PR head.",
       "reviewBy": "2026-12-12",
       "created": "2026-11-12",
-      "updated": "2026-11-13",
-      "pr": 128
+      "updated": "2026-11-13"
     },
     {
       "id": "ship-bot-default-rollback-cannot-pass-tip-guard",
@@ -487,6 +486,18 @@
       "userSymptom": "A deploy that fails after publishing leaves the repo blocked with 'the rollback failed too', and the site stays on the failed release.",
       "evidence": "A row with no rollback list redeploys the parent commit, and site-deploy.sh refuses it as behind origin/main: ssatcy 35 (deploy log 2026-11-13T03-25-47-166Z) and MoonMan 324 (2026-11-13T03-14-59-833Z). On MoonMan, the rollback re-ran deploy:infra from the parent first and put the parent's nginx conf back live. docs/handoff/2026-11-13-deploy-root-causes.md.",
       "note": "Fix per row: split make deploy into build, publish and live-check steps, and give the row a make rollback step onlyAfterFailureOf the steps after the publish. Then retire the default, or refuse it for site rows.",
+      "reviewBy": "2026-12-13",
+      "created": "2026-11-13",
+      "updated": "2026-11-13"
+    },
+    {
+      "id": "ship-bot-unblock-lost-to-running-pass",
+      "title": "ship-bot --unblock can be undone by a pass that is already running",
+      "status": "confirmed-bug",
+      "assignee": "main-model",
+      "userSymptom": "An unblock reports success, then the repo is blocked again with the same reason and the same since-time.",
+      "evidence": "13 November 2026: gorfed.net and blackpixelrecords.com were unblocked during a live pass. The next passes still reported 'blocked since 14:41/14:35' with the old reasons. Running --unblock again between passes held. --unblock writes state.json without the pass lock, and the running pass saved the state it had loaded earlier.",
+      "note": "Fix: --unblock takes the pass lock (or the pass re-reads before writing a repo's block). Until then, run it while no ship-bot.mjs --live process exists.",
       "reviewBy": "2026-12-13",
       "created": "2026-11-13",
       "updated": "2026-11-13"
