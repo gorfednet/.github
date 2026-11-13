@@ -397,6 +397,12 @@ repository's own CI run), and the example points at the
 - Before the first merge in a deploy-mode repository each run, the config's
   `preflight` steps (ssh to the NAS and to the Docker host) must succeed; if
   not, only merge-only repositories merge that run.
+- A deploy row with `"needsHeadroom": true` merges only while this Mac's
+  1-minute load average is at or below its core count. Use it for a row whose
+  setup or deploy steps are timing-sensitive, such as a local Playwright suite
+  (papers.4thcltr.com). Above that, or when either number can't be read, the
+  bot logs the load and looks again next pass. It posts nothing on the pull
+  request and never blocks the repository for it. The default is false.
 - When a check name appears more than once on a commit (a re-run), only its
   latest run counts.
 - `~/.ship-bot/logs/ship-bot.log` moves to `ship-bot.log.1` once it passes 5 MB.
