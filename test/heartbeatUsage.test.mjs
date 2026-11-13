@@ -75,9 +75,17 @@ describe('usage alerts', () => {
     await checkUsage({ ...s, push })
     assert.equal(n, 2)
   })
-  it('missing or malformed state pushes nothing', async () => {
-    const s = setup(0); writeFileSync(s.statePath, '{}')
-    assert.equal((await checkUsage({ ...s, push: () => assert.fail() })).action, 'unreadable')
-    assert.equal(JSON.parse(readFileSync(s.statePath, 'utf8')).usage, undefined)
+  it('missing, empty or non-numeric usage pushes nothing and leaves the memo alone', async () => {
+    const s = setup(92); const sent = []
+    const push = async (t) => { sent.push(t); return true }
+    await checkUsage({ ...s, push })
+    const memo = readFileSync(s.memoPath, 'utf8')
+    for (const bad of ['{}', '{"usage":{"pct":null}}', '{"usage":{"pct":""}}', '{"usage":{"pct":"90"}}', 'not json']) {
+      writeFileSync(s.statePath, bad)
+      assert.equal((await checkUsage({ ...s, push })).action, 'unreadable', bad)
+      assert.equal(readFileSync(s.memoPath, 'utf8'), memo, bad)
+    }
+    s.set(92); await checkUsage({ ...s, push })
+    assert.equal(sent.length, 1, 'a null reading in between must not re-arm the 90% push')
   })
 })

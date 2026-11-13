@@ -15,8 +15,9 @@ export function pendingThreshold(pct, fired) {
 /** push(text) resolves true when any path delivered. */
 export async function checkUsage({ statePath, memoPath, push }) {
   let pct
-  try { pct = Number(JSON.parse(readFileSync(statePath, 'utf8'))?.usage?.pct) } catch { return { action: 'unreadable' } }
-  if (!Number.isFinite(pct)) return { action: 'unreadable' }
+  try { pct = JSON.parse(readFileSync(statePath, 'utf8'))?.usage?.pct } catch { return { action: 'unreadable' } }
+  // Only a real number counts: Number(null) and Number('') are 0 and would reset the memo.
+  if (typeof pct !== 'number' || !Number.isFinite(pct)) return { action: 'unreadable' }
   let fired = []
   try { fired = JSON.parse(readFileSync(memoPath, 'utf8')).fired ?? [] } catch { /* first run */ }
   const kept = fired.filter((t) => pct >= t)
