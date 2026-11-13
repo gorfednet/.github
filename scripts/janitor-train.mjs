@@ -141,7 +141,7 @@ export function buildTrain({ clone, repo, prs, week = isoWeek(), base = 'main', 
   const carried = []
   if (carry.length === 0) return { branch, carried, left, head: null, applied: false }
 
-  git(clone, 'fetch', '--quiet', 'origin')
+  git(clone, 'fetch', '--quiet', '--prune', 'origin')
   const work = mkdtempSync(join(tmpdir(), 'janitor-train-'))
   const tree = join(work, 'tree')
   git(clone, 'worktree', 'add', '--quiet', '--detach', tree, `origin/${base}`)

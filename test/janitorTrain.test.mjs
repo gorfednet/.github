@@ -196,6 +196,15 @@ describe('buildTrain', () => {
     assert.equal(calls.length, 0)
   })
 
+  it('a deleted train branch frees its pieces on the next run (fetch prunes)', () => {
+    const f = fixture()
+    const prs = [f.pr(95, 'kit: one', 'e1', 'e1.txt', '1\n')]
+    buildTrain({ clone: f.clone, repo: REPO, prs, week: '2026-W46', apply: true, gh: () => {} })
+    git(f.clone, 'push', '--quiet', 'origin', ':refs/heads/janitor/train-site-2026-W46')
+    const next = buildTrain({ clone: f.clone, repo: REPO, prs, week: '2026-W47' })
+    assert.deepEqual(next.carried.map((p) => p.number), [95])
+  })
+
   it('builds nothing when nothing qualifies', () => {
     const f = fixture()
     const r = buildTrain({ clone: f.clone, repo: REPO, prs: [f.pr(41, 'Feature', 'ft', 'ft.txt', 'f\n')] })
