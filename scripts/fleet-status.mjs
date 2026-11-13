@@ -22,8 +22,9 @@
  * FLEET_READ_TOKEN or GH_TOKEN.
  */
 import { execFile, execFileSync } from 'node:child_process'
-import { readFileSync, writeFileSync } from 'node:fs'
-import { homedir } from 'node:os'
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { homedir, tmpdir } from 'node:os'
+import { fileURLToPath } from 'node:url'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
 
@@ -196,7 +197,7 @@ export function redactRepo(full) {
  * private repository that then fails to read publishes only the word "unreadable" (an error message can
  * quote the file it choked on). `json` and `log` are injectable for tests.
  */
-export async function collectRepo(slug, now = new Date(), { includePrivate = false, json = ghJson, log = console.error, kitPath = KIT_MANIFEST } = {}) {
+export async function collectRepo(slug, now = new Date(), { includePrivate = false, json = ghJson, log = console.error, kitPath = KIT_MANIFEST, carryBranches } = {}) {
   let repo
   let isPrivate = true
   try {
@@ -207,7 +208,7 @@ export async function collectRepo(slug, now = new Date(), { includePrivate = fal
   }
   try {
     if (repo instanceof Error) throw repo
-    return await gatherRepo(slug, now, { includePrivate, json, repo, kitPath })
+    return await gatherRepo(slug, now, { includePrivate, json, repo, kitPath, carryBranches })
   } catch (cause) {
     const detail = String(cause.stderr || cause.message).trim().split('\n')[0]
     const reason = isPrivate && !includePrivate ? 'unreadable' : detail
@@ -224,7 +225,7 @@ function ciForCommit(slug, sha, json) {
   return ciState(runs, status)
 }
 
-export async function gatherRepo(slug, now = new Date(), { includePrivate = false, json = ghJson, repo = null, kitPath = KIT_MANIFEST } = {}) {
+export async function gatherRepo(slug, now = new Date(), { includePrivate = false, json = ghJson, repo = null, kitPath = KIT_MANIFEST, carryBranches } = {}) {
   const today = now.toISOString().slice(0, 10)
   if (repo === null) repo = json(['api', `repos/${slug}`])
   const base = repo.default_branch
@@ -249,13 +250,19 @@ export async function gatherRepo(slug, now = new Date(), { includePrivate = fals
     }
   })
   const prBranches = new Set(raw.map((p) => p.headRefName))
-  const branches = json(['api', '--paginate', '--slurp', `repos/${slug}/branches?per_page=100`]).flat()
-  // `status` is this report's own orphan branch (fleet-status.yml), with no history in common with main.
-  const candidates = branches.map((b) => b.name).filter((n) => n !== base && n !== 'status' && !prBranches.has(n))
-  const counts = await aheadCounts(slug, base, candidates)
-  const branchesAhead = candidates
-    .map((branch, i) => (counts[i] === null ? { branch, ahead: 0, unrelated: true } : { branch, ahead: counts[i] }))
-    .filter((b) => b.unrelated || b.ahead > 0)
+  // A light run (every 2 hours) keeps the previous full run's branch list: the compare calls, one per
+  // branch, are the bulk of a run's GitHub requests, and the owner's 5,000-an-hour quota is shared.
+  let branchesAhead
+  if (carryBranches) branchesAhead = carryBranches
+  else {
+    const branches = json(['api', '--paginate', '--slurp', `repos/${slug}/branches?per_page=100`]).flat()
+    // `status` is this report's own orphan branch (fleet-status.yml), with no history in common with main.
+    const candidates = branches.map((b) => b.name).filter((n) => n !== base && n !== 'status' && !prBranches.has(n))
+    const counts = await aheadCounts(slug, base, candidates)
+    branchesAhead = candidates
+      .map((branch, i) => (counts[i] === null ? { branch, ahead: 0, unrelated: true } : { branch, ahead: counts[i] }))
+      .filter((b) => b.unrelated || b.ahead > 0)
+  }
   const backlogText = fileText(slug, 'docs/backlog.json', json)
   const backlog = backlogText === null ? null : JSON.parse(backlogText)
   const lapsed = backlog === null ? [] : lapsedBacklog(backlog, today)
@@ -290,6 +297,19 @@ export async function gatherRepo(slug, now = new Date(), { includePrivate = fals
   return isPrivate && !includePrivate ? redactRepo(full) : full
 }
 
+/** Run `fn` over `items`, at most `limit` at once; results keep the input order. */
+export async function mapLimit(items, limit, fn) {
+  const out = new Array(items.length)
+  let next = 0
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (next < items.length) {
+      const i = next++
+      out[i] = await fn(items[i], i)
+    }
+  }))
+  return out
+}
+
 function arg(name) {
   const at = process.argv.indexOf(name)
   return at !== -1 ? process.argv[at + 1] : null
@@ -309,8 +329,24 @@ if (isMain(import.meta.url)) {
     repos = JSON.parse(readFileSync(arg('--from'), 'utf8')).repos
     failed = repos.filter((r) => r.unavailable).length
   } else {
-    for (const slug of slugs) {
-      const row = await collectRepo(slug, now, { includePrivate: process.argv.includes('--include-private'), kitPath: kitPathFor(fleet.projects.find((p) => p.slug === slug)) })
+    // Fanned out (plan row 1.14): the run is every 2 hours on a hosted runner, so it
+    // has to take seconds. Each repository is read by its own `--only` child,
+    // 10 at a time; a child that dies yields an `unavailable` row, never a gap.
+    const extra = process.argv.includes('--include-private') ? ['--include-private'] : []
+    // --carry-branches <earlier status.json>: a light run, reusing each repository's branch list from it.
+    const carry = arg('--carry-branches') ? new Map(JSON.parse(readFileSync(arg('--carry-branches'), 'utf8')).repos.map((r) => [r.slug, r.branchesAhead])) : null
+    if (carry) extra.push('--carry-branches', arg('--carry-branches'))
+    const rows = await mapLimit(slugs, 10, async (slug) => {
+      if (slugs.length === 1) return collectRepo(slug, now, { includePrivate: process.argv.includes('--include-private'), carryBranches: carry?.get(slug), kitPath: kitPathFor(fleet.projects.find((p) => p.slug === slug)) })
+      try {
+        const tmp = join(mkdtempSync(join(tmpdir(), 'fleet-status-')), 'one.json')
+        await execFileAsync(process.execPath, [fileURLToPath(import.meta.url), '--only', slug, '--out', tmp, ...extra], { env: process.env, maxBuffer: 1 << 26 }).catch(() => {})
+        return JSON.parse(readFileSync(tmp, 'utf8')).repos[0]
+      } catch (cause) {
+        return { slug, unavailable: `read process failed: ${String(cause.message).split('\n')[0]}` }
+      }
+    })
+    for (const row of rows) {
       if (row.unavailable) failed += 1
       repos.push(row)
     }

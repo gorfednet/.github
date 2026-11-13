@@ -446,3 +446,8 @@ merged. Each pass logs `gate scripts from the ...` with the source.
   logged, or passed on a command line. A failed read is tried again twice, about two
   seconds apart; if all three fail the pass does nothing and the log gives each
   attempt's exit code, stderr and the length (never the content) of stdout.
+
+## Detect and repair (plan row 1.14)
+
+- A repo block (`--unblock` territory) queues one diagnosis job: `lib/herdr-jobs.mjs` writes `blk-<repo>-<hash>.json` into the ops clone's Herdr jobs folder (`<sourceRoot>/ops/hosts/gorfpael/herdr/jobs`) with `wx`, so the file is the claim and later passes write nothing. No ops clone, no job; a dry run only says so. The reconciler starts it under its caps.
+- A pull request whose reviewer threads have no answer gets the `needs-fix` label (removed once every gate passes). Herdr's importer turns that label into a continue-this-PR job.

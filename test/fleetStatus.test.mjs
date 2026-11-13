@@ -10,7 +10,7 @@ import { join } from 'node:path'
 import { describe, it } from 'node:test'
 
 import { behindClones, collectLocal, dirtyClones, duplicatePrs, idlePrs, idleSessions, oldWorktrees } from '../scripts/lib/hygiene.mjs'
-import { aheadCounts, ciState, collectRepo, dependabotRed, isPrivateRepo, latestDeploy, nextItem, recentLines, redactRepo, repoList } from '../scripts/fleet-status.mjs'
+import { aheadCounts, ciState, collectRepo, mapLimit, dependabotRed, isPrivateRepo, latestDeploy, nextItem, recentLines, redactRepo, repoList } from '../scripts/fleet-status.mjs'
 import { workflowTriggers } from '../scripts/lib/workflowTriggers.mjs'
 import { digest, etStamp, hygiene, lowerMeridiem, render, summaryLine } from '../scripts/write-status-md.mjs'
 
@@ -238,10 +238,11 @@ describe('STATUS.md', () => {
 
 describe('fleet-status.yml', () => {
   const text = readFileSync(new URL('../.github/workflows/fleet-status.yml', import.meta.url), 'utf8')
-  it('runs daily at 06:30 UTC and on demand, never on a pull request', () => {
+  it('runs every 2 hours at :30 and on demand, never on a pull request', () => {
     const triggers = workflowTriggers(text)
     assert.deepEqual(triggers.events, ['schedule', 'workflow_dispatch'])
-    assert.match(text, /cron: '30 6 \* \* \*'/)
+    assert.match(text, /cron: '30 \*\/2 \* \* \*'/)
+    assert.match(text, /--carry-branches/, 'the 2-hourly run is light')
   })
   it('uses the read token, force-with-lease and the ops-report topic', () => {
     assert.match(text, /secrets\.FLEET_READ_TOKEN/)
@@ -390,5 +391,47 @@ describe('hygiene rows', () => {
     const line = digest(fixture).split('\n').find((l) => l.startsWith('Hygiene:'))
     assert.match(line, /^Hygiene: 1 rows not measured; /)
     assert.ok(line.length > 150 && /reviewBy/.test(line), line)
+  })
+})
+
+describe('the 2-hourly light run (plan row 1.14)', () => {
+  const notFound = () => Object.assign(new Error('HTTP 404'), { stderr: 'HTTP 404' })
+  const fakeJson = (calls) => (args) => {
+    calls.push(args.join(' '))
+    const path = args[0] === 'pr' ? 'pr list' : args[args.length - 1]
+    if (path === 'repos/o/p') return { private: false, visibility: 'public', default_branch: 'main' }
+    if (path === 'pr list') return []
+    if (path.includes('/branches')) return [[{ name: 'main' }, { name: 'old' }]]
+    if (path.includes('/contents/')) throw notFound()
+    if (path.endsWith('/workflows?per_page=100')) return { workflows: [] }
+    if (path.includes('/commits/main')) return { sha: 'abc' }
+    if (path.includes('/actions/runs') ) return [{ workflow_runs: [] }]
+    if (path.includes('/status')) return { state: 'success', statuses: [] }
+    throw new Error(`unexpected call ${args.join(' ')}`)
+  }
+  it('keeps the earlier branch list and never lists or compares branches', async () => {
+    const calls = []
+    const carried = [{ branch: 'old', ahead: 3 }]
+    const row = await collectRepo('o/p', new Date('2026-11-13T12:00:00Z'), { json: fakeJson(calls), log: () => {}, carryBranches: carried })
+    assert.deepEqual(row.branchesAhead, carried)
+    assert.ok(!calls.some((c) => c.includes('/branches')), calls.join('\n'))
+  })
+  it('a full run (no carry) does list branches', async () => {
+    const calls = []
+    await collectRepo('o/p', new Date('2026-11-13T12:00:00Z'), { json: fakeJson(calls), log: () => {} }).catch(() => {})
+    assert.ok(calls.some((c) => c.includes('/branches')))
+  })
+  it('mapLimit keeps input order and never runs more than the limit at once', async () => {
+    let live = 0
+    let peak = 0
+    const out = await mapLimit([5, 1, 4, 2, 3, 0], 2, async (n) => {
+      live += 1
+      peak = Math.max(peak, live)
+      await new Promise((r) => setTimeout(r, n))
+      live -= 1
+      return n * 10
+    })
+    assert.deepEqual(out, [50, 10, 40, 20, 30, 0])
+    assert.equal(peak, 2)
   })
 })

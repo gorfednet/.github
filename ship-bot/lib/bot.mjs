@@ -10,6 +10,7 @@ import { createHash } from 'node:crypto'
 import os from 'node:os'
 import { join } from 'node:path'
 import { HOLD_LABEL, READY_LABEL } from './config.mjs'
+import { diagnosisJob, jobsDir, writeJobOnce } from './herdr-jobs.mjs'
 import { DeployLog, deployMerged, envSecrets, matchingFiles, preflight, realFs, selectSteps } from './deploy.mjs'
 import { controlPlaneFiles, draftClaim, draftIneligibleReason } from './drafts.mjs'
 import { evaluatePull, ineligibleReason, unmergeableReason } from './gates.mjs'
@@ -19,6 +20,7 @@ import { Redactor } from './redact.mjs'
 import { guardCommands, succeeded } from './runner.mjs'
 import { StateStore } from './state.mjs'
 
+const NEEDS_FIX_LABEL = 'needs-fix'
 const short = (sha) => String(sha ?? '').slice(0, 7)
 const marker = (key, sha) => `<!-- ship-bot:${key}:${sha} -->`
 
@@ -226,6 +228,7 @@ async function processRepo(ctx, repo) {
   }
   const rs = ctx.state.repo(repo.slug)
   if (rs.blocked) {
+    queueDiagnosis(ctx, repo, rs.blocked)
     ctx.say('warn', `${repo.slug}: blocked since ${rs.blocked.at}: ${rs.blocked.reason}. Nothing will merge here until someone runs: ship-bot --unblock ${repo.name}`)
     return
   }
@@ -277,6 +280,40 @@ async function processRepo(ctx, repo) {
   }
 }
 
+/**
+ * A repo block no longer waits for an owner turn (plan row 1.14): the bot
+ * queues one diagnosis job for Herdr's reconciler. The job file is the claim,
+ * so every later pass over the same block writes nothing. Dry run only says so.
+ */
+function queueDiagnosis(ctx, repo, blocked) {
+  const dir = jobsDir(ctx.config)
+  if (!dir) return ctx.say('debug', `${repo.slug}: no Herdr jobs folder under ${ctx.config.sourceRoot}; block not queued for diagnosis`)
+  const job = diagnosisJob(repo, blocked, repo.sourceDir)
+  if (ctx.dry) return ctx.say('info', `${repo.slug}: would queue diagnosis job ${job.id}`)
+  try {
+    if (writeJobOnce(dir, job) === 'written') ctx.say('info', `${repo.slug}: queued diagnosis job ${job.id} for Herdr`)
+  } catch (cause) {
+    ctx.say('warn', `${repo.slug}: could not write the diagnosis job: ${cause.message}`)
+  }
+}
+
+/**
+ * Reviewer threads with no answer get the `needs-fix` label, which Herdr's
+ * importer turns into a continue-this-PR job (row 1.14). The label comes off
+ * once no thread block remains.
+ */
+async function syncNeedsFix(ctx, repo, pr, result) {
+  const labels = (pr.labels ?? []).map((l) => l.name)
+  const wants = result.blocks.some((b) => b.key === 'review-threads')
+  const tag = `${repo.slug}#${pr.number}`
+  // Gates stop at the first block, so an earlier block hides the review gate:
+  // the label only comes off once every gate has passed.
+  if (wants ? labels.includes(NEEDS_FIX_LABEL) : !result.ready || !labels.includes(NEEDS_FIX_LABEL)) return
+  if (ctx.dry) return ctx.say('info', `${tag}: would ${wants ? 'add' : 'remove'} ${NEEDS_FIX_LABEL}`)
+  if (wants) await ctx.github.addLabels(repo.slug, pr.number, [NEEDS_FIX_LABEL])
+  else await ctx.github.removeLabel(repo.slug, pr.number, NEEDS_FIX_LABEL)
+}
+
 async function processPull(ctx, repo, pr, defaultBranch) {
   const sha = pr.head.sha
   const nowIso = ctx.clock.now().toISOString()
@@ -303,6 +340,7 @@ async function processPull(ctx, repo, pr, defaultBranch) {
   let result = await evaluatePull(ctx, repo, pr, { headState, requireClean })
   // A merge never rests on a remembered gate answer: run every script again.
   if (result.ready && result.cached) result = await evaluatePull(ctx, repo, pr, { headState, fresh: true, requireClean })
+  await syncNeedsFix(ctx, repo, pr, result)
   if (result.ready && headState.readiedAt && (ctx.clock.now() - new Date(headState.readiedAt)) / 60000 < ctx.config.reviewGraceMinutes) {
     ctx.say('debug', `${tag}: not merging: the bot marked this draft ready at ${headState.readiedAt}; giving the ready-for-review review time to start`)
     return false
@@ -544,6 +582,7 @@ async function takeDraft(ctx, repo, listed, defaultBranch) {
   }
   const headState = ctx.state.head(repo.slug, pr.number, sha, ctx.clock.now().toISOString())
   const result = await evaluatePull(ctx, repo, pr, { headState, draft: true, requireClean: repo.mode === 'deploy' })
+  await syncNeedsFix(ctx, repo, pr, result)
   if (!result.ready) {
     for (const block of result.blocks) {
       ctx.say(block.kind === 'wait' ? 'debug' : 'info', `${tag}: not marking ready (${claim}): ${block.reason}`)
