@@ -41,3 +41,12 @@ Order matters. Make the gorfmusic edit before the new ship-bot is installed, or 
 - Detection is by program name: `npm`, `npx`, `pnpm`, `yarn` and `vite`, `sh -c`/`bash -c` with one of them, or `make` over a package.json with packages. `bash -lc`, `env X=1 npm`, `./deploy.sh` and `node script.mjs` aren't seen before the merge. The post-setup check catches only the `make` and node-tool ones. Any `make` setup step counts as an install.
 - `preserve: ["node_modules"]` is accepted, as plan row 1.4 asked. It installs nothing in a fresh clone.
 - The default rollback (redeploy the parent) can never get past site-deploy's merged-tip guard, and on MoonMan it reverted the infra first. Backlog `ship-bot-default-rollback-cannot-pass-tip-guard`.
+
+## Two more, 13 November (on the old bot code, before 140 was installed at 10:34 ET)
+
+| Repo | PR | Log | Cause |
+|---|---|---|---|
+| blackpixelrecords.com | 29 | `2026-11-13T14-35-33-079Z-blackpixelrecords.com-pr29.log` (09:35 ET) | The row has `envFiles: []`, from when the owner's clone had no `.deploy-env`. `deploy.sh` now runs `site-deploy.sh`, which died with "SITE is required (set it in .deploy-env)". The default rollback was refused as not the merged tip. Nothing was published. Fix: the row's `envFiles` gets `.deploy-env`. |
+| gorfed.net | 140 | `2026-11-13T14-38-50-303Z-gorfed.net-pr140.log` (09:38 ET) | The bot's first deploy of this site. `build/build-work.py` renders the committed fixture unless `WORK_CONTENT_DIR` is set, and the row sets no env. `deploy.sh` refused: "dist/work/.source is 'fixture', not 'career-portfolio'". The rollback hit the same refusal. Nothing was published. Fix: the row's env points `WORK_CONTENT_DIR`, `WORK_EXPLORE_DIR` and `WORK_PREVIEWS_DIR` at the owner's career-portfolio clone, as a manual deploy does. |
+
+Neither class is one the bot can see before the merge: what a row's deploy needs from its environment lives in the repository's scripts. Both repositories' own guards refused before publishing, which is the right place to fail. One incident each, so a note, not a check (`shipping.md`).

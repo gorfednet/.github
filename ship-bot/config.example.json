@@ -135,6 +135,11 @@
       "envFiles": [
         ".deploy-env"
       ],
+      "env": {
+        "WORK_CONTENT_DIR": "~/Developer/gorfednet/career-portfolio/content",
+        "WORK_EXPLORE_DIR": "~/Developer/gorfednet/career-portfolio/staging/explore/owner",
+        "WORK_PREVIEWS_DIR": "~/Developer/gorfednet/career-portfolio/staging/previews"
+      },
       "siblings": [
         {
           "dir": "gorfednet.github",
@@ -349,7 +354,9 @@
       "expectedChecks": [
         "check / check"
       ],
-      "envFiles": [],
+      "envFiles": [
+        ".deploy-env"
+      ],
       "siblings": [
         {
           "dir": "gorfednet.github",
@@ -368,7 +375,7 @@
           "timeoutMinutes": 20
         }
       ],
-      "note": "deploy.sh writes route directories (404/, 500/, <page>/index.html) into the checkout before rsyncing it with --delete; the next deploy's git clean removes them. The owner's clone has no .deploy-env, so this deploys with the shared helper's defaults, as a manual deploy from that clone does today; accepted by the main session 2026-10-09."
+      "note": "deploy.sh writes route directories (404/, 500/, <page>/index.html) into the checkout before rsyncing it with --delete; the next deploy's git clean removes them. deploy.sh now runs the shared site-deploy.sh, which takes SITE from .deploy-env, so the row copies it (13 November 2026, PR 29 failed with \"SITE is required\")."
     },
     {
       "slug": "gorfednet/rowanmcarthur.com",
