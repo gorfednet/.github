@@ -497,6 +497,24 @@ describe('plan row 1.12: a bot-readied draft in a deploy repo needs a clean revi
     assert.ok(gh.commentsPosted().some((c) => /Ship bot will not merge this: it changes control-plane paths/.test(c.body)), gh.commentsPosted().map((c) => c.body).join('\n---\n'))
   })
 
+  it('a draft the bot labelled keeps its guards after the bot takes its label off a new head and a session labels it again', async () => {
+    const gh = new FakeGitHub({ pulls: [draft()] })
+    const s = scenario({ repos: reviewed(), github: gh })
+    await s.run()
+    assert.equal(writes(gh, 'markReady').length, 1)
+    const NEW = 'd'.repeat(40)
+    gh.pulls = [makePr({ head: { sha: NEW, repo: { full_name: SLUG } }, labels: [{ name: 'ready-to-merge' }], body: NEXT_MERGE })]
+    gh.files = ['.github/workflows/ci.yml']
+    s.clock.advance(s.config.reviewGraceMinutes)
+    await s.run()
+    assert.equal(writes(gh, 'removeLabel').length, 1, 'the bot took its own label off the moved head')
+    // A session puts the label back (as the owner's login).
+    gh.pulls[0].labels = [{ name: 'ready-to-merge' }]
+    await s.run()
+    assert.equal(writes(gh, 'mergePull').length, 0)
+    assert.ok(s.logs.some((l) => /not merging: the bot readied it and this head changes control-plane paths/.test(l)), s.logs.join('\n'))
+  })
+
   it('with the state file lost, the bot knows it readied a person-labelled draft from its own comment', async () => {
     const gh = new FakeGitHub({ pulls: [draft({ labels: [{ name: 'ready-to-merge' }] })] })
     const s = scenario({ repos: reviewed(), github: gh })

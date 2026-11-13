@@ -215,7 +215,9 @@ A pull request the bot readied stays under both guards on the merge path,
 whoever owns its label: each later commit is checked for control-plane paths
 again, and in a deploy repository merges only on a clean review. The bot
 knows it readied one from its state file or, if that is lost, from its own
-draft-ready comment. A person who takes the bot's label off takes it back.
+draft-ready comment. That holds even after the label comes off and goes back
+on: every session labels as the owner, so a control-plane change that must
+merge goes in a fresh pull request.
 
 Then it comments once, "Ship-bot: gates clean, marking ready and labelling;
 merges on the next pass", adds `ready-to-merge` and marks the pull request

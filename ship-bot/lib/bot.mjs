@@ -412,12 +412,15 @@ const controlPlaneComment = (paths, what) =>
 
 /**
  * Did the bot ready or label this pull request itself? From the state file,
- * or, when that was lost, from the bot's own draft-ready comment. A pull
- * request a person took back (removed the bot's label) is theirs.
+ * or, when that was lost, from the bot's own draft-ready comment. Once true it
+ * stays true: `takenBack` (set when a label comes off, by a person or by the
+ * bot itself after a push) decides only who owns a later label, never
+ * whether these guards apply, since every session labels as the owner's
+ * login (round 2 on #156). A control-plane change that must merge goes in a
+ * fresh pull request.
  */
 async function botReadiedIt(ctx, repo, pr) {
   const prState = ctx.state.pr(repo.slug, pr.number)
-  if (prState.takenBack) return false
   if (prState.botLabelled || prState.botReadied) return true
   const comments = await ctx.github.listIssueComments(repo.slug, pr.number)
   const found = comments.some((c) => isBotLogin(ctx, c.user) && (c.body ?? '').startsWith(DRAFT_READY_COMMENT))
