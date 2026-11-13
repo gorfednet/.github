@@ -273,9 +273,9 @@
       "userSymptom": "A social card fixed and deployed keeps showing the old image when a link is shared, with nothing in the repository left to fix.",
       "evidence": "The vhost serves \\.(png|svg|css|js|...)$ with expires 1y and Cache-Control: public, immutable - confirmed live, max-age=31536000. Any card at a fixed name inherits that, so replacing it in place reaches nobody for up to a year. ssatcy.com is fixed: scripts/generate-og-image.mjs writes og-card-<hash12>.png and rewrites index.html and _headers, so the URL changes exactly when the pixels do. 4thcltr.com/og-image.png is live under the same header and is the next one. The remaining sites are getting a first card, so their URL is new either way - the risk is the SECOND card.",
       "reviewBy": "2026-11-15",
-      "note": "check-live-og-image.mjs catches the symptom after a deploy by comparing the bytes the og:image URL serves against the dimensions the page declares, and notes an immutable Cache-Control so the next person is told why a replacement will not reach anyone. That is detection. Prevention is the content-addressed name, which needs doing per site; ssatcy.com is the pattern to copy.",
+      "note": "check-live-og-image.mjs catches the symptom after a deploy by comparing the bytes the og:image URL serves against the dimensions the page declares, and notes an immutable Cache-Control so the next person is told why a replacement will not reach anyone. That is detection. Prevention is the content-addressed name, which needs doing per site; ssatcy.com is the pattern to copy. 2026-11-08: prevention gate added. check-og-image.mjs --content-addressed (gate input og-content-addressed, default false) fails a card whose file name carries no hash; the test fails without it. Still open per site: set og-content-addressed once a site names its card og-card-<hash>.png (4thcltr.com/og-image.png is next). Move to landed when 4thcltr.com has switched.",
       "created": "2026-09-14",
-      "updated": "2026-09-14"
+      "updated": "2026-11-08"
     },
     {
       "id": "publish-the-server-never-saw",
