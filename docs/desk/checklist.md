@@ -8,7 +8,7 @@ Updated 13 Nov 2026, 11:49 ET.
 - [x] CI waits at 60-second checks in every session (rule changed 10:00 ET)
 - [ ] CI pool resize (3.1/3.2, running)
 - [x] Deploy root-cause fix (.github 140, merged)
-- [ ] 6 blocked deploys unblocked: papers, MoonMan, gorfmusic, ssatcy, gorfed.net, blackpixel (2.1 session)
+- [ ] 4 blocked deploys left: papers, gorfed.net, gorfmusic, blackpixel (2.1b session running)
 - [x] Cloud start failure explained: an Anthropic overload (.github 142, labelled)
 
 ## Control plane
@@ -20,10 +20,10 @@ Updated 13 Nov 2026, 11:49 ET.
 - [x] Herdr fixes (1.8, ops 70 merged)
 - [ ] One queue and starter in Herdr (1.11, running)
 - [ ] Ship-bot unattended-merge guards (1.12, running)
-- [ ] Heartbeats and usage pushes (1.13), detect and repair loop (1.14): next when capacity frees
+- [ ] Heartbeats and usage pushes (1.13, running); detect and repair loop (1.14) next
 - [ ] Capacity check (1.9, .github 152, 1 finding being fixed)
 - [ ] Rules, skills, settings sweep (5.x, .github 153, re-review running)
-- [ ] ssatcy security headers: ops 72 merged, owner applies on dapyllil
+- [x] ssatcy security headers live, ssatcy unblocked (11:51 ET)
 
 ## Repos
 - [ ] Kit refresh to 0.61 across 10 repos (2.9): 3 merged (blackpixel, subrythm, gorfed.net), 6 labelled, bindercurve in CI
