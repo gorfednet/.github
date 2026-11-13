@@ -30,6 +30,7 @@ function harness({ live = true, lock, pulls = [], github = new FakeGitHub({ pull
   let constructed = 0
   const deps = {
     loadConfig: () => config,
+    gateScripts: (c) => ({ scripts: c.scripts, source: 'test' }),
     makeGithub: (token) => {
       constructed += 1
       assert.equal(token, TOKEN)

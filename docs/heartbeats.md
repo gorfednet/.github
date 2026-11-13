@@ -12,7 +12,7 @@ Both read their secret from `~/.heartbeats/`, never from the repository. An unen
 | `ship-bot` | `ship-bot/ship-bot.mjs` after each live or observe pass (`/fail` when the pass throws) | 2 min | 10 min |
 | `capacity` | `node scripts/heartbeat.mjs capacity` at the end of each run | 15 min | 10 min |
 | `herdr-reconcile` | `gorfednet/ops` reconcile loop | its tick | 10 min |
-| `janitor` | step 6 of `janitor/PROMPT.md` | 1 day | 2 hours |
+| `janitor` | step 9 of `janitor/PROMPT.md` | 1 day | 2 hours |
 
 Files, one line each: `~/.heartbeats/<name>.url` (an `https://` ping URL, healthchecks.io style) and `~/.heartbeats/ntfy-topic` (12 or more characters, unguessable).
 

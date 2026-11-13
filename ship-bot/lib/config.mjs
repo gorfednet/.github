@@ -61,6 +61,7 @@ const DEPLOY_REPO_KEYS = [
   'rollback',
   'pausedIfChanged',
   'release',
+  'needsHeadroom',
 ]
 const ALLOWED_REPO_KEYS = {
   deploy: new Set([...COMMON_REPO_KEYS, ...DEPLOY_REPO_KEYS]),
@@ -227,6 +228,7 @@ function validateRepo(repo, i, problems, seen) {
       }
     }
   }
+  if (repo.needsHeadroom !== undefined && typeof repo.needsHeadroom !== 'boolean') problems.push(`${label}.needsHeadroom: must be true or false`)
   if (repo.siblings !== undefined) {
     if (!Array.isArray(repo.siblings)) problems.push(`${label}.siblings: must be an array`)
     else {
@@ -448,6 +450,8 @@ export function normalizeConfig(raw, { home = homedir() } = {}) {
         pausedIfChanged: repo.pausedIfChanged ?? [],
         // null: every merge deploys. An object: only a pull request whose description says `Release: X.Y.Z sentence` is tagged and deployed (lib/release.mjs).
         release: repo.release ? { tagPrefix: repo.release.tagPrefix ?? 'v' } : null,
+        // true: a merge waits while this Mac's 1-minute load is above its core count (the row's setup or deploy is timing-sensitive).
+        needsHeadroom: repo.needsHeadroom ?? false,
       }
     }),
   }
