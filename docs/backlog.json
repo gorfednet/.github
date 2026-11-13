@@ -16,6 +16,7 @@
       "id": "quiet-sites-paid-product-monitor-rates",
       "title": "Mostly-static sites inherited product-site Playwright and Bugbot settings",
       "status": "landed",
+      "pr": 40,
       "assignee": "main-model",
       "userSymptom": "Credit and Actions usage went to weekly Playwright installs and incremental Bugbot on sites last touched by a kit bump.",
       "evidence": "4thcltr.com production-healthcheck.yml passed only site-url, so run-playwright defaulted true. FLEET.md claimed a required Bugbot verdict job that no consumer calls. fleet.json had no monitorClass, so nothing could fail when a quiet site inherited the product default.",
