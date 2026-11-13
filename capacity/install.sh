@@ -19,7 +19,8 @@ fi
 NODE_BIN="$(node -p 'process.execPath')"
 "${HERE}/check.sh"
 mkdir -p "${HOME_DIR}/logs" "${APP_DIR}" "${HOME}/Library/LaunchAgents"
-cp "${HERE}/capacity.mjs" "${APP_DIR}/capacity.mjs"
+cp "${HERE}/capacity.mjs" "${HERE}/starter.mjs" "${APP_DIR}/"
+cp "${HERE}/../ship-bot/config.example.json" "${HOME_DIR}/ship-bot-config.example.json"
 xml() { sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g' <<<"$1"; }
 cat >"${PLIST}.tmp" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>

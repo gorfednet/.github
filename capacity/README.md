@@ -17,3 +17,12 @@ ntfy topic `ops-report` (token from `~/.ship-bot/ntfy.token`) gets "headroom for
 Install: `capacity/install.sh` (runs the tests first). Remove: `capacity/install.sh --uninstall`. Tests: `capacity/check.sh`.
 
 Failure handling: if a run throws, it writes `state: "unknown"` with an `error` and exits 1. If the session store is missing or empty, `working` is `null` and the state is at most `steady`. Desk treats a missing file, `unknown`, or `at` older than 30 minutes as unknown. A push is retried each run until it succeeds (`lastPushedState`). The installed plist sets no `CAPACITY_QUEUE_CMD`; add it to the plist's EnvironmentVariables by hand and note that re-running `install.sh` overwrites it. This job is a standing automation; the owner asked for the scheduled check on 13 November 2026.
+
+## Headless starter (plan row 1.10)
+
+`starter.mjs` runs at the end of each capacity tick. When `capacity.json` is fresh and `headroom`, it starts the top-priority entry of `~/.desk/queue.json` (written only by Desk) in Herdr with `hc run --bg --name q-<id> --cwd <repo> <role> "<task>"`. The task text is a fixed template; the entry supplies only the brief path.
+
+- Entry: `id`, `repo` (absolute path whose folder name is in ship-bot's `config.example.json`), `brief`, `role` (`builder` with model `sonnet`, or `runner` with `haiku`), `priority` (lower first). Opus, Fable and anything else are refused and logged.
+- Limits: 1 start per tick, 3 live `q-` terminals (from `hc ls`), 12 starts in 24 h while weekly usage is unreadable (always, today), stop at 90% weekly if a source ever exists.
+- Mode: `~/.desk/starter.mode` containing `live` starts sessions. Absent or anything else is a dry run that only logs `DRY RUN: would start ...` to `~/.desk/starter.log`. Live starts push ntfy "started <id> (<model>) in <repo>".
+- Done: `node starter.mjs --done <id>` (for the Herdr Stop hook, row 1.8) writes `~/.desk/queue-done.json`; an entry whose terminal has gone is marked done on the next tick. `DESK_DIR` overrides `~/.desk` for tests.

@@ -116,6 +116,8 @@ async function main() {
     },
   })
   console.log(JSON.stringify(out))
+  // Headless starter (row 1.10): its own failure never hides the capacity file just written.
+  try { await (await import('./starter.mjs')).runStarter() } catch (e) { console.error(`starter: ${e.message}`) }
 }
 
 // Same approach as ship-bot/lib/isMain.mjs, inlined because install.sh copies this one file.
