@@ -405,3 +405,21 @@ describe('GitHub App token', () => {
     assert.equal(readFileSync(key, 'utf8'), pem)
   })
 })
+
+describe('github-app/create.mjs', () => {
+  it('posts the manifest to the user "new App" page by default, the organisation page with --org, escaped', async () => {
+    const { startPage } = await import('../github-app/create.mjs')
+    const manifest = { name: 'x"<y>' }
+    const user = startPage({ org: 'gorfednet', state: 's1', manifest })
+    assert.match(user, /action="https:\/\/github\.com\/settings\/apps\/new\?state=s1"/)
+    assert.ok(!user.includes('x"<y>'), 'manifest is escaped')
+    assert.match(startPage({ org: 'acme', state: 's1', manifest, isOrg: true }), /organizations\/acme\/settings\/apps\/new/)
+  })
+
+  it('swaps the code for the App with its owner, and fails on an answer without a key', async () => {
+    const { convertCode } = await import('../github-app/create.mjs')
+    const ok = await convertCode('c1', async (url, init) => (assert.equal(init.method, 'POST'), assert.match(url, /app-manifests\/c1\/conversions$/), reply(201, { id: 5, slug: 'gorfednet-ship-bot', pem: 'PEM', owner: { login: 'gorfednet' }, client_secret: 'drop' })))
+    assert.deepEqual(ok, { id: 5, slug: 'gorfednet-ship-bot', pem: 'PEM', owner: 'gorfednet' })
+    await assert.rejects(() => convertCode('c2', async () => reply(422, { message: 'expired' })), /422: expired/)
+  })
+})

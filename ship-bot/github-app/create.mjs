@@ -2,17 +2,20 @@
 /**
  * Create the ship bot's GitHub App from manifest.json, in one browser step.
  *
- *   node ~/.ship-bot/app/github-app/create.mjs [--org gorfednet] [--port 47321]
+ *   node ~/.ship-bot/app/github-app/create.mjs [--owner gorfednet] [--org] [--port 47321]
+ *
+ * gorfednet is a user account, so the default is the user's "new App" page;
+ * `--org` uses an organisation's instead.
  *
  * It serves one page on 127.0.0.1 that sends manifest.json to GitHub's "create
- * a GitHub App from a manifest" page for the organisation. The owner clicks
+ * a GitHub App from a manifest" page for the account. The owner clicks
  * "Create GitHub App" there. GitHub sends the browser back here with a
  * one-time code, which this script swaps for the App's ID and private key:
  *
  * - the key goes to ~/.ship-bot/github-app.pem, mode 600, never printed;
  * - the config gets `githubApp: { appId, privateKeyFile }` (setGithubApp);
  * - the browser moves on to the App's install page, where the owner installs
- *   it on the organisation for all repositories.
+ *   it on the account for all repositories.
  *
  * The App's client secret and webhook secret are not kept: the bot never uses
  * them. Run once; it refuses if the key file already exists.
@@ -32,8 +35,8 @@ const HERE = dirname(fileURLToPath(import.meta.url))
 const escapeHtml = (s) => String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 
 /** The page that posts the manifest to GitHub. */
-export function startPage({ org, state, manifest }) {
-  const action = `https://github.com/organizations/${encodeURIComponent(org)}/settings/apps/new?state=${state}`
+export function startPage({ org, state, manifest, isOrg = false }) {
+  const action = isOrg ? `https://github.com/organizations/${encodeURIComponent(org)}/settings/apps/new?state=${state}` : `https://github.com/settings/apps/new?state=${state}`
   return `<!doctype html><meta charset="utf-8"><title>Create the ship bot App</title>
 <form id="f" method="post" action="${escapeHtml(action)}">
 <input type="hidden" name="manifest" value="${escapeHtml(JSON.stringify(manifest))}">
@@ -59,7 +62,8 @@ async function main(argv) {
     const i = argv.indexOf(`--${name}`)
     return i >= 0 && argv[i + 1] ? argv[i + 1] : fallback
   }
-  const org = arg('org', 'gorfednet')
+  const org = arg('owner', 'gorfednet')
+  const isOrg = argv.includes('--org')
   const port = Number(arg('port', '47321'))
   const botHome = join(homedir(), '.ship-bot')
   const keyFile = join(botHome, 'github-app.pem')
@@ -92,7 +96,7 @@ async function main(argv) {
       const url = new URL(req.url, `http://${host}`)
       if (url.pathname === '/') {
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
-        res.end(startPage({ org, state, manifest }))
+        res.end(startPage({ org, state, manifest, isOrg }))
         return
       }
       if (url.pathname !== '/done') {

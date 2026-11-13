@@ -237,12 +237,12 @@ that quota with every session. It keeps its share small:
 
 **Its own quota: the GitHub App.** `github-app/manifest.json` describes a
 private App with only what the bot needs (read metadata, checks, commit
-statuses and Actions; write contents, pull requests, issues and workflow
+statuses, Actions and issues; write contents, pull requests and workflow
 files, since merging a pull request that changes a workflow needs it).
 `node ~/.ship-bot/app/github-app/create.mjs` creates it in one browser step,
 saves its private key to `~/.ship-bot/github-app.pem` (mode 600, outside every
 repository) and adds `githubApp: { appId, privateKeyFile }` to the config.
-Once the App is installed on the organisation, each pass mints an installation
+Once the App is installed on the gorfednet account (a user account, so the script uses the user "new App" page), each pass mints an installation
 token and the log's pass line ends `as GitHub App <id>`. If minting fails, the
 pass logs an error and falls back to `gh auth token`.
 
