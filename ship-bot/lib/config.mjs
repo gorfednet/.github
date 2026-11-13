@@ -38,18 +38,21 @@ const TOP_KEYS = new Set([
   'notify',
   'preflight',
   'ghPath',
+  'githubApp',
   'scripts',
   'repos',
 ])
 const SCRIPT_KEYS = ['assertChecksStarted', 'reviewStatus', 'checkClosingKeywords']
 
-const COMMON_REPO_KEYS = ['slug', 'dir', 'mode', 'note', 'todo', 'live', 'claudeReview', 'expectedChecks', 'requireChecksAfterLabel']
+const COMMON_REPO_KEYS = ['slug', 'dir', 'mode', 'note', 'todo', 'live', 'claudeReview', 'expectedChecks', 'coveredChecks', 'requireChecksAfterLabel']
 const NTFY_KEYS = new Set(['url', 'topic', 'tokenFile'])
+const GITHUB_APP_KEYS = new Set(['appId', 'privateKeyFile', 'owner', 'installationId'])
 const DEPLOY_REPO_KEYS = [
   'sourceDir',
   'workDir',
   'cloneUrl',
   'envFiles',
+  'env',
   'copyFromSource',
   'preserve',
   'siblings',
@@ -57,6 +60,7 @@ const DEPLOY_REPO_KEYS = [
   'deploy',
   'rollback',
   'pausedIfChanged',
+  'release',
 ]
 const ALLOWED_REPO_KEYS = {
   deploy: new Set([...COMMON_REPO_KEYS, ...DEPLOY_REPO_KEYS]),
@@ -74,8 +78,9 @@ const RETIRED_KEYS = {
   bugbotGraceMinutes: 'renamed "reviewGraceMinutes"',
   bugbotWaitMinutes: 'removed: the bot no longer asks for a review, so there is no request to time out',
 }
-const STEP_KEYS = new Set(['name', 'command', 'timeoutMinutes', 'onlyIfChanged', 'note'])
+const STEP_KEYS = new Set(['name', 'command', 'timeoutMinutes', 'onlyIfChanged', 'onlyAfterFailureOf', 'note'])
 const SIBLING_KEYS = new Set(['dir', 'slug', 'branch'])
+const RELEASE_KEYS = new Set(['tagPrefix'])
 
 export class ConfigError extends Error {
   constructor(problems) {
@@ -113,7 +118,7 @@ function checkUnknownKeys(obj, allowed, where, problems) {
   }
 }
 
-function validateSteps(steps, where, problems, { allowOnlyIfChanged }) {
+function validateSteps(steps, where, problems, { allowOnlyIfChanged, allowOnlyAfterFailureOf = false }) {
   if (!Array.isArray(steps)) {
     problems.push(`${where}: must be an array of steps`)
     return
@@ -139,6 +144,12 @@ function validateSteps(steps, where, problems, { allowOnlyIfChanged }) {
       if (!allowOnlyIfChanged) problems.push(`${at}.onlyIfChanged: only deploy steps can be conditional`)
       else if (!isStringArray(step.onlyIfChanged) || step.onlyIfChanged.length === 0) {
         problems.push(`${at}.onlyIfChanged: must be a non-empty array of paths`)
+      }
+    }
+    if (step.onlyAfterFailureOf !== undefined) {
+      if (!allowOnlyAfterFailureOf) problems.push(`${at}.onlyAfterFailureOf: only rollback steps can be conditional on a failed deploy step`)
+      else if (!isStringArray(step.onlyAfterFailureOf) || step.onlyAfterFailureOf.length === 0) {
+        problems.push(`${at}.onlyAfterFailureOf: must be a non-empty array of deploy step names`)
       }
     }
     if (step.note !== undefined && typeof step.note !== 'string') problems.push(`${at}.note: must be a string`)
@@ -175,6 +186,11 @@ function validateRepo(repo, i, problems, seen) {
   }
   if (repo.live !== undefined && typeof repo.live !== 'boolean') problems.push(`${label}.live: must be true or false`)
 
+  // coveredChecks only quiets `--validate`; the merge gate never reads it.
+  if (repo.coveredChecks !== undefined && !isStringArray(repo.coveredChecks)) {
+    problems.push(`${label}.coveredChecks: must be an array of check names or name prefixes`)
+  }
+
   if (repo.mode === 'off') return
 
   // A repo the bot can merge in must say exactly which checks prove a pull
@@ -200,6 +216,16 @@ function validateRepo(repo, i, problems, seen) {
       problems.push(`${label}.${key}: must be an array of relative paths inside the repository (no "..", no leading "/")`)
     }
   }
+  if (repo.env !== undefined) {
+    if (!isObject(repo.env)) problems.push(`${label}.env: must be an object of NAME: "value" strings`)
+    else {
+      for (const [name, value] of Object.entries(repo.env)) {
+        if (!/^[A-Z][A-Z0-9_]*$/.test(name)) problems.push(`${label}.env.${name}: a name is capital letters, digits and "_"`)
+        else if (/^(GH|GITHUB)_/.test(name)) problems.push(`${label}.env.${name}: the bot never hands a step a GitHub token`)
+        if (!isNonEmptyString(value)) problems.push(`${label}.env.${name}: must be a non-empty string (a leading ~/ is the home directory)`)
+      }
+    }
+  }
   if (repo.siblings !== undefined) {
     if (!Array.isArray(repo.siblings)) problems.push(`${label}.siblings: must be an array`)
     else {
@@ -213,13 +239,39 @@ function validateRepo(repo, i, problems, seen) {
       })
     }
   }
+  if (repo.release !== undefined) {
+    if (!isObject(repo.release)) problems.push(`${label}.release: must be an object, { } or { "tagPrefix": "v" }`)
+    else {
+      checkUnknownKeys(repo.release, RELEASE_KEYS, `${label}.release`, problems)
+      if (repo.release.tagPrefix !== undefined && !(typeof repo.release.tagPrefix === 'string' && /^[A-Za-z]{0,8}$/.test(repo.release.tagPrefix))) {
+        problems.push(`${label}.release.tagPrefix: must be up to 8 letters, such as "v" (the default)`)
+      }
+    }
+  }
+  if (repo.release !== undefined) {
+    // A release deploy diffs only its own merge commit, so an earlier merge with no Release line (merged, never deployed) would escape both.
+    if (Array.isArray(repo.pausedIfChanged) && repo.pausedIfChanged.length > 0) problems.push(`${label}.release: cannot be combined with pausedIfChanged (a release deploys everything merged since the last one, not just its own diff)`)
+    if (Array.isArray(repo.deploy) && repo.deploy.some((d) => d?.onlyIfChanged)) problems.push(`${label}.release: cannot be combined with onlyIfChanged deploy steps (same reason)`)
+  }
   validateSteps(repo.setup ?? [], `${label}.setup`, problems, { allowOnlyIfChanged: false })
   validateSteps(repo.deploy, `${label}.deploy`, problems, { allowOnlyIfChanged: true })
   if (Array.isArray(repo.deploy) && repo.deploy.length === 0) problems.push(`${label}.deploy: needs at least one step`)
   if (Array.isArray(repo.deploy) && repo.deploy.length > 0 && repo.deploy.every((s) => s?.onlyIfChanged)) {
     problems.push(`${label}.deploy: every step is conditional, so a merge could deploy nothing and report success`)
   }
-  if (repo.rollback !== undefined) validateSteps(repo.rollback, `${label}.rollback`, problems, { allowOnlyIfChanged: false })
+  if (repo.rollback !== undefined) {
+    validateSteps(repo.rollback, `${label}.rollback`, problems, { allowOnlyIfChanged: false, allowOnlyAfterFailureOf: true })
+    // A misspelt step name would leave the rollback that was meant to run after
+    // a failure silently never running, so every name must be a real deploy step.
+    const deployNames = new Set(Array.isArray(repo.deploy) ? repo.deploy.map((d) => d?.name) : [])
+    if (Array.isArray(repo.rollback)) {
+      repo.rollback.forEach((step, j) => {
+        for (const name of Array.isArray(step?.onlyAfterFailureOf) ? step.onlyAfterFailureOf : []) {
+          if (!deployNames.has(name)) problems.push(`${label}.rollback[${j}].onlyAfterFailureOf: "${name}" is not a deploy step of this repository`)
+        }
+      })
+    }
+  }
 }
 
 /**
@@ -260,6 +312,19 @@ export function validateConfig(raw) {
     }
   }
 
+  if (raw.githubApp !== undefined) {
+    const app = raw.githubApp
+    if (!isObject(app)) problems.push('githubApp: must be an object { appId, privateKeyFile } (optional owner, installationId)')
+    else {
+      checkUnknownKeys(app, GITHUB_APP_KEYS, 'githubApp', problems)
+      if (!(Number.isInteger(app.appId) && app.appId > 0)) problems.push('githubApp.appId: required, the App ID number from the App\'s settings page')
+      if (!isNonEmptyString(app.privateKeyFile)) problems.push('githubApp.privateKeyFile: required, the path to the App\'s private key (.pem), outside every repository')
+      else if (/^(\.|[^~/])/.test(app.privateKeyFile.trim())) problems.push('githubApp.privateKeyFile: must be an absolute path or start with ~/')
+      if (app.owner !== undefined && !(isNonEmptyString(app.owner) && /^[\w.-]+$/.test(app.owner))) problems.push('githubApp.owner: must be a GitHub account name')
+      if (app.installationId !== undefined && !(Number.isInteger(app.installationId) && app.installationId > 0)) problems.push('githubApp.installationId: must be a positive whole number')
+    }
+  }
+
   if (!isObject(raw.scripts)) problems.push(`scripts: required, an object with ${SCRIPT_KEYS.join(', ')}`)
   else {
     checkUnknownKeys(raw.scripts, new Set(SCRIPT_KEYS), 'scripts', problems)
@@ -284,6 +349,23 @@ export function validateConfig(raw) {
  * @param {unknown} raw
  * @param {{home?: string}} [opts]
  */
+// Every site deploy runs the shared helper from the gorfednet.github checkout
+// next to the workspace (scripts/site-deploy.sh), and the helper refuses to run
+// unless that checkout is origin/main's tip. A row that did not list it as a
+// sibling ran with whatever an earlier deploy left there, and failed when main
+// had moved since (MoonMan 324, 13 November 2026). So every deploy row syncs
+// it, listed or not.
+export const HELPER_SIBLING = Object.freeze({ dir: 'gorfednet.github', slug: 'gorfednet/.github', branch: 'main' })
+
+function withHelper(repo) {
+  const listed = repo.siblings ?? []
+  if (repo.slug.toLowerCase() === HELPER_SIBLING.slug || listed.some((s) => s.dir === HELPER_SIBLING.dir)) return listed
+  // A custom workDir could sit next to the owner's own clones, and a sibling
+  // sync force-cleans its directory: only the bot's work root gets it implied.
+  if (repo.workDir !== undefined) return listed
+  return [{ ...HELPER_SIBLING }, ...listed]
+}
+
 export function normalizeConfig(raw, { home = homedir() } = {}) {
   const problems = validateConfig(raw)
   if (problems.length > 0) throw new ConfigError(problems)
@@ -313,6 +395,14 @@ export function normalizeConfig(raw, { home = homedir() } = {}) {
     notify: raw.notify ?? true,
     preflight: raw.preflight ?? [],
     ghPath: raw.ghPath ? expandHome(raw.ghPath, home) : 'gh',
+    githubApp: raw.githubApp
+      ? {
+          appId: raw.githubApp.appId,
+          privateKeyFile: x(raw.githubApp.privateKeyFile),
+          owner: raw.githubApp.owner ?? raw.repos[0].slug.split('/')[0],
+          installationId: raw.githubApp.installationId ?? null,
+        }
+      : null,
     scripts: Object.fromEntries(SCRIPT_KEYS.map((k) => [k, x(raw.scripts[k])])),
     repos: raw.repos.map((repo) => {
       const base = {
@@ -326,6 +416,7 @@ export function normalizeConfig(raw, { home = homedir() } = {}) {
         note: repo.note ?? '',
         claudeReview: repo.claudeReview ?? false,
         expectedChecks: repo.expectedChecks ?? [],
+        coveredChecks: repo.coveredChecks ?? [],
         requireChecksAfterLabel: repo.requireChecksAfterLabel ?? false,
         reason: repo.reason ?? '',
       }
@@ -337,17 +428,21 @@ export function normalizeConfig(raw, { home = homedir() } = {}) {
         workDir,
         cloneUrl: repo.cloneUrl ?? `https://github.com/${repo.slug}.git`,
         envFiles: repo.envFiles ?? [],
+        env: Object.fromEntries(Object.entries(repo.env ?? {}).map(([k, v]) => [k, expandHome(v, home)])),
         copyFromSource: repo.copyFromSource ?? [],
         preserve: repo.preserve ?? [],
-        siblings: (repo.siblings ?? []).map((s) => ({
+        siblings: withHelper(repo).map((s) => ({
           ...s,
           path: join(dirname(workDir), s.dir),
           cloneUrl: `https://github.com/${s.slug}.git`,
         })),
         setup: repo.setup ?? [],
         deploy: repo.deploy,
-        rollback: repo.rollback ?? [],
+        // null: no list given, so a failure redeploys the previous commit. An explicit [] (or a list no step of which applies) rolls nothing back.
+        rollback: repo.rollback ?? null,
         pausedIfChanged: repo.pausedIfChanged ?? [],
+        // null: every merge deploys. An object: only a pull request whose description says `Release: X.Y.Z sentence` is tagged and deployed (lib/release.mjs).
+        release: repo.release ? { tagPrefix: repo.release.tagPrefix ?? 'v' } : null,
       }
     }),
   }

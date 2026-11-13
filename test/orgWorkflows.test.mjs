@@ -976,7 +976,7 @@ describe("the sitemap step's verdict on what a sitemap lists", () => {
    * make a 301 in a sitemap read as a 200 — passed against it. A stub blind to the
    * flag cannot test a rule about the flag; that is the same blindness as the code.
    */
-  function runStep({ robots, sitemap, codes, redirects = {} }) {
+  function runStep({ robots, sitemap, codes, redirects = {}, pages = {}, headers = {}, script = SCRIPT }) {
     const dir = mkdtempSync(join(tmpdir(), 'sitemap-step-'))
     const bin = join(dir, 'bin')
     mkdirSync(bin)
@@ -994,16 +994,23 @@ describe("the sitemap step's verdict on what a sitemap lists", () => {
     )
     writeFileSync(join(dir, 'robots.txt'), robots, 'utf8')
     writeFileSync(join(dir, 'sitemap.xml'), sitemap ?? '', 'utf8')
+    // Per-URL bodies and extra response headers, keyed the way the stub keys them.
+    const key = (url) => url.replace(/[^a-zA-Z0-9]/g, '_')
+    mkdirSync(join(dir, 'page'))
+    mkdirSync(join(dir, 'hdr'))
+    for (const [url, html] of Object.entries(pages)) writeFileSync(join(dir, 'page', key(url)), html, 'utf8')
+    for (const [url, text] of Object.entries(headers)) writeFileSync(join(dir, 'hdr', key(url)), `${text}\n`, 'utf8')
 
     writeFileSync(
       join(bin, 'curl'),
       [
         '#!/usr/bin/env bash',
-        'out=/dev/null; url=""; follow=0',
+        'out=/dev/null; url=""; follow=0; hdr=""',
         'while [ $# -gt 0 ]; do',
         '  case "$1" in',
         '    -o) out="$2"; shift 2 ;;',
         '    -w|--max-time) shift 2 ;;',
+        '    -D) hdr="$2"; shift 2 ;;',
         '    -L) follow=1; shift ;;',
         '    -sS|-s|-S) shift ;;',
         '    *) url="$1"; shift ;;',
@@ -1011,6 +1018,7 @@ describe("the sitemap step's verdict on what a sitemap lists", () => {
         'done',
         'lookup() { awk -F"\\t" -v u="$1" \'$1==u{print $2}\' "$2"; }',
         'code="$(lookup "$url" "$DIR/codes.tsv")"',
+        'orig="$url"',
         '[ -z "$code" ] && code=404',
         '# Follow only when asked, so the -L flag is a behaviour the test can see.',
         'hops=0',
@@ -1023,21 +1031,32 @@ describe("the sitemap step's verdict on what a sitemap lists", () => {
         '  [ -z "$code" ] && code=404',
         '  hops=$((hops + 1))',
         'done',
+        'k="$(printf "%s" "$url" | tr -c "a-zA-Z0-9" "_")"',
+        'ok="$(printf "%s" "$orig" | tr -c "a-zA-Z0-9" "_")"',
         'if [ "$out" != "/dev/null" ]; then',
         '  case "$url" in',
         '    */robots.txt) cp "$DIR/robots.txt" "$out" ;;',
         '    *sitemap.xml) cp "$DIR/sitemap.xml" "$out" ;;',
-        '    *) : > "$out" ;;',
+        '    *) if [ -f "$DIR/page/$k" ]; then cp "$DIR/page/$k" "$out"; else',
+        '         # A clean page by default, so the cases about status codes stay about codes.',
+        '         printf "<html><head><link rel=\\"canonical\\" href=\\"%s\\"></head><body>ok</body></html>" "$url" > "$out"; fi ;;',
         '  esac',
+        'fi',
+        'if [ -n "$hdr" ]; then',
+        '  { printf "HTTP/1.1 %s\\r\\n" "$code"',
+        '    target="$(lookup "$orig" "$DIR/redirects.tsv")"',
+        '    case "$code" in 30[1278]) [ -n "$target" ] && printf "Location: %s\\r\\n" "$target" ;; esac',
+        '    [ -f "$DIR/hdr/$ok" ] && cat "$DIR/hdr/$ok"',
+        '    :; } > "$hdr"',
         'fi',
         'printf "%s" "$code"',
       ].join('\n'),
       { encoding: 'utf8', mode: 0o755 },
     )
 
-    const script = SCRIPT.replaceAll('${{ inputs.site-url }}', 'https://example.test')
+    const filled = script.replaceAll('${{ inputs.site-url }}', 'https://example.test')
     try {
-      return spawnSync('bash', ['-c', script], {
+      return spawnSync('bash', ['-c', filled], {
         encoding: 'utf8',
         env: { ...process.env, DIR: dir, PATH: `${bin}:${process.env.PATH}` },
       })
@@ -1150,6 +1169,229 @@ describe("the sitemap step's verdict on what a sitemap lists", () => {
     })
     assert.equal(result.status, 1)
     assert.match(result.stdout, /which answered HTTP 404/)
+  })
+
+  /**
+   * 200 is the envelope (V76); these are the payload (V77). Each case serves a
+   * page the old step passed, because it only read the status code.
+   */
+  const page = (head) => `<html><head>${head}</head><body>text</body></html>`
+  const canon = (u) => `<link rel="canonical" href="${u}">`
+  const PAGE = 'https://example.test/about/'
+  const withPage = (html, headers = {}) =>
+    runStep({
+      robots: ROBOTS,
+      sitemap: loc(PAGE),
+      codes: {
+        'https://example.test/robots.txt': 200,
+        'https://example.test/sitemap.xml': 200,
+        [PAGE]: 200,
+      },
+      pages: html === null ? {} : { [PAGE]: html },
+      headers,
+    })
+
+  it('passes a listed page that is indexable and its own canonical', () => {
+    const result = withPage(page(canon(PAGE)))
+    assert.equal(result.status, 0, result.stdout + result.stderr)
+    assert.match(result.stdout, /indexable and self-canonical/)
+  })
+
+  it('passes single quotes and the href before the rel', () => {
+    const url = 'https://example.test/about/'
+    const result = withPage(page(`<link href='${url}' rel='canonical'>`))
+    assert.equal(result.status, 0, result.stdout + result.stderr)
+  })
+
+  it('fails a listed page whose canonical is another URL', () => {
+    const result = withPage(page(canon('https://example.test/')))
+    assert.equal(result.status, 1)
+    assert.match(result.stdout, /names https:\/\/example\.test\/ as its canonical/)
+  })
+
+  it('fails a canonical that differs only by the trailing slash', () => {
+    const result = withPage(page(canon('https://example.test/about')))
+    assert.equal(result.status, 1)
+    assert.match(result.stdout, /its own canonical, to the character/)
+  })
+
+  it('fails a listed page with no canonical', () => {
+    const result = withPage(page(''))
+    assert.equal(result.status, 1)
+    assert.match(result.stdout, /0 canonical links/)
+  })
+
+  it('fails a listed page with a meta robots noindex', () => {
+    const result = withPage(page(`${canon(PAGE)}<meta name="robots" content="noindex, follow">`))
+    assert.equal(result.status, 1)
+    assert.match(result.stdout, /meta robots noindex/)
+  })
+
+  it('fails a listed page served with an X-Robots-Tag noindex', () => {
+    const result = withPage(page(canon(PAGE)), { [PAGE]: 'X-Robots-Tag: noindex' })
+    assert.equal(result.status, 1)
+    assert.match(result.stdout, /X-Robots-Tag of noindex/)
+  })
+
+  it('passes a robots meta that does not say noindex', () => {
+    const result = withPage(page(`${canon(PAGE)}<meta name="robots" content="index, follow">`), {
+      [PAGE]: 'X-Robots-Tag: all',
+    })
+    assert.equal(result.status, 0, result.stdout + result.stderr)
+  })
+
+  it('fails a listed page that is a meta-refresh stub', () => {
+    const result = withPage(page(`${canon(PAGE)}<meta http-equiv="refresh" content="0; url=/new/">`))
+    assert.equal(result.status, 1)
+    assert.match(result.stdout, /meta-refresh redirect/)
+  })
+
+  describe('www and error pages, opt-in', () => {
+    const WWW = stepScript(
+      readFileSync(join(WORKFLOWS, 'production-healthcheck.yml'), 'utf8'),
+      'www redirects to the apex',
+    )
+    const HIDDEN = stepScript(
+      readFileSync(join(WORKFLOWS, 'production-healthcheck.yml'), 'utf8'),
+      'Error pages requested by name answer 404',
+    )
+    const www = (code, redirects = {}) =>
+      runStep({
+        robots: ROBOTS,
+        codes: { 'https://www.example.test/': code },
+        redirects,
+        script: WWW,
+      })
+
+    it('passes when www answers 301 with a Location on the apex', () => {
+      const result = www(301, { 'https://www.example.test/': 'https://example.test/' })
+      assert.equal(result.status, 0, result.stdout + result.stderr)
+    })
+
+    it('passes a 308 too', () => {
+      const result = www(308, { 'https://www.example.test/': 'https://example.test/' })
+      assert.equal(result.status, 0, result.stdout + result.stderr)
+    })
+
+    it('fails when www serves the site itself', () => {
+      const result = www(200)
+      assert.equal(result.status, 1)
+      assert.match(result.stdout, /answered HTTP 200, not 301 or 308/)
+    })
+
+    it('fails a 302 and a 301 that leads somewhere other than the apex', () => {
+      assert.equal(www(302, { 'https://www.example.test/': 'https://example.test/' }).status, 1)
+      const result = www(301, { 'https://www.example.test/': 'https://example.test.evil.test/' })
+      assert.equal(result.status, 1)
+      assert.match(result.stdout, /not the apex/)
+    })
+
+    it('fails a 301 with no Location at all', () => {
+      assert.equal(www(301).status, 1)
+    })
+
+    const hidden = (codes) => runStep({ robots: ROBOTS, codes, script: HIDDEN })
+
+    it('passes when both error pages answer 404 by name', () => {
+      const result = hidden({ 'https://example.test/404.html': 404, 'https://example.test/500.html': 404 })
+      assert.equal(result.status, 0, result.stdout + result.stderr)
+    })
+
+    it('fails when 404.html answers 200 by name', () => {
+      const result = hidden({ 'https://example.test/404.html': 200, 'https://example.test/500.html': 404 })
+      assert.equal(result.status, 1)
+      assert.match(result.stdout, /404\.html answered HTTP 200, not 404/)
+    })
+
+    it('fails when only 500.html is exposed', () => {
+      const result = hidden({ 'https://example.test/404.html': 404, 'https://example.test/500.html': 200 })
+      assert.equal(result.status, 1)
+      assert.match(result.stdout, /500\.html answered HTTP 200/)
+    })
+
+    it('the live sitemap step queues a sitemap index\'s children instead of probing them as pages', () => {
+      const yaml = readFileSync(join(WORKFLOWS, 'production-healthcheck.yml'), 'utf8')
+      assert.match(yaml, /grep -qi '<sitemapindex'[\s\S]*?sitemaps\+=\("\$child"\)/)
+      assert.match(yaml, /already queued[\s\S]*?\*" \$child "\*\) continue/)
+    })
+
+    it('the live sitemap step reads pages the way the offline checker does', () => {
+      const yaml = readFileSync(join(WORKFLOWS, 'production-healthcheck.yml'), 'utf8')
+      assert.match(yaml, /sed -E 's\/<!--[\s\S]*?<\/\[Hh\]\[Ee\]\[Aa\]\[Dd\]>/)
+    })
+
+    describe('sitemap indexes and page markup, run through the step', () => {
+      const idx = (...children) =>
+        `<sitemapindex>${children.map((c) => `<sitemap><loc>${c}</loc></sitemap>`).join('')}</sitemapindex>`
+      const urlset = (...locs) => `<urlset>${locs.map((l) => `<url><loc>${l}</loc></url>`).join('')}</urlset>`
+      const CHILD = 'https://example.test/pages.xml'
+      const run = (sitemap, pages = {}, extra = {}) =>
+        runStep({
+          robots: ROBOTS,
+          sitemap,
+          codes: {
+            'https://example.test/robots.txt': 200,
+            'https://example.test/sitemap.xml': 200,
+            [CHILD]: 200,
+            [PAGE]: 200,
+            ...extra,
+          },
+          pages,
+        })
+
+      it('follows an index to its child sitemap and checks the pages there', () => {
+        const result = run(idx(CHILD), { [CHILD]: urlset(PAGE) })
+        assert.equal(result.status, 0, result.stdout + result.stderr)
+        assert.match(result.stdout, /1 URL\(s\) listed/)
+      })
+
+      it('does not probe the child sitemap as a page', () => {
+        const result = run(idx(CHILD), { [CHILD]: urlset(PAGE) })
+        assert.doesNotMatch(result.stdout + result.stderr, /0 canonical links/)
+      })
+
+      it('fails a page listed by a child sitemap that is noindex', () => {
+        const result = run(idx(CHILD), {
+          [CHILD]: urlset(PAGE),
+          [PAGE]: page(`${canon(PAGE)}<meta name="robots" content="noindex">`),
+        })
+        assert.equal(result.status, 1)
+        assert.match(result.stdout, /meta robots noindex/)
+      })
+
+      it('ends on an index that lists itself', () => {
+        const result = run(idx('https://example.test/sitemap.xml', CHILD), { [CHILD]: urlset(PAGE) })
+        assert.equal(result.status, 0, result.stdout + result.stderr)
+      })
+
+      it('fails an empty index', () => {
+        const result = run('<sitemapindex></sitemapindex>')
+        assert.equal(result.status, 1)
+        assert.match(result.stdout, /contains no <loc> entries/)
+      })
+
+      it('ignores a commented-out noindex and canonical', () => {
+        const html = page(
+          `<!-- <meta name="robots" content="noindex"> ${canon('https://example.test/old/')} -->${canon(PAGE)}`,
+        )
+        const result = run(urlset(PAGE), { [PAGE]: html })
+        assert.equal(result.status, 0, result.stdout + result.stderr)
+      })
+
+      it('ignores a canonical that appears only after </head>', () => {
+        const html = `<html><head>${canon(PAGE)}</head><body>${canon('https://example.test/x/')}</body></html>`
+        const result = run(urlset(PAGE), { [PAGE]: html })
+        assert.equal(result.status, 0, result.stdout + result.stderr)
+      })
+    })
+
+    it('both steps are off unless their input is true', () => {
+      const yaml = readFileSync(join(WORKFLOWS, 'production-healthcheck.yml'), 'utf8')
+      assert.match(yaml, /if: \$\{\{ !cancelled\(\) && inputs\.expect-www-redirect \}\}/)
+      assert.match(yaml, /if: \$\{\{ !cancelled\(\) && inputs\.expect-error-pages-hidden \}\}/)
+      assert.match(yaml, /expect-www-redirect:\n(?:(?!\n      \S)[\s\S])*?default: false/)
+      assert.match(yaml, /expect-error-pages-hidden:\n(?:(?!\n      \S)[\s\S])*?default: false/)
+    })
   })
 })
 

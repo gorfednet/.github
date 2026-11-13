@@ -61,6 +61,8 @@ export class FakeGitHub {
     this.files = files
     this.calls = []
     this.writes = []
+    /** Tag names the repository already has, for a release repo's version check. */
+    this.tags = []
     this.mergeResult = () => ({ merged: true, sha: MERGE })
     /** Called on each getPull; lets a test move the head between reads. */
     this.onGetPull = null
@@ -101,9 +103,11 @@ export class FakeGitHub {
     return structuredClone(this.runsBySha?.[sha] ?? this.runs)
   }
 
-  async listMergedPulls(slug, limit) {
-    this.log('listMergedPulls', slug, limit)
-    return structuredClone((this.mergedPullsBySlug?.[slug] ?? this.mergedPulls).slice(0, limit))
+  async listMergedPulls(slug, limit, label) {
+    this.log('listMergedPulls', slug, ...(label ? [limit, label] : [limit]))
+    const all = this.mergedPullsBySlug?.[slug] ?? this.mergedPulls
+    const kept = label ? all.filter((p) => p.labels?.some((l) => l.name === label)) : all
+    return structuredClone(kept.slice(0, limit))
   }
 
   async listStatuses(slug, sha) {
@@ -114,6 +118,17 @@ export class FakeGitHub {
   async listReviews(slug, n) {
     this.log('listReviews', slug, n)
     return structuredClone(this.reviews)
+  }
+
+  async listTags(slug) {
+    this.log('listTags', slug)
+    return [...this.tags]
+  }
+
+  async createRelease(slug, rel) {
+    this.log('createRelease', slug, rel)
+    this.writes.push({ name: 'createRelease', slug, release: rel })
+    return { id: 1 }
   }
 
   async listIssueComments(slug, n) {

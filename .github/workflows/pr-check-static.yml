@@ -148,6 +148,17 @@ on:
         required: false
         type: string
         default: ""
+      fail-on-build-edits:
+        description: >-
+          When "true", a step right after the build fails if the build changed any tracked
+          file (`git diff --exit-code`). A build that rewrites its own inputs makes every later
+          step depend on local history (gorfmusic PR 24: CI's libvips named a card differently,
+          the generator rewrote siteMeta.ts, and the canary guarding that file refused to run).
+          Off by default: six repositories hashed rendered output, and a default of true would
+          have turned them red together. Turn it on per repository once its build is clean.
+        required: false
+        type: string
+        default: "false"
       timeout-minutes:
         description: >-
           Minutes before the check job is cancelled. Default 10; a repository whose build prints
@@ -174,6 +185,13 @@ jobs:
       - name: Build
         if: inputs.build-command != ''
         run: ${{ inputs.build-command }}
+      - name: Build left tracked files unchanged
+        if: ${{ inputs.build-command != '' && inputs.fail-on-build-edits == 'true' }}
+        run: |
+          if ! git diff --exit-code; then
+            echo "::error::The build changed tracked files (diff above). Commit the regenerated output or make the build write nowhere tracked."
+            exit 1
+          fi
       - name: Verify
         if: inputs.verify-command != ''
         run: ${{ inputs.verify-command }}

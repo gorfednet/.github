@@ -49,21 +49,33 @@ export function nextItem(body) {
   return null
 }
 
-/** green, red, pending or none, from a pull request's statusCheckRollup (check runs and commit statuses). */
-export function ciState(rollup) {
-  if (!Array.isArray(rollup) || rollup.length === 0) return 'none'
+/**
+ * green, red, pending or none for one commit, from the REST results a fine-grained token can read:
+ * `runs` is the `workflow_runs` array of `actions/runs?head_sha=` and `status` the combined commit status.
+ * Only the latest run of each workflow counts, so a re-run replaces the attempt it superseded.
+ */
+export function ciState(runs, status = null) {
+  const latest = new Map()
+  for (const run of Array.isArray(runs) ? runs : []) {
+    const key = run.workflow_id ?? run.name ?? run.id
+    const seen = latest.get(key)
+    if (!seen || (run.run_number ?? 0) > (seen.run_number ?? 0) || ((run.run_number ?? 0) === (seen.run_number ?? 0) && (run.run_attempt ?? 1) > (seen.run_attempt ?? 1))) latest.set(key, run)
+  }
+  const statuses = Array.isArray(status?.statuses) ? status.statuses : []
+  if (latest.size === 0 && statuses.length === 0) return 'none'
   let pending = false
-  for (const item of rollup) {
-    if (item.__typename === 'StatusContext' || (item.state && !item.status)) {
-      if (FAILED.has(item.state)) return 'red'
-      if (item.state === 'PENDING' || item.state === 'EXPECTED') pending = true
-      continue
-    }
-    if (item.status !== 'COMPLETED') {
+  for (const run of latest.values()) {
+    if (run.status !== 'completed') {
       pending = true
       continue
     }
-    if (FAILED.has(item.conclusion)) return 'red'
+    if (FAILED.has(String(run.conclusion).toUpperCase())) return 'red'
+  }
+  if (statuses.length > 0) {
+    // The combined state of a commit with no statuses reads "pending", so it only counts when some exist.
+    const state = String(status.state).toUpperCase()
+    if (FAILED.has(state)) return 'red'
+    if (state === 'PENDING') pending = true
   }
   return pending ? 'pending' : 'green'
 }
@@ -92,6 +104,10 @@ export function dependabotRed(prs) {
 }
 
 /** The repositories to cover: fleet.json plus any ship-bot repo it lacks. */
+/** Where a repository keeps the kit manifest: fleet.json's evidencePaths where it moves the file (this repository holds the canonical copy under templates/). */
+export const KIT_MANIFEST = 'verification-kit/MANIFEST.json'
+export const kitPathFor = (project) => project?.evidencePaths?.[KIT_MANIFEST] ?? KIT_MANIFEST
+
 export function repoList(fleet, shipBotConfig) {
   const slugs = fleet.projects.map((p) => p.slug)
   for (const repo of shipBotConfig?.repos ?? []) if (repo.slug && !slugs.includes(repo.slug)) slugs.push(repo.slug)
@@ -164,6 +180,8 @@ export function redactRepo(full) {
     openPrCount: full.openPrs.length,
     lapsedBacklogCount: full.lapsedBacklog.length,
     dependabotRedCount: full.dependabotRed,
+    // A version number is not private; the fleet-wide check needs it from every row.
+    kitVersion: full.kitVersion,
   }
 }
 
@@ -173,7 +191,7 @@ export function redactRepo(full) {
  * private repository that then fails to read publishes only the word "unreadable" (an error message can
  * quote the file it choked on). `json` and `log` are injectable for tests.
  */
-export async function collectRepo(slug, now = new Date(), { includePrivate = false, json = ghJson, log = console.error } = {}) {
+export async function collectRepo(slug, now = new Date(), { includePrivate = false, json = ghJson, log = console.error, kitPath = KIT_MANIFEST } = {}) {
   let repo
   let isPrivate = true
   try {
@@ -184,7 +202,7 @@ export async function collectRepo(slug, now = new Date(), { includePrivate = fal
   }
   try {
     if (repo instanceof Error) throw repo
-    return await gatherRepo(slug, now, { includePrivate, json, repo })
+    return await gatherRepo(slug, now, { includePrivate, json, repo, kitPath })
   } catch (cause) {
     const detail = String(cause.stderr || cause.message).trim().split('\n')[0]
     const reason = isPrivate && !includePrivate ? 'unreadable' : detail
@@ -193,17 +211,26 @@ export async function collectRepo(slug, now = new Date(), { includePrivate = fal
   }
 }
 
-export async function gatherRepo(slug, now = new Date(), { includePrivate = false, json = ghJson, repo = null } = {}) {
+/** CI state of a commit from the Actions and commit-status REST endpoints (no Checks permission needed). */
+function ciForCommit(slug, sha, json) {
+  // Paginated: comment-triggered runs (claude-review) record the default branch head as head_sha and can bury main's push run past page 1.
+  const runs = json(['api', '--paginate', '--slurp', `repos/${slug}/actions/runs?head_sha=${sha}&per_page=100`]).flatMap((pg) => pg.workflow_runs ?? [])
+  const status = json(['api', `repos/${slug}/commits/${sha}/status`])
+  return ciState(runs, status)
+}
+
+export async function gatherRepo(slug, now = new Date(), { includePrivate = false, json = ghJson, repo = null, kitPath = KIT_MANIFEST } = {}) {
   const today = now.toISOString().slice(0, 10)
   if (repo === null) repo = json(['api', `repos/${slug}`])
   const base = repo.default_branch
   const isPrivate = isPrivateRepo(repo)
   const raw = json([
     'pr', 'list', '--repo', slug, '--state', 'open', '--limit', '100',
-    '--json', 'number,title,createdAt,labels,isDraft,headRefName,headRefOid,body,statusCheckRollup,author',
+    '--json', 'number,title,createdAt,labels,isDraft,headRefName,headRefOid,body,author',
   ])
   const openPrs = raw.map((p) => {
     const comments = json(['api', '--paginate', '--slurp', `repos/${slug}/issues/${p.number}/comments?per_page=100`]).flat()
+    const ci = ciForCommit(slug, p.headRefOid, json)
     return {
       number: p.number,
       title: p.title,
@@ -211,7 +238,7 @@ export async function gatherRepo(slug, now = new Date(), { includePrivate = fals
       labels: p.labels.map((l) => l.name),
       draft: p.isDraft,
       review: claudeReviewVerdict(comments, p.headRefOid).state,
-      ci: ciState(p.statusCheckRollup),
+      ci,
       next: nextItem(p.body),
       author: p.author?.login ?? null,
     }
@@ -235,8 +262,11 @@ export async function gatherRepo(slug, now = new Date(), { includePrivate = fals
       break
     }
   }
-  const checks = json(['api', `repos/${slug}/commits/${base}/check-runs?per_page=100`]).check_runs ?? []
-  const mainRed = checks.some((c) => c.status === 'completed' && FAILED.has(String(c.conclusion).toUpperCase()))
+  // null: the repository carries no kit. An unreadable manifest is a thrown error, so the row is `unavailable`, never null.
+  const manifestText = fileText(slug, kitPath, json)
+  const kitVersion = manifestText === null ? null : (JSON.parse(manifestText).version ?? '')
+  const mainSha = json(['api', `repos/${slug}/commits/${base}`]).sha
+  const mainRed = ciForCommit(slug, mainSha, json) === 'red'
   const full = {
     slug,
     defaultBranch: base,
@@ -247,6 +277,7 @@ export async function gatherRepo(slug, now = new Date(), { includePrivate = fals
     lastDeploy: deploy,
     incidents7d: incidents,
     dependabotRed: dependabotRed(openPrs),
+    kitVersion,
   }
   return isPrivate && !includePrivate ? redactRepo(full) : full
 }
@@ -294,7 +325,7 @@ if (isMain(import.meta.url)) {
     failed = repos.filter((r) => r.unavailable).length
   } else {
     for (const slug of slugs) {
-      const row = await collectRepo(slug, now, { includePrivate: process.argv.includes('--include-private') })
+      const row = await collectRepo(slug, now, { includePrivate: process.argv.includes('--include-private'), kitPath: kitPathFor(fleet.projects.find((p) => p.slug === slug)) })
       if (row.unavailable) failed += 1
       repos.push(row)
     }

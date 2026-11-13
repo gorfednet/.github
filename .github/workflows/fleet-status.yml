@@ -4,7 +4,9 @@
 # branch of this repository and posts a short digest to ntfy.
 #
 # Like fleet-audit.yml it needs FLEET_READ_TOKEN (a fine-grained PAT with
-# read-only Contents, Pull requests, Actions and Metadata across gorfednet) and
+# read-only Actions, Commit statuses, Contents, Issues, Metadata and Pull requests across
+# gorfednet; there is no Checks permission for a fine-grained token, so CI state comes
+# from Actions runs and commit statuses) and
 # has no fallback: a missing token means nothing was read, so it goes red.
 # A repository it cannot read becomes an "unavailable" row and turns the job
 # red after the file is published, so the gap is visible in both places.
@@ -65,6 +67,13 @@ jobs:
           # checks out the `status` branch, which holds only the two output files.
           mkdir -p "${RUNNER_TEMP}/out"
           node scripts/write-status-md.mjs --in status.json --digest > "${RUNNER_TEMP}/out/digest.txt"
+
+      # Scheduled, never per pull request: a pull request cannot change what the kit
+      # released. Fails the run (and so the ops alert) when a repository is more than
+      # one minor behind canonical. Before Publish, which checks out the status branch.
+      - name: Every repository is within one minor of the canonical kit
+        if: ${{ !cancelled() }}
+        run: node scripts/fleet-kit-versions.mjs --in status.json
 
       - name: Publish to the status branch
         if: ${{ !cancelled() }}

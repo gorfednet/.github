@@ -60,13 +60,22 @@ describe('helpers', () => {
     assert.equal(nextItem('## Next\n- [x] all done'), null)
     assert.equal(nextItem(null), null)
   })
-  it('ciState reads check runs and commit statuses', () => {
+  it('ciState reads Actions runs and the combined commit status', () => {
+    const done = (conclusion, extra = {}) => ({ workflow_id: 1, status: 'completed', conclusion, run_number: 1, ...extra })
     assert.equal(ciState([]), 'none')
-    assert.equal(ciState([{ status: 'COMPLETED', conclusion: 'SUCCESS' }, { status: 'COMPLETED', conclusion: 'SKIPPED' }]), 'green')
-    assert.equal(ciState([{ status: 'COMPLETED', conclusion: 'SUCCESS' }, { status: 'IN_PROGRESS' }]), 'pending')
-    assert.equal(ciState([{ status: 'IN_PROGRESS' }, { status: 'COMPLETED', conclusion: 'FAILURE' }]), 'red')
-    assert.equal(ciState([{ __typename: 'StatusContext', state: 'FAILURE' }]), 'red')
-    assert.equal(ciState([{ __typename: 'StatusContext', state: 'SUCCESS' }]), 'green')
+    assert.equal(ciState(undefined, { state: 'pending', statuses: [] }), 'none')
+    assert.equal(ciState([done('success'), done('skipped', { workflow_id: 2 }), done('neutral', { workflow_id: 3 })]), 'green')
+    assert.equal(ciState([done('success'), { workflow_id: 2, status: 'in_progress', conclusion: null }]), 'pending')
+    assert.equal(ciState([{ workflow_id: 2, status: 'queued' }, done('failure')]), 'red')
+    assert.equal(ciState([done('timed_out')]), 'red')
+    assert.equal(ciState([done('cancelled')]), 'red')
+    assert.equal(ciState([done('skipped')]), 'green')
+    assert.equal(ciState([], { state: 'failure', statuses: [{ state: 'failure' }] }), 'red')
+    assert.equal(ciState([], { state: 'success', statuses: [{ state: 'success' }] }), 'green')
+    assert.equal(ciState([done('success')], { state: 'pending', statuses: [{ state: 'pending' }] }), 'pending')
+    assert.equal(ciState([done('success')], { state: 'pending', statuses: [] }), 'green')
+    // A re-run replaces the failed attempt of the same workflow.
+    assert.equal(ciState([done('failure'), done('success', { run_number: 2 })]), 'green')
   })
   it('recentLines counts only lines dated in the last 7 days', () => {
     const text = '2026-11-06 a\n2026-11-01 b\n2026-10-31 c\nundated\n2026-11-09 future'
@@ -159,7 +168,7 @@ describe('STATUS.md', () => {
     assert.ok(isPrivateRepo({ private: false }), 'unknown visibility counts as private')
     assert.ok(!isPrivateRepo({ private: false, visibility: 'public' }))
     const row = redactRepo(full)
-    assert.deepEqual(row, { slug: full.slug, redacted: true, mainRed: false, openPrCount: 2, lapsedBacklogCount: 1, dependabotRedCount: 1 })
+    assert.deepEqual(row, { slug: full.slug, redacted: true, mainRed: false, openPrCount: 2, lapsedBacklogCount: 1, dependabotRedCount: 1, kitVersion: null })
     const text = JSON.stringify(row)
     for (const leak of ['title', 'branch', 'url', 'next', 'Fix the nav', 'feat/old', 'stale-entry', 'actions/runs']) assert.ok(!text.includes(leak), leak)
     assert.deepEqual(validate({ generatedAt: 'x', renderedAt: 'x', repos: [row] }, schema), [])
@@ -178,7 +187,6 @@ describe('STATUS.md', () => {
       if (path.endsWith('contents/docs/backlog.json')) return { encoding: 'base64', content: Buffer.from(`{"id": "${SECRET}"`).toString('base64') }
       if (path.includes('/contents/')) throw notFound()
       if (path.endsWith('/workflows?per_page=100')) return { workflows: [] }
-      if (path.includes('/check-runs')) return { check_runs: [] }
       throw new Error(`unexpected call ${args.join(' ')}`)
     }
     const logged = []
