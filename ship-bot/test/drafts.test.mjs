@@ -166,6 +166,19 @@ describe('a draft the bot owns', () => {
     assert.equal(writes(gh, 'mergePull').length, 1)
   })
 
+  it('a draft a person took the bot\'s label off is left alone, even while still a draft', async () => {
+    const gh = new FakeGitHub({ pulls: [draft()] })
+    gh.markReady = async () => { throw Object.assign(new Error('boom'), { status: 502 }) }
+    const s = scenario({ repos: reviewed(), github: gh })
+    await s.run()
+    assert.equal(writes(gh, 'addLabels').length, 1)
+    gh.pulls[0].labels = []
+    await s.run()
+    await s.run()
+    assert.equal(writes(gh, 'addLabels').length, 1, 'not labelled again')
+    assert.ok(s.logs.some((l) => /draft left alone \(a person took ready-to-merge off/.test(l)), s.logs.join('\n'))
+  })
+
   it('after a failed markReady and a new push, the record follows the head and the pull request is not stranded', async () => {
     const gh = new FakeGitHub({ pulls: [draft()] })
     let fail = true

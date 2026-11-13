@@ -370,6 +370,10 @@ async function takeDraft(ctx, repo, listed, defaultBranch) {
     ctx.say('debug', `${tag}: draft ignored (${skip2})`)
     return
   }
+  if (ctx.state.data.prs[`${repo.slug}#${pr.number}`]?.takenBack) {
+    ctx.say('debug', `${tag}: draft left alone (a person took ${READY_LABEL} off; it is theirs now)`)
+    return
+  }
   const { claim, refused } = draftClaim(pr)
   if (!claim) {
     ctx.say('debug', `${tag}: draft left alone (${refused ?? 'no merge line under ## Next'})`)
