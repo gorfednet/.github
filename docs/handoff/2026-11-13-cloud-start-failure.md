@@ -26,3 +26,6 @@ Evidence, `~/Library/Logs/Claude/`:
 ## Next
 - [ ] Merge (docs only).
 - [ ] Desk: retry one cloud request from the foreground, one at a time.
+
+## Update: app installed (13 November, about 09:50 ET)
+Done in the owner's browser at his request: Claude GitHub App installed on the personal account, "Only select repositories": gorfednet/.github, gorfednet/gorfed.net, gorfednet/4thcltr.com. github.com/settings/installations now lists Claude. The redirect to claude.ai/connect/github/callback landed on a claude.ai sign-in page in the built-in browser (not signed in there), so the claude.ai side of the link was not confirmed. Cloud starts are still unproven: retry one from the foreground. Add other repos later from Installed GitHub Apps, Claude, Configure.
