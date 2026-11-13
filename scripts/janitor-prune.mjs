@@ -114,7 +114,7 @@ function lastTouched(path) {
 export function ignoredLocal(path) {
   const ignored = tryGit(path, 'status', '--porcelain', '--ignored=matching')
   if (!ignored.ok) return ['(unreadable)']
-  return ignored.out.split('\n').filter((l) => l.startsWith('!! ')).map((l) => l.slice(3).replace(/\/$/, '')).filter((p) => !DISPOSABLE.has(p))
+  return ignored.out.split('\n').filter((l) => l.startsWith('!! ')).map((l) => l.slice(3).replace(/\/$/, '')).filter((p) => !DISPOSABLE.has(p.split('/').pop()))
 }
 
 /**

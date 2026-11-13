@@ -98,6 +98,8 @@ describe('janitor-prune', () => {
     writeFileSync(join(f.clone, '.git', 'info', 'exclude'), '.env\nnode_modules\n')
     mkdirSync(join(f.merged, 'node_modules'))
     writeFileSync(join(f.merged, 'node_modules', 'x.js'), '')
+    mkdirSync(join(f.merged, 'apps', 'web', 'node_modules'), { recursive: true })
+    writeFileSync(join(f.merged, 'apps', 'web', 'node_modules', 'y.js'), '')
     const opts = { root: f.root, keep: new Set(), idleMs: DAY, apply: false, now: Date.now() + 2 * DAY, fetch: false, log: quiet }
     assert.equal(run(opts).find((r) => r.path === f.merged).verdict, 'prune')
     writeFileSync(join(f.merged, '.env'), 'SECRET=1\n')
