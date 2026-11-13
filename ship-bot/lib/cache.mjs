@@ -38,7 +38,8 @@ export class ReadCache {
     if (!this.path || !existsSync(this.path)) return this
     try {
       const raw = JSON.parse(readFileSync(this.path, 'utf8'))
-      if (raw?.version === 1 && typeof raw.etags === 'object' && typeof raw.gates === 'object') this.data = raw
+      const isMap = (v) => v !== null && typeof v === 'object' && !Array.isArray(v)
+      if (raw?.version === 1 && isMap(raw.etags) && isMap(raw.gates)) this.data = raw
     } catch {
       // Unreadable: start empty. The cost is one pass of uncached requests.
     }

@@ -5,7 +5,7 @@
  */
 import assert from 'node:assert/strict'
 import { generateKeyPairSync, createVerify } from 'node:crypto'
-import { mkdtempSync, writeFileSync, chmodSync, readFileSync } from 'node:fs'
+import { mkdtempSync, writeFileSync, chmodSync, readFileSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, it } from 'node:test'
@@ -71,12 +71,20 @@ describe('conditional requests', () => {
 })
 
 describe('low quota', () => {
-  it('stops calling GitHub once fewer than 200 remain', async () => {
+  it('reports a low quota under 200 remaining, and still sends a request already decided on', async () => {
     let calls = 0
     const gh = createGitHubClient({ token: TOKEN, fetchImpl: async () => (calls++, reply(200, { default_branch: 'main' }, rate(199))) })
+    assert.equal(gh.lowQuota(), null)
     await gh.getRepo(SLUG)
-    await assert.rejects(() => gh.getRepo(SLUG), (e) => e instanceof RateLimitError && e.remaining === 199 && e.resetAt === '2027-01-15T08:00:00.000Z')
-    assert.equal(calls, 1, 'the second call never reached the network')
+    assert.deepEqual({ remaining: gh.lowQuota().remaining, resetAt: gh.lowQuota().resetAt }, { remaining: 199, resetAt: '2027-01-15T08:00:00.000Z' })
+    await gh.mergePull(SLUG, 7, { sha: 'a'.repeat(40) })
+    assert.equal(calls, 2, 'the floor never stops a call in the middle of a merge')
+  })
+
+  it('a secondary limit (403 with quota left) waits Retry-After, not the primary reset', async () => {
+    const gh = createGitHubClient({ token: TOKEN, fetchImpl: async () => reply(403, { message: 'You have exceeded a secondary rate limit.' }, { ...rate(4000), 'retry-after': 60 }) })
+    const t0 = Date.now()
+    await assert.rejects(() => gh.getRepo(SLUG), (e) => e instanceof RateLimitError && e.resource === 'secondary' && Math.abs(new Date(e.resetAt).getTime() - t0 - 60_000) < 5000 && e.status === 403)
   })
 
   it('treats a 403 for the spent limit as RateLimitError, and any other 403 as an ordinary error', async () => {
@@ -144,6 +152,63 @@ describe('low quota', () => {
     assert.equal(fetches.length, 2)
   })
 
+  it('stops before the next repository once under the floor', async () => {
+    let low = null
+    class Floor extends FakeGitHub {
+      async getRepo(slug) {
+        this.log('getRepo', slug)
+        low = { remaining: 150, resetAt: '2026-10-09T13:00:00Z', resource: 'core' }
+        return { default_branch: 'main' }
+      }
+    }
+    const gh = new Floor({ pulls: [] })
+    gh.lowQuota = () => low
+    const s = scenario({ github: gh, repos: repos() })
+    await s.run()
+    assert.deepEqual(gh.calls.filter((c) => c.name === 'getRepo').map((c) => c.args[0]), ['gorfednet/one'])
+    assert.equal(s.state().data.rateLimit.remaining, 150)
+  })
+
+  it('a merge GitHub refuses for its rate limit is not merged: no block, no "outcome unknown", the pass stops', async () => {
+    const gh = new FakeGitHub()
+    gh.mergeResult = () => new RateLimitError({ remaining: 0, resetAt: '2026-10-09T13:00:00Z', resource: 'core', status: 403 })
+    const s = scenario({ github: gh })
+    await s.run()
+    const rs = s.state().data.repos[SLUG] ?? {}
+    assert.equal(rs.blocked, undefined, 'repo not blocked')
+    assert.equal(rs.deployInProgress, undefined)
+    assert.ok(!s.logs.some((l) => /outcome unknown/.test(l)), s.logs.join('\n'))
+    assert.equal(gh.commentsPosted().length, 0)
+    assert.equal(s.runner.ofKind('notify').length, 1, 'only the quota notification')
+    assert.ok(s.state().data.rateLimit)
+  })
+
+  it('a low quota met inside the review gate stops the pass, not a "review state unknown" block', async () => {
+    const gh = new FakeGitHub({ pulls: [makePr({ updated_at: '2026-10-09T11:59:00Z' })] })
+    let gates = 0
+    gh.lowQuota = () => (gates >= 2 ? { remaining: 100, resetAt: '2026-10-09T13:00:00Z', resource: 'core' } : null)
+    const runner = makeRunner({ handle: (cmd) => (cmd.kind === 'gate' ? (gates++, undefined) : undefined) })
+    const s = scenario({ github: gh, runner, repos: [mergeOnly({ claudeReview: true })] })
+    await s.run()
+    assert.equal(gates, 2, 'review-status never started')
+    assert.ok(!s.logs.some((l) => /review state unknown/.test(l)), s.logs.join('\n'))
+    assert.ok(s.logs.some((l) => /quota low: 100 left/.test(l)))
+  })
+
+  it("a pause belongs to the identity that hit it: the App's pass is not held by the owner's spent quota", async () => {
+    const gh = new FakeGitHub({ pulls: [] })
+    const s = scenario({ github: gh, repos: [mergeOnly()] })
+    await s.run('live', { authAs: 'the owner (gh auth token)' })
+    const st = s.state()
+    st.data.rateLimit = { at: '2026-10-09T12:00:00Z', as: 'the owner (gh auth token)', remaining: 0, resetAt: '2026-10-09T13:00:00Z', notified: true }
+    st.save()
+    gh.calls = []
+    await s.run('live', { authAs: 'the owner (gh auth token)' })
+    assert.equal(gh.calls.length, 0)
+    await s.run('live', { authAs: 'GitHub App 9' })
+    assert.ok(gh.calls.length > 0)
+  })
+
   it('does not start a gate script on a low quota', async () => {
     const gh = new FakeGitHub()
     gh.lowQuota = () => ({ remaining: 150, resetAt: '2026-10-09T13:00:00Z', resource: 'core' })
@@ -208,6 +273,14 @@ describe('gate scripts reused across passes', () => {
     await s.run('live', { readCache: cache })
     assert.equal(runner.ofKind('gate').length, 6, 'all three ran fresh before the merge')
     assert.equal(gh.writes.filter((w) => w.name === 'mergePull').length, 1)
+  })
+
+  it('does not remember a failing assert-checks-started (it exits 1 on a read failure too)', async () => {
+    const { runner, s, run } = setup((cmd) => (cmd.args?.[0]?.endsWith('/assert-checks-started.mjs') ? { code: 1, stdout: '', stderr: 'could not read runs' } : undefined))
+    await run()
+    s.clock.advance(2)
+    await run()
+    assert.equal(runner.ofKind('gate').filter((c) => c.args[0].endsWith('/assert-checks-started.mjs')).length, 2)
   })
 
   it('does not remember a script that could not read GitHub', async () => {
@@ -301,13 +374,32 @@ describe('GitHub App token', () => {
     assert.ok(r.out.some((l) => /as the owner \(gh auth token\)$/.test(l)))
   })
 
+  it('reuses a saved installation token until 10 minutes before it expires', async () => {
+    const { readAppToken } = await import('../ship-bot.mjs')
+    const home = mkdtempSync(join(tmpdir(), 'ship-bot-tok-'))
+    const key = join(home, 'k.pem')
+    writeFileSync(key, pem, { mode: 0o600 })
+    const config = { sourceRoot: join(home, 'src'), workRoot: join(home, 'work'), stateDir: home }
+    let mints = 0
+    let t = new Date('2026-11-13T14:00:00Z')
+    const mint = async () => ({ token: `ghs_${++mints}`, expiresAt: new Date(t.getTime() + 60 * 60 * 1000).toISOString() })
+    const app = { appId: 1, privateKeyFile: key, owner: 'o' }
+    assert.equal(await readAppToken(app, config, { mint, now: () => t }), 'ghs_1')
+    t = new Date('2026-11-13T14:40:00Z')
+    assert.equal(await readAppToken(app, config, { mint, now: () => t }), 'ghs_1')
+    assert.equal((statSync(join(home, 'app-token.json')).mode & 0o777).toString(8), '600')
+    t = new Date('2026-11-13T14:51:00Z')
+    assert.equal(await readAppToken(app, config, { mint, now: () => t }), 'ghs_2')
+    assert.equal(await readAppToken({ ...app, appId: 2 }, config, { mint, now: () => t }), 'ghs_3', 'another App never reuses it')
+  })
+
   it('refuses a private key other accounts can read, or one inside a repository clone', async () => {
     const { readAppToken } = await import('../ship-bot.mjs')
     const home = mkdtempSync(join(tmpdir(), 'ship-bot-key-'))
     const key = join(home, 'k.pem')
     writeFileSync(key, pem)
     chmodSync(key, 0o644)
-    const config = { sourceRoot: join(home, 'src'), workRoot: join(home, 'work') }
+    const config = { sourceRoot: join(home, 'src'), workRoot: join(home, 'work'), stateDir: home }
     await assert.rejects(() => readAppToken({ appId: 1, privateKeyFile: key, owner: 'o' }, config), /mode 644/)
     await assert.rejects(() => readAppToken({ appId: 1, privateKeyFile: join(home, 'src', 'repo', 'k.pem'), owner: 'o' }, config), /inside/)
     assert.equal(readFileSync(key, 'utf8'), pem)

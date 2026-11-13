@@ -11,10 +11,11 @@
  * - Every GET carries `If-None-Match` from `cache` (an EtagCache). GitHub
  *   answers an unchanged resource 304, which does not count against the
  *   limit, and the client returns the body it cached with that ETag.
- * - Every response's `X-RateLimit-*` headers are kept. Once the remaining
- *   core quota is under `minRemaining`, or GitHub refuses with the limit
- *   spent, the client throws RateLimitError and makes no further request, so
- *   the bot stops its pass instead of spending the last of a shared quota.
+ * - Every response's `X-RateLimit-*` headers are kept, and `lowQuota()` says
+ *   when the core quota is under `minRemaining`. The bot checks it before each
+ *   repository, pull request and gate script, never in the middle of a merge,
+ *   so the floor leaves headroom for work already started. A 403 or 429 for a
+ *   spent primary limit or a secondary limit throws RateLimitError.
  */
 
 const API = 'https://api.github.com'
@@ -32,8 +33,10 @@ export class GitHubError extends Error {
 
 /** The quota is (nearly) spent: stop calling GitHub until `resetAt`. */
 export class RateLimitError extends Error {
-  constructor({ remaining, resetAt, resource }) {
+  constructor({ remaining, resetAt, resource, status }) {
     super(`GitHub ${resource ?? 'core'} quota low: ${remaining} remaining, resets ${resetAt ?? 'at an unknown time'}`)
+    /** The HTTP status when GitHub refused the request (it was not performed), else undefined. */
+    this.status = status
     this.remaining = remaining
     this.resetAt = resetAt
     this.resource = resource ?? 'core'
@@ -67,8 +70,6 @@ export function createGitHubClient({ token, fetchImpl = globalThis.fetch, api = 
   }
 
   async function request(method, path, body) {
-    const low = lowQuota()
-    if (low) throw new RateLimitError(low)
     const url = `${api}${path}`
     const cached = method === 'GET' ? cache?.get(url) : undefined
     stats.requests += 1
@@ -102,11 +103,18 @@ export function createGitHubClient({ token, fetchImpl = globalThis.fetch, api = 
       data = null
     }
     if ((res.status === 403 || res.status === 429) && (rate?.remaining === 0 || /rate limit/i.test(data?.message ?? ''))) {
-      throw new RateLimitError(rate ?? { remaining: 0, resetAt: null, resource: 'core' })
+      if (rate && rate.remaining > 0) {
+        // A secondary limit: the primary headers are not its reset. Wait what
+        // Retry-After says, or 5 minutes.
+        const after = Number(res.headers?.get?.('retry-after'))
+        const resetAt = new Date(Date.now() + (Number.isFinite(after) && after > 0 ? after : 300) * 1000).toISOString()
+        throw new RateLimitError({ remaining: rate.remaining, resetAt, resource: 'secondary', status: res.status })
+      }
+      throw new RateLimitError({ ...(rate ?? { remaining: 0, resetAt: null, resource: 'core' }), status: res.status })
     }
     if (!res.ok) throw new GitHubError(method, path, res.status, data?.message ?? '')
     const etag = res.headers?.get?.('etag')
-    if (method === 'GET' && cache && etag) cache.set(url, { etag, data })
+    if (method === 'GET' && cache && etag && data !== null) cache.set(url, { etag, data: structuredClone(data) })
     return data
   }
 

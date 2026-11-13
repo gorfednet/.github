@@ -9,7 +9,7 @@
     "metadata": "read",
     "contents": "write",
     "pull_requests": "write",
-    "issues": "write",
+    "issues": "read",
     "checks": "read",
     "statuses": "read",
     "actions": "read",

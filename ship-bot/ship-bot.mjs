@@ -22,7 +22,7 @@
  * Without --once it keeps running, one pass every two minutes. The LaunchAgent
  * runs it with --once and lets launchd do the scheduling.
  */
-import { chmodSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { runOnce, selectRepos } from './lib/bot.mjs'
@@ -202,6 +202,7 @@ async function onePass(config, args, deps, print) {
       mode: live ? 'live' : 'dry-run',
       github: deps.makeGithub(token, { cache: readCache }),
       readCache,
+      authAs: auth.as,
       runner: deps.runner,
       clock: deps.clock,
       stateStore: state,
@@ -231,15 +232,34 @@ async function onePass(config, args, deps, print) {
  * The App's installation token (lib/app-auth.mjs). The private key must sit
  * outside every repository and clone the bot uses, and be readable by its
  * owner only.
+ *
+ * A token lasts an hour and is reused until 10 minutes before it expires
+ * (`<stateDir>/app-token.json`, mode 600): GitHub's ETags may differ per
+ * token, and a token minted every pass would make every conditional request a
+ * full-price 200.
  */
-export async function readAppToken(app, config) {
+export async function readAppToken(app, config, { mint = mintInstallationToken, now = () => new Date() } = {}) {
+  const saved = join(config.stateDir, 'app-token.json')
+  try {
+    const s = JSON.parse(readFileSync(saved, 'utf8'))
+    if (s.appId === app.appId && typeof s.token === 'string' && new Date(s.expiresAt).getTime() - now().getTime() > 10 * 60 * 1000) return s.token
+  } catch {
+    // None saved, or unreadable: mint a new one.
+  }
   const key = app.privateKeyFile
   for (const root of [config.sourceRoot, config.workRoot]) {
     if (key === root || key.startsWith(`${root}/`)) throw new Error(`githubApp.privateKeyFile is inside ${root}; keep the key outside every repository`)
   }
   const mode = statSync(key).mode
   if (mode & 0o077) throw new Error(`githubApp.privateKeyFile can be read by other accounts (mode ${(mode & 0o777).toString(8)}); run chmod 600 on it`)
-  const { token } = await mintInstallationToken({ appId: app.appId, privateKeyPem: readFileSync(key, 'utf8'), owner: app.owner, installationId: app.installationId ?? undefined })
+  const { token, expiresAt } = await mint({ appId: app.appId, privateKeyPem: readFileSync(key, 'utf8'), owner: app.owner, installationId: app.installationId ?? undefined })
+  try {
+    const tmp = `${saved}.tmp-${process.pid}`
+    writeFileSync(tmp, JSON.stringify({ appId: app.appId, token, expiresAt }), { mode: 0o600 })
+    renameSync(tmp, saved)
+  } catch {
+    // Not saved: the next pass mints again, which only costs its ETag hits.
+  }
   return token
 }
 

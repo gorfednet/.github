@@ -51,7 +51,7 @@ export async function convertCode(code, fetchImpl = globalThis.fetch) {
   })
   const data = await res.json().catch(() => null)
   if (!res.ok || !data?.id || !data?.pem || !data?.slug) throw new Error(`GitHub did not hand over the App (HTTP ${res.status}${data?.message ? `: ${data.message}` : ''})`)
-  return { id: data.id, slug: data.slug, pem: data.pem }
+  return { id: data.id, slug: data.slug, pem: data.pem, owner: data.owner?.login }
 }
 
 async function main(argv) {
@@ -68,7 +68,12 @@ async function main(argv) {
     console.error(`create.mjs: ${keyFile} already exists, so the App was made before. Nothing was changed.`)
     return 2
   }
+  if (!existsSync(configPath)) {
+    console.error(`create.mjs: no ship bot config at ${configPath}; install the ship bot first. Nothing was changed.`)
+    return 2
+  }
   const state = randomBytes(16).toString('hex')
+  const host = `127.0.0.1:${port}`
   const manifest = { ...JSON.parse(readFileSync(join(HERE, 'manifest.json'), 'utf8')), redirect_url: `http://127.0.0.1:${port}/done` }
 
   return new Promise((resolve) => {
@@ -78,7 +83,13 @@ async function main(argv) {
       resolve(code)
     }
     const server = createServer(async (req, res) => {
-      const url = new URL(req.url, `http://127.0.0.1:${port}`)
+      // Only this machine's own address: a page that rebinds a DNS name to
+      // 127.0.0.1 sends its own Host and is refused.
+      if (req.headers.host !== host) {
+        res.writeHead(421).end()
+        return
+      }
+      const url = new URL(req.url, `http://${host}`)
       if (url.pathname === '/') {
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
         res.end(startPage({ org, state, manifest }))
@@ -94,10 +105,16 @@ async function main(argv) {
       }
       try {
         const app = await convertCode(url.searchParams.get('code'))
+        if (app.owner?.toLowerCase() !== org.toLowerCase()) throw new Error(`GitHub handed over an App owned by ${app.owner ?? 'nobody'}, not ${org}. Nothing was saved.`)
         writeFileSync(keyFile, app.pem, { mode: 0o600, flag: 'wx' })
-        const code = setGithubApp(configPath, { appId: app.id, privateKeyFile: '~/.ship-bot/github-app.pem' })
-        if (code !== 0) throw new Error(`the key is saved at ${keyFile}, but the config was not changed (see above)`)
         const install = `https://github.com/apps/${app.slug}/installations/new`
+        const code = setGithubApp(configPath, { appId: app.id, privateKeyFile: '~/.ship-bot/github-app.pem' })
+        if (code !== 0) {
+          console.error(`create.mjs: the App exists (ID ${app.id}) and its key is saved at ${keyFile}, but the config was not changed. Install it at ${install}, then a session adds "githubApp": { "appId": ${app.id}, "privateKeyFile": "~/.ship-bot/github-app.pem" } to the config.`)
+          res.writeHead(302, { Location: install }).end()
+          finish(1)
+          return
+        }
         console.log(`Created GitHub App ${app.slug} (ID ${app.id}). Key saved to ${keyFile}. Next: install it on ${org}: ${install}`)
         res.writeHead(302, { Location: install }).end()
         finish(0)

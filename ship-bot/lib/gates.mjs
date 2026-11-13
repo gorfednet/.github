@@ -171,8 +171,17 @@ export function runGateScript(ctx, script, args, extraEnv = {}) {
   })
 }
 
-/** A finished answer from a script (exit 0 or 1), not a timeout, a crash or "could not read GitHub" (exit 2). */
-const cacheable = (r) => !r.timedOut && !r.error && (r.code === 0 || r.code === 1)
+/**
+ * Is this a verdict worth remembering? A pass (exit 0) always is. A "no" (exit
+ * 1) only from review-status with its verdict line: assert-checks-started and
+ * check-closing-keywords also exit 1 when they could not read GitHub, and a
+ * transient failure must clear on the next pass, not 10 minutes later.
+ */
+function cacheable(ctx, script, r) {
+  if (r.timedOut || r.error) return false
+  if (r.code === 0) return true
+  return r.code === 1 && script === ctx.config.scripts.reviewStatus && /^#\d+\s+(findings|not-run)\b/m.test(r.stdout ?? '')
+}
 
 /**
  * Run a gate script, or reuse its output for the same inputs (cache.mjs).
@@ -195,7 +204,7 @@ async function gate(ctx, script, args, extraEnv, memo) {
   if (low) throw new RateLimitError(low)
   const result = await runGateScript(ctx, script, args, extraEnv)
   if (ctx.gateStats) ctx.gateStats.ran += 1
-  if (key && cacheable(result)) ctx.readCache.setGate(key, result)
+  if (key && cacheable(ctx, script, result)) ctx.readCache.setGate(key, result)
   return result
 }
 
