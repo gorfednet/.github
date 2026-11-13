@@ -36,6 +36,9 @@ test('countWorking skips archived and idle sessions', () => {
   w(3, { isArchived: false, lastActivityAt: now - 3_600_000 })
   fs.writeFileSync(path.join(d, 'a', 'b', 'local_4.json'), '{broken')
   assert.equal(countWorking(d, now), 1)
+  assert.equal(countWorking(path.join(d, 'missing'), now), null)
+  w(5, { isArchived: false, lastActivityAt: '2026-11-13T10:00:00Z' })
+  assert.equal(countWorking(d, now), 1) // non-numeric timestamp is never counted
 })
 function harness(prevState, inputs) {
   const pushes = []
@@ -65,6 +68,30 @@ test('pushes on a state change only', async () => {
   const hold = harness('headroom', { ...base, load1: 12 })
   await run(hold.deps)
   assert.deepEqual(hold.pushes, ['overloaded, hold'])
+})
+test('unknown session count never reports headroom', () => {
+  assert.equal(classify({ ...base, working: null }).state, 'steady')
+  assert.equal(classify({ ...base, working: null, load1: 11 }).state, 'hold')
+})
+test('a failed push is retried next run; a successful one is not repeated', async () => {
+  const h = harness('steady', base)
+  h.deps.push = async (t) => { h.pushes.push(t); return false }
+  const first = await run(h.deps)
+  assert.equal(first.lastPushedState, 'steady')
+  h.deps.readPrevious = () => first
+  await run(h.deps)
+  assert.equal(h.pushes.length, 2)
+  h.deps.push = async (t) => { h.pushes.push(t) }
+  const ok = await run(h.deps)
+  assert.equal(ok.lastPushedState, 'headroom')
+  h.deps.readPrevious = () => ok
+  await run(h.deps)
+  assert.equal(h.pushes.length, 3)
+})
+test('a first run with no previous file into headroom pushes', async () => {
+  const h = harness(null, base)
+  await run(h.deps)
+  assert.equal(h.pushes.length, 1)
 })
 test('steady has no message, so a change into steady pushes nothing', async () => {
   const h = harness('headroom', { ...base, load1: 8 })
