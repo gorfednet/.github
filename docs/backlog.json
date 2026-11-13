@@ -304,6 +304,7 @@
       "id": "paths-named-not-derived",
       "title": "A script that names a location instead of deriving one runs on exactly one machine",
       "status": "landed",
+      "pr": 33,
       "assignee": "main-model",
       "userSymptom": "A check passes on my laptop and fails in CI saying it cannot find sharp, and regenerating an asset fails with a path I do not recognise.",
       "evidence": "anal0g.org PR #13 CI: `Cannot find module '/home/runner/work/anal0g.org/ssatcy.com/node_modules/sharp'` — scripts/generate-og-image.mjs resolved its renderer from a sibling checkout. blackpixelrecords.com had the absolute form in two scripts (generate-og-image.mjs, generate-favicons.mjs) with an absolute path under a developer home directory committed, and it had never failed because check:og-card was defined in package.json and the Makefile and invoked by nothing CI runs — now in its verify-command. denseware.com/scripts/build-new-hero.py read from a .cursor/projects path whose workspace was renamed, so it could not run anywhere; it takes DENSEWARE_HERO_ASSETS now and says so. Closed by verification-kit/bin/check-machine-paths.mjs at kit 0.40.0: 13 tests, 8 mutations watched red. V73.",
