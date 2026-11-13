@@ -189,7 +189,10 @@ async function onePass(config, args, deps, print) {
   }
   try {
     const auth = await readAuth(config, deps, print)
-    if (!auth) return 1
+    if (!auth) {
+      if (args.mode !== 'dry-run') await (deps.heartbeat ?? heartbeat)('ship-bot', { ok: false })
+      return 1
+    }
     const { token } = auth
     const state = new StateStore(join(config.stateDir, 'state.json'), { persist: live }).load()
     // Safe to lose and safe for a dry run to write: it only saves quota.

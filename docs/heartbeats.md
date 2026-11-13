@@ -16,4 +16,6 @@ Both read their secret from `~/.heartbeats/`, never from the repository. An unen
 
 Files, one line each: `~/.heartbeats/<name>.url` (an `https://` ping URL, healthchecks.io style) and `~/.heartbeats/ntfy-topic` (12 or more characters, unguessable).
 
-Weekly usage: `scripts/lib/usageAlert.mjs` reads `usage.pct` from `~/.herdr-jobs/state.json` and pushes once at 70% and once at 90%, remembering what reached someone in `~/.desk/usage-alerts.json`. Falling below 70% (a new week) clears the memory.
+Weekly usage: `node scripts/heartbeat.mjs --usage` (logic in `scripts/lib/usageAlert.mjs`) reads `usage.pct` from `~/.herdr-jobs/state.json` and pushes once at 70% and once at 90%, remembering what reached someone in `~/.desk/usage-alerts.json`. Falling below 70% (a new week) clears the memory.
+
+Nothing runs `--usage` on a schedule yet. Capacity's 15-minute job (PR 152) calls it once that merges; until then no 70% or 90% alert fires.

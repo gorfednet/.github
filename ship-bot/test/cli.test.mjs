@@ -60,6 +60,11 @@ describe('command line', () => {
     bad.deps.makeGithub = () => { throw new Error('boom') }
     assert.equal(await main(['--live', '--once'], bad.deps), 1)
     assert.deepEqual(calls.at(-1), ['ship-bot', false])
+    const noAuth = harness({ live: true })
+    noAuth.deps.heartbeat = async (name, opts = {}) => { calls.push([name, opts.ok ?? true]) }
+    noAuth.deps.runner = makeRunner({ handle: () => ({ code: 1, stderr: 'no auth' }) })
+    assert.equal(await main(['--live', '--once'], noAuth.deps), 1)
+    assert.deepEqual(calls.at(-1), ['ship-bot', false], 'auth failure sends /fail at once')
   })
 
   it('defaults to a dry run', () => {
