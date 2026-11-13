@@ -94,6 +94,7 @@ describe('check-rules-drift', () => {
       'Bugbot retired 2026-10-16, so hand the PR to the coordinator session.',
       'Cursor retired 2026-10-16 — ask the coordinator session',
       'The coordinator session takes it now that Cursor was retired on 2026-10-16.',
+      'Send it to the coordinator, Bugbot was retired on 2026-10-16.',
     ]) {
       const out = run(repo({ 'REVIEW.md': `${line}\n` }))
       assert.equal(out.status, 1, line)
@@ -103,6 +104,7 @@ describe('check-rules-drift', () => {
 
   it('excuses the active form of a retirement statement', () => {
     assert.equal(run(repo({ 'REVIEW.md': 'The owner retired Cursor and Bugbot on 2026-10-16.\n' })).status, 0)
+    assert.equal(run(repo({ 'REVIEW.md': 'Cursor, Bugbot and coordinator sessions were retired on 2026-10-16.\n' })).status, 0)
   })
 
   it('excuses a dated archive file, and not an undated one beside it', () => {

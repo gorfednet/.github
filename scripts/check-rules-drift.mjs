@@ -77,7 +77,11 @@ export const ARCHIVES = [
 ]
 
 const TERM = '(?:`?\\.cursor/?`?|Cursor(?: Bugbot)?|Bugbot|coordinator sessions?|coordinators?)'
-const TERMS = `${TERM}(?:\\s*,?\\s*(?:and\\s+)?${TERM})*`
+// One term, or a list that ends "... and X" ("Cursor, Bugbot and coordinator
+// sessions"). A bare comma never joins terms, so in "send it to the
+// coordinator, Bugbot was retired on ..." the coordinator stays outside the
+// statement and is still reported.
+const TERMS = `${TERM}(?:(?:\\s*,\\s*${TERM})*\\s*,?\\s+and\\s+${TERM})?`
 const DATE = '\\d{4}-\\d{2}-\\d{2}'
 export const RETIREMENT_LINE = {
   pattern: new RegExp(
