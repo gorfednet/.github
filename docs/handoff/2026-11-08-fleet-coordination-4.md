@@ -15,7 +15,8 @@ Continues `docs/handoff/2026-11-07-fleet-coordination-3.md`. Plan of record: `~/
 - [ ] heuristics deep-3 (no owner yet): read `docs/plan-deep-3.md` in heuristics.4thcltr.com; own steps d, f, g, e, i; review and merge #72 and #74 through the gates; ask the owner in one line to run `assess capture A-261031-9PNQ --browser chrome` for Canadian Tire (step h). A Fable planner is writing a re-timed sequence for deep-3 and BinderCurve; the repository-tracking session forwards it.
 - [ ] Ship-bot stages 2+3 on Wednesday 12 November: `--validate` for bindercurve.com, 4thcltr.com and the static sites, read the last 3 log passes, then flip. Stage 4 (MoonMan) Saturday 15 November.
 - [ ] Report to the owner at 12:00 PM, 6:00 PM and 9:00 PM ET today: what merged, what is outstanding, next milestone.
-- [ ] Owner-only: `FLEET_READ_TOKEN` scope, `NTFY_TOKEN`, DNS.
+- [ ] Owner-only: `NTFY_TOKEN`, DNS.
+- [x] `FLEET_READ_TOKEN`: secret set 9 Nov 2026, fleet-status run 43380425357 read 21 repos (recorded 13 Nov).
 
 ## Owner priority order (9 November, ~9:25 AM ET; replaces the one above; also in ~/.claude/CLAUDE.md)
 1 infrastructure and token-free automation (ship-bot stages, STATUS.md, janitor, pool image with rsync, ops DNS, intake, cta-watch); 2 4thcltr.com and its subdomains, heuristics included (deep-3, papers, brief, intake, propose, 4thcltr 200/213); 3 gorfed.net; 4 resumes and the job engine; 5 MoonMan (291/296, 319); 6 BinderCurve. Lower number wins when builders or budget compete; Dependabot PRs go with their repository. Order builder starts and status reports by it.

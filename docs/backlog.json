@@ -62,14 +62,15 @@
     {
       "id": "fleet-audit-needs-a-token",
       "title": "The online half of the fleet check cannot run until FLEET_READ_TOKEN exists",
-      "status": "confirmed-bug",
-      "assignee": "human",
+      "status": "landed",
+      "assignee": "main-model",
       "userSymptom": "Nothing is currently checking that a project claiming an adoption tier actually holds the files that tier requires, so the fleet table could drift back into fiction without any job going red.",
-      "evidence": "check-fleet.mjs run under CI credentials reports every private sibling as unreadable, because a workflow's default GITHUB_TOKEN is scoped to its own repository. fleet-audit.yml exists and fails closed on the missing secret; the pull-request job runs --offline and says so in its output.",
-      "reviewBy": "2026-10-15",
+      "evidence": "check-fleet.mjs run under CI credentials reports every private sibling as unreadable, because a workflow's default GITHUB_TOKEN is scoped to its own repository. fleet-audit.yml exists and fails closed on the missing secret; the pull-request job runs --offline and says so in its output. Resolved: `gh secret list --repo gorfednet/.github` shows FLEET_READ_TOKEN set 2026-11-09T20:38:53Z; fleet-status run 43380425357 (13 Nov) read 21 repos with 0 unavailable.",
+      "pr": 138,
+      "reviewBy": "2026-12-13",
       "note": "Wants a fine-grained PAT, read-only Contents + Metadata across gorfednet, stored as the repository secret FLEET_READ_TOKEN. Until then the weekly job is red on purpose: unverified is the true state, and a green job that checked nothing is worse. The cause of the original mis-report is now rule V39.",
       "created": "2026-09-09",
-      "updated": "2026-09-09"
+      "updated": "2026-11-13"
     },
     {
       "id": "fleet-adoption-outstanding",
