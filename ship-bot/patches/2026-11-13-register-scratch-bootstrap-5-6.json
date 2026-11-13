@@ -1,0 +1,17 @@
+{
+  "label": "2026-11-13-register-scratch-bootstrap-5-6",
+  "note": "Plan row 5.6: registers gorfednet/scratch-bootstrap-5-6 (scripts/register-repo.mjs). Adds the row config.example.json gained in the same pull request.",
+  "add": [
+    {
+      "slug": "gorfednet/scratch-bootstrap-5-6",
+      "dir": "scratch-bootstrap-5-6",
+      "mode": "merge-only",
+      "reason": "a new repository: deploy steps come in a later patch, once it has something to deploy",
+      "claudeReview": true,
+      "live": false,
+      "expectedChecks": [
+        "check / check"
+      ]
+    }
+  ]
+}
