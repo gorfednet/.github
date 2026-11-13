@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { classify, parseVmStat, countWorking, run, message } from '../capacity.mjs'
+import { errorRecord, classify, parseVmStat, countWorking, run, message } from '../capacity.mjs'
 
 const base = { cores: 10, freeGb: 8, working: 2, load1: 3 }
 
@@ -133,4 +133,13 @@ test('steady has no message, so a change into steady pushes nothing', async () =
   await run(h.deps)
   assert.deepEqual(h.pushes, [])
   assert.equal(message({ state: 'steady' }), null)
+})
+
+test('after a failed run, recovery into an already-announced state does not push again', async () => {
+  const err = errorRecord('hold', new Error('vm_stat odd'), 0)
+  assert.equal(err.state, 'unknown')
+  const h = harness(null, { ...base, load1: 12 })
+  h.deps.readPrevious = () => err
+  await run(h.deps)
+  assert.deepEqual(h.pushes, [])
 })

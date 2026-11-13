@@ -58,6 +58,11 @@ export function countWorking(root, now, windowMs = THRESHOLDS.workingWindowMs) {
   return seen === 0 || unreadable ? null : n
 }
 
+/** The file left behind by a failed run: unknown, but still remembering what the owner was last told. */
+export function errorRecord(lastPushedState, err, now) {
+  return { state: 'unknown', freeSlots: 0, lastPushedState, error: String(err.message).slice(0, 200), at: new Date(now).toISOString() }
+}
+
 export function message({ state, freeSlots, queued }) {
   if (state === 'hold') return 'overloaded, hold'
   if (state === 'headroom') return `headroom for ${freeSlots}, ${queued ?? 'unknown'} queued`
@@ -132,7 +137,9 @@ if (isMain(import.meta.url)) main().catch((e) => {
     try {
       const f = path.join(os.homedir(), '.desk', 'capacity.json')
       fs.mkdirSync(path.dirname(f), { recursive: true })
-      fs.writeFileSync(f, JSON.stringify({ state: 'unknown', freeSlots: 0, error: String(e.message).slice(0, 200), at: new Date().toISOString() }, null, 2) + '\n')
+      let kept = null // keep what the owner was last told, so recovery does not repeat it
+      try { kept = JSON.parse(fs.readFileSync(f, 'utf8')).lastPushedState ?? null } catch { /* none */ }
+      fs.writeFileSync(f, JSON.stringify(errorRecord(kept, e, Date.now()), null, 2) + '\n')
     } catch { /* nothing more to do */ }
     process.exit(1)
   })
