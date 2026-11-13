@@ -14,7 +14,7 @@ import { HOLD_LABEL } from './config.mjs'
 /** The line starts with the instruction: "fix the merge conflict" and "owner picks the merge strategy" name merge and are not one. */
 const MERGE_INSTRUCTION = /^\W*(merge|open the pr)\b/i
 /** "Merge later" or "merge once the owner answers" starts with merge and is not an instruction to. */
-const NOT_YET = /\b(not|no|don[’']?t|dont|never|wait|until|unless|after|before|hold|once|if|yet|later)\b/i
+const NOT_YET = /\b(not|no|don[’']?t|dont|never|wait|until|unless|after|before|hold|once|when|as soon as|if|yet|later)\b/i
 /** "Merge main into the branch" merges something into the branch, not the pull request. */
 const MERGE_OF_SOMETHING = /\b(main|master|origin|upstream|into|from|branch|rebase|conflicts?)\b/i
 export const isMergeInstruction = (line) => MERGE_INSTRUCTION.test(line) && !NOT_YET.test(line) && !MERGE_OF_SOMETHING.test(line)

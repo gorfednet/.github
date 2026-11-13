@@ -365,8 +365,11 @@ async function takeDraft(ctx, repo, listed, defaultBranch) {
   // Remembered on the pull request, not the head: the label is the bot's
   // own, so processPull re-reads ## Next and refuses once the claim is gone
   // or the head has moved (reviewer finding on #119, round 7).
-  ctx.state.pr(repo.slug, pr.number).botLabelled = { sha, at: ctx.clock.now().toISOString() }
-  ctx.state.save()
+  // A label a person had already put on the draft stays theirs.
+  if (!(pr.labels ?? []).some((l) => l.name === READY_LABEL)) {
+    ctx.state.pr(repo.slug, pr.number).botLabelled = { sha, at: ctx.clock.now().toISOString() }
+    ctx.state.save()
+  }
   await ctx.github.addLabels(repo.slug, pr.number, [READY_LABEL])
   await ctx.github.markReady(pr.node_id)
   // Leaving draft fires ready_for_review, which starts a second Claude review
