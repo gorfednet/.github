@@ -115,6 +115,7 @@ const RETIRED = [
 const FAMILY = /\b(Haiku|Sonnet|Opus|Fable)(?:[ -](\d+(?:\.\d+)?))?\b/g
 const MODEL_ID = /\bclaude-([a-z]+)-(\d+)(?:-(\d{1,2})\b)?/g
 const OLD_STYLE = /\bClaude (\d+(?:\.\d+)?) (Haiku|Sonnet|Opus|Fable)\b/g
+const BARE_GENERATION = /\bClaude (Instant|\d+(?:\.\d+)?)(?!\.?\d)\b(?! (?:Haiku|Sonnet|Opus|Fable)\b)/g
 const LEGACY_ID = /\bclaude-(?:instant|\d)(?:[-.]\w+)*/g
 const OTHER_VENDOR = /\b(?:GPT-?\d[\w.-]*|ChatGPT|Gemini(?: [\d.]+\w*)?|Llama ?\d[\w.]*)/g
 
@@ -151,6 +152,12 @@ export function lineFindings(line, { excuseRetirements = false } = {}) {
   for (const [match, version, family] of line.matchAll(OLD_STYLE)) {
     const why = rosterVerdict(family, version)
     if (why) found.push(`model ${match} outside the roster: ${why}`)
+  }
+  // "Claude 2.1", "Claude Instant": a generation with no family. It is on the
+  // roster only if its version is one the roster pins for some family.
+  const rosterVersions = new Set(Object.values(ROSTER))
+  for (const [match, version] of line.matchAll(BARE_GENERATION)) {
+    if (!rosterVersions.has(version)) found.push(`model ${match} outside the roster`)
   }
   for (const [match] of line.matchAll(LEGACY_ID)) found.push(`model id ${match} outside the roster`)
   for (const [match] of line.matchAll(OTHER_VENDOR)) found.push(`model ${match} outside the roster`)

@@ -63,6 +63,8 @@ describe('check-rules-drift', () => {
     ['an off-roster Opus', 'Use Opus 4.6 for this.'],
     ['an off-roster model id', 'model: claude-3-5-sonnet-20241022'],
     ['an old-style Claude name', 'Use Claude 3.5 Sonnet for this.'],
+    ['a Claude generation with no family', 'Use Claude 2.1 for summaries.'],
+    ['Claude Instant', 'Claude Instant is enough here.'],
   ]) {
     it(`fails on ${what} planted in a skill`, () => {
       const r = run(repo({ 'templates/x-skill/SKILL.md': `---\nname: x\n---\n${line}\n` }))
@@ -151,7 +153,7 @@ describe('check-rules-drift', () => {
   })
 
   it('keeps tiers, roster versions and pagination cursors out of the findings', () => {
-    for (const ok of ['Opus builder', 'Fable 5.2 reviewer', 'claude-opus-5-5', 'Sonnet 5.5', 'Claude 5.5 Sonnet', 'a pagination cursor']) {
+    for (const ok of ['Opus builder', 'Fable 5.2 reviewer', 'claude-opus-5-5', 'Sonnet 5.5', 'Claude 5.5 Sonnet', 'Claude Code', 'a pagination cursor']) {
       assert.deepEqual(lineFindings(ok), [], ok)
     }
   })
