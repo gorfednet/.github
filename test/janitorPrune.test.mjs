@@ -3,7 +3,7 @@
  * reason it must keep a worktree.
  */
 import { strict as assert } from 'node:assert'
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawnSync } from 'node:child_process'
 import { existsSync, mkdtempSync, mkdirSync, realpathSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -157,5 +157,20 @@ describe('janitor-prune', () => {
     git(f.live, 'add', '.')
     git(f.live, 'commit', '--quiet', '-m', 'e')
     assert.deepEqual([sessionState(f.live, { fetch: false }).state, sessionState(f.live, { fetch: false }).unpushed], ['dirty', 1])
+  })
+
+  it('exits 2 with the cause on stderr for an unreadable keep file, a missing root or a bad sessions file', () => {
+    const script = new URL('../scripts/janitor-prune.mjs', import.meta.url).pathname
+    const f = fleet()
+    const cases = [
+      [['--root', f.root, '--keep-file', join(f.root, 'no-such-keep.txt')], /cannot read the keep file/],
+      [['--root', join(f.root, 'no-such-root')], /is not a folder/],
+      [['sessions', join(f.root, 'no-such-sessions.json')], /cannot read the sessions file/],
+    ]
+    for (const [args, cause] of cases) {
+      const out = spawnSync(process.execPath, [script, ...args], { encoding: 'utf8' })
+      assert.equal(out.status, 2, args.join(' '))
+      assert.match(out.stderr, cause)
+    }
   })
 })

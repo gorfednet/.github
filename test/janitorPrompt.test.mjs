@@ -71,7 +71,7 @@ test("janitor sets up its own checkout, so the scheduled task's older starter te
 
 test("janitor never rescues a session whose branch has an open pull request, and rescues commits pushed after a merge", () => {
   assert.match(prompt, /`dirty`:[^\n]*first make the `gh pr list` call[^\n]*On `OPEN` or `CLOSED`, propose only/);
-  assert.match(prompt, /`MERGED`: an older pull request[^\n]*Treat it like the no-PR case/);
+  assert.match(prompt, /`MERGED`: run `git rev-list --count <headRefOid>\.\.HEAD`[^\n]*squash-merged[^\n]*Archive it\. More than 0[^\n]*Treat it like the no-PR case/);
 });
 
 test("janitor never archives a session whose folder holds ignored local state", () => {

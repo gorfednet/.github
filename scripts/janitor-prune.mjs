@@ -238,23 +238,39 @@ function arg(name) {
   return at !== -1 ? process.argv[at + 1] : null
 }
 
+/** A bad argument: say why on stderr and exit 2, which the prompt reads as "bad argument", never as a failed removal. */
+function badArgument(message) {
+  console.error(`janitor-prune: ${message}`)
+  process.exit(2)
+}
+
 if (isMain(import.meta.url) && process.argv[2] === 'sessions') {
-  const sessions = JSON.parse(readFileSync(process.argv[3], 'utf8'))
+  let sessions
+  try {
+    sessions = JSON.parse(readFileSync(process.argv[3], 'utf8'))
+    if (!Array.isArray(sessions)) throw new Error('not a JSON array')
+  } catch (error) {
+    badArgument(`cannot read the sessions file ${process.argv[3]}: ${error.message}`)
+  }
   const fetched = new Map()
   for (const s of sessions) console.log(JSON.stringify({ sessionId: s.sessionId, title: s.title, ...sessionState(s.cwd, { fetched }) }))
 } else if (isMain(import.meta.url)) {
   const root = arg('--root') ?? join(homedir(), 'Developer', 'gorfednet')
   const keepFile = arg('--keep-file')
   // Fail closed: a keep file that was named but cannot be read would let a live session's folder go.
-  const keep = new Set(keepFile ? readFileSync(keepFile, 'utf8').split('\n').map((l) => l.trim()).filter(Boolean).map(canonical) : [])
+  let keep
+  try {
+    keep = new Set(keepFile ? readFileSync(keepFile, 'utf8').split('\n').map((l) => l.trim()).filter(Boolean).map(canonical) : [])
+  } catch (error) {
+    badArgument(`cannot read the keep file ${keepFile}: ${error.message}`)
+  }
+  if (!existsSync(root) || !statSync(root).isDirectory()) badArgument(`root ${root} is not a folder`)
   if (process.argv.includes('--apply') && !keepFile) {
-    console.error('janitor-prune: --apply needs --keep-file with the working folders of live sessions')
-    process.exit(2)
+    badArgument('--apply needs --keep-file with the working folders of live sessions')
   }
   const hours = Number(arg('--idle-hours') ?? 24)
   if (!Number.isFinite(hours) || hours < 1) {
-    console.error('janitor-prune: --idle-hours must be at least 1')
-    process.exit(2)
+    badArgument('--idle-hours must be at least 1')
   }
   const results = run({ root, keep, idleMs: hours * 3600000, apply: process.argv.includes('--apply') })
   const count = (v) => results.filter((r) => r.verdict === v).length
