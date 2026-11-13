@@ -123,7 +123,8 @@ export function trainBody({ repo, carried, left, week }) {
     '',
     ...(left.length ? ['## Left out', ...left.map((l) => `- #${l.number}: ${l.reason}`), ''] : []),
     '## Next',
-    '- [ ] Merge when CI is green and `review-status.mjs` says clean on this head. Merging marks every carried pull request merged, so `check-closing-keywords` scans them too.',
+    '- [ ] Merge this pull request.',
+    'The gates (CI green, review clean on this head, `check-closing-keywords`) already hold the merge. It marks every carried pull request merged, so the closing-keywords check scans them too.',
     '- [ ] Any piece listed under Left out stays a pull request of its own.',
     '',
   ].join('\n')

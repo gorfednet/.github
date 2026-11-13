@@ -10,7 +10,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, it } from 'node:test'
 
-import { buildTrain, classify, isoWeek, select } from '../scripts/janitor-train.mjs'
+import { draftClaim } from '../ship-bot/lib/drafts.mjs'
+import { buildTrain, trainBody, classify, isoWeek, select } from '../scripts/janitor-train.mjs'
 
 const git = (dir, ...args) => execFileSync('git', ['-C', dir, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim()
 const REPO = 'gorfednet/site'
@@ -175,6 +176,11 @@ describe('buildTrain', () => {
     assert.equal(git(f.clone, 'ls-remote', '--heads', 'origin', 'janitor/train-site-2026-W46'), '')
     const r = buildTrain({ clone: f.clone, repo: REPO, prs, week: '2026-W46', apply: true, gh: () => {} })
     assert.equal(r.applied, true)
+  })
+
+  it('the train body is one ship-bot takes as a draft', () => {
+    const body = trainBody({ repo: REPO, carried: [{ number: 1, kind: 'kit', title: 'kit: x' }], left: [], week: '2026-W46' })
+    assert.notDeepEqual(draftClaim({ body }), {})
   })
 
   it('builds nothing when nothing qualifies', () => {
