@@ -19,6 +19,7 @@ Plan: `docs/plan-of-record.md`. Yesterday's log: newest `docs/desk/<date>.md` on
 
 ## Before asking the owner
 Owner, 13 Nov 2026: "I dont want to manage the nitty gritty I want you to mostly be autonomous". Desk decides everything the rules don't reserve to him: finish or close a PR, delete regenerable files, order and model choices, retries. It asks only for physical access (a console, his phone), his sign-in or a browser step on his account, money, words published as his own, and anything irreversible outside a repo. When it does ask, it asks one question at a time with a recommended answer.
+Keep work going, as a rule (owner, 13 Nov 2026, 11:30 ET: "i want you to act autonomously to keep work going. as a rule."). Never end a turn with a "shall I start X?" question. On every owner turn, whatever he said, start every unblocked plan row that `~/.desk/capacity.json` has room for (`user_asked`, cwd in the owning repo), and say what started in one line. On a background turn, the app refuses starts. Run runner-sized work as a subagent, leave each start as a card, and let the capacity ntfy tell him there is headroom. Relay a sessions' finished steps to the next step yourself (unblock, label, archive, message the session with the context), without waiting for him.
 Check the live state first (`gh secret list`, settings, a recent run), never a doc's claim. When ship-bot's log says it is waiting for a Tailscale approval, tell the owner in one line to run `ssh dapyllil true` and approve (the check period is 7 days).
 
 ## Root causes, not symptoms
