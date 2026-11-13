@@ -324,7 +324,13 @@ async function botLabelFromMarker(ctx, repo, pr, prState) {
   if (prState.takenBack) return null
   const comments = await ctx.github.listIssueComments(repo.slug, pr.number)
   const re = /<!-- ship-bot:labelled:([0-9a-f]{40}) -->/
-  const found = comments.map((c) => re.exec(c.body ?? '')?.[1]).filter(Boolean).pop()
+  // Only the bot's own comment counts: posted as an allowlisted login and
+  // starting with its text. Anyone can comment a hidden marker otherwise.
+  const found = comments
+    .filter((c) => ctx.config.allowedAuthors.includes(c.user?.login) && (c.body ?? '').startsWith(DRAFT_READY_COMMENT))
+    .map((c) => re.exec(c.body ?? '')?.[1])
+    .filter(Boolean)
+    .pop()
   if (!found) return null
   prState.botLabelled = { sha: found, at: 'rebuilt-from-comment-marker' }
   ctx.state.save()

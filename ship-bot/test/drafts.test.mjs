@@ -158,6 +158,14 @@ describe('a draft the bot owns', () => {
     assert.ok(s.logs.some((l) => /rebuilt from its comment marker on aaaaaaa/.test(l)), s.logs.join('\n'))
   })
 
+  it('a labelled marker commented by a stranger is not the bot\'s record', async () => {
+    const gh = new FakeGitHub({ pulls: [makePr()], comments: [{ pr: 7, body: `${DRAFT_READY_COMMENT}\n\n<!-- ship-bot:labelled:${'e'.repeat(40)} -->`, user: { login: 'someone-else' } }] })
+    const s = scenario({ repos: reviewed(), github: gh })
+    await s.run()
+    assert.equal(writes(gh, 'removeLabel').length, 0)
+    assert.equal(writes(gh, 'mergePull').length, 1)
+  })
+
   it('after a failed markReady and a new push, the record follows the head and the pull request is not stranded', async () => {
     const gh = new FakeGitHub({ pulls: [draft()] })
     let fail = true
