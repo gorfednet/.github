@@ -93,6 +93,12 @@ jobs:
         if: ${{ !cancelled() }}
         run: bash scripts/test-site-deploy-build-stamp.sh
 
+      # The gate wrappers on PATH: GITHUB_REPOSITORY and GH_TOKEN derived from the
+      # clone, and --repo passed to every gate so none of them can read another repo.
+      - name: Gate wrappers derive the repository and pass --repo
+        if: ${{ !cancelled() }}
+        run: bash scripts/gates/test/gate-env.test.sh
+
       # The backlog's shape, enforced. A `reviewBy` that has passed is printed as
       # a warning and does not fail this step: the calendar is not something a
       # pull request can change (2026-10 right-sizing). fleet-audit.yml lists
