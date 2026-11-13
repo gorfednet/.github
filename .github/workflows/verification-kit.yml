@@ -135,6 +135,15 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: node scripts/gates/check-closing-keywords.mjs
 
+      # Plan row 5.4. The rules, skills, agent briefs and memory indexes here are
+      # read by sessions as instructions, so a retired tool (Cursor, Bugbot,
+      # coordinator sessions) or a model outside the roster written into one is
+      # obeyed until someone notices. History passes only through the script's
+      # allowlist, each entry with its reason; an empty scope fails.
+      - name: No retired terms or off-roster models in rules, skills, agents or memory
+        if: ${{ !cancelled() }}
+        run: node scripts/check-rules-drift.mjs
+
       - name: FLEET.md matches the registry it is generated from
         if: ${{ !cancelled() }}
         run: node scripts/write-fleet-md.mjs --check
