@@ -36,6 +36,7 @@
           "dependabotRedCount": { "type": "integer" },
           "defaultBranch": { "type": "string" },
           "mainRed": { "type": "boolean" },
+          "kitVersion": { "type": ["string", "null"], "$comment": "verification-kit/MANIFEST.json version in the repository; null when it carries no kit." },
           "dependabotRed": { "type": "integer" },
           "incidents7d": { "type": "integer" },
           "lastDeploy": {

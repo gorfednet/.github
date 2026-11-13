@@ -608,6 +608,14 @@
       "file": "templates/verification-kit/bin/report-outbound-links.mjs",
       "find": "kind: GONE_STATUS.has(answer.status) ? 'gone' : 'unverified'",
       "replace": "kind: 'gone'"
+    },
+    {
+      "id": "sitemap-canonical-compared-loosely",
+      "guards": "A listed URL must be its own canonical to the character. Ignoring the trailing slash lets denseware.com and ssatcy.com pass: they listed /x/ while the page said /x, nginx 301s /x to /x/, and the client sent the reader back.",
+      "command": "node --test 'templates/verification-kit/test/sitemapPages.test.mjs'",
+      "file": "templates/verification-kit/bin/check-sitemap-pages.mjs",
+      "find": "} else if (canonicals[0] !== loc) {",
+      "replace": "} else if (canonicals[0].replace(/\\/+$/, '') !== loc.replace(/\\/+$/, '')) {"
     }
   ]
 }

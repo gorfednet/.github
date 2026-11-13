@@ -118,8 +118,8 @@ describe('config validation', () => {
       'papers.4thcltr.com': 'deploy',
       TowIt: 'off',
       wychwood: 'off',
-      // Stage 1 of the go-live names ops merge-only, but it has no pull-request CI to gate on (its note says so).
-      ops: 'off',
+      // ops has no test CI; its one check is the Claude review caller's review / review (owner, 11 November 2026).
+      ops: 'merge-only',
     })
   })
 
@@ -153,7 +153,21 @@ describe('config validation', () => {
       assert.equal(r.live, false, slug)
       assert.deepEqual(r.expectedChecks, checks, slug)
     }
-    assert.match(rows['gorfednet/ops'].note, /no pull-request CI/)
+    // ops: one expected check, the review caller's own job, which proves the workflow ran on the head;
+    // the verdict is review-status.mjs. A draft's run is skipped, and evaluateChecks takes only success
+    // for an expected check, so a draft's head can never satisfy it.
+    assert.deepEqual(rows['gorfednet/ops'].expectedChecks, ['review / review'])
+    assert.equal(rows['gorfednet/ops'].claudeReview, true)
+    assert.equal(rows['gorfednet/ops'].live, false)
+    assert.match(rows['gorfednet/ops'].note, /not on a push/)
+  })
+
+  it('validates coveredChecks like ignoredChecks: an array of non-empty strings, and it is a known repo key', () => {
+    assert.match(problemsFor(base([deployRepo({ coveredChecks: 'x' })])), /coveredChecks: must be an array/)
+    assert.match(problemsFor(base([deployRepo({ coveredChecks: [''] })])), /coveredChecks: must be an array/)
+    assert.deepEqual(validateConfig(base([deployRepo({ coveredChecks: ['browser-compat / compat ('] })])), [])
+    const config = normalizeConfig(base([deployRepo({ coveredChecks: ['a'] }), deployRepo({ slug: 'gorfednet/b', dir: 'b' })]), { home: HOME })
+    assert.deepEqual(config.repos.map((r) => r.coveredChecks), [['a'], []])
   })
 
   it('validates the per-repo live flag, the pass limit, ignoredChecks and ntfy', () => {

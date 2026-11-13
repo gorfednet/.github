@@ -43,7 +43,7 @@ const TOP_KEYS = new Set([
 ])
 const SCRIPT_KEYS = ['assertChecksStarted', 'reviewStatus', 'checkClosingKeywords']
 
-const COMMON_REPO_KEYS = ['slug', 'dir', 'mode', 'note', 'todo', 'live', 'claudeReview', 'expectedChecks', 'requireChecksAfterLabel', 'draftReady']
+const COMMON_REPO_KEYS = ['slug', 'dir', 'mode', 'note', 'todo', 'live', 'claudeReview', 'expectedChecks', 'coveredChecks', 'requireChecksAfterLabel', 'draftReady']
 const NTFY_KEYS = new Set(['url', 'topic', 'tokenFile'])
 const DEPLOY_REPO_KEYS = [
   'sourceDir',
@@ -184,6 +184,11 @@ function validateRepo(repo, i, problems, seen) {
   }
   if (repo.live !== undefined && typeof repo.live !== 'boolean') problems.push(`${label}.live: must be true or false`)
   if (repo.draftReady !== undefined && typeof repo.draftReady !== 'boolean') problems.push(`${label}.draftReady: must be true or false`)
+
+  // coveredChecks only quiets `--validate`; the merge gate never reads it.
+  if (repo.coveredChecks !== undefined && !isStringArray(repo.coveredChecks)) {
+    problems.push(`${label}.coveredChecks: must be an array of check names or name prefixes`)
+  }
 
   if (repo.mode === 'off') return
 
@@ -372,6 +377,7 @@ export function normalizeConfig(raw, { home = homedir() } = {}) {
         note: repo.note ?? '',
         claudeReview: repo.claudeReview ?? false,
         expectedChecks: repo.expectedChecks ?? [],
+        coveredChecks: repo.coveredChecks ?? [],
         requireChecksAfterLabel: repo.requireChecksAfterLabel ?? false,
         // false opts a repo out of marking its own drafts ready (lib/drafts.mjs).
         draftReady: repo.draftReady ?? true,

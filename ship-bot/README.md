@@ -70,8 +70,8 @@ node ~/.ship-bot/app/ship-bot.mjs --set-live true                          # the
 `--set-live` never touches the per-repository flags, so turning the global
 switch on acts only in the repositories already switched on. Stage 1 of the
 go-live (owner, 7 November 2026) is merge-only in `.github`, assess,
-career-portfolio, heuristics.4thcltr.com and papers.4thcltr.com; ops waits for
-pull-request CI (its row says why). In a live pass a repository whose own flag
+career-portfolio, heuristics.4thcltr.com and papers.4thcltr.com, and ops since
+11 November 2026 (its row says what its one check proves). In a live pass a repository whose own flag
 is off is still read and logged, with `OBSERVE (repo not live)` on each line.
 
 Before switching a repository on, check that its `expectedChecks` still match
@@ -86,6 +86,15 @@ It reads the check names on the last 3 merged pull requests, prints what is
 missing or unexpected per repository, and exits 1 when any differ.
 `ignoredChecks` (default: `heavy-runner-preflight`, `review / trigger`,
 `review / review`) names the checks every row leaves out on purpose.
+`--validate` also leaves out a check whose runs were all `skipped` or `neutral`
+on the sampled pull requests (it gated nothing), and any check matching a
+repository's optional `coveredChecks`: exact names or name prefixes whose runs
+another listed check gates, for example `["browser-compat / compat ("]` for
+matrix children behind the `browser-compat / compat-success` aggregate. Both
+only quiet `--validate`. For a repository with `requireChecksAfterLabel`, `--validate` samples the last merged pull requests that carried `ready-to-merge`, since an unlabelled merge never ran the full tier. An expected check that was skipped or neutral on a
+sampled pull request shows as missing ("skipped or neutral on N"): the merge
+gate accepts a skipped run as passing, so that check gated nothing there. The
+merge gate still requires every `expectedChecks` entry as before.
 
 To stop merges and deploys again, at once (from the next pass, within two
 minutes):
@@ -289,6 +298,15 @@ node ship-bot/ship-bot.mjs --set-repo-live <slug> true|false
 the NAS and the Docker host work from launchd's context, where the keychain-held
 key and a terminal's Tailscale login may be missing? It never touches the real
 agent; run it before switching any deploy-mode repository on.
+
+**12 November 2026:** the agent runs at launchd's default process class. A
+`ProcessType Background` throttled every child process, Playwright and its
+browsers included, and failed 18 papers verify specs on 11 November 2026 (PR
+128). To check an install, run
+`plutil -extract ProcessType raw ~/Library/LaunchAgents/net.gorfed.ship-bot.plist`.
+It should fail with "No value at that key path". If it prints `Background`,
+re-run `ship-bot/install.sh` so the loaded plist matches this file. (`active
+count` in `launchctl print` is no use here: the job is idle between runs.)
 
 A dry run reads GitHub (it runs the verification kit's read-only gate scripts)
 but posts nothing, merges nothing and runs no deploy. `--live` acts only when

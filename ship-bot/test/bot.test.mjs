@@ -151,6 +151,17 @@ describe('gate (b): every check and status finished green', () => {
     assert.equal(merges(gh).length, 1)
   })
 
+  it('coveredChecks only quiets --validate: the merge gate still requires every expectedChecks entry', async () => {
+    const entry = repoEntry({ expectedChecks: ['check / check', 'browser-compat / compat-success'], coveredChecks: ['browser-compat / compat ('] })
+    const children = greenRuns(['check / check', 'browser-compat / compat (chromium)'])
+    const blocked = new FakeGitHub({ runs: children })
+    await scenario({ github: blocked, repos: [entry] }).run()
+    assert.equal(merges(blocked).length, 0, 'the aggregate is missing, so the children do not stand in for it')
+    const ok = new FakeGitHub({ runs: [...children, ...greenRuns(['browser-compat / compat-success'])] })
+    await scenario({ github: ok, repos: [entry] }).run()
+    assert.equal(merges(ok).length, 1)
+  })
+
   it('a check run named for Bugbot is judged like any other check now that Bugbot is retired', async () => {
     const gh = new FakeGitHub({ runs: [...greenRuns(), { name: 'Cursor Bugbot', status: 'completed', conclusion: 'failure', started_at: '2026-10-09T12:00:00Z' }] })
     const s = scenario({ github: gh })

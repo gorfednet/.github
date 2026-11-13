@@ -125,6 +125,9 @@
       "mode": "deploy",
       "claudeReview": true,
       "live": false,
+      "coveredChecks": [
+        "browser-compat / compat ("
+      ],
       "expectedChecks": [
         "check / check",
         "browser-compat / compat-success"
@@ -167,6 +170,9 @@
       "mode": "deploy",
       "claudeReview": true,
       "live": false,
+      "coveredChecks": [
+        "browser-compat / compat ("
+      ],
       "expectedChecks": [
         "check / check",
         "browser-compat / compat-success",
@@ -202,6 +208,9 @@
       "mode": "deploy",
       "claudeReview": true,
       "live": false,
+      "coveredChecks": [
+        "browser-compat / compat ("
+      ],
       "expectedChecks": [
         "check / check",
         "browser-compat / compat-success"
@@ -244,6 +253,9 @@
       "mode": "deploy",
       "claudeReview": true,
       "live": false,
+      "coveredChecks": [
+        "browser-compat / compat ("
+      ],
       "expectedChecks": [
         "check / check",
         "browser-compat / compat-success",
@@ -414,6 +426,9 @@
       "mode": "deploy",
       "claudeReview": true,
       "live": false,
+      "coveredChecks": [
+        "browser-compat / compat ("
+      ],
       "expectedChecks": [
         "check / check",
         "browser-compat / compat-success"
@@ -478,7 +493,22 @@
         "axe-firefox",
         "axe-webkit"
       ],
-      "note": "Check names confirmed against #396. heavy-runner-preflight is left out: a pool preflight that label re-runs duplicate; e2e-success and axe-chromium/firefox/webkit prove the full tier ran, after the label (requireChecksAfterLabel)."
+      "note": "Check names confirmed against #396. heavy-runner-preflight is left out: a pool preflight that label re-runs duplicate; e2e-success and axe-chromium/firefox/webkit prove the full tier ran, after the label (requireChecksAfterLabel). coveredChecks: e2e matrix, e2e-extra and e2e-visual sit behind e2e-success; mutation-canary shards behind mutation-canary-success; axe-${{ and e2e-${{ are matrix jobs cancelled or skipped before their matrix expanded, which GitHub posts under the template name; prune-dist and deploy-check-alert are cleanup and alert jobs; rerun-full-browser-gates is the label re-run helper; review is the Claude reviewer (gate d reads its verdict); smoke is the dispatch-only runner-smoke.",
+      "coveredChecks": [
+        "e2e-chromium-",
+        "e2e-firefox-",
+        "e2e-webkit-",
+        "e2e-extra-",
+        "e2e-visual",
+        "mutation-canary",
+        "axe-${{",
+        "e2e-${{",
+        "prune-dist",
+        "deploy-check-alert",
+        "rerun-full-browser-gates",
+        "review",
+        "smoke"
+      ]
     },
     {
       "slug": "gorfednet/4thcltr.com",
@@ -818,8 +848,14 @@
     {
       "slug": "gorfednet/ops",
       "dir": "ops",
-      "mode": "off",
-      "note": "Stage 1 wants merge-only here, but ops has no pull-request CI: its only workflow is the Claude review caller, and its last 3 merged pull requests (#44, #43, #42) carried no check at all, so there is no expectedChecks list to gate on and assert-checks-started would refuse every head. Switch to merge-only once ops has a pull_request workflow that posts a check."
+      "mode": "merge-only",
+      "reason": "host configuration and installers; applying them on dapyllil stays a session's job (owner, 11 November 2026: merge-only, gated on the Claude review check)",
+      "claudeReview": true,
+      "live": false,
+      "expectedChecks": [
+        "review / review"
+      ],
+      "note": "ops has no test CI. Its one workflow is the Claude review caller, which posts review / review on the head when a pull request opens or leaves draft, not on a push (a `claude review` comment reruns the review but posts no check on the head, so a head pushed after ready needs draft and ready again). The check proves the workflow ran on this head; the verdict still comes from review-status.mjs (claudeReview). Switched on for ops#63 on 11 November 2026; #59 merged as a draft with no check, so --validate reports review / review on 2 of 3 until it ages out."
     }
   ]
 }

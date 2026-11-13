@@ -71,13 +71,13 @@ export function createGitHubClient({ token, fetchImpl = globalThis.fetch, api = 
     getRepo: (slug) => request('GET', `/repos/${slug}`),
     listOpenPulls: (slug) => paginate(`/repos/${slug}/pulls?state=open&sort=created&direction=asc`),
     getPull: (slug, n) => request('GET', `/repos/${slug}/pulls/${n}`),
-    /** The `limit` most recently merged pull requests (closed-but-unmerged ones are skipped). Used by --validate only. */
-    async listMergedPulls(slug, limit = 3) {
+    /** The `limit` most recently merged pull requests (closed-but-unmerged ones are skipped), only those carrying `label` when given. Used by --validate only. */
+    async listMergedPulls(slug, limit = 3, label) {
       const out = []
       for (let page = 1; page <= 5 && out.length < limit; page += 1) {
         const batch = await request('GET', `/repos/${slug}/pulls?state=closed&sort=updated&direction=desc&per_page=50&page=${page}`)
         if (!Array.isArray(batch)) throw new GitHubError('GET', `/repos/${slug}/pulls`, 'bad-shape', 'expected an array')
-        out.push(...batch.filter((p) => p.merged_at))
+        out.push(...batch.filter((p) => p.merged_at && (!label || p.labels?.some((l) => l.name === label))))
         if (batch.length < 50) break
       }
       return out.slice(0, limit)
