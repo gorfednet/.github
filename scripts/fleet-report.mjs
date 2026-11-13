@@ -161,7 +161,7 @@ function listWorkflows(slug) {
     const total = result.value.total_count
     workflows.push(...batch)
     if (typeof total !== 'number') return { status: null, message: 'the workflow list carried no total_count' }
-    if (workflows.length >= total) return { value: workflows }
+    return { value: workflows }
     if (batch.length === 0) {
       return { status: null, message: `the workflow list ended at ${workflows.length} of ${total} workflow(s)` }
     }
