@@ -2,7 +2,7 @@
 // The 3 "real" fixtures are the commands that ran on 13 November 2026 while the
 // GitHub quota sat at 0 (desk log, 15:02 ET): the 2.1 session's busy-wait, the
 // backlog-triage session's poll2.sh and a merge poll. Each is copied verbatim
-// from its session transcript.
+// from its session transcript, with home and scratchpad paths redacted.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';

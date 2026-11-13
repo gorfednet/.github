@@ -1,7 +1,7 @@
-S=/private/tmp/claude-501/-Users-gorf-Developer-gorfednet-gorfednet-github--claude-worktrees-epic-chatelet-9e87a3/c880f037-90a5-4847-9b58-eb19ec6e0030/scratchpad; cat > $S/poll2.sh <<'EOF'
+S=$TMPDIR/scratchpad; cat > $S/poll2.sh <<'EOF'
 #!/bin/zsh
 # Every 5 min: review verdict + CI rollup for the 6 PRs still moving; exit when none is not-run/pending (max 2 h).
-W=/Users/gorf/Developer/gorfednet/gorfednet.github/.claude/worktrees/epic-chatelet-9e87a3
+W=~/Developer/gorfednet/gorfednet.github/.claude/worktrees/epic-chatelet-9e87a3
 S=${0:h}
 for i in {1..24}; do
   sleep 300; : > $S/poll2.txt; busy=0
