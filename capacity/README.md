@@ -23,6 +23,11 @@ Failure handling: if a run throws, it writes `state: "unknown"` with an `error` 
 `starter.mjs` runs at the end of each capacity tick. When `capacity.json` is fresh and `headroom`, it starts the top-priority entry of `~/.desk/queue.json` (written only by Desk) in Herdr with `hc run --bg --name q-<id> --cwd <repo> <role> "<task>"`. The task text is a fixed template; the entry supplies only the brief path.
 
 - Entry: `id`, `repo` (absolute path whose folder name is in ship-bot's `config.example.json`), `brief`, `role` (`builder` with model `sonnet`, or `runner` with `haiku`), `priority` (lower first). Opus, Fable and anything else are refused and logged.
-- Limits: 1 start per tick, 3 live `q-` terminals (from `hc ls`), 12 starts in 24 h while weekly usage is unreadable (always, today), stop at 90% weekly if a source ever exists.
+- Limits: 1 start per tick, 3 live `q-` terminals (from `hc ls`), 12 starts in 24 h (the starter does not read weekly usage; Herdr's `lib/budget.mjs` does), stop at 90% weekly if a source ever exists.
 - Mode: `~/.desk/starter.mode` containing `live` starts sessions. Absent or anything else is a dry run that only logs `DRY RUN: would start ...` to `~/.desk/starter.log`. Live starts push ntfy "started <id> (<model>) in <repo>".
 - Done: `node starter.mjs --done <id>` (for the Herdr Stop hook, row 1.8) writes `~/.desk/queue-done.json`; an entry whose terminal has gone is marked done on the next tick. `DESK_DIR` overrides `~/.desk` for tests.
+- Fail-closed: a corrupt state file, or an `hc ls` reply without a terminals list, stops the tick. A start is recorded before `hc run`; a failed start is parked (`failed` in `starter-state.json`), not retried; a live `q-<id>` terminal counts as started. Repos must resolve (realpath) to `sourceRoot/<dir>` of a non-`off` repo in the example config. Briefs are repo-relative or `origin/<branch>:<path>`.
+- Dry run writes nothing but the log.
+
+### Before flipping to `live` (open, from the Fable review)
+The starter calls `hc run` directly, so it lacks what Herdr's reconciler has: a weekly-usage read, the 300,000-token and 60-minute kill, ending an idle session after its turn (3 idle sessions hold the 3 slots until `hc kill`), pushing the branch and opening the draft PR (the builder template says never push), and the first-message and approval-prompt handling. Decide whether 1.10 writes Herdr job files or calls its `startClaude` and `monitor` instead, before `starter.mode` says `live`. Nothing starts until then.

@@ -3,10 +3,11 @@ import assert from 'node:assert/strict'
 import { tick, refuse, runTick, taskText } from '../starter.mjs'
 
 const NOW = Date.parse('2026-11-13T17:00:00Z')
-const allowedDirs = ['MoonMan', 'gorfednet.github']
+const allowedDirs = ['/Users/gorf/Developer/gorfednet/MoonMan', '/Users/gorf/Developer/gorfednet/gorfednet.github']
+const realRepo = (r) => (r.includes('..') || r.includes('missing') ? (r.includes('missing') ? null : '/tmp/ops') : r)
 const cap = (state = 'headroom', at = '2026-11-13T16:55:00Z') => ({ state, at })
 const entry = (o = {}) => ({ id: 'a1', repo: '/Users/gorf/Developer/gorfednet/MoonMan', brief: 'briefs/x.md', role: 'builder', model: 'sonnet', priority: 1, ...o })
-const base = (o = {}) => ({ capacity: cap(), queue: [entry()], done: {}, started: {}, live: 0, now: NOW, allowedDirs, ...o })
+const base = (o = {}) => ({ capacity: cap(), queue: [entry()], done: {}, started: {}, live: 0, now: NOW, allowedRepos: allowedDirs, realRepo, ...o })
 
 test('headroom starts the top entry; hold, steady, stale and unknown start none', () => {
   assert.equal(tick(base()).start.id, 'a1')
@@ -17,10 +18,10 @@ test('headroom starts the top entry; hold, steady, stale and unknown start none'
   assert.equal(tick(base({ capacity: null })).start, null)
 })
 test('Opus and Fable entries, odd roles and unlisted repos are refused', () => {
-  for (const o of [{ model: 'fable' }, { model: 'opus' }, { role: 'desk' }, { role: 'builder', model: 'haiku' }, { repo: '/Users/gorf/Developer/other/thing' }, { repo: 'MoonMan' }, { id: 'a b' }, { brief: 'x; rm -rf /' }]) {
-    assert.ok(refuse(entry(o), allowedDirs), JSON.stringify(o))
+  for (const o of [{ model: 'fable' }, { model: 'opus' }, { role: 'desk' }, { role: 'builder', model: 'haiku' }, { repo: '/Users/gorf/Developer/other/thing' }, { repo: 'MoonMan' }, { repo: '/tmp/x/MoonMan' }, { repo: '/Users/gorf/Developer/gorfednet/MoonMan/../../../../tmp/ops' }, { repo: '/Users/gorf/Developer/gorfednet/missing' }, { repo: '/Users/gorf/Developer/gorfednet/MoonMan\nforged' }, { id: 'a b' }, { id: 'A1' }, { id: 'x'.repeat(31) }, { brief: 'x; rm -rf /' }, { brief: '/etc/passwd' }, { brief: '../x.md' }, { brief: 'https://h/x.md' }, { brief: '~/x.md' }]) {
+    assert.ok(refuse(entry(o), allowedDirs, realRepo), JSON.stringify(o))
   }
-  assert.equal(refuse(entry(), allowedDirs), null)
+  assert.equal(refuse(entry(), allowedDirs, realRepo), null)
   assert.equal(tick(base({ queue: [entry({ model: 'fable' })] })).start, null)
 })
 test('priority order, and done or already-started entries are skipped', () => {
@@ -43,7 +44,7 @@ function deps(mode, o = {}) {
   return { calls, d: {
     now: NOW, readMode: () => mode, readCapacity: () => cap(), readQueue: () => [entry()], readDone: () => ({}),
     writeDone: () => {}, readStarted: () => ({}), writeStarted: (s) => { calls.started = s }, listTerminals: () => [],
-    allowedDirs: () => allowedDirs, hcRun: (a) => calls.run.push(a), log: (l) => calls.log.push(l), push: async (t) => calls.push.push(t), ...o,
+    allowedRepos: () => allowedDirs, realRepo, hcRun: (a) => calls.run.push(a), log: (l) => calls.log.push(l), push: async (t) => calls.push.push(t), ...o,
   } }
 }
 test('dry run logs and starts nothing; live starts one and pushes', async () => {
@@ -57,12 +58,30 @@ test('dry run logs and starts nothing; live starts one and pushes', async () => 
   assert.deepEqual(live.calls.push, ['started a1 (sonnet) in /Users/gorf/Developer/gorfednet/MoonMan'])
   assert.ok(live.calls.started.a1)
 })
-test('a failed hc run is logged and not recorded as started', async () => {
+test('origin ref briefs are allowed', () => assert.equal(refuse(entry({ brief: 'origin/desk-log:briefs/x.md' }), allowedDirs, realRepo), null))
+test('a failed hc run is logged and parked, not retried', async () => {
   const h = deps('live', { hcRun: () => { throw new Error('boom') } }); await runTick(h.d)
-  assert.equal(h.calls.started, null); assert.match(h.calls.log.at(-1), /failed: boom/)
+  assert.equal(h.calls.started.a1.live, false); assert.match(h.calls.log.at(-1), /failed: boom/)
+  const again = deps('live', { readStarted: () => h.calls.started }); await runTick(again.d)
+  assert.equal(again.calls.run.length, 0)
 })
-test('a started entry whose terminal is gone is marked done', async () => {
+test('a started entry whose terminal is gone is marked done (live only)', async () => {
   let done = {}
-  const h = deps('dry', { readStarted: () => ({ a1: { at: '2026-11-13T16:00:00Z', live: true } }), writeDone: (o) => { done = o } }); await runTick(h.d)
+  const h = deps('live', { readStarted: () => ({ a1: { at: '2026-11-13T16:00:00Z', live: true } }), writeDone: (o) => { done = o } }); await runTick(h.d)
   assert.equal(done.a1.by, 'terminal-gone')
+})
+
+test('a live q- terminal with a lost record counts as started and as live', async () => {
+  const h = deps('live', { listTerminals: () => [{ name: 'q-a1', state: 'live' }] }); await runTick(h.d)
+  assert.equal(h.calls.run.length, 0)
+})
+test('an hc ls reply with no terminals list stops the tick', async () => {
+  const h = deps('live', { listTerminals: () => undefined })
+  await assert.rejects(runTick(h.d))
+  assert.equal(h.calls.run.length, 0)
+})
+test('the record is written before hc runs', async () => {
+  const order = []
+  const h = deps('live', { writeStarted: () => order.push('write'), hcRun: () => order.push('run') }); await runTick(h.d)
+  assert.deepEqual(order.slice(0, 2), ['write', 'run'])
 })
