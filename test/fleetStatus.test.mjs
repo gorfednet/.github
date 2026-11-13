@@ -168,7 +168,7 @@ describe('STATUS.md', () => {
     assert.ok(isPrivateRepo({ private: false }), 'unknown visibility counts as private')
     assert.ok(!isPrivateRepo({ private: false, visibility: 'public' }))
     const row = redactRepo(full)
-    assert.deepEqual(row, { slug: full.slug, redacted: true, mainRed: false, openPrCount: 2, lapsedBacklogCount: 1, dependabotRedCount: 1 })
+    assert.deepEqual(row, { slug: full.slug, redacted: true, mainRed: false, openPrCount: 2, lapsedBacklogCount: 1, dependabotRedCount: 1, kitVersion: null })
     const text = JSON.stringify(row)
     for (const leak of ['title', 'branch', 'url', 'next', 'Fix the nav', 'feat/old', 'stale-entry', 'actions/runs']) assert.ok(!text.includes(leak), leak)
     assert.deepEqual(validate({ generatedAt: 'x', renderedAt: 'x', repos: [row] }, schema), [])

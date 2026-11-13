@@ -68,6 +68,13 @@ jobs:
           mkdir -p "${RUNNER_TEMP}/out"
           node scripts/write-status-md.mjs --in status.json --digest > "${RUNNER_TEMP}/out/digest.txt"
 
+      # Scheduled, never per pull request: a pull request cannot change what the kit
+      # released. Fails the run (and so the ops alert) when a repository is more than
+      # one minor behind canonical. Before Publish, which checks out the status branch.
+      - name: Every repository is within one minor of the canonical kit
+        if: ${{ !cancelled() }}
+        run: node scripts/fleet-kit-versions.mjs --in status.json
+
       - name: Publish to the status branch
         if: ${{ !cancelled() }}
         env:
