@@ -8,9 +8,9 @@
  * "2026-10 right-sizing"). `check-kit-drift` still holds a repository's copy to
  * its own manifest; this is the half that notices a copy nobody has refreshed.
  *
- * "Far behind" is more than one minor, or any major. Unknown (no kit, or an
- * unreadable manifest) is its own state and counts as a failure for a repository
- * the fleet lists as adopted: nothing here treats "could not tell" as current.
+ * "Far behind" is more than one minor, or any major. Unknown (an unreadable
+ * version) fails, and so does no kit in a repository the fleet lists at tier 1
+ * or above (kitFailures): nothing here treats "could not tell" as current.
  */
 export function parseVersion(text) {
   const m = /^(\d+)\.(\d+)\.(\d+)$/.exec(String(text ?? '').trim())
@@ -28,12 +28,23 @@ export function kitGap(vendored, canonical) {
   return 'current'
 }
 
-/** Rows that must fail the run: far behind, ahead of canonical, or a vendored kit that could not be read. */
-export function kitFailures(repos, canonical) {
+/**
+ * Rows that must fail: far behind, ahead of canonical, an unreadable version, or no kit at
+ * all in a repository the fleet lists at tier 1 or above. A dormant repository (fleet.json
+ * monitorClass) is reported but never fails, so a standing exemption cannot bury a real alert.
+ * `projects` is fleet.json's list; a repository it does not name is held to the version rule only.
+ */
+export function kitFailures(repos, canonical, projects = []) {
+  const byslug = new Map(projects.map((p) => [p.slug, p]))
   return repos
-    .filter((r) => !r.unavailable && r.kitVersion !== undefined && r.kitVersion !== null)
-    .map((r) => ({ slug: r.slug, version: r.kitVersion, gap: kitGap(r.kitVersion, canonical) }))
-    .filter((r) => ['far-behind', 'ahead', 'unknown'].includes(r.gap))
+    .filter((r) => !r.unavailable && r.kitVersion !== undefined)
+    .filter((r) => byslug.get(r.slug)?.monitorClass !== 'dormant')
+    .map((r) => ({
+      slug: r.slug,
+      version: r.kitVersion,
+      gap: r.kitVersion === null ? ((byslug.get(r.slug)?.tier ?? 0) >= 1 ? 'missing' : 'current') : kitGap(r.kitVersion, canonical),
+    }))
+    .filter((r) => ['far-behind', 'ahead', 'unknown', 'missing'].includes(r.gap))
 }
 
 /** One line for STATUS.md. Repositories with no kit (null) are listed apart: they have not adopted. */

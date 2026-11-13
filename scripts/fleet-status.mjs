@@ -104,6 +104,10 @@ export function dependabotRed(prs) {
 }
 
 /** The repositories to cover: fleet.json plus any ship-bot repo it lacks. */
+/** Where a repository keeps the kit manifest: fleet.json's evidencePaths where it moves the file (this repository holds the canonical copy under templates/). */
+export const KIT_MANIFEST = 'verification-kit/MANIFEST.json'
+export const kitPathFor = (project) => project?.evidencePaths?.[KIT_MANIFEST] ?? KIT_MANIFEST
+
 export function repoList(fleet, shipBotConfig) {
   const slugs = fleet.projects.map((p) => p.slug)
   for (const repo of shipBotConfig?.repos ?? []) if (repo.slug && !slugs.includes(repo.slug)) slugs.push(repo.slug)
@@ -187,7 +191,7 @@ export function redactRepo(full) {
  * private repository that then fails to read publishes only the word "unreadable" (an error message can
  * quote the file it choked on). `json` and `log` are injectable for tests.
  */
-export async function collectRepo(slug, now = new Date(), { includePrivate = false, json = ghJson, log = console.error } = {}) {
+export async function collectRepo(slug, now = new Date(), { includePrivate = false, json = ghJson, log = console.error, kitPath = KIT_MANIFEST } = {}) {
   let repo
   let isPrivate = true
   try {
@@ -198,7 +202,7 @@ export async function collectRepo(slug, now = new Date(), { includePrivate = fal
   }
   try {
     if (repo instanceof Error) throw repo
-    return await gatherRepo(slug, now, { includePrivate, json, repo })
+    return await gatherRepo(slug, now, { includePrivate, json, repo, kitPath })
   } catch (cause) {
     const detail = String(cause.stderr || cause.message).trim().split('\n')[0]
     const reason = isPrivate && !includePrivate ? 'unreadable' : detail
@@ -215,7 +219,7 @@ function ciForCommit(slug, sha, json) {
   return ciState(runs, status)
 }
 
-export async function gatherRepo(slug, now = new Date(), { includePrivate = false, json = ghJson, repo = null } = {}) {
+export async function gatherRepo(slug, now = new Date(), { includePrivate = false, json = ghJson, repo = null, kitPath = KIT_MANIFEST } = {}) {
   const today = now.toISOString().slice(0, 10)
   if (repo === null) repo = json(['api', `repos/${slug}`])
   const base = repo.default_branch
@@ -259,7 +263,7 @@ export async function gatherRepo(slug, now = new Date(), { includePrivate = fals
     }
   }
   // null: the repository carries no kit. An unreadable manifest is a thrown error, so the row is `unavailable`, never null.
-  const manifestText = fileText(slug, 'verification-kit/MANIFEST.json', json)
+  const manifestText = fileText(slug, kitPath, json)
   const kitVersion = manifestText === null ? null : (JSON.parse(manifestText).version ?? '')
   const mainSha = json(['api', `repos/${slug}/commits/${base}`]).sha
   const mainRed = ciForCommit(slug, mainSha, json) === 'red'
@@ -321,7 +325,7 @@ if (isMain(import.meta.url)) {
     failed = repos.filter((r) => r.unavailable).length
   } else {
     for (const slug of slugs) {
-      const row = await collectRepo(slug, now, { includePrivate: process.argv.includes('--include-private') })
+      const row = await collectRepo(slug, now, { includePrivate: process.argv.includes('--include-private'), kitPath: kitPathFor(fleet.projects.find((p) => p.slug === slug)) })
       if (row.unavailable) failed += 1
       repos.push(row)
     }
