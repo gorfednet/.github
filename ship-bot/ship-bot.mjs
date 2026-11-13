@@ -104,6 +104,7 @@ const defaultDeps = () => ({
   makeGithub: (token, { cache } = {}) => createGitHubClient({ token, cache }),
   makeReadCache: (path, clock) => new ReadCache(path, { now: () => clock.now() }).load(),
   appToken: readAppToken,
+  heartbeat: heartbeat,
   runner: realRunner,
   clock: { now: () => new Date() },
   out: (line) => process.stdout.write(`${line}\n`),
@@ -190,7 +191,7 @@ async function onePass(config, args, deps, print) {
   try {
     const auth = await readAuth(config, deps, print)
     if (!auth) {
-      if (args.mode !== 'dry-run') await (deps.heartbeat ?? heartbeat)('ship-bot', { ok: false })
+      if (args.mode !== 'dry-run') await deps.heartbeat('ship-bot', { ok: false })
       return 1
     }
     const { token } = auth
@@ -223,11 +224,11 @@ async function onePass(config, args, deps, print) {
     } catch (cause) {
       print('warn', `could not save the read cache: ${cause.message}`)
     }
-    if (args.mode !== 'dry-run') await (deps.heartbeat ?? heartbeat)('ship-bot')
+    if (args.mode !== 'dry-run') await deps.heartbeat('ship-bot')
     return 0
   } catch (cause) {
     print('error', `pass failed: ${cause.message}`)
-    if (args.mode !== 'dry-run') await (deps.heartbeat ?? heartbeat)('ship-bot', { ok: false })
+    if (args.mode !== 'dry-run') await deps.heartbeat('ship-bot', { ok: false })
     return 1
   } finally {
     lock.release()

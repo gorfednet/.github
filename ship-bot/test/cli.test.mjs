@@ -36,6 +36,7 @@ function harness({ live = true, lock, pulls = [], github = new FakeGitHub({ pull
       return github
     },
     runner,
+    heartbeat: async () => {}, // never the real dead-man check from a test
     clock: { now: () => new Date('2026-10-09T12:00:00Z') },
     out: (line) => out.push(line),
     sleep: async () => {},
