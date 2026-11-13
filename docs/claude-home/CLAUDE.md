@@ -4,7 +4,7 @@ Times: give every time to the owner in Toronto local time (owner, 2026-10-19), n
 
 Improve as you go (owner, 2026-10-31: "we need to self improve all processes over time when we see opportunity"): when a session spots a better way or gets corrected, it changes the skill, brief, rule or template that runs next time, in that session, and says so in one line. New enforced checks still follow `shipping.md`.
 
-Take it to completion (owner, 2026-10-31: "when I ask for somehting to be done take it to completion and work with other agents to coordinate"): an ask ends with the work finished, merged and reported, not with a question or a hand-back. Decide what can be decided, wait for what must be waited for in the background, and coordinate directly with other sessions and agents (check the session list, message the one that holds the context, agree who merges what) rather than relaying through the owner. Stop only for what the rules reserve to the owner. Do it efficiently, and arrange the sessions yourself (owner, 2026-10-31): split work into a new session from a brief when it stands alone or a chat has grown long, fold work into the session that already holds the context when a new one would have to rediscover it, and do either without being asked. `agents-and-cost.md` has the limits.
+Take it to completion (owner, 2026-10-31: "when I ask for somehting to be done take it to completion and work with other agents to coordinate"): an ask ends with the work finished, merged and reported, not with a question or a hand-back. Decide what can be decided, wait for what must be waited for in the background, and coordinate directly with other sessions and agents (check the session list, message the one that holds the context, agree who labels what) rather than relaying through the owner. Stop only for what the rules reserve to the owner. Do it efficiently, and arrange the sessions yourself (owner, 2026-10-31): split work into a new session from a brief when it stands alone or a chat has grown long, fold work into the session that already holds the context when a new one would have to rediscover it, and do either without being asked. `agents-and-cost.md` has the limits.
 
 Reports to the owner (owner, 2026-10-31: "I just need statuses and to know when milestones ETA and done are", "and what's outstanding"): say the status, what's outstanding, the next milestone with its ETA in ET, and when it's done. A few lines at most. No gate tables, no explanation of how, no lists of what changed; those go on the pull request. Add detail only for something the owner has to act on, or when asked.
 
@@ -16,28 +16,35 @@ Priority order (owner, 9 November 2026: "infra first, then 4thcltr, then gorfed,
 
 Fleet status and handoffs (owner, 7 November 2026): `STATUS.md` on the `status` branch of `gorfednet/.github` is the one view of open pull requests, lapsed backlog items and red mains. Read it (or run `fleet-status`) before coordinating anything, and report to the owner from it. Context that must outlive a session goes in the repository: `docs/handoff/<date>-<topic>.md` (`/handoff` writes it) and a `## Next` section on the open pull request, never only in a chat.
 
-Three rule files in `~/.claude/rules/` load in every session:
+Four rule files in `~/.claude/rules/` load in every session:
 
-- `shipping.md`: pull requests, merge gates, red CI, learning from incidents.
-- `agents-and-cost.md`: the model roster, who does what, worktrees for writers.
+- `shipping.md`: pull requests, merge gates, auto-close after merge, red CI, learning from incidents.
+- `agents-and-cost.md`: the model roster and tier rule, Desk, who does what, worktrees for writers.
 - `verification-floor.md`: the five verification rules and the plan of record.
+- `content-voice.md`: who speaks on each site and how copy reads (pointer to the full content guidelines).
 
-They replaced the five Cursor rule files on 2026-10-03 (originals in `~/.claude/rules-archive-2026-10-03/`). `~/.claude` is the home. Cursor, Bugbot included, was retired on 2026-10-16 with no further spend; the Claude reviewer (`claude-review.yml`, `REVIEW.md`, `review-status.mjs`) reviews pull requests.
+The first three replaced the old rule files on 2026-10-03 (originals in `~/.claude/rules-archive-2026-10-03/`). `~/.claude` is the home. Cursor and Bugbot were retired on 2026-10-16, with no further spend. The Claude reviewer (`claude-review.yml`, `REVIEW.md`, `review-status.mjs`) reviews pull requests.
+
+`~/.claude` isn't a repository. Every change to a file here goes in a pull request to `gorfednet/.github` that updates its copy under `docs/claude-home/` (13 November 2026).
 
 Herdr (installed 2026-11-06) hosts long runs, the one-gate lock (`gate-run`) and the builder load check (`builder-ok`): `agents-and-cost.md`, "Herdr".
 
-## Translating Cursor terms in project skills
+## User skills and agents
 
-Some repositories' skills still live in `.cursor/skills` and name Cursor models. Until those are moved, read them as:
+A repository skill that still names an old editor model means `runner`, or Sonnet when it has to diagnose. Plan row 5.3 removes the last of those.
 
-| Cursor | Claude Code |
-|--------|-------------|
-| `composer-2.5-fast` + `shell` | `runner` |
-| `composer-2.5-fast` + `generalPurpose` | `runner` for mechanical work, Sonnet when it has to diagnose |
-| `explore` | `Explore`, or `scout` for cheap breadth |
-| `best-of-n-runner` | a subagent with `isolation: worktree` |
-| Bugbot | retired 2026-10-16: the Claude reviewer |
+Skills in `~/.claude/skills/`:
 
-## User skills
+- `/self-heal`: diagnose red CI and fix the cause, or set up a repository's plan of record.
+- `/verification-bootstrap`: install the shared verification kit at the right tier, or start a project with it wired.
+- `/full-codebase-assessment`: BinderCurve's full-repo quality pass.
+- `/handoff`: write `docs/handoff/<date>-<topic>.md`, stamp backlog entries and rewrite the PR's `## Next`.
+- `/fleet-drain`: save uncommitted work across the fleet to draft PRs, or record why not.
+- `/desk-rotate`: hand Desk over to a fresh session with Remote Control on.
+- `/apply`: the job pipeline. Runs only when the owner asks.
 
-`~/.claude/skills/` holds `/self-heal`, `/verification-bootstrap` and `/full-codebase-assessment`, moved from `~/.cursor/skills/` on 2026-10-15 unchanged, so they still use Cursor terms (read them with the table above). They are rewritten after the shared kit change lands (right-sizing plan items F3 and F5), because both describe the kit as it is copied today.
+Agents in `~/.claude/agents/`: `runner` and `scout` (Haiku), `builder` (Sonnet), `desk` (Opus), `reviewer` and `editor` (Fable). `agents-and-cost.md` says when to use each.
+
+## Settings
+
+One file: `~/.claude/settings.json`. Its deny list blocks `gh pr merge` (ship-bot is the only merger) and the Read tool on `.env` files (`.env.example` included), the ops `credentials.json` and `~/.ship-bot/config.json`. Bash reads aren't covered, so don't `cat` them either. No `settings.json.bak*` copies beside it: the mirror in `docs/claude-home/` is the record.

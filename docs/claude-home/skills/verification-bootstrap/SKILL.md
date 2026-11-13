@@ -22,7 +22,7 @@ prevent, and the registry check will fail it.
 |---|---|---|
 | 1 | No `package.json`, no tests | Drift check, tracked-artifacts check, backlog, rules |
 | 2 | A build or a test runner that is not npm | Tier 1, plus the executed-count assertion wired to whatever produces a report |
-| 3 | A real test suite, ideally sharded | Tier 2, plus mutation canaries against its own gates, plus the Bugbot verdict job |
+| 3 | A real test suite, ideally sharded | Tier 2, plus mutation canaries against its own gates, plus the Claude reviewer (`claude-review.yml`, `REVIEW.md`) |
 
 Tier 2 means the floor **executes**, not that a floor is configured. Passing
 `min-tests` to a shared workflow whose step runs `if: inputs.test-report != ''`

@@ -118,7 +118,7 @@ you close the item, then put the answer where it will be read again:
 | A check could not fail (soft-fail, report mode, empty selection) | A lint rule, plus something that proves the rule works |
 | A check failed unreadably or silently | A standing rule wherever the project keeps them |
 | A hand-maintained list drifted | Derive it, or add a sync check against its source |
-| An agent clobbered work or skipped a gate | A file under `.cursor/rules/` — behaviour that must be remembered will not be |
+| An agent clobbered work or skipped a gate | A rule in `~/.claude/rules/` or the repository's `.claude/rules/`: behaviour that must be remembered will not be |
 
 Then ask whether the defect is a **shape** rather than an instance. Grep for it.
 If the count is small, fix them all; if it is large, add a shrink-only baseline

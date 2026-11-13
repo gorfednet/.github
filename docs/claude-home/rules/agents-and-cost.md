@@ -4,19 +4,29 @@ Applies in every repository. Rewritten 2026-10-03 from cost-aware-plans and para
 
 ## Every plan item names who does it
 
-Tag each item with a tier and say the assignment out loud when starting it. Use the cheapest tier that can do the task properly; a cheaper one is wrong wherever a mistake would pass unnoticed.
+Use the cheapest tier that does the task properly (owner, 13 November 2026: "be cost aware with agent and model selection… dont needlesssly spend"). A cheaper tier is wrong wherever its mistake would pass unnoticed. Tag each item with its agent and model, and say the assignment out loud when starting it.
 
 | Tier | Use for | How |
 |------|---------|-----|
-| Haiku | builds, test and gate runs, git, mechanical edits a compiler or test checks, translations, doc fixes | the `runner` subagent |
-| Haiku, read-only | broad searches and inventories where breadth matters more than judgement | the `scout` subagent |
-| Sonnet | builders: features, first-draft tests, refactors that need diagnosis | a subagent with `model: sonnet` |
-| Main session | security assertions, design decisions, editorial voice, reviews of builder diffs, anything that changes what CI enforces, bash that gates a deploy, anything irreversible | the main session |
+| Fable | the `reviewer` on every builder diff, the `editor` on anything a visitor or every session reads, security assertions, design decisions, changes to what CI enforces, ship-bot and janitor logic (what merges unattended) | `reviewer`, `editor`, or a `builder` with `model: fable` |
+| Opus 5.5 | Desk, root-cause investigations, infra changes on dapyllil, backlog triage decisions: judgement with no reviewer behind it | the `desk` agent, or a session started on Opus |
+| Sonnet 5.5 | builders: features, first-draft tests, refactors that need diagnosis, handoffs. Fable reviews the diff, so a slip is caught | `builder` |
+| Haiku 5.5 | gate runs, reruns, git, label and archive sweeps, mechanical edits a compiler or test checks, translations | `runner` |
+| Haiku 5.5, read-only | inventories and broad searches where breadth beats judgement | `scout` |
 | Explore | research that needs judgement | the built-in `Explore` agent |
+| Main session | push, tag, bash that gates a deploy, anything irreversible | the session itself, never a subagent |
 
-Coordinators run on Sonnet (owner question, 8 November 2026, "are you being cost aware"): on the night of 7 November three Fable coordinator sessions of about 250k tokens each, plus 10 Fable review rounds on one 1,194-line pull request, moved the weekly Fable window from 63% to 75% in 12 hours. A coordinator reads PRs, labels and starts sessions; that is Sonnet work. Fable stays for the reviewer of builder diffs, security assertions and changes to what merges unattended (ship-bot). A pull request grows past about 400 added lines only when splitting it would break a gate; a builder that is on its fourth review round stops and hands back rather than iterating. A coordinator that must hand off starts its successor with `user_asked` while the owner's turn is live, or leaves a card and says so in its report; a card nobody clicks is a stalled fleet.
+Every session starts on Sonnet unless its brief names another model. `start_session` inherits the caller's model when none is given, so Desk passes the brief's model every time. A pull request grows past about 400 added lines only when splitting it would break a gate. A builder on its fourth review round stops and hands back rather than iterating.
 
-Update 11 November 2026 (owner, after the four-week assessment): coordinator sessions are retired. Status comes from STATUS.md and the Desk session, merges from ship-bot, housekeeping from the janitor, new work from briefs in the repository. Every session starts on Sonnet unless its brief names Fable, and Fable is for the `reviewer`, `editor`, security assertions and changes to what merges unattended.
+## Desk is the one control session (owner, 13 November 2026)
+
+Coordinator sessions were retired on 2026-11-11 (owner, after the four-week assessment). On 7 November three of them ran on Fable at about 250k tokens each. With 10 Fable review rounds on one 1,194-line pull request, the weekly Fable window went from 63% to 75% in 12 hours.
+
+- Desk replaces them: one long-lived Opus session in `gorfednet.github` with Remote Control on, briefed by `docs/desk/brief.md`. The owner talks only to Desk.
+- Desk owns no code work. It reads `status.json`, ship-bot's state and `list_sessions`. It labels pull requests whose `## Next` says merge and whose gates pass, archives finished sessions, and starts one session per brief in `briefs/`.
+- Results come back through artefacts only: the pull request's `## Next`, `status.json`, ship-bot's ntfy. No session relays another's notes.
+- Desk rotates past 150k tokens with `/desk-rotate`, and writes its log at 02:00 ET. It's never forked.
+- Status comes from STATUS.md, merges from ship-bot, housekeeping from the janitor, new work from briefs in the repository.
 
 Spawn by role where one fits: `runner` for gate runs, `builder`, `reviewer` and `editor` (`~/.claude/agents/`).
 
@@ -24,7 +34,7 @@ A `builder` always gets a fresh worktree made from the main checkout's HEAD, wit
 
 Scope test runs to the changed surface while iterating and run the full gate once before the PR. Do not spend main-session tokens re-reading what a subagent summarised, but treat a subagent's factual claim as a lead, not a finding: check any claim you are about to act on against the artifact itself.
 
-Standing automation (owner, 7 November 2026, "automate as much as possible"): ship-bot (launchd, every 2 minutes, merges labelled pull requests: `shipping.md`), fleet-status (daily, hosted on the public `.github` repository, writes `STATUS.md` to the `status` branch and a digest to ntfy `ops-report`), and fleet-janitor (daily local scheduled task: labels docs-only pull requests that pass the gates, prunes merged clean worktrees, archives sessions whose pull request merged, proposes the rest). No other cloud agents, scheduled agents or automations unless the owner asks.
+Standing automation (owner, 7 November 2026, "automate as much as possible"): ship-bot (launchd, every 2 minutes, merges labelled pull requests: `shipping.md`), fleet-status (daily, hosted on the public `.github` repository, writes `STATUS.md` to the `status` branch and a digest to ntfy `ops-report`), and fleet-janitor (daily local scheduled task: labels docs-only pull requests that pass the gates and closes out merged work as `shipping.md` describes, proposes the rest). No other cloud agents, scheduled agents or automations unless the owner asks.
 
 ## Parallel agents do not share a working tree
 
@@ -37,7 +47,7 @@ Two writers in one clone race over one HEAD, and git resolves it by silently sta
 - At most one full local gate at a time on this Mac. More than two builders may run at once only while the Mac has headroom (owner, 2026-10-16: "more than two builders when the Mac has headroom; still one local gate at a time"): check the 1-minute load average against the core count (`sysctl -n hw.ncpu`) before starting another, and hold new builders while load is above the core count.
 - Read contact sheets, visual diffs and full-page screenshots in a subagent, at reduced size. An image stays in context for the rest of a session; 721 MB of PNG was read in the 30 days to 2026-10-30.
 - While the Mac is loaded, run the local visual matrix with `--workers=2`: on 2026-10-21 a builder's default-worker run on a loaded Mac reported 27 false visual failures that matched on a two-worker rerun.
-- A builder's handback is not done until it has run, besides the unit suite: `typecheck:test` (vitest strips types), lint, and every e2e spec it added or edited, on that spec's own project (touch specs on the touch project the repository names, if it has one: MoonMan has none and drives touch through `e2e/finger.ts`). The local gate runs none of the e2e specs; on 2026-10-09 a builder's spec edit that never loaded the app passed the gate and was caught only by Bugbot. Every builder brief says so.
+- A builder's handback is not done until it has run, besides the unit suite: `typecheck:test` (vitest strips types), lint, and every e2e spec it added or edited, on that spec's own project (touch specs on the touch project the repository names, if it has one: MoonMan has none and drives touch through `e2e/finger.ts`). The local gate runs none of the e2e specs; on 2026-10-09 a builder's spec edit that never loaded the app passed the gate and was caught only by the PR reviewer. Every builder brief says so.
 
 ## Herdr for long runs and the local locks (owner, 2026-11-06)
 
@@ -62,7 +72,7 @@ On 2026-10-30 the week reached 36% in about 12.5 hours, with chats of up to 6,29
 - Cap a chat at about 200,000 tokens (`get_usage` reports it). Auto-compact only starts at 97% of a 1M window, so it will not do this for you. At the cap, write a handoff into the repository and continue in a new chat.
 - Never wake a chat to check CI or to say CI is green. Let merges wait and do them together in one sitting, or leave them for that chat's next run.
 - Run Chrome form work in a fresh chat per 4 or 5 forms, and read pages as text, not screenshots.
-- On 6 November 2026, a MoonMan planning chat started 5 side sessions and became their relay. Every note and every owner question went through a chat of over 200,000 tokens. Once the briefs are out, detach the side sessions (`detach_session`) so they ask the owner directly. Then end the parent. Never start more than 3 at once: 5 sessions and their builders pushed this Mac to a load of 78 on 10 cores.
+- On 6 November 2026, a MoonMan planning chat started 5 side sessions and became their relay. Every note and every owner question went through a chat of over 200,000 tokens. Once the briefs are out, detach the side sessions (`detach_session`). Their questions go in the pull request's `## Next`, where Desk reads them. Then end the parent. Never start more than 3 at once: 5 sessions and their builders pushed this Mac to a load of 78 on 10 cores.
 - A session started from another session gets that session's tools, and macOS permissions such as Accessibility go to the Claude Code helper, not Claude.app. Computer-use and device checks run from a session the owner opens from the sidebar.
 
 A new chat starts at about 80,000 tokens before any work, so a quick ask stays in a chat that is already small.

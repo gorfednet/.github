@@ -8,7 +8,7 @@ description: >-
 
 # Full codebase assessment
 
-**Stack:** React 19 + Vite + TypeScript SPA at `/`; platform API (`packages/api`) and worker (`packages/worker`) on Gordon Docker. Release/deploy context: `.cursor/skills/_shared/release-stack.md` in the bindercurve.com repo.
+**Stack:** React 19 + Vite + TypeScript SPA at `/`; platform API (`packages/api`) and worker (`packages/worker`) on Gordon Docker. Release/deploy context: `.claude/skills/_shared/release-stack.md` in the bindercurve.com repo.
 
 You are a principal engineer doing a **full-repo quality pass**. Work **creatively but evidence-based**: form hypotheses, verify in code, then change only what improves clarity, safety, maintainability, or compliance. Prefer **small, coherent commits of intent**. Do not expand scope into new features unless required to fix a defect.
 
@@ -36,7 +36,7 @@ You are a principal engineer doing a **full-repo quality pass**. Work **creative
 ## 4. Documentation and comments
 
 - Update comments/README where behavior changed; remove stale comments.
-- User-facing copy: `.cursor/rules/brand-voice.mdc`, `user-prose.mdc` — never touch owner-locked `RESULTS_EMPTY_*` without explicit user ask.
+- User-facing copy: `.claude/rules/brand-voice.md`, `user-prose.md`. Never touch owner-locked `RESULTS_EMPTY_*` without explicit user ask.
 
 ## 5. Accessibility (WCAG 2.1 Level AA)
 
@@ -71,7 +71,7 @@ Summarize in **Outcome**: Simplify / Security / A11y / Validation / Docs. List *
 - Do not commit secrets; do not weaken tests for convenience.
 - Uncertain after search → say so and propose the smallest safe next step.
 
-## How to use in Cursor
+## How to use
 
-- **Agent mode:** `@full-codebase-assessment` or paste this skill for a dedicated pass.
+- Run `/full-codebase-assessment` in a fresh session in the bindercurve.com repo. Sonnet does sections 2 and 4 to 6. Fable does section 3, and the `reviewer` reads the diff.
 - Optional follow-up: *"Start with a read-only severity-ranked report, then implement fixes in order."*

@@ -1,6 +1,6 @@
 ---
 name: runner
-description: Cheap executor for builds, test and gate runs, git status and diffs, and mechanical edits that a compiler or test will check. Use for anything a Cursor skill assigns to composer-2.5-fast with a shell or generalPurpose agent. Never pushes, merges, tags or deploys.
+description: Cheap executor for builds, test and gate runs, git status and diffs, and mechanical edits that a compiler or test will check. Use for any plan item tiered Haiku. Never pushes, merges, tags or deploys.
 model: haiku
 ---
 

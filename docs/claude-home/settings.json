@@ -62,7 +62,11 @@
       "Bash(gh repo delete *)",
       "Bash(gh api -X DELETE *)",
       "Bash(gh api --method DELETE *)",
-      "Bash(rm -rf /*)"
+      "Bash(rm -rf /*)",
+      "Read(**/*.env*)",
+      "Read(~/Developer/gorfednet/ops*/**/credentials.json)",
+      "Read(~/.ship-bot/config.json)",
+      "Edit(~/.ship-bot/config.json)"
     ],
     "defaultMode": "auto"
   },
