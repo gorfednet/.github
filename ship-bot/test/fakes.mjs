@@ -253,7 +253,7 @@ export function repoEntry(overrides = {}) {
  * `run()` that performs one bot pass with a fresh StateStore read from disk,
  * the way consecutive launchd runs would.
  */
-export function scenario({ repos = [repoEntry()], configOverrides = {}, github = new FakeGitHub(), runner = makeRunner(), now = '2026-10-09T12:00:00Z' } = {}) {
+export function scenario({ repos = [repoEntry()], configOverrides = {}, github = new FakeGitHub(), runner = makeRunner(), now = '2026-10-09T12:00:00Z', machine = { load: 1, cores: 10 } } = {}) {
   const home = mkdtempSync(join(tmpdir(), 'ship-bot-test-'))
   for (const r of repos) {
     const src = join(home, 'src', r.dir)
@@ -287,6 +287,8 @@ export function scenario({ repos = [repoEntry()], configOverrides = {}, github =
     runner,
     clock,
     logs,
+    /** What the bot reads as this Mac's load; a test may reassign the fields between passes. */
+    machine,
     statePath: join(config.stateDir, 'state.json'),
     state() {
       return new StateStore(join(config.stateDir, 'state.json')).load()
@@ -303,6 +305,7 @@ export function scenario({ repos = [repoEntry()], configOverrides = {}, github =
         token: TOKEN,
         baseEnv: { PATH: '/usr/bin:/bin', HOME: home },
         nodePath: '/fake/node',
+        machineLoad: () => ({ ...s.machine }),
         log: (level, text) => logs.push(`${level} ${text}`),
         ...extra,
       })

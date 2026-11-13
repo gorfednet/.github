@@ -7,6 +7,7 @@
  * write or a non-gate command throws, whatever the logic below decides.
  */
 import { createHash } from 'node:crypto'
+import os from 'node:os'
 import { join } from 'node:path'
 import { HOLD_LABEL, READY_LABEL } from './config.mjs'
 import { DeployLog, deployMerged, envSecrets, matchingFiles, preflight, realFs, selectSteps } from './deploy.mjs'
@@ -59,6 +60,8 @@ export async function runOnce(deps) {
     nodePath: deps.nodePath ?? process.execPath,
     baseEnv: deps.baseEnv ?? {},
     fetchImpl: deps.fetchImpl ?? globalThis.fetch,
+    /** This Mac's 1-minute load average and core count, for rows marked needsHeadroom. */
+    machineLoad: deps.machineLoad ?? (() => ({ load: os.loadavg()[0], cores: os.availableParallelism?.() ?? os.cpus().length })),
     /** cache.mjs ReadCache: gate script answers reused across passes. Optional. */
     readCache: deps.readCache ?? null,
     /** Who the pass calls GitHub as; a quota pause is that identity's only. */
@@ -313,6 +316,18 @@ async function processPull(ctx, repo, pr, defaultBranch) {
       ctx.say('warn', `${tag}: ready, but not merging because the deploy could not run: ${problems.join('; ')}`)
       await postOnce(ctx, repo, pr.number, sha, 'deploy-preflight', `Ship bot is not merging this: every gate passed, but the deploy for this repo could not run:\n\n${problems.map((p) => `- ${p}`).join('\n')}`)
       return false
+    }
+    // A row whose setup or deploy is timing-sensitive waits for a quiet Mac
+    // (papers 35, INCIDENTS.md). Unreadable numbers defer too. Nothing is
+    // posted and the repo is not blocked: the next pass looks again.
+    if (repo.needsHeadroom) {
+      const { load, cores } = ctx.machineLoad()
+      const readable = [load, cores].every((n) => Number.isFinite(n) && n > 0)
+      if (!readable || load > cores) {
+        const why = readable ? `the 1-minute load ${load.toFixed(2)} is above ${cores} cores` : `the load (${load}) or core count (${cores}) could not be read`
+        ctx.say('info', `${tag}: ready, but not merging yet: this row needs headroom and ${why}; looked at again next pass`)
+        return false
+      }
     }
   }
 

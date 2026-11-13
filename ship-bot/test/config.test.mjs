@@ -231,6 +231,18 @@ describe('config validation', () => {
     assert.match(problemsFor(base([deployRepo({ pausedIfChange: ['server/'] })])), /unknown key "pausedIfChange"/)
   })
 
+  it('needsHeadroom is true or false on a deploy row, and false when absent', () => {
+    assert.deepEqual(validateConfig(base([deployRepo({ needsHeadroom: true })])), [])
+    assert.match(problemsFor(base([deployRepo({ needsHeadroom: 'yes' })])), /needsHeadroom: must be true or false/)
+    assert.match(problemsFor(base([deployRepo({ needsHeadroom: 1 })])), /needsHeadroom: must be true or false/)
+    const flag = (extra) => normalizeConfig(base([deployRepo(extra)]), { home: HOME }).repos[0].needsHeadroom
+    assert.equal(flag({}), false)
+    assert.equal(flag({ needsHeadroom: true }), true)
+    const mergeOnly = { slug: 'gorfednet/lib', dir: 'lib', mode: 'merge-only', reason: 'r', claudeReview: false, expectedChecks: ['c'], needsHeadroom: true }
+    assert.match(problemsFor(base([mergeOnly])), /unknown key "needsHeadroom"/)
+    assert.equal(normalizeConfig(example(), { home: HOME }).repos.find((r) => r.name === 'papers.4thcltr.com').needsHeadroom, true)
+  })
+
   it('rejects a deploy-only key on a merge-only repo', () => {
     const repo = { slug: 'gorfednet/x', dir: 'x', mode: 'merge-only', reason: 'r', claudeReview: false, expectedChecks: ['c'], deploy: [] }
     assert.match(problemsFor(base([repo])), /unknown key "deploy"/)

@@ -977,6 +977,62 @@ describe('deploy preflight', () => {
   })
 })
 
+describe('needsHeadroom', () => {
+  const row = (machine, extra = { needsHeadroom: true }) => scenario({ repos: [repoEntry(extra)], machine })
+  const deferred = (s) => s.logs.filter((l) => /needs headroom/.test(l))
+
+  it('load above the core count: not merged, nothing posted, the repo not blocked, and merged once the load drops', async () => {
+    const s = row({ load: 11.2, cores: 10 })
+    await s.run()
+    await s.run()
+    assert.equal(merges(s.github).length, 0)
+    assert.equal(s.github.writes.length, 0, 'no comment, however many passes defer')
+    assert.equal(s.runner.ofKind('setup').length, 0)
+    assert.equal(s.state().repo(SLUG).blocked, undefined)
+    assert.equal(deferred(s).length, 2)
+    assert.match(deferred(s)[0], /^info .*#7.*1-minute load 11\.20 is above 10 cores/)
+    s.machine.load = 3
+    await s.run()
+    assert.equal(merges(s.github).length, 1)
+    assert.deepEqual(s.runner.commandLines('deploy'), ['make deploy'])
+  })
+
+  it('load equal to or below the core count merges', async () => {
+    for (const load of [10, 9.99, 0.5]) {
+      const s = row({ load, cores: 10 })
+      await s.run()
+      assert.equal(merges(s.github).length, 1, `load ${load}`)
+      assert.equal(deferred(s).length, 0)
+    }
+  })
+
+  it('fails closed: a load or core count that is not a positive finite number defers', async () => {
+    for (const machine of [{ load: NaN, cores: 10 }, { load: 0, cores: 10 }, { load: 2, cores: 0 }, { load: 2, cores: NaN }, { load: Infinity, cores: 10 }, { load: -1, cores: 10 }, { load: undefined, cores: undefined }]) {
+      const s = row(machine)
+      await s.run()
+      assert.equal(merges(s.github).length, 0, JSON.stringify(machine))
+      assert.equal(s.github.writes.length, 0)
+      assert.equal(s.state().repo(SLUG).blocked, undefined)
+      assert.match(deferred(s)[0], /could not be read/)
+    }
+  })
+
+  it('a row without the flag ignores the load, and never reads it', async () => {
+    for (const extra of [{}, { needsHeadroom: false }]) {
+      const s = row({ load: 99, cores: 10 }, extra)
+      await s.run('live', { machineLoad: () => assert.fail('load read for a row that did not ask') })
+      assert.equal(merges(s.github).length, 1)
+    }
+  })
+
+  it('a dry run reports the deferral and no "would merge"', async () => {
+    const s = row({ load: 11.2, cores: 10 })
+    const decisions = (await s.run('dry-run')).map((d) => d.text)
+    assert.ok(decisions.some((t) => /needs headroom and the 1-minute load 11\.20 is above 10 cores/.test(t)), decisions.join('\n'))
+    assert.ok(!decisions.some((t) => /would merge/.test(t)), decisions.join('\n'))
+  })
+})
+
 describe('ntfy', () => {
   const NTFY_TOKEN = ['tk', '_ops_', 'FAKEntfytoken0123456789'].join('')
   /** A deploy scenario with ntfy configured and a token file in its home. */
