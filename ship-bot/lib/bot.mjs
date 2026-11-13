@@ -97,7 +97,7 @@ export async function runOnce(deps) {
     stateStore.save()
   }
   if (limited) await quotaLow(ctx, limited)
-  else delete stateStore.data.rateLimit
+  else delete stateStore.data.rateLimits?.[ctx.authAs]
   sayUsage(ctx)
   stateStore.save()
   return ctx.decisions
@@ -115,10 +115,9 @@ export function easternTime(iso) {
  * ahead: this pass makes no GitHub call at all. Returns true when paused.
  */
 function quotaPaused(ctx) {
-  const rl = ctx.state.data.rateLimit
+  // One record per identity: the App's quota and the owner's (after a failed mint) are separate.
+  const rl = ctx.state.data.rateLimits?.[ctx.authAs]
   if (!rl?.resetAt || ctx.clock.now().getTime() >= new Date(rl.resetAt).getTime()) return false
-  // Another identity's quota (the App's, or the owner's after a failed mint) says nothing about this one.
-  if (rl.as && rl.as !== ctx.authAs) return false
   ctx.say('warn', `GitHub quota low (${rl.remaining} left at ${easternTime(rl.at)}): not calling GitHub until it resets at ${easternTime(rl.resetAt)}`)
   return true
 }
@@ -131,16 +130,17 @@ function quotaPaused(ctx) {
 async function quotaLow(ctx, err) {
   const now = ctx.clock.now()
   const resetAt = err.resetAt && new Date(err.resetAt) > now ? err.resetAt : new Date(now.getTime() + 15 * 60 * 1000).toISOString()
-  const first = !ctx.state.data.rateLimit
-  ctx.state.data.rateLimit = { at: now.toISOString(), as: ctx.authAs, remaining: err.remaining, resetAt, notified: ctx.state.data.rateLimit?.notified ?? false }
+  const all = (ctx.state.data.rateLimits ??= {})
+  const first = !all[ctx.authAs]
+  const rl = (all[ctx.authAs] = { at: now.toISOString(), remaining: err.remaining, resetAt, notified: all[ctx.authAs]?.notified ?? false })
   const text = `GitHub ${err.resource} quota low: ${err.remaining} left. Ship bot stopped this pass and makes no GitHub call until ${easternTime(resetAt)}.`
   ctx.say('warn', text)
-  if (!first && ctx.state.data.rateLimit.notified) return
+  if (!first && rl.notified) return
   if (ctx.dry) {
     ctx.say('info', `would notify: ${text}`)
     return
   }
-  ctx.state.data.rateLimit.notified = true
+  rl.notified = true
   ctx.state.save()
   await notify(ctx, text, true)
 }

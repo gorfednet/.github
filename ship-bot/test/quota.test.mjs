@@ -145,7 +145,7 @@ describe('low quota', () => {
     s.clock.advance(10)
     spent = false
     await run()
-    assert.equal(s.state().data.rateLimit, undefined)
+    assert.equal(s.state().data.rateLimits.default, undefined)
     spent = true
     s.clock.advance(10)
     await run()
@@ -166,7 +166,7 @@ describe('low quota', () => {
     const s = scenario({ github: gh, repos: repos() })
     await s.run()
     assert.deepEqual(gh.calls.filter((c) => c.name === 'getRepo').map((c) => c.args[0]), ['gorfednet/one'])
-    assert.equal(s.state().data.rateLimit.remaining, 150)
+    assert.equal(s.state().data.rateLimits.default.remaining, 150)
   })
 
   it('a merge GitHub refuses for its rate limit is not merged: no block, no "outcome unknown", the pass stops', async () => {
@@ -180,7 +180,7 @@ describe('low quota', () => {
     assert.ok(!s.logs.some((l) => /outcome unknown/.test(l)), s.logs.join('\n'))
     assert.equal(gh.commentsPosted().length, 0)
     assert.equal(s.runner.ofKind('notify').length, 1, 'only the quota notification')
-    assert.ok(s.state().data.rateLimit)
+    assert.ok(s.state().data.rateLimits.default)
   })
 
   it('a low quota met inside the review gate stops the pass, not a "review state unknown" block', async () => {
@@ -200,13 +200,17 @@ describe('low quota', () => {
     const s = scenario({ github: gh, repos: [mergeOnly()] })
     await s.run('live', { authAs: 'the owner (gh auth token)' })
     const st = s.state()
-    st.data.rateLimit = { at: '2026-10-09T12:00:00Z', as: 'the owner (gh auth token)', remaining: 0, resetAt: '2026-10-09T13:00:00Z', notified: true }
+    st.data.rateLimits = { 'the owner (gh auth token)': { at: '2026-10-09T12:00:00Z', remaining: 0, resetAt: '2026-10-09T13:00:00Z', notified: true } }
     st.save()
     gh.calls = []
     await s.run('live', { authAs: 'the owner (gh auth token)' })
     assert.equal(gh.calls.length, 0)
     await s.run('live', { authAs: 'GitHub App 9' })
     assert.ok(gh.calls.length > 0)
+    // A clean App pass leaves the owner's pause in place.
+    gh.calls = []
+    await s.run('live', { authAs: 'the owner (gh auth token)' })
+    assert.equal(gh.calls.length, 0, "the owner's pause survived the App's clean pass")
   })
 
   it('does not start a gate script on a low quota', async () => {
