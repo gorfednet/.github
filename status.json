@@ -1,30 +1,33 @@
 {
-  "generatedAt": "2026-11-12T06:41:21.217Z",
-  "renderedAt": "2026-11-12T06:41:21.217Z",
+  "generatedAt": "2026-11-13T06:41:21.299Z",
+  "renderedAt": "2026-11-13T06:41:21.299Z",
   "repos": [
     {
       "slug": "gorfednet/bindercurve.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 1,
+      "openPrCount": 2,
       "lapsedBacklogCount": 0,
-      "dependabotRedCount": 1
+      "dependabotRedCount": 1,
+      "kitVersion": "0.49.0"
     },
     {
       "slug": "gorfednet/4thcltr.com",
       "redacted": true,
-      "mainRed": false,
-      "openPrCount": 9,
+      "mainRed": true,
+      "openPrCount": 11,
       "lapsedBacklogCount": 8,
-      "dependabotRedCount": 0
+      "dependabotRedCount": 0,
+      "kitVersion": "0.49.0"
     },
     {
       "slug": "gorfednet/gorfed.net",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 1,
+      "openPrCount": 3,
       "lapsedBacklogCount": 0,
-      "dependabotRedCount": 0
+      "dependabotRedCount": 0,
+      "kitVersion": "0.49.0"
     },
     {
       "slug": "gorfednet/subrythm.com",
@@ -32,7 +35,8 @@
       "mainRed": false,
       "openPrCount": 0,
       "lapsedBacklogCount": 3,
-      "dependabotRedCount": 0
+      "dependabotRedCount": 0,
+      "kitVersion": "0.49.0"
     },
     {
       "slug": "gorfednet/anal0g.org",
@@ -40,7 +44,8 @@
       "mainRed": false,
       "openPrCount": 1,
       "lapsedBacklogCount": 0,
-      "dependabotRedCount": 0
+      "dependabotRedCount": 0,
+      "kitVersion": "0.61.0"
     },
     {
       "slug": "gorfednet/blackpixelrecords.com",
@@ -48,7 +53,8 @@
       "mainRed": false,
       "openPrCount": 0,
       "lapsedBacklogCount": 0,
-      "dependabotRedCount": 0
+      "dependabotRedCount": 0,
+      "kitVersion": "0.49.0"
     },
     {
       "slug": "gorfednet/denseware.com",
@@ -56,23 +62,26 @@
       "mainRed": false,
       "openPrCount": 0,
       "lapsedBacklogCount": 0,
-      "dependabotRedCount": 0
+      "dependabotRedCount": 0,
+      "kitVersion": "0.61.0"
     },
     {
       "slug": "gorfednet/gorfmusic.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 0,
+      "openPrCount": 1,
       "lapsedBacklogCount": 0,
-      "dependabotRedCount": 0
+      "dependabotRedCount": 0,
+      "kitVersion": "0.49.0"
     },
     {
       "slug": "gorfednet/promptboi.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 2,
+      "openPrCount": 3,
       "lapsedBacklogCount": 3,
-      "dependabotRedCount": 1
+      "dependabotRedCount": 1,
+      "kitVersion": "0.49.0"
     },
     {
       "slug": "gorfednet/rowanmcarthur.com",
@@ -80,15 +89,17 @@
       "mainRed": false,
       "openPrCount": 0,
       "lapsedBacklogCount": 0,
-      "dependabotRedCount": 0
+      "dependabotRedCount": 0,
+      "kitVersion": "0.41.0"
     },
     {
       "slug": "gorfednet/ssatcy.com",
       "redacted": true,
-      "mainRed": false,
+      "mainRed": true,
       "openPrCount": 5,
       "lapsedBacklogCount": 1,
-      "dependabotRedCount": 0
+      "dependabotRedCount": 0,
+      "kitVersion": "0.49.0"
     },
     {
       "slug": "gorfednet/TowIt",
@@ -96,7 +107,8 @@
       "mainRed": false,
       "openPrCount": 0,
       "lapsedBacklogCount": 2,
-      "dependabotRedCount": 0
+      "dependabotRedCount": 0,
+      "kitVersion": "0.35.0"
     },
     {
       "slug": "gorfednet/wychwood",
@@ -104,7 +116,8 @@
       "mainRed": false,
       "openPrCount": 0,
       "lapsedBacklogCount": 0,
-      "dependabotRedCount": 0
+      "dependabotRedCount": 0,
+      "kitVersion": "0.35.0"
     },
     {
       "slug": "gorfednet/.github",
@@ -112,64 +125,57 @@
       "mainRed": false,
       "openPrs": [
         {
-          "number": 129,
-          "title": "Handoff: release loop 4",
+          "number": 136,
+          "title": "Handoff: session audit 12 November",
           "ageDays": 0,
           "labels": [],
           "draft": true,
           "review": "not-run",
+          "ci": "green",
+          "next": "Merge when checks are green (docs-only).",
+          "author": "gorfednet"
+        },
+        {
+          "number": 133,
+          "title": "Assessment 12 Nov: output quality, hardening, orchestration (plan, backlog, week-one briefs)",
+          "ageDays": 0,
+          "labels": [
+            "ready-to-merge"
+          ],
+          "draft": false,
+          "review": "findings",
+          "ci": "green",
+          "next": "Merge when checks are green (docs-only). Ship-bot marks it ready.",
+          "author": "gorfednet"
+        },
+        {
+          "number": 129,
+          "title": "Handoff: release loop 4",
+          "ageDays": 1,
+          "labels": [
+            "ready-to-merge"
+          ],
+          "draft": false,
+          "review": "clean",
           "ci": "green",
           "next": null,
           "author": "gorfednet"
         },
         {
-          "number": 128,
-          "title": "ship-bot: run the agent at normal priority",
-          "ageDays": 0,
-          "labels": [],
-          "draft": true,
-          "review": "not-run",
-          "ci": "pending",
-          "next": "Merge, then \\`ship-bot/install.sh\\`",
-          "author": "gorfednet"
-        },
-        {
-          "number": 127,
-          "title": "Handoff: release loop 3",
-          "ageDays": 0,
-          "labels": [],
-          "draft": false,
-          "review": "clean",
-          "ci": "green",
-          "next": "Merge when kit is green.",
-          "author": "gorfednet"
-        },
-        {
-          "number": 121,
-          "title": "no-smb-guard: no apt ripgrep install (fleet close-out 1.3)",
-          "ageDays": 0,
-          "labels": [],
-          "draft": true,
-          "review": "clean",
-          "ci": "green",
-          "next": "Fable `reviewer` reads the diff",
-          "author": "gorfednet"
-        },
-        {
           "number": 120,
           "title": "Desk brief: session-start rule",
-          "ageDays": 0,
+          "ageDays": 1,
           "labels": [],
           "draft": true,
           "review": "not-run",
-          "ci": "red",
+          "ci": "green",
           "next": "Merge when checks are green (docs-only).",
           "author": "gorfednet"
         },
         {
           "number": 119,
           "title": "ship-bot: mark a draft ready and label it when its ## Next says merge and the gates are clean",
-          "ageDays": 0,
+          "ageDays": 1,
           "labels": [],
           "draft": true,
           "review": "not-run",
@@ -180,31 +186,31 @@
         {
           "number": 118,
           "title": "Desk standing brief",
-          "ageDays": 0,
+          "ageDays": 1,
           "labels": [
             "ready-to-merge"
           ],
           "draft": false,
           "review": "findings",
-          "ci": "red",
+          "ci": "green",
           "next": "Merge when checks are green (docs-only).",
           "author": "gorfednet"
         },
         {
           "number": 117,
           "title": "Handoff: fleet close-out plan and 4-week assessment (11 Nov)",
-          "ageDays": 0,
+          "ageDays": 1,
           "labels": [],
           "draft": true,
           "review": "not-run",
-          "ci": "red",
+          "ci": "green",
           "next": "Merge when checks are green (docs-only).",
           "author": "gorfednet"
         },
         {
           "number": 113,
           "title": ".github: Mostly-static sites inherited product-site Playwright and Bugbot settings",
-          "ageDays": 2,
+          "ageDays": 3,
           "labels": [],
           "draft": true,
           "review": "not-run",
@@ -215,7 +221,7 @@
         {
           "number": 112,
           "title": ".github: A script that names a location instead of deriving one runs on exactly one machine",
-          "ageDays": 2,
+          "ageDays": 3,
           "labels": [],
           "draft": true,
           "review": "not-run",
@@ -226,7 +232,7 @@
         {
           "number": 111,
           "title": ".github: The online half of the fleet check cannot run until FLEET_READ_TOKEN exists",
-          "ageDays": 2,
+          "ageDays": 3,
           "labels": [],
           "draft": true,
           "review": "not-run",
@@ -237,7 +243,7 @@
         {
           "number": 110,
           "title": ".github: Most sites still declare a social card at a URL that cannot be replaced",
-          "ageDays": 2,
+          "ageDays": 3,
           "labels": [],
           "draft": true,
           "review": "not-run",
@@ -246,20 +252,9 @@
           "author": "gorfednet"
         },
         {
-          "number": 107,
-          "title": ".github: The rule for the sitemap class is written but cannot ship yet",
-          "ageDays": 2,
-          "labels": [],
-          "draft": true,
-          "review": "not-run",
-          "ci": "green",
-          "next": "Open the PR; fix `pr` in the backlog entry if it is not 98, set status `landed`",
-          "author": "gorfednet"
-        },
-        {
           "number": 106,
           "title": ".github: Every deploy to the ten NAS sites reached the filesystem and not the visitor",
-          "ageDays": 2,
+          "ageDays": 3,
           "labels": [],
           "draft": true,
           "review": "not-run",
@@ -270,7 +265,7 @@
         {
           "number": 105,
           "title": ".github: The live healthcheck applied the HTML size floor to sitemaps and robots.txt",
-          "ageDays": 2,
+          "ageDays": 3,
           "labels": [],
           "draft": true,
           "review": "not-run",
@@ -281,7 +276,7 @@
         {
           "number": 103,
           "title": "Handoff: recovery of 38 failed Herdr jobs",
-          "ageDays": 2,
+          "ageDays": 3,
           "labels": [],
           "draft": true,
           "review": "not-run",
@@ -292,7 +287,7 @@
         {
           "number": 102,
           "title": "build-rewrites-tracked-files",
-          "ageDays": 2,
+          "ageDays": 3,
           "labels": [],
           "draft": true,
           "review": "not-run",
@@ -303,7 +298,7 @@
         {
           "number": 101,
           "title": "quiet-sites-paid-product-monitor-rates",
-          "ageDays": 2,
+          "ageDays": 3,
           "labels": [],
           "draft": true,
           "review": "not-run",
@@ -314,7 +309,7 @@
         {
           "number": 100,
           "title": "html-min-bytes-applied-to-assets",
-          "ageDays": 2,
+          "ageDays": 3,
           "labels": [],
           "draft": true,
           "review": "not-run",
@@ -325,7 +320,7 @@
         {
           "number": 99,
           "title": "fleet-audit-needs-a-token: stopped, no code change",
-          "ageDays": 2,
+          "ageDays": 3,
           "labels": [],
           "draft": true,
           "review": "not-run",
@@ -336,7 +331,7 @@
         {
           "number": 98,
           "title": "cards-at-overwritable-urls",
-          "ageDays": 2,
+          "ageDays": 3,
           "labels": [],
           "draft": true,
           "review": "not-run",
@@ -349,6 +344,10 @@
         {
           "branch": "chore/recapture-promptboi-api-vhost",
           "ahead": 1
+        },
+        {
+          "branch": "fix/no-apt-in-no-smb-guard",
+          "ahead": 2
         },
         {
           "branch": "kit/rules-doc-drift",
@@ -422,24 +421,21 @@
           "id": "paths-named-not-derived",
           "status": "confirmed-bug",
           "reviewBy": "2026-10-15"
-        },
-        {
-          "id": "sitemap-rule-text-deferred-by-drift",
-          "status": "confirmed-bug",
-          "reviewBy": "2026-10-31"
         }
       ],
       "lastDeploy": null,
       "incidents7d": 0,
-      "dependabotRed": 0
+      "dependabotRed": 0,
+      "kitVersion": "0.61.0"
     },
     {
       "slug": "gorfednet/MoonMan",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 0,
+      "openPrCount": 3,
       "lapsedBacklogCount": 0,
-      "dependabotRedCount": 0
+      "dependabotRedCount": 0,
+      "kitVersion": null
     },
     {
       "slug": "gorfednet/ACID2REAPER",
@@ -450,7 +446,8 @@
       "lapsedBacklog": [],
       "lastDeploy": null,
       "incidents7d": 0,
-      "dependabotRed": 0
+      "dependabotRed": 0,
+      "kitVersion": null
     },
     {
       "slug": "gorfednet/career-portfolio",
@@ -458,31 +455,35 @@
       "mainRed": false,
       "openPrCount": 1,
       "lapsedBacklogCount": 0,
-      "dependabotRedCount": 0
+      "dependabotRedCount": 0,
+      "kitVersion": "0.61.0"
     },
     {
       "slug": "gorfednet/heuristics.4thcltr.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 3,
-      "lapsedBacklogCount": 10,
-      "dependabotRedCount": 0
+      "openPrCount": 4,
+      "lapsedBacklogCount": 12,
+      "dependabotRedCount": 0,
+      "kitVersion": "0.61.0"
     },
     {
       "slug": "gorfednet/papers.4thcltr.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 3,
+      "openPrCount": 5,
       "lapsedBacklogCount": 0,
-      "dependabotRedCount": 0
+      "dependabotRedCount": 0,
+      "kitVersion": "0.58.0"
     },
     {
       "slug": "gorfednet/assess",
       "redacted": true,
-      "mainRed": true,
+      "mainRed": false,
       "openPrCount": 1,
       "lapsedBacklogCount": 10,
-      "dependabotRedCount": 0
+      "dependabotRedCount": 0,
+      "kitVersion": "0.61.0"
     },
     {
       "slug": "gorfednet/ops",
@@ -490,7 +491,8 @@
       "mainRed": false,
       "openPrCount": 1,
       "lapsedBacklogCount": 0,
-      "dependabotRedCount": 0
+      "dependabotRedCount": 0,
+      "kitVersion": "0.61.0"
     }
   ]
 }
