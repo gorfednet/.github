@@ -18,7 +18,7 @@ Evidence, `~/Library/Logs/Claude/`:
 1. Retry. A 503 `overloaded_error` is transient. Retry the cloud request, spaced out (one at a time, not four at once), from a session that is in front in the app.
 2. Request cloud sessions only while the requesting conversation is the one on screen.
 3. Owner step, only if a retry fails with a different error naming GitHub access: check the Claude GitHub App covers the repos. Steps, for someone who does not code:
-   - Open github.com/organizations/gorfednet/settings/installations in a browser signed in as an org owner.
+   - `gorfednet` is a personal account (not an organization), so the setting lives under his own settings. Open github.com/settings/installations, or: profile picture, Settings, left sidebar "Applications", tab "Installed GitHub Apps".
    - Find "Claude" and click Configure.
    - Under "Repository access", choose All repositories (or add 4thcltr.com, gorfed.net and .github to the list). Click Save.
    Nothing for him until a retry shows a GitHub-access error.
