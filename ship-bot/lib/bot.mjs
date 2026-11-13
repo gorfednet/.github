@@ -410,11 +410,13 @@ async function takeDraft(ctx, repo, listed, defaultBranch) {
   // A label a person had already put on the draft stays theirs. A label the
   // bot owns is re-recorded with this head: after a failed markReady and a
   // new push, the old sha would strand the pull request (round 11 on #119).
+  await ctx.github.addLabels(repo.slug, pr.number, [READY_LABEL])
+  // Recorded only once the label is really on: a failed addLabels with a
+  // record already saved would read as a person's take-back next pass.
   if (botOwnsLabel) {
     prState.botLabelled = { sha, at: ctx.clock.now().toISOString() }
     ctx.state.save()
   }
-  await ctx.github.addLabels(repo.slug, pr.number, [READY_LABEL])
   await ctx.github.markReady(pr.node_id)
   // Leaving draft fires ready_for_review, which starts a second Claude review
   // of this head; processPull holds the head until that run has had time to

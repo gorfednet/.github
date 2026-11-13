@@ -179,6 +179,23 @@ describe('a draft the bot owns', () => {
     assert.ok(s.logs.some((l) => /draft left alone \(a person took ready-to-merge off/.test(l)), s.logs.join('\n'))
   })
 
+  it('a failed addLabels is retried next pass, not read as a take-back', async () => {
+    const gh = new FakeGitHub({ pulls: [draft()] })
+    let fail = true
+    const realAddLabels = gh.addLabels.bind(gh)
+    gh.addLabels = async (...a) => {
+      if (fail) { fail = false; throw Object.assign(new Error('boom'), { status: 502 }) }
+      return realAddLabels(...a)
+    }
+    const s = scenario({ repos: reviewed(), github: gh })
+    await s.run()
+    assert.equal(s.state().pr(SLUG, 7).botLabelled, undefined)
+    await s.run()
+    assert.equal(writes(gh, 'addLabels').length, 1)
+    assert.equal(writes(gh, 'markReady').length, 1)
+    assert.ok(s.state().pr(SLUG, 7).botLabelled)
+  })
+
   it('after a failed markReady and a new push, the record follows the head and the pull request is not stranded', async () => {
     const gh = new FakeGitHub({ pulls: [draft()] })
     let fail = true
