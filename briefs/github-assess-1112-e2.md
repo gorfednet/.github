@@ -1,6 +1,6 @@
 # Brief: List, then prune, idle worktrees and loose scripts.
 
-Model: Sonnet runner. One session, one pull request, ends when it merges. Never more than 3 sessions at once; run builder-ok before a builder.
+Model: Sonnet runner. One session, one pull request, ends when it merges. At most 2 builders live; run builder-ok before each. Return a PR with `## Next`.
 
 Read lane E2. List first, prune on a second pass at least a day later.
 

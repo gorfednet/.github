@@ -1,6 +1,6 @@
 # Brief: Install the official plugins, drop the dead MCP, shrink session start.
 
-Model: Sonnet, main-session read of third-party plugins. One session, one pull request, ends when it merges. Never more than 3 sessions at once; run builder-ok before a builder.
+Model: Sonnet, main-session read of third-party plugins. One session, one pull request, ends when it merges. At most 2 builders live; run builder-ok before each. Return a PR with `## Next`.
 
 Read lane A3. Record session start tokens before and after with session-report.
 

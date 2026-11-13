@@ -490,7 +490,7 @@
       "status": "confirmed-bug",
       "assignee": "main-model",
       "userSymptom": "The frontend-design skill and other official plugins are not installed, and figma-desktop fails in every session",
-      "evidence": "Plugin catalogue and ~/.claude/plugins, 12 Nov 2026; 11 Nov assessment section 3. Plan: docs/assessment-2026-11-12-output-quality.md. Who: main session.",
+      "evidence": "Plugin catalogue and ~/.claude/plugins, 12 Nov 2026; 11 Nov assessment (git show 6b8a1b3:docs/assessment-2026-11-11.md, .github PR 117) section 3. Plan: docs/assessment-2026-11-12-output-quality.md. Who: main session.",
       "reviewBy": "2026-12-01",
       "created": "2026-11-12",
       "updated": "2026-11-12"
@@ -501,7 +501,7 @@
       "status": "confirmed-bug",
       "assignee": "main-model",
       "userSymptom": "Rules that must always hold (label gate, review trigger line, no skip without id, builder brief) are prose a session can forget",
-      "evidence": "11 Nov assessment item 2 not landed; incident pattern 8 (7 entries). Plan: docs/assessment-2026-11-12-output-quality.md. Who: main session; runner for tests.",
+      "evidence": "11 Nov assessment (git show 6b8a1b3:docs/assessment-2026-11-11.md, .github PR 117) Phase A item 2 not landed; incident pattern 8 (7 entries). Plan: docs/assessment-2026-11-12-output-quality.md. Who: main session; runner for tests.",
       "reviewBy": "2026-12-01",
       "created": "2026-11-12",
       "updated": "2026-11-12"
@@ -644,7 +644,7 @@
       "status": "confirmed-bug",
       "assignee": "main-model",
       "userSymptom": "Dependabot takes 7 days to merge and six repos have no required checks on main",
-      "evidence": "11 Nov assessment section 4. Plan: docs/assessment-2026-11-12-output-quality.md. Who: runner; main session reads the script first.",
+      "evidence": "11 Nov assessment (git show 6b8a1b3:docs/assessment-2026-11-11.md, .github PR 117) section 4. Plan: docs/assessment-2026-11-12-output-quality.md. Who: runner; main session reads the script first.",
       "reviewBy": "2026-12-01",
       "created": "2026-11-12",
       "updated": "2026-11-12"
@@ -655,7 +655,7 @@
       "status": "confirmed-bug",
       "assignee": "main-model",
       "userSymptom": "A new session starts with a stale 145-entry allowlist or none",
-      "evidence": "11 Nov assessment section 1. Plan: docs/assessment-2026-11-12-output-quality.md. Who: main session.",
+      "evidence": "11 Nov assessment (git show 6b8a1b3:docs/assessment-2026-11-11.md, .github PR 117) section 1. Plan: docs/assessment-2026-11-12-output-quality.md. Who: main session.",
       "reviewBy": "2026-12-01",
       "created": "2026-11-12",
       "updated": "2026-11-12"
@@ -688,7 +688,7 @@
       "status": "confirmed-bug",
       "assignee": "main-model",
       "userSymptom": "Cost awareness is a rule, not a number",
-      "evidence": "11 Nov assessment section 3. Plan: docs/assessment-2026-11-12-output-quality.md. Who: runner runs; main session reads.",
+      "evidence": "11 Nov assessment (git show 6b8a1b3:docs/assessment-2026-11-11.md, .github PR 117) section 3. Plan: docs/assessment-2026-11-12-output-quality.md. Who: runner runs; main session reads.",
       "reviewBy": "2026-12-01",
       "created": "2026-11-12",
       "updated": "2026-11-12"

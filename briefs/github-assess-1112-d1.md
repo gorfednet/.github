@@ -1,6 +1,6 @@
 # Brief: Add check-security-headers and fix ssatcy and anal0g first.
 
-Model: Fable specifies; Sonnet builds. One session, one pull request, ends when it merges. Never more than 3 sessions at once; run builder-ok before a builder.
+Model: Fable specifies; Sonnet builds. One session, one pull request, ends when it merges. At most 2 builders live; run builder-ok before each. Return a PR with `## Next`.
 
 Read lane D1, ssatcy PR 38, anal0g PR 32.
 

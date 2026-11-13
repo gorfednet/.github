@@ -1,6 +1,6 @@
 # Brief: Fix MoonMan main and clear the clutter.
 
-Model: Sonnet builder; main session for CLAUDE.md and gitignore. One session, one pull request, ends when it merges. Never more than 3 sessions at once; run builder-ok before a builder.
+Model: Sonnet builder; main session for CLAUDE.md and gitignore. One session, one pull request, ends when it merges. At most 2 builders live; run builder-ok before each. Return a PR with `## Next`.
 
 Read lane C1 and MoonMan docs/backlog.json.
 

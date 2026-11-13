@@ -2,7 +2,7 @@
 
 ## Context
 
-You asked for an assessment of your work and process, the skills and plugins you aren't using, and a plan (10 items as a floor) to make the output better and less cookie-cutter, and the system more hardened, secure and intelligently orchestrated. The 11 November four-week assessment (`.github` PR 117, `docs/assessment-2026-11-11.md`) already covers permissions, ship-bot, the janitor, Herdr and coordinator cost. Its Phase A has landed: `defaultMode: auto`, a deny list, `gh pr merge` denied, ship-bot live. This plan does not repeat it. It adds the four lanes that assessment left thin: **design and output quality**, **hardening and security**, **verification health and root causes**, and **skills and tooling hygiene**, and it names where the 11 November items still stand.
+You asked for an assessment of your work and process, the skills and plugins you aren't using, and a plan (10 items as a floor) to make the output better and less cookie-cutter, and the system more hardened, secure and intelligently orchestrated. The 11 November four-week assessment (`.github` PR 117, not on main: read it with `git show 6b8a1b3:docs/assessment-2026-11-11.md`) already covers permissions, ship-bot, the janitor, Herdr and coordinator cost. Its Phase A has landed: `defaultMode: auto`, a deny list, `gh pr merge` denied, ship-bot live. This plan does not repeat it. It adds the four lanes that assessment left thin: **design and output quality**, **hardening and security**, **verification health and root causes**, and **skills and tooling hygiene**, and it names where the 11 November items still stand.
 
 Evidence gathered this session (read-only): 16 repos' CSS, fonts, heroes and image pipelines; `~/.claude` skills, agents, rules, hooks and settings; the verification kit on `gorfednet.github` main and each repo's installed version; about 45 incident and handoff entries from 10 October to 12 November; STATUS.md; the open-PR list; the plugin catalogue; MoonMan's tests, CI, backlog and untracked files.
 
@@ -80,7 +80,7 @@ Install `frontend-design`, `hookify`, `security-guidance`, `pr-review-toolkit`, 
 Who: main session (changes what every session sees). Done: a session starts with the new skills listed, the figma schema cost gone, and `session-report` shows the before-and-after start-of-session token count in `.github/docs/`.
 
 **A4. Must-rules become hooks.**
-Use `hookify` on the transcripts to turn these into `PreToolUse`/`Stop` hooks: the `ready-to-merge` label gate (11 Nov item 2, not yet landed), "no `claude review` except on its own line", "no `.skip` added without a backlog id", "no wall clock in a test file" (see C2), "builder brief must contain `git checkout -B` and `builder-ok`". Each hook is a PR to `.github` with its one deliberate failing run shown.
+Use `hookify` on the transcripts to turn these into `PreToolUse`/`Stop` hooks: the `ready-to-merge` label gate (11 Nov Phase A item 2, not yet landed), "no `claude review` except on its own line", "no `.skip` added without a backlog id", "no wall clock in a test file" (see C2), "builder brief must contain `git checkout -B` and `builder-ok`". Each hook is a PR to `.github` with its one deliberate failing run shown.
 Who: main session (gating logic); `runner` for tests. Done: `shipping.md` and `verification-floor.md` describe the hooks instead of asking sessions to remember.
 
 ### Lane B: design and output quality (4thcltr first, then gorfed.net, MoonMan landing, BinderCurve, sites)
@@ -144,7 +144,7 @@ Replace the per-repo `settings.local.json` sprawl with a committed `.claude/sett
 
 ### Lane E: orchestration and cost (what the 11 Nov plan left open, in one place)
 
-**E1. Finish Phases B and C of the 11 Nov assessment**: label-gate hook (now A4), Desk session brief (PR 118/120), `Notification` hook to ntfy, review re-runs itself on `synchronize` (removes the 712 hand `claude review` comments), reviewer onto the pool (`claude-review.yml` still `ubuntu-latest`, against the runner rule), janitor out of propose-only, dispatcher, Herdr stall (56 queued, 0 running). Each is already specified there; this plan only sequences them after A1 to A4 because every one of them depends on a kit and hooks that exist.
+**E1. Finish Phases B and C of the 11 Nov assessment**: label-gate hook (now A4), Desk session brief (landed as `docs/desk/brief.md` by .github 138; 118 and 120 superseded), `Notification` hook to ntfy, review re-runs itself on `synchronize` (removes the 712 hand `claude review` comments), reviewer onto the pool (`claude-review.yml` still `ubuntu-latest`, against the runner rule), janitor out of propose-only, dispatcher, Herdr stall (56 queued, 0 running). Each is specified in `git show 6b8a1b3:docs/assessment-2026-11-11.md` (.github PR 117, not on main; where it differs from `docs/plan-of-record.md` or `docs/desk/brief.md`, those win); this plan only sequences them after A1 to A4 because every one of them depends on a kit and hooks that exist.
 Who: as the 11 Nov plan tiers them.
 
 **E2. Worktree and disk hygiene.**
@@ -155,7 +155,7 @@ Who: as the 11 Nov plan tiers them.
 
 ## Sequencing and sessions
 
-- **Week of 12 Nov (infra first):** A1, A3, A4, C1, D1 for ssatcy and anal0g, E2 list pass. Each is its own session from a 30-line brief in `gorfednet.github/briefs/` (create the folder; none exists). No more than 3 sessions at once; `builder-ok` before each builder.
+- **Week of 12 Nov (infra first):** A1, A3, A4, C1, D1 for ssatcy and anal0g, E2 list pass. Each is its own session from a 30-line brief at `gorfednet.github/briefs/<repo>-<id>.md`, started by Desk per `docs/desk/brief.md`. At most 2 builders live; `builder-ok` before each.
 - **Week of 17 Nov (4thcltr, then gorfed.net):** A2, B1, B2 (all six directions, you approve in chat), B3, C2, C3, D2, D4.
 - **Week of 24 Nov onward:** B4 one property per session in priority order, B5, C4, C5, D3, E1, E3.
 - This plan's own record: the main session writes it to `gorfednet.github/docs/assessment-2026-11-12-output-quality.md` on a branch and opens the PR, with each item as a typed backlog entry (`backlog.json`) carrying tier and status, so STATUS.md tracks it and nothing lives only in this chat.
