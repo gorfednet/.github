@@ -10,7 +10,7 @@ import { createHash } from 'node:crypto'
 import { join } from 'node:path'
 import { HOLD_LABEL, READY_LABEL } from './config.mjs'
 import { DeployLog, deployMerged, envSecrets, matchingFiles, preflight, realFs, selectSteps } from './deploy.mjs'
-import { draftClaim, draftIneligibleReason } from './drafts.mjs'
+import { controlPlaneFiles, draftClaim, draftIneligibleReason } from './drafts.mjs'
 import { evaluatePull, ineligibleReason, unmergeableReason } from './gates.mjs'
 import { RateLimitError, guardWrites } from './github.mjs'
 import { planRelease } from './release.mjs'
@@ -283,9 +283,13 @@ async function processPull(ctx, repo, pr, defaultBranch) {
   const own = await botLabelStillEarned(ctx, repo, pr, tag)
   if (!own) return false
 
-  let result = await evaluatePull(ctx, repo, pr, { headState })
+  // A pull request the bot readied itself is no person's sign-off, so in a
+  // repo that deploys its review must be clean: a reply from an allowlisted
+  // login (every session posts as the owner) is not a triage (plan row 1.12).
+  const requireClean = repo.mode === 'deploy' && Boolean(ctx.state.pr(repo.slug, pr.number).botLabelled)
+  let result = await evaluatePull(ctx, repo, pr, { headState, requireClean })
   // A merge never rests on a remembered gate answer: run every script again.
-  if (result.ready && result.cached) result = await evaluatePull(ctx, repo, pr, { headState, fresh: true })
+  if (result.ready && result.cached) result = await evaluatePull(ctx, repo, pr, { headState, fresh: true, requireClean })
   if (result.ready && headState.readiedAt && (ctx.clock.now() - new Date(headState.readiedAt)) / 60000 < ctx.config.reviewGraceMinutes) {
     ctx.say('debug', `${tag}: not merging: the bot marked this draft ready at ${headState.readiedAt}; giving the ready-for-review review time to start`)
     return false
@@ -474,8 +478,16 @@ async function takeDraft(ctx, repo, listed, defaultBranch) {
     ctx.say('debug', `${tag}: draft left alone (${refused ?? 'no merge line under ## Next'})`)
     return
   }
+  // A draft that changes the gates, CI or the bot itself waits for a person
+  // (plan row 1.12). The file list is read for this head; a push after it
+  // moves the head, and processPull drops a bot label from a moved head.
+  const touched = controlPlaneFiles(await ctx.github.listPullFiles(repo.slug, pr.number))
+  if (touched.length > 0) {
+    ctx.say('info', `${tag}: draft left alone (${claim}): it changes control-plane paths (${touched.slice(0, 5).join(', ')}${touched.length > 5 ? ', ...' : ''}); a person labels it`)
+    return
+  }
   const headState = ctx.state.head(repo.slug, pr.number, sha, ctx.clock.now().toISOString())
-  const result = await evaluatePull(ctx, repo, pr, { headState, draft: true })
+  const result = await evaluatePull(ctx, repo, pr, { headState, draft: true, requireClean: repo.mode === 'deploy' })
   if (!result.ready) {
     for (const block of result.blocks) {
       ctx.say(block.kind === 'wait' ? 'debug' : 'info', `${tag}: not marking ready (${claim}): ${block.reason}`)

@@ -274,7 +274,7 @@ export function isTriaged(thread, allowedAuthors) {
  *
  * Returns `{blocks}`.
  */
-export async function evaluateReview(ctx, repo, pr, sha, { headSince, memo, draft = false }) {
+export async function evaluateReview(ctx, repo, pr, sha, { headSince, memo, draft = false, requireClean = false }) {
   const now = ctx.clock.now()
   const script = await gate(ctx, ctx.config.scripts.reviewStatus, ['--pr', String(pr.number), '--repo', repo.slug], {}, memo)
   const status = parseReviewStatus(script, pr.number)
@@ -301,6 +301,21 @@ export async function evaluateReview(ctx, repo, pr, sha, { headSince, memo, draf
             '- If they only merged main cleanly, regenerated files, moved a pin or budget number, or fixed lint, a session says so here and merges by hand (the bot cannot tell which kind a push was).',
             '- If this repository has no Claude reviewer yet, a session merges it after reading the diff.',
           ].join('\n'),
+        },
+      ],
+    }
+  }
+
+  // A pull request the bot readied itself, in a repo that deploys, merges on
+  // a clean review only. Every session posts as the owner's login, so "every
+  // finding has an answer" proves no person read it (plan row 1.12).
+  if (requireClean) {
+    return {
+      blocks: [
+        {
+          key: 'review-not-clean',
+          kind: 'fail',
+          reason: `The Claude reviewer reported findings on this head (${ctx.redactor.apply(status.detail)}). The bot readied this pull request itself and the repo deploys, so it merges only on a clean review: fix the findings and push, or a person labels it after reading them.`,
         },
       ],
     }
@@ -349,7 +364,7 @@ export async function evaluateReview(ctx, repo, pr, sha, { headSince, memo, draf
  *
  * @returns {Promise<{ready: boolean, blocks: object[], cached: boolean}>}
  */
-export async function evaluatePull(ctx, repo, pr, { headState, fresh = false, draft = false }) {
+export async function evaluatePull(ctx, repo, pr, { headState, fresh = false, draft = false, requireClean = false }) {
   const sha = pr.head.sha
   const now = ctx.clock.now()
   const memo = { inputs: '', fresh, used: false }
@@ -423,11 +438,15 @@ export async function evaluatePull(ctx, repo, pr, { headState, fresh = false, dr
     return blocked([{ key: 'closing-keywords', kind: 'fail', reason: `check-closing-keywords did not pass: ${firstLine(closing, ctx.redactor)}` }])
   }
 
-  // (d) the Claude reviewer's verdict on this head.
+  // (d) the Claude reviewer's verdict on this head. A clean review that is
+  // required cannot come from a repo with no reviewer: fail closed.
+  if (requireClean && !repo.claudeReview) {
+    return blocked([{ key: 'review-required', kind: 'fail', reason: 'The bot readied this pull request itself and the repo deploys, so it needs a clean Claude review, but this repo has no Claude reviewer configured. A person labels it.' }])
+  }
   if (repo.claudeReview) {
     let result
     try {
-      result = await evaluateReview(ctx, repo, pr, sha, { headSince, memo: scriptMemo, draft })
+      result = await evaluateReview(ctx, repo, pr, sha, { headSince, memo: scriptMemo, draft, requireClean })
     } catch (cause) {
       if (cause instanceof RateLimitError) throw cause
       return blocked([{ key: 'review-undetermined', kind: 'wait', reason: `could not read the Claude review state: ${ctx.redactor.apply(cause.message)}` }])

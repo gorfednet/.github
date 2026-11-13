@@ -9,8 +9,10 @@
 #     install if it fails or runs fewer tests than expected (this is the bot's
 #     CI: it costs no GitHub Actions minutes)
 #   - creates ~/.ship-bot/ (config, state, logs, the bot's own workspaces)
-#   - copies the bot's code to ~/.ship-bot/app/, so the running bot does not
-#     change when this checkout switches branches; re-run to update it
+#   - refuses unless this checkout is at origin/main with no tracked changes
+#   - copies the bot's code to ~/.ship-bot/app/, and the gate scripts to
+#     ~/.ship-bot/app/gate-scripts/, so neither changes when a clone switches
+#     branches; re-run to update them
 #   - writes ~/.ship-bot/config.json from config.example.json ONLY if there is
 #     none; an existing config is never touched. The example has "live": false.
 #   - writes and loads ~/Library/LaunchAgents/net.gorfed.ship-bot.plist, which
@@ -62,6 +64,22 @@ if [[ "${major}" -lt 22 ]]; then
   exit 1
 fi
 
+# Install only merged code (plan row 1.12): the bot's code and its gate
+# scripts are copied from this checkout, so it must be at origin/main with no
+# tracked changes. Run it from a fresh worktree of origin/main.
+REPO="$(git -C "${HERE}" rev-parse --show-toplevel)"
+git -C "${REPO}" fetch -q origin main
+head_sha="$(git -C "${REPO}" rev-parse HEAD)"
+main_sha="$(git -C "${REPO}" rev-parse --verify refs/remotes/origin/main)"
+if [[ "${head_sha}" != "${main_sha}" ]]; then
+  echo "install.sh: ${REPO} is at ${head_sha:0:7}, not origin/main ${main_sha:0:7}. Install from an origin/main checkout. Nothing was installed." >&2
+  exit 1
+fi
+if [[ -n "$(git -C "${REPO}" status --porcelain --untracked-files=no)" ]]; then
+  echo "install.sh: ${REPO} has uncommitted changes. Install from a clean origin/main checkout. Nothing was installed." >&2
+  exit 1
+fi
+
 # The suite is the gate (check.sh counts what ran, not just the exit code).
 echo "Running the ship bot's tests..."
 if ! NODE_BIN="${NODE_BIN}" "${HERE}/check.sh"; then
@@ -76,6 +94,14 @@ chmod 700 "${BOT_HOME}"
 rm -rf "${APP_DIR}.new"
 mkdir -p "${APP_DIR}.new"
 cp -R "${HERE}/ship-bot.mjs" "${HERE}/lib" "${HERE}/github-app" "${HERE}/config.example.json" "${HERE}/README.md" "${APP_DIR}.new/"
+# The gate scripts, in the layout of scripts/ (lib/gate-source.mjs): the bot
+# runs these and never the main clone, where a session can switch branches.
+GATES="${APP_DIR}.new/gate-scripts"
+mkdir -p "${GATES}/gates"
+cp "${REPO}/scripts/review-status.mjs" "${GATES}/"
+cp "${REPO}/scripts/gates/assert-checks-started.mjs" "${REPO}/scripts/gates/check-closing-keywords.mjs" "${GATES}/gates/"
+cp -R "${REPO}/scripts/lib" "${GATES}/"
+echo "${head_sha}" >"${GATES}/SOURCE"
 rm -rf "${APP_DIR}.old"
 if [[ -d "${APP_DIR}" ]]; then mv "${APP_DIR}" "${APP_DIR}.old"; fi
 mv "${APP_DIR}.new" "${APP_DIR}"

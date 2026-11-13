@@ -197,7 +197,16 @@ bot now takes a draft itself when **all** of these hold:
   commit. Findings with an unanswered thread keep the draft a draft; nothing
   is said on the pull request, the log says why;
 - no `hold` label, no merge conflict, not opened by Dependabot, and the author
-  is allowlisted.
+  is allowlisted;
+- it changes no control-plane path: `.github/workflows/`, `ship-bot/`,
+  `scripts/gates/`, `scripts/review-status.mjs`, `REVIEW.md`, `janitor/` or
+  `capacity/` (a rename counts by its old name too). Such a draft changes what
+  merges unattended, so a person labels it after reading it (plan row 1.12);
+- in a repository that deploys, its review is `clean`. Answered findings are
+  not enough there: every session posts as the owner's login, so an answer
+  proves no person read the finding. The same holds on the merge path for a
+  pull request whose `ready-to-merge` is the bot's own, and a deploy
+  repository with no Claude reviewer never has a draft readied.
 
 Then it comments once, "Ship-bot: gates clean, marking ready and labelling;
 merges on the next pass", adds `ready-to-merge` and marks the pull request
@@ -382,6 +391,16 @@ repository's merge gate, and `scripts/gates/assert-checks-started.mjs` and
 `scripts/gates/check-closing-keywords.mjs`, which only the bot and this
 repository's own CI run), and the example points at the
 `~/Developer/gorfednet/gorfednet.github` clone.
+
+The bot does not run them from that clone, where a session can switch
+branches (plan row 1.12). `install.sh` refuses a checkout that is not at
+`origin/main` with no tracked changes, and copies the three scripts and
+`scripts/lib/` into `~/.ship-bot/app/gate-scripts/` with the commit in
+`SOURCE`. While that copy exists the bot runs it and nothing else, and an
+incomplete copy refuses the pass. Run from a checkout with no installed copy,
+the bot checks that each configured script's clone is at `origin/main` and
+clean, and otherwise refuses the pass: no gate runs, nothing is readied or
+merged. Each pass logs `gate scripts from the ...` with the source.
 
 ### The rules it follows
 

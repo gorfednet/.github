@@ -39,6 +39,37 @@ export function draftIneligibleReason(pr, repo, defaultBranch, allowedAuthors) {
   return null
 }
 
+/**
+ * Paths whose change alters what merges unattended, or how: CI, the bot, the
+ * gate scripts, the reviewer's brief, the janitor and the capacity starter.
+ * A draft touching any of them is never the bot's to mark ready (plan row
+ * 1.12, Fable review of 13 November 2026, finding 3): a builder's own `## Next`
+ * line could otherwise ready, merge and deploy a change to its own gates. A
+ * person labels such a pull request after reading it. A prefix ending in `/`
+ * names a directory at any depth below it; anything else names one file.
+ */
+export const CONTROL_PLANE_PATHS = ['.github/workflows/', 'ship-bot/', 'scripts/gates/', 'scripts/review-status.mjs', 'REVIEW.md', 'janitor/', 'capacity/']
+
+const touchesControlPlane = (path) =>
+  CONTROL_PLANE_PATHS.some((p) => (p.endsWith('/') ? path.startsWith(p) : path === p))
+
+/**
+ * Which changed files are control-plane paths. Each entry is a pulls/files
+ * item; a rename counts by both its old and new name, so moving a gate out of
+ * `scripts/gates/` is caught too. An entry without a filename is a shape the
+ * bot cannot judge, so it is returned as a hit (fail closed).
+ */
+export function controlPlaneFiles(files) {
+  if (!Array.isArray(files)) return ['(file list unreadable)']
+  const hits = []
+  for (const f of files) {
+    const names = [f?.filename, f?.previous_filename].filter((n) => typeof n === 'string')
+    if (!names.length) hits.push('(entry with no filename)')
+    for (const n of names) if (touchesControlPlane(n.replace(/^\.?\//, ''))) hits.push(n)
+  }
+  return [...new Set(hits)]
+}
+
 /** Every line under `## Next` up to the next heading, blank lines dropped. */
 export function nextSectionLines(body) {
   const lines = String(body ?? '').split(/\r?\n/)

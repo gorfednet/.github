@@ -348,6 +348,7 @@ describe('GitHub App token', () => {
     const runner = makeRunner({ handle: (cmd) => (cmd.kind === 'auth' ? { stdout: `${TOKEN}\n` } : undefined) })
     const code = await main(['--live', '--once'], {
       loadConfig: () => config,
+      gateScripts: (c) => ({ scripts: c.scripts, source: 'test' }),
       makeGithub: (token) => (tokens.push(token), new FakeGitHub({ pulls: [] })),
       makeReadCache: () => new ReadCache(null),
       appToken,
