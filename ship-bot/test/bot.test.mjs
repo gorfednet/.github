@@ -729,8 +729,15 @@ describe('deploying', () => {
       }
     })
 
-    it('counts an install by program name, not path, and does not count yarn build', async () => {
-      for (const [setup, merged] of [[[{ name: 'i', command: ['/opt/homebrew/bin/npm', 'ci'] }], 1], [[{ name: 'b', command: ['yarn', 'build'] }], 0]]) {
+    it('counts an install by program name, after flags and inside sh -c, and not yarn build or npm run ci', async () => {
+      for (const [setup, merged] of [
+        [[{ name: 'i', command: ['/opt/homebrew/bin/npm', 'ci'] }], 1],
+        [[{ name: 'i', command: ['sh', '-c', 'npm ci && npm run build'] }], 1],
+        [[{ name: 'i', command: ['npm', '--prefix', 'app', 'ci'] }], 1],
+        [[{ name: 'b', command: ['yarn', 'build'] }], 0],
+        [[{ name: 'b', command: ['sh', '-c', 'npm run build'] }], 0],
+        [[{ name: 'r', command: ['npm', 'run', 'ci'] }], 0],
+      ]) {
         const s = scenario({ repos: [repoEntry({ setup, deploy: [{ name: 'site', command: ['npm', 'run', 'deploy'] }] })] })
         await s.run()
         assert.equal(merges(s.github).length, merged, JSON.stringify(setup))

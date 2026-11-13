@@ -119,7 +119,6 @@ async function syncCheckout(ctx, log, { path, cloneUrl, ref, preserve = [], expe
 // Programs that cannot run without the repository's node_modules.
 const NODE_TOOLS = new Set(['npm', 'npx', 'pnpm', 'yarn', 'vite'])
 const NODE_TOOL_IN_SHELL = /(^|[\s;&|(])(npm|npx|pnpm|yarn|vite)\s/
-const INSTALLS = /^(npm (ci|clean-install|install|i)|pnpm (install|i)|yarn install|yarn)$/
 
 /** The source clone's package.json declares packages, so a `make` target there is assumed to need them. */
 function declaresPackages(dir, fsx) {
@@ -144,11 +143,35 @@ function needsNodeModules(step, packages) {
 // A setup step that installs: npm ci and its kin, or a make target (papers' and
 // heuristics' `make verify` start with npm ci; the Makefile owns the install).
 const program = (step) => step.command[0].split('/').at(-1)
-const installs = (step) => {
-  const args = step.command.slice(1)
+const VALUE_FLAGS = new Set(['--prefix', '-C', '--dir', '--cwd'])
+// The subcommand after any flags (`npm --prefix app ci` is `ci`).
+function subcommand(args) {
+  for (let i = 0; i < args.length; i++) {
+    if (VALUE_FLAGS.has(args[i])) i++
+    else if (!args[i].startsWith('-')) return args[i]
+  }
+  return undefined
+}
+function installsCommand(name, args) {
+  if (name === 'make') return true
+  const sub = subcommand(args)
+  if (name === 'npm') return ['ci', 'clean-install', 'install', 'i'].includes(sub)
+  if (name === 'pnpm') return ['install', 'i'].includes(sub)
   // A bare `yarn` installs; `yarn build` does not.
-  if (program(step) === 'yarn') return args.length === 0 || args[0] === 'install'
-  return INSTALLS.test([program(step), ...args.slice(0, 1)].join(' ')) || program(step) === 'make'
+  if (name === 'yarn') return sub === undefined || sub === 'install'
+  return false
+}
+const installs = (step) => {
+  const name = program(step)
+  const args = step.command.slice(1)
+  // `sh -c "npm ci && npm run build"`: any command in the string that installs.
+  if ((name === 'sh' || name === 'bash') && args[0] === '-c') {
+    return (args[1] ?? '').split(/&&|\|\||;|\n/).some((part) => {
+      const [p, ...a] = part.trim().split(/\s+/)
+      return p !== undefined && installsCommand(p.split('/').at(-1), a)
+    })
+  }
+  return installsCommand(name, args)
 }
 const preserves = (repo) => repo.preserve.some((p) => p.replace(/\/+$/, '') === 'node_modules')
 
