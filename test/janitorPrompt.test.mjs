@@ -54,7 +54,7 @@ test("janitor never prunes the gate or desk worktrees, and prunes only through t
 });
 
 test("janitor rescues dirty work through a draft held from ship-bot before archiving", () => {
-  const rescue = prompt.match(/\n   5\. Rescue,[\s\S]*?(?=\n5\. Worktrees)/);
+  const rescue = prompt.match(/\n   6\. Rescue,[\s\S]*?(?=\n5\. Worktrees)/);
   assert.ok(rescue, "rescue procedure exists");
   assert.match(rescue[0], /--draft[^\n]*--label hold/);
   assert.match(rescue[0], /looks secret/);
@@ -72,4 +72,8 @@ test("janitor sets up its own checkout, so the scheduled task's older starter te
 test("janitor never rescues a session whose branch has an open pull request, and rescues commits pushed after a merge", () => {
   assert.match(prompt, /`dirty`:[^\n]*first make the `gh pr list` call[^\n]*On `OPEN` or `CLOSED`, propose only/);
   assert.match(prompt, /`MERGED`: an older pull request[^\n]*Treat it like the no-PR case/);
+});
+
+test("janitor never archives a session whose folder holds ignored local state", () => {
+  assert.match(prompt, /`ignored` list[^\n]*Propose only/);
 });

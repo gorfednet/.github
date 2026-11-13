@@ -104,6 +104,7 @@ describe('janitor-prune', () => {
     const row = run(opts).find((r) => r.path === f.merged)
     assert.equal(row.reason, 'ignored files')
     assert.deepEqual(row.ignored, ['.env'])
+    assert.deepEqual(sessionState(f.merged, { fetch: false }).ignored, ['.env'])
   })
 
   it('keeps a merged worktree with an unpushed commit', () => {

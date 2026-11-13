@@ -108,6 +108,16 @@ function lastTouched(path) {
 }
 
 /**
+ * Ignored paths in a worktree other than disposable ones. `git worktree remove`, and archiving a
+ * session, delete ignored files without asking, and they can be local state (.env, settings).
+ */
+export function ignoredLocal(path) {
+  const ignored = tryGit(path, 'status', '--porcelain', '--ignored=matching')
+  if (!ignored.ok) return ['(unreadable)']
+  return ignored.out.split('\n').filter((l) => l.startsWith('!! ')).map((l) => l.slice(3).replace(/\/$/, '')).filter((p) => !DISPOSABLE.has(p))
+}
+
+/**
  * The verdict for one linked worktree: `prune`, or `keep` with a reason.
  * Pure apart from git reads, so the tests drive it with real temporary repositories.
  */
@@ -122,9 +132,7 @@ export function judge(wt, { mainRef, keep, idleMs, now }) {
   if (status.out !== '') return { verdict: 'keep', reason: 'dirty', uncommitted: status.out.split('\n').length }
   const ahead = tryGit(wt.path, 'rev-list', '--count', '@{u}..HEAD')
   if (ahead.ok && Number(ahead.out) > 0) return { verdict: 'keep', reason: 'dirty', unpushed: Number(ahead.out) }
-  // `git worktree remove` deletes ignored files without asking, and they can be local state (.env, settings).
-  const ignored = tryGit(wt.path, 'status', '--porcelain', '--ignored=matching')
-  const kept = ignored.ok ? ignored.out.split('\n').filter((l) => l.startsWith('!! ')).map((l) => l.slice(3).replace(/\/$/, '')).filter((p) => !DISPOSABLE.has(p)) : ['(unreadable)']
+  const kept = ignoredLocal(wt.path)
   if (kept.length > 0) return { verdict: 'keep', reason: 'ignored files', ignored: kept.slice(0, 5) }
   if (!tryGit(wt.path, 'merge-base', '--is-ancestor', 'HEAD', mainRef).ok) return { verdict: 'keep', reason: 'not merged' }
   const idle = now - lastTouched(wt.path)
@@ -165,6 +173,8 @@ export function sessionState(cwd, { fetched = new Map(), fetch = true } = {}) {
   // Fail closed: a folder git can't read may hold work, so it is never classed clean.
   if (!status.ok) return { ...base, state: 'unreadable', reason: status.out.split('\n')[0] }
   const uncommitted = status.out ? status.out.split('\n').length : 0
+  const local = ignoredLocal(cwd)
+  if (local.length > 0) base.ignored = local.slice(0, 5)
   const ahead = tryGit(cwd, 'rev-list', '--count', '@{u}..HEAD')
   const unpushed = ahead.ok ? Number(ahead.out) : 0
   const head = tryGit(cwd, 'rev-parse', 'HEAD').out
