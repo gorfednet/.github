@@ -30,8 +30,84 @@ describe('config validation', () => {
     const config = normalizeConfig(example(), { home: HOME })
     assert.equal(config.live, false, 'the example must never ship live')
     assert.deepEqual(config.repos.filter((r) => r.todo.length > 0).map((r) => r.slug), [], 'every decision is recorded as a note, none left open')
-    assert.deepEqual(config.preflight.map((s) => s.command.at(-2)), ['gorfednas', 'dapyllil'])
+    assert.deepEqual(config.preflight.map((s) => s.command.at(-2)), ['gorfednas', 'dapyllil', 'sitedeploy@dapyllil'])
     assert.equal(config.repos.find((r) => r.name === 'gorfed.net').siblings[0].path, join(HOME, '.ship-bot', 'work', 'gorfednet.github'))
+  })
+
+  it('every deploy row syncs the shared helper checkout once, listed or not; the helper repo itself does not', () => {
+    const repos = (rows) => normalizeConfig({ ...example(), repos: rows }, { home: HOME }).repos
+    const helper = join(HOME, '.ship-bot', 'work', 'gorfednet.github')
+    const [bare, listed, own] = repos([
+      { slug: 'gorfednet/MoonMan', dir: 'MoonMan', mode: 'deploy', claudeReview: false, expectedChecks: ['c'], deploy: [{ name: 'game', command: ['npm', 'run', 'deploy'] }] },
+      { slug: 'gorfednet/x', dir: 'x', mode: 'deploy', claudeReview: false, expectedChecks: ['c'], siblings: [{ dir: 'gorfednet.github', slug: 'gorfednet/.github', branch: 'main' }], deploy: [{ name: 'd', command: ['true'] }] },
+      { slug: 'gorfednet/.github', dir: 'gorfednet.github', mode: 'deploy', claudeReview: false, expectedChecks: ['c'], deploy: [{ name: 'd', command: ['true'] }] },
+    ])
+    assert.deepEqual(bare.siblings.map((s) => [s.path, s.branch]), [[helper, 'main']])
+    assert.equal(listed.siblings.length, 1)
+    assert.deepEqual(own.siblings, [])
+    const [custom] = repos([{ slug: 'gorfednet/y', dir: 'y', mode: 'deploy', claudeReview: false, expectedChecks: ['c'], workDir: '~/Developer/gorfednet/y', deploy: [{ name: 'd', command: ['true'] }] }])
+    assert.deepEqual(custom.siblings, [], 'a custom workDir gets no implied sibling: it could be the owner clone')
+  })
+
+  it('the example never ships a repository live, and the 4thcltr family deploys only what fits the row shape', () => {
+    const rows = Object.fromEntries(example().repos.map((r) => [r.slug.split('/')[1], r]))
+    for (const r of Object.values(rows)) assert.ok(r.live !== true, `${r.slug} must ship with live false`)
+    for (const name of ['heuristics.4thcltr.com', 'papers.4thcltr.com']) {
+      const r = rows[name]
+      // Everything that gates the upload is setup (a failure there deploys and rolls back nothing);
+      // only the steps that touch the live site are deploy steps.
+      assert.deepEqual(r.setup.map((s) => s.name), ['verify', 'release check', 'indexnow plan'])
+      assert.equal(r.deploy[0].name, 'upload')
+      assert.deepEqual(r.deploy[0].command.slice(-2), ['deploy', 'dist'])
+      // Never the default (redeploy the previous commit): the engine refuses a HEAD behind origin/main.
+      assert.ok(Array.isArray(r.rollback), `${name} names its rollback list`)
+      for (const step of r.rollback) assert.ok(step.onlyAfterFailureOf.every((n) => r.deploy.some((d) => d.name === n)))
+    }
+    assert.deepEqual(rows['heuristics.4thcltr.com'].rollback.map((s) => [s.command.join(' '), s.onlyAfterFailureOf.join()]), [['make rollback', 'live check']])
+    assert.deepEqual(rows['papers.4thcltr.com'].rollback, [], 'nothing after the upload can fail papers')
+    // The job-folder tests (verify.sh local) need the owner's assess jobs folder.
+    assert.equal(rows['heuristics.4thcltr.com'].env.ASSESS_JOBS, '~/Developer/gorfednet/assess/jobs')
+    assert.equal(rows['heuristics.4thcltr.com'].deploy.at(-1).name, 'live check')
+    // 4thcltr.com ships only from a release tag: the row says so, and its tag gate runs after the bot's tag (setup is build, not deploy).
+    const site = rows['4thcltr.com']
+    assert.equal(site.mode, 'deploy')
+    assert.deepEqual(site.release, { tagPrefix: 'v' })
+    assert.deepEqual(site.deploy.map((d) => d.name), ['upload', 'live check'])
+    assert.deepEqual(site.rollback.map((r) => [r.command.join(' '), r.onlyAfterFailureOf.join()]), [['make rollback', 'live check']])
+    const config = normalizeConfig(example(), { home: HOME })
+    assert.equal(config.repos.find((r) => r.name === 'heuristics.4thcltr.com').env.ASSESS_JOBS, join(HOME, 'Developer', 'gorfednet', 'assess', 'jobs'))
+  })
+
+  it('release: an optional object with a letters-only tagPrefix; defaults to v; off for every other row', () => {
+    assert.deepEqual(validateConfig(base([deployRepo({ release: {} })])), [])
+    assert.deepEqual(validateConfig(base([deployRepo({ release: { tagPrefix: 'rel' } })])), [])
+    assert.match(problemsFor(base([deployRepo({ release: { tagPrefix: 'v/1' } })])), /tagPrefix: must be up to 8 letters/)
+    assert.match(problemsFor(base([deployRepo({ release: { tag: 'v' } })])), /unknown key "tag"/)
+    assert.match(problemsFor(base([deployRepo({ release: true })])), /release: must be an object/)
+    assert.match(problemsFor(base([deployRepo({ release: {}, pausedIfChanged: ['server/'] })])), /cannot be combined with pausedIfChanged/)
+    assert.match(problemsFor(base([deployRepo({ release: {}, deploy: [{ name: 'a', command: ['x'] }, { name: 'b', command: ['y'], onlyIfChanged: ['s/'] }] })])), /cannot be combined with onlyIfChanged/)
+    const [withRelease, without] = normalizeConfig(base([deployRepo({ release: {} }), { ...deployRepo({ slug: 'gorfednet/b', dir: 'b' }) }]), { home: HOME }).repos
+    assert.deepEqual(withRelease.release, { tagPrefix: 'v' })
+    assert.equal(without.release, null)
+    const mergeOnly = { slug: 'gorfednet/m', dir: 'm', mode: 'merge-only', reason: 'x', claudeReview: true, expectedChecks: ['c'], release: {} }
+    assert.match(problemsFor(base([mergeOnly])), /unknown key "release"/)
+  })
+
+  it('env: names and values are checked, and a GitHub token is refused', () => {
+    assert.deepEqual(validateConfig(base([deployRepo({ env: { ASSESS_JOBS: '~/x' } })])), [])
+    assert.match(problemsFor(base([deployRepo({ env: { lower: 'x' } })])), /env\.lower: a name is capital letters/)
+    assert.match(problemsFor(base([deployRepo({ env: { GH_TOKEN: 'x' } })])), /never hands a step a GitHub token/)
+    assert.match(problemsFor(base([deployRepo({ env: { A: '' } })])), /env\.A: must be a non-empty string/)
+    assert.match(problemsFor(base([deployRepo({ env: ['A'] })])), /env: must be an object/)
+  })
+
+  it('onlyAfterFailureOf: only on rollback steps, and only naming real deploy steps', () => {
+    const rollback = (onlyAfterFailureOf) => [{ name: 'back', command: ['make', 'rollback'], onlyAfterFailureOf }]
+    assert.deepEqual(validateConfig(base([deployRepo({ rollback: rollback(['site']) })])), [])
+    assert.match(problemsFor(base([deployRepo({ rollback: rollback(['sit']) })])), /"sit" is not a deploy step/)
+    assert.match(problemsFor(base([deployRepo({ rollback: rollback([]) })])), /non-empty array of deploy step names/)
+    const onDeploy = deployRepo({ deploy: [{ name: 'site', command: ['make', 'deploy'], onlyAfterFailureOf: ['site'] }] })
+    assert.match(problemsFor(base([onDeploy])), /only rollback steps can be conditional/)
   })
 
   it('the example covers every repository, with the agreed modes', () => {
@@ -48,17 +124,17 @@ describe('config validation', () => {
       'subrythm.com': 'deploy',
       'promptboi.com': 'deploy',
       'bindercurve.com': 'merge-only',
-      '4thcltr.com': 'merge-only',
+      '4thcltr.com': 'deploy',
       ACID2REAPER: 'merge-only',
       '.github': 'merge-only',
       assess: 'merge-only',
       'career-portfolio': 'merge-only',
-      'heuristics.4thcltr.com': 'merge-only',
-      'papers.4thcltr.com': 'merge-only',
+      'heuristics.4thcltr.com': 'deploy',
+      'papers.4thcltr.com': 'deploy',
       TowIt: 'off',
       wychwood: 'off',
-      // Stage 1 of the go-live names ops merge-only, but it has no pull-request CI to gate on (its note says so).
-      ops: 'off',
+      // ops has no test CI; its one check is the Claude review caller's review / review (owner, 11 November 2026).
+      ops: 'merge-only',
     })
   })
 
@@ -76,7 +152,7 @@ describe('config validation', () => {
     assert.deepEqual(config.ntfy, { url: 'https://ntfy.gorfed.net', topic: 'ops-report', tokenFile: join(HOME, '.ship-bot', 'ntfy.token') })
   })
 
-  it('the stage-1 rows are merge-only, reviewed, not live, each with its checks', () => {
+  it('the stage-1 rows are reviewed, not live, each with its checks; heuristics and papers are deploy rows in observation', () => {
     const rows = Object.fromEntries(example().repos.map((r) => [r.slug, r]))
     const stage1 = {
       'gorfednet/assess': ['check', 'capture'],
@@ -87,12 +163,26 @@ describe('config validation', () => {
     for (const [slug, checks] of Object.entries(stage1)) {
       const r = rows[slug]
       assert.ok(r, slug)
-      assert.equal(r.mode, 'merge-only', slug)
+      assert.equal(r.mode, slug.includes('4thcltr') ? 'deploy' : 'merge-only', slug)
       assert.equal(r.claudeReview, true, slug)
       assert.equal(r.live, false, slug)
       assert.deepEqual(r.expectedChecks, checks, slug)
     }
-    assert.match(rows['gorfednet/ops'].note, /no pull-request CI/)
+    // ops: one expected check, the review caller's own job, which proves the workflow ran on the head;
+    // the verdict is review-status.mjs. A draft's run is skipped, and evaluateChecks takes only success
+    // for an expected check, so a draft's head can never satisfy it.
+    assert.deepEqual(rows['gorfednet/ops'].expectedChecks, ['review / review'])
+    assert.equal(rows['gorfednet/ops'].claudeReview, true)
+    assert.equal(rows['gorfednet/ops'].live, false)
+    assert.match(rows['gorfednet/ops'].note, /not on a push/)
+  })
+
+  it('validates coveredChecks like ignoredChecks: an array of non-empty strings, and it is a known repo key', () => {
+    assert.match(problemsFor(base([deployRepo({ coveredChecks: 'x' })])), /coveredChecks: must be an array/)
+    assert.match(problemsFor(base([deployRepo({ coveredChecks: [''] })])), /coveredChecks: must be an array/)
+    assert.deepEqual(validateConfig(base([deployRepo({ coveredChecks: ['browser-compat / compat ('] })])), [])
+    const config = normalizeConfig(base([deployRepo({ coveredChecks: ['a'] }), deployRepo({ slug: 'gorfednet/b', dir: 'b' })]), { home: HOME })
+    assert.deepEqual(config.repos.map((r) => r.coveredChecks), [['a'], []])
   })
 
   it('validates the per-repo live flag, the pass limit, ignoredChecks and ntfy', () => {

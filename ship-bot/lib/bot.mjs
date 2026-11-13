@@ -6,11 +6,13 @@
  * fakes. In a dry run both the GitHub client and the runner are wrapped so a
  * write or a non-gate command throws, whatever the logic below decides.
  */
+import { createHash } from 'node:crypto'
 import { join } from 'node:path'
 import { HOLD_LABEL } from './config.mjs'
 import { DeployLog, deployMerged, envSecrets, matchingFiles, preflight, realFs, selectSteps } from './deploy.mjs'
 import { evaluatePull, ineligibleReason, unmergeableReason } from './gates.mjs'
-import { guardWrites } from './github.mjs'
+import { RateLimitError, guardWrites } from './github.mjs'
+import { planRelease } from './release.mjs'
 import { Redactor } from './redact.mjs'
 import { guardCommands, succeeded } from './runner.mjs'
 import { StateStore } from './state.mjs'
@@ -56,6 +58,11 @@ export async function runOnce(deps) {
     nodePath: deps.nodePath ?? process.execPath,
     baseEnv: deps.baseEnv ?? {},
     fetchImpl: deps.fetchImpl ?? globalThis.fetch,
+    /** cache.mjs ReadCache: gate script answers reused across passes. Optional. */
+    readCache: deps.readCache ?? null,
+    /** Who the pass calls GitHub as; a quota pause is that identity's only. */
+    authAs: deps.authAs ?? 'default',
+    gateStats: { ran: 0, cached: 0 },
     decisions: [],
     /** Shared across repo contexts: merges decided this pass (live: attempted; dry: "would merge"), against maxMergesPerPass. */
     pass: { merges: 0 },
@@ -68,6 +75,11 @@ export async function runOnce(deps) {
 
   const repos = selectRepos(config.repos, deps.repoNames)
   recoverInterruptedDeploys(ctx)
+  if (quotaPaused(ctx)) {
+    stateStore.save()
+    return ctx.decisions
+  }
+  let limited = null
   for (const repo of repos) {
     if (repo.mode === 'off') {
       ctx.say('info', `${repo.slug}: mode off, not looked at`)
@@ -76,12 +88,69 @@ export async function runOnce(deps) {
     try {
       await processRepo(repoContext(ctx, repo, deps), repo)
     } catch (cause) {
+      if (cause instanceof RateLimitError) {
+        limited = cause
+        break
+      }
       ctx.say('error', `${repo.slug}: stopped on an unexpected error: ${cause.message}`)
     }
     stateStore.save()
   }
+  if (limited) await quotaLow(ctx, limited)
+  else delete stateStore.data.rateLimits?.[ctx.authAs]
+  sayUsage(ctx)
   stateStore.save()
   return ctx.decisions
+}
+
+/** A time as the owner reads it: Toronto local, labelled ET. */
+export function easternTime(iso) {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return 'an unknown time'
+  return `${new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Toronto', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(d)} ET`
+}
+
+/**
+ * An earlier pass found the quota (nearly) spent and its reset is still
+ * ahead: this pass makes no GitHub call at all. Returns true when paused.
+ */
+function quotaPaused(ctx) {
+  // One record per identity: the App's quota and the owner's (after a failed mint) are separate.
+  const rl = ctx.state.data.rateLimits?.[ctx.authAs]
+  if (!rl?.resetAt || ctx.clock.now().getTime() >= new Date(rl.resetAt).getTime()) return false
+  ctx.say('warn', `GitHub quota low (${rl.remaining} left at ${easternTime(rl.at)}): not calling GitHub until it resets at ${easternTime(rl.resetAt)}`)
+  return true
+}
+
+/**
+ * Stop the pass on a low quota: one log line every time, the owner's phone
+ * once per episode (an episode ends at the first pass that finishes without
+ * reaching the floor). With no reset time from GitHub, wait 15 minutes.
+ */
+async function quotaLow(ctx, err) {
+  const now = ctx.clock.now()
+  const resetAt = err.resetAt && new Date(err.resetAt) > now ? err.resetAt : new Date(now.getTime() + 15 * 60 * 1000).toISOString()
+  const all = (ctx.state.data.rateLimits ??= {})
+  const first = !all[ctx.authAs]
+  const rl = (all[ctx.authAs] = { at: now.toISOString(), remaining: err.remaining, resetAt, notified: all[ctx.authAs]?.notified ?? false })
+  const text = `GitHub ${err.resource} quota low: ${err.remaining} left. Ship bot stopped this pass and makes no GitHub call until ${easternTime(resetAt)}.`
+  ctx.say('warn', text)
+  if (!first && rl.notified) return
+  if (ctx.dry) {
+    ctx.say('info', `would notify: ${text}`)
+    return
+  }
+  rl.notified = true
+  ctx.state.save()
+  await notify(ctx, text, true)
+}
+
+/** What this pass cost in GitHub calls, one line, so a pass's cost is in the log. */
+function sayUsage(ctx) {
+  const s = ctx.github.stats ?? { requests: '?', notModified: '?' }
+  const core = s.rate?.core
+  const quota = core ? `; core quota ${core.remaining} of ${core.limit} left, resets ${easternTime(core.resetAt)}` : ''
+  ctx.say('info', `GitHub calls this pass: ${s.requests} (${s.notModified} answered 304, which cost nothing); gate scripts run ${ctx.gateStats.ran}, reused ${ctx.gateStats.cached}${quota}`)
 }
 
 /**
@@ -134,6 +203,15 @@ function recoverInterruptedDeploys(ctx) {
   }
 }
 
+/**
+ * The quota floor, checked where stopping loses nothing: before a repository
+ * and before a pull request, never between a merge and what follows it.
+ */
+function checkQuota(ctx) {
+  const low = ctx.github.lowQuota?.()
+  if (low) throw new RateLimitError(low)
+}
+
 /** Has this pass decided as many merges as the config allows? */
 const passLimitReached = (ctx) => ctx.pass.merges >= ctx.config.maxMergesPerPass
 
@@ -155,6 +233,7 @@ async function processRepo(ctx, repo) {
     ctx.say('warn', `${repo.slug}: a live run would refuse this repo until its ${repo.todo.length} TODO(s) are confirmed and removed`)
   }
 
+  checkQuota(ctx)
   const info = await ctx.github.getRepo(repo.slug)
   const defaultBranch = info?.default_branch
   if (!defaultBranch) throw new Error('GitHub did not report a default branch')
@@ -166,6 +245,7 @@ async function processRepo(ctx, repo) {
       ctx.say('debug', `${repo.slug}#${listed.number}: ignored (${skip})`)
       continue
     }
+    checkQuota(ctx)
     const pr = await ctx.github.getPull(repo.slug, listed.number)
     const skip2 = ineligibleReason(pr, repo, defaultBranch, ctx.config.allowedAuthors) ?? unmergeableReason(pr)
     if (skip2) {
@@ -184,7 +264,9 @@ async function processPull(ctx, repo, pr, defaultBranch) {
   const headState = ctx.state.head(repo.slug, pr.number, sha, nowIso)
   const tag = `${repo.slug}#${pr.number} (${short(sha)})`
 
-  const result = await evaluatePull(ctx, repo, pr, { headState })
+  let result = await evaluatePull(ctx, repo, pr, { headState })
+  // A merge never rests on a remembered gate answer: run every script again.
+  if (result.ready && result.cached) result = await evaluatePull(ctx, repo, pr, { headState, fresh: true })
 
   if (!result.ready) {
     for (const block of result.blocks) {
@@ -220,7 +302,21 @@ async function processPull(ctx, repo, pr, defaultBranch) {
     return false
   }
 
-  if (repo.mode === 'deploy') {
+  // A repository that ships only from a release tag merges every ready pull
+  // request, but tags and deploys only one that declares a release. The
+  // declaration is checked before the merge: a bad one must not become a
+  // quiet non-release.
+  let plan = null
+  if (repo.release) {
+    plan = planRelease(repo.release, again.body, await ctx.github.listTags(repo.slug))
+    if (plan.kind === 'invalid') {
+      ctx.say('warn', `${tag}: ready, but not merging: the Release line is wrong: ${plan.reason}`)
+      await postOnce(ctx, repo, pr.number, sha, `release-invalid-${createHash('sha1').update(plan.reason).digest('hex').slice(0, 8)}`, `Ship bot is not merging this: the \`Release:\` line in the description is wrong: ${plan.reason}.\n\nThe line is \`Release: X.Y.Z One sentence.\` on its own line. Fix the description; it checks again every couple of minutes. A pull request with no \`Release:\` line is merged without a tag or a deploy.`)
+      return false
+    }
+  }
+
+  if (repo.mode === 'deploy' && plan?.kind !== 'none') {
     const pf = await deployPreflight(ctx)
     if (!pf.ok) {
       ctx.say('warn', `${tag}: ready, but not merging: the deploy preflight failed this pass (${pf.reason})`)
@@ -235,10 +331,10 @@ async function processPull(ctx, repo, pr, defaultBranch) {
   }
   ctx.pass.merges += 1
   if (ctx.dry) {
-    await dryRunMerge(ctx, repo, pr, tag)
+    await dryRunMerge(ctx, repo, pr, tag, plan)
     return true
   }
-  return liveMerge(ctx, repo, pr, tag)
+  return liveMerge(ctx, repo, pr, tag, plan)
 }
 
 /**
@@ -296,11 +392,18 @@ async function deployPreflight(ctx) {
   return ctx.preflightResult
 }
 
-async function dryRunMerge(ctx, repo, pr, tag) {
+async function dryRunMerge(ctx, repo, pr, tag, plan) {
   ctx.say('info', `${tag}: would merge (merge commit, sha pinned to ${short(pr.head.sha)}) because every gate passed`)
   if (repo.mode === 'merge-only') {
     ctx.say('info', `${tag}: would comment "Merged; deploying is a session's job for this repo (${repo.reason})"`)
     return
+  }
+  if (plan?.kind === 'none') {
+    ctx.say('info', `${tag}: would merge only: no Release line in the description, so no tag and no deploy`)
+    return
+  }
+  if (plan?.kind === 'release') {
+    ctx.say('info', `${tag}: would tag the merge commit ${plan.tag} ("${plan.message}"), push the tag, then deploy it; on success would create the GitHub release ${plan.tag}`)
   }
   // The real deploy diffs the merge commit against its first parent; before
   // merging, the PR's own file list is the closest read-only answer.
@@ -317,12 +420,13 @@ async function dryRunMerge(ctx, repo, pr, tag) {
   )
 }
 
-async function liveMerge(ctx, repo, pr, tag) {
+async function liveMerge(ctx, repo, pr, tag, plan) {
   const sha = pr.head.sha
   const rs = ctx.state.repo(repo.slug)
   // Written before the merge: a crash from here on blocks the repo next run
   // instead of leaving a merged, undeployed commit nobody knows about.
-  if (repo.mode === 'deploy') {
+  const deploys = repo.mode === 'deploy' && plan?.kind !== 'none'
+  if (deploys) {
     rs.deployInProgress = { pr: pr.number, sha, stage: 'merge', startedAt: ctx.clock.now().toISOString() }
     ctx.state.save()
   }
@@ -333,6 +437,14 @@ async function liveMerge(ctx, repo, pr, tag) {
     if (!res?.merged || !res?.sha) throw new Error(res?.message ?? 'GitHub did not confirm the merge')
     mergeSha = res.sha
   } catch (cause) {
+    // GitHub refused the merge for its rate limit: definitely not merged.
+    // Nothing to block or comment (that would spend more); the pass stops.
+    if (cause instanceof RateLimitError) {
+      delete rs.deployInProgress
+      ctx.state.save()
+      ctx.say('warn', `${tag}: not merged: GitHub refused for its rate limit`)
+      throw cause
+    }
     // Only a definite answer from GitHub means "not merged". A timeout or a
     // 5xx may have merged anyway, and a merged commit nobody deploys is worse
     // than a stopped repo, so that case blocks the repo for a person.
@@ -355,8 +467,9 @@ async function liveMerge(ctx, repo, pr, tag) {
   }
   ctx.say('info', `${tag}: merged as ${short(mergeSha)}`)
 
-  if (repo.mode === 'merge-only') {
-    await postOnce(ctx, repo, pr.number, mergeSha, 'merged', `Merged as ${short(mergeSha)}; deploying is a session's job for this repo (${repo.reason}).`)
+  if (!deploys) {
+    const why = repo.mode === 'merge-only' ? `deploying is a session's job for this repo (${repo.reason})` : 'it has no `Release:` line in its description, so it was not tagged and not deployed. A release pull request carries `Release: X.Y.Z One sentence.` on its own line'
+    await postOnce(ctx, repo, pr.number, mergeSha, 'merged', `Merged as ${short(mergeSha)}; ${why}.`)
     ctx.state.forgetPr(repo.slug, pr.number)
     return true
   }
@@ -369,28 +482,31 @@ async function liveMerge(ctx, repo, pr, tag) {
   ctx.redactor.add(envSecrets(repo, ctx.fsx))
   deployLog.write(`[ship-bot] ${repo.slug} #${pr.number}: deploying merge ${mergeSha}\n`)
 
-  const outcome = await deployMerged(ctx, repo, { mergeSha, log: deployLog })
+  const outcome = await deployMerged(ctx, repo, { mergeSha, log: deployLog, release: plan?.kind === 'release' ? plan : null })
   delete rs.deployInProgress
-  await report(ctx, repo, pr, mergeSha, outcome, deployLog)
+  await report(ctx, repo, pr, mergeSha, outcome, deployLog, plan?.kind === 'release' ? plan : null)
   ctx.state.forgetPr(repo.slug, pr.number)
   ctx.state.save()
   return true
 }
 
-async function report(ctx, repo, pr, mergeSha, outcome, deployLog) {
+async function report(ctx, repo, pr, mergeSha, outcome, deployLog, release = null) {
   const rs = ctx.state.repo(repo.slug)
   const tag = `${repo.slug}#${pr.number}`
   const logTail = `<details><summary>Log tail (full log on the owner's Mac: ${deployLog.path})</summary>\n\n\`\`\`\n${deployLog.tail()}\n\`\`\`\n</details>`
   const block = (reason) => {
     rs.blocked = { reason, at: ctx.clock.now().toISOString(), pr: pr.number }
   }
-  const unblock = `The bot will not merge or deploy anything else in this repo until someone checks the site and runs \`ship-bot --unblock ${repo.name}\`.`
+  const tagNote = release && outcome.tagged && outcome.tagged !== 'no' ? ` The tag ${release.tag} was ${outcome.tagged === 'maybe' ? 'possibly ' : ''}pushed to the merge commit and stays there (the bot never deletes a tag); the next release needs a higher version.` : ''
+  const unblock = `${tagNote.trim()}${tagNote ? '\n\n' : ''}The bot will not merge or deploy anything else in this repo until someone checks the site and runs \`ship-bot --unblock ${repo.name}\`.`
   let body
   if (outcome.status === 'deployed') {
     rs.lastDeployedSha = mergeSha
     const skipped = outcome.skipped?.length ? ` Skipped (nothing they cover changed): ${outcome.skipped.join(', ')}.` : ''
-    body = `Merged as ${short(mergeSha)} and deployed: ${outcome.steps.join(', ')}.${skipped}\n\n${logTail}`
+    const tagged = release ? ` Tagged ${release.tag}.` : ''
+    body = `Merged as ${short(mergeSha)} and deployed: ${outcome.steps.join(', ')}.${tagged}${skipped}\n\n${logTail}`
     ctx.say('info', `${tag}: deployed ${short(mergeSha)}`)
+    if (release) await createGitHubRelease(ctx, repo, release)
     await notify(ctx, `${repo.name} #${pr.number} merged and deployed`)
   } else if (outcome.status === 'paused') {
     block(`#${pr.number} changed ${outcome.paused.join(', ')}, which this repo deploys by hand`)
@@ -407,6 +523,11 @@ async function report(ctx, repo, pr, mergeSha, outcome, deployLog) {
     body = `Merged as ${short(mergeSha)}, but the deploy **failed**: ${outcome.error}.\n\nRolled back by ${outcome.rollback.method}: that succeeded. The merge is still on the default branch; the live site is back on the previous release.\n\n${unblock}\n\n${logTail}`
     ctx.say('error', `${tag}: deploy failed, rolled back by ${outcome.rollback.method}`)
     await notify(ctx, `${repo.name} #${pr.number}: deploy FAILED, rolled back`, true)
+  } else if (outcome.status === 'failed-not-rolled-back') {
+    block(`deploy of #${pr.number} failed and nothing was rolled back: ${outcome.error}`)
+    body = `**DEPLOY FAILED AND NOTHING WAS ROLLED BACK.** Merged as ${short(mergeSha)}; step "${outcome.failedStep}" failed (${outcome.error}). The rollback is configured to undo only a failure after the release went live, so the live site may be on the new release, or on a half-switched one. A person needs to check it now.\n\n${unblock}\n\n${logTail}`
+    ctx.say('error', `${tag}: DEPLOY FAILED, NOTHING ROLLED BACK (step "${outcome.failedStep}"): ${outcome.error}`)
+    await notify(ctx, `${repo.name} #${pr.number}: DEPLOY FAILED, nothing rolled back; check the site`, true)
   } else {
     block(`deploy of #${pr.number} failed and the rollback failed too`)
     body = `**DEPLOY FAILED AND THE ROLLBACK FAILED TOO.** Merged as ${short(mergeSha)}; the deploy failed (${outcome.error}), then ${outcome.rollback.method} failed (${outcome.rollback.error}). The live site may be broken or half-updated. A person needs to look now.\n\n${unblock}\n\n${logTail}`
@@ -414,6 +535,15 @@ async function report(ctx, repo, pr, mergeSha, outcome, deployLog) {
     await notify(ctx, `${repo.name} #${pr.number}: DEPLOY AND ROLLBACK FAILED`, true)
   }
   await postOnce(ctx, repo, pr.number, mergeSha, `deploy-${outcome.status}`, body)
+}
+
+/** The GitHub release for a tag the deploy has put live, as `npm run release` does. A failure is one warning: the deploy has already happened. */
+async function createGitHubRelease(ctx, repo, release) {
+  try {
+    await ctx.github.createRelease(repo.slug, { tag: release.tag, name: release.tag, body: release.message })
+  } catch (cause) {
+    ctx.say('warn', `${repo.slug}: deployed ${release.tag}, but creating its GitHub release failed: ${cause.message}`)
+  }
 }
 
 /** The approval link in Tailscale SSH's "requires an additional check" prompt, or null. */

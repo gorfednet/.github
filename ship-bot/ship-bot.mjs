@@ -22,11 +22,13 @@
  * Without --once it keeps running, one pass every two minutes. The LaunchAgent
  * runs it with --once and lets launchd do the scheduling.
  */
-import { chmodSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { runOnce, selectRepos } from './lib/bot.mjs'
 import { ConfigError, expandHome, loadConfig, validateConfig } from './lib/config.mjs'
+import { mintInstallationToken } from './lib/app-auth.mjs'
+import { ReadCache } from './lib/cache.mjs'
 import { createGitHubClient, guardWrites } from './lib/github.mjs'
 import { Redactor } from './lib/redact.mjs'
 import { realRunner, succeeded } from './lib/runner.mjs'
@@ -98,7 +100,9 @@ export function childEnv(env = process.env) {
 
 const defaultDeps = () => ({
   loadConfig,
-  makeGithub: (token) => createGitHubClient({ token }),
+  makeGithub: (token, { cache } = {}) => createGitHubClient({ token, cache }),
+  makeReadCache: (path, clock) => new ReadCache(path, { now: () => clock.now() }).load(),
+  appToken: readAppToken,
   runner: realRunner,
   clock: { now: () => new Date() },
   out: (line) => process.stdout.write(`${line}\n`),
@@ -183,17 +187,22 @@ async function onePass(config, args, deps, print) {
     }
   }
   try {
-    const token = await readToken(config, deps, print)
-    if (!token) return 1
+    const auth = await readAuth(config, deps, print)
+    if (!auth) return 1
+    const { token } = auth
     const state = new StateStore(join(config.stateDir, 'state.json'), { persist: live }).load()
+    // Safe to lose and safe for a dry run to write: it only saves quota.
+    const readCache = deps.makeReadCache(join(config.stateDir, 'read-cache.json'), deps.clock)
     const observe = args.mode === 'observe'
     const banner = live ? 'LIVE' : observe ? 'OBSERVE (config says "live": false: no writes, no deploys)' : 'DRY RUN (no writes, no deploys)'
-    print('info', `${banner} pass over ${config.repos.length} configured repo(s)`)
+    print('info', `${banner} pass over ${config.repos.length} configured repo(s), as ${auth.as}`)
     await runOnce({
       config,
       // Observe is a dry run in every respect but where its decisions go.
       mode: live ? 'live' : 'dry-run',
-      github: deps.makeGithub(token),
+      github: deps.makeGithub(token, { cache: readCache }),
+      readCache,
+      authAs: auth.as,
       runner: deps.runner,
       clock: deps.clock,
       stateStore: state,
@@ -205,6 +214,11 @@ async function onePass(config, args, deps, print) {
         else if (level !== 'debug' || args.verbose) print(level, text)
       },
     })
+    try {
+      readCache.save()
+    } catch (cause) {
+      print('warn', `could not save the read cache: ${cause.message}`)
+    }
     return 0
   } catch (cause) {
     print('error', `pass failed: ${cause.message}`)
@@ -212,6 +226,62 @@ async function onePass(config, args, deps, print) {
   } finally {
     lock.release()
   }
+}
+
+/**
+ * The App's installation token (lib/app-auth.mjs). The private key must sit
+ * outside every repository and clone the bot uses, and be readable by its
+ * owner only.
+ *
+ * A token lasts an hour and is reused until 10 minutes before it expires
+ * (`<stateDir>/app-token.json`, mode 600): GitHub's ETags may differ per
+ * token, and a token minted every pass would make every conditional request a
+ * full-price 200.
+ */
+export async function readAppToken(app, config, { mint = mintInstallationToken, now = () => new Date() } = {}) {
+  const saved = join(config.stateDir, 'app-token.json')
+  try {
+    const s = JSON.parse(readFileSync(saved, 'utf8'))
+    if (s.appId === app.appId && typeof s.token === 'string' && new Date(s.expiresAt).getTime() - now().getTime() > 10 * 60 * 1000) return s.token
+  } catch {
+    // None saved, or unreadable: mint a new one.
+  }
+  const key = app.privateKeyFile
+  for (const root of [config.sourceRoot, config.workRoot]) {
+    if (key === root || key.startsWith(`${root}/`)) throw new Error(`githubApp.privateKeyFile is inside ${root}; keep the key outside every repository`)
+  }
+  const mode = statSync(key).mode
+  if (mode & 0o077) throw new Error(`githubApp.privateKeyFile can be read by other accounts (mode ${(mode & 0o777).toString(8)}); run chmod 600 on it`)
+  const { token, expiresAt } = await mint({ appId: app.appId, privateKeyPem: readFileSync(key, 'utf8'), owner: app.owner, installationId: app.installationId ?? undefined })
+  try {
+    const tmp = `${saved}.tmp-${process.pid}`
+    writeFileSync(tmp, JSON.stringify({ appId: app.appId, token, expiresAt }), { mode: 0o600 })
+    renameSync(tmp, saved)
+  } catch {
+    // Not saved: the next pass mints again, which only costs its ETag hits.
+  }
+  return token
+}
+
+/**
+ * Who the bot calls GitHub as. The App when `githubApp` is configured and its
+ * token mints, with its own quota. Otherwise `gh auth token`, the owner's own
+ * token and quota: the fallback until the App exists, and when minting fails
+ * (an error line every pass, so it is never silent).
+ * @returns {Promise<{token: string, as: string} | undefined>}
+ */
+async function readAuth(config, deps, print) {
+  if (config.githubApp) {
+    try {
+      const token = await deps.appToken(config.githubApp, config)
+      if (typeof token === 'string' && token && !/\s/.test(token)) return { token, as: `GitHub App ${config.githubApp.appId}` }
+      throw new Error('no token returned')
+    } catch (cause) {
+      print('error', `GitHub App token failed (${String(cause.message).slice(0, 300)}); using \`gh auth token\` this pass, which spends the owner's own quota`)
+    }
+  }
+  const token = await readToken(config, deps, print)
+  return token ? { token, as: 'the owner (gh auth token)' } : undefined
 }
 
 /** What one failed `gh auth token` looked like, for the log. Never includes stdout itself, only its length. */
@@ -296,6 +366,21 @@ function setLive(path, value, deps) {
   )
 }
 
+/**
+ * Point the config at the GitHub App (github-app/create.mjs calls this once the
+ * App exists). Validated like every other config change.
+ */
+export function setGithubApp(path, { appId, privateKeyFile }, deps = { out: (line) => process.stdout.write(`${line}\n`) }) {
+  return rewriteConfig(
+    path,
+    (raw) => {
+      raw.githubApp = { appId, privateKeyFile }
+      return `githubApp is now App ${appId} with its key at ${privateKeyFile} in ${path}. The next pass calls GitHub as the App once it is installed.`
+    },
+    deps,
+  )
+}
+
 /** One repo's own switch, matched by slug, name or dir like --repo. */
 function setRepoLive(path, { slug, live }, deps) {
   return rewriteConfig(
@@ -350,8 +435,9 @@ async function validate(config, args, deps, print) {
     deps.out(`ship-bot: ${cause.message}`)
     return 2
   }
-  const token = await readToken(config, deps, print)
-  if (!token) return 1
+  const auth = await readAuth(config, deps, print)
+  if (!auth) return 1
+  const { token } = auth
   const results = await validateExpectedChecks({ config, github: guardWrites(deps.makeGithub(token)), repoNames: args.repos, selectRepos })
   deps.out(new Redactor([token]).apply(formatValidation(results)))
   return results.every((r) => r.ok) ? 0 : 1

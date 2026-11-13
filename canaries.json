@@ -6,8 +6,8 @@
       "guards": "The tempting repair when the shared rules document tripped the share-mount guard was to stop scanning markdown. Prose is in scope on purpose: a README telling someone to mount a share is a deploy path even though it cannot execute. Only the fleet's own rules document, identical in every repository and incapable of carrying a project's deploy instructions, is excused.",
       "command": "node --test 'test/noSmbGuard.test.mjs'",
       "file": "scripts/no-smb-guard.sh",
-      "find": "  --glob '!docs/verification-rules.md'\n  --glob '!**/docs/verification-rules.md'",
-      "replace": "  --glob '!**/*.md'"
+      "find": "    */docs/verification-rules.md) return 0 ;;",
+      "replace": "    *.md) return 0 ;;"
     },
     {
       "id": "backlog-accepts-vague-symptom",
@@ -608,6 +608,14 @@
       "file": "templates/verification-kit/bin/report-outbound-links.mjs",
       "find": "kind: GONE_STATUS.has(answer.status) ? 'gone' : 'unverified'",
       "replace": "kind: 'gone'"
+    },
+    {
+      "id": "sitemap-canonical-compared-loosely",
+      "guards": "A listed URL must be its own canonical to the character. Ignoring the trailing slash lets denseware.com and ssatcy.com pass: they listed /x/ while the page said /x, nginx 301s /x to /x/, and the client sent the reader back.",
+      "command": "node --test 'templates/verification-kit/test/sitemapPages.test.mjs'",
+      "file": "templates/verification-kit/bin/check-sitemap-pages.mjs",
+      "find": "} else if (canonicals[0] !== loc) {",
+      "replace": "} else if (canonicals[0].replace(/\\/+$/, '') !== loc.replace(/\\/+$/, '')) {"
     }
   ]
 }
