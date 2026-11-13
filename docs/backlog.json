@@ -267,6 +267,7 @@
       "id": "cards-at-overwritable-urls",
       "title": "Most sites still declare a social card at a URL that cannot be replaced",
       "status": "in-review",
+      "pr": 98,
       "assignee": "main-model",
       "userSymptom": "A social card fixed and deployed keeps showing the old image when a link is shared, with nothing in the repository left to fix.",
       "evidence": "The vhost serves \\.(png|svg|css|js|...)$ with expires 1y and Cache-Control: public, immutable - confirmed live, max-age=31536000. Any card at a fixed name inherits that, so replacing it in place reaches nobody for up to a year. ssatcy.com is fixed: scripts/generate-og-image.mjs writes og-card-<hash12>.png and rewrites index.html and _headers, so the URL changes exactly when the pixels do. 4thcltr.com/og-image.png is live under the same header and is the next one. The remaining sites are getting a first card, so their URL is new either way - the risk is the SECOND card.",
