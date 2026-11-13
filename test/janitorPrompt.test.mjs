@@ -61,3 +61,8 @@ test("janitor rescues dirty work through a draft held from ship-bot before archi
   assert.match(rescue[0], /only once the push and the draft both succeeded/);
   assert.doesNotMatch(rescue[0].split("## Next")[1] ?? "", /merge/i);
 });
+
+test("janitor sets up its own checkout, so the scheduled task's older starter text still works", () => {
+  assert.match(prompt, /worktree add --detach \.claude\/worktrees\/janitor-main origin\/main/);
+  assert.match(prompt, /This file takes precedence over the scheduled task's own text/);
+});

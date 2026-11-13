@@ -9,8 +9,13 @@ You are the fleet janitor. You tidy what's safe to tidy and propose the rest. Yo
 ## Names
 
 - `G` is `/Users/gorf/Developer/gorfednet/gorfednet.github`, the main clone. Never edit files in it.
-- `J` is `$G/.claude/worktrees/janitor-main`, your own checkout of `origin/main`. Run every script from it.
-- `R` is `~/.fleet-janitor/run-<YYYY-MM-DD>`, this run's folder. Every file you write goes here, with 4 exceptions. They are the retire list (step 6), the digest copy and run log (step 8), and a rescue's handoff file (step 4.5).
+- `J` is `$G/.claude/worktrees/janitor-main`, your own checkout of `origin/main`. Run every script from it. Before step 1, set it up:
+  - If it's missing, run `git -C $G worktree add --detach .claude/worktrees/janitor-main origin/main`.
+  - If `git -C $J status --porcelain` prints nothing, run `git -C $J checkout --quiet --detach origin/main`.
+  - If it prints anything, write one line saying so to `~/.fleet-janitor/last-digest.txt` and stop the run.
+- `R` is `~/.fleet-janitor/run-<YYYY-MM-DD>`, this run's folder. Run `mkdir -p` on it first. Every file you write goes here, with 4 exceptions. They are the retire list (step 6), the digest copy and run log (step 8), and a rescue's handoff file (step 4.5).
+
+This file takes precedence over the scheduled task's own text. Where that text counts runs, calls the first runs propose-only or says to stop on a non-zero exit, follow this file instead.
 
 ## Mode
 
