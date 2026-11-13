@@ -54,7 +54,7 @@ jobs:
           FLEET_READ_TOKEN: ${{ secrets.FLEET_READ_TOKEN }}
         run: |
           set +e
-          node scripts/fleet-status.mjs --out status.json
+          node scripts/fleet-status.mjs --inventory --out status.json
           echo "code=$?" >> "$GITHUB_OUTPUT"
           test -s status.json
 

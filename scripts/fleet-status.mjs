@@ -30,11 +30,20 @@ import { promisify } from 'node:util'
 import { isMain } from '../templates/verification-kit/lib/isMain.mjs'
 import { lapsedBacklog } from './fleet-report.mjs'
 import { backlogIds, collectLocal, duplicatePrs, idlePrs } from './lib/hygiene.mjs'
+import { backlogFromStatus, buildInventory, collectHerdrJobs, collectSessions, collectWorktrees, fetchOpenPrs, planRows, summarizeInventory } from './lib/inventory.mjs'
 import { claudeReviewVerdict } from './lib/reviewVerdict.mjs'
 
 const DAY = 86_400_000
 const FAILED = new Set(['FAILURE', 'TIMED_OUT', 'CANCELLED', 'ACTION_REQUIRED', 'STARTUP_FAILURE', 'ERROR', 'STALE'])
 const INCIDENT_FILES = ['docs/incidents.md', 'docs/ledger.md', 'docs/incident-ledger.md', 'INCIDENTS.md', 'docs/audit/incidents.md', 'docs/audit/ledger.md']
+
+/** Open (not landed, not declined) backlog entries, enough to map them: id, title, status, reviewBy. */
+export function openBacklog(backlog) {
+  const entries = Array.isArray(backlog) ? backlog : (backlog?.entries ?? [])
+  return entries
+    .filter((e) => e && typeof e.id === 'string' && !['landed', 'declined'].includes(e.status) && e.id !== 'example-entry-replace-me')
+    .map((e) => ({ id: e.id, title: String(e.title ?? ''), status: String(e.status ?? ''), reviewBy: typeof e.reviewBy === 'string' ? e.reviewBy : null }))
+}
 
 /** The first unchecked `- [ ]` line under a `## Next` heading, else null. */
 export function nextItem(body) {
@@ -280,6 +289,7 @@ export async function gatherRepo(slug, now = new Date(), { includePrivate = fals
     openPrs,
     branchesAhead,
     lapsedBacklog: lapsed,
+    backlogOpen: openBacklog(backlog),
     idlePrs: idlePrs(raw, now),
     duplicatePrs: backlog === null ? [] : duplicatePrs(raw, backlogIds(backlog)),
     lastDeploy: deploy,
@@ -288,6 +298,43 @@ export async function gatherRepo(slug, now = new Date(), { includePrivate = fals
     kitVersion,
   }
   return isPrivate && !includePrivate ? redactRepo(full) : full
+}
+
+/**
+ * The inventory (plan row 1.17). PRs come from one cached GraphQL search; backlog entries from the rows
+ * above; sessions, worktrees and Herdr jobs only on a run that looked at the Mac. Anything that could not
+ * be read is null ("not measured").
+ */
+export function collectInventory(status, { includePrivate = false, local = false, now = new Date() } = {}) {
+  const readText = (rel) => {
+    try {
+      return readFileSync(new URL(`../${rel}`, import.meta.url), 'utf8')
+    } catch {
+      return null
+    }
+  }
+  const planText = readText('docs/plan-of-record.md') ?? ''
+  const ranking = readText('docs/plan-ranking.json')
+  let prs = null
+  try {
+    prs = fetchOpenPrs({ cacheFile: join(process.env.TMPDIR ?? '/tmp', 'fleet-inventory-prs.json') })
+  } catch (cause) {
+    console.error(`::warning::inventory: pull requests not measured: ${String(cause.message).split('\n')[0]}`)
+  }
+  const backlog = backlogFromStatus(status)
+  const root = join(homedir(), 'Developer', 'gorfednet')
+  const inv = buildInventory({
+    rows: planRows(planText),
+    planText,
+    today: now.toISOString().slice(0, 10),
+    prs,
+    backlog,
+    sessions: local ? collectSessions() : null,
+    worktrees: local ? collectWorktrees(root) : null,
+    jobs: local ? collectHerdrJobs() : null,
+    rankedRepos: ranking ? JSON.parse(ranking).tiers.flatMap((t) => t.repos.map((r) => r.slug)) : [],
+  })
+  return summarizeInventory(inv, { includePrivate, now, privateReposNotItemised: (status.repos ?? []).filter((r) => r.redacted).length })
 }
 
 function arg(name) {
@@ -322,6 +369,9 @@ if (isMain(import.meta.url)) {
     // The `local` object exists only when this run looked at the Mac; its absence means "not measured".
     status.local = collectLocal(join(homedir(), 'Developer', 'gorfednet'), { fetch: !process.argv.includes('--no-fetch') })
     if (status.local.dirtyClones !== null) status.dirtyLocal = status.local.dirtyClones
+  }
+  if (process.argv.includes('--inventory')) {
+    status.inventory = collectInventory(status, { includePrivate: process.argv.includes('--include-private'), local: process.argv.includes('--local'), now })
   }
   writeFileSync(outPath, `${JSON.stringify(status, null, 2)}\n`)
   console.log(`fleet-status: ${repos.length} repositories, ${failed} unavailable -> ${outPath}`)
