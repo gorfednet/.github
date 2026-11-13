@@ -25,8 +25,8 @@
  *     statement itself is excused. The rest of the line is checked, so
  *     "Bugbot retired 2026-10-16, so ask the coordinator session" still
  *     fails, and an off-roster model never passes;
- *   - LINES: exact line fragments in a named file. They excuse retired terms
- *     only; an off-roster model on the same line still fails.
+ *   - LINES: exact line fragments in a named file. Only the fragment is
+ *     excused; a retired term or a model elsewhere on the line still fails.
  *
  * Fails closed. Each of these exits 1: no files in scope, or only excused
  * archives; a named file missing; an allowlist entry without a reason; a LINES
@@ -111,7 +111,7 @@ export const LINES = [
 ]
 
 const RETIRED = [
-  { name: 'Cursor', pattern: /\bCursor\b|\.cursor\b/ },
+  { name: 'Cursor', pattern: /\bCursor\b|\.cursor(?:rules)?\b/ },
   { name: 'Bugbot', pattern: /bugbot/i },
   { name: 'coordinator sessions', pattern: /\bcoordinators?\b/i },
 ]
@@ -228,13 +228,13 @@ export function scan(root, files) {
     const lines = readFileSync(join(root, file), 'utf8').split('\n')
     lines.forEach((line, i) => {
       if (lineFindings(line).length === 0) return
-      // A LINES entry excuses the retired terms on its line and nothing else:
-      // an off-roster model added to an allowlisted line is still reported.
+      // A LINES entry excuses its quoted fragment and nothing else: the
+      // fragment is cut out and the rest of the line is read, so a retired
+      // term or a model added beside it is still reported.
       const excused = LINES.find((l) => l.file === file && line.includes(l.text))
       if (excused) usedLines.add(excused)
-      const found = lineFindings(line, { excuseRetirements: true }).filter(
-        (f) => !(excused && f.startsWith('retired term')),
-      )
+      const rest = excused ? line.replace(excused.text, ' ') : line
+      const found = lineFindings(rest, { excuseRetirements: true })
       for (const what of found) findings.push(`${file}:${i + 1}: ${what}\n    ${line.trim()}`)
     })
   }

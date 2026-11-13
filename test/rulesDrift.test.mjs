@@ -67,6 +67,7 @@ describe('check-rules-drift', () => {
     ['Claude Instant', 'Claude Instant is enough here.'],
     ['a lowercase vendor model id', 'model: gpt-4o'],
     ['a lowercase Gemini id', 'model: gemini-1.5-pro'],
+    ["Cursor's rules file", 'Read .cursorrules first.'],
   ]) {
     it(`fails on ${what} planted in a skill`, () => {
       const r = run(repo({ 'templates/x-skill/SKILL.md': `---\nname: x\n---\n${line}\n` }))
@@ -130,6 +131,19 @@ describe('check-rules-drift', () => {
     assert.equal(r.status, 1, r.out)
     assert.match(r.out, /verification-rules\.md:2: model Opus 4\.6/)
     assert.doesNotMatch(r.out, /retired term/)
+  })
+
+  it('excuses only the fragment of a named line, not a retired term added beside it', () => {
+    const r = run(repo({
+      'docs/verification-rules.md': [
+        'repositories before Bugbot said so on all nine at once',
+        'showed one Bugbot line and looked ready to merge; hand it to the coordinator session',
+        '`.cursor/projects/` path whose workspace has since been renamed',
+      ].join('\n'),
+    }))
+    assert.equal(r.status, 1, r.out)
+    assert.match(r.out, /verification-rules\.md:2: retired term \(coordinator sessions\)/)
+    assert.doesNotMatch(r.out, /\(Bugbot\)/)
   })
 
   it('fails when an allowlisted line has gone, so the allowlist cannot outlive its reason', () => {
