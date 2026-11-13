@@ -3,7 +3,7 @@ import { strict as assert } from 'node:assert'
 import { readFileSync } from 'node:fs'
 import { describe, it } from 'node:test'
 
-import { rankEntries, renderPlan, unranked } from '../scripts/plan-of-record.mjs'
+import { rankEntries, renderPlan, repoReadable, unranked } from '../scripts/plan-of-record.mjs'
 
 const ranking = {
   tiers: [
@@ -48,5 +48,12 @@ describe('unranked', () => {
   it('places every repository in the real fleet', () => {
     const read = (p) => JSON.parse(readFileSync(new URL(p, import.meta.url), 'utf8'))
     assert.deepEqual(unranked(read('../docs/plan-ranking.json'), read('../fleet.json'), read('../ship-bot/config.example.json')), [])
+  })
+})
+
+describe('repoReadable', () => {
+  it('is false when GitHub will not show the repository, so a 404 there is an error, not an empty backlog', () => {
+    assert.equal(repoReadable('o/hidden', () => { throw new Error('HTTP 404') }), false)
+    assert.equal(repoReadable('o/seen', () => 'o/seen'), true)
   })
 })

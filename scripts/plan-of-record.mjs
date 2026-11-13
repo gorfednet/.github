@@ -123,6 +123,15 @@ function arg(name) {
   return at !== -1 ? process.argv[at + 1] : null
 }
 
+export function repoReadable(slug, run = execFileSync) {
+  try {
+    run('gh', ['api', `repos/${slug}`, '--jq', '.full_name'], { stdio: ['ignore', 'pipe', 'pipe'] })
+    return true
+  } catch {
+    return false
+  }
+}
+
 function readBacklog(repo, clones, fetch) {
   const path = repo.backlog ?? 'docs/backlog.json'
   try {
@@ -134,7 +143,10 @@ function readBacklog(repo, clones, fetch) {
     return JSON.parse(execFileSync('gh', ['api', '-H', 'Accept: application/vnd.github.raw', `repos/${repo.slug}/contents/${path}`], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }))
   } catch (cause) {
     const text = String(cause.stderr || cause.message)
-    if (/does not exist in|exists on disk, but not in|HTTP 404/.test(text)) return null
+    if (clones && /does not exist in|exists on disk, but not in/.test(text)) return null
+    // GitHub answers 404 for a missing file, but also for a repository the token can't see or a
+    // wrong slug. Only a readable repository turns a 404 into "keeps no backlog".
+    if (!clones && /HTTP 404/.test(text) && repoReadable(repo.slug)) return null
     throw new Error(`${repo.slug}: could not read ${path}: ${text.trim().split('\n')[0]}`)
   }
 }
