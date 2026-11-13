@@ -21,7 +21,8 @@
 #     first moves ship-bot.log to ship-bot.log.1 once it passes 5 MB.
 #
 # It copies no secrets: the bot reads deploy credentials from each repo's own
-# clone at deploy time and asks `gh auth token` for its GitHub token each run.
+# clone at deploy time, and mints a GitHub App token each run (github-app/,
+# key kept in ~/.ship-bot/), falling back to `gh auth token` until the App exists.
 # No sudo.
 set -euo pipefail
 
@@ -74,7 +75,7 @@ chmod 700 "${BOT_HOME}"
 # Copy the code: into a fresh directory, then swap, so a half-copied app is never run.
 rm -rf "${APP_DIR}.new"
 mkdir -p "${APP_DIR}.new"
-cp -R "${HERE}/ship-bot.mjs" "${HERE}/lib" "${HERE}/config.example.json" "${HERE}/README.md" "${APP_DIR}.new/"
+cp -R "${HERE}/ship-bot.mjs" "${HERE}/lib" "${HERE}/github-app" "${HERE}/config.example.json" "${HERE}/README.md" "${APP_DIR}.new/"
 rm -rf "${APP_DIR}.old"
 if [[ -d "${APP_DIR}" ]]; then mv "${APP_DIR}" "${APP_DIR}.old"; fi
 mv "${APP_DIR}.new" "${APP_DIR}"

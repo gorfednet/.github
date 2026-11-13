@@ -263,6 +263,37 @@ To stop it: add the **`hold`** label to a pull request, or run
   logs. `--set-live true` resumes.
 - **Remove it from the Mac:** `ship-bot/install.sh --uninstall`.
 
+## GitHub quota (13 November 2026)
+
+GitHub allows 5,000 REST calls an hour per account. Until the GitHub App
+exists the bot calls GitHub as the owner, with `gh auth token`, so it shares
+that quota with every session. It keeps its share small:
+
+- **Conditional requests.** Every read carries the ETag of the last answer
+  (`~/.ship-bot/read-cache.json`). GitHub answers an unchanged resource with
+  304, which costs nothing.
+- **Gate scripts reused.** A pull request that waits pass after pass (for a
+  review, say) gets the same answer from the three gate scripts while its head,
+  its last change (`updated_at`) and its checks are unchanged, for up to 10
+  minutes. Before any merge every script runs again for real.
+- **A floor.** Under 200 calls left, the bot stops the pass, logs
+  `GitHub core quota low`, notifies once (Mac and ntfy `ops-report`), and makes
+  no call until the quota resets.
+- **One line per pass** says what it spent: `GitHub calls this pass: N (M
+  answered 304, which cost nothing); gate scripts run K, reused J; core quota
+  R of L left`.
+
+**Its own quota: the GitHub App.** `github-app/manifest.json` describes a
+private App with only what the bot needs (read metadata, checks, commit
+statuses, Actions and issues; write contents, pull requests and workflow
+files, since merging a pull request that changes a workflow needs it).
+`node ~/.ship-bot/app/github-app/create.mjs` creates it in one browser step,
+saves its private key to `~/.ship-bot/github-app.pem` (mode 600, outside every
+repository) and adds `githubApp: { appId, privateKeyFile }` to the config.
+Once the App is installed on the gorfednet account (a user account, so the script uses the user "new App" page), each pass mints an installation
+token and the log's pass line ends `as GitHub App <id>`. If minting fails, the
+pass logs an error and falls back to `gh auth token`.
+
 ## Where to look
 
 - **What it decided and why:** `~/.ship-bot/logs/ship-bot.log` (one line per
@@ -312,6 +343,20 @@ browsers included, and failed 18 papers verify specs on 11 November 2026 (PR
 It should fail with "No value at that key path". If it prints `Background`,
 re-run `ship-bot/install.sh` so the loaded plist matches this file. (`active
 count` in `launchctl print` is no use here: the job is idle between runs.)
+
+**13 November 2026:** a row whose steps need `node_modules` must install it.
+That means an npm, npx, pnpm, yarn or vite step, or a `make` step over a
+package.json that declares packages. It installs with a setup step (`npm ci`,
+or any `make` target, which is trusted to install) or lists `node_modules` in
+`preserve`. The workspace clean removes it before every deploy, and before the
+default rollback (gorfmusic.com 49). The bot checks this before the merge,
+against the owner's clone. It checks again after setup, against the merge
+commit, before any deploy step runs. Every deploy row in the bot's work root
+also syncs the `gorfednet.github` helper checkout to `origin/main`, listed in
+`siblings` or not, as part of preparing the workspace after the merge.
+`site-deploy.sh` refuses to run from a stale copy of itself (MoonMan 324). A
+row with a custom `workDir` gets no implied sibling. `docs/handoff/2026-11-13-deploy-root-causes.md` has the four
+causes.
 
 A dry run reads GitHub (it runs the verification kit's read-only gate scripts)
 but posts nothing, merges nothing and runs no deploy. `--live` acts only when

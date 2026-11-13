@@ -1,0 +1,16 @@
+#!/bin/bash
+# Thin wrapper: runs scripts/gates/assert-checks-started.mjs with the repository and token set.
+# Installed as a symlink in ~/.local/bin by scripts/install-gates.sh.
+set -u
+src=$0
+while [ -L "$src" ]; do
+  dir=$(cd "$(dirname "$src")" && pwd)
+  src=$(readlink "$src")
+  case "$src" in /*) ;; *) src="$dir/$src" ;; esac
+done
+here=$(cd "$(dirname "$src")" && pwd)
+. "$here/_gate-env.sh"
+gate_prepare_env assert-checks-started "$@"
+# Every gate gets the same repository: --repo wins, else GITHUB_REPOSITORY (set above).
+if ! gate_has_repo_flag "$@"; then set -- "$@" --repo "$GITHUB_REPOSITORY"; fi
+exec node "$here/../assert-checks-started.mjs" "$@"
