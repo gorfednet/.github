@@ -11,7 +11,7 @@ import os from 'node:os'
 import { join } from 'node:path'
 import { HOLD_LABEL, READY_LABEL } from './config.mjs'
 import { DeployLog, deployMerged, envSecrets, matchingFiles, preflight, realFs, selectSteps } from './deploy.mjs'
-import { draftClaim, draftIneligibleReason } from './drafts.mjs'
+import { controlPlaneFiles, draftClaim, draftIneligibleReason } from './drafts.mjs'
 import { evaluatePull, ineligibleReason, unmergeableReason } from './gates.mjs'
 import { RateLimitError, guardWrites } from './github.mjs'
 import { planRelease } from './release.mjs'
@@ -286,9 +286,23 @@ async function processPull(ctx, repo, pr, defaultBranch) {
   const own = await botLabelStillEarned(ctx, repo, pr, tag)
   if (!own) return false
 
-  let result = await evaluatePull(ctx, repo, pr, { headState })
+  // A pull request the bot readied or labelled itself is no person's
+  // sign-off (plan row 1.12). Its head must change no control-plane path, and
+  // in a repo that deploys its review must be clean: a reply from an
+  // allowlisted login (every session posts as the owner) is not a triage.
+  const byBot = await botReadiedIt(ctx, repo, pr)
+  if (byBot) {
+    const touched = controlPlaneFiles(await ctx.github.listPullFiles(repo.slug, pr.number), repo.slug)
+    if (touched.length > 0) {
+      ctx.say('info', `${tag}: not merging: the bot readied it and this head changes control-plane paths (${listPaths(touched)}); a person labels it`)
+      await postOnce(ctx, repo, pr.number, sha, 'control-plane', controlPlaneComment(touched, 'merge this'))
+      return false
+    }
+  }
+  const requireClean = repo.mode === 'deploy' && byBot
+  let result = await evaluatePull(ctx, repo, pr, { headState, requireClean })
   // A merge never rests on a remembered gate answer: run every script again.
-  if (result.ready && result.cached) result = await evaluatePull(ctx, repo, pr, { headState, fresh: true })
+  if (result.ready && result.cached) result = await evaluatePull(ctx, repo, pr, { headState, fresh: true, requireClean })
   if (result.ready && headState.readiedAt && (ctx.clock.now() - new Date(headState.readiedAt)) / 60000 < ctx.config.reviewGraceMinutes) {
     ctx.say('debug', `${tag}: not merging: the bot marked this draft ready at ${headState.readiedAt}; giving the ready-for-review review time to start`)
     return false
@@ -406,6 +420,36 @@ async function botLabelStillEarned(ctx, repo, pr, tag) {
   return false
 }
 
+const listPaths = (paths) => `${paths.slice(0, 5).join(', ')}${paths.length > 5 ? ', ...' : ''}`
+
+const controlPlaneComment = (paths, what) =>
+  `Ship bot will not ${what}: it changes control-plane paths, which change what merges unattended (plan row 1.12):\n\n${paths.slice(0, 20).map((p) => `- \`${p}\``).join('\n')}${paths.length > 20 ? '\n- ...' : ''}\n\n${
+    what === 'merge this'
+      ? `The bot readied this pull request, so relabelling it does not lift this on any later commit. A session that has read the diff moves the change to a fresh pull request and labels that one.`
+      : `The session that owns this pull request marks it ready and adds \`${READY_LABEL}\` itself, after reading the diff and a clean or triaged review.`
+  }`
+
+/**
+ * Did the bot ready or label this pull request itself? From the state file,
+ * or, when that was lost, from the bot's own draft-ready comment. Once true it
+ * stays true: `takenBack` (set when a label comes off, by a person or by the
+ * bot itself after a push) decides only who owns a later label, never
+ * whether these guards apply, since every session labels as the owner's
+ * login (round 2 on #156). A control-plane change that must merge goes in a
+ * fresh pull request.
+ */
+async function botReadiedIt(ctx, repo, pr) {
+  const prState = ctx.state.pr(repo.slug, pr.number)
+  if (prState.botLabelled || prState.botReadied) return true
+  const comments = await ctx.github.listIssueComments(repo.slug, pr.number)
+  const found = comments.some((c) => isBotLogin(ctx, c.user) && (c.body ?? '').startsWith(DRAFT_READY_COMMENT))
+  if (found) {
+    prState.botReadied = { sha: null, at: 'rebuilt-from-draft-ready-comment' }
+    ctx.state.save()
+  }
+  return found
+}
+
 /**
  * The state file can be lost; the bot's own draft-ready comment cannot. With
  * no record, a `ship-bot:labelled:<sha>` marker on the pull request (written
@@ -489,8 +533,17 @@ async function takeDraft(ctx, repo, listed, defaultBranch) {
     ctx.say('debug', `${tag}: draft left alone (${refused ?? 'no merge line under ## Next'})`)
     return
   }
+  // A draft that changes the gates, CI or the bot itself waits for a person
+  // (plan row 1.12). The file list is read for this head; a push after it
+  // moves the head, and processPull drops a bot label from a moved head.
+  const touched = controlPlaneFiles(await ctx.github.listPullFiles(repo.slug, pr.number), repo.slug)
+  if (touched.length > 0) {
+    ctx.say('info', `${tag}: draft left alone (${claim}): it changes control-plane paths (${listPaths(touched)}); a person labels it`)
+    await postOnce(ctx, repo, pr.number, sha, 'control-plane', controlPlaneComment(touched, 'mark this draft ready'))
+    return
+  }
   const headState = ctx.state.head(repo.slug, pr.number, sha, ctx.clock.now().toISOString())
-  const result = await evaluatePull(ctx, repo, pr, { headState, draft: true })
+  const result = await evaluatePull(ctx, repo, pr, { headState, draft: true, requireClean: repo.mode === 'deploy' })
   if (!result.ready) {
     for (const block of result.blocks) {
       ctx.say(block.kind === 'wait' ? 'debug' : 'info', `${tag}: not marking ready (${claim}): ${block.reason}`)
@@ -528,6 +581,9 @@ async function takeDraft(ctx, repo, listed, defaultBranch) {
     ctx.state.save()
   }
   await ctx.github.markReady(pr.node_id)
+  // Remembered whoever owns the label: a draft a person had labelled is still
+  // one the bot readied, so the merge path keeps its guards (round 1 on #156).
+  prState.botReadied = { sha, at: ctx.clock.now().toISOString() }
   // Leaving draft fires ready_for_review, which starts a second Claude review
   // of this head; processPull holds the head until that run has had time to
   // appear among the checks (reviewer finding on #119).
