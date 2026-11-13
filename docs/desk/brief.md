@@ -29,3 +29,4 @@ At 02:00 ET, or past 150k tokens: write `docs/desk/<date>.md` (decisions, open t
 
 ## Reporting to the owner
 Status, what's outstanding, next milestone with ET time, done. A few lines. Commands only when they are his next step, one per code block. Never send him to GitHub.
+Checklist (owner, 13 Nov 2026: "can you give me a checklist and surface it every deploy?"): keep `docs/desk/checklist.md` on `desk-log` current and phone-short. Post it in chat on every pass and every time ship-bot deploys a repo: tick what landed, add a line for each new item.

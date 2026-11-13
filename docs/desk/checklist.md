@@ -1,6 +1,6 @@
 # Fleet checklist (Desk keeps this current; posted to the owner on every pass and every deploy)
 
-Updated 13 Nov 2026, 10:12 ET.
+Updated 13 Nov 2026, 10:35 ET.
 
 ## Bottlenecks
 - [ ] Ship-bot API use cut from about 1,800 to about 100 calls an hour (.github 143, labelled, merges after the 10:23 ET reset)
@@ -11,7 +11,7 @@ Updated 13 Nov 2026, 10:12 ET.
 - [x] Cloud start failure explained: an Anthropic overload (.github 142, labelled)
 
 ## Control plane
-- [ ] Gate commands on PATH (1.7, .github 141, review pending)
+- [ ] Gate commands on PATH (1.7, .github 141, labelled 10:28 ET)
 - [ ] Briefs folder and handoff (1.1, .github 133)
 - [ ] Rules drift guard (5.4, cloud session running)
 - [ ] Janitor live with auto-close (1.5, queued)
