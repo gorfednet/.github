@@ -26,6 +26,7 @@ import { chmodSync, existsSync, readFileSync, renameSync, statSync, writeFileSyn
 import { join } from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { runOnce, selectRepos } from './lib/bot.mjs'
+import { ping as heartbeat } from './lib/heartbeat.mjs'
 import { ConfigError, expandHome, loadConfig, validateConfig } from './lib/config.mjs'
 import { mintInstallationToken } from './lib/app-auth.mjs'
 import { ReadCache } from './lib/cache.mjs'
@@ -219,9 +220,11 @@ async function onePass(config, args, deps, print) {
     } catch (cause) {
       print('warn', `could not save the read cache: ${cause.message}`)
     }
+    if (args.mode !== 'dry-run') await (deps.heartbeat ?? heartbeat)('ship-bot')
     return 0
   } catch (cause) {
     print('error', `pass failed: ${cause.message}`)
+    if (args.mode !== 'dry-run') await (deps.heartbeat ?? heartbeat)('ship-bot', { ok: false })
     return 1
   } finally {
     lock.release()

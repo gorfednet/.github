@@ -33,3 +33,8 @@ test("janitor step 4 proposes, never archives, sessions whose PR closed unmerged
 test("janitor step 4 has its own propose-only period and run counter", () => {
   assert.match(prompt, /own propose-only period[^\n]*sweep-runs/);
 });
+
+test("janitor pings its dead-man check last, after the digest", () => {
+  assert.match(prompt, /\n6\. Last of all, ping the dead-man check: `node scripts\/heartbeat\.mjs janitor`/);
+  assert.ok(prompt.indexOf("\n5. Post the digest") < prompt.indexOf("\n6. Last of all"));
+});

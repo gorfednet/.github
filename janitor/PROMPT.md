@@ -34,6 +34,7 @@ The first 3 runs are `--propose-only`: do steps 1 and 2, then post what you woul
    - Handoff files are under `docs/`, so the step 3 allowlist applies to them, but this step only opens a draft and never labels it.
    - The sweep has its own propose-only period, separate from step 3's. Count sweep runs in `~/.fleet-janitor/sweep-runs` (append one line each time you reach this step). In the first 3 sweep runs, include what you would archive or write in the digest instead of acting. From the 4th, act.
 5. Post the digest to ntfy `ops-report`, last, after steps 3 and 4: at most 10 lines, what you did (including sessions archived) and what you propose. Times in ET.
+6. Last of all, ping the dead-man check: `node scripts/heartbeat.mjs janitor` from the `gorfednet.github` clone. Do it even when there was nothing to do; a day with no ping is what alerts. It prints `unconfigured` until `~/.heartbeats/janitor.url` exists, which is fine.
 
 ## Only propose, never do
 

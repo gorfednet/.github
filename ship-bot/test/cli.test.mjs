@@ -45,6 +45,23 @@ function harness({ live = true, lock, pulls = [], github = new FakeGitHub({ pull
 }
 
 describe('command line', () => {
+  it('pings its heartbeat after a live pass, and /fail when the pass throws; a hand dry run does not ping', async () => {
+    const calls = []
+    const h = harness({ live: true, pulls: [makePr()] })
+    h.deps.heartbeat = async (name, opts = {}) => { calls.push([name, opts.ok ?? true]) }
+    assert.equal(await main(['--live', '--once'], h.deps), 0)
+    assert.deepEqual(calls, [['ship-bot', true]])
+    const d = harness({ live: true, pulls: [makePr()] })
+    d.deps.heartbeat = async () => { calls.push('dry') }
+    await main(['--once'], d.deps)
+    assert.equal(calls.length, 1, 'dry run must not ping')
+    const bad = harness({ live: true })
+    bad.deps.heartbeat = async (name, opts = {}) => { calls.push([name, opts.ok ?? true]) }
+    bad.deps.makeGithub = () => { throw new Error('boom') }
+    assert.equal(await main(['--live', '--once'], bad.deps), 1)
+    assert.deepEqual(calls.at(-1), ['ship-bot', false])
+  })
+
   it('defaults to a dry run', () => {
     assert.equal(parseArgs([]).mode, 'dry-run')
   })
