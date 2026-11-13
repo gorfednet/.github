@@ -8,8 +8,9 @@
  * `## Next` line), branches ahead of the default branch with no pull request, lapsed
  * backlog dates, the last successful deploy run, incident lines dated in the last
  * 7 days, dependabot pull requests that are red or unreviewed, and whether the
- * default branch is red. `--local` adds clones under ~/Developer/gorfednet with
- * uncommitted or unpushed work. `--from` reuses an earlier status.json for the
+ * default branch is red. `--local` adds the Mac rows (`local`: dirty clones,
+ * clones behind origin, worktrees over 7 days, sessions idle over 24 h; `--no-fetch` skips the git fetch).
+ * Hosted rows per repository: `idlePrs` (untouched over 3 days) and `duplicatePrs` (two open PRs naming one backlog id). `--from` reuses an earlier status.json for the
  * repositories (so --local can be added to a fresh copy without asking GitHub again).
  *
  * A private repository's row is reduced to its slug and counts (`redacted: true`),
@@ -21,13 +22,14 @@
  * FLEET_READ_TOKEN or GH_TOKEN.
  */
 import { execFile, execFileSync } from 'node:child_process'
-import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
+import { readFileSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
 
 import { isMain } from '../templates/verification-kit/lib/isMain.mjs'
 import { lapsedBacklog } from './fleet-report.mjs'
+import { backlogIds, collectLocal, duplicatePrs, idlePrs } from './lib/hygiene.mjs'
 import { claudeReviewVerdict } from './lib/reviewVerdict.mjs'
 
 const DAY = 86_400_000
@@ -179,6 +181,9 @@ export function redactRepo(full) {
     mainRed: full.mainRed,
     openPrCount: full.openPrs.length,
     lapsedBacklogCount: full.lapsedBacklog.length,
+    noPrCount: full.branchesAhead.length,
+    idlePrCount: full.idlePrs.length,
+    duplicatePrCount: full.duplicatePrs.length,
     dependabotRedCount: full.dependabotRed,
     // A version number is not private; the fleet-wide check needs it from every row.
     kitVersion: full.kitVersion,
@@ -226,7 +231,7 @@ export async function gatherRepo(slug, now = new Date(), { includePrivate = fals
   const isPrivate = isPrivateRepo(repo)
   const raw = json([
     'pr', 'list', '--repo', slug, '--state', 'open', '--limit', '100',
-    '--json', 'number,title,createdAt,labels,isDraft,headRefName,headRefOid,body,author',
+    '--json', 'number,title,createdAt,updatedAt,labels,isDraft,headRefName,headRefOid,body,author',
   ])
   const openPrs = raw.map((p) => {
     const comments = json(['api', '--paginate', '--slurp', `repos/${slug}/issues/${p.number}/comments?per_page=100`]).flat()
@@ -252,7 +257,8 @@ export async function gatherRepo(slug, now = new Date(), { includePrivate = fals
     .map((branch, i) => (counts[i] === null ? { branch, ahead: 0, unrelated: true } : { branch, ahead: counts[i] }))
     .filter((b) => b.unrelated || b.ahead > 0)
   const backlogText = fileText(slug, 'docs/backlog.json', json)
-  const lapsed = backlogText === null ? [] : lapsedBacklog(JSON.parse(backlogText), today)
+  const backlog = backlogText === null ? null : JSON.parse(backlogText)
+  const lapsed = backlog === null ? [] : lapsedBacklog(backlog, today)
   const deploy = latestDeploy(slug, (path) => json(['api', path]))
   let incidents = 0
   for (const path of INCIDENT_FILES) {
@@ -274,35 +280,14 @@ export async function gatherRepo(slug, now = new Date(), { includePrivate = fals
     openPrs,
     branchesAhead,
     lapsedBacklog: lapsed,
+    idlePrs: idlePrs(raw, now),
+    duplicatePrs: backlog === null ? [] : duplicatePrs(raw, backlogIds(backlog)),
     lastDeploy: deploy,
     incidents7d: incidents,
     dependabotRed: dependabotRed(openPrs),
     kitVersion,
   }
   return isPrivate && !includePrivate ? redactRepo(full) : full
-}
-
-/** Clones with uncommitted or unpushed work. */
-export function dirtyLocal(root) {
-  const out = []
-  const git = (dir, ...args) => execFileSync('git', ['-C', dir, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
-  for (const name of readdirSync(root).sort()) {
-    const dir = join(root, name)
-    if (!existsSync(join(dir, '.git'))) continue
-    try {
-      const dirty = git(dir, 'status', '--porcelain').split('\n').filter(Boolean).length
-      let unpushed = 0
-      try {
-        unpushed = Number(git(dir, 'rev-list', '--count', '@{u}..HEAD').trim())
-      } catch {
-        unpushed = 0 // no upstream
-      }
-      if (dirty > 0 || unpushed > 0) out.push({ dir: name, branch: git(dir, 'branch', '--show-current').trim() || '(detached)', uncommitted: dirty, unpushed })
-    } catch {
-      /* not a readable clone */
-    }
-  }
-  return out
 }
 
 function arg(name) {
@@ -333,7 +318,11 @@ if (isMain(import.meta.url)) {
   // With --from the repository data is the earlier snapshot's, so its generatedAt is kept.
   const prior = arg('--from') ? JSON.parse(readFileSync(arg('--from'), 'utf8')).generatedAt : null
   const status = { generatedAt: prior ?? now.toISOString(), renderedAt: now.toISOString(), repos }
-  if (process.argv.includes('--local')) status.dirtyLocal = dirtyLocal(join(homedir(), 'Developer', 'gorfednet'))
+  if (process.argv.includes('--local')) {
+    // The `local` object exists only when this run looked at the Mac; its absence means "not measured".
+    status.local = collectLocal(join(homedir(), 'Developer', 'gorfednet'), { fetch: !process.argv.includes('--no-fetch') })
+    status.dirtyLocal = status.local.dirtyClones
+  }
   writeFileSync(outPath, `${JSON.stringify(status, null, 2)}\n`)
   console.log(`fleet-status: ${repos.length} repositories, ${failed} unavailable -> ${outPath}`)
   if (failed > 0) process.exit(1)

@@ -4,14 +4,15 @@
  */
 import { strict as assert } from 'node:assert'
 import { spawnSync } from 'node:child_process'
-import { mkdtempSync, readFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, it } from 'node:test'
 
+import { behindClones, dirtyClones, duplicatePrs, idlePrs, idleSessions, oldWorktrees } from '../scripts/lib/hygiene.mjs'
 import { aheadCounts, ciState, collectRepo, dependabotRed, isPrivateRepo, latestDeploy, nextItem, recentLines, redactRepo, repoList } from '../scripts/fleet-status.mjs'
 import { workflowTriggers } from '../scripts/lib/workflowTriggers.mjs'
-import { digest, etStamp, lowerMeridiem, render, summaryLine } from '../scripts/write-status-md.mjs'
+import { digest, etStamp, hygiene, lowerMeridiem, render, summaryLine } from '../scripts/write-status-md.mjs'
 
 const fixture = JSON.parse(readFileSync(new URL('./fixtures/status.fixture.json', import.meta.url), 'utf8'))
 const schema = JSON.parse(readFileSync(new URL('../scripts/lib/status.schema.json', import.meta.url), 'utf8'))
@@ -168,7 +169,7 @@ describe('STATUS.md', () => {
     assert.ok(isPrivateRepo({ private: false }), 'unknown visibility counts as private')
     assert.ok(!isPrivateRepo({ private: false, visibility: 'public' }))
     const row = redactRepo(full)
-    assert.deepEqual(row, { slug: full.slug, redacted: true, mainRed: false, openPrCount: 2, lapsedBacklogCount: 1, dependabotRedCount: 1, kitVersion: null })
+    assert.deepEqual(row, { slug: full.slug, redacted: true, mainRed: false, openPrCount: 2, lapsedBacklogCount: 1, noPrCount: 1, idlePrCount: 1, duplicatePrCount: 0, dependabotRedCount: 1, kitVersion: null })
     const text = JSON.stringify(row)
     for (const leak of ['title', 'branch', 'url', 'next', 'Fix the nav', 'feat/old', 'stale-entry', 'actions/runs']) assert.ok(!text.includes(leak), leak)
     assert.deepEqual(validate({ generatedAt: 'x', renderedAt: 'x', repos: [row] }, schema), [])
@@ -253,5 +254,90 @@ describe('fleet-status.yml', () => {
     assert.ok(steps.length >= 7, names.join(', '))
     // checkout, setup-node, the token check and the read itself run only when everything before them passed.
     for (const step of steps.slice(4)) assert.match(step, /if: \$\{\{ !cancelled\(\) \}\}/, step.split('\n')[0])
+  })
+})
+
+describe('hygiene rows', () => {
+  const now = Date.parse('2026-11-13T12:00:00Z')
+  it('a hosted run has no local object: the Mac rows say "not measured", never 0', () => {
+    const hosted = structuredClone(fixture)
+    delete hosted.local
+    delete hosted.dirtyLocal
+    const rows = Object.fromEntries(hygiene(hosted).map((h) => [h.row, h.count]))
+    for (const row of ['Dirty clones', 'Clones behind origin', 'Worktrees over 7 days', 'Sessions idle over 24 h']) assert.equal(rows[row], null, row)
+    assert.equal(rows['PRs idle over 3 days'], 1)
+    assert.match(render(hosted), /\| Dirty clones \| not measured \|/)
+  })
+  it('an older snapshot without a hosted field is not measured, not 0', () => {
+    const old = structuredClone(fixture)
+    delete old.repos[1].idlePrs
+    assert.equal(hygiene(old).find((h) => h.row === 'PRs idle over 3 days').count, null)
+  })
+  it('counts the fixture and a null local row stays not measured', () => {
+    const rows = Object.fromEntries(hygiene(fixture).map((h) => [h.row, h.count]))
+    assert.deepEqual(rows, { 'Dirty clones': 1, 'Clones behind origin': 1, 'Branches with no PR': 2, 'Worktrees over 7 days': 1, 'PRs idle over 3 days': 1, 'Sessions idle over 24 h': null, 'Backlog entries past reviewBy': 2, 'Duplicate PRs per backlog id': 1 })
+    assert.match(render(fixture), /Sessions idle over 24 h: not measured/)
+  })
+  it('idlePrs keeps only PRs untouched over 3 days', () => {
+    const at = (d) => new Date(now - d * 86_400_000).toISOString()
+    assert.equal(idlePrs([{ number: 1, updatedAt: at(3.5) }], now).length, 0, 'a whole 3 days is not over 3')
+    assert.equal(idlePrs([{ number: 1, updatedAt: at(4) }, { number: 2, updatedAt: at(1) }], now).length, 1)
+  })
+  it('duplicatePrs needs two PRs naming the same whole backlog id, and ignores short or partial ids', () => {
+    const prs = [
+      { number: 1, title: 'fix fleet-registry-sync', headRefName: 'a' },
+      { number: 2, title: 'x', headRefName: 'claude/fleet-registry-sync' },
+      { number: 3, title: 'fleet-registry-sync-v2 docs', headRefName: 'b' },
+      { number: 4, title: 'ci pool', headRefName: 'c' },
+      { number: 5, title: 'ci pool again', headRefName: 'd' },
+    ]
+    assert.deepEqual(duplicatePrs(prs, ['fleet-registry-sync', 'ci-pool', 'pool']), [{ id: 'fleet-registry-sync', prs: [1, 2] }])
+  })
+  it('idleSessions is null for a missing store or no readable file, and skips archived and recent sessions', () => {
+    assert.equal(idleSessions(join(tmpdir(), 'no-such-sessions-dir'), now), null)
+    const dir = mkdtempSync(join(tmpdir(), 'sessions-'))
+    mkdirSync(join(dir, 'a', 'b'), { recursive: true })
+    assert.equal(idleSessions(dir, now), null)
+    const put = (name, s) => writeFileSync(join(dir, 'a', 'b', name), JSON.stringify(s))
+    put('local_old.json', { sessionId: 'local_old', title: 't', lastActivityAt: now - 30 * 3_600_000 })
+    put('local_new.json', { sessionId: 'local_new', lastActivityAt: now - 3_600_000 })
+    put('local_arch.json', { sessionId: 'local_arch', isArchived: true, lastActivityAt: now - 99 * 3_600_000 })
+    assert.deepEqual(idleSessions(dir, now), [{ id: 'local_old', title: 't', idleHours: 30 }])
+  })
+  it('dirty, behind and old-worktree rows read real git state', () => {
+    const root = mkdtempSync(join(tmpdir(), 'clones-'))
+    const sh = (cwd, ...a) => spawnSync('git', ['-c', 'user.email=a@b.c', '-c', 'user.name=t', ...a], { cwd, encoding: 'utf8' })
+    const origin = join(root, 'origin.git')
+    sh(root, 'init', '-q', '--bare', '-b', 'main', origin)
+    const clones = join(root, 'clones')
+    mkdirSync(clones)
+    const c = join(clones, 'c')
+    sh(clones, 'clone', '-q', origin, 'c')
+    sh(c, 'commit', '-q', '--allow-empty', '-m', 'one')
+    sh(c, 'push', '-q', 'origin', 'main')
+    assert.deepEqual(dirtyClones(clones), [])
+    assert.deepEqual(behindClones(clones).behind, [])
+    // planted: an untracked file, a second clone pushing ahead, and a worktree
+    writeFileSync(join(c, 'x'), 'x')
+    assert.equal(dirtyClones(clones)[0].uncommitted, 1)
+    const other = join(root, 'other')
+    sh(root, 'clone', '-q', origin, 'other')
+    sh(other, 'commit', '-q', '--allow-empty', '-m', 'two')
+    sh(other, 'push', '-q', 'origin', 'main')
+    assert.deepEqual(behindClones(clones).behind, [{ dir: 'c', branch: 'main', behind: 1 }])
+    const wt = join(root, 'wt')
+    sh(c, 'worktree', 'add', '-q', '-b', 'w', wt)
+    assert.deepEqual(oldWorktrees(clones, Date.now()).old, [])
+    const later = oldWorktrees(clones, Date.now() + 8 * 86_400_000).old
+    assert.equal(later.length, 1)
+    assert.ok(later[0].ageDays >= 8)
+    // a linked worktree that sits beside the clones is one worktree, not another clone to count behind
+    sh(c, 'worktree', 'add', '-q', '-b', 'w2', join(clones, 'w2'))
+    assert.deepEqual(behindClones(clones, { fetch: false }).behind.map((b) => b.dir), ['c'])
+    assert.equal(oldWorktrees(clones, Date.now() + 8 * 86_400_000).old.length, 2)
+    // a clone git cannot read is reported unread, not clean
+    mkdirSync(join(clones, 'broken', '.git'), { recursive: true })
+    assert.deepEqual(behindClones(clones, { fetch: false }).unread, ['broken'])
+    assert.deepEqual(oldWorktrees(clones).unread, ['broken'])
   })
 })
