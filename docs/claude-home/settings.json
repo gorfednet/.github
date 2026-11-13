@@ -50,7 +50,6 @@
       "Bash(hc server status)",
       "Bash(hc --help)",
       "Bash(hc --version)",
-      "Bash(gate-run *)",
       "Bash(builder-ok *)",
       "Bash(fleet-status *)",
       "Bash(node scripts/*)",
@@ -111,7 +110,13 @@
       "Bash(gate-run *gh api*/merge*)",
       "Bash(gate-run *gh api*mergePullRequest*)",
       "Bash(gate-run *gh api*AutoMerge*)",
-      "Bash(gate-run *rm -rf /*)"
+      "Bash(gate-run *rm -rf /*)",
+      "Bash(git push*--force*)",
+      "Bash(git push* -f*)",
+      "Bash(git push* -uf*)",
+      "Bash(gh api *repos/*/merges*)",
+      "Bash(hc *git push* -uf*)",
+      "Bash(gate-run *git push* -uf*)"
     ],
     "defaultMode": "auto"
   },
