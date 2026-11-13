@@ -6,7 +6,7 @@ Public summary for Desk. Most entries live in private repositories, so the entry
 
 - Read 218 open typed entries across 23 backlogs.
 - Applied 77 changes through one backlog-only PR in each of 16 repositories, plus 8 here. Fixes found on main became `landed` with their PR. Duplicates collapsed into one survivor each. Lapsed dates were renewed with a reason or closed. Closed entries lost stale dates.
-- Lapsed entries: 66 before, about 2 once the PRs merge. The 2 left belong to open PRs (here: #106).
+- Lapsed entries: 66 before, about 1 once the PRs merge. It belongs to the open draft #106.
 - 12 judgement calls wait for Desk in the ops handoff, each with a recommendation.
 
 ## Here
