@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { existsSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, it } from 'node:test'
 import {
@@ -149,6 +149,17 @@ describe('gate (b): every check and status finished green', () => {
     const s = scenario({ github: gh })
     await s.run()
     assert.equal(merges(gh).length, 1)
+  })
+
+  it('coveredChecks only quiets --validate: the merge gate still requires every expectedChecks entry', async () => {
+    const entry = repoEntry({ expectedChecks: ['check / check', 'browser-compat / compat-success'], coveredChecks: ['browser-compat / compat ('] })
+    const children = greenRuns(['check / check', 'browser-compat / compat (chromium)'])
+    const blocked = new FakeGitHub({ runs: children })
+    await scenario({ github: blocked, repos: [entry] }).run()
+    assert.equal(merges(blocked).length, 0, 'the aggregate is missing, so the children do not stand in for it')
+    const ok = new FakeGitHub({ runs: [...children, ...greenRuns(['browser-compat / compat-success'])] })
+    await scenario({ github: ok, repos: [entry] }).run()
+    assert.equal(merges(ok).length, 1)
   })
 
   it('a check run named for Bugbot is judged like any other check now that Bugbot is retired', async () => {
@@ -564,6 +575,57 @@ describe('deploying', () => {
     assert.match(bodies(s.github)[0], /Rolled back by redeploying the previous commit ccccccc: that succeeded/)
   })
 
+  it('rollback steps marked onlyAfterFailureOf run only after a failure in a listed deploy step', async () => {
+    const steps = [
+      { name: 'upload', command: ['npm', 'run', 'upload'] },
+      { name: 'live check', command: ['npm', 'run', 'live'] },
+    ]
+    const rollback = [{ name: 'previous release', command: ['make', 'rollback'], onlyAfterFailureOf: ['live check'] }]
+    const failing = (name) => makeRunner({ handle: (cmd) => (cmd.kind === 'deploy' && cmd.args.at(-1) === name ? { code: 1 } : undefined) })
+
+    const afterLive = failing('live')
+    const a = scenario({ runner: afterLive, repos: [repoEntry({ deploy: steps, rollback })] })
+    await a.run()
+    assert.deepEqual(afterLive.commandLines('rollback'), ['make rollback'])
+    assert.match(bodies(a.github)[0], /Rolled back by rollback steps: that succeeded/)
+
+    // A failure in the upload publishes nothing that make rollback should undo: it must not step the live site back.
+    const afterUpload = failing('upload')
+    const b = scenario({ runner: afterUpload, repos: [repoEntry({ deploy: steps, rollback })] })
+    await b.run()
+    assert.deepEqual(afterUpload.commandLines('rollback'), [])
+    assert.equal(afterUpload.ofKind('deploy').length, 1, 'the live check never ran after the failed upload')
+    // Nothing was rolled back, and the comment must not say it was: the site may be on the new release.
+    const [body] = bodies(b.github)
+    assert.match(body, /DEPLOY FAILED AND NOTHING WAS ROLLED BACK/)
+    assert.match(body, /may be on the new release/)
+    assert.doesNotMatch(body, /Rolled back by|back on the previous release/)
+    assert.match(b.runner.ofKind('notify')[0].args[1], /nothing rolled back; check the site/)
+    assert.match(b.state().repo(SLUG).blocked.reason, /nothing was rolled back/)
+  })
+
+  it('an explicit empty rollback list rolls nothing back (the default redeploy is only for a row with no list)', async () => {
+    const runner = makeRunner({ handle: (cmd) => (cmd.kind === 'deploy' ? { code: 1 } : undefined) })
+    const s = scenario({ runner, repos: [repoEntry({ rollback: [] })] })
+    await s.run()
+    assert.deepEqual(runner.commandLines('rollback'), [])
+    assert.ok(!runner.commandLines('workspace').some((l) => l.endsWith(`checkout --force --detach ${PARENT}`)), 'the previous commit is not checked out')
+    assert.match(bodies(s.github)[0], /NOTHING WAS ROLLED BACK/)
+  })
+
+  it('env is given to setup, deploy and rollback steps, on top of the bot environment', async () => {
+    const runner = makeRunner({ handle: (cmd) => (cmd.kind === 'deploy' ? { code: 1 } : undefined) })
+    const s = scenario({
+      runner,
+      repos: [repoEntry({ env: { ASSESS_JOBS: '/jobs' }, rollback: [{ name: 'back', command: ['make', 'rollback'] }] })],
+    })
+    await s.run()
+    for (const kind of ['setup', 'deploy', 'rollback']) {
+      const [call] = runner.ofKind(kind)
+      assert.equal(call.env.ASSESS_JOBS, '/jobs', `${kind} step`)
+    }
+  })
+
   it('reports loudly when the rollback fails too, and never retries', async () => {
     const runner = makeRunner({ handle: (cmd) => (cmd.kind === 'deploy' || cmd.kind === 'rollback' ? { code: 1 } : undefined) })
     const s = scenario({ runner })
@@ -633,6 +695,85 @@ describe('deploying', () => {
     await s.run()
     assert.equal(merges(s.github).length, 0)
     assert.match(bodies(s.github)[0], /missing\.js does not exist/)
+  })
+
+  // gorfmusic.com 49, 12 November 2026: setup was [], so the cleaned workspace
+  // had no node_modules and `make deploy` died on "Cannot find package 'vite'",
+  // and so did the rollback. Refused before the merge now, with nothing deployed.
+  describe('a step that needs node_modules with no setup to install them', () => {
+    const withPackages = (s) => writeFileSync(join(s.home, 'src', 'site', 'package.json'), JSON.stringify({ devDependencies: { vite: '^8.0.0' } }))
+
+    it('refuses to merge a make deploy over a package.json with packages and setup: []', async () => {
+      const s = scenario({ repos: [repoEntry({ setup: [] })] })
+      withPackages(s)
+      await s.run()
+      assert.equal(merges(s.github).length, 0)
+      assert.equal(s.runner.ofKind('deploy').length, 0)
+      assert.match(bodies(s.github)[0], /step "site" need node_modules, which the workspace clean removes, and no setup step installs it/)
+      assert.equal(s.state().repo(SLUG).blocked, undefined, 'refused before the merge, so nothing is blocked')
+    })
+
+    it('refuses an npm step whatever package.json says, and names every step that needs packages', async () => {
+      const s = scenario({ repos: [repoEntry({ setup: [], deploy: [{ name: 'site', command: ['npm', 'run', 'deploy'] }, { name: 'ping', command: ['sh', '-c', 'npx indexnow || true'] }] })] })
+      await s.run()
+      assert.equal(merges(s.github).length, 0)
+      assert.match(bodies(s.github)[0], /steps "site", "ping" need node_modules/)
+    })
+
+    it('merges when setup runs npm ci, a make target, or preserve keeps node_modules', async () => {
+      for (const row of [{}, { setup: [{ name: 'verify', command: ['make', 'verify'] }] }, { setup: [], preserve: ['node_modules'] }]) {
+        const s = scenario({ repos: [repoEntry(row)] })
+        withPackages(s)
+        await s.run()
+        assert.equal(merges(s.github).length, 1, JSON.stringify(row))
+      }
+    })
+
+    it('counts an install by program name, after flags and inside sh -c, and not yarn build or npm run ci', async () => {
+      for (const [setup, merged] of [
+        [[{ name: 'i', command: ['/opt/homebrew/bin/npm', 'ci'] }], 1],
+        [[{ name: 'i', command: ['sh', '-c', 'npm ci && npm run build'] }], 1],
+        [[{ name: 'i', command: ['npm', '--prefix', 'app', 'ci'] }], 1],
+        [[{ name: 'b', command: ['yarn', 'build'] }], 0],
+        [[{ name: 'b', command: ['sh', '-c', 'npm run build'] }], 0],
+        [[{ name: 'r', command: ['npm', 'run', 'ci'] }], 0],
+      ]) {
+        const s = scenario({ repos: [repoEntry({ setup, deploy: [{ name: 'site', command: ['npm', 'run', 'deploy'] }] })] })
+        await s.run()
+        assert.equal(merges(s.github).length, merged, JSON.stringify(setup))
+      }
+    })
+
+    it('after setup, refuses to deploy a merge commit whose package.json needs packages that setup did not install', async () => {
+      // The owner clone said no packages, so the merge went ahead; the merge commit adds one.
+      const s = scenario({ repos: [repoEntry({ setup: [] })] })
+      mkdirSync(join(s.home, 'work', 'site'), { recursive: true })
+      writeFileSync(join(s.home, 'work', 'site', 'package.json'), JSON.stringify({ dependencies: { vite: '^8.0.0' } }))
+      await s.run()
+      assert.equal(merges(s.github).length, 1)
+      assert.equal(s.runner.ofKind('deploy').length, 0, 'no deploy step ran')
+      assert.equal(s.runner.ofKind('rollback').length, 0, 'nothing to roll back')
+      assert.match(s.state().repo(SLUG).blocked.reason, /setup left no node_modules/)
+    })
+
+    it('merges a make deploy with setup: [] when package.json declares no packages (a static site)', async () => {
+      const s = scenario({ repos: [repoEntry({ setup: [] })] })
+      writeFileSync(join(s.home, 'src', 'site', 'package.json'), JSON.stringify({ scripts: { deploy: 'rsync' } }))
+      await s.run()
+      assert.equal(merges(s.github).length, 1)
+    })
+  })
+
+  // MoonMan 324, 13 November 2026: its row listed no siblings, so the helper
+  // checkout was whatever an earlier deploy left, behind origin/main, and
+  // site-deploy.sh refused to publish.
+  it('syncs the shared helper checkout for a row that lists no siblings', async () => {
+    const s = scenario({ repos: [repoEntry()] })
+    await s.run()
+    const ws = s.runner.commandLines('workspace')
+    const helper = join(s.home, 'work', 'gorfednet.github')
+    assert.ok(ws.includes(`git -C ${helper} checkout --force --detach origin/main`), ws.join('\n'))
+    assert.ok(ws.indexOf(`git -C ${helper} checkout --force --detach origin/main`) < ws.findIndex((l) => l.endsWith(MERGE)))
   })
 
   it('a git token never appears in argv: it is passed to git through the environment', async () => {
@@ -1052,5 +1193,159 @@ describe('maxMergesPerPass', () => {
     assert.equal(s.config.maxMergesPerPass, 2)
     await s.run()
     assert.equal(merges(s.github).length, 2)
+  })
+})
+
+describe('release tags (a repository that ships only from a tag)', () => {
+  const REL = { tagPrefix: 'v' }
+  const withBody = (body) => new FakeGitHub({ pulls: [makePr({ body })] })
+  const relScenario = (body, { tags = ['v3.9.5', 'v3.9.6'], runner = makeRunner(), ...rest } = {}) => {
+    const github = withBody(body)
+    github.tags = tags
+    return scenario({ github, runner, repos: [repoEntry({ release: REL, rollback: [{ name: 'previous release', command: ['make', 'rollback'] }], ...rest })] })
+  }
+  const RELEASE_LINE = 'Adds the thing.\n\nRelease: 3.9.7 The site reads the new figures.\n'
+
+  it('merges, tags the merge commit with the sentence, pushes the tag, then deploys, in that order', async () => {
+    const s = relScenario(RELEASE_LINE)
+    await s.run()
+    assert.equal(merges(s.github).length, 1)
+    const ws = s.runner.commandLines('workspace')
+    const tagAt = ws.findIndex((l) => l.includes('tag -f -a v3.9.7 -m The site reads the new figures. ' + MERGE))
+    const pushAt = ws.findIndex((l) => l.endsWith('push origin refs/tags/v3.9.7'))
+    const describeAt = ws.findIndex((l) => l.endsWith('describe --tags --exact-match HEAD'))
+    assert.ok(tagAt > 0 && pushAt > tagAt && describeAt > pushAt, ws.join('\n'))
+    // The tag exists before the build, which stamps the version from it.
+    const order = s.runner.calls.map((c) => c.kind)
+    assert.ok(order.indexOf('workspace') < order.indexOf('setup') && describeAt < ws.length)
+    assert.ok(s.runner.calls.findIndex((c) => c.args?.includes('describe')) < s.runner.calls.findIndex((c) => c.kind === 'setup'))
+    assert.deepEqual(s.runner.commandLines('deploy'), ['make deploy'])
+    assert.match(bodies(s.github)[0], /deployed: site\. Tagged v3\.9\.7\./)
+    assert.deepEqual(s.github.writes.filter((w) => w.name === 'createRelease'), [{ name: 'createRelease', slug: SLUG, release: { tag: 'v3.9.7', name: 'v3.9.7', body: 'The site reads the new figures.' } }])
+    assert.ok(!s.runner.calls.some((c) => c.args?.some((a) => a === '--force' || a === '-f') && c.args.includes('push')), 'the push never forces')
+  })
+
+  it('a pull request with no Release line is merged and nothing else: no tag, no deploy, no ssh preflight', async () => {
+    const s = relScenario('Just a fix.\n')
+    await s.run()
+    assert.equal(merges(s.github).length, 1)
+    assert.equal(s.runner.ofKind('workspace').length, 0)
+    assert.equal(s.runner.ofKind('deploy').length, 0)
+    assert.equal(s.runner.ofKind('preflight').length, 0)
+    assert.match(bodies(s.github)[0], /not tagged and not deployed/)
+    assert.equal(s.state().repo(SLUG).blocked, undefined)
+  })
+
+  it('refuses to merge a wrong declaration: not higher than the newest tag, a tag that exists, a bad version, two lines, no sentence', async () => {
+    const bad = {
+      'Release: 3.9.6 Same as the newest.': /tag v3\.9\.6 already exists/,
+      'Release: 3.9.2 Older than the newest.': /must be higher than the newest tag v3\.9\.6/,
+      'Release: v3.9.7 Leading v.': /not a bare X\.Y\.Z/,
+      'Release: 3.9.7 One.\nRelease: 3.9.8 Two.': /2 "Release:" lines/,
+      'Release: 3.9.7': /needs a version and a sentence/,
+      'release: 3.9.7 Lower case.': /needs a version and a sentence/,
+      '- Release: 3.9.7 In a list.': /needs a version and a sentence/,
+      'Release: next One sentence.': /is not a bare X\.Y\.Z/,
+      '`Release: 3.9.7 In backticks.`': /needs a version and a sentence/,
+      '## Release: 3.9.7 Heading.': /needs a version and a sentence/,
+      '1. Release: 3.9.7 Numbered.': /needs a version and a sentence/,
+      '> Release: 3.9.7 Quoted.': /needs a version and a sentence/,
+      '**Release:** 3.9.7 Bold.': /needs a version and a sentence/,
+      ' Release: 3.9.7 Leading space.': /needs a version and a sentence/,
+      'Release 3.9.7 No colon, so it is a plain description.': null,
+    }
+    for (const [body, expected] of Object.entries(bad)) {
+      const s = relScenario(body)
+      await s.run()
+      if (expected === null) {
+        assert.equal(merges(s.github).length, 1, 'a description without the colon is not a declaration')
+        continue
+      }
+      assert.equal(merges(s.github).length, 0, body)
+      assert.equal(s.runner.ofKind('deploy').length, 0, body)
+      assert.match(bodies(s.github)[0], expected, body)
+    }
+    const exists = relScenario('Release: 3.9.7 Taken.', { tags: ['v3.9.6', 'v3.9.7'] })
+    await exists.run()
+    assert.equal(merges(exists.github).length, 0)
+    assert.match(bodies(exists.github)[0], /tag v3\.9\.7 already exists/)
+  })
+
+  it('a tag that cannot be pushed deploys nothing, blocks the repo and says nothing live changed', async () => {
+    const runner = makeRunner({ handle: (cmd) => (cmd.kind === 'workspace' && cmd.args.includes('push') ? { code: 1, stderr: 'rejected' } : undefined) })
+    const s = relScenario(RELEASE_LINE, { runner })
+    await s.run()
+    assert.equal(runner.ofKind('setup').length, 0)
+    assert.equal(runner.ofKind('deploy').length, 0)
+    const [body] = bodies(s.github)
+    assert.match(body, /did not start\*\*: tagging v3\.9\.7 failed/)
+    assert.match(body, /Nothing live was changed/)
+    assert.match(body, /possibly pushed/)
+    assert.ok(s.state().repo(SLUG).blocked)
+    assert.equal(s.github.writes.filter((w) => w.name === 'createRelease').length, 0)
+  })
+
+  it('the tag note follows what happened: nothing before the tag, "possibly" at the push, definite after it', async () => {
+    const early = relScenario(RELEASE_LINE, { runner: makeRunner({ handle: (cmd) => (cmd.args?.includes('fetch') ? { code: 1 } : undefined) }) })
+    await early.run()
+    assert.doesNotMatch(bodies(early.github)[0], /tag v3\.9\.7 was/)
+    const localOnly = relScenario(RELEASE_LINE, { runner: makeRunner({ handle: (cmd) => (cmd.args?.includes('tag') && cmd.args?.includes('-a') ? { code: 1 } : undefined) }) })
+    await localOnly.run()
+    assert.match(bodies(localOnly.github)[0], /tagging v3\.9\.7 failed/)
+    assert.doesNotMatch(bodies(localOnly.github)[0], /tag v3\.9\.7 was/)
+    const late = relScenario(RELEASE_LINE, { runner: makeRunner({ handle: (cmd) => (cmd.kind === 'setup' ? { code: 1 } : undefined) }) })
+    await late.run()
+    assert.match(bodies(late.github)[0], /tag v3\.9\.7 was pushed to the merge commit/)
+  })
+
+  it('an edited description that is wrong for a new reason gets a new comment', async () => {
+    const s = relScenario('Release: 3.9.6 x')
+    await s.run()
+    s.github.pulls[0].body = 'Release: v3.9.7 x'
+    await s.run()
+    assert.equal(bodies(s.github).length, 2)
+    assert.match(bodies(s.github)[1], /not a bare X\.Y\.Z/)
+  })
+
+  it('a failed deploy after the tag is rolled back, keeps the tag, creates no GitHub release and blocks the repo', async () => {
+    const runner = makeRunner({ handle: (cmd) => (cmd.kind === 'deploy' ? { code: 1 } : undefined) })
+    const s = relScenario(RELEASE_LINE, { runner })
+    await s.run()
+    assert.deepEqual(runner.commandLines('rollback'), ['make rollback'])
+    const [body] = bodies(s.github)
+    assert.match(body, /Rolled back by rollback steps/)
+    assert.match(body, /tag v3\.9\.7 was pushed to the merge commit and stays there/)
+    assert.equal(s.github.writes.filter((w) => w.name === 'createRelease').length, 0)
+    assert.ok(s.state().repo(SLUG).blocked)
+    assert.ok(!runner.commandLines('workspace').some((l) => l.includes('tag -d') || l.includes('--delete') || l.includes(':refs/tags')), 'a pushed tag is never deleted')
+  })
+
+  it('a GitHub release that fails to create is one warning; the deploy still counts', async () => {
+    const s = relScenario(RELEASE_LINE)
+    s.github.createRelease = async () => {
+      throw new Error('boom')
+    }
+    await s.run()
+    assert.match(bodies(s.github)[0], /deployed: site/)
+    assert.ok(s.logs.some((l) => /creating its GitHub release failed: boom/.test(l)))
+    assert.equal(s.state().repo(SLUG).blocked, undefined)
+  })
+
+  it('a dry run (observe) says it would tag and deploy, and changes nothing', async () => {
+    const s = relScenario(RELEASE_LINE)
+    await s.run('dry-run')
+    assert.equal(s.github.writes.length, 0)
+    assert.equal(s.runner.calls.filter((c) => c.kind !== 'gate' && c.kind !== 'auth').length, 0)
+    assert.ok(s.logs.some((l) => /would tag the merge commit v3\.9\.7 \("The site reads the new figures\."\), push the tag, then deploy it/.test(l)), s.logs.join('\n'))
+    const none = relScenario('plain')
+    await none.run('dry-run')
+    assert.ok(none.logs.some((l) => /would merge only: no Release line/.test(l)))
+  })
+
+  it('a row with no release key still deploys every merge (nothing changes for other repositories)', async () => {
+    const s = scenario({ github: withBody('Release: nonsense') })
+    await s.run()
+    assert.deepEqual(s.runner.commandLines('deploy'), ['make deploy'])
+    assert.equal(s.runner.commandLines('workspace').filter((l) => l.includes(' tag ')).length, 0)
   })
 })
