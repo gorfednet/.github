@@ -7,7 +7,7 @@
  * local row that could not be read is null for the same reason.
  */
 import { execFileSync } from 'node:child_process'
-import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync, realpathSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, join } from 'node:path'
 
@@ -215,9 +215,23 @@ export function collectLocal(root, { fetch = true, now = Date.now(), sessionsDir
   const d = dirtyClones(root)
   const b = behindClones(root, { fetch })
   const w = oldWorktrees(root, now)
-  const t = installedTools({ home, root, launchAgents })
-  // Behind counts read the refs the clones-behind fetch refreshed: no fetch, or a failed one in a tool's clone, is not a measurement.
-  const toolsFetched = fetch && t.repos.every((r) => !b.fetchFailed.includes(basename(r)))
+  let t
+  try {
+    t = installedTools({ home, root, launchAgents })
+  } catch (cause) {
+    t = { behind: [], checked: 0, unread: [`installed tools: ${String(cause.message).split('\n')[0]}`], repos: [] }
+  }
+  // Behind counts read the refs the clones-behind fetch refreshed: no fetch, a failed one, or a tool's clone
+  // the clones-behind row does not fetch (not directly under the root) is not a measurement. Nothing found is too.
+  const real = (p) => {
+    try {
+      return realpathSync(p)
+    } catch {
+      return p
+    }
+  }
+  const fetchedClones = new Set(primaryClones(root).map((n) => real(join(root, n))))
+  const toolsFetched = fetch && t.checked > 0 && t.repos.every((r) => fetchedClones.has(real(r)) && !b.fetchFailed.includes(basename(r)))
   return {
     measuredAt: new Date(now).toISOString(),
     dirtyClones: some && d.unread.length === 0 ? d.dirty : null,

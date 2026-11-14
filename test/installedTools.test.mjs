@@ -101,6 +101,15 @@ describe('installed tools behind main', () => {
     assert.match(b.detail, /matches no committed version of gorfednet\.github\/capacity\/capacity\.mjs/)
   })
 
+  it('a tools worktree on a branch or with edited tracked files is flagged though not behind', () => {
+    const f = fixture()
+    writeFileSync(join(f.gates, 'bin', 'tool'), '#!/bin/sh\necho edited\n')
+    assert.match(run(f).behind[0].detail, /tracked files changed/)
+    sh(f.gates, 'checkout', '-q', '--', 'bin/tool')
+    sh(f.gates, 'checkout', '-q', '-b', 'local')
+    assert.match(run(f).behind[0].detail, /on branch local/)
+  })
+
   it('links outside the clone root are ignored (node, hc)', () => {
     const f = fixture()
     symlinkSync('/usr/bin/true', join(f.home, '.local', 'bin', 'true'))
@@ -114,5 +123,7 @@ describe('installed tools behind main', () => {
     const measured = collectLocal(f.root, { home: f.home, launchAgents: f.agents, sessionsDir: none })
     assert.equal(measured.installedTools.length, 2)
     assert.equal(collectLocal(f.root, { fetch: false, home: f.home, launchAgents: f.agents, sessionsDir: none }).installedTools, null)
+    const empty = join(f.top, 'empty-home')
+    assert.equal(collectLocal(f.root, { home: empty, launchAgents: f.agents, sessionsDir: none }).installedTools, null, 'no tool found is not a clean Mac')
   })
 })

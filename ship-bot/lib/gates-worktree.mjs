@@ -57,6 +57,9 @@ export async function advanceGatesWorktree({ path, git }) {
   const head = await run(['rev-parse', 'HEAD'])
   if (head.code !== 0) return { ok: false, reason: `${path} is not a git worktree (${first(head)})` }
   const before = head.stdout.trim()
+  // A folder that lost its .git file resolves to the enclosing clone: never move that one.
+  const prefix = await run(['rev-parse', '--show-prefix'])
+  if (prefix.code !== 0 || prefix.stdout.trim() !== '') return { ok: false, reason: `${path} is not the root of a worktree (git resolves it inside another checkout)` }
   const dirty = await run(['status', '--porcelain', '--untracked-files=no'])
   if (dirty.code !== 0) return { ok: false, reason: `cannot read the state of ${path} (${first(dirty)})` }
   if (dirty.stdout.trim() !== '') return { ok: false, reason: `${path} has uncommitted changes, so it was not advanced; the tools there still run ${before.slice(0, 7)}` }
@@ -88,13 +91,15 @@ export async function advanceGatesWorktree({ path, git }) {
     }
     if (collide.length > 0) {
       // `git clean` on exactly the colliding paths: each was just shown identical to the committed file.
-      const clean = await run(['clean', '-q', '-f', '--', ...collide])
+      // --literal-pathspecs: a path with * ? [ removes only itself, never a file it would match as a pattern.
+      const clean = await run(['--literal-pathspecs', 'clean', '-q', '-f', '--', ...collide])
       if (clean.code !== 0) return { ok: false, reason: `cannot clear the untracked copies in ${path} (${first(clean)})` }
       cleared.push(...collide)
     }
   }
 
-  const out = await run(['checkout', '--detach', target])
+  // --no-overwrite-ignore: an ignored file main now adds is refused too, never replaced unchecked.
+  const out = await run(['checkout', '--no-overwrite-ignore', '--detach', target])
   if (out.code !== 0) return { ok: false, reason: `git checkout --detach origin/main failed in ${path} (${first(out)})` }
   const after = await run(['rev-parse', 'HEAD'])
   if (after.code !== 0 || after.stdout.trim() !== target) return { ok: false, reason: `${path} is not at origin/main ${target.slice(0, 7)} after the checkout` }
@@ -102,7 +107,11 @@ export async function advanceGatesWorktree({ path, git }) {
 }
 
 /** Paths whose change on main means the installed bot (its code or its gate-scripts copy) is out of date. */
-export const OWN_INSTALL_PATHS = ['ship-bot', 'scripts']
+export const OWN_INSTALL_PATHS = [
+  // What install.sh copies into ~/.ship-bot/app, and nothing else: a test or a doc change is not a stale bot.
+  'ship-bot/ship-bot.mjs', 'ship-bot/patch-config.mjs', 'ship-bot/patches', 'ship-bot/lib', 'ship-bot/github-app',
+  'scripts/review-status.mjs', 'scripts/gates/assert-checks-started.mjs', 'scripts/gates/check-closing-keywords.mjs', 'scripts/lib',
+]
 
 /**
  * Is the installed bot behind main (plan row 1.18)? On 13 November 2026 the bot

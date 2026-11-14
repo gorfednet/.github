@@ -666,11 +666,20 @@ async function advanceTools(ctx, repo) {
     result = { ok: false, reason: `unexpected error: ${cause.message}` }
   }
   if (result.ok) {
+    if (ctx.state.data.toolsRefused?.[wt.name]) {
+      delete ctx.state.data.toolsRefused[wt.name]
+      ctx.state.save()
+    }
     const cleared = result.cleared ? `, after clearing ${result.cleared.length} untracked files identical to the committed ones` : ''
     ctx.say('info', `${wt.tools}: ${wt.path} ${result.changed ? 'advanced to' : 'already at'} origin/main ${short(result.sha)}${cleared}`)
     return
   }
   ctx.say('error', `${wt.tools} not advanced: ${result.reason}`)
+  // One notification per distinct reason: a clash that needs a person would otherwise ring on every merge.
+  const memo = (ctx.state.data.toolsRefused ??= {})
+  if (memo[wt.name] === result.reason) return
+  memo[wt.name] = result.reason
+  ctx.state.save()
   await notify(ctx, `${wt.tools} are stale after a ${repo.slug} merge: ${result.reason}`, true)
 }
 
@@ -696,7 +705,7 @@ async function checkOwnInstall(ctx, installedSha) {
     return
   }
   if (r.state === 'current') return
-  const text = `installed ship-bot (${short(installedSha)}) is behind origin/main: ${short(r.latest)} changed ship-bot/ or scripts/. Reinstall with ship-bot/install.sh from gates-main`
+  const text = `installed ship-bot (${short(installedSha)}) is behind origin/main: ${short(r.latest)} changed what install.sh copies, so the bot runs old code until it is reinstalled`
   ctx.say('warn', text)
   const memo = (ctx.state.data.ownInstall ??= {})
   if (memo.notifiedFor === r.latest || ctx.dry) return

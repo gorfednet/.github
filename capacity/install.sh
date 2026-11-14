@@ -29,6 +29,9 @@ require_gates_main() {
   if git -C "$1" symbolic-ref -q HEAD >/dev/null || [ "$(git -C "$1" rev-parse HEAD)" != "$(git -C "$1" rev-parse --verify -q refs/remotes/origin/main)" ]; then
     echo "capacity/install.sh: $top must be detached at origin/main; run git -C $top fetch origin && git -C $top checkout --detach origin/main" >&2; exit 1
   fi
+  if [ -n "$(git -C "$1" status --porcelain --untracked-files=no)" ]; then
+    echo "capacity/install.sh: $top has changed tracked files; it must match origin/main exactly" >&2; exit 1
+  fi
 }
 [[ "${CAPACITY_INSTALL_ANY_CHECKOUT:-0}" == "1" ]] || require_gates_main "${HERE}"
 NODE_BIN="$(node -p 'process.execPath')"

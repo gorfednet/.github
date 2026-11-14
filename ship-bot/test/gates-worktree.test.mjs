@@ -99,6 +99,31 @@ describe('advanceGatesWorktree: the checkout behind the gate commands on PATH fo
     assert.equal(g(f.wt, 'status', '--porcelain'), '?? jobs/')
   })
 
+  it('clears a colliding path with glob characters literally, never a file it would match', async () => {
+    const f = fixture()
+    mkdirSync(join(f.other, 'jobs'), { recursive: true })
+    writeFileSync(join(f.other, 'jobs', 'a[12].json'), 'x\n')
+    g(f.other, 'add', '-A')
+    g(f.other, 'commit', '-q', '-m', 'glob name')
+    g(f.other, 'push', '-q', 'origin', 'main')
+    mkdirSync(join(f.wt, 'jobs'), { recursive: true })
+    writeFileSync(join(f.wt, 'jobs', 'a[12].json'), 'x\n')
+    writeFileSync(join(f.wt, 'jobs', 'a1.json'), 'unrelated\n')
+    const r = await advanceGatesWorktree({ path: f.wt, git: realGit })
+    assert.equal(r.ok, true, r.reason)
+    assert.equal(g(f.wt, 'status', '--porcelain'), '?? jobs/a1.json')
+  })
+
+  it('refuses a folder that is not a worktree root, and leaves the enclosing checkout alone', async () => {
+    const f = fixture()
+    const inner = join(f.wt, 'sub')
+    mkdirSync(inner)
+    const r = await advanceGatesWorktree({ path: inner, git: realGit })
+    assert.equal(r.ok, false)
+    assert.match(r.reason, /not the root of a worktree/)
+    assert.equal(g(f.wt, 'rev-parse', 'HEAD'), f.first)
+  })
+
   it('reports a missing worktree and a failed fetch, never throws', async () => {
     const f = fixture()
     const gone = await advanceGatesWorktree({ path: join(f.wt, 'nope'), git: realGit })
@@ -128,6 +153,7 @@ describe('ship-bot after a merge into gorfednet/.github', () => {
       handle: (c) => {
         if (c.cmd !== 'git') return undefined
         if (c.args[2] === 'checkout') head = c.args.at(-1)
+        if (c.args[2] === 'rev-parse' && c.args[3] === '--show-prefix') return { stdout: '' }
         if (c.args[2] === 'rev-parse') return { stdout: c.args[3] === 'HEAD' ? head : 'f'.repeat(40) }
         return undefined
       },
@@ -135,19 +161,22 @@ describe('ship-bot after a merge into gorfednet/.github', () => {
     const s = scenario({ repos: [gatesRepo()], github: new FakeGitHub({ pulls: [gatesPr()] }), runner })
     await s.run()
     const subs = calls(s).map((c) => c.args[2])
-    assert.deepEqual(subs, ['rev-parse', 'status', 'fetch', 'rev-parse', 'ls-files', 'checkout', 'rev-parse'])
+    assert.deepEqual(subs, ['rev-parse', 'rev-parse', 'status', 'fetch', 'rev-parse', 'ls-files', 'checkout', 'rev-parse'])
     assert.ok(calls(s).every((c) => c.args[1] === join(s.home, 'src', 'gorfednet.github', '.claude', 'worktrees', 'gates-main')))
-    assert.deepEqual(calls(s).find((c) => c.args[2] === 'checkout').args.slice(3), ['--detach', 'f'.repeat(40)])
+    assert.deepEqual(calls(s).find((c) => c.args[2] === 'checkout').args.slice(3), ['--no-overwrite-ignore', '--detach', 'f'.repeat(40)])
     assert.ok(s.logs.some((l) => /gate commands on PATH: .*advanced to origin\/main fffffff/.test(l)), s.logs.join('\n'))
   })
 
   it('a dirty gates-main is refused: logged as an error and sent to the phone', async () => {
-    const runner = makeRunner({ handle: (c) => (c.cmd === 'git' && c.args[2] === 'rev-parse' ? { stdout: 'a'.repeat(40) } : c.cmd === 'git' && c.args[2] === 'status' ? { stdout: ' M scripts/review-status.mjs\n' } : undefined) })
+    const runner = makeRunner({ handle: (c) => (c.cmd === 'git' && c.args[2] === 'rev-parse' && c.args[3] === '--show-prefix' ? { stdout: '' } : c.cmd === 'git' && c.args[2] === 'rev-parse' ? { stdout: 'a'.repeat(40) } : c.cmd === 'git' && c.args[2] === 'status' ? { stdout: ' M scripts/review-status.mjs\n' } : undefined) })
     const s = scenario({ repos: [gatesRepo()], github: new FakeGitHub({ pulls: [gatesPr()] }), runner, configOverrides: { notify: true } })
     await s.run()
     assert.equal(calls(s).filter((c) => ['fetch', 'checkout'].includes(c.args[2])).length, 0)
     assert.ok(s.logs.some((l) => /gate commands on PATH not advanced: .*uncommitted changes/.test(l)), s.logs.join('\n'))
     assert.match(s.runner.ofKind('notify')[0].args[1], /gate commands on PATH are stale after a gorfednet\/\.github merge/)
+    s.github.pulls.push(makePr({ number: 2, head: { sha: 'b'.repeat(40), repo: { full_name: GATES_REPO } } }))
+    await s.run()
+    assert.equal(s.runner.ofKind('notify').filter((n) => /are stale/.test(n.args[1])).length, 1, 'the same refusal notifies once')
   })
 
   it('a merge into gorfednet/ops advances its tools-main worktree, not gates-main', async () => {
@@ -156,6 +185,7 @@ describe('ship-bot after a merge into gorfednet/.github', () => {
       handle: (c) => {
         if (c.cmd !== 'git') return undefined
         if (c.args[2] === 'checkout') head = c.args.at(-1)
+        if (c.args[2] === 'rev-parse' && c.args[3] === '--show-prefix') return { stdout: '' }
         if (c.args[2] === 'rev-parse') return { stdout: c.args[3] === 'HEAD' ? head : 'e'.repeat(40) }
         return undefined
       },
@@ -202,9 +232,9 @@ describe('ownInstallFreshness: the installed bot against origin/main (plan row 1
       g(clone, 'commit', '-q', '-m', msg)
       return g(clone, 'rev-parse', 'HEAD')
     }
-    const base = commit('ship-bot/bot.mjs', 'base')
-    const docs = commit('docs/a.md', 'docs')
-    const bot = commit('ship-bot/bot.mjs', 'bot change')
+    const base = commit('ship-bot/lib/bot.mjs', 'base')
+    const docs = commit('ship-bot/test/a.test.mjs', 'a test only')
+    const bot = commit('ship-bot/lib/bot.mjs', 'bot change')
     const after = commit('docs/b.md', 'later docs')
     g(clone, 'push', '-q', 'origin', 'main')
     g(clone, 'fetch', '-q', 'origin')

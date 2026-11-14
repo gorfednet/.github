@@ -29,6 +29,8 @@ export const TOOL_WORKTREE_NAMES = ['gates-main', 'tools-main']
 export const COPIES = [
   { tool: 'gh-poll-guard hook', copy: '.claude/hooks/gh-poll-guard.py', clone: 'gorfednet.github', source: 'docs/claude-home/hooks/gh-poll-guard.py' },
   { tool: 'capacity check', copy: '.desk/capacity-app/capacity.mjs', clone: 'gorfednet.github', source: 'capacity/capacity.mjs' },
+  { tool: 'capacity heartbeat helper', copy: '.desk/capacity-app/lib/heartbeat.mjs', clone: 'gorfednet.github', source: 'ship-bot/lib/heartbeat.mjs' },
+  { tool: 'capacity usage helper', copy: '.desk/capacity-app/lib/usageAlert.mjs', clone: 'gorfednet.github', source: 'scripts/lib/usageAlert.mjs' },
   { tool: 'ship-bot', copyDir: '.ship-bot/app', clone: 'gorfednet.github', sourceDir: 'ship-bot', skip: ['gate-scripts', 'node_modules'] },
 ]
 
@@ -163,9 +165,24 @@ export function installedTools({ home = homedir(), root, launchAgents } = {}) {
       unread.push(where)
       continue
     }
-    const n = Number(tryGit(co.top, 'rev-list', '--count', 'HEAD..origin/main'))
-    if (!co.tool) behind.push({ tool: tools, source: where, behind: Number.isFinite(n) ? n : null, detail: 'runs from a working checkout, not a ship-bot-advanced tools worktree' })
-    else if (n > 0) behind.push({ tool: tools, source: where, behind: n, detail: 'tools worktree behind origin/main' })
+    const count = tryGit(co.top, 'rev-list', '--count', 'HEAD..origin/main')
+    const n = count === null ? NaN : Number(count)
+    if (!Number.isFinite(n)) {
+      unread.push(where) // a failed count is not 0
+      continue
+    }
+    if (!co.tool) {
+      behind.push({ tool: tools, source: where, behind: n, detail: 'runs from a working checkout, not a ship-bot-advanced tools worktree' })
+      continue
+    }
+    const onBranch = tryGit(co.top, 'symbolic-ref', '-q', 'HEAD')
+    const dirty = tryGit(co.top, 'status', '--porcelain', '--untracked-files=no')
+    const atMain = tryGit(co.top, 'rev-parse', 'HEAD') === main
+    if (dirty === null) unread.push(where)
+    else if (onBranch || dirty !== '' || !atMain) {
+      const why = [onBranch ? `on branch ${onBranch.replace('refs/heads/', '')}` : '', dirty ? 'tracked files changed' : '', !atMain ? (n > 0 ? 'behind origin/main' : 'not at origin/main') : ''].filter(Boolean).join(', ')
+      behind.push({ tool: tools, source: where, behind: n, detail: `tools worktree ${why}` })
+    }
   }
 
   // Copies of committed files.

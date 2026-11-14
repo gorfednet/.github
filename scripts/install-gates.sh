@@ -7,7 +7,7 @@ set -eu
 root=$(cd "$(dirname "$0")/.." && pwd)
 # Install only from the .github clone's gates-main worktree, detached at origin/main, which ship-bot
 # advances after every .github merge; never from a working checkout a session can switch or leave
-# behind (13 November 2026, ship-bot/INCIDENTS.md). An explicit bin-dir (the tests) skips the check.
+# behind (13 November 2026, ship-bot/INCIDENTS.md). INSTALL_GATES_ANY_CHECKOUT=1 skips the check (the tests).
 require_gates_main() {
   local top
   top=$(git -C "$1" rev-parse --show-toplevel 2>/dev/null || true)
@@ -18,8 +18,11 @@ require_gates_main() {
   if git -C "$1" symbolic-ref -q HEAD >/dev/null || [ "$(git -C "$1" rev-parse HEAD)" != "$(git -C "$1" rev-parse --verify -q refs/remotes/origin/main)" ]; then
     echo "install-gates: $top must be detached at origin/main; run git -C $top fetch origin && git -C $top checkout --detach origin/main" >&2; exit 1
   fi
+  if [ -n "$(git -C "$1" status --porcelain --untracked-files=no)" ]; then
+    echo "install-gates: $top has changed tracked files; it must match origin/main exactly" >&2; exit 1
+  fi
 }
-[ $# -ge 1 ] || require_gates_main "$root"
+[ "${INSTALL_GATES_ANY_CHECKOUT:-0}" = "1" ] || require_gates_main "$root"
 bin_dir=${1:-$HOME/.local/bin}
 mkdir -p "$bin_dir"
 for name in assert-checks-started check-closing-keywords review-status; do
