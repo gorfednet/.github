@@ -13,10 +13,11 @@ export const MODELS_JSON = process.env.LOCAL_LLM_MODELS || path.join(path.dirnam
 const GB = 1024 ** 3
 const RESERVE_GB = 4
 const PROMPT_ROOM = 1024
+const PIDLESS_STALE_MS = 60_000
 const freeGbNow = () => parseVmStat(execFileSync('vm_stat', { encoding: 'utf8' }))
 const alive = (pid) => { try { process.kill(pid, 0); return true } catch (e) { return e.code === 'EPERM' } }
 const refuse = (link, why) => ({ code: EXIT.refused, message: `local-llm: ${link} failed (${why}); use the Claude tier` })
-/** mkdir lock with a pid file; stale when the pid is dead. A lock with no pid yet is being written. Takeover is serialised by `<dir>.takeover`. */
+/** mkdir lock with a pid file; stale when the pid is dead. A lock with no pid yet is being written, and stale once its dir is 60 s old. Takeover is serialised by `<dir>.takeover`. */
 export function takeLock(dir, pid, { beforeTakeover } = {}) {
   for (let tries = 0; tries < 2; tries++) {
     try {
@@ -26,17 +27,19 @@ export function takeLock(dir, pid, { beforeTakeover } = {}) {
       return true
     } catch (e) {
       if (e.code !== 'EEXIST') throw e
-      let held
-      try { held = fs.readFileSync(path.join(dir, 'pid'), 'utf8').trim() } catch { return false }
-      if (alive(Number(held))) return false
+      const readPid = () => { try { return fs.readFileSync(path.join(dir, 'pid'), 'utf8').trim() } catch { return null } }
+      const held = readPid()
+      if (held === null) { // no pid yet: being written, unless it has sat that way past PIDLESS_STALE_MS
+        let age
+        try { age = Date.now() - fs.statSync(dir).mtimeMs } catch { continue }
+        if (age <= PIDLESS_STALE_MS) return false
+      } else if (alive(Number(held))) return false
       beforeTakeover?.()
       // Take over through a lock of its own, so a lock we do not own is never moved.
       const guard = `${dir}.takeover`
       try { fs.mkdirSync(guard) } catch { return false }
       try {
-        let again
-        try { again = fs.readFileSync(path.join(dir, 'pid'), 'utf8').trim() } catch { return false }
-        if (again !== held) return false
+        if (readPid() !== held) return false
         fs.rmSync(dir, { recursive: true, force: true })
       } finally { fs.rmSync(guard, { recursive: true, force: true }) }
     }

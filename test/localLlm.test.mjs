@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import http from 'node:http'
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync, rmSync } from 'node:fs'
+import { utimesSync, mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { spawnSync } from 'node:child_process'
@@ -75,6 +75,17 @@ describe('lock and memory edge cases', () => {
     mkdirSync(dir, { recursive: true })
     assert.equal(takeLock(dir, process.pid), false)
   })
+  it('takes over a pid-less lock older than 60 s, but not a fresh one', () => {
+    const dir = join(tmp, 'oldnopid', 'lock')
+    mkdirSync(dir, { recursive: true })
+    const old = new Date(Date.now() - 120_000)
+    utimesSync(dir, old, old)
+    assert.equal(takeLock(dir, process.pid), true)
+    assert.equal(readFileSync(join(dir, 'pid'), 'utf8'), String(process.pid))
+    const fresh = join(tmp, 'freshnopid', 'lock')
+    mkdirSync(fresh, { recursive: true })
+    assert.equal(takeLock(fresh, process.pid), false)
+  })
   it('does not delete a live lock that replaced the dead one mid-takeover', () => {
     const dir = join(tmp, 'race', 'lock')
     mkdirSync(dir, { recursive: true })
@@ -127,6 +138,25 @@ describe('ci-triage contract', () => {
     const log = Array.from({ length: 60 }, (_, i) => `build\tRun tests\tt${i}${i === 20 ? ' AssertionError' : ''}${i === 59 ? ' ##[error]Process completed with exit code 1.' : ''}`).join('\n')
     assert.ok(prefilter(log).numbers.includes(21))
     assert.ok(prefilter('lost runner\nno error marker').numbers.length > 0)
+  })
+  it('keeps the ##[error] window in a step longer than 200 lines', () => {
+    const log = Array.from({ length: 400 }, (_, i) => `build\tRun tests\tt${i}${i === 100 ? ' ##[error]early' : ''}`).join('\n')
+    const p = prefilter(log)
+    assert.ok(p.numbers.includes(101))
+    assert.ok(p.numbers.includes(400))
+  })
+  it('drops tail lines before any error window under the cap', () => {
+    const log = Array.from({ length: 300 }, (_, i) => `build\tRun tests\t${i === 10 ? '##[error]early ' : ''}${'x'.repeat(200)}`).join('\n')
+    const p = prefilter(log)
+    assert.ok(p.text.length <= MAX_CHARS)
+    assert.ok(p.numbers.includes(11))
+    assert.ok(p.numbers.includes(300))
+  })
+  it('prefilters a 200,000-line step in linear time', () => {
+    const log = Array.from({ length: 200000 }, (_, i) => `build\tRun tests\tt${i}`).join('\n')
+    const t = Date.now()
+    prefilter(log)
+    assert.ok(Date.now() - t < 2000)
   })
   it('accepts only the enum and line numbers', () => {
     assert.deepEqual(parse('{"verdict":"flake","lines":[1,2]}'), { verdict: 'flake', lines: [1, 2] })
