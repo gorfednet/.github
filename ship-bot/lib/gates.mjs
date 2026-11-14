@@ -307,9 +307,9 @@ export async function evaluateReview(ctx, repo, pr, sha, { headSince, memo, draf
           key: 'review-not-run',
           kind: 'fail',
           reason: [
-            `The Claude reviewer has not reviewed this head (${sha.slice(0, 7)}), and nothing merges without a review of the final head. The bot never asks for one itself.`,
+            `The Claude reviewer has not reviewed this head (${sha.slice(0, 7)}), and nothing merges without a review of the final head, except a head that only adds clean merges of main (below). The bot never asks for one itself.`,
             '- If the commits since the last review changed code someone wrote, comment `claude review` here. The bot merges once that review is clean, or every finding has an answer.',
-            '- A head that only adds clean merges of main to a clean-reviewed head needs nothing: review-status reads it clean once the clone has it, so a fetch that failed is the usual reason it says not-run.',
+            '- A head that only adds conflict-free merges of main to a head whose newest review was clean reads clean without a new review. If this head did not (the newest review had findings, even Lows answered by reply; a merge needed a conflict resolution; or the fetch failed), comment `claude review`.',
             '- If they regenerated files, moved a pin or budget number, or fixed lint, say so here and comment `claude review` anyway: the bot cannot tell which kind a push was, and it merges on that review.',
             '- If this repository has no Claude reviewer yet, a session merges it after reading the diff.',
           ].join('\n'),

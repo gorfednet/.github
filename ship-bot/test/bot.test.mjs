@@ -301,7 +301,7 @@ describe('gate (d): the Claude reviewer', () => {
     assert.equal(posted.length, 1, posted.join('\n---\n'))
     assert.match(posted[0], /The Claude reviewer has not reviewed this head \(aaaaaaa\)/)
     assert.match(posted[0], /comment `claude review` here/)
-    assert.match(posted[0], /only adds clean merges of main to a clean-reviewed head needs nothing/)
+    assert.match(posted[0], /only adds conflict-free merges of main to a head whose newest review was clean reads clean/)
     assert.match(posted[0], /regenerated files, moved a pin or budget number, or fixed lint, say so here and comment `claude review` anyway/)
     assert.doesNotMatch(posted[0], /merges by hand/)
     assert.ok(!posted.some((b) => /^\s*(claude review|bugbot run)\s*$/i.test(b)), 'the bot never asks for a review itself')
