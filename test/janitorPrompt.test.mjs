@@ -149,3 +149,22 @@ test("janitor control-plane command never runs a changed file's name", () => {
   assert.deepEqual(readdirSync(dir), ["files-x-1.json"]);
   assert.equal(existsSync(join(dir, "PWNED")), false);
 });
+
+test("janitor puts no branch, title or worktree on a command line: each goes through a file", () => {
+  const spans = [...prompt.matchAll(/`([^`\n]+)`/g)].map((m) => m[1]).filter((c) => /^(gh|git|node) /.test(c));
+  assert.ok(spans.length > 10, "found the prompt's commands");
+  for (const c of spans) assert.doesNotMatch(c, /<(branch|title|worktree|the branch you pushed)>/, `untrusted text pasted into: ${c}`);
+  assert.match(prompt, /Untrusted text never reaches a command line/);
+  for (const c of spans.filter((x) => /--head|--branch|--worktree|--title/.test(x))) assert.match(c, /\$\(cat \$R\/|\$\(git branch --show-current\)/, `read from a file: ${c}`);
+});
+
+test("the quoted file form runs nothing a hostile title or branch holds", () => {
+  const dir = mkdtempSync(join(tmpdir(), "janitor-title-"));
+  const pwn = join(dir, "pwn");
+  for (const hostile of [`x"; touch ${pwn}; echo "`, "$(touch " + pwn + ")", "`touch " + pwn + "`"]) {
+    writeFileSync(join(dir, "title.txt"), hostile);
+    const r = spawnSync("bash", ["-c", `printf '%s' "$(cat ${join(dir, "title.txt")})"`], { encoding: "utf8" });
+    assert.equal(r.stdout, hostile, "the argument arrives as the same text");
+    assert.equal(existsSync(pwn), false, `ran: ${hostile}`);
+  }
+});

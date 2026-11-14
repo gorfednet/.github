@@ -203,7 +203,9 @@ export function attribute(sessions, namedPrs = []) {
       if (!DEFAULT_BRANCHES.has(m.branch)) {
         const pair = `${folderRoot(m.cwd)}|${m.branch}`
         const seen = taught.get(pair)
-        const win = { key, from: named?.from, to: named?.to }
+        // A PR taught through a link keeps the window of the named PR with the same key (a link-only PR has none to keep).
+        const owner = named ?? prs.find((pr) => `${pr.repo}#${pr.number}` === key)
+        const win = { key, from: owner?.from, to: owner?.to }
         if (seen === undefined) taught.set(pair, win)
         else if (seen === null || seen.key !== key) taught.set(pair, null)
         else taught.set(pair, { key, from: seen.from === undefined || win.from === undefined ? undefined : Math.min(seen.from, win.from), to: seen.to === undefined || win.to === undefined ? undefined : Math.max(seen.to, win.to) })
