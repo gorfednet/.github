@@ -155,7 +155,12 @@ Weekly 9% at 11:21 ET. Full speed, cost-aware. One line to the owner at about 90
 - [x] .github 196 (1.29 currency) labelled; ops 96 builder-ok backup case merged and live
 - [x] ops 94 merged by a stale ship-bot: root cause found; .github 200 fix merged; owner reinstalled 8e42797 (17:39 ET)
 - [x] ops 98 (94 follow-ups) merged
-- [ ] 1.27b: .github 198 + ops 97, label together
-- [ ] .github 199 (janitor untrusted strings, 191 follow-ups): before 07:00 ET
+- [x] 1.27b: .github 198 + ops 97 merged (18:00 ET); [ ] after-merge reference rerun and refreeze (card evalset-refreeze-1-27b)
+- [x] .github 199 (janitor untrusted strings) merged 18:03 ET, before the 07:00 ET janitor run
 - [ ] 3.10 BinderCurve gate class + rename-hole fix: bc 661 in review
 - [ ] Local models first eval tonight 22:00 ET (builder task), scores Sun ~09:00 ET
+
+## Added 14 Nov evening (21st Desk)
+- [x] .github 196 merged (weekly lessons wording fix)
+- [ ] Ship-bot behind origin/main af4e6dd (199 changed the gates lib): owner reinstall
+- [ ] bc 655 and 657 nudged (CI pool order 655, then 660); 4thcltr 276 e2e (4) nudged
