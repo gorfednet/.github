@@ -1,6 +1,6 @@
 # Fleet checklist (Desk keeps this current; posted to the owner on every pass and every deploy)
 
-Updated 13 Nov 2026, 22:47 ET.
+Updated 14 Nov 2026 (9th Desk rotation).
 
 ## Bottlenecks
 - [x] Ship-bot API use cut from about 1,800 to about 100 calls an hour (.github 143, merged 10:35 ET; reinstall in progress)
@@ -68,3 +68,13 @@ Weekly 9% at 11:21 ET. Full speed, cost-aware. One line to the owner at about 90
 - [x] FileVault on the Mac (on 13 Nov, 23:45 ET); fresh recovery key saved 23:47 ET
 - [ ] Backblaze: add the gorfkcits drive, exclude its models folder (owner)
 - [ ] Ship-bot and capacity off Hermes's Node (1.22a); Hermes keep or archive (1.22b)
+
+## Added 14 Nov overnight (9th Desk)
+- [x] FileVault on, recovery key rotated and saved
+- [x] USB m.2 encrypted APFS (1.20); models redownloading, priority order
+- [x] Phone-alert cause found and fixed (ops 82 merged); owner: ntfy install plus token copy, healthchecks ntfy integration, rerun the test
+- [x] Ship-bot and capacity installers pick their own Node (.github 179 merged); [ ] reinstall onto /usr/local/bin/node
+- [x] Weekly disk hygiene, dry run (ops 83, 84 merged)
+- [x] Local-model harness (.github 180, 181 merged); [ ] fixtures (ops 85), baseline, first eval
+- [ ] Hermes archive (owner's yes); Screen Sharing over Tailscale (yes); 9.9.9.9 fallback (yes); Time Machine destination; Backblaze drive
+- [ ] bc 659 merge, then the supervisor install on dapyllil
