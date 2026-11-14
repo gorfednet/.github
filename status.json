@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-11-14T06:34:39.566Z",
-  "renderedAt": "2026-11-14T06:34:39.566Z",
+  "generatedAt": "2026-11-14T08:32:06.863Z",
+  "renderedAt": "2026-11-14T08:32:06.863Z",
   "repos": [
     {
       "slug": "gorfednet/bindercurve.com",
@@ -164,30 +164,6 @@
       "mainRed": false,
       "openPrs": [
         {
-          "number": 180,
-          "title": "Local-model harness: pick, fail closed, score (1.19 PR 1)",
-          "ageDays": 0,
-          "labels": [],
-          "draft": false,
-          "review": "findings",
-          "headSha": "794f8e1f6c60e9d634c35427029ebfe64ba68034",
-          "ci": "green",
-          "next": "Claude review clean, then ship-bot merges",
-          "author": "gorfednet"
-        },
-        {
-          "number": 179,
-          "title": "Installers pick their own Node: ship-bot and capacity off Hermes's private Node (1.22a)",
-          "ageDays": 0,
-          "labels": [],
-          "draft": false,
-          "review": "not-run",
-          "headSha": "c5a731e106838f1543d1111f418e52f2b1c96e16",
-          "ci": "pending",
-          "next": "Claude review clean, CI green, then ship-bot merges",
-          "author": "gorfednet"
-        },
-        {
           "number": 175,
           "title": "Quota attribution: guard call log and burn sampler",
           "ageDays": 0,
@@ -282,7 +258,7 @@
           "labels": [],
           "draft": true,
           "review": "not-run",
-          "headSha": "12ba14fd55b40dc5dfd8ad8fffa81efdb72f8e4e",
+          "headSha": "d18e945d3bb358872144fa571d59f03d58acf36f",
           "ci": "none",
           "next": "Desk appends each pass's line until the 02:00 ET rotation (hold: the log is still being written)",
           "author": "gorfednet"
@@ -682,7 +658,7 @@
       "slug": "gorfednet/ops",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 7,
+      "openPrCount": 6,
       "lapsedBacklogCount": 0,
       "noPrCount": 0,
       "idlePrCount": 0,
@@ -694,11 +670,11 @@
   "branchesReadAt": "2026-11-14T02:32:09.796Z",
   "carried": true,
   "inventory": {
-    "measuredAt": "2026-11-14T06:34:39.566Z",
+    "measuredAt": "2026-11-14T08:32:06.863Z",
     "counts": {
       "pr": {
-        "total": 113,
-        "orphans": 64
+        "total": 110,
+        "orphans": 61
       },
       "session": null,
       "worktree": null,
@@ -709,22 +685,6 @@
       }
     },
     "orphans": [
-      {
-        "kind": "pr",
-        "repo": "gorfednet/.github",
-        "ref": "#180",
-        "label": "Local-model harness: pick, fail closed, score (1.19 PR 1)",
-        "private": false,
-        "lapsed": false
-      },
-      {
-        "kind": "pr",
-        "repo": "gorfednet/.github",
-        "ref": "#179",
-        "label": "Installers pick their own Node: ship-bot and capacity off Hermes's private Node (1.22a)",
-        "private": false,
-        "lapsed": false
-      },
       {
         "kind": "pr",
         "repo": "gorfednet/.github",
@@ -886,7 +846,7 @@
         "lapsed": false
       }
     ],
-    "hiddenPrivate": 47,
+    "hiddenPrivate": 46,
     "privateReposNotItemised": 20
   }
 }
