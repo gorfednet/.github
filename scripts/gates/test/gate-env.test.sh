@@ -127,5 +127,43 @@ else
   pass "non-github origin refuses"
 fi
 
+# Stale checkout warning (13 November 2026 incident): a gate whose checkout is not at origin/main
+# says so on stderr and still runs; a current one is silent. Watched failing once: the
+# stale case must warn, and the current case must not.
+stale_origin="$work/stale-origin.git"; stale_co="$work/stale-checkout"; stale_bin="$work/stale-bin"
+git init -q --bare -b main "$stale_origin"
+git clone -q "$stale_origin" "$stale_co" 2>/dev/null
+mkdir -p "$stale_co/scripts/gates" "$stale_bin"
+cp -R "$root/scripts/gates/bin" "$stale_co/scripts/gates/bin"
+git -C "$stale_co" checkout -q -b main
+git -C "$stale_co" add -A
+git -C "$stale_co" -c user.name=t -c user.email=t@t commit -q -m one
+git -C "$stale_co" push -q origin main
+git -C "$stale_co" fetch -q origin
+git -C "$stale_co" checkout -q --detach origin/main
+for name in assert-checks-started check-closing-keywords review-status; do ln -s "$stale_co/scripts/gates/bin/$name" "$stale_bin/$name"; done
+stale_run() { (cd "$clone_ssh" && env -i HOME="$HOME" PATH="$fakebin:/usr/bin:/bin" GITHUB_REPOSITORY= GH_TOKEN=x "$stale_bin/$1" --pr 1) 2>"$work/stale-stderr"; }
+
+out=$(stale_run review-status); status=$?
+if [ "$status" -eq 0 ] && ! grep -q "warning" "$work/stale-stderr"; then pass "current checkout: no warning"; else fail "current checkout: no warning" "exit $status: $(cat "$work/stale-stderr")"; fi
+
+# origin/main moves on (a merge elsewhere); the checkout stays where it was.
+git clone -q "$stale_origin" "$work/stale-pusher" 2>/dev/null
+git -C "$work/stale-pusher" -c user.name=t -c user.email=t@t commit -q --allow-empty -m two
+git -C "$work/stale-pusher" push -q origin HEAD:main
+git -C "$stale_co" fetch -q origin
+for name in review-status assert-checks-started check-closing-keywords; do
+  out=$(stale_run "$name"); status=$?
+  if [ "$status" -eq 0 ] && grep -q "$name: warning: gate scripts are at" "$work/stale-stderr" && grep -q "origin/main is" "$work/stale-stderr"; then
+    pass "stale checkout warns and still runs ($name)"
+  else
+    fail "stale checkout warns and still runs ($name)" "exit $status: $(cat "$work/stale-stderr")"
+  fi
+  expect_line "stale checkout still passes its arguments ($name)" "$out" "ARGS=--pr 1 --repo gorfednet/MoonMan"
+done
+git -C "$stale_co" checkout -q --detach origin/main
+out=$(stale_run review-status)
+if ! grep -q "warning" "$work/stale-stderr"; then pass "advanced checkout: warning gone"; else fail "advanced checkout: warning gone" "$(cat "$work/stale-stderr")"; fi
+
 if [ "$failures" -eq 0 ]; then echo "all gate-env checks passed"; exit 0; fi
 echo "$failures failure(s)"; exit 1
