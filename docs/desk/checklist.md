@@ -91,4 +91,7 @@ Weekly 9% at 11:21 ET. Full speed, cost-aware. One line to the owner at about 90
 - [ ] Local models: 7 of 27 served, redownload running; CI-triage fixtures merged (ops 85); baseline then first eval (1.19)
 - [ ] MoonMan 336: 2 findings and quality red, triage next pass
 - [ ] Numbers in prose: one to nine spelled out (CP); rule then site sweep (copy-skill session)
+- [ ] Over pace (36% at 16% of week): starts held below priority 2, 3 sessions max
+- [ ] Herdr BinderCurve backlog: 29 failed overnight; pause and root-cause
+- [ ] Owner: switch off unused plugins (saves about 21k tokens a reply)
 - [ ] 1.17 orphan decisions due 15:29 ET
