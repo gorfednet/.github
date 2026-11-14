@@ -15,7 +15,7 @@ You are a fresh session with no other context. Turn this week's incidents and ow
 - Before proposing anything, read the file it would change. A lesson already written there is dropped.
 
 ## 2. Rank (Fable `reviewer`, read-only)
-Give the reviewer the candidate list with each evidence line, not your conclusion. It returns the top candidates ranked by: cost of the incident, chance it repeats, and whether a rule, brief, skill or template change would have stopped it. Cause before fix: a candidate with no established cause is a lead for a backlog entry, not a change.
+Give the reviewer the candidate list with each evidence line, not your conclusion. It returns the top candidates ranked by: cost of the incident, chance it repeats, and whether a rule, brief, skill or template change would have stopped it. Cause before fix: a candidate with no established cause is a lead for a backlog entry, not a change. A Currency item (step 2a) is ranked on its evidence (file and line, or version strings) in place of an incident line.
 
 ## 2a. Currency (plan row 1.29, read-only, proposals only; run before Rank and Write)
 Run these three checks each week. Download, install and adopt nothing. Anything a lookup can't verify is written "unverified", never guessed.
@@ -25,15 +25,16 @@ Run these three checks each week. Download, install and adopt nothing. Anything 
 - Proposals go in the weekly-lessons PR as a "Currency" list, each with its evidence (file and line, or version strings). A model change cites its eval score. A skill or plugin adoption gets its own PR, never this one. A stale item that is a real fix goes in as one of the 5 changes. The rest become `- [ ] Later:` lines in `## Next`.
 - Add one clause to the digest line: `Currency: <n> stale, <n> proposed`.
 - Feed any stale item that is a real fix into the Rank list. The rest go to the Write step as the Currency list.
+- Write the Currency list to `docs/desk/currency/<yyyy-mm-dd>.md`, one line per item with its evidence. Create the file, and the folder with it, only in a week that has items. The step 3 builder commits it, so a Currency-only week still has a commit to open the PR from. The PR body summarises it.
 
 ## 3. Write (Sonnet `builder`, then Fable `editor`)
 - Brief a `builder` with the ranked list, the Currency list and these rules. This covers a Currency-only week too: the builder still creates the branch and writes the list. It starts with `git checkout -B weekly-lessons-<date> origin/main`, works in its own worktree, and never pushes.
-- Each change names its incident (date and source line) and the exact rule, brief, skill, hook or template it alters. Rule, skill and agent files live in `~/.claude`, which isn't a repository: change the copy under `docs/claude-home/` in this PR. Don't edit `~/.claude` directly. For each such file, add a `## Next` line `- [ ] After merge, Desk copies docs/claude-home/<path> to ~/.claude/<path>` so the live copy matches what was reviewed. Desk's brief (Each pass, step 2) does that copy when ship-bot reports the merge.
+- Each change names its incident (date and source line). A change that fixes a stale Currency item names that item's evidence (file and line, or version strings from step 2a) instead. Each change also names the exact rule, brief, skill, hook or template it alters. Rule, skill and agent files live in `~/.claude`, which isn't a repository: change the copy under `docs/claude-home/` in this PR. Don't edit `~/.claude` directly. For each such file, add a `## Next` line `- [ ] After merge, Desk copies docs/claude-home/<path> to ~/.claude/<path>` so the live copy matches what was reviewed. Desk's brief (Each pass, step 2) does that copy when ship-bot reports the merge.
 - Drop any change that only restates an incident. A change must tell a future session what to do differently.
 - Add no enforced check (CI step, hook, ship-bot or janitor rule) without a named defect that reached `main` or users and a watched failure from one deliberate break, shown in the PR (`shipping.md`, "Learning from an incident"). Otherwise write one dated line in the repository's incident file.
 - A Fable `editor` reads every rule or brief wording change, since every session reads it. A Fable `reviewer` reads any change to what CI enforces.
 - At most 5 changes, in one pull request under about 400 added lines. Run the repository's unit suite and lint.
-- If nothing survives the drop rule and the Currency list is empty, open no pull request and say so in the digest. A week with Currency proposals but no lessons still opens the PR, titled the same, with only the Currency list.
+- If nothing survives the drop rule and there are no Currency items, open no pull request and say so in the digest. A week with Currency proposals but no lessons still opens the PR, titled the same, with only the Currency list.
 
 ## 4. Open and report
 - Open one draft PR titled `Weekly lessons <d Mon yyyy>` and mark it ready. Marking it ready starts the Claude review, so don't also comment `claude review`. Comment it only after a later push that changes code or wording. The body lists each change with its evidence and ends with `## Next`:
