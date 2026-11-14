@@ -1,6 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const prompt = readFileSync(new URL("../janitor/PROMPT.md", import.meta.url), "utf8");
 
@@ -91,4 +95,57 @@ test("janitor step 3b builds housekeeping trains through the script and never la
   assert.match(step[0], /Any other kind stays out/);
   assert.match(step[0], /never labels or merges/);
   assert.match(step[0], /check-closing-keywords/);
+});
+
+test("janitor never labels a path ship-bot calls control plane, docs/claude-home/ included", () => {
+  const step = prompt.match(/\n3\. Labels\.[\s\S]*?(?=\n4\. Sessions)/);
+  assert.ok(step, "step 3 exists");
+  assert.match(step[0], /`touchesControlPlane\(path, slug\)`[^\n]*is never labelled, even under `docs\/`/);
+  assert.match(step[0], /ship-bot\/lib\/drafts\.mjs/);
+  assert.match(step[0], /Never put a changed file's name on the command line/);
+  assert.match(step[0], /exact `owner\/name` used in the `gh api` call/);
+  assert.match(step[0], /in `gorfednet\/\.github` everything under `docs\/claude-home\/`/);
+  assert.match(step[0], /Any other exit code, or a check that can't run, means no label/);
+});
+
+// The command is run as written, so a prompt edit that breaks it fails here and not on the Mac overnight.
+const controlPlaneCheck = (files, slug, { raw } = {}) => {
+  const line = prompt.split("\n").find((l) => l.includes("node -e '") && l.includes("controlPlaneFiles"));
+  assert.ok(line, "the control-plane command is in the prompt");
+  const command = line.match(/`(node -e '[^`]*)`/)?.[1];
+  assert.ok(command, "the command sits in one code span");
+  assert.ok(command.includes("<repo>-<n>") && command.endsWith(" <owner>/<repo>"), command);
+  const dir = mkdtempSync(join(tmpdir(), "janitor-cp-"));
+  writeFileSync(join(dir, "files-x-1.json"), raw ?? JSON.stringify(files));
+  const run = spawnSync("bash", ["-c", command.replace("<repo>-<n>", "x-1").replace(/ <owner>\/<repo>$/, slug ? ` ${slug}` : "")], {
+    cwd: dir,
+    env: { ...process.env, J: fileURLToPath(new URL("..", import.meta.url)), R: dir },
+    encoding: "utf8",
+  });
+  return { status: run.status, dir };
+};
+
+test("janitor control-plane command: exit 1 on a hit, 0 on plain docs, non-zero on anything it cannot judge", () => {
+  const DOT = "gorfednet/.github";
+  assert.equal(controlPlaneCheck([[{ filename: "docs/claude-home/settings.json", status: "modified" }]], DOT).status, 1);
+  assert.equal(controlPlaneCheck([[{ filename: "docs/x.md", status: "modified" }]], DOT).status, 0);
+  assert.equal(controlPlaneCheck([{ filename: "docs/x.md", status: "modified" }], DOT).status, 0, "one unslurped page reads the same");
+  assert.equal(controlPlaneCheck([[{ filename: "docs/x.md" }], [{ filename: "docs/claude-home/rules/a.md" }]], DOT).status, 1, "a hit on a later page");
+  assert.equal(controlPlaneCheck([[{ filename: "docs/x.md", previous_filename: "docs/claude-home/rules/a.md", status: "renamed" }]], DOT).status, 1);
+  assert.equal(controlPlaneCheck([[{ filename: "docs/claude-home/settings.json" }]], "gorfednet/site").status, 0, "ordinary docs in another repository");
+  for (const slug of ["", ".github", "gorfednet/.github/x", "gorfednet/.github;x"]) {
+    const { status } = controlPlaneCheck([[{ filename: "docs/x.md" }]], slug && `'${slug}'`);
+    assert.ok(status !== 0 && status !== null, `slug ${JSON.stringify(slug)} exits ${status}`);
+  }
+  for (const raw of ["not json", "{}", "[]", "[[]]", '"docs/x.md"']) {
+    const { status } = controlPlaneCheck(null, DOT, { raw });
+    assert.ok(status !== 0 && status !== null, `${raw} exits ${status}`);
+  }
+});
+
+test("janitor control-plane command never runs a changed file's name", () => {
+  const { status, dir } = controlPlaneCheck([[{ filename: "docs/$(touch PWNED).md" }, { filename: "docs/`touch PWNED2`.md" }, { filename: "docs/'; touch PWNED3; '.md" }]], "gorfednet/.github");
+  assert.equal(status, 0, "odd names under docs/ are still plain docs");
+  assert.deepEqual(readdirSync(dir), ["files-x-1.json"]);
+  assert.equal(existsSync(join(dir, "PWNED")), false);
 });

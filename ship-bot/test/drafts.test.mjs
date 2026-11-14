@@ -372,6 +372,16 @@ describe('plan row 1.12: control-plane paths', () => {
     const near = ['docs/ship-bot.md', 'docs/review.mdx', 'scripts/gates-notes.md', 'scripts/review-status.md', 'scripts/site-deploy.sh', 'github/workflows/x.yml', 'src/janitor/x.ts', 'ship-bot.md', 'docs/capacity/plan.md', 'capacityx/a', 'src/claude.ts']
     for (const f of near) assert.deepEqual(controlPlaneFiles([{ filename: f }]), [], f)
   })
+  it('in gorfednet/.github docs/claude-home/ is control plane: Desk copies it into ~/.claude after merge', () => {
+    const slug = 'gorfednet/.github'
+    assert.deepEqual(controlPlaneFiles([{ filename: 'docs/claude-home/rules/shipping.md' }], slug), ['docs/claude-home/rules/shipping.md'])
+    assert.deepEqual(controlPlaneFiles([{ filename: 'docs/claude-home/rules/shipping.md' }], 'gorfednet/ops'), [])
+    for (const f of ['docs/claude-homepage.md', 'docs/claude-home-old/x.md']) assert.deepEqual(controlPlaneFiles([{ filename: f }], slug), [], f)
+    assert.deepEqual(
+      controlPlaneFiles([{ filename: 'docs/x.md', previous_filename: 'docs/claude-home/settings.json', status: 'renamed' }], slug),
+      ['docs/claude-home/settings.json'],
+    )
+  })
   it('in gorfednet/.github every script is control plane, deploy scripts included', () => {
     assert.deepEqual(controlPlaneFiles([{ filename: 'scripts/site-deploy.sh' }], 'gorfednet/.github'), ['scripts/site-deploy.sh'])
     assert.deepEqual(controlPlaneFiles([{ filename: 'scripts/site-deploy.sh' }], 'gorfednet/site'), [])
@@ -401,6 +411,40 @@ describe('plan row 1.12: control-plane paths', () => {
       assert.ok(s.logs.some((l) => new RegExp(`draft left alone \\(## Next says "merge"\\): it changes control-plane paths \\(${file.replace(/[.]/g, '\\.')}\\); a person labels it`).test(l)), s.logs.join('\n'))
     })
   }
+
+  // The slug must reach controlPlaneFiles at each call site in bot.mjs: docs/claude-home/ is control plane only in gorfednet/.github.
+  const DOT = 'gorfednet/.github'
+  const dotRepo = () => [repoEntry({ claudeReview: true, slug: DOT, dir: 'dotgithub' })]
+  const dotHead = (sha) => ({ sha, repo: { full_name: DOT } })
+
+  it('in gorfednet/.github a draft that changes docs/claude-home/rules/x.md stays draft; the same draft in another repo is readied', async () => {
+    const file = 'docs/claude-home/rules/x.md'
+    const gh = new FakeGitHub({ pulls: [draft({ head: dotHead(HEAD) })], files: [file] })
+    const s = scenario({ repos: dotRepo(), github: gh })
+    await s.run()
+    assert.equal(writes(gh, 'markReady').length + writes(gh, 'addLabels').length, 0)
+    assert.equal(s.runner.ofKind('gate').length, 0)
+    const said = gh.commentsPosted().filter((c) => /Ship bot will not mark this draft ready: it changes control-plane paths/.test(c.body))
+    assert.equal(said.length, 1)
+    assert.ok(said[0].body.includes(file))
+
+    const other = new FakeGitHub({ pulls: [draft()], files: [file] })
+    await scenario({ repos: reviewed(), github: other }).run()
+    assert.equal(writes(other, 'markReady').length, 1, 'the path is ordinary docs outside gorfednet/.github')
+  })
+
+  it('in gorfednet/.github a draft the bot readied does not merge once a new head touches docs/claude-home/', async () => {
+    const gh = new FakeGitHub({ pulls: [draft({ head: dotHead(HEAD), labels: [{ name: 'ready-to-merge' }] })] })
+    const s = scenario({ repos: dotRepo(), github: gh })
+    await s.run()
+    assert.equal(writes(gh, 'markReady').length, 1)
+    gh.pulls = [makePr({ head: dotHead('d'.repeat(40)), labels: [{ name: 'ready-to-merge' }], body: NEXT_MERGE })]
+    gh.files = ['docs/claude-home/rules/x.md']
+    s.clock.advance(s.config.reviewGraceMinutes)
+    await s.run()
+    assert.equal(writes(gh, 'mergePull').length, 0)
+    assert.ok(s.logs.some((l) => /not merging: the bot readied it and this head changes control-plane paths \(docs\/claude-home\/rules\/x\.md\)/.test(l)), s.logs.join('\n'))
+  })
 
   it('the near miss: a draft that changes only docs about the bot is still the bot\'s', async () => {
     const gh = new FakeGitHub({ pulls: [draft()], files: ['docs/ship-bot.md', 'docs/review-notes.md'] })

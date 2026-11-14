@@ -37,13 +37,17 @@ Never write the mode file. Desk or the owner writes `live` after 3 dry runs in a
 2. Read `~/.herdr-jobs/STATE.md` if it exists. It's read-only input from `herdr-reconcile`. Put its "Parked" line and any "not readable" weekly-usage note in the digest. If the file is missing or older than 1 hour, say in the digest that the reconciler isn't running. Never edit it or `~/.herdr-jobs/state.json`.
 3. Labels. Consider the open pull requests in `status.json`, cheapest test first. Label `ready-to-merge` (`gh pr edit <n> --repo <slug> --add-label ready-to-merge`) only on a pull request that meets all 4 of these:
    - Every changed path is on the allowlist. Check it this way:
-     - List the files with `gh api --paginate repos/<owner>/<repo>/pulls/<n>/files` (fields `filename`, `status`, `previous_filename`).
+     - List the files with `gh api --paginate repos/<owner>/<repo>/pulls/<n>/files` (fields `filename`, `status`, `previous_filename`). Add `--slurp > $R/files-<repo>-<n>.json` to that call so the whole list lands in a file, and read the file.
      - Test `filename` and, where present, `previous_filename`.
      - Any file whose `status` is `renamed` or `copied` makes the pull request propose-only, whatever its destination.
      - `gh pr view --json files` has no previous name and `gh pr diff --name-only` shows only the new one, so neither is enough.
      - The allowlist is the root `README.md`, or a file under `docs/` whose extension is `.md`, `.txt`, `.json`, `.csv`, `.png`, `.jpg`, `.svg` or `.webp`. Nothing else.
      - Any other path means the pull request touches code or instructions and gets no label.
-     - A path under `.github/`, `.claude/`, `janitor/` or `ship-bot/`, or a file named `REVIEW.md`, `CLAUDE.md`, `AGENTS.md` or `SKILL.md`, is never labelled, even under `docs/`.
+     - A path that ship-bot's `touchesControlPlane(path, slug)` matches is never labelled, even under `docs/`. That covers `.github/`, `.claude/`, `janitor/` and `ship-bot/`, a file named `REVIEW.md`, `CLAUDE.md`, `AGENTS.md` or `SKILL.md`, and in `gorfednet/.github` everything under `docs/claude-home/`, which Desk copies into `~/.claude` after merge.
+     - Check the saved list in one run: `node -e 'const [dir, list, slug] = process.argv.slice(1); if (!/^[\w.-]+\/[\w.-]+$/.test(slug ?? "")) process.exit(2); import(require("node:path").join(dir, "ship-bot/lib/drafts.mjs")).then((m) => { const pages = JSON.parse(require("node:fs").readFileSync(list, "utf8")); const files = Array.isArray(pages) ? pages.flat() : null; process.exit(!files || !files.length ? 2 : m.controlPlaneFiles(files, slug).length ? 1 : 0); }).catch(() => process.exit(2));' "$J" "$R/files-<repo>-<n>.json" <owner>/<repo>`. It tests every `filename` and `previous_filename`.
+     - `<owner>/<repo>` is the exact `owner/name` used in the `gh api` call (`gorfednet/.github`, never the clone's folder name): a wrong one skips that repository's extra paths.
+     - Exit 0 means no control-plane path. Exit 1 means control plane: no label. Any other exit code, or a check that can't run, means no label.
+     - Never put a changed file's name on the command line, here or anywhere: anyone who can open a pull request writes it, and a name can hold `$(…)`, backticks and quotes. Only the list's path and the slug go there.
      - An empty list means no label.
    - Its review is `clean` and its CI is `green` in `status.json`.
    - It isn't a draft and doesn't carry `hold`.

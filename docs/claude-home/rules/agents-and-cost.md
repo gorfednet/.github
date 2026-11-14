@@ -34,7 +34,7 @@ A `builder` always gets a fresh worktree made from the main checkout's HEAD, wit
 
 Scope test runs to the changed surface while iterating and run the full gate once before the PR. Do not spend main-session tokens re-reading what a subagent summarised, but treat a subagent's factual claim as a lead, not a finding: check any claim you are about to act on against the artifact itself.
 
-Standing automation (owner, 7 November 2026, "automate as much as possible"): ship-bot (launchd, every 2 minutes, merges labelled pull requests: `shipping.md`), fleet-status (daily, hosted on the public `.github` repository, writes `STATUS.md` to the `status` branch and a digest to ntfy `ops-report`), and fleet-janitor (daily local scheduled task: labels docs-only pull requests that pass the gates and closes out merged work as `shipping.md` describes, proposes the rest). No other cloud agents, scheduled agents or automations unless the owner asks.
+Standing automation (owner, 7 November 2026, "automate as much as possible"): ship-bot (launchd, every 2 minutes, merges labelled pull requests: `shipping.md`), fleet-status (daily, hosted on the public `.github` repository, writes `STATUS.md` to the `status` branch and a digest to ntfy `ops-report`), and fleet-janitor (daily local scheduled task: labels docs-only pull requests that pass the gates, never one that touches a control-plane path (`touchesControlPlane` in ship-bot's `lib/drafts.mjs`, which covers `docs/claude-home/` in `.github`), and closes out merged work as `shipping.md` describes, proposes the rest). No other cloud agents, scheduled agents or automations unless the owner asks.
 
 ## Parallel agents do not share a working tree
 
