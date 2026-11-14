@@ -267,6 +267,14 @@ describe('the command', () => {
     assert.equal(r.status, 0, r.stderr)
     assert.equal(JSON.parse(r.stdout).total, 2 * 1111, 'only the two messages after PR 10 closed')
   })
+  it('report prints what fleet-status shows: a recorded branch with no pr-link is not unattributed', () => {
+    const dir = projects({ 'p/S1.jsonl': [assistant({ min: 1 })], 'led.jsonl': [JSON.stringify({ repo: 'o/.github', number: 7, branch: 'claude/a-1', kind: 'fix', state: 'MERGED', additions: 1, closedAt: new Date().toISOString(), fresh: 1, total: 2, models: {} })] })
+    const r = run('report', '--days', '36500', '--projects', dir, '--file', join(dir, 'led.jsonl'))
+    assert.equal(r.status, 0, r.stderr)
+    const j = JSON.parse(r.stdout)
+    assert.equal(j.unattributed.tokens, 0)
+    assert.equal(typeof j.measuredAt, 'string')
+  })
   it('refuses to record a closed PR that has no closing time, since the report would drop it', () => {
     const { dir, out } = setup()
     const pj = join(dir, 'pr.json')

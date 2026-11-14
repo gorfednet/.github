@@ -28,7 +28,7 @@ import { homedir } from 'node:os'
 import { dirname } from 'node:path'
 
 import { isMain } from './lib/isMain.mjs'
-import { DEFAULT_FILE, DEFAULT_PROJECTS, costRecord, costReport, infraRepo, latestPerPr, readLines, scanAll, sumModels, totalTokens, windowTotals } from './lib/prCost.mjs'
+import { DEFAULT_FILE, DEFAULT_PROJECTS, collectPrCost, costRecord, infraRepo, latestPerPr, readLines, scanAll, sumModels, totalTokens, windowTotals } from './lib/prCost.mjs'
 
 function parseArgs(argv) {
   const opts = { labels: [] }
@@ -155,8 +155,10 @@ export async function main(argv) {
   }
   if (cmd === 'report') {
     const days = opts.days ? int(opts.days, '--days') : 7
-    const window = await windowTotals({ projects: opts.projects ?? DEFAULT_PROJECTS, days })
-    console.log(JSON.stringify(costReport(readLines(opts.file ?? DEFAULT_FILE), { days, window })))
+    // The same call fleet-status makes, so this prints what its section shows (the ledger's PRs named to the scan).
+    const report = await collectPrCost({ projects: opts.projects ?? DEFAULT_PROJECTS, file: opts.file ?? DEFAULT_FILE, days })
+    if (report.error) throw new Error(report.error)
+    console.log(JSON.stringify(report))
     return 0
   }
   throw new Error('first argument must be pr, record, backfill, window or report')
