@@ -463,4 +463,4 @@ merged. Each pass logs `gate scripts from the ...` with the source.
 ## Detect and repair (plan row 1.14)
 
 - A repo block (`--unblock` territory) queues one diagnosis job: `lib/herdr-jobs.mjs` writes `blk-<repo>-<hash>.json` into the ops clone's Herdr jobs folder (`<sourceRoot>/ops/hosts/gorfpael/herdr/jobs`) with `wx`, so the file is the claim and later passes write nothing. No ops clone, no job; a dry run only says so. The reconciler starts it under its caps.
-- A pull request whose reviewer threads have no answer gets the `needs-fix` label (removed once every gate passes). Herdr's importer turns that label into a continue-this-PR job.
+- A pull request gets the `needs-fix` label when its review gate blocks it: unanswered reviewer threads, a review that is not clean, or findings with no thread to answer. The label comes off once every gate passes, and a pull request the bot skips (hold, no ready label, conflicts) keeps none. Herdr's importer turns the label into a continue-this-PR job.
