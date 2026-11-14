@@ -7,7 +7,7 @@
  * so on the PR once per head.
  */
 import { createHash } from 'node:crypto'
-import { dirname } from 'node:path'
+import { dirname, join } from 'node:path'
 import { HOLD_LABEL, READY_LABEL } from './config.mjs'
 import { RateLimitError } from './github.mjs'
 import { succeeded } from './runner.mjs'
@@ -157,7 +157,7 @@ export function evaluateChecks({ runs, statuses, expectedChecks, graceOver, labe
   return blocks
 }
 
-/** Run one of the verification kit's gate scripts. Read-only: they only GET. */
+/** Run one of the verification kit's gate scripts. They only GET, except review-status, which fetches into the clone it is given. */
 export function runGateScript(ctx, script, args, extraEnv = {}) {
   const env = { ...ctx.baseEnv, GH_TOKEN: ctx.token, ...extraEnv }
   delete env.GITHUB_EVENT_PATH
@@ -240,7 +240,7 @@ export function parseReviewStatus(result, prNumber) {
   // `requireClean` and every thread answered, so it reads it as findings.
   if (state === 'clean' && /triage by reply/.test(m[3])) {
     if (result.code !== 0 || result.timedOut || result.error) return { state: 'undetermined', detail: `printed clean but exited ${result.code}` }
-    return { state: 'findings', detail: m[3] }
+    return { state: 'findings', detail: m[3], relief: true }
   }
   // Exit code and printed state must agree; if they do not, trust neither.
   if (result.code !== (state === 'clean' ? 0 : 1) || result.timedOut || result.error) {
@@ -281,9 +281,13 @@ export function isTriaged(thread, allowedAuthors) {
  *
  * Returns `{blocks}`.
  */
-export async function evaluateReview(ctx, repo, pr, sha, { headSince, memo, draft = false, requireClean = false }) {
+/** The local clone review-status judges merges of main in: a deploy row's sourceDir, else the one under sourceRoot. */
+const cloneDir = (ctx, repo) => repo.sourceDir ?? (ctx.config.sourceRoot && repo.dir ? join(ctx.config.sourceRoot, repo.dir) : null)
+
+export async function evaluateReview(ctx, repo, pr, sha, { headSince, memo, draft = false, requireClean = false, controlPlane = null }) {
   const now = ctx.clock.now()
-  const script = await gate(ctx, ctx.config.scripts.reviewStatus, ['--pr', String(pr.number), '--repo', repo.slug], {}, memo)
+  // --clone lets review-status accept a head that only adds clean merges of main to a clean-reviewed head.
+  const script = await gate(ctx, ctx.config.scripts.reviewStatus, ['--pr', String(pr.number), '--repo', repo.slug, ...(cloneDir(ctx, repo) ? ['--clone', cloneDir(ctx, repo)] : [])], {}, memo)
   const status = parseReviewStatus(script, pr.number)
   if (status.state === 'undetermined') {
     return { blocks: [{ key: 'review-undetermined', kind: 'wait', reason: `Claude review state unknown: ${ctx.redactor.apply(status.detail)}` }] }
@@ -302,10 +306,12 @@ export async function evaluateReview(ctx, repo, pr, sha, { headSince, memo, draf
         {
           key: 'review-not-run',
           kind: 'fail',
+          noStall: true, // only a comment on the pull request brings a review; a pushed fix is a new unreviewed head
           reason: [
-            `The Claude reviewer has not reviewed this head (${sha.slice(0, 7)}), and nothing merges without a review of the final head. The bot never asks for one itself.`,
+            `The Claude reviewer has not reviewed this head (${sha.slice(0, 7)}), and nothing merges without a review of the final head, except a head that only adds clean merges of main (below). The bot never asks for one itself.`,
             '- If the commits since the last review changed code someone wrote, comment `claude review` here. The bot merges once that review is clean, or every finding has an answer.',
-            '- If they only merged main cleanly, regenerated files, moved a pin or budget number, or fixed lint, a session says so here and merges by hand (the bot cannot tell which kind a push was).',
+            '- A head that only adds conflict-free merges of main to a head whose newest review was clean reads clean without a new review. If this head did not (the newest review had findings, even Lows answered by reply; a merge needed a conflict resolution; or the clone is missing or lacks the tip of main), comment `claude review`. A fetch that fails is retried on the next pass.',
+            '- If they regenerated files, moved a pin or budget number, or fixed lint, say so here and comment `claude review` anyway: the bot cannot tell which kind a push was, and it merges on that review.',
             '- If this repository has no Claude reviewer yet, a session merges it after reading the diff.',
           ].join('\n'),
         },
@@ -315,14 +321,26 @@ export async function evaluateReview(ctx, repo, pr, sha, { headSince, memo, draf
 
   // A pull request the bot readied itself, in a repo that deploys, merges on
   // a clean review only. Every session posts as the owner's login, so "every
-  // finding has an answer" proves no person read it (plan row 1.12).
-  if (requireClean) {
+  // finding has an answer" proves no person read it (plan row 1.12). The same holds for a pull request
+  // that changes control-plane paths while a Medium or High reviewer thread stands: .github 164 merged
+  // at 19:08 ET on 13 November 2026 with 5 threads open, each "answered" by the session that wrote it.
+  let strict = requireClean
+  if (!strict && controlPlane && !status.relief) {
+    // A resolve is the same as a reply, so a thread opened on this head's commit counts resolved or not.
+    // One from before this head (a fixed High on an earlier commit, resolved) must not deadlock the pull request,
+    // nor a Low-only relief round past the cap (skipped above).
+    const all = (await ctx.github.listReviewThreads(repo.slug, pr.number)).filter(
+      (t) => isReviewerUser(t.author) && (!t.isResolved || t.comments?.[0]?.commit === sha),
+    )
+    if (all.some((t) => /^[^a-z]*(high|medium)\b/i.test(String(t.body ?? '').trim())) && (await controlPlane())) strict = true
+  }
+  if (strict) {
     return {
       blocks: [
         {
           key: 'review-not-clean',
           kind: 'fail',
-          reason: `The Claude reviewer reported findings on this head (${ctx.redactor.apply(status.detail)}). The bot readies or readied this pull request itself and the repo deploys, so it merges only on a clean review: push a fix and get a clean review of the new commit. Relabelling does not lift this; a change that must merge with its findings goes in a fresh pull request that a session labels after reading them.`,
+          reason: `The Claude reviewer reported findings on this head (${ctx.redactor.apply(status.detail)}). ${requireClean ? 'The bot readies or readied this pull request itself and the repo deploys' : 'This pull request changes control-plane paths and a Medium or High thread was raised on it (fix whatever this head still has, then get a clean review)'}, so it merges only on a clean review: push a fix and get a clean review of the new commit. ${requireClean ? 'A reply or resolving a thread does not lift this.' : "A reply does not lift this, nor does resolving a thread opened on this head's commit. A Medium or High from an earlier commit that has been fixed can be resolved, and then no longer counts."} A change that must merge with its findings goes in a fresh pull request that a session labels after reading them.`,
         },
       ],
     }
@@ -371,7 +389,7 @@ export async function evaluateReview(ctx, repo, pr, sha, { headSince, memo, draf
  *
  * @returns {Promise<{ready: boolean, blocks: object[], cached: boolean}>}
  */
-export async function evaluatePull(ctx, repo, pr, { headState, fresh = false, draft = false, requireClean = false }) {
+export async function evaluatePull(ctx, repo, pr, { headState, fresh = false, draft = false, requireClean = false, controlPlane = null }) {
   const sha = pr.head.sha
   const now = ctx.clock.now()
   const memo = { inputs: '', fresh, used: false }
@@ -452,12 +470,12 @@ export async function evaluatePull(ctx, repo, pr, { headState, fresh = false, dr
   // (d) the Claude reviewer's verdict on this head. A clean review that is
   // required cannot come from a repo with no reviewer: fail closed.
   if (requireClean && !repo.claudeReview) {
-    return blocked([{ key: 'review-required', kind: 'fail', reason: 'The bot readied this pull request itself and the repo deploys, so it needs a clean Claude review, but this repo has no Claude reviewer configured. A person labels it.' }])
+    return blocked([{ key: 'review-required', kind: 'fail', noStall: true, reason: 'The bot readied this pull request itself and the repo deploys, so it needs a clean Claude review, but this repo has no Claude reviewer configured. A person labels it.' }])
   }
   if (repo.claudeReview) {
     let result
     try {
-      result = await evaluateReview(ctx, repo, pr, sha, { headSince, memo: scriptMemo, draft, requireClean })
+      result = await evaluateReview(ctx, repo, pr, sha, { headSince, memo: scriptMemo, draft, requireClean, controlPlane })
     } catch (cause) {
       if (cause instanceof RateLimitError) throw cause
       return blocked([{ key: 'review-undetermined', kind: 'wait', reason: `could not read the Claude review state: ${ctx.redactor.apply(cause.message)}` }])

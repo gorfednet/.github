@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { existsSync, mkdirSync, mkdtempSync, statSync, writeFileSync, readFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, statSync, writeFileSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, it } from 'node:test'
@@ -139,6 +139,78 @@ describe('command line', () => {
     assert.equal(code, 0)
     assert.equal(JSON.parse(readFileSync(join(h.config.stateDir, 'state.json'), 'utf8')).repos['gorfednet/site'].blocked, undefined)
     assert.equal(h.runner.calls.length, 0)
+  })
+
+  it('a paused deploy unblocks only with --deployed naming its commit, which it records as live (plan row 1.25)', async () => {
+    const h = harness()
+    const statePath = join(h.config.stateDir, 'state.json')
+    const sha = 'e'.repeat(40)
+    const store = new StateStore(statePath)
+    Object.assign(store.repo('gorfednet/site'), { blocked: { reason: 'paused', at: 'x', pausedSha: sha, pausedKind: 'release' }, lastDeployedSha: 'd'.repeat(40) })
+    store.save()
+    const read = () => JSON.parse(readFileSync(statePath, 'utf8')).repos['gorfednet/site']
+    assert.equal(await main(['--unblock', 'site'], h.deps), 2)
+    assert.match(h.out.join('\n'), /--deployed eeeeeee/)
+    assert.ok(read().blocked, 'a plain unblock leaves a paused block')
+    assert.equal(await main(['--unblock', 'site', '--deployed', 'ffffffff'], h.deps), 2)
+    assert.ok(read().blocked, 'the wrong commit is refused')
+    assert.equal(await main(['--unblock', 'site', '--deployed', 'eeeeeee'], h.deps), 0)
+    assert.equal(read().blocked, undefined)
+    assert.equal(read().lastDeployedSha, sha)
+    assert.ok(read().lastReleasedAt, 'a release deployed by hand starts the weekly clock')
+  })
+
+  it('a queued unblock of a paused deploy needs --deployed too; without it the block stays', async () => {
+    const h = harness({ lock: { pid: process.pid, startedAt: 'now' } })
+    const statePath = join(h.config.stateDir, 'state.json')
+    const sha = 'e'.repeat(40)
+    const store = new StateStore(statePath)
+    store.repo('gorfednet/site').blocked = { reason: 'paused', at: '2026-10-09T11:00:00.000Z', pausedSha: sha }
+    store.save()
+    assert.equal(await main(['--unblock', 'site'], h.deps), 2)
+    assert.equal(existsSync(join(h.config.stateDir, 'unblock')), false)
+    assert.equal(await main(['--unblock', 'site', '--deployed', sha], h.deps), 0)
+    rmSync(join(h.config.stateDir, 'run.lock'))
+    assert.equal(await main(['--live', '--once'], h.deps), 0, h.out.join('\n'))
+    const after = JSON.parse(readFileSync(statePath, 'utf8')).repos['gorfednet/site']
+    assert.equal(after.blocked, undefined)
+    assert.equal(after.lastDeployedSha, sha)
+  })
+
+  it('--unblock while a pass holds the lock writes no state, and the next pass applies it', async () => {
+    const h = harness({ lock: { pid: process.pid, startedAt: 'now' } })
+    const statePath = join(h.config.stateDir, 'state.json')
+    const store = new StateStore(statePath)
+    store.repo('gorfednet/site').blocked = { reason: 'deploy failed', at: '2026-10-09T11:00:00.000Z' }
+    store.save()
+    const before = readFileSync(statePath, 'utf8')
+    assert.equal(await main(['--unblock', 'site'], h.deps), 0)
+    assert.match(h.out.join('\n'), /queued/)
+    assert.equal(readFileSync(statePath, 'utf8'), before, 'a running pass would save over a write made now')
+    rmSync(join(h.config.stateDir, 'run.lock'))
+    assert.equal(await main(['--live', '--once'], h.deps), 0, h.out.join('\n'))
+    assert.equal(JSON.parse(readFileSync(statePath, 'utf8')).repos['gorfednet/site'].blocked, undefined)
+    assert.deepEqual(readdirSync(join(h.config.stateDir, 'unblock')), [])
+  })
+
+  it('a queued unblock never lifts a block set after it was written, and an unblocked repo is not queued', async () => {
+    const h = harness({ lock: { pid: process.pid, startedAt: 'now' } })
+    const statePath = join(h.config.stateDir, 'state.json')
+    new StateStore(statePath).save()
+    assert.equal(await main(['--unblock', 'site'], h.deps), 0)
+    assert.match(h.out.join('\n'), /is not blocked/)
+    assert.equal(existsSync(join(h.config.stateDir, 'unblock')), false)
+    const store = new StateStore(statePath)
+    store.repo('gorfednet/site').blocked = { reason: 'old', at: '2026-10-09T11:00:00.000Z' }
+    store.save()
+    assert.equal(await main(['--unblock', 'site'], h.deps), 0)
+    assert.match(h.out.join('\n'), /queued/)
+    const newer = new StateStore(statePath).load()
+    newer.repo('gorfednet/site').blocked = { reason: 'new: merge outcome unknown', at: '2026-10-09T13:00:00.000Z' }
+    newer.save()
+    rmSync(join(h.config.stateDir, 'run.lock'))
+    await main(['--live', '--once'], h.deps)
+    assert.equal(JSON.parse(readFileSync(statePath, 'utf8')).repos['gorfednet/site'].blocked.reason, 'new: merge outcome unknown')
   })
 
   it('--rotate-log rotates a log past 5 MB before the pass', async () => {
