@@ -424,7 +424,11 @@ export async function evaluatePull(ctx, repo, pr, { headState, fresh = false, dr
   const scriptMemo = pr.updated_at ? memo : undefined
 
   // (a) the kit's own "did CI start at all" check.
-  const started = await gate(ctx, ctx.config.scripts.assertChecksStarted, ['--pr', String(pr.number), '--repo', repo.slug], {}, scriptMemo)
+  // A repo whose only workflow is the reviewer caller (ops) expects no check, and a head pushed after
+  // ready has no run at all: the review verdict (gate d) is its gate, so zero runs is not a fault there.
+  // Runs that did start must still all have started.
+  const noCi = repo.expectedChecks.length === 0
+  const started = await gate(ctx, ctx.config.scripts.assertChecksStarted, ['--pr', String(pr.number), '--repo', repo.slug, ...(noCi ? ['--min-runs', '0'] : [])], {}, scriptMemo)
   if (!succeeded(started)) {
     return blocked([
       {
