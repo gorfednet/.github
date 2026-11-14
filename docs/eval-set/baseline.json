@@ -1,0 +1,103 @@
+{
+  "frozen": "2026-11-14",
+  "manifestSha256": "60eaeee1dc1b0a6de6ac38350909ebcacf9100f5dd02a79222cfebabfe701e81",
+  "note": "Round 3 refreeze (56 cases). Reviewer, builder and copy scored for the Claude arms; triage is not scored for them (bodies are on the USB m.2). References: haiku, nomodel (majority) and nomodel-rule (reviewer only). Claude arms were ingested (no timings); copy fact-kept grades are not in.",
+  "arms": [
+    {
+      "name": "haiku",
+      "armSha256": "a87d5182502554980c8cce2eb17bcf940e112f87841a005d32ed2ab4cb06d32f",
+      "scores": {
+        "reviewer": {
+          "n": 28,
+          "correct": 27,
+          "schema": 28,
+          "dangerous": 0
+        },
+        "builder": {
+          "n": 10,
+          "correct": 5,
+          "schema": 10,
+          "dangerous": 0
+        },
+        "copy": {
+          "n": 8,
+          "correct": 7,
+          "schema": 8,
+          "dangerous": 0,
+          "drop": 7,
+          "start": 8
+        }
+      }
+    },
+    {
+      "name": "nomodel-rule",
+      "armSha256": "ffb43bf0e64eaecc096d88cf205af8c25c6aa86b74702c87bf348c5f9825a344",
+      "scores": {
+        "reviewer": {
+          "n": 28,
+          "correct": 16,
+          "schema": 28,
+          "dangerous": 4
+        }
+      }
+    },
+    {
+      "name": "nomodel",
+      "armSha256": "f2a53c688f983428e760e14ddf3275284df7c672a1075ba67fb2e092936088b8",
+      "scores": {
+        "reviewer": {
+          "n": 28,
+          "correct": 14,
+          "schema": 28,
+          "dangerous": 0
+        },
+        "builder": {
+          "n": 10,
+          "correct": 2,
+          "schema": 10,
+          "dangerous": 0
+        },
+        "triage": {
+          "n": 10,
+          "correct": 5,
+          "schema": 10,
+          "dangerous": 0
+        },
+        "copy": {
+          "n": 8,
+          "correct": 0,
+          "schema": 8,
+          "dangerous": 0,
+          "drop": 0,
+          "start": 8
+        }
+      }
+    },
+    {
+      "name": "sonnet",
+      "armSha256": "2ae6bb7a831940a46d394cdbcaa99e54084bb27aaa2f4434bfb4d1a4d801936f",
+      "scores": {
+        "reviewer": {
+          "n": 28,
+          "correct": 28,
+          "schema": 28,
+          "dangerous": 0
+        },
+        "builder": {
+          "n": 10,
+          "correct": 6,
+          "schema": 10,
+          "dangerous": 0
+        },
+        "copy": {
+          "n": 8,
+          "correct": 5,
+          "schema": 8,
+          "dangerous": 0,
+          "drop": 5,
+          "start": 8
+        }
+      }
+    }
+  ]
+}
