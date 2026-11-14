@@ -166,8 +166,11 @@ Weekly 9% at 11:21 ET. Full speed, cost-aware. One line to the owner at about 90
 - [ ] bc 655 and 657 nudged (CI pool order 655, then 660); 4thcltr 276 e2e (4) nudged
 
 ## Added 14 Nov evening (22nd Desk)
-- [x] bc 661 Claude review clean (18:15 ET); [ ] Fable read; [ ] planted-PR proof; [ ] label
+- [x] bc 661 Claude review clean (18:15 ET); [x] Fable read (1 Medium, 1 Low fixed, pushing); [ ] planted-PR proof; [ ] label
 - [x] 1.27b after-merge reruns started (18:10 ET)
-- [ ] 199's 2 Lows: backlog entry in .github 201
+- [x] 199's 2 Lows: backlog entry, .github 201 merged
 - [ ] Mac Pro Ubuntu CI host (ops-gowyllop 99): steps 3 and 5 running
 - [ ] Local models first eval 22:00 ET, only with CPU idle at 40% or more
+- [x] 4thcltr 276 merged (wordmark 3.3)
+- [ ] 1.27b refreeze: .github 202 + ops 100, Fable read then label both
+- [ ] bc 655 red on mutation-canary-success: cause being found
