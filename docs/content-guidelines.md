@@ -21,7 +21,7 @@ A product team that owns the page we are describing, a founder deciding whether 
 
 A signed credit on an About page may name the maker in the third person ("MoonMan is made by Michael Duncan McArthur"). It's the one exception to the product row above. MoonMan and BinderCurve both have one, and MoonMan's was kept on 30 October 2026 after a "we" version of the bio made false claims.
 
-On heuristics.4thcltr.com the method and limits lines say "I", because Michael built the method and signs the reviewed tiers. A finding keeps the page element as its subject ("The Sort control hides three of the seven options at 390 px"), because the finding is about the page, not about the reviewer.
+On heuristics.4thcltr.com the method and limits lines say "I", because Michael built the method and signs the reviewed tiers. A finding keeps the page element as its subject ("The Sort control hides 3 of the 7 options at 390 px"), because the finding is about the page, not about the reviewer.
 
 ## Voice
 
@@ -64,18 +64,18 @@ The October baseline measured 373 sentences Michael wrote before 2023 (median 20
 - **Bullets over paragraphs.** Where a section lists achievements, features or facts, write a 1-line opener and then bullets. Each bullet is one fact. It starts with a verb or a name and has no full stop unless it holds 2 sentences.
 - **Outcome first.** Say what happened, then how. "GIC trading went digital" before the order ticket that made it possible.
 - **Leader, then maker.** On his own pages and profiles, show the people he led or the partners he lined up, then the hands-on part. He's an executive who still designs and codes.
-- **Tell what happened, in order.** Name the client, the deliverable, the month and year, the duration and the count: "nine months at the agency", "upwards of 50 clients".
+- **Tell what happened, in order.** Name the client, the deliverable, the month and year, the duration and the count: "9 months at the agency", "upwards of 50 clients".
 - **Plain, concrete words.** Made, built, designed, launched, led, worked with, spent, took on, brought on, co-founded. "Bandaid" and "duct tape" are allowed when they are the right word.
 - **No trailing asides.** No "or what have you", "and so on", "amongst other things", and no parenthetical jokes. Parentheses hold dates, qualifiers and abbreviations only.
 - **Contractions.** I'm, I've, I'll, it's, don't, didn't, can't, where speech would use them. "I am Michael" is a form; "I'm Michael" is a person.
 - **The user's side for behaviour.** On product pages and in the assessment: "Tapping the profile picture will take you to the Edit Profile screen." "If the page can't be reached, I'll email you what to allow."
-- **Say when something is bad, with the number.** "Four of the five home pages I measured use the same template. It's a costly bandaid." (An illustration, not a site fact.)
+- **Say when something is bad, with the number.** "4 of the 5 home pages I measured use the same template. It's a costly bandaid." (An illustration, not a site fact.)
 - **Credit others by role.** "We" for work with a co-founder or a named partner; "I" for his own part.
 - **One position per page.** "I believe" at most once per page, followed by the reason.
 
 ### Where a habit loses to the guideline
 
-- **Numbers.** He writes "fifty clients". The guideline wins from 10 up: "50 clients".
+- **Numbers.** He writes "nine months" and "fifty clients". The guideline wins: "9 months", "50 clients".
 - **Dates.** He writes "February 7th". The guideline wins: "7 February", with the year after it.
 - **"In order to" and "as well as".** "To" and "and" do the job.
 - **Exclamation marks and "very".** None on the sites.
@@ -91,7 +91,7 @@ The October baseline measured 373 sentences Michael wrote before 2023 (median 20
 
 ## Numbers, names and spelling
 
-- Canadian Press numerals (owner, 14 November 2026: "2 decades" reads wrong). In running prose, spell out one to nine and use digits from 10 up. A number that starts a sentence is spelled out. Always use digits for money, percentages, dates, times, ages, measurements, scores, versions and numbered references (page 2, step 3, rule 11). Headings, labels, buttons and table cells that hold a count may use digits.
+- Digits for every number, including one to nine, except at the start of a sentence.
 - Units once per sentence, after the last number: "1440, 820 and 390 px".
 - Currency with its code the first time on a page: "CA$129", then "$129".
 - Dates as "25 October 2026"; times in Eastern with "ET".
@@ -112,7 +112,7 @@ Lines as they read on 30 October 2026, rewritten under the 6 November baseline. 
 
 1. Tenet title and first sentence (4thcltr.com)
    - Before: "Work over posture. {years} years of shipped work includes two patent filings, Canada's top-ranked digital brokerage three years running and a health-transport product acquired for $57.5M."
-   - After: "What I've shipped" as the heading, then bullets: "Two patent filings at TD" · "Canada's top-ranked digital brokerage (three years running)" · "A health-transport product, acquired for $57.5M".
+   - After: "What I've shipped" as the heading, then bullets: "2 patent filings at TD" · "Canada's top-ranked digital brokerage (3 years running)" · "A health-transport product, acquired for $57.5M".
 2. Same tenet, the TowIt sentence
    - Before: "Some of it started from nothing: TowIt, co-founded and named one of the 12 best apps made in Canada, and Klick's KINETiQ platform."
    - After: "Some of it started from nothing. I co-founded TowIt, named one of the 12 best apps made in Canada. KINETiQ at Klick began as a blank page too."
