@@ -67,3 +67,4 @@ Weekly 9% at 11:21 ET. Full speed, cost-aware. One line to the owner at about 90
 - [ ] Local models (1.19) and encrypted m.2 (1.20): after the hold
 - [x] FileVault on the Mac (on 13 Nov, 23:45 ET); fresh recovery key saved 23:47 ET
 - [ ] Backblaze: add the gorfkcits drive, exclude its models folder (owner)
+- [ ] Ship-bot and capacity off Hermes's Node (1.22a); Hermes keep or archive (1.22b)
