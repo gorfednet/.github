@@ -182,7 +182,7 @@ Every site deploys through the bot, in observation first (`live` false: the log 
 | Repository | Row | Goes live | Why then |
 |---|---|---|---|
 | gorfed.net, gorfmusic, denseware, ssatcy, anal0g, blackpixelrecords, rowanmcarthur, subrythm, promptboi (site only) | in the example since 9 October | Thu 12 Nov (stages 2 and 3) | unchanged |
-| MoonMan | in the example | in observation since 12 Nov (first bot deploy 324 failed, later ones deployed) | unchanged |
+| MoonMan | in the example | Sun 15 Nov (stage 4) | unchanged |
 | papers.4thcltr.com | `deploy`, observation | **Fri 13 Nov** | no private tests, static, the lowest-risk site on the shared engine; it is the one that proves the engine's rollback |
 | heuristics.4thcltr.com | `deploy`, observation | **Mon 16 Nov** | needs papers live first (one real deploy, no rollback), and its gate reads the owner's assess jobs folder |
 | 4thcltr.com | `deploy`, observation, release tags | **Mon 23 Nov**, if the release-tag change (below) lands by Thu 19 Nov | `make deploy` refuses any HEAD that is not on an exact release tag; the bot tags the merge commit of a pull request that declares a release |
