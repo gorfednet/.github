@@ -16,6 +16,21 @@ if [[ "${1:-}" == "--uninstall" ]]; then
   echo "Removed ${LABEL} and capacity.json."; exit 0
 fi
 [[ $# -eq 0 ]] || { echo "usage: install.sh [--uninstall]" >&2; exit 2; }
+# Install only from the .github clone's gates-main worktree, detached at origin/main, which ship-bot
+# advances after every .github merge; never from a working checkout a session can switch or leave
+# behind (13 November 2026, ship-bot/INCIDENTS.md). CAPACITY_INSTALL_ANY_CHECKOUT=1 skips the check.
+require_gates_main() {
+  local top
+  top=$(git -C "$1" rev-parse --show-toplevel 2>/dev/null || true)
+  case "$top" in
+    */.claude/worktrees/gates-main) ;;
+    *) echo "capacity/install.sh: install from <.github clone>/.claude/worktrees/gates-main (detached at origin/main, advanced by ship-bot), not ${top:-$1}" >&2; exit 1 ;;
+  esac
+  if git -C "$1" symbolic-ref -q HEAD >/dev/null || [ "$(git -C "$1" rev-parse HEAD)" != "$(git -C "$1" rev-parse --verify -q refs/remotes/origin/main)" ]; then
+    echo "capacity/install.sh: $top must be detached at origin/main; run git -C $top fetch origin && git -C $top checkout --detach origin/main" >&2; exit 1
+  fi
+}
+[[ "${CAPACITY_INSTALL_ANY_CHECKOUT:-0}" == "1" ]] || require_gates_main "${HERE}"
 NODE_BIN="$(node -p 'process.execPath')"
 "${HERE}/check.sh"
 mkdir -p "${HOME_DIR}/logs" "${APP_DIR}" "${HOME}/Library/LaunchAgents"

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Print the fleet status with this Mac's dirty clones added. Uses origin/status when
-# it is under 24 hours old, else reads GitHub live. Symlink to ~/.local/bin/fleet-status.
+# it is under 24 hours old, else reads GitHub live. Symlink ~/.local/bin/fleet-status to the copy in
+# the gates-main worktree (ship-bot advances it), never a working checkout.
 #   fleet-status [--save <dir>]   --save also keeps status.json and STATUS.md in <dir>, so a reader
 #                                 (the janitor) works from the whole file rather than a terminal's tail.
 set -euo pipefail

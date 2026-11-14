@@ -17,7 +17,7 @@ import { RateLimitError, guardWrites } from './github.mjs'
 import { planRelease } from './release.mjs'
 import { Redactor } from './redact.mjs'
 import { guardCommands, succeeded } from './runner.mjs'
-import { GATES_REPO, advanceGatesWorktree, gatesWorktreePath } from './gates-worktree.mjs'
+import { advanceGatesWorktree, toolWorktreeFor } from './gates-worktree.mjs'
 import { StateStore } from './state.mjs'
 
 const short = (sha) => String(sha ?? '').slice(0, 7)
@@ -649,25 +649,28 @@ async function deployPreflight(ctx) {
 }
 
 /**
- * After a merge into gorfednet/.github, move the checkout behind the gate
- * commands on PATH to origin/main. A refusal or failure is logged and sent to
- * the owner's phone: a stale gate reads clean reviews as `not-run`.
+ * After a merge into a repository that installed tools run from (.github's
+ * gates-main, ops' tools-main), move that worktree to origin/main. A refusal
+ * or failure is logged and sent to the owner's phone: a stale gate reads clean
+ * reviews as `not-run`, and a stale Herdr runs without its fixes.
  */
-async function advanceGates(ctx, repo) {
-  const path = gatesWorktreePath(ctx.config, repo)
+async function advanceTools(ctx, repo) {
+  const wt = toolWorktreeFor(ctx.config, repo)
+  if (!wt) return
   const git = (args, { timeoutMs = 30_000 } = {}) => ctx.runner.run({ kind: 'workspace', cmd: 'git', args, env: ctx.baseEnv, timeoutMs })
   let result
   try {
-    result = await advanceGatesWorktree({ path, git })
+    result = await advanceGatesWorktree({ path: wt.path, git })
   } catch (cause) {
     result = { ok: false, reason: `unexpected error: ${cause.message}` }
   }
   if (result.ok) {
-    ctx.say('info', `gate commands on PATH: ${path} ${result.changed ? 'advanced to' : 'already at'} origin/main ${short(result.sha)}`)
+    const cleared = result.cleared ? `, after clearing ${result.cleared.length} untracked files identical to the committed ones` : ''
+    ctx.say('info', `${wt.tools}: ${wt.path} ${result.changed ? 'advanced to' : 'already at'} origin/main ${short(result.sha)}${cleared}`)
     return
   }
-  ctx.say('error', `gate commands on PATH not advanced: ${result.reason}`)
-  await notify(ctx, `Gate commands on PATH are stale after a .github merge: ${result.reason}`, true)
+  ctx.say('error', `${wt.tools} not advanced: ${result.reason}`)
+  await notify(ctx, `${wt.tools} are stale after a ${repo.slug} merge: ${result.reason}`, true)
 }
 
 async function dryRunMerge(ctx, repo, pr, tag, plan) {
@@ -744,7 +747,7 @@ async function liveMerge(ctx, repo, pr, tag, plan) {
     return true
   }
   ctx.say('info', `${tag}: merged as ${short(mergeSha)}`)
-  if (repo.slug === GATES_REPO) await advanceGates(ctx, repo)
+  await advanceTools(ctx, repo)
 
   if (!deploys) {
     const why = repo.mode === 'merge-only' ? `deploying is a session's job for this repo (${repo.reason})` : 'it has no `Release:` line in its description, so it was not tagged and not deployed. A release pull request carries `Release: X.Y.Z One sentence.` on its own line'

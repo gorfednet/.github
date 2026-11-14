@@ -21,4 +21,4 @@ The refusal tells the session to start one `gh run watch <id> --interval 60 --ex
 - It fails open. Bad input or an internal error lets the command run.
 - Not covered: a script written with the Write tool and run by name, a shell function that wraps `gh`, zsh `repeat`, and `curl` to api.github.com.
 
-The owner installs it after this merges: the hook goes in `~/.claude/hooks/` and the entry in `~/.claude/settings.json`.
+Install it as a copy of this file at origin/main, never from a working checkout: `git -C <.github clone>/.claude/worktrees/gates-main show HEAD:docs/claude-home/hooks/gh-poll-guard.py > ~/.claude/hooks/gh-poll-guard.py`. The entry goes in `~/.claude/settings.json`. fleet-status's "Installed tools behind main" row compares the installed copy with every committed version and reports how far behind it is.

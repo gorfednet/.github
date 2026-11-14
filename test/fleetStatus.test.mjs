@@ -264,7 +264,7 @@ describe('hygiene rows', () => {
     delete hosted.local
     delete hosted.dirtyLocal
     const rows = Object.fromEntries(hygiene(hosted).map((h) => [h.row, h.count]))
-    for (const row of ['Dirty clones', 'Clones behind origin', 'Worktrees over 7 days', 'Sessions idle over 24 h']) assert.equal(rows[row], null, row)
+    for (const row of ['Dirty clones', 'Clones behind origin', 'Installed tools behind main', 'Worktrees over 7 days', 'Sessions idle over 24 h']) assert.equal(rows[row], null, row)
     assert.equal(rows['PRs idle over 3 days'], 1)
     assert.match(render(hosted), /\| Dirty clones \| not measured \|/)
   })
@@ -275,8 +275,10 @@ describe('hygiene rows', () => {
   })
   it('counts the fixture and a null local row stays not measured', () => {
     const rows = Object.fromEntries(hygiene(fixture).map((h) => [h.row, h.count]))
-    assert.deepEqual(rows, { 'Dirty clones': 1, 'Clones behind origin': 1, 'Branches with no PR': 2, 'Worktrees over 7 days': 1, 'PRs idle over 3 days': 1, 'Sessions idle over 24 h': null, 'Backlog entries past reviewBy': 2, 'Duplicate PRs per backlog id': 1 })
+    assert.deepEqual(rows, { 'Dirty clones': 1, 'Clones behind origin': 1, 'Installed tools behind main': 1, 'Branches with no PR': 2, 'Worktrees over 7 days': 1, 'PRs idle over 3 days': 1, 'Sessions idle over 24 h': null, 'Backlog entries past reviewBy': 2, 'Duplicate PRs per backlog id': 1 })
     assert.match(render(fixture), /Sessions idle over 24 h: not measured/)
+    assert.match(render(fixture), /Installed tools behind main: capacity check \(~\/\.desk\/capacity-app\/capacity\.mjs: 3 behind, copy of gorfednet\.github\/capacity\/capacity\.mjs\)/)
+    assert.match(render(fixture), /\| Installed tools behind main \| 1 \|/)
   })
   it('idlePrs keeps only PRs untouched over 3 days', () => {
     const at = (d) => new Date(now - d * 86_400_000).toISOString()
