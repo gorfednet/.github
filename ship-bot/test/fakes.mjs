@@ -64,6 +64,10 @@ export class FakeGitHub {
     /** Tag names the repository already has, for a release repo's version check. */
     this.tags = []
     this.mergeResult = () => ({ merged: true, sha: MERGE })
+    /** Each repository's default-branch head, for a hotfix's check; PARENT unless a test sets it. */
+    this.branchSha = PARENT
+    /** GitHub's compare status of main...head for a release; 'ahead' unless a test sets it. */
+    this.compare = 'ahead'
     /** Called on each getPull; lets a test move the head between reads. */
     this.onGetPull = null
   }
@@ -101,6 +105,19 @@ export class FakeGitHub {
   async listCheckRuns(slug, sha) {
     this.log('listCheckRuns', slug, sha)
     return structuredClone(this.runsBySha?.[sha] ?? this.runs)
+  }
+
+  async getBranchSha(slug, branch) {
+    this.log('getBranchSha', slug, branch)
+    if (branch !== 'main') throw new Error(`the fake has only main, not ${branch}`)
+    if (this.branchSha instanceof Error) throw this.branchSha
+    return this.branchSha
+  }
+
+  async compareStatus(slug, base, head) {
+    this.log('compareStatus', slug, base, head)
+    if (base !== 'main') throw new Error(`the fake compares only against main, not ${base}`)
+    return this.compare
   }
 
   async listMergedPulls(slug, limit, label) {
@@ -217,7 +234,7 @@ export function makeRunner({ handle, changed = ['index.html'] } = {}) {
         if (sub === 'checkout') runner.head = cmd.args.at(-1)
         if (sub === 'rev-parse' && cmd.args[3] === 'HEAD') return ok(`${runner.head}\n`)
         if (sub === 'rev-parse' && cmd.args[3].endsWith('^1')) return ok(`${PARENT}\n`)
-        if (sub === 'diff') return ok(`${changed.join('\n')}\n`)
+        if (sub === 'diff' || sub === 'ls-tree') return ok(`${changed.join('\n')}\n`)
       }
       return ok()
     },
@@ -233,6 +250,8 @@ export function makeRunner({ handle, changed = ['index.html'] } = {}) {
 
 /** A repo entry for tests; override anything. */
 export function repoEntry(overrides = {}) {
+  // The deploy-mechanics tests deploy on every merge; the release gate (plan row 1.25) has its own tests with deployOn "release".
+  const onMerge = (overrides.mode ?? 'deploy') === 'deploy' && overrides.deployOn === undefined ? { deployOn: 'merge', deployOnMergeReason: 'test fixture: deploy mechanics' } : {}
   return {
     slug: SLUG,
     dir: 'site',
@@ -244,6 +263,7 @@ export function repoEntry(overrides = {}) {
     envFiles: ['.deploy-env'],
     setup: [{ name: 'install', command: ['npm', 'ci'] }],
     deploy: [{ name: 'site', command: ['make', 'deploy'] }],
+    ...onMerge,
     ...overrides,
   }
 }

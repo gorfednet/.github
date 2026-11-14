@@ -15,7 +15,7 @@ import { DeployLog, deployMerged, envSecrets, matchingFiles, preflight, realFs, 
 import { controlPlaneFiles, draftClaim, draftIneligibleReason } from './drafts.mjs'
 import { evaluatePull, ineligibleReason, unmergeableReason } from './gates.mjs'
 import { RateLimitError, guardWrites } from './github.mjs'
-import { planRelease } from './release.mjs'
+import { HOTFIX_LABEL, RELEASE_LABEL, planDeploy } from './deploy-plan.mjs'
 import { Redactor } from './redact.mjs'
 import { guardCommands, succeeded } from './runner.mjs'
 import { GATES_REPO, advanceGatesWorktree, ownInstallFreshness, toolWorktreeFor } from './gates-worktree.mjs'
@@ -246,7 +246,9 @@ async function processRepo(ctx, repo) {
   const info = await ctx.github.getRepo(repo.slug)
   const defaultBranch = info?.default_branch
   if (!defaultBranch) throw new Error('GitHub did not report a default branch')
-  const pulls = [...(await ctx.github.listOpenPulls(repo.slug))].sort((a, b) => a.number - b.number)
+  // A release or hotfix goes first (plan row 1.25): its head must contain main, so a plain merge ahead of it would force a new gate and smoke.
+  const deploysFirst = (p) => ((p.labels ?? []).some((l) => [RELEASE_LABEL, HOTFIX_LABEL].includes(String(l.name).toLowerCase())) ? 0 : 1)
+  const pulls = [...(await ctx.github.listOpenPulls(repo.slug))].sort((a, b) => deploysFirst(a) - deploysFirst(b) || a.number - b.number)
 
   for (const listed of pulls) {
     // A person who took the bot's label off has taken the pull request back:
@@ -407,7 +409,44 @@ async function processPull(ctx, repo, pr, defaultBranch) {
   }
   delete headState.stall
 
+  // Re-read right before merging: a push or a hold label since the gates ran
+  // means start again next run.
+  const again = await ctx.github.getPull(repo.slug, pr.number)
+  const changed = again.head?.sha !== sha ? 'the head moved' : ineligibleReason(again, repo, defaultBranch, ctx.config.allowedAuthors)
+  // A bot-labelled pull request re-earns its label here too: a wait written
+  // under ## Next while the gates ran (round 8 on #119) must not merge.
+  if (!changed && ctx.state.pr(repo.slug, pr.number).botLabelled && !(await botLabelStillEarned(ctx, repo, again, tag))) return false
+  if (changed) {
+    ctx.say('info', `${tag}: changed while being checked (${changed}); will look again next run`)
+    return false
+  }
+
+  // Does this merge deploy? (lib/deploy-plan.mjs, plan row 1.25.) Decided
+  // before the merge: a release or hotfix that is missing something must not
+  // become a quiet merge-only, and a bad tag-repo `Release:` line must not
+  // become a quiet non-release.
+  let plan = null
   if (repo.mode === 'deploy') {
+    plan = await planDeploy(repo, again, {
+      tags: () => ctx.github.listTags(repo.slug),
+      mainSha: () => ctx.github.getBranchSha(repo.slug, defaultBranch),
+      headCovers: () => ctx.github.compareStatus(repo.slug, defaultBranch, sha),
+      repoState: ctx.state.repo(repo.slug),
+      now: ctx.clock.now(),
+    })
+    if (plan.kind === 'invalid') {
+      ctx.say('warn', `${tag}: ready, but not merging: ${plan.reason}`)
+      const help =
+        plan.key === 'release-line'
+          ? 'The line is `Release: X.Y.Z One sentence.` on its own line. Fix the description; it checks again every couple of minutes.'
+          : `Fix the description or the labels; it checks again every couple of minutes. A pull request with neither \`${RELEASE_LABEL}\` nor \`${HOTFIX_LABEL}\` is merged and deployed with the next release.`
+      await postOnce(ctx, repo, pr.number, sha, `${plan.key}-${createHash('sha1').update(plan.reason).digest('hex').slice(0, 8)}`, `Ship bot is not merging this: ${plan.reason}.\n\n${help}`)
+      return false
+    }
+  }
+
+  // Only a merge that deploys waits on what a deploy needs (plan row 1.25): a plain merge deploys nothing.
+  if (plan?.deploy) {
     const problems = preflight(repo, ctx.fsx)
     if (problems.length > 0) {
       ctx.say('warn', `${tag}: ready, but not merging because the deploy could not run: ${problems.join('; ')}`)
@@ -428,33 +467,7 @@ async function processPull(ctx, repo, pr, defaultBranch) {
     }
   }
 
-  // Re-read right before merging: a push or a hold label since the gates ran
-  // means start again next run.
-  const again = await ctx.github.getPull(repo.slug, pr.number)
-  const changed = again.head?.sha !== sha ? 'the head moved' : ineligibleReason(again, repo, defaultBranch, ctx.config.allowedAuthors)
-  // A bot-labelled pull request re-earns its label here too: a wait written
-  // under ## Next while the gates ran (round 8 on #119) must not merge.
-  if (!changed && ctx.state.pr(repo.slug, pr.number).botLabelled && !(await botLabelStillEarned(ctx, repo, again, tag))) return false
-  if (changed) {
-    ctx.say('info', `${tag}: changed while being checked (${changed}); will look again next run`)
-    return false
-  }
-
-  // A repository that ships only from a release tag merges every ready pull
-  // request, but tags and deploys only one that declares a release. The
-  // declaration is checked before the merge: a bad one must not become a
-  // quiet non-release.
-  let plan = null
-  if (repo.release) {
-    plan = planRelease(repo.release, again.body, await ctx.github.listTags(repo.slug))
-    if (plan.kind === 'invalid') {
-      ctx.say('warn', `${tag}: ready, but not merging: the Release line is wrong: ${plan.reason}`)
-      await postOnce(ctx, repo, pr.number, sha, `release-invalid-${createHash('sha1').update(plan.reason).digest('hex').slice(0, 8)}`, `Ship bot is not merging this: the \`Release:\` line in the description is wrong: ${plan.reason}.\n\nThe line is \`Release: X.Y.Z One sentence.\` on its own line. Fix the description; it checks again every couple of minutes. A pull request with no \`Release:\` line is merged without a tag or a deploy.`)
-      return false
-    }
-  }
-
-  if (repo.mode === 'deploy' && plan?.kind !== 'none') {
+  if (plan?.deploy) {
     const pf = await deployPreflight(ctx)
     if (!pf.ok) {
       ctx.say('warn', `${tag}: ready, but not merging: the deploy preflight failed this pass (${pf.reason})`)
@@ -796,21 +809,28 @@ async function checkOwnInstall(ctx, installedSha) {
   await notify(ctx, text, true)
 }
 
+/** Why a merge in a deploy-mode row was not deployed, for its comment and the log. */
+function notDeployedWhy(repo) {
+  if (repo.deployOn === 'merge') return 'no Release line in the description, so it was not tagged and not deployed. A release pull request carries `Release: X.Y.Z One sentence.` on its own line'
+  return `not deployed: this repo deploys only from a release. It goes live with the next pull request labelled \`${RELEASE_LABEL}\` (or \`${HOTFIX_LABEL}\` for a security or outage fix)`
+}
+
 async function dryRunMerge(ctx, repo, pr, tag, plan) {
   ctx.say('info', `${tag}: would merge (merge commit, sha pinned to ${short(pr.head.sha)}) because every gate passed`)
   if (repo.mode === 'merge-only') {
     ctx.say('info', `${tag}: would comment "Merged; deploying is a session's job for this repo (${repo.reason})"`)
     return
   }
-  if (plan?.kind === 'none') {
-    ctx.say('info', `${tag}: would merge only: no Release line in the description, so no tag and no deploy`)
+  if (!plan?.deploy) {
+    ctx.say('info', `${tag}: would merge only: ${notDeployedWhy(repo)}`)
     return
   }
-  if (plan?.kind === 'release') {
-    ctx.say('info', `${tag}: would tag the merge commit ${plan.tag} ("${plan.message}"), push the tag, then deploy it; on success would create the GitHub release ${plan.tag}`)
+  if (plan.kind !== 'merge') ctx.say('info', `${tag}: would deploy it as a ${plan.kind}${plan.exemption ? ` (exemption: ${plan.exemption})` : ''}, with everything merged since the last deploy`)
+  if (plan.tag) {
+    ctx.say('info', `${tag}: would tag the merge commit ${plan.tag.tag} ("${plan.tag.message}"), push the tag, then deploy it; on success would create the GitHub release ${plan.tag.tag}`)
   }
-  // The real deploy diffs the merge commit against its first parent; before
-  // merging, the PR's own file list is the closest read-only answer.
+  // The real deploy diffs the merge commit against the last deployed commit;
+  // before merging, the PR's own file list is the closest read-only answer.
   const files = (await ctx.github.listPullFiles(repo.slug, pr.number)).map((f) => f.filename)
   const paused = matchingFiles(files, repo.pausedIfChanged)
   if (paused.length > 0) {
@@ -829,7 +849,7 @@ async function liveMerge(ctx, repo, pr, tag, plan) {
   const rs = ctx.state.repo(repo.slug)
   // Written before the merge: a crash from here on blocks the repo next run
   // instead of leaving a merged, undeployed commit nobody knows about.
-  const deploys = repo.mode === 'deploy' && plan?.kind !== 'none'
+  const deploys = repo.mode === 'deploy' && plan?.deploy === true
   if (deploys) {
     rs.deployInProgress = { pr: pr.number, sha, stage: 'merge', startedAt: ctx.clock.now().toISOString() }
     ctx.state.save()
@@ -873,7 +893,7 @@ async function liveMerge(ctx, repo, pr, tag, plan) {
   await advanceTools(ctx, repo)
 
   if (!deploys) {
-    const why = repo.mode === 'merge-only' ? `deploying is a session's job for this repo (${repo.reason})` : 'it has no `Release:` line in its description, so it was not tagged and not deployed. A release pull request carries `Release: X.Y.Z One sentence.` on its own line'
+    const why = repo.mode === 'merge-only' ? `deploying is a session's job for this repo (${repo.reason})` : notDeployedWhy(repo)
     await postOnce(ctx, repo, pr.number, mergeSha, 'merged', `Merged as ${short(mergeSha)}; ${why}.`)
     ctx.state.forgetPr(repo.slug, pr.number)
     return true
@@ -887,21 +907,24 @@ async function liveMerge(ctx, repo, pr, tag, plan) {
   ctx.redactor.add(envSecrets(repo, ctx.fsx))
   deployLog.write(`[ship-bot] ${repo.slug} #${pr.number}: deploying merge ${mergeSha}\n`)
 
-  const outcome = await deployMerged(ctx, repo, { mergeSha, log: deployLog, release: plan?.kind === 'release' ? plan : null })
+  const outcome = await deployMerged(ctx, repo, { mergeSha, log: deployLog, release: plan.tag ?? null, since: rs.lastDeployedSha ?? null, expectParent: plan.kind === 'hotfix' ? rs.lastDeployedSha : null })
   delete rs.deployInProgress
-  await report(ctx, repo, pr, mergeSha, outcome, deployLog, plan?.kind === 'release' ? plan : null)
+  if (outcome.status === 'deployed' && plan.kind === 'release') rs.lastReleasedAt = ctx.clock.now().toISOString()
+  await report(ctx, repo, pr, mergeSha, outcome, deployLog, plan.tag ?? null, plan)
   ctx.state.forgetPr(repo.slug, pr.number)
   ctx.state.save()
   return true
 }
 
-async function report(ctx, repo, pr, mergeSha, outcome, deployLog, release = null) {
+async function report(ctx, repo, pr, mergeSha, outcome, deployLog, release = null, plan = null) {
   const rs = ctx.state.repo(repo.slug)
   const tag = `${repo.slug}#${pr.number}`
   const logTail = `<details><summary>Log tail (full log on the owner's Mac: ${deployLog.path})</summary>\n\n\`\`\`\n${deployLog.tail()}\n\`\`\`\n</details>`
-  const block = (reason) => {
-    rs.blocked = { reason, at: ctx.clock.now().toISOString(), pr: pr.number }
+  const block = (reason, extra = {}) => {
+    rs.blocked = { reason, at: ctx.clock.now().toISOString(), pr: pr.number, ...extra }
   }
+  // A hotfix says so wherever a release would, so a run of them is visible (plan row 1.25).
+  const as = plan?.kind === 'hotfix' ? ` as a hotfix (exemption: ${plan.exemption})` : plan?.kind === 'release' ? ' as a release' : ''
   const tagNote = release && outcome.tagged && outcome.tagged !== 'no' ? ` The tag ${release.tag} was ${outcome.tagged === 'maybe' ? 'possibly ' : ''}pushed to the merge commit and stays there (the bot never deletes a tag); the next release needs a higher version.` : ''
   const unblock = `${tagNote.trim()}${tagNote ? '\n\n' : ''}The bot will not merge or deploy anything else in this repo until someone checks the site and runs \`ship-bot --unblock ${repo.name}\`.`
   let body
@@ -909,13 +932,14 @@ async function report(ctx, repo, pr, mergeSha, outcome, deployLog, release = nul
     rs.lastDeployedSha = mergeSha
     const skipped = outcome.skipped?.length ? ` Skipped (nothing they cover changed): ${outcome.skipped.join(', ')}.` : ''
     const tagged = release ? ` Tagged ${release.tag}.` : ''
-    body = `Merged as ${short(mergeSha)} and deployed: ${outcome.steps.join(', ')}.${tagged}${skipped}\n\n${logTail}`
-    ctx.say('info', `${tag}: deployed ${short(mergeSha)}`)
+    body = `Merged as ${short(mergeSha)} and deployed${as}: ${outcome.steps.join(', ')}.${tagged}${skipped}\n\n${logTail}`
+    ctx.say('info', `${tag}: deployed ${short(mergeSha)}${as}`)
     if (release) await createGitHubRelease(ctx, repo, release)
-    await notify(ctx, `${repo.name} #${pr.number} merged and deployed`)
+    await notify(ctx, `${repo.name} #${pr.number} merged and deployed${as}`)
   } else if (outcome.status === 'paused') {
-    block(`#${pr.number} changed ${outcome.paused.join(', ')}, which this repo deploys by hand`)
-    body = `Merged as ${short(mergeSha)} but **not deployed**: it changes ${outcome.paused.map((p) => `\`${p}\``).join(', ')}, which this repo never deploys unattended. Deploy it from a session.\n\n${unblock}`
+    // The block remembers the commit: unblocking it says a person deployed that commit by hand, so the next diff starts there.
+    block(`the changes up to #${pr.number} include ${outcome.paused.join(', ')}, which this repo deploys by hand: deploy ${short(mergeSha)} by hand, then --unblock ${repo.name} --deployed ${short(mergeSha)}`, { pausedSha: mergeSha, pausedKind: plan?.kind ?? null })
+    body = `Merged as ${short(mergeSha)} but **not deployed**: the changes since the last deploy include ${outcome.paused.map((p) => `\`${p}\``).join(', ')}, which this repo never deploys unattended. Deploy ${short(mergeSha)} from a session.\n\nOnce ${short(mergeSha)} is live, run \`ship-bot --unblock ${repo.name} --deployed ${short(mergeSha)}\`: that records it as deployed, so the next release diffs from there. A plain \`--unblock\` is refused for this block.`
     ctx.say('warn', `${tag}: merged, deploy paused (${outcome.paused.join(', ')})`)
     await notify(ctx, `${repo.name} #${pr.number} merged; deploy paused for a person`)
   } else if (outcome.status === 'not-started') {
@@ -930,7 +954,7 @@ async function report(ctx, repo, pr, mergeSha, outcome, deployLog, release = nul
     await notify(ctx, `${repo.name} #${pr.number}: deploy FAILED, rolled back`, true)
   } else if (outcome.status === 'failed-not-rolled-back') {
     block(`deploy of #${pr.number} failed and nothing was rolled back: ${outcome.error}`)
-    body = `**DEPLOY FAILED AND NOTHING WAS ROLLED BACK.** Merged as ${short(mergeSha)}; step "${outcome.failedStep}" failed (${outcome.error}). The rollback is configured to undo only a failure after the release went live, so the live site may be on the new release, or on a half-switched one. A person needs to check it now.\n\n${unblock}\n\n${logTail}`
+    body = `**DEPLOY FAILED AND NOTHING WAS ROLLED BACK.** Merged as ${short(mergeSha)}; step "${outcome.failedStep}" failed (${outcome.error}). ${outcome.rollback?.error?.includes('no record of the commit that was live') ? 'There is no rollback list and no record of the commit that was live, so there was nothing safe to redeploy: the live site may be on the new release, or on a half-switched one.' : 'The rollback is configured to undo only a failure after the release went live, so the live site may be on the new release, or on a half-switched one.'} A person needs to check it now.\n\n${unblock}\n\n${logTail}`
     ctx.say('error', `${tag}: DEPLOY FAILED, NOTHING ROLLED BACK (step "${outcome.failedStep}"): ${outcome.error}`)
     await notify(ctx, `${repo.name} #${pr.number}: DEPLOY FAILED, nothing rolled back; check the site`, true)
   } else {

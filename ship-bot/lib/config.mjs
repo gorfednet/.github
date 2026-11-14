@@ -70,6 +70,8 @@ const DEPLOY_REPO_KEYS = [
   'pausedIfChanged',
   'release',
   'needsHeadroom',
+  'deployOn',
+  'deployOnMergeReason',
 ]
 const ALLOWED_REPO_KEYS = {
   deploy: new Set([...COMMON_REPO_KEYS, ...DEPLOY_REPO_KEYS]),
@@ -242,6 +244,10 @@ function validateRepo(repo, i, problems, seen) {
     }
   }
   if (repo.needsHeadroom !== undefined && typeof repo.needsHeadroom !== 'boolean') problems.push(`${label}.needsHeadroom: must be true or false`)
+  // Plan row 1.25: a visitor-facing row deploys only from a release. "merge" is the exemption for a deploy no visitor sees, and says why.
+  if (repo.deployOn !== undefined && !['release', 'merge'].includes(repo.deployOn)) problems.push(`${label}.deployOn: must be "release" (the default) or "merge"`)
+  if (repo.deployOn === 'merge' && !isNonEmptyString(repo.deployOnMergeReason)) problems.push(`${label}.deployOnMergeReason: required with deployOn "merge": why no visitor sees this deploy`)
+  if (repo.deployOnMergeReason !== undefined && repo.deployOn !== 'merge') problems.push(`${label}.deployOnMergeReason: only with deployOn "merge"`)
   if (repo.siblings !== undefined) {
     if (!Array.isArray(repo.siblings)) problems.push(`${label}.siblings: must be an array`)
     else {
@@ -461,10 +467,13 @@ export function normalizeConfig(raw, { home = homedir() } = {}) {
         // null: no list given, so a failure redeploys the previous commit. An explicit [] (or a list no step of which applies) rolls nothing back.
         rollback: repo.rollback ?? null,
         pausedIfChanged: repo.pausedIfChanged ?? [],
-        // null: every merge deploys. An object: only a pull request whose description says `Release: X.Y.Z sentence` is tagged and deployed (lib/release.mjs).
+        // null: no tag. An object: a deploy tags the merge commit from the description's `Release: X.Y.Z sentence` (lib/release.mjs), and a deploy needs that line.
         release: repo.release ? { tagPrefix: repo.release.tagPrefix ?? 'v' } : null,
         // true: a merge waits while this Mac's 1-minute load is above its core count (the row's setup or deploy is timing-sensitive).
         needsHeadroom: repo.needsHeadroom ?? false,
+        // "release": merges never deploy; only a `release` or `hotfix` pull request does (lib/deploy-plan.mjs). "merge": every merge deploys.
+        deployOn: repo.deployOn ?? 'release',
+        deployOnMergeReason: repo.deployOnMergeReason ?? '',
       }
     }),
   }
