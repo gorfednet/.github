@@ -254,7 +254,8 @@ describe('fleet-status.yml', () => {
     const names = steps.map((s) => s.split('\n')[0])
     assert.ok(steps.length >= 7, names.join(', '))
     // checkout, setup-node, the token check and the read itself run only when everything before them passed.
-    for (const step of steps.slice(4)) assert.match(step, /if: \$\{\{ !cancelled\(\) \}\}/, step.split('\n')[0])
+    // The ntfy digest adds one condition: it goes out only on the run that did the full read.
+    for (const step of steps.slice(4)) assert.match(step, /if: \$\{\{ !cancelled\(\)( && steps\.read\.outputs\.digest != 'no')? \}\}/, step.split('\n')[0])
   })
 })
 
@@ -414,7 +415,21 @@ describe('the 2-hourly light run (plan row 1.14)', () => {
     const carried = [{ branch: 'old', ahead: 3 }]
     const row = await collectRepo('o/p', new Date('2026-11-13T12:00:00Z'), { json: fakeJson(calls), log: () => {}, carryBranches: carried })
     assert.deepEqual(row.branchesAhead, carried)
+    // A branch that has since gained a PR drops out of the carried list.
+    const withPr = (args) => (args[0] === 'pr' ? [{ number: 9, title: 't', createdAt: '2026-11-13T00:00:00Z', updatedAt: '2026-11-13T00:00:00Z', labels: [], isDraft: false, headRefName: 'old', headRefOid: 'f'.repeat(40), body: '', author: { login: 'x' } }] : args.includes('--paginate') && String(args.at(-1)).includes('/comments') ? [[]] : fakeJson([])(args))
+    const row2 = await collectRepo('o/p', new Date('2026-11-13T12:00:00Z'), { json: withPr, log: () => {}, carryBranches: carried })
+    assert.deepEqual(row2.branchesAhead, [])
     assert.ok(!calls.some((c) => c.includes('/branches')), calls.join('\n'))
+  })
+  it('a prior read older than 23 hours is not carried: the run is full and says so', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'fs-carry-'))
+    const prior = join(dir, 'prior.json')
+    writeFileSync(prior, JSON.stringify({ branchesReadAt: '2020-01-01T00:00:00Z', repos: [] }))
+    const r = spawnSync(process.execPath, ['scripts/fleet-status.mjs', '--only', 'nobody/nothing', '--carry-branches', prior, '--out', join(dir, 'o.json')], { encoding: 'utf8', env: { ...process.env, GH_TOKEN: '' } })
+    assert.equal(r.status, 0, r.stderr) // zero repos matched: an empty full read
+    const out = JSON.parse(readFileSync(join(dir, 'o.json'), 'utf8'))
+    assert.equal(out.carried, false)
+    assert.ok(Date.now() - Date.parse(out.branchesReadAt) < 60000)
   })
   it('a full run (no carry) does list branches', async () => {
     const calls = []

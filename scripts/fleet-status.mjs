@@ -263,7 +263,8 @@ export async function gatherRepo(slug, now = new Date(), { includePrivate = fals
   // A light run (every 2 hours) keeps the previous full run's branch list: the compare calls, one per
   // branch, are the bulk of a run's GitHub requests, and the owner's 5,000-an-hour quota is shared.
   let branchesAhead
-  if (carryBranches) branchesAhead = carryBranches
+  // The carried list is the last full read's, so branches that have since gained a PR are dropped from it.
+  if (carryBranches) branchesAhead = carryBranches.filter((b) => !prBranches.has(b.branch))
   else {
     const branches = json(['api', '--paginate', '--slurp', `repos/${slug}/branches?per_page=100`]).flat()
     // `status` is this report's own orphan branch (fleet-status.yml), with no history in common with main.
@@ -373,6 +374,7 @@ if (isMain(import.meta.url)) {
   if (arg('--only')) slugs = slugs.filter((s) => s === arg('--only'))
   let repos = []
   let failed = 0
+  let carriedFrom = null
   if (arg('--from')) {
     repos = JSON.parse(readFileSync(arg('--from'), 'utf8')).repos
     failed = repos.filter((r) => r.unavailable).length
@@ -382,13 +384,21 @@ if (isMain(import.meta.url)) {
     // 10 at a time; a child that dies yields an `unavailable` row, never a gap.
     const extra = process.argv.includes('--include-private') ? ['--include-private'] : []
     // --carry-branches <earlier status.json>: a light run, reusing each repository's branch list from it.
-    const carry = arg('--carry-branches') ? new Map(JSON.parse(readFileSync(arg('--carry-branches'), 'utf8')).repos.map((r) => [r.slug, r.branchesAhead])) : null
+    // Only while that read is under 23 hours old (it carries `branchesReadAt`): a dropped or late daily run
+    // makes the next one full, whatever the hour is.
+    const earlier = arg('--carry-branches') ? JSON.parse(readFileSync(arg('--carry-branches'), 'utf8')) : null
+    const fresh = earlier?.branchesReadAt && now - Date.parse(earlier.branchesReadAt) < 23 * 3600 * 1000
+    const carry = fresh ? new Map(earlier.repos.map((r) => [r.slug, r.branchesAhead])) : null
     if (carry) extra.push('--carry-branches', arg('--carry-branches'))
+    carriedFrom = carry ? earlier.branchesReadAt : null
     const rows = await mapLimit(slugs, 10, async (slug) => {
       if (slugs.length === 1) return collectRepo(slug, now, { includePrivate: process.argv.includes('--include-private'), carryBranches: carry?.get(slug), kitPath: kitPathFor(fleet.projects.find((p) => p.slug === slug)) })
       try {
         const tmp = join(mkdtempSync(join(tmpdir(), 'fleet-status-')), 'one.json')
-        await execFileAsync(process.execPath, [fileURLToPath(import.meta.url), '--only', slug, '--out', tmp, ...extra], { env: process.env, maxBuffer: 1 << 26 }).catch(() => {})
+        await execFileAsync(process.execPath, [fileURLToPath(import.meta.url), '--only', slug, '--out', tmp, ...extra], { env: process.env, maxBuffer: 1 << 26 })
+          .then((r) => process.stderr.write(r.stderr))
+          // A child that could not read its repository exits 1 after writing its row; its ::error:: lines still reach the log.
+          .catch((e) => process.stderr.write(e.stderr ?? ''))
         return JSON.parse(readFileSync(tmp, 'utf8')).repos[0]
       } catch (cause) {
         return { slug, unavailable: `read process failed: ${String(cause.message).split('\n')[0]}` }
@@ -401,7 +411,7 @@ if (isMain(import.meta.url)) {
   }
   // With --from the repository data is the earlier snapshot's, so its generatedAt is kept.
   const prior = arg('--from') ? JSON.parse(readFileSync(arg('--from'), 'utf8')).generatedAt : null
-  const status = { generatedAt: prior ?? now.toISOString(), renderedAt: now.toISOString(), repos }
+  const status = { generatedAt: prior ?? now.toISOString(), renderedAt: now.toISOString(), repos, branchesReadAt: carriedFrom ?? now.toISOString(), carried: carriedFrom !== null }
   if (process.argv.includes('--local')) {
     // The `local` object exists only when this run looked at the Mac; its absence means "not measured".
     status.local = collectLocal(join(homedir(), 'Developer', 'gorfednet'), { fetch: !process.argv.includes('--no-fetch') })
