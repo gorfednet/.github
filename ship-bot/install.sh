@@ -104,11 +104,6 @@ if ! "${NODE_BIN}" "${SRC}/lib/gate-imports.mjs" "${GATES}"; then
   echo "install.sh: the gate scripts import something the copy does not hold. Nothing was installed." >&2
   exit 1
 fi
-rm -rf "${APP_DIR}.old"
-if [[ -d "${APP_DIR}" ]]; then mv "${APP_DIR}" "${APP_DIR}.old"; fi
-mv "${APP_DIR}.new" "${APP_DIR}"
-rm -rf "${APP_DIR}.old"
-
 if [[ ! -f "${BOT_HOME}/config.json" ]]; then
   cp "${SRC}/config.example.json" "${BOT_HOME}/config.json"
   chmod 600 "${BOT_HOME}/config.json"
@@ -117,13 +112,28 @@ else
   echo "Kept the existing ${BOT_HOME}/config.json."
 fi
 
-# Validate before loading: a bad config would otherwise fail every two minutes in a log nobody reads.
+# Validate the live config with the NEW app's validator before it replaces the running one (13 November
+# 2026: the swap came first, a tightened validator refused the live ops row, and every pass exited until a
+# patch was applied). On refusal the running app and its LaunchAgent stay exactly as they were.
 if ! "${NODE_BIN}" --input-type=module -e "
-  import('${APP_DIR}/lib/config.mjs').then((m) => m.loadConfig('${BOT_HOME}/config.json'))
+  import('${APP_DIR}.new/lib/config.mjs').then((m) => m.loadConfig('${BOT_HOME}/config.json'))
     .catch((e) => { console.error(e.message); process.exit(1) })"; then
-  echo "install.sh: fix ${BOT_HOME}/config.json, then run this again. The LaunchAgent was not (re)loaded." >&2
+  rm -rf "${APP_DIR}.new"
+  echo "install.sh: this ${main_sha:0:7} bot does not accept ${BOT_HOME}/config.json. Nothing was installed; the running bot is unchanged." >&2
+  shopt -s nullglob
+  patches=("${SRC}"/patches/*.json)
+  shopt -u nullglob
+  if [[ ${#patches[@]} -gt 0 ]]; then
+    echo "install.sh: if a reviewed row patch in ship-bot/patches/ fixes it, apply it with the RUNNING bot, then run this again:" >&2
+    for p in "${patches[@]}"; do echo "  ${NODE_BIN} ${APP_DIR}/patch-config.mjs ${REPO}/ship-bot/patches/$(basename "${p}")" >&2; done
+  fi
   exit 1
 fi
+
+rm -rf "${APP_DIR}.old"
+if [[ -d "${APP_DIR}" ]]; then mv "${APP_DIR}" "${APP_DIR}.old"; fi
+mv "${APP_DIR}.new" "${APP_DIR}"
+rm -rf "${APP_DIR}.old"
 
 xml() { sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g' <<<"$1"; }
 
