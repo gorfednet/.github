@@ -25,7 +25,7 @@ Run these three checks each week. Download, install and adopt nothing. Anything 
 - Proposals go in the weekly-lessons PR as a "Currency" list, each with its evidence (file and line, or version strings). A model change cites its eval score. A skill or plugin adoption gets its own PR, never this one. A stale item that is a real fix goes in as one of the 5 changes. The rest become `- [ ] Later:` lines in `## Next`.
 - Add one clause to the digest line: `Currency: <n> stale, <n> proposed`.
 - Feed any stale item that is a real fix into the Rank list. The rest go to the Write step as the Currency list.
-- Write the Currency list to `docs/desk/currency/<yyyy-mm-dd>.md`, one line per item with its evidence. Create the file, and the folder with it, only in a week that has items. The step 3 builder commits it, so a Currency-only week still has a commit to open the PR from. The PR body summarises it.
+- Put the Currency list together here, one line per item with its evidence, but write no file: this step is read-only, and a file written here lands in the main checkout, not the builder's worktree. The step 3 builder writes it to `docs/desk/currency/<yyyy-mm-dd>.md` in its own worktree and commits it, so a Currency-only week still has a commit to open the PR from. It creates the file, and the folder with it, only in a week that has items. The PR body summarises it.
 
 ## 3. Write (Sonnet `builder`, then Fable `editor`)
 - Brief a `builder` with the ranked list, the Currency list and these rules. This covers a Currency-only week too: the builder still creates the branch and writes the list. It starts with `git checkout -B weekly-lessons-<date> origin/main`, works in its own worktree, and never pushes.
