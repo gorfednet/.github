@@ -67,9 +67,9 @@ Priority follows your order (infra, 4thcltr, gorfed.net, resumes, MoonMan, Binde
 
 ### Lane A: foundations the other lanes stand on (this week)
 
-**A1. Ship the kit that the rules already cite, then make drift fail.**
-Land `.github` PR 132 (kit 0.61.0, V77, `check-sitemap-pages`). Then one refresh PR per repo to 0.61 in priority order (4thcltr, gorfed.net, heuristics, papers, career-portfolio, MoonMan install from none, BinderCurve, sites, ops, intake). Root cause: copy-distribution with a warn-only drift check. Fix: `check-kit-drift` fails in CI when more than one minor behind (the README already says so from 15 December; move that forward), janitor opens the refresh PR weekly, and `write-manifest` tags a release so "which kit" is derivable.
-Who: main session labels PR 132 `ready-to-merge` after reading gates, and ship-bot merges; `runner` for each refresh PR; `reviewer` only where a refresh changes a workflow. Done: STATUS.md shows every active repo at the same kit version; `check-kit-drift` watched failing once on a deliberately old copy (verification rule 4).
+**A1. Ship the kit that the rules already cite, and bring every repo to it.**
+Land `.github` PR 132 (kit 0.61.0, V77, `check-sitemap-pages`). Then one refresh PR per repo to 0.61 in priority order (4thcltr, gorfed.net, heuristics, papers, career-portfolio, MoonMan install from none, BinderCurve, sites, ops, intake). Root cause: copy-distribution, with drift seen only in reports. Fix: janitor opens the refresh PR weekly, drift stays in the scheduled reports (a per-PR drift failure was retired on purpose in `docs/verification-rules.md`: another repository cannot fail a pull request; amended 14 November 2026), and `write-manifest` tags a release so "which kit" is derivable.
+Who: main session labels PR 132 `ready-to-merge` after reading gates, and ship-bot merges; `runner` for each refresh PR; `reviewer` only where a refresh changes a workflow. Done: STATUS.md shows every active repo at the same kit version.
 
 **A2. Stale skills and agents rewritten; Cursor leftovers removed.**
 `self-heal` (cites V1 to V38, `.cursor/rules`, "fifteen projects", no `gate-run`), `verification-bootstrap` (Bugbot tier, `/tmp` clone, V77 claimed), `full-codebase-assessment` (BinderCurve `.cursor` paths), `runner.md` ("composer-2.5-fast"), `builder.md` (conflicts with the 7 Nov handoff on `node_modules`; add `builder-ok`). Move 4thcltr's four `.cursor/skills` to `.claude/skills`, delete `.cursor/rules` in 4thcltr, gorfed.net, gorfmusic. Drop the Cursor translation table from `~/.claude/CLAUDE.md` once nothing needs it. Add a skill eval (skill-creator) for `self-heal` and `handoff` so a future rewrite is measured.
@@ -164,7 +164,7 @@ Who: as the 11 Nov plan tiers them.
 
 - Every new check: watched failing once on a deliberate break, restored, said on the PR, with a near-miss negative case (verification rule 4).
 - Every design PR: visual matrix with read baselines, `check-design-tells` clean, `design-reviewer` clean or triaged, `reduced-motion` spec green, Lighthouse accessibility 100 on the changed pages, the before-and-after contact sheet attached, and for MoonMan a check on your iPhone.
-- Every kit refresh: `check-kit-drift` green and the repo's own gate green on the pool.
+- Every kit refresh: the repo's own gate green on the pool, and STATUS.md shows the new version.
 - Fleet level: STATUS.md shows one kit version, zero red mains, the lapsed count falling week over week; `session-report` shows the start-of-session token count down after A3.
 - Nothing in this plan weakens a check, raises a tolerance or refreshes a snapshot unread.
 
