@@ -21,6 +21,14 @@ export const HOLD_LABEL = 'hold'
  */
 export const DEFAULT_IGNORED_CHECKS = ['heavy-runner-preflight', 'review / trigger', 'review / review']
 
+/**
+ * Check names the shared Claude reviewer workflow produces. They attach only when a pull request opens
+ * or leaves draft (a later push attaches none), so as an expected check they strand every PR that was
+ * pushed to after ready: ops 62, 74, 76 and 77 sat on "required checks never appeared: review / review".
+ * The verdict comes from review-status.mjs (claudeReview), never from these runs.
+ */
+export const isReviewerCheck = (name) => /^review \/ /.test(name)
+
 const TOP_KEYS = new Set([
   'note',
   'live',
@@ -198,8 +206,13 @@ function validateRepo(repo, i, problems, seen) {
   // A repo the bot can merge in must say exactly which checks prove a pull
   // request is good. Without the list, a workflow that silently did not run
   // leaves nothing to fail, and "every check passed" is true of zero checks.
-  if (!isStringArray(repo.expectedChecks) || repo.expectedChecks.length === 0) {
-    problems.push(`${label}.expectedChecks: required and non-empty for mode "${repo.mode}"`)
+  // Empty only for a repo whose single gate is the Claude review (ops): review-status.mjs and
+  // assert-checks-started still stand behind it, and any check that does appear must pass.
+  if (!isStringArray(repo.expectedChecks) || (repo.expectedChecks.length === 0 && repo.claudeReview !== true)) {
+    problems.push(`${label}.expectedChecks: required and non-empty for mode "${repo.mode}" (empty only with claudeReview true)`)
+  }
+  for (const name of isStringArray(repo.expectedChecks) ? repo.expectedChecks.filter(isReviewerCheck) : []) {
+    problems.push(`${label}.expectedChecks: "${name}" is produced by the Claude reviewer workflow, which attaches only when a pull request opens; the review verdict comes from review-status, so remove it`)
   }
   if (typeof repo.claudeReview !== 'boolean') problems.push(`${label}.claudeReview: required, true or false`)
 
