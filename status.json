@@ -1,11 +1,11 @@
 {
-  "generatedAt": "2026-11-14T08:32:06.863Z",
-  "renderedAt": "2026-11-14T08:32:06.863Z",
+  "generatedAt": "2026-11-14T10:32:04.803Z",
+  "renderedAt": "2026-11-14T10:32:04.803Z",
   "repos": [
     {
       "slug": "gorfednet/bindercurve.com",
       "redacted": true,
-      "mainRed": false,
+      "mainRed": true,
       "openPrCount": 5,
       "lapsedBacklogCount": 0,
       "noPrCount": 78,
@@ -258,7 +258,7 @@
           "labels": [],
           "draft": true,
           "review": "not-run",
-          "headSha": "d18e945d3bb358872144fa571d59f03d58acf36f",
+          "headSha": "d2305b7bbf3fedf8fd0c9a20435919fe5db7e1e0",
           "ci": "none",
           "next": "Desk appends each pass's line until the 02:00 ET rotation (hold: the log is still being written)",
           "author": "gorfednet"
@@ -670,7 +670,7 @@
   "branchesReadAt": "2026-11-14T02:32:09.796Z",
   "carried": true,
   "inventory": {
-    "measuredAt": "2026-11-14T08:32:06.863Z",
+    "measuredAt": "2026-11-14T10:32:04.803Z",
     "counts": {
       "pr": {
         "total": 110,
