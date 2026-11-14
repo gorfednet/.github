@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-11-14T12:32:02.317Z",
-  "renderedAt": "2026-11-14T12:32:02.317Z",
+  "generatedAt": "2026-11-14T14:32:00.291Z",
+  "renderedAt": "2026-11-14T14:32:00.291Z",
   "repos": [
     {
       "slug": "gorfednet/bindercurve.com",
@@ -18,7 +18,7 @@
       "slug": "gorfednet/4thcltr.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 21,
+      "openPrCount": 22,
       "lapsedBacklogCount": 0,
       "noPrCount": 13,
       "idlePrCount": 7,
@@ -164,15 +164,18 @@
       "mainRed": false,
       "openPrs": [
         {
-          "number": 185,
-          "title": "Plan of record: Phase 7, 4thcltr.com forms, chat intake and design",
+          "number": 186,
+          "title": "claude-home: per-repo plugin map, global keeps only security-guidance",
           "ageDays": 0,
-          "labels": [],
+          "labels": [
+            "ready-to-merge",
+            "needs-fix"
+          ],
           "draft": false,
-          "review": "not-run",
-          "headSha": "ac86d7dcf74b6102896d56f757b6fd5f5c9616e9",
-          "ci": "pending",
-          "next": "Merge once the gates are clean. Docs only.",
+          "review": "findings",
+          "headSha": "ab7ddc6500cfc076cb23b0bd6920ec42169d85ba",
+          "ci": "green",
+          "next": "Merge: ship-bot merges once labelled. Merge MoonMan#337 and 4thcltr.com#274 alongside (green CI plus a read of the 5-line diff; neither repo has a Claude review workflow).",
           "author": "gorfednet"
         },
         {
@@ -233,9 +236,9 @@
             "ready-to-merge"
           ],
           "draft": false,
-          "review": "clean",
-          "headSha": "bccf265d0278272540a2d5c6b2624cc49a1cf590",
-          "ci": "green",
+          "review": "findings",
+          "headSha": "b9cb867b0db09d6e79f49472a178ed1f79d366c2",
+          "ci": "pending",
           "next": "Merge once the review is clean",
           "author": "gorfednet"
         },
@@ -269,11 +272,11 @@
         {
           "number": 139,
           "title": "Desk log and briefs, 13 November",
-          "ageDays": 0,
+          "ageDays": 1,
           "labels": [],
           "draft": true,
           "review": "not-run",
-          "headSha": "133da9b7513b3c9132ce29f2b6bb51831d122ff8",
+          "headSha": "cb6aab512de8029783679e1be1fb9c4f525b669f",
           "ci": "none",
           "next": "Desk appends each pass's line until the 02:00 ET rotation (hold: the log is still being written)",
           "author": "gorfednet"
@@ -334,7 +337,7 @@
         {
           "number": 117,
           "title": "Handoff: fleet close-out plan and 4-week assessment (11 Nov)",
-          "ageDays": 2,
+          "ageDays": 3,
           "labels": [],
           "draft": true,
           "review": "not-run",
@@ -540,6 +543,12 @@
           "reviewBy": "2026-12-01"
         },
         {
+          "id": "papers-deploy-verify-fails-under-load",
+          "title": "papers deploy fails make verify under load",
+          "status": "confirmed-bug",
+          "reviewBy": "2026-12-12"
+        },
+        {
           "id": "ship-bot-default-rollback-cannot-pass-tip-guard",
           "title": "Ship-bot's default rollback can never pass site-deploy's merged-tip guard",
           "status": "confirmed-bug",
@@ -574,7 +583,7 @@
       "slug": "gorfednet/MoonMan",
       "redacted": true,
       "mainRed": true,
-      "openPrCount": 9,
+      "openPrCount": 10,
       "lapsedBacklogCount": 0,
       "noPrCount": 41,
       "idlePrCount": 0,
@@ -626,7 +635,7 @@
       "slug": "gorfednet/heuristics.4thcltr.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 11,
+      "openPrCount": 12,
       "lapsedBacklogCount": 12,
       "noPrCount": 5,
       "idlePrCount": 0,
@@ -638,7 +647,7 @@
       "slug": "gorfednet/papers.4thcltr.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 6,
+      "openPrCount": 7,
       "lapsedBacklogCount": 0,
       "noPrCount": 1,
       "idlePrCount": 2,
@@ -674,7 +683,7 @@
       "slug": "gorfednet/ops",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 7,
+      "openPrCount": 6,
       "lapsedBacklogCount": 0,
       "noPrCount": 0,
       "idlePrCount": 0,
@@ -686,17 +695,17 @@
   "branchesReadAt": "2026-11-14T02:32:09.796Z",
   "carried": true,
   "inventory": {
-    "measuredAt": "2026-11-14T12:32:02.317Z",
+    "measuredAt": "2026-11-14T14:32:00.291Z",
     "counts": {
       "pr": {
-        "total": 113,
-        "orphans": 65
+        "total": 116,
+        "orphans": 67
       },
       "session": null,
       "worktree": null,
       "job": null,
       "backlog": {
-        "total": 7,
+        "total": 8,
         "orphans": 5
       }
     },
@@ -704,8 +713,8 @@
       {
         "kind": "pr",
         "repo": "gorfednet/.github",
-        "ref": "#185",
-        "label": "Plan of record: Phase 7, 4thcltr.com forms, chat intake and design",
+        "ref": "#186",
+        "label": "claude-home: per-repo plugin map, global keeps only security-guidance",
         "private": false,
         "lapsed": false
       },
@@ -870,7 +879,7 @@
         "lapsed": false
       }
     ],
-    "hiddenPrivate": 49,
+    "hiddenPrivate": 51,
     "privateReposNotItemised": 20
   }
 }
