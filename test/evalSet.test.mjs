@@ -6,7 +6,7 @@ import crypto from 'node:crypto'
 import { describe, it } from 'node:test'
 import { spawnSync } from 'node:child_process'
 import { validateManifest, verifyCases, judge, score, keyOf, filesLabel, rejections, gradeStats, sha256, gradeKey, referenceProblems, checkReferences, GRADE_MEAN } from '../scripts/local-llm/evalset.mjs'
-import { parseAnswer, promptFor, nomodelArm, majority, withCause, ruleVerdict, ruleArm, emitInputs } from '../scripts/local-llm/evalset-run.mjs'
+import { parseAnswer, promptFor, nomodelArm, majority, withCause, ruleVerdict, ruleArm, emitInputs, runModel, prepare } from '../scripts/local-llm/evalset-run.mjs'
 
 const sha = (s) => crypto.createHash('sha256').update(s).digest('hex')
 const SALT = 'test-salt'
@@ -406,6 +406,49 @@ describe('rule arm and triage prompts', () => {
     assert.equal(t.task, 'triage')
     assert.ok(t.messages.length >= 2 && !JSON.stringify(t).includes('"label"'))
     assert.throws(() => emitInputs([tri('0'.repeat(64))], path.join(dir, 'out2')), /log body sha256 changed/)
+  })
+})
+
+describe('triage answers are held to the lines the model saw; the run builds every prompt first', () => {
+  const mk = (n = 461) => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'es-run-'))
+    const log = path.join(dir, 'x.log')
+    fs.writeFileSync(log, Array.from({ length: n }, (_, i) => (i === 229 ? '##[error]boom' : `line ${i + 1}`)).join('\n'))
+    const c = { id: 'tri-01', task: 'triage', label: 'real', body: { input: { bodyFile: log, bodySha256: sha(fs.readFileSync(log)) }, truth: { causeLines: [1] } } }
+    return { dir, log, c }
+  }
+  const io = (reply, calls) => ({
+    listModels: async () => { calls.push('list'); return [{ id: 'm', status: 'unloaded' }] },
+    chat: async () => { calls.push('chat'); return { text: reply, ms: 1 } },
+    unload: async () => { calls.push('unload') },
+    lock: path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'es-lock-')), 'lock'),
+  })
+  it('marks a schema-valid answer naming lines outside the shown ones invalid', async () => {
+    const { c } = mk()
+    const shown = prepare([c]).get('tri-01').allowed
+    assert.ok(shown.every((n) => n > 200) && shown.includes(230)) // only lines 226-236 and the last 200 are shown
+    const calls = []
+    const arm = await runModel([c], 'm', 'http://stub', io('{"verdict":"real","lines":[1,8,15,22,29,36,43,50,57,64]}', calls))
+    assert.equal(arm['tri-01'].invalid, true)
+    assert.equal(arm['tri-01'].cause, undefined)
+    const ok = await runModel([c], 'm', 'http://stub', io('{"verdict":"real","lines":[230]}', []))
+    assert.deepEqual([ok['tri-01'].verdict, ok['tri-01'].lines], ['real', [230]])
+  })
+  it('holds an ingested Claude-tier answer to the same lines', () => {
+    const { c } = mk()
+    const allowed = prepare([c]).get('tri-01').allowed
+    assert.equal(parseAnswer('triage', '{"verdict":"real","lines":[1]}', allowed), null)
+    assert.deepEqual(parseAnswer('triage', '{"verdict":"real","lines":[230]}', allowed), { verdict: 'real', lines: [230] })
+  })
+  it('stops before any model call when a triage log is missing or edited, instead of blaming the model', async () => {
+    for (const break_ of [(l) => fs.appendFileSync(l, '\nedited'), (l) => fs.rmSync(l)]) {
+      const rev = { id: 'rev-01', task: 'reviewer', body: { input: { path: 'p', line: 1, finding: 'F', region: 'R' } } }
+      const { log, c } = mk()
+      break_(log)
+      const calls = []
+      await assert.rejects(runModel([rev, c], 'm', 'http://stub', io('{"verdict":"valid"}', calls)), /sha256 changed|ENOENT/)
+      assert.deepEqual(calls, [])
+    }
   })
 })
 

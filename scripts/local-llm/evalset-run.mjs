@@ -31,14 +31,14 @@ export function promptFor(task, input) {
 }
 
 /** Strict: JSON only, the task's own keys, nothing else. Returns null when invalid. */
-export function parseAnswer(task, content) {
+export function parseAnswer(task, content, allowed) {
   let v
   try { v = JSON.parse(String(content).trim().replace(/^```(?:json)?\s*|\s*```$/g, '')) } catch { return null }
   if (!v || typeof v !== 'object' || Array.isArray(v)) return null
   const keys = Object.keys(v).sort().join()
   if (task === 'builder') return keys === 'files' && Array.isArray(v.files) && v.files.every((f) => typeof f === 'string') ? { files: v.files } : null
   if (task === 'copy') return keys === 'text' && typeof v.text === 'string' ? { text: v.text } : null
-  if (task === 'triage') return parseTriage(JSON.stringify(v))
+  if (task === 'triage') return parseTriage(JSON.stringify(v), allowed ?? undefined)
   return keys === 'verdict' && LABELS[task].includes(v.verdict) ? { verdict: v.verdict } : null
 }
 
@@ -48,11 +48,19 @@ export function loadCases(manifest, dir) {
   return manifest.cases.map((c) => ({ ...c, body: JSON.parse(fs.readFileSync(path.join(dir, `${c.id}.json`), 'utf8')) }))
 }
 
-export function messagesFor(c) {
-  if (c.task !== 'triage') return promptFor(c.task, c.body.input)
+/** The prompt for a case and, for triage, the line numbers the model was shown (the only lines an answer may name). */
+function build(c) {
+  if (c.task !== 'triage') return { messages: promptFor(c.task, c.body.input), allowed: null }
   const raw = fs.readFileSync(c.body.input.bodyFile)
   if (crypto.createHash('sha256').update(raw).digest('hex') !== c.body.input.bodySha256) throw new Error(`${c.id}: log body sha256 changed`)
-  return triageMessages(prefilter(raw.toString('utf8')).text)
+  const { text, numbers } = prefilter(raw.toString('utf8'))
+  return { messages: triageMessages(text), allowed: numbers }
+}
+export const messagesFor = (c) => build(c).messages
+
+/** Every case's prompt, built before any model is touched: a missing or changed triage log stops the run, it is never a model failure. */
+export function prepare(cases) {
+  return new Map(cases.map((c) => [c.id, build(c)]))
 }
 
 /** The majority label of the cases of a task, computed from the labels (a tie goes to the first label listed). */
@@ -112,25 +120,26 @@ export function emitInputs(cases, dir) {
   for (const c of cases) fs.writeFileSync(path.join(dir, `${c.id}.json`), `${JSON.stringify({ id: c.id, task: c.task, messages: messagesFor(c) }, null, 2)}\n`)
 }
 
-async function runModel(cases, id, base) {
-  const live = await listModels(base)
+export async function runModel(cases, id, base, io = {}) {
+  const { listModels: list = listModels, chat: ask = chat, unload: drop = unload, lock = path.join(os.homedir(), '.local-llm', 'lock') } = io
+  const built = prepare(cases) // before the lock and before any model call
+  const live = await list(base)
   if (!live.some((m) => m.id === id)) throw new Error(`${id} is not served at ${base}`)
   const other = live.find((m) => m.id !== id && m.status === 'loaded')
   if (other) throw new Error(`another model is loaded: ${other.id}`)
-  const lock = path.join(os.homedir(), '.local-llm', 'lock')
   if (!takeLock(lock, process.pid)) { console.error('local-llm: lock held by another run'); process.exit(75) }
   const arm = {}
   try {
     for (const c of cases) {
       try {
-        const r = await chat(base, id, messagesFor(c), 180000, MAX_TOKENS[c.task])
-        const a = withCause(c, parseAnswer(c.task, r.text))
+        const r = await ask(base, id, built.get(c.id).messages, 180000, MAX_TOKENS[c.task])
+        const a = withCause(c, parseAnswer(c.task, r.text, built.get(c.id).allowed))
         arm[c.id] = a ? { ...a, ms: r.ms } : { invalid: true, ms: r.ms }
       } catch (e) { arm[c.id] = { invalid: true, error: String(e.message).slice(0, 120) } }
       process.stderr.write('.')
     }
   } finally {
-    await unload(base, id)
+    await drop(base, id)
     releaseLock(lock, process.pid)
   }
   process.stderr.write('\n')
@@ -149,7 +158,8 @@ async function main(argv) {
   if (val('--emit-inputs')) { emitInputs(cases, val('--emit-inputs')); return 0 }
   if (val('--ingest')) {
     const raw = JSON.parse(fs.readFileSync(val('--ingest'), 'utf8'))
-    const arm = Object.fromEntries(cases.filter((c) => raw[c.id] !== undefined).map((c) => [c.id, withCause(c, parseAnswer(c.task, raw[c.id])) ?? { invalid: true }]))
+    const built = prepare(cases)
+    const arm = Object.fromEntries(cases.filter((c) => raw[c.id] !== undefined).map((c) => [c.id, withCause(c, parseAnswer(c.task, raw[c.id], built.get(c.id).allowed)) ?? { invalid: true }]))
     fs.writeFileSync(val('--out'), `${JSON.stringify(arm, null, 2)}\n`)
     return 0
   }
