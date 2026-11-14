@@ -123,4 +123,16 @@ Weekly 9% at 11:21 ET. Full speed, cost-aware. One line to the owner at about 90
 - [x] Hyper Backup last runs ok (servers 06:04, archive 07:05 ET); [ ] DSM: servers task to 10:00, music task, #recycle decisions
 - [ ] NAS restore-drill copy (owner, DSM): parked until Mon 16 Nov
 - [x] career-portfolio pool PAT rotated (owner, 11:25 ET; works 11:31 ET); [ ] add it to the expiry watch
-- [ ] Desk goes idle between owner messages: fix (17th Desk)
+- [x] Desk goes idle between owner messages: 30-minute Desk timer (owner yes, 11:47 ET)
+
+## Added 14 Nov midday (17th Desk)
+- [ ] CI pool stall: supervisor GitHub reads time out and retry (new bc PR), then 659, then 655, then the owner's one install on dapyllil
+- [x] .github 190 merged (heartbeat 2 s timeout, owner email removed)
+- [ ] ops 93: five ops 92 follow-ups
+- [ ] Infra PR sweep: .github 175, 159, 154, ops 73
+- [ ] 4thcltr 276 wordmark spec fix (3.3), then 273 shards 3 and 8
+- [ ] 1.26 cost per PR (running); [ ] 1.27 eval set; [ ] 1.28 weekly lessons PR, first Fri 20 Nov 09:00 ET
+- [ ] Time Machine first backup to tm_gorfpael (preparing since about 12:20 ET)
+- [ ] Models: retry llama-redownload4 (pass 1 had 23 of 41 files)
+- [x] Tailscale back (owner reconnected, 11:56 ET)
+- [x] 15 finished chats archived (12:38 ET)
