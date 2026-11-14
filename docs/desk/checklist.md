@@ -107,8 +107,17 @@ Weekly 9% at 11:21 ET. Full speed, cost-aware. One line to the owner at about 90
 
 ## Added 14 Nov morning (14th Desk)
 - [x] .github 185, 187, 188 merged; ops 74, 86 merged
-- [ ] Ship-bot reinstall (owner, Mac): installs release-only deploys and ProcessType Interactive; then unblock papers
-- [ ] Papers 40 and heuristics 99: wordmark specs read per cut (labelled / in review)
+- [x] Ship-bot reinstall from origin/main 339cc0a (09:50 ET); papers unblocked, papers 40 merged
+- [x] Papers 40 and heuristics 99 merged
 - [ ] 4thcltr 273 (e2e timing flake, rerun) and 274 (full gate): labelled
 - [x] 1.19 step 0: CI-log triage dropped (logs about 1% of reads); [ ] remeasure images in tokens
 - [ ] AI Agent Check add-on: memo in 4thcltr 275; plan row after the Phase 7 forms
+
+## Added 14 Nov late morning (15th Desk)
+- [x] Plex check false failures fixed (ops 91 merged); [ ] owner reruns plex-check
+- [x] healthchecks.io: backup, Pi-hole export, Homebridge checks live
+- [x] Pi-hole nightly export to NAS (10:25 ET); [ ] restore-drill canary fix (builder, ops fix/pihole-drill-canary)
+- [x] Model downloads unblocked (Full Disk Access for Herdr Core); [ ] pass 2 retry of ~20 failed models
+- [x] Homebridge Ring back (Node 24 for Homebridge, new token)
+- [ ] ops 74 owner steps: docker policy, DSM checks
+- [ ] NAS restore-drill copy (owner, DSM)
