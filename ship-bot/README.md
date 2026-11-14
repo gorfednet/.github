@@ -75,6 +75,12 @@ row merging and deploying are split (`deployOn`, default `"release"`;
   `Exemption: security <why>` or `Exemption: outage <why>`. It deploys on merge
   only when main is still the commit last deployed, so a hotfix never carries
   undeployed merges live. Otherwise: cut a release, or deploy the fix by hand.
+- **The release head must contain main** (GitHub's compare says `ahead` or
+  `identical`). Otherwise main holds merges the gate and the smoke never saw:
+  merge main in and run both again.
+- **A forgotten label stops the merge.** Release notes, an `Exemption:` line or
+  a `Release:` line with neither label is refused, so it never becomes a quiet
+  merge that is not live. Labels match whatever their case.
 - **`deployOn: "merge"`** keeps the old deploy on every merge, for a row whose
   deploy no visitor sees. It needs `deployOnMergeReason`. No row uses it today:
   the infra repositories (`.github`, `ops`) are `merge-only`.
@@ -83,7 +89,15 @@ A release deploys everything merged since the commit last deployed
 (`lastDeployedSha` in `~/.ship-bot/state.json`): changed paths,
 `pausedIfChanged` and `onlyIfChanged` count from there, and the default
 rollback redeploys that commit. With no deploy on record, every tracked path
-counts as changed. The bot reads labels and lines; it cannot prove the gate or
+counts as changed, and the default rollback has nothing safe to redeploy, so
+it reports "nothing was rolled back" rather than redeploying the merge's first
+parent, which may never have been live. A paused deploy's block remembers its
+commit: deploy that exact commit by hand, then `--unblock` records it as
+deployed, so the next release diffs from there instead of pausing again. A
+hotfix also checks, after the merge, that the merge's first parent is the last
+deploy. The comment and the phone say "as a release" or "as a hotfix".
+HTML comments and fenced code in the description are ignored, and a
+placeholder such as `n/a` or `<log>` is no line. The bot reads labels and lines; it cannot prove the gate or
 the smoke ran. The session that labels the release runs them and names the log.
 
 ## Watching first

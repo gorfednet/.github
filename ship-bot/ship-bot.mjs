@@ -498,7 +498,8 @@ function unblock(config, name, deps) {
       return 0
     }
     deps.out(`unblocking ${repo.slug} (was: ${rs.blocked.reason})`)
-    delete rs.blocked
+    const recorded = clearBlock(rs)
+    if (recorded) deps.out(`${repo.slug}: recorded ${recorded.slice(0, 7)} as deployed (the paused commit a person deployed by hand); the next release diffs from there`)
     state.save()
     return 0
   } finally {
@@ -507,6 +508,23 @@ function unblock(config, name, deps) {
 }
 
 const unblockDir = (stateDir) => join(stateDir, 'unblock')
+
+/**
+ * Lift a block. A paused deploy's block carries the commit it paused on, and
+ * its comment says to deploy that commit by hand before unblocking: so the
+ * unblock records it as deployed. Without this every later release would diff
+ * from the old commit, see the paused path again, and pause forever (plan row 1.25).
+ * Returns the sha recorded, if any.
+ */
+export function clearBlock(rs) {
+  const sha = rs.blocked?.pausedSha
+  delete rs.blocked
+  if (typeof sha === 'string' && /^[0-9a-f]{40}$/.test(sha)) {
+    rs.lastDeployedSha = sha
+    return sha
+  }
+  return null
+}
 
 /** Apply the unblock requests left while a pass held the lock. Called by a pass that holds it, right after loading state. */
 function applyUnblockRequests(config, state, print) {
@@ -527,7 +545,8 @@ function applyUnblockRequests(config, state, print) {
     try { requestedAt = JSON.parse(readFileSync(join(dir, file), 'utf8')).at } catch { requestedAt = undefined }
     if (rs?.blocked && requestedAt && String(rs.blocked.at) <= String(requestedAt)) {
       print('info', `${slug}: unblocked on request (was: ${rs.blocked.reason})`)
-      delete rs.blocked
+      const recorded = clearBlock(rs)
+      if (recorded) print('info', `${slug}: recorded ${recorded.slice(0, 7)} as deployed (the paused commit a person deployed by hand)`)
     } else if (rs?.blocked) {
       print('warn', `${slug}: an unblock request from ${requestedAt} is older than the block set at ${rs.blocked.at}; dropped, the block stays`)
     }

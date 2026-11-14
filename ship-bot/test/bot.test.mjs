@@ -687,7 +687,7 @@ describe('deploying', () => {
     assert.equal(merges(s.github).length, 1)
     assert.equal(runner.ofKind('setup').length, 0)
     assert.equal(runner.ofKind('deploy').length, 0)
-    assert.match(bodies(s.github)[0], /\*\*not deployed\*\*: it changes `server\/migrations\/004\.sql`/)
+    assert.match(bodies(s.github)[0], /\*\*not deployed\*\*: the changes since the last deploy include `server\/migrations\/004\.sql`/)
     assert.match(s.state().repo(SLUG).blocked.reason, /deploys by hand/)
   })
 
@@ -1492,7 +1492,7 @@ describe('releases, not every merge (plan row 1.25)', () => {
     const s = rel({ state: recent })
     await s.run()
     assert.equal(merges(s.github).length, 0)
-    assert.match(bodies(s.github)[0], /the last release here was 3\.0 days ago, and a repo gets at most one release a week/)
+    assert.match(bodies(s.github)[0], /the last release here was on 6 October 2026, and a repo gets at most one release a week, so the next goes from 12 October 2026/)
     const early = rel({ state: recent, body: `${NOTES}Early release: the owner asked for the price fix today\n` })
     await early.run()
     assert.equal(merges(early.github).length, 1)
@@ -1546,7 +1546,7 @@ describe('releases, not every merge (plan row 1.25)', () => {
     await s.run()
     assert.ok(runner.commandLines('workspace').some((l) => l.endsWith(`ls-tree -r --name-only ${MERGE}`)))
     assert.equal(runner.ofKind('deploy').length, 0)
-    assert.match(bodies(s.github)[0], /not deployed\*\*: it changes `deploy\/nginx\.conf`/)
+    assert.match(bodies(s.github)[0], /not deployed\*\*: the changes since the last deploy include `deploy\/nginx\.conf`/)
   })
 
   it('a path changed by an earlier, undeployed merge still pauses the release (the diff starts at the last deploy)', async () => {
@@ -1600,5 +1600,170 @@ describe('releases, not every merge (plan row 1.25)', () => {
     const none = rel({ labels: ['ready-to-merge'], body: 'x' })
     await none.run('dry-run')
     assert.ok(none.logs.some((l) => /would merge only: not deployed: this repo deploys only from a release/.test(l)), none.logs.join('\n'))
+  })
+})
+
+describe('releases: what the first review found (plan row 1.25)', () => {
+  const NOTES = '## Release notes\n\n- The new figures page.\n\nLocal gate: gate-run make verify, exit 0, ~/Library/Logs/gate-run/x.log\nSmoke: npm run preview, read / and /figures\n'
+  const LAST = 'd'.repeat(40)
+  const rel = ({ body = NOTES, labels = ['ready-to-merge', 'release'], row = {}, state = {}, runner = makeRunner() } = {}) => {
+    const github = new FakeGitHub({ pulls: [makePr({ body, labels: labels.map((name) => ({ name })) })] })
+    const s = scenario({ github, runner, repos: [repoEntry({ deployOn: 'release', ...row })] })
+    if (Object.keys(state).length > 0) {
+      mkdirSync(s.config.stateDir, { recursive: true })
+      writeFileSync(s.statePath, JSON.stringify({ version: 1, prs: {}, repos: { [SLUG]: state } }))
+    }
+    return s
+  }
+
+  it('a release whose head does not contain main is refused: the gate and smoke never saw those merges', async () => {
+    for (const status of ['behind', 'diverged', null]) {
+      const s = rel({ state: { lastDeployedSha: LAST } })
+      s.github.compare = status
+      await s.run()
+      assert.equal(merges(s.github).length, 0, String(status))
+      assert.match(bodies(s.github)[0], /the release head does not contain main/, String(status))
+    }
+    const same = rel({ state: { lastDeployedSha: LAST } })
+    same.github.compare = 'identical'
+    await same.run()
+    assert.equal(merges(same.github).length, 1)
+  })
+
+  it('a paused release, deployed by hand and unblocked, records that commit, so the next release does not pause again', async () => {
+    const { clearBlock } = await import('../ship-bot.mjs')
+    const runner = makeRunner({ handle: (cmd) => (cmd.args?.[2] === 'diff' ? { stdout: cmd.args[4] === LAST ? 'server/x.sql\nindex.html\n' : 'index.html\n' } : undefined) })
+    const s = rel({ runner, row: { pausedIfChanged: ['server/'] }, state: { lastDeployedSha: LAST } })
+    await s.run()
+    assert.equal(runner.ofKind('deploy').length, 0)
+    assert.match(bodies(s.github)[0], /Unblocking records bbbbbbb as deployed/)
+    const st = s.state()
+    assert.equal(st.repo(SLUG).blocked.pausedSha, MERGE)
+    assert.equal(clearBlock(st.repo(SLUG)), MERGE)
+    assert.equal(st.repo(SLUG).blocked, undefined)
+    assert.equal(st.repo(SLUG).lastDeployedSha, MERGE)
+    // Any other block lifts without touching the record.
+    const other = { blocked: { reason: 'deploy failed' }, lastDeployedSha: LAST }
+    assert.equal(clearBlock(other), null)
+    assert.equal(other.lastDeployedSha, LAST)
+  })
+
+  it('a label forgotten is not a quiet merge: notes or an Exemption line with no label stop the merge', async () => {
+    for (const body of [NOTES, 'Exemption: outage the site is down']) {
+      const s = rel({ labels: ['ready-to-merge'], body })
+      await s.run()
+      assert.equal(merges(s.github).length, 0, body)
+      assert.match(bodies(s.github)[0], /but no `release` or `hotfix` label/, body)
+    }
+    const capital = rel({ labels: ['ready-to-merge', 'Release'], state: { lastDeployedSha: LAST } })
+    await capital.run()
+    assert.deepEqual(capital.runner.commandLines('deploy'), ['make deploy'], 'a capitalised label is the same label')
+  })
+
+  it('a failed or paused release leaves lastReleasedAt alone, so the weekly clock does not start', async () => {
+    const failed = rel({ runner: makeRunner({ handle: (cmd) => (cmd.kind === 'setup' ? { code: 1 } : undefined) }), state: { lastDeployedSha: LAST } })
+    await failed.run()
+    assert.equal(merges(failed.github).length, 1)
+    assert.equal(failed.state().repo(SLUG).lastReleasedAt, undefined)
+    const paused = rel({ runner: makeRunner({ changed: ['server/a'] }), row: { pausedIfChanged: ['server/'] }, state: { lastDeployedSha: LAST } })
+    await paused.run()
+    assert.equal(paused.state().repo(SLUG).lastReleasedAt, undefined)
+  })
+
+  it('a last deploy that is not an ancestor counts as unknown: every tracked path is changed', async () => {
+    const runner = makeRunner({ handle: (cmd) => (cmd.args?.[2] === 'merge-base' ? { code: 1 } : undefined) })
+    const s = rel({ runner, state: { lastDeployedSha: LAST } })
+    await s.run()
+    const ws = runner.commandLines('workspace')
+    assert.ok(ws.some((l) => l.endsWith(`ls-tree -r --name-only ${MERGE}`)), ws.join('\n'))
+    assert.ok(!ws.some((l) => l.includes(`diff --name-only ${LAST}`)))
+  })
+
+  it('with no deploy on record the default rollback redeploys nothing (the first parent was never known to be live) and says so', async () => {
+    let deploys = 0
+    const runner = makeRunner({ handle: (cmd) => (cmd.kind === 'deploy' && ++deploys === 1 ? { code: 1 } : undefined) })
+    const s = rel({ runner })
+    await s.run()
+    assert.ok(!runner.commandLines('workspace').some((l) => l.endsWith(`checkout --force --detach ${PARENT}`)), 'the first parent is not redeployed')
+    assert.equal(runner.ofKind('rollback').length, 0)
+    assert.match(bodies(s.github)[0], /DEPLOY FAILED AND NOTHING WAS ROLLED BACK.*no record of the commit that was live/s)
+    assert.ok(s.state().repo(SLUG).blocked)
+  })
+
+  it('a hotfix whose merge parent is not the last deploy (main moved after the check) deploys nothing and blocks', async () => {
+    const s = rel({ labels: ['ready-to-merge', 'hotfix'], body: 'Exemption: security a token leaks', state: { lastDeployedSha: LAST } })
+    s.github.branchSha = LAST // the check passes; the real merge then lands on PARENT
+    await s.run()
+    assert.equal(merges(s.github).length, 1)
+    assert.equal(s.runner.ofKind('setup').length, 0)
+    assert.equal(s.runner.ofKind('deploy').length, 0)
+    assert.match(bodies(s.github)[0], /did not start\*\*:.*main moved to ccccccc between the hotfix check and the merge/)
+    assert.ok(s.state().repo(SLUG).blocked)
+  })
+
+  it('a hotfix says so in its comment and on the phone; a release says it is one', async () => {
+    const hot = rel({ labels: ['ready-to-merge', 'hotfix'], body: 'Exemption: outage the site is down', state: { lastDeployedSha: PARENT } })
+    await hot.run()
+    assert.match(bodies(hot.github)[0], /deployed as a hotfix \(exemption: outage\): site/)
+    assert.match(hot.runner.ofKind('notify')[0].args[1], /merged and deployed as a hotfix \(exemption: outage\)/)
+    const r = rel({ state: { lastDeployedSha: LAST } })
+    await r.run()
+    assert.match(bodies(r.github)[0], /deployed as a release: site/)
+  })
+
+  it('a hotfix fails closed when main cannot be read', async () => {
+    const s = rel({ labels: ['ready-to-merge', 'hotfix'], body: 'Exemption: outage down', state: { lastDeployedSha: PARENT } })
+    s.github.branchSha = null
+    await s.run()
+    assert.equal(merges(s.github).length, 0)
+    assert.match(bodies(s.github)[0], /main \(unknown\) has merges/)
+    const t = rel({ labels: ['ready-to-merge', 'hotfix'], body: 'Exemption: outage down', state: { lastDeployedSha: PARENT } })
+    t.github.branchSha = new Error('404')
+    await t.run()
+    assert.equal(merges(t.github).length, 0)
+  })
+
+  it('a plain merge does not wait on what a deploy needs (headroom, env files)', async () => {
+    const s = rel({ labels: ['ready-to-merge'], body: 'A fix.', row: { needsHeadroom: true, envFiles: ['.missing-env'] } })
+    s.machine.load = 50
+    await s.run()
+    assert.equal(merges(s.github).length, 1)
+  })
+
+  it('an unreadable lastReleasedAt refuses the release rather than skipping the weekly limit', async () => {
+    const s = rel({ state: { lastDeployedSha: LAST, lastReleasedAt: 'yesterday-ish' } })
+    await s.run()
+    assert.equal(merges(s.github).length, 0)
+    assert.match(bodies(s.github)[0], /last release \(yesterday-ish\) is unreadable/)
+  })
+
+  it('a waiting release gets one comment, not a new one every pass', async () => {
+    const s = rel({ state: { lastDeployedSha: LAST, lastReleasedAt: '2026-10-08T12:00:00Z' } })
+    await s.run()
+    s.clock.advance(300)
+    await s.run()
+    assert.equal(bodies(s.github).length, 1)
+  })
+
+  it('a hotfix on a tag repo needs its Release line, then tags and deploys', async () => {
+    const tagRow = { release: { tagPrefix: 'v' }, rollback: [{ name: 'previous release', command: ['make', 'rollback'] }] }
+    const none = rel({ labels: ['ready-to-merge', 'hotfix'], body: 'Exemption: outage down', row: tagRow, state: { lastDeployedSha: PARENT } })
+    none.github.tags = ['v3.9.6']
+    await none.run()
+    assert.equal(merges(none.github).length, 0)
+    assert.match(bodies(none.github)[0], /a `hotfix` pull request needs a `Release: X\.Y\.Z One sentence\.` line/)
+    const ok = rel({ labels: ['ready-to-merge', 'hotfix'], body: 'Exemption: outage down\n\nRelease: 3.9.7 Puts the site back.', row: tagRow, state: { lastDeployedSha: PARENT } })
+    ok.github.tags = ['v3.9.6']
+    await ok.run()
+    assert.ok(ok.runner.commandLines('workspace').some((l) => l.endsWith('push origin refs/tags/v3.9.7')))
+    assert.deepEqual(ok.runner.commandLines('deploy'), ['make deploy'])
+  })
+
+  it('an observed repo (live false) plans the deploy and writes nothing', async () => {
+    const s = rel({ labels: ['ready-to-merge'], body: NOTES })
+    s.config.repos[0].live = false
+    await s.run('dry-run')
+    assert.equal(s.github.writes.length, 0)
+    assert.ok(s.logs.some((l) => /not merging: it has a `## Release notes` section but no `release` or `hotfix` label/.test(l)), s.logs.join('\n'))
   })
 })

@@ -407,27 +407,6 @@ async function processPull(ctx, repo, pr, defaultBranch) {
   }
   delete headState.stall
 
-  if (repo.mode === 'deploy') {
-    const problems = preflight(repo, ctx.fsx)
-    if (problems.length > 0) {
-      ctx.say('warn', `${tag}: ready, but not merging because the deploy could not run: ${problems.join('; ')}`)
-      await postOnce(ctx, repo, pr.number, sha, 'deploy-preflight', `Ship bot is not merging this: every gate passed, but the deploy for this repo could not run:\n\n${problems.map((p) => `- ${p}`).join('\n')}`)
-      return false
-    }
-    // A row whose setup or deploy is timing-sensitive waits for a quiet Mac
-    // (papers 35, INCIDENTS.md). Unreadable numbers defer too. Nothing is
-    // posted and the repo is not blocked: the next pass looks again.
-    if (repo.needsHeadroom) {
-      const { load, cores } = ctx.machineLoad()
-      const readable = [load, cores].every((n) => Number.isFinite(n) && n > 0)
-      if (!readable || load > cores) {
-        const why = readable ? `the 1-minute load ${load.toFixed(2)} is above ${cores} cores` : `the load (${load}) or core count (${cores}) could not be read`
-        ctx.say('info', `${tag}: ready, but not merging yet: this row needs headroom and ${why}; looked at again next pass`)
-        return false
-      }
-    }
-  }
-
   // Re-read right before merging: a push or a hold label since the gates ran
   // means start again next run.
   const again = await ctx.github.getPull(repo.slug, pr.number)
@@ -449,6 +428,7 @@ async function processPull(ctx, repo, pr, defaultBranch) {
     plan = await planDeploy(repo, again, {
       tags: () => ctx.github.listTags(repo.slug),
       mainSha: () => ctx.github.getBranchSha(repo.slug, defaultBranch),
+      headCovers: () => ctx.github.compareStatus(repo.slug, defaultBranch, sha),
       repoState: ctx.state.repo(repo.slug),
       now: ctx.clock.now(),
     })
@@ -460,6 +440,28 @@ async function processPull(ctx, repo, pr, defaultBranch) {
           : `Fix the description or the labels; it checks again every couple of minutes. A pull request with neither \`${RELEASE_LABEL}\` nor \`${HOTFIX_LABEL}\` is merged and deployed with the next release.`
       await postOnce(ctx, repo, pr.number, sha, `${plan.key}-${createHash('sha1').update(plan.reason).digest('hex').slice(0, 8)}`, `Ship bot is not merging this: ${plan.reason}.\n\n${help}`)
       return false
+    }
+  }
+
+  // Only a merge that deploys waits on what a deploy needs (plan row 1.25): a plain merge deploys nothing.
+  if (plan?.deploy) {
+    const problems = preflight(repo, ctx.fsx)
+    if (problems.length > 0) {
+      ctx.say('warn', `${tag}: ready, but not merging because the deploy could not run: ${problems.join('; ')}`)
+      await postOnce(ctx, repo, pr.number, sha, 'deploy-preflight', `Ship bot is not merging this: every gate passed, but the deploy for this repo could not run:\n\n${problems.map((p) => `- ${p}`).join('\n')}`)
+      return false
+    }
+    // A row whose setup or deploy is timing-sensitive waits for a quiet Mac
+    // (papers 35, INCIDENTS.md). Unreadable numbers defer too. Nothing is
+    // posted and the repo is not blocked: the next pass looks again.
+    if (repo.needsHeadroom) {
+      const { load, cores } = ctx.machineLoad()
+      const readable = [load, cores].every((n) => Number.isFinite(n) && n > 0)
+      if (!readable || load > cores) {
+        const why = readable ? `the 1-minute load ${load.toFixed(2)} is above ${cores} cores` : `the load (${load}) or core count (${cores}) could not be read`
+        ctx.say('info', `${tag}: ready, but not merging yet: this row needs headroom and ${why}; looked at again next pass`)
+        return false
+      }
     }
   }
 
@@ -903,22 +905,24 @@ async function liveMerge(ctx, repo, pr, tag, plan) {
   ctx.redactor.add(envSecrets(repo, ctx.fsx))
   deployLog.write(`[ship-bot] ${repo.slug} #${pr.number}: deploying merge ${mergeSha}\n`)
 
-  const outcome = await deployMerged(ctx, repo, { mergeSha, log: deployLog, release: plan.tag ?? null, since: rs.lastDeployedSha ?? null })
+  const outcome = await deployMerged(ctx, repo, { mergeSha, log: deployLog, release: plan.tag ?? null, since: rs.lastDeployedSha ?? null, expectParent: plan.kind === 'hotfix' ? rs.lastDeployedSha : null })
   delete rs.deployInProgress
   if (outcome.status === 'deployed' && plan.kind === 'release') rs.lastReleasedAt = ctx.clock.now().toISOString()
-  await report(ctx, repo, pr, mergeSha, outcome, deployLog, plan.tag ?? null)
+  await report(ctx, repo, pr, mergeSha, outcome, deployLog, plan.tag ?? null, plan)
   ctx.state.forgetPr(repo.slug, pr.number)
   ctx.state.save()
   return true
 }
 
-async function report(ctx, repo, pr, mergeSha, outcome, deployLog, release = null) {
+async function report(ctx, repo, pr, mergeSha, outcome, deployLog, release = null, plan = null) {
   const rs = ctx.state.repo(repo.slug)
   const tag = `${repo.slug}#${pr.number}`
   const logTail = `<details><summary>Log tail (full log on the owner's Mac: ${deployLog.path})</summary>\n\n\`\`\`\n${deployLog.tail()}\n\`\`\`\n</details>`
-  const block = (reason) => {
-    rs.blocked = { reason, at: ctx.clock.now().toISOString(), pr: pr.number }
+  const block = (reason, extra = {}) => {
+    rs.blocked = { reason, at: ctx.clock.now().toISOString(), pr: pr.number, ...extra }
   }
+  // A hotfix says so wherever a release would, so a run of them is visible (plan row 1.25).
+  const as = plan?.kind === 'hotfix' ? ` as a hotfix (exemption: ${plan.exemption})` : plan?.kind === 'release' ? ' as a release' : ''
   const tagNote = release && outcome.tagged && outcome.tagged !== 'no' ? ` The tag ${release.tag} was ${outcome.tagged === 'maybe' ? 'possibly ' : ''}pushed to the merge commit and stays there (the bot never deletes a tag); the next release needs a higher version.` : ''
   const unblock = `${tagNote.trim()}${tagNote ? '\n\n' : ''}The bot will not merge or deploy anything else in this repo until someone checks the site and runs \`ship-bot --unblock ${repo.name}\`.`
   let body
@@ -926,13 +930,14 @@ async function report(ctx, repo, pr, mergeSha, outcome, deployLog, release = nul
     rs.lastDeployedSha = mergeSha
     const skipped = outcome.skipped?.length ? ` Skipped (nothing they cover changed): ${outcome.skipped.join(', ')}.` : ''
     const tagged = release ? ` Tagged ${release.tag}.` : ''
-    body = `Merged as ${short(mergeSha)} and deployed: ${outcome.steps.join(', ')}.${tagged}${skipped}\n\n${logTail}`
-    ctx.say('info', `${tag}: deployed ${short(mergeSha)}`)
+    body = `Merged as ${short(mergeSha)} and deployed${as}: ${outcome.steps.join(', ')}.${tagged}${skipped}\n\n${logTail}`
+    ctx.say('info', `${tag}: deployed ${short(mergeSha)}${as}`)
     if (release) await createGitHubRelease(ctx, repo, release)
-    await notify(ctx, `${repo.name} #${pr.number} merged and deployed`)
+    await notify(ctx, `${repo.name} #${pr.number} merged and deployed${as}`)
   } else if (outcome.status === 'paused') {
-    block(`#${pr.number} changed ${outcome.paused.join(', ')}, which this repo deploys by hand`)
-    body = `Merged as ${short(mergeSha)} but **not deployed**: it changes ${outcome.paused.map((p) => `\`${p}\``).join(', ')}, which this repo never deploys unattended. Deploy it from a session.\n\n${unblock}`
+    // The block remembers the commit: unblocking it says a person deployed that commit by hand, so the next diff starts there.
+    block(`the changes up to #${pr.number} include ${outcome.paused.join(', ')}, which this repo deploys by hand`, { pausedSha: mergeSha })
+    body = `Merged as ${short(mergeSha)} but **not deployed**: the changes since the last deploy include ${outcome.paused.map((p) => `\`${p}\``).join(', ')}, which this repo never deploys unattended. Deploy ${short(mergeSha)} from a session.\n\n${unblock} Unblocking records ${short(mergeSha)} as deployed, so deploy that exact commit first.`
     ctx.say('warn', `${tag}: merged, deploy paused (${outcome.paused.join(', ')})`)
     await notify(ctx, `${repo.name} #${pr.number} merged; deploy paused for a person`)
   } else if (outcome.status === 'not-started') {
@@ -947,7 +952,7 @@ async function report(ctx, repo, pr, mergeSha, outcome, deployLog, release = nul
     await notify(ctx, `${repo.name} #${pr.number}: deploy FAILED, rolled back`, true)
   } else if (outcome.status === 'failed-not-rolled-back') {
     block(`deploy of #${pr.number} failed and nothing was rolled back: ${outcome.error}`)
-    body = `**DEPLOY FAILED AND NOTHING WAS ROLLED BACK.** Merged as ${short(mergeSha)}; step "${outcome.failedStep}" failed (${outcome.error}). The rollback is configured to undo only a failure after the release went live, so the live site may be on the new release, or on a half-switched one. A person needs to check it now.\n\n${unblock}\n\n${logTail}`
+    body = `**DEPLOY FAILED AND NOTHING WAS ROLLED BACK.** Merged as ${short(mergeSha)}; step "${outcome.failedStep}" failed (${outcome.error}). ${outcome.rollback?.error?.includes('no record of the commit that was live') ? 'There is no rollback list and no record of the commit that was live, so there was nothing safe to redeploy: the live site may be on the new release, or on a half-switched one.' : 'The rollback is configured to undo only a failure after the release went live, so the live site may be on the new release, or on a half-switched one.'} A person needs to check it now.\n\n${unblock}\n\n${logTail}`
     ctx.say('error', `${tag}: DEPLOY FAILED, NOTHING ROLLED BACK (step "${outcome.failedStep}"): ${outcome.error}`)
     await notify(ctx, `${repo.name} #${pr.number}: DEPLOY FAILED, nothing rolled back; check the site`, true)
   } else {

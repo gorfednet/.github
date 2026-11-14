@@ -66,6 +66,8 @@ export class FakeGitHub {
     this.mergeResult = () => ({ merged: true, sha: MERGE })
     /** Each repository's default-branch head, for a hotfix's check; PARENT unless a test sets it. */
     this.branchSha = PARENT
+    /** GitHub's compare status of main...head for a release; 'ahead' unless a test sets it. */
+    this.compare = 'ahead'
     /** Called on each getPull; lets a test move the head between reads. */
     this.onGetPull = null
   }
@@ -107,7 +109,15 @@ export class FakeGitHub {
 
   async getBranchSha(slug, branch) {
     this.log('getBranchSha', slug, branch)
+    if (branch !== 'main') throw new Error(`the fake has only main, not ${branch}`)
+    if (this.branchSha instanceof Error) throw this.branchSha
     return this.branchSha
+  }
+
+  async compareStatus(slug, base, head) {
+    this.log('compareStatus', slug, base, head)
+    if (base !== 'main') throw new Error(`the fake compares only against main, not ${base}`)
+    return this.compare
   }
 
   async listMergedPulls(slug, limit, label) {
