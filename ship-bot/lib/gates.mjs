@@ -302,6 +302,7 @@ export async function evaluateReview(ctx, repo, pr, sha, { headSince, memo, draf
         {
           key: 'review-not-run',
           kind: 'fail',
+          noStall: true, // only a comment on the pull request brings a review; a pushed fix is a new unreviewed head
           reason: [
             `The Claude reviewer has not reviewed this head (${sha.slice(0, 7)}), and nothing merges without a review of the final head. The bot never asks for one itself.`,
             '- If the commits since the last review changed code someone wrote, comment `claude review` here. The bot merges once that review is clean, or every finding has an answer.',

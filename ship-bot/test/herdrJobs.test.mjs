@@ -172,6 +172,18 @@ describe('a labelled PR refused for the same reason over 2 hours becomes a job (
     assert.deepEqual(stallable([{ key: 'review-required', kind: 'fail', noStall: true }, fixable]), [fixable])
     assert.deepEqual(stallable([{ key: 'review-required', kind: 'fail', noStall: true }]), [])
   })
+  it('review-not-run is flagged noStall by the gate: a push only makes another unreviewed head', async () => {
+    const gh = new FakeGitHub({ runs: red() })
+    const s = scenario({ repos: [repoEntry({ claudeReview: true })], github: gh, runner: makeRunner({ handle: (cmd) => (cmd.args?.[0]?.endsWith('/review-status.mjs') ? { code: 1, stdout: '#7  not-run  no Claude review of aaaaaaa\n' } : undefined) }) })
+    withJobsDir(s)
+    gh.runs = [{ name: 'check / check', status: 'completed', conclusion: 'success', started_at: '2026-10-09T12:00:00Z' }]
+    await s.run()
+    s.clock.advance(300)
+    await s.run()
+    s.clock.advance(300)
+    await s.run()
+    assert.deepEqual(jobsOf(s), [])
+  })
   it('a changed reason restarts the clock', async () => {
     const { gh, s } = setup()
     await s.run()
