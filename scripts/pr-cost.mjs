@@ -56,12 +56,20 @@ const int = (v, name) => {
 const home = homedir()
 const tidy = (v) => (typeof v === 'string' && v.startsWith(`${home}/`) ? `~${v.slice(home.length)}` : v)
 
-export async function prTokens(opts) {
-  const prs = [{ repo: opts.repo, number: int(opts.number, '--number'), branch: opts.branch, worktree: opts.worktree, endsAt: opts.closed ? Date.parse(opts.closed) : undefined }]
+/** PRs the ledger already holds for this repository and branch, so a reused branch name does not bill an earlier PR's work to this one. */
+export function earlierOnBranch(file, repo, branch, number) {
+  if (!branch) return []
+  return latestPerPr(readLines(file))
+    .filter((l) => l.repo === repo && l.branch === branch && l.number !== number && l.closedAt)
+    .map((l) => ({ repo, number: l.number, branch, endsAt: Date.parse(l.closedAt) }))
+}
+
+export async function prTokens(opts, ledger = DEFAULT_FILE) {
+  const prs = [...earlierOnBranch(ledger, opts.repo, opts.branch, Number(opts.number)), { repo: opts.repo, number: int(opts.number, '--number'), branch: opts.branch, worktree: opts.worktree, endsAt: opts.closed ? Date.parse(opts.closed) : undefined }]
   const sinceMs = opts.since ? Date.parse(opts.since) : null
   if (opts.since && Number.isNaN(sinceMs)) throw new Error(`--since is not a date: ${opts.since}`)
   const { perPr, files } = await scanAll(opts.projects ?? DEFAULT_PROJECTS, { sinceMs, prs })
-  return { models: perPr.get(`${opts.repo}#${prs[0].number}`) ?? {}, files }
+  return { models: perPr.get(`${opts.repo}#${Number(opts.number)}`) ?? {}, files }
 }
 
 export async function main(argv) {
@@ -88,7 +96,8 @@ export async function main(argv) {
       opts.labels = (pr.labels ?? []).map((l) => l.name ?? l)
     }
     if (cmd === 'record' && !['MERGED', 'CLOSED'].includes(opts.state)) throw new Error('--state must be MERGED or CLOSED')
-    const { models, files } = await prTokens(opts)
+    if (cmd === 'record' && !opts.closed) throw new Error('a closed pull request needs its mergedAt or closedAt (--closed, or in --pr-json)')
+    const { models, files } = await prTokens(opts, opts.out ?? opts.file ?? DEFAULT_FILE)
     const t = sumModels(models)
     if (cmd === 'pr') {
       console.log(JSON.stringify({ repo: opts.repo, number: Number(opts.number), files, models, total: totalTokens(t) }))
@@ -121,7 +130,8 @@ export async function main(argv) {
     const out = opts.out ?? DEFAULT_FILE
     const fleet = JSON.parse(readFileSync(new URL('../fleet.json', import.meta.url), 'utf8'))
     const earliest = Math.min(...list.map((p) => Date.parse(p.createdAt)).filter(Number.isFinite))
-    const named = list.filter((p) => p.state !== 'OPEN').map((p) => ({ repo: opts.repo, number: p.number, branch: p.headRefName, endsAt: Date.parse(p.mergedAt ?? p.closedAt) }))
+    const earlier = [...new Set(list.map((p) => p.headRefName))].flatMap((b) => earlierOnBranch(out, opts.repo, b, -1)).filter((e) => !list.some((p) => p.number === e.number))
+    const named = [...earlier, ...list.filter((p) => p.state !== 'OPEN').map((p) => ({ repo: opts.repo, number: p.number, branch: p.headRefName, endsAt: Date.parse(p.mergedAt ?? p.closedAt) }))]
     const { perPr } = await scanAll(opts.projects ?? DEFAULT_PROJECTS, { sinceMs: Number.isFinite(earliest) ? earliest - 86400000 : null, prs: named })
     const results = []
     for (const p of list) {

@@ -212,7 +212,7 @@ describe('the command', () => {
   })
   it('records nothing, and says why, when no transcript matches', () => {
     const { dir, out } = setup()
-    const r = run('record', '--repo', 'o/other', '--number', '9', '--state', 'CLOSED', '--branch', 'nope', '--projects', dir, '--out', out)
+    const r = run('record', '--repo', 'o/other', '--number', '9', '--state', 'CLOSED', '--branch', 'nope', '--closed', T(30), '--projects', dir, '--out', out)
     assert.equal(r.status, 0)
     assert.match(r.stdout, /no transcript tokens matched/)
     assert.equal(existsSync(out), false)
@@ -258,6 +258,23 @@ describe('the command', () => {
     assert.equal(r.status, 2)
     assert.match(r.stderr, /is pull request 99, not 7/)
   })
+  it('record on a reused branch leaves out what the ledger already billed to the earlier PR', () => {
+    const dir = projects({ 'p/S1.jsonl': [assistant({ min: 10 }), assistant({ min: 40 }), assistant({ min: 200 }), assistant({ min: 250 })] })
+    const out = join(dir, 'ledger.jsonl')
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(out, `${JSON.stringify({ repo: 'o/.github', number: 10, branch: 'claude/a-1', kind: 'infra', state: 'MERGED', closedAt: T(60), fresh: 1, total: 1, models: {} })}\n`)
+    const r = run('record', '--repo', 'o/.github', '--number', '20', '--state', 'MERGED', '--branch', 'claude/a-1', '--worktree', WT, '--closed', T(300), '--projects', dir, '--out', out)
+    assert.equal(r.status, 0, r.stderr)
+    assert.equal(JSON.parse(r.stdout).total, 2 * 1111, 'only the two messages after PR 10 closed')
+  })
+  it('refuses to record a closed PR that has no closing time, since the report would drop it', () => {
+    const { dir, out } = setup()
+    const pj = join(dir, 'pr.json')
+    writeFileSync(pj, JSON.stringify([{ number: 7, state: 'MERGED', headRefOid: 'x' }]))
+    const r = run('record', '--repo', 'o/.github', '--number', '7', '--branch', 'claude/a-1', '--pr-json', pj, '--projects', dir, '--out', out)
+    assert.equal(r.status, 2)
+    assert.match(r.stderr, /needs its mergedAt or closedAt/)
+  })
   it('exits 2 with the cause on a bad argument', () => {
     for (const args of [[], ['pr'], ['pr', '--repo', 'bad', '--number', '1'], ['record', '--repo', 'o/r', '--number', '1', '--state', 'OPEN'], ['pr', '--bogus']]) {
       const r = run(...args)
@@ -276,6 +293,8 @@ describe('janitor prompt', () => {
     const step = prompt.match(/7\. Cost \(plan row 1\.26\)[\s\S]*?(?=\n5\. Worktrees)/)[0]
     assert.match(step, /--pr-json \$R\/pr-<id8>\.json/)
     assert.doesNotMatch(step, /--title|--label/, 'no pull request text on the command line')
+    const unmerged = prompt.match(/- `unmerged`, idle under 48 hours[^\n]*/)[0]
+    for (const field of ['title', 'additions', 'deletions', 'createdAt', 'closedAt', 'mergedAt', 'labels']) assert.ok(unmerged.includes(field), `the call step 4.7 reuses must ask for ${field}`)
     assert.match(step, /with no pull request, or only an `OPEN` one, has no cost line yet: skip it/)
   })
 })
