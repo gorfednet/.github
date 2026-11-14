@@ -283,6 +283,18 @@
           }
         ]
       }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash|Monitor",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 -I ~/.claude/hooks/gh-poll-guard.py",
+            "timeout": 5
+          }
+        ]
+      }
     ]
   },
   "statusLine": {
