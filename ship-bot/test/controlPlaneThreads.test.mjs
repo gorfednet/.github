@@ -21,10 +21,10 @@ const run = async (files, body) => {
 
 describe('control-plane PRs need a clean review for Medium and High threads (row 1.14)', () => {
   it('a High or Medium thread, answered, on a control-plane path: no merge, and the comment says why', async () => {
-    for (const body of ['High: x', 'Medium: x']) {
+    for (const body of ['High: x', 'Medium: x', '**High**: x', '[Medium] x', '🔴 High x']) {
       const { gh } = await run(['ship-bot/lib/bot.mjs'], body)
       assert.equal(merges(gh).length, 0, body)
-      assert.match(gh.commentsPosted()[0].body, /control-plane paths and a Medium or High thread stands/)
+      assert.match(gh.commentsPosted()[0].body, /control-plane paths and a Medium or High thread was raised/)
     }
   })
   it('a Low thread answered, or any thread on an ordinary path, still merges on the reply', async () => {

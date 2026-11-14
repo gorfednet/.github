@@ -321,7 +321,7 @@ export async function evaluateReview(ctx, repo, pr, sha, { headSince, memo, draf
   let strict = requireClean
   if (!strict && controlPlane) {
     const all = (await ctx.github.listReviewThreads(repo.slug, pr.number)).filter((t) => isReviewerUser(t.author))
-    if (all.some((t) => /^(high|medium)\b/i.test(String(t.body ?? '').trim())) && (await controlPlane())) strict = true
+    if (all.some((t) => /^[^a-z]*(high|medium)\b/i.test(String(t.body ?? '').trim())) && (await controlPlane())) strict = true
   }
   if (strict) {
     return {
@@ -329,7 +329,7 @@ export async function evaluateReview(ctx, repo, pr, sha, { headSince, memo, draf
         {
           key: 'review-not-clean',
           kind: 'fail',
-          reason: `The Claude reviewer reported findings on this head (${ctx.redactor.apply(status.detail)}). ${requireClean ? 'The bot readies or readied this pull request itself and the repo deploys' : 'This pull request changes control-plane paths and a Medium or High thread stands'}, so it merges only on a clean review: push a fix and get a clean review of the new commit. A reply or resolving the thread does not lift this; a change that must merge with its findings goes in a fresh pull request that a session labels after reading them.`,
+          reason: `The Claude reviewer reported findings on this head (${ctx.redactor.apply(status.detail)}). ${requireClean ? 'The bot readies or readied this pull request itself and the repo deploys' : 'This pull request changes control-plane paths and a Medium or High thread was raised on it (fix whatever this head still has, then get a clean review)'}, so it merges only on a clean review: push a fix and get a clean review of the new commit. A reply or resolving the thread does not lift this; a change that must merge with its findings goes in a fresh pull request that a session labels after reading them.`,
         },
       ],
     }
