@@ -83,6 +83,15 @@ describe('lock and memory edge cases', () => {
     assert.equal(takeLock(dir, 1, { beforeTakeover: swap }), false)
     assert.equal(readFileSync(join(dir, 'pid'), 'utf8'), String(process.pid))
   })
+  it('does not move or take a lock while another taker holds the takeover guard', () => {
+    const dir = join(tmp, 'guard', 'lock')
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(join(dir, 'pid'), '2147483646')
+    mkdirSync(`${dir}.takeover`)
+    assert.equal(takeLock(dir, process.pid), false)
+    assert.equal(readFileSync(join(dir, 'pid'), 'utf8'), '2147483646')
+    assert.equal(existsSync(`${dir}.takeover`), true)
+  })
   it('does not count the adopted model again when it is already loaded', async () => {
     live = [{ ...entry('m1'), status: { value: 'loaded', args: ['--ctx-size', '4096', '--model', FILE] } }]
     const r = await run({ freeGb: () => 5, size: () => 100 * 1024 ** 3 })
@@ -110,8 +119,14 @@ describe('ci-triage contract', () => {
   it('keeps error lines with 5 of context, numbered, within the cap', () => {
     const log = Array.from({ length: 100 }, (_, i) => (i === 50 ? '##[error]boom' : `l${i}`)).join('\n')
     const p = prefilter(log)
-    assert.deepEqual(p.numbers, [46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56])
+    assert.equal(p.numbers.length, 100)
+    assert.ok(p.text.includes('51: ##[error]boom'))
     assert.ok(prefilter(Array.from({ length: 5000 }, () => '##[error]' + 'x'.repeat(50)).join('\n')).text.length <= MAX_CHARS)
+  })
+  it('keeps a failure far above the final ##[error] line, and a log with no ##[error]', () => {
+    const log = Array.from({ length: 60 }, (_, i) => `build\tRun tests\tt${i}${i === 20 ? ' AssertionError' : ''}${i === 59 ? ' ##[error]Process completed with exit code 1.' : ''}`).join('\n')
+    assert.ok(prefilter(log).numbers.includes(21))
+    assert.ok(prefilter('lost runner\nno error marker').numbers.length > 0)
   })
   it('accepts only the enum and line numbers', () => {
     assert.deepEqual(parse('{"verdict":"flake","lines":[1,2]}'), { verdict: 'flake', lines: [1, 2] })

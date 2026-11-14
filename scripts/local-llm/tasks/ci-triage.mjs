@@ -14,6 +14,9 @@ export function prefilter(log) {
     if (!l.includes('##[error]')) return
     for (let j = Math.max(0, i - CONTEXT); j <= Math.min(lines.length - 1, i + CONTEXT); j++) keep.add(j)
   })
+  const stepIdx = new Map()
+  lines.forEach((l, i) => stepIdx.set(stepOf(l), [...(stepIdx.get(stepOf(l)) ?? []), i]))
+  for (const idx of stepIdx.values()) for (const i of idx.slice(-STEP_LINES)) keep.add(i)
   const byStep = new Map()
   for (const i of [...keep].sort((a, b) => a - b)) {
     const k = stepOf(lines[i])
@@ -22,13 +25,13 @@ export function prefilter(log) {
   const picked = [...byStep.values()].flatMap((idx) => idx.slice(-STEP_LINES)).sort((a, b) => a - b)
   const out = []
   let used = 0
-  for (const i of picked) {
+  for (const i of [...picked].reverse()) { // the cap drops the oldest lines, so the failure at the end survives
     const row = `${i + 1}: ${lines[i]}`
     if (used + row.length + 1 > MAX_CHARS) break
-    out.push(row)
+    out.unshift([i + 1, row])
     used += row.length + 1
   }
-  return { text: out.join('\n'), numbers: picked.slice(0, out.length).map((i) => i + 1) }
+  return { text: out.map((o) => o[1]).join('\n'), numbers: out.map((o) => o[0]) }
 }
 export const messages = (excerpt) => [
   { role: 'system', content: SYSTEM },

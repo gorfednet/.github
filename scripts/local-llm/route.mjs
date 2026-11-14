@@ -16,7 +16,7 @@ const PROMPT_ROOM = 1024
 const freeGbNow = () => parseVmStat(execFileSync('vm_stat', { encoding: 'utf8' }))
 const alive = (pid) => { try { process.kill(pid, 0); return true } catch (e) { return e.code === 'EPERM' } }
 const refuse = (link, why) => ({ code: EXIT.refused, message: `local-llm: ${link} failed (${why}); use the Claude tier` })
-/** mkdir lock with a pid file; stale when the pid is dead. A lock with no pid yet is being written. */
+/** mkdir lock with a pid file; stale when the pid is dead. A lock with no pid yet is being written. Takeover is serialised by `<dir>.takeover`. */
 export function takeLock(dir, pid, { beforeTakeover } = {}) {
   for (let tries = 0; tries < 2; tries++) {
     try {
@@ -30,13 +30,15 @@ export function takeLock(dir, pid, { beforeTakeover } = {}) {
       try { held = fs.readFileSync(path.join(dir, 'pid'), 'utf8').trim() } catch { return false }
       if (alive(Number(held))) return false
       beforeTakeover?.()
-      // rename is atomic: one taker wins. Check what we moved; if it was a live lock, put it back.
-      const gone = `${dir}.stale-${process.pid}-${tries}`
-      try { fs.renameSync(dir, gone) } catch { return false }
-      let moved
-      try { moved = fs.readFileSync(path.join(gone, 'pid'), 'utf8').trim() } catch { moved = null }
-      if (moved !== held) { try { fs.renameSync(gone, dir) } catch {} return false }
-      fs.rmSync(gone, { recursive: true, force: true })
+      // Take over through a lock of its own, so a lock we do not own is never moved.
+      const guard = `${dir}.takeover`
+      try { fs.mkdirSync(guard) } catch { return false }
+      try {
+        let again
+        try { again = fs.readFileSync(path.join(dir, 'pid'), 'utf8').trim() } catch { return false }
+        if (again !== held) return false
+        fs.rmSync(dir, { recursive: true, force: true })
+      } finally { fs.rmSync(guard, { recursive: true, force: true }) }
     }
   }
   return false
