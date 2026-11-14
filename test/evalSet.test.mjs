@@ -4,8 +4,9 @@ import os from 'node:os'
 import path from 'node:path'
 import crypto from 'node:crypto'
 import { describe, it } from 'node:test'
-import { validateManifest, verifyCases, judge, score, keyOf, filesLabel, rejections, gradeStats, sha256, GRADE_MEAN } from '../scripts/local-llm/evalset.mjs'
-import { parseAnswer, promptFor, nomodelArm, majority, withCause } from '../scripts/local-llm/evalset-run.mjs'
+import { spawnSync } from 'node:child_process'
+import { validateManifest, verifyCases, judge, score, keyOf, filesLabel, rejections, gradeStats, sha256, gradeKey, referenceProblems, checkReferences, GRADE_MEAN } from '../scripts/local-llm/evalset.mjs'
+import { parseAnswer, promptFor, nomodelArm, majority, withCause, ruleVerdict, ruleArm, emitInputs } from '../scripts/local-llm/evalset-run.mjs'
 
 const sha = (s) => crypto.createHash('sha256').update(s).digest('hex')
 const SALT = 'test-salt'
@@ -33,8 +34,9 @@ const arm = (right = () => true, timed = false) => Object.fromEntries(cases.map(
 const haiku = arm((c, i) => i % 5 !== 0)
 // a floor that knows a little: right on the first 2 of each task
 const nomodel = (() => { const seen = {}; return arm((c) => { seen[c.task] = (seen[c.task] || 0) + 1; return seen[c.task] <= 2 }) })()
-const grade = (a, g) => Object.fromEntries(cases.filter((c) => c.task === 'copy').map((c) => [sha256(a[c.id].text), typeof g === 'function' ? g(c) : g]))
-const opts = (a, g = 5) => ({ name: 'm', voice, salt: SALT, grades: { m: grade(a, g) } })
+const grade = (a, g) => Object.fromEntries(cases.filter((c) => c.task === 'copy').map((c) => [gradeKey(c.id, a[c.id].text), typeof g === 'function' ? g(c) : g]))
+// Haiku is graded too: its grades set the reference for the graded task
+const opts = (a, g = 5) => ({ name: 'm', voice, salt: SALT, grades: { m: grade(a, g), haiku: grade(haiku, 5) } })
 
 describe('manifest schema', () => {
   it('accepts the shipped manifest', () => {
@@ -42,8 +44,8 @@ describe('manifest schema', () => {
     assert.deepEqual(validateManifest(m), [])
     const by = {}
     for (const c of m.cases) by[c.task] = (by[c.task] || 0) + 1
-    assert.deepEqual(by, { builder: 10, copy: 10, reviewer: 30, triage: 12 })
-    assert.equal(m.cases.filter((c) => c.task === 'reviewer' && c.label === 'valid').length, 15)
+    assert.deepEqual(by, { builder: 10, copy: 8, reviewer: 28, triage: 10 })
+    assert.equal(m.cases.filter((c) => c.task === 'reviewer' && c.label === 'valid').length, 14)
   })
   it('accepts the test set', () => assert.deepEqual(validateManifest(manifest), []))
   it('refuses a body, a path or any other extra field in a case', () => {
@@ -186,7 +188,7 @@ describe('judge', () => {
   })
   it('holds a good arm as pending until every copy answer has a grade, and fails closed on a missing grade file', () => {
     const m = arm()
-    const r = judge(manifest, m, haiku, nomodel, { voice, salt: SALT, name: 'm' })
+    const r = judge(manifest, m, haiku, nomodel, { voice, salt: SALT, name: 'm', grades: { haiku: grade(haiku, 5) } })
     assert.equal(r.status, 'PENDING-GRADE')
     assert.match(r.reasons.join(), /copy: 0\/10 graded/)
   })
@@ -227,11 +229,14 @@ describe('latency applies only to timed arms', () => {
 describe('grades', () => {
   const m = arm()
   const cp = cases.filter((c) => c.task === 'copy')
-  it('are keyed by the arm name and the sha256 of its text, so a grade for another arm or text is not used', () => {
-    const r = judge(manifest, m, haiku, nomodel, { voice, salt: SALT, name: 'other', grades: { m: grade(m, 5) } })
+  it('are keyed by the arm name and by case id plus text, so a grade for another arm, case or text is not used', () => {
+    const r = judge(manifest, m, haiku, nomodel, { voice, salt: SALT, name: 'other', grades: { m: grade(m, 5), haiku: grade(haiku, 5) } })
     assert.equal(r.status, 'PENDING-GRADE')
     const swapped = { ...m, 'cpy-01': { text: 'fine something else' } }
     assert.equal(gradeStats(cp, swapped, grade(m, 5), {}).valid, 9)
+    // the same text under another case id earns nothing
+    const moved = { ...m, 'cpy-01': m['cpy-02'] }
+    assert.equal(gradeStats(cp, moved, grade(m, 5), {}).valid, 9)
   })
   it('must be integers 0..5', () => {
     for (const bad of [4.5, 6, -1, '5', null]) {
@@ -311,5 +316,146 @@ describe('rejections', () => {
     const a = structuredClone(nomodel); a['rev-30'] = { verdict: wrong[nomodel['rev-30'].verdict] }
     assert.deepEqual(rejections(cases.filter((c) => c.task === 'reviewer'), a, nomodel, { salt: SALT }).filter((r) => /no-model/.test(r)), [])
     assert.deepEqual(rejections(cases.filter((c) => c.task === 'reviewer'), a, nomodel, { salt: SALT }).filter((r) => /constant/.test(r)), [])
+  })
+})
+
+describe('reference arm is validated before it is the bar', () => {
+  const voiceCtx = { voice, salt: SALT }
+  const hg = { haiku: grade(haiku, 5) }
+  it('accepts a full, graded Haiku arm that beats no-model by 2', () => {
+    assert.equal(referenceProblems(cases, haiku, [nomodel], { ...voiceCtx, grades: hg }).size, 0)
+  })
+  it('says no reference when Haiku answers only part of a task (it used to lower the bar to no-model + 2)', () => {
+    const partial = structuredClone(haiku); partial['rev-03'] = { invalid: true }
+    const p = referenceProblems(cases, partial, [nomodel], { ...voiceCtx, grades: hg })
+    assert.match(p.get('reviewer'), /Haiku schema valid 29\/30/)
+    const r = judge(manifest, arm(), partial, nomodel, { ...opts(arm()), tasks: ['reviewer'] })
+    assert.equal(r.status, 'NO-REFERENCE')
+  })
+  it('says no reference when Haiku is under the best no-model arm + 2, and accepts it at exactly + 2', () => {
+    const rev = cases.filter((c) => c.task === 'reviewer')
+    const right = (n) => { const a = arm(); rev.forEach((c, i) => { a[c.id] = { verdict: i < n ? c.label : wrong[c.label] } }); return a }
+    assert.match(referenceProblems(cases, right(17), [right(16)], { ...voiceCtx, grades: hg }).get('reviewer'), /Haiku 17 is under no-model 16 \+ 2/)
+    assert.equal(referenceProblems(cases, right(17), [right(15)], { ...voiceCtx, grades: hg }).has('reviewer'), false)
+  })
+  it('says no reference for copy unless Haiku is graded n/n with mean 4 and no grade under 3', () => {
+    const run = (g) => referenceProblems(cases, haiku, [nomodel], { ...voiceCtx, grades: { haiku: g } }).get('copy')
+    assert.match(run({}), /Haiku is graded 0\/10/)
+    assert.match(run(grade(haiku, 3)), /Haiku grade mean 3\.00/)
+    assert.match(run(grade(haiku, (c) => (c.id === 'cpy-02' ? 2 : 5))), /Haiku lowest grade 2/)
+    assert.match(run(grade(haiku, (c) => (c.id === 'cpy-02' ? 9 : 5))), /Haiku is graded/)
+    assert.equal(run(grade(haiku, (c) => (c.id === 'cpy-02' ? 3 : 5))), undefined)
+  })
+  it('never lets a grade given under another case id stand in for the Haiku grade', () => {
+    const swapped = grade(haiku, 5)
+    delete swapped[gradeKey('cpy-01', haiku['cpy-01'].text)]
+    swapped[gradeKey('cpy-09', haiku['cpy-01'].text)] = 5
+    assert.match(referenceProblems(cases, haiku, [nomodel], { ...voiceCtx, grades: { haiku: swapped } }).get('copy'), /graded 9\/10/)
+  })
+})
+
+describe('two no-model arms', () => {
+  const rev = cases.filter((c) => c.task === 'reviewer')
+  const ruleArmRight = (n) => Object.fromEntries(rev.map((c, i) => [c.id, { verdict: i < n ? c.label : wrong[c.label] }]))
+  it('applies +2 to the better arm, and an arm that covers reviewer only leaves builder alone', () => {
+    const rule = ruleArmRight(22) // Haiku has 24 on reviewer here, so it is still a valid reference against 22 + 2
+    const m = arm(); rev.forEach((c, i) => { m[c.id] = { verdict: i % 2 === 0 && i < 14 ? wrong[c.label] : c.label } }) // 23 right, every miss an invalid one: Haiku - 1, and 15 + 2 clears the lone floor
+    const alone = judge(manifest, m, haiku, nomodel, { ...opts(m), tasks: ['reviewer'] })
+    assert.equal(alone.status, 'PASS', alone.reasons.join())
+    const both = judge(manifest, m, haiku, [nomodel, rule], { ...opts(m), tasks: ['reviewer'] })
+    assert.equal(both.status, 'FAIL')
+    assert.match(both.reasons.join(), /reviewer: 23 below no-model 22 \+ 2/)
+    assert.equal(both.scores.reviewer.nomodel.correct, 22)
+    assert.equal(judge(manifest, m, haiku, [nomodel, rule], { ...opts(m), tasks: ['builder'] }).status, 'PASS')
+  })
+  it('rejects an arm that equals the rule arm on reviewer', () => {
+    const rule = ruleArmRight(26)
+    const m = arm(); for (const c of rev) m[c.id] = structuredClone(rule[c.id])
+    assert.match(judge(manifest, m, haiku, [nomodel, rule], { ...opts(m), tasks: ['reviewer'] }).reasons.join(), /reviewer answers equal the no-model arm/)
+  })
+  it('makes the Haiku reference fail against a stronger rule arm too', () => {
+    const rule = ruleArmRight(27)
+    assert.match(referenceProblems(cases, haiku, [nomodel, rule], { voice, salt: SALT, grades: { haiku: grade(haiku, 5) } }).get('reviewer'), /under no-model 27 \+ 2/)
+  })
+})
+
+describe('rule arm and triage prompts', () => {
+  it('calls a region invalid when it holds code from the finding\'s own Fix sentence, and valid otherwise', () => {
+    const finding = 'Medium: `walk` hashes untracked files, so a `.DS_Store` moves the hash. Fix: hash only tracked files (`git ls-files`), or skip ignored names.'
+    assert.equal(ruleVerdict({ finding, region: 'const out = walk(root)' }), 'valid')
+    assert.equal(ruleVerdict({ finding, region: "execFileSync('git', ['ls-files', '-z'])" }), 'invalid')
+    assert.equal(ruleVerdict({ finding: 'no remedy given here', region: 'git ls-files' }), 'valid')
+  })
+  it('does not count a name the finding already used before its Fix sentence', () => {
+    const finding = 'Medium: `hashFiles` is called twice. Fix: call `hashFiles` once.'
+    assert.equal(ruleVerdict({ finding, region: 'hashFiles(a); hashFiles(b)' }), 'valid')
+  })
+  it('writes the rule arm for reviewer cases only', () => {
+    const a = ruleArm([{ id: 'rev-01', task: 'reviewer', body: { input: { finding: 'x. Fix: use `fooBar`', region: 'fooBar()' } } }, { id: 'cpy-01', task: 'copy', body: { input: { text: 't' } } }])
+    assert.deepEqual(a, { 'rev-01': { verdict: 'invalid' } })
+  })
+  it('emits a prompt for a triage case too, and refuses a log whose sha256 changed', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'es-emit-'))
+    const log = path.join(dir, 'x.log'); fs.writeFileSync(log, 'line one\nError: boom at a.ts:3\n')
+    const tri = (h) => ({ id: 'tri-01', task: 'triage', body: { input: { bodyFile: log, bodySha256: h } } })
+    const rev = { id: 'rev-01', task: 'reviewer', body: { input: { path: 'p', line: 1, finding: 'F', region: 'R' } } }
+    const out = path.join(dir, 'out')
+    emitInputs([rev, tri(sha(fs.readFileSync(log)))], out)
+    assert.deepEqual(fs.readdirSync(out).sort(), ['rev-01.json', 'tri-01.json'])
+    const t = JSON.parse(fs.readFileSync(path.join(out, 'tri-01.json'), 'utf8'))
+    assert.equal(t.task, 'triage')
+    assert.ok(t.messages.length >= 2 && !JSON.stringify(t).includes('"label"'))
+    assert.throws(() => emitInputs([tri('0'.repeat(64))], path.join(dir, 'out2')), /log body sha256 changed/)
+  })
+})
+
+describe('references are the frozen ones', () => {
+  const mBytes = Buffer.from('{"version":2}')
+  const h = Buffer.from('haiku bytes'), n = Buffer.from('nomodel bytes')
+  const baseline = { manifestSha256: sha(mBytes), arms: [{ name: 'haiku', armSha256: sha(h) }, { name: 'nomodel', armSha256: sha(n) }] }
+  const refs = [{ file: '/x/haiku.json', bytes: h }, { file: '/x/nomodel.json', bytes: n }]
+  it('accepts the frozen files on the frozen manifest', () => assert.deepEqual(checkReferences(baseline, mBytes, refs), []))
+  it('names a reference file that changed since the freeze', () => {
+    assert.match(checkReferences(baseline, mBytes, [{ ...refs[0], bytes: Buffer.from('edited') }, refs[1]]).join(), /haiku: .*does not match the hash frozen/)
+  })
+  it('names a reference that was never frozen and a baseline that is for another manifest', () => {
+    assert.match(checkReferences(baseline, mBytes, [{ file: '/x/nomodel-rule.json', bytes: n }]).join(), /nomodel-rule: not in baseline\.json/)
+    assert.match(checkReferences(baseline, Buffer.from('other'), refs).join(), /manifestSha256 does not match/)
+  })
+  it('the command line refuses to judge without --baseline, and on a reference edited after the freeze', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'es-cli-'))
+    const w = (f, v) => { fs.writeFileSync(path.join(dir, f), JSON.stringify(v)); return path.join(dir, f) }
+    const man = w('manifest.json', manifest), hk = w('haiku.json', haiku), nm = w('nomodel.json', nomodel), a = w('m.json', arm())
+    const base = { manifestSha256: sha256(fs.readFileSync(man)), arms: [{ name: 'haiku', armSha256: sha256(fs.readFileSync(hk)) }, { name: 'nomodel', armSha256: sha256(fs.readFileSync(nm)) }] }
+    const run = (...extra) => spawnSync('node', [new URL('../scripts/local-llm/evalset.mjs', import.meta.url).pathname, '--manifest', man, '--haiku', hk, '--nomodel', nm, '--arm', `m=${a}`, '--tasks', 'reviewer', ...extra], { encoding: 'utf8' })
+    assert.match(run().stderr, /--baseline <value> is required/)
+    const b = w('baseline.json', base)
+    const ok = run('--baseline', b)
+    assert.equal(ok.status, 0, ok.stderr + ok.stdout)
+    fs.writeFileSync(hk, JSON.stringify({ ...haiku, 'rev-01': { verdict: 'invalid' } }))
+    const bad = run('--baseline', b)
+    assert.equal(bad.status, 2)
+    assert.match(bad.stderr, /haiku: .*does not match the hash frozen/)
+  })
+})
+
+describe('evalset-baseline refuses a missing flag', () => {
+  const script = new URL('../scripts/local-llm/evalset-baseline.mjs', import.meta.url).pathname
+  it('exits non-zero and writes no file named after another flag when a flag is left out', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'es-bl-'))
+    const man = path.join(dir, 'manifest.json'); fs.writeFileSync(man, JSON.stringify(manifest))
+    const arms = path.join(dir, 'arms'); fs.mkdirSync(arms)
+    const salt = path.join(dir, 'salt'); fs.writeFileSync(salt, 's')
+    const run = (...a) => spawnSync('node', [script, ...a], { cwd: dir, encoding: 'utf8' })
+    const noNote = run('--manifest', man, '--arms', arms, '--salt-file', salt, '--check-voice', 'x', '--out', path.join(dir, 'b.json'))
+    assert.notEqual(noNote.status, 0)
+    assert.match(noNote.stderr, /--note <value> is required/)
+    assert.equal(fs.existsSync(path.join(dir, 'b.json')), false)
+    const noOut = run('--manifest', man, '--arms', arms, '--salt-file', salt, '--check-voice', 'x', '--note', 'n')
+    assert.notEqual(noOut.status, 0)
+    assert.match(noOut.stderr, /--out <value> is required/)
+    assert.equal(fs.existsSync(path.join(dir, '--manifest')), false)
+    assert.equal(run('--manifest', man, '--arms', arms, '--salt-file', salt, '--check-voice', 'x', '--note', 'n', '--out', path.join(dir, 'b.json')).status, 0)
+    assert.equal(JSON.parse(fs.readFileSync(path.join(dir, 'b.json'), 'utf8')).note, 'n')
   })
 })

@@ -75,12 +75,6 @@
       "sha256": "124439adb2c32038d4c0b93d39025971b32bd2417fc0c84966c9e611282fa822"
     },
     {
-      "id": "cpy-03",
-      "task": "copy",
-      "label": "voice:1",
-      "sha256": "5199b88ec05803326d15ef2fb211fcf4dff455fa2e1bb395845e1a414d8af7b7"
-    },
-    {
       "id": "cpy-04",
       "task": "copy",
       "label": "voice:1",
@@ -103,12 +97,6 @@
       "task": "copy",
       "label": "voice:1",
       "sha256": "f175ff5e065f5574f82b7980df717f0ea389c5d38912b561050b214f6b252116"
-    },
-    {
-      "id": "cpy-08",
-      "task": "copy",
-      "label": "voice:1",
-      "sha256": "9c6fd896c90878bfc253d6de73a434fa3280705b37133a77519209aca77c66f4"
     },
     {
       "id": "cpy-09",
@@ -222,7 +210,7 @@
       "id": "rev-17",
       "task": "reviewer",
       "label": "invalid",
-      "sha256": "d2bc0a222166c11d3af7e0a4c886eb1fc6f1712171adad108c369be5d11fc378"
+      "sha256": "5c1bfc8234d47d1f3b5366d527f7c1294f9bc8a1182d1feb4ea85a7d14a0f6fd"
     },
     {
       "id": "rev-18",
@@ -241,12 +229,6 @@
       "task": "reviewer",
       "label": "invalid",
       "sha256": "ab732ff7dca04dcf9cab922fdbfc45f1615cf267130b1c4cc1fb63a5dcb35169"
-    },
-    {
-      "id": "rev-21",
-      "task": "reviewer",
-      "label": "invalid",
-      "sha256": "8f0ea2536fca30d1076d054e1425aa219606f83f5d4e568847e16e4a190ea0ff"
     },
     {
       "id": "rev-22",
@@ -285,12 +267,6 @@
       "sha256": "ba1791b2d55bb86cc01e96feafef1a7028d92487f1219308f75cd08b170f6075"
     },
     {
-      "id": "rev-28",
-      "task": "reviewer",
-      "label": "valid",
-      "sha256": "856ec1d3480afcaa155fd30e2aaedea1cecfb749304c64c3ce920ead6811eb12"
-    },
-    {
       "id": "rev-29",
       "task": "reviewer",
       "label": "invalid",
@@ -324,19 +300,13 @@
       "id": "tri-05",
       "task": "triage",
       "label": "real",
-      "sha256": "2724d8ed21fc61735a6ed1bf27a4f48a22db59d3623c7aec2dfea47d7320176f"
+      "sha256": "7fa48087b3d06ee60ad28df35874205f98f3a05063696359a11d291f9a8f3383"
     },
     {
       "id": "tri-06",
       "task": "triage",
       "label": "flake",
       "sha256": "10b452457b29a25a9d2af3d338963a4b59328c20861ec8c7a925454acbdde2c4"
-    },
-    {
-      "id": "tri-09",
-      "task": "triage",
-      "label": "real",
-      "sha256": "b7f018358cf761d2426da8939b6427d4022a104f2d35b5761bcf33397b431c00"
     },
     {
       "id": "tri-10",
@@ -367,12 +337,6 @@
       "task": "triage",
       "label": "flake",
       "sha256": "379ac014109cf3d2b47bf7ea7b299246c3c9f5cedb7d238144ba94fb3f369845"
-    },
-    {
-      "id": "tri-15",
-      "task": "triage",
-      "label": "infra",
-      "sha256": "1af229ac01587007114bb0037d5f8bb712d7e94445110b6487adbb31f8463774"
     }
   ]
 }

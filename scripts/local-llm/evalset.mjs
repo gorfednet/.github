@@ -1,9 +1,11 @@
 #!/usr/bin/env node
 // Fixed eval set (plan row 1.27): manifest schema, case verification and scorer.
 // This repository is public. The manifest holds only {id, task, label, sha256}; case bodies are private.
-// evalset.mjs --manifest m.json --haiku h.json --nomodel n.json --arm name=f.json [--tasks a,b] [--grades g.json] [--salt-file f] [--check-voice path]
+// evalset.mjs --manifest m.json --baseline baseline.json --haiku h.json --nomodel n.json [--nomodel n2.json ...] --arm name=f.json [--tasks a,b] [--grades g.json] [--salt-file f] [--check-voice path]
 // arm file:    {caseId: {verdict | files | text, ms?, cause?}}   ms only when the arm was timed; cause set by evalset-run from private truth
-// grades file: {armName: {sha256(answer text): 0..5}} from a tool-less Fable grader, integers only
+// grades file: {armName: {gradeKey(caseId, answer text): 0..5}} from a tool-less Fable grader, integers only. Haiku must be graded too: its grades set the reference.
+// The reference files (--haiku and every --nomodel) must match the sha256 values frozen in baseline.json, and the baseline must name this manifest.
+// A no-model arm may cover only some tasks (the rule arm covers reviewer only): it is compared on the tasks it covers.
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -21,6 +23,8 @@ export const GRADE_MEAN = 4
 export const GRADE_MIN = 3
 export const MAX_MS = 60000
 export const sha256 = (s) => crypto.createHash('sha256').update(s).digest('hex')
+/** A grade belongs to one case and one text: the same text under another case id earns nothing. */
+export const gradeKey = (id, text) => sha256(`${id}\n${text}`)
 const median = (xs) => [...xs].sort((a, b) => a - b)[Math.floor((xs.length - 1) / 2)]
 /** Salted per case, so a file list guessed from a repository cannot be checked against the public label. */
 export const filesLabel = (files, salt, id) => {
@@ -99,13 +103,13 @@ export function score(cases, arm, { voice, salt } = {}) {
   return { task: t, n: cases.length, correct, schema, dangerous, cause, hasCause, drop, start, timed: ms.length, medianMs: ms.length ? median(ms) : null }
 }
 
-/** Grades for one arm: keyed by the sha256 of the answer text, integers 0..5, mean and per-case minimum. */
+/** Grades for one arm: keyed by gradeKey(case id, answer text), integers 0..5, mean and per-case minimum. */
 export function gradeStats(cases, arm, armGrades, ctx) {
   const bad = [], got = []
   for (const c of cases) {
     const key = keyOf(c.task, arm[c.id], ctx)
     if (key === null) continue
-    const g = armGrades?.[sha256(key)]
+    const g = armGrades?.[gradeKey(c.id, key)]
     if (g === undefined) continue
     if (!Number.isInteger(g) || g < 0 || g > 5) bad.push(`${c.id}: grade ${JSON.stringify(g)} is not an integer 0..5`)
     else got.push(g)
@@ -113,8 +117,9 @@ export function gradeStats(cases, arm, armGrades, ctx) {
   return { graded: got.length + bad.length, valid: got.length, bad, mean: got.length ? got.reduce((a, b) => a + b, 0) / got.length : null, min: got.length ? Math.min(...got) : null }
 }
 
-/** Rejections first, as eval.mjs does: a constant arm and an arm equal to the no-model arm, per task. */
+/** Rejections first, as eval.mjs does: a constant arm and an arm equal to a no-model arm, per task. */
 export function rejections(cases, arm, nomodel, { salt } = {}) {
+  const nomodels = Array.isArray(nomodel) ? nomodel : [nomodel]
   const reasons = []
   for (const t of TASKS) {
     const cs = cases.filter((c) => c.task === t)
@@ -122,29 +127,67 @@ export function rejections(cases, arm, nomodel, { salt } = {}) {
     // Compare the answers themselves: the salted builder key differs per case, so identical file lists would not look constant.
     const k = (a, c) => (t === 'builder' ? (keyOf(t, a[c.id], { salt, id: c.id }) === null ? null : [...new Set(a[c.id].files)].sort().join('\n')) : keyOf(t, a[c.id], { salt, id: c.id }))
     if (new Set(cs.map((c) => k(arm, c))).size === 1) reasons.push(`rejected: constant answer on ${t}`)
-    if (cs.every((c) => JSON.stringify(k(arm, c)) === JSON.stringify(k(nomodel, c)))) reasons.push(`rejected: ${t} answers equal the no-model arm`)
+    for (const n of nomodels) {
+      if (!cs.every((c) => n[c.id] !== undefined)) continue // an arm that skipped this task has nothing to equal
+      if (cs.every((c) => JSON.stringify(k(arm, c)) === JSON.stringify(k(n, c)))) { reasons.push(`rejected: ${t} answers equal the no-model arm`); break }
+    }
   }
   return reasons
 }
 
-export function judge(manifest, arm, haiku, nomodel, { name = 'arm', voice, grades, salt, tasks = TASKS } = {}) {
+/** The no-model arm that scores highest on the task, among those that cover it; null when none does. */
+function bestNoModel(cs, nomodels, ctx) {
+  let best = null
+  for (const n of nomodels) {
+    if (!cs.every((c) => n[c.id] !== undefined)) continue
+    const z = score(cs, n, ctx)
+    if (!best || z.correct > best.correct || (z.correct === best.correct && z.cause > best.cause)) best = z
+  }
+  return best
+}
+
+/**
+ * Reference check, task by task. Haiku is the bar only when it is itself a real answer: schema-valid on every case,
+ * not constant, not equal to a no-model arm, and at least the best no-model arm + 2. For a graded task its own grades must meet the bar too.
+ */
+export function referenceProblems(cases, haiku, nomodels, { voice, salt, grades, haikuName = 'haiku' } = {}) {
+  const out = new Map()
+  const note = (t, r) => { if (!out.has(t)) out.set(t, r) }
+  for (const r of rejections(cases, haiku, nomodels, { salt })) note(r.match(/ on (\w+)$| (\w+) answers equal/).slice(1).find(Boolean), `${r} on the Haiku arm`)
+  for (const t of TASKS) {
+    const cs = cases.filter((c) => c.task === t)
+    if (!cs.length) continue
+    const h = score(cs, haiku, { voice, salt })
+    if (h.schema !== h.n) note(t, `Haiku schema valid ${h.schema}/${h.n}`)
+    const z = bestNoModel(cs, nomodels, { voice, salt })
+    if (z && h.correct < z.correct + 2) note(t, `Haiku ${h.correct} is under no-model ${z.correct} + 2`)
+    if (GRADED.has(t)) {
+      const g = gradeStats(cs, haiku, grades?.[haikuName], { salt })
+      if (g.bad.length || g.valid < h.schema) note(t, `Haiku is graded ${g.valid}/${h.n}`)
+      else if (g.mean < GRADE_MEAN) note(t, `Haiku grade mean ${g.mean.toFixed(2)} is under ${GRADE_MEAN}`)
+      else if (g.min < GRADE_MIN) note(t, `Haiku lowest grade ${g.min} is under ${GRADE_MIN}`)
+    }
+  }
+  return out
+}
+
+export function judge(manifest, arm, haiku, nomodel, { name = 'arm', haikuName = 'haiku', voice, grades, salt, tasks = TASKS } = {}) {
+  const nomodels = Array.isArray(nomodel) ? nomodel : [nomodel]
   const cases = manifest.cases.filter((c) => tasks.includes(c.task))
-  const rej = rejections(cases, arm, nomodel, { salt })
+  const rej = rejections(cases, arm, nomodels, { salt })
   if (rej.length) return { status: 'FAIL', reasons: rej, scores: null }
-  // The reference arm must itself survive the rejections, task by task, or there is nothing to compare with.
-  const noRef = new Map()
-  for (const r of rejections(cases, haiku, nomodel, { salt })) noRef.set(r.match(/ on (\w+)$| (\w+) answers equal/).slice(1).find(Boolean), r)
+  const noRef = referenceProblems(cases, haiku, nomodels, { voice, salt, grades, haikuName })
   const reasons = [], pending = [], missing = [], scores = {}
   for (const t of tasks) {
     const cs = cases.filter((c) => c.task === t)
     if (!cs.length) continue
-    const s = score(cs, arm, { voice, salt }), h = score(cs, haiku, { voice, salt }), z = score(cs, nomodel, { voice, salt })
+    const s = score(cs, arm, { voice, salt }), h = score(cs, haiku, { voice, salt }), z = bestNoModel(cs, nomodels, { voice, salt }) ?? score(cs, {}, { voice, salt })
     scores[t] = { arm: s, haiku: h, nomodel: z }
     if (s.schema !== s.n) reasons.push(`${t}: schema valid ${s.schema}/${s.n}`)
     // Latency applies only to an arm that was timed. An ingested Claude arm has no timings: skip, never Infinity.
     if (s.timed > 0 && s.timed < s.schema) reasons.push(`${t}: timings on ${s.timed} of ${s.schema} answers`)
     else if (s.timed > 0 && !(s.medianMs <= MAX_MS)) reasons.push(`${t}: median latency ${s.medianMs} ms over ${MAX_MS}`)
-    if (noRef.has(t)) { scores[t].reference = 'none'; missing.push(`${t}: no reference (${noRef.get(t)} on the Haiku arm)`) }
+    if (noRef.has(t)) { scores[t].reference = 'none'; missing.push(`${t}: no reference (${noRef.get(t)})`) }
     else {
       if (s.correct < h.correct - 1) reasons.push(`${t}: ${s.correct}/${s.n} below Haiku ${h.correct} - 1`)
       if (s.dangerous > h.dangerous) reasons.push(`${t}: dangerous misses ${s.dangerous} above haiku ${h.dangerous}`)
@@ -171,13 +214,37 @@ export function judge(manifest, arm, haiku, nomodel, { name = 'arm', voice, grad
   return { status: 'PASS', reasons: [], scores }
 }
 
+/**
+ * The reference files must be the ones the baseline froze, on the manifest the baseline names. Returns problems; empty means they are.
+ * refs = [{file, bytes}]; an arm's name is its file's base name without .json, as evalset-baseline writes it.
+ */
+export function checkReferences(baseline, manifestBytes, refs) {
+  const bad = []
+  if (!baseline || !Array.isArray(baseline.arms)) return ['baseline: no arms list']
+  if (baseline.manifestSha256 !== sha256(manifestBytes)) bad.push('baseline: manifestSha256 does not match the manifest (refreeze)')
+  for (const r of refs) {
+    const name = path.basename(r.file).replace(/\.json$/, '')
+    const frozen = baseline.arms.find((a) => a.name === name)
+    if (!frozen) bad.push(`${name}: not in baseline.json`)
+    else if (frozen.armSha256 !== sha256(r.bytes)) bad.push(`${name}: ${r.file} does not match the hash frozen in baseline.json`)
+  }
+  return bad
+}
+
 function main(argv) {
   const load = (f) => JSON.parse(fs.readFileSync(f, 'utf8'))
   const val = (k) => (argv.includes(k) ? argv[argv.indexOf(k) + 1] : undefined)
-  const manifest = load(val('--manifest'))
+  const need = (k) => { const v = val(k); if (!v || v.startsWith('--')) throw new Error(`${k} <value> is required`); return v }
+  const manifestBytes = fs.readFileSync(need('--manifest'))
+  const manifest = JSON.parse(manifestBytes)
   const problems = validateManifest(manifest)
   if (problems.length) throw new Error(problems.join('; '))
-  const [haiku, nomodel] = ['--haiku', '--nomodel'].map((k) => load(val(k)))
+  const nomodelFiles = argv.flatMap((a, i) => (a === '--nomodel' ? [argv[i + 1]] : []))
+  if (!nomodelFiles.length || nomodelFiles.some((f) => !f || f.startsWith('--'))) throw new Error('--nomodel <file> is required (repeat it for the rule arm)')
+  const refs = [need('--haiku'), ...nomodelFiles].map((file) => ({ file, bytes: fs.readFileSync(file) }))
+  const refBad = checkReferences(load(need('--baseline')), manifestBytes, refs)
+  if (refBad.length) throw new Error(refBad.join('; '))
+  const haiku = JSON.parse(refs[0].bytes), nomodel = refs.slice(1).map((r) => JSON.parse(r.bytes))
   const arms = argv.flatMap((a, i) => (a === '--arm' ? [argv[i + 1].split('=')] : []))
   if (!arms.length) throw new Error('no --arm name=file given')
   const tasks = val('--tasks') ? val('--tasks').split(',') : TASKS

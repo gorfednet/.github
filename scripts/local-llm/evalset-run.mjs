@@ -2,7 +2,8 @@
 // evalset-run.mjs --manifest m.json --cases dir <mode>
 //   --model <id> --out arm.json [--tasks a,b]   run one served local model on the set (named pair, takes the lock, unloads after)
 //   --nomodel arm.json                          write the no-model arm (majority label computed from the cases, named files, unchanged text)
-//   --emit-inputs dir                           write one input-only prompt file per case, for Claude-tier arms
+//   --nomodel-rule arm.json                     write the rule arm: reviewer only, "invalid when the region holds code from the finding's own Fix sentence"
+//   --emit-inputs dir                           write one input-only prompt file per case (triage too), for Claude-tier arms
 //   --ingest raw.json --out arm.json            turn {caseId: reply text} from a Claude-tier arm into an arm file
 // Case bodies are private (ops). The truth part of a body never goes to a model.
 import fs from 'node:fs'
@@ -85,6 +86,32 @@ export function nomodelArm(cases) {
   return out
 }
 
+/**
+ * The second no-model reviewer arm. A pair is the same finding over the code before and after the fix, so the fix's own code
+ * is the tell: the text after the finding's last "fix" word, in backticks, minus anything the finding already named before it.
+ * `invalid` when the region contains such a token, else `valid`. No model, no label.
+ */
+export function ruleVerdict(input) {
+  const f = String(input.finding)
+  const at = [...f.matchAll(/\bfix\b/gi)].map((m) => m.index).pop()
+  if (at === undefined) return 'valid'
+  const before = f.slice(0, at).toLowerCase()
+  const tokens = [...f.slice(at).matchAll(/`([^`]+)`/g)].flatMap((m) => m[1].match(/[A-Za-z_][\w.-]{3,}/g) ?? [])
+  const fresh = tokens.map((t) => t.toLowerCase()).filter((t) => !before.includes(t))
+  const region = String(input.region).toLowerCase()
+  return fresh.some((t) => region.includes(t)) ? 'invalid' : 'valid'
+}
+
+export function ruleArm(cases) {
+  return Object.fromEntries(cases.filter((c) => c.task === 'reviewer').map((c) => [c.id, { verdict: ruleVerdict(c.body.input) }]))
+}
+
+/** One input-only prompt file per case, triage included: the prompt is built the way the local runner builds it, and the log's sha256 is checked. */
+export function emitInputs(cases, dir) {
+  fs.mkdirSync(dir, { recursive: true })
+  for (const c of cases) fs.writeFileSync(path.join(dir, `${c.id}.json`), `${JSON.stringify({ id: c.id, task: c.task, messages: messagesFor(c) }, null, 2)}\n`)
+}
+
 async function runModel(cases, id, base) {
   const live = await listModels(base)
   if (!live.some((m) => m.id === id)) throw new Error(`${id} is not served at ${base}`)
@@ -116,11 +143,8 @@ async function main(argv) {
   const tasks = val('--tasks') ? val('--tasks').split(',') : TASKS
   const cases = loadCases(manifest, val('--cases')).filter((c) => tasks.includes(c.task))
   if (val('--nomodel')) { fs.writeFileSync(val('--nomodel'), `${JSON.stringify(nomodelArm(cases), null, 2)}\n`); return 0 }
-  if (val('--emit-inputs')) {
-    fs.mkdirSync(val('--emit-inputs'), { recursive: true })
-    for (const c of cases.filter((x) => x.task !== 'triage')) fs.writeFileSync(path.join(val('--emit-inputs'), `${c.id}.json`), `${JSON.stringify({ id: c.id, task: c.task, messages: promptFor(c.task, c.body.input) }, null, 2)}\n`)
-    return 0
-  }
+  if (val('--nomodel-rule')) { fs.writeFileSync(val('--nomodel-rule'), `${JSON.stringify(ruleArm(cases), null, 2)}\n`); return 0 }
+  if (val('--emit-inputs')) { emitInputs(cases, val('--emit-inputs')); return 0 }
   if (val('--ingest')) {
     const raw = JSON.parse(fs.readFileSync(val('--ingest'), 'utf8'))
     const arm = Object.fromEntries(cases.filter((c) => raw[c.id] !== undefined).map((c) => [c.id, withCause(c, parseAnswer(c.task, raw[c.id])) ?? { invalid: true }]))
