@@ -165,6 +165,15 @@ Each row: owner agent and model; root cause to verify (hypothesis, not finding);
 | 6.3 | Homebridge: healthy; add it to the restic include list and a healthchecks ping | `runner` Haiku | restore drill includes `/opt/homebridge` |
 | 6.4 | Docker engine: watchtower policy (pin the production images: moonman, nginx, cloudflared; auto-update only the arrs), `docker system prune` weekly with the backup; incident ledger `~/incidents` moved into ops | `builder` Sonnet in ops, `reviewer` Fable for the pin list | `docker images` dangling 0 at the Sunday report; pinned images listed in ops |
 
+### MoonMan 2.0.0 (priority 5, owner-approved 14 Nov 2026)
+
+Plan of record: MoonMan `docs/plans/2.0.0.md` (PR 336), briefs in `docs/briefs/2.0.0/`. Desk starts each piece by capacity, after priorities 1 to 4, at most 2 MoonMan builders at once. Follow the plan's Sequence table; this row only tracks it.
+
+| # | Item | Who | Blocked by | Done when | When |
+|---|---|---|---|---|---|
+| 7.1 | Wave 1: S0 measure-first (Opus 5.5), P1 seasons on the server (Sonnet 5.5), D0 design directions (Fable, writing; holds for the owner's read). Each writes the brief its row unblocks. | sessions from the briefs | MoonMan 336 merged; capacity | 3 PRs, S0 and P1 merged, D0 with the owner | after 336 merges, when slots are free of priority 1 to 4 work |
+| 7.2 | Waves 2 to 6 per the plan's Sequence. S2, S3, S4 strictly serial (all edit `tick.ts`, `tuning.ts`, `runLimits.ts`). S2 to S8 draft with `hold`, one release train. R lands Monday 00:00 UTC (Sunday 19:00 ET). | sessions from the briefs | 7.1 | 2.0.0 released | later |
+
 ## Owner decisions and access (the only things that reach him)
 
 1. Access, once, in one message with exact items: Tailscale SSH approval (docker host), optional billing read on the existing token (never ask again for the token itself), folder trust clicks for Herdr jobs, Mac sleep setting, dapyllil `sudo install.sh` for the pool resize (command given only when 3.1 is ready).

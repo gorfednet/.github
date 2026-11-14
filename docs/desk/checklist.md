@@ -82,3 +82,4 @@ Weekly 9% at 11:21 ET. Full speed, cost-aware. One line to the owner at about 90
 - [ ] bc 659 merge, then the supervisor install on dapyllil
 - [ ] healthchecks.io has no ntfy integration (email only): ops session hc-ntfy-1-13, then owner pastes the token
 - [ ] Egress canary edge.adobedc.net no longer blocked by the Pi-hole: session egress-canary (assess)
+- [ ] MoonMan 2.0.0: 336 (plan, docs) review then label; wave 1 (S0, P1, D0) after it merges, by capacity
