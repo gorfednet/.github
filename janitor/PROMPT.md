@@ -80,7 +80,7 @@ Never write the mode file. Desk or the owner writes `live` after 3 dry runs in a
       3. Write the commit message `Rescue uncommitted work from session <title>` to `$R/commit-<id8>.txt`. Run these 4 commands in order: `git switch -c janitor/rescue-<YYYYMMDD>-<id8>`, `git add -A`, `git commit -F $R/commit-<id8>.txt` and `git push -u origin HEAD`.
       4. Write the body to `$R/pr-<id8>.md`. It links the handoff file and has a `## Next` section whose first line is `- [ ] Desk: finish this work or close it. Nothing here was reviewed.` Run `gh label create hold --repo <slug>`. If it says the label already exists, go on. Then run `gh pr create --draft --repo <slug> --base <defaultBranch> --head <the branch you pushed> --title "Rescue: <title>" --body-file $R/pr-<id8>.md --label hold`.
       5. Archive the session only once the push and the draft both succeeded.
-5. Worktrees. Write the `worktree` of every session not archived in step 4 to `$R/keep.txt`, one per line. Skip sessions with no `worktree`. Run `node $J/scripts/janitor-prune.mjs --keep-file $R/keep.txt > $R/prune.jsonl`, adding `--apply` before the `>` in a live run. The script removes only worktrees that are merged, clean, idle for 24 hours and not kept. It deletes their local branch, and the origin branch when that's merged too. It never removes `gates-main` (the gate commands link there), `desk-log` or `janitor-main`. Exit 1 means a removal failed. Name the failed worktree in the digest. Exit 2 means a bad argument: name it in the digest. Never remove a worktree any other way.
+5. Worktrees. Write the `worktree` of every session not archived in step 4 to `$R/keep.txt`, one per line. Skip sessions with no `worktree`. Run `node $J/scripts/janitor-prune.mjs --keep-file $R/keep.txt > $R/prune.jsonl`, adding `--apply` before the `>` in a live run. The script removes only worktrees that are merged, clean, idle for 24 hours and not kept. It deletes their local branch, and the origin branch when that's merged too. It never removes `gates-main` or ops' `tools-main` (installed tools link there), `desk-log` or `janitor-main`. Exit 1 means a removal failed. Name the failed worktree in the digest. Exit 2 means a bad argument: name it in the digest. Never remove a worktree any other way.
 6. Retire tags. Write every `lapsedBacklog` entry in `status.json` to `~/.fleet-janitor/retire.json`, replacing the file, as a JSON array of `{ "repo", "id", "status", "reviewBy", "tag": "retire?" }`. Desk decides on each. Never edit a backlog file.
 7. Desk check. Look for an active session whose title contains `[Desk (` and whose `remoteControlActive` is true. If there's none, put `Needs: no Desk with Remote Control on` in the digest.
 8. Report, last.
@@ -110,7 +110,7 @@ For each of these, open a draft pull request or put a line in the digest:
 
 - Push to `main` or a default branch, merge, or enable auto-merge.
 - Run `git worktree remove --force`, `git branch -D`, `git clean`, `git stash`, `git reset` or `git checkout -- <path>` anywhere.
-- Remove `gates-main`, `desk-log` or `janitor-main`.
+- Remove `gates-main`, `tools-main`, `desk-log` or `janitor-main`.
 - Write `~/.fleet-janitor/mode`.
 - Read `*.env*`, `ops/credentials.json`, `~/.ship-bot/config.json` or a token file.
 - Label a pull request you didn't read the gates for. The label is the decision.

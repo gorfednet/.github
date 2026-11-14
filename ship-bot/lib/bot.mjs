@@ -17,7 +17,7 @@ import { RateLimitError, guardWrites } from './github.mjs'
 import { planRelease } from './release.mjs'
 import { Redactor } from './redact.mjs'
 import { guardCommands, succeeded } from './runner.mjs'
-import { GATES_REPO, advanceGatesWorktree, gatesWorktreePath } from './gates-worktree.mjs'
+import { GATES_REPO, advanceGatesWorktree, ownInstallFreshness, toolWorktreeFor } from './gates-worktree.mjs'
 import { StateStore } from './state.mjs'
 
 const short = (sha) => String(sha ?? '').slice(0, 7)
@@ -80,6 +80,7 @@ export async function runOnce(deps) {
 
   const repos = selectRepos(config.repos, deps.repoNames)
   recoverInterruptedDeploys(ctx)
+  if (deps.installedSha) await checkOwnInstall(ctx, deps.installedSha)
   if (quotaPaused(ctx)) {
     stateStore.save()
     return ctx.decisions
@@ -649,25 +650,68 @@ async function deployPreflight(ctx) {
 }
 
 /**
- * After a merge into gorfednet/.github, move the checkout behind the gate
- * commands on PATH to origin/main. A refusal or failure is logged and sent to
- * the owner's phone: a stale gate reads clean reviews as `not-run`.
+ * After a merge into a repository that installed tools run from (.github's
+ * gates-main, ops' tools-main), move that worktree to origin/main. A refusal
+ * or failure is logged and sent to the owner's phone: a stale gate reads clean
+ * reviews as `not-run`, and a stale Herdr runs without its fixes.
  */
-async function advanceGates(ctx, repo) {
-  const path = gatesWorktreePath(ctx.config, repo)
+async function advanceTools(ctx, repo) {
+  const wt = toolWorktreeFor(ctx.config, repo)
+  if (!wt) return
   const git = (args, { timeoutMs = 30_000 } = {}) => ctx.runner.run({ kind: 'workspace', cmd: 'git', args, env: ctx.baseEnv, timeoutMs })
   let result
   try {
-    result = await advanceGatesWorktree({ path, git })
+    result = await advanceGatesWorktree({ path: wt.path, git })
   } catch (cause) {
     result = { ok: false, reason: `unexpected error: ${cause.message}` }
   }
   if (result.ok) {
-    ctx.say('info', `gate commands on PATH: ${path} ${result.changed ? 'advanced to' : 'already at'} origin/main ${short(result.sha)}`)
+    if (ctx.state.data.toolsRefused?.[wt.name]) {
+      delete ctx.state.data.toolsRefused[wt.name]
+      ctx.state.save()
+    }
+    const cleared = result.cleared ? `, after clearing ${result.cleared.length} untracked files identical to the committed ones` : ''
+    ctx.say('info', `${wt.tools}: ${wt.path} ${result.changed ? 'advanced to' : 'already at'} origin/main ${short(result.sha)}${cleared}`)
     return
   }
-  ctx.say('error', `gate commands on PATH not advanced: ${result.reason}`)
-  await notify(ctx, `Gate commands on PATH are stale after a .github merge: ${result.reason}`, true)
+  ctx.say('error', `${wt.tools} not advanced: ${result.reason}`)
+  // One notification per distinct reason: a clash that needs a person would otherwise ring on every merge.
+  const memo = (ctx.state.data.toolsRefused ??= {})
+  if (memo[wt.name] === result.reason) return
+  memo[wt.name] = result.reason
+  ctx.state.save()
+  await notify(ctx, `${wt.tools} are stale after a ${repo.slug} merge: ${result.reason}`, true)
+}
+
+/**
+ * Says, every pass, when the installed bot is behind the last origin/main
+ * commit touching ship-bot/ or scripts/, and sends one notification per such
+ * commit (state `ownInstall.notifiedFor`). It never blocks the pass: a stale
+ * bot still gates with the scripts it has, and a person reinstalls.
+ */
+async function checkOwnInstall(ctx, installedSha) {
+  const row = ctx.config.repos.find((r) => r.slug === GATES_REPO)
+  const wt = row && toolWorktreeFor(ctx.config, row)
+  if (!wt) return
+  const git = (args) => ctx.runner.run({ kind: 'git-read', cmd: 'git', args, env: ctx.baseEnv, timeoutMs: 15_000 })
+  let r
+  try {
+    r = await ownInstallFreshness({ path: wt.path, installedSha, git })
+  } catch (cause) {
+    r = { state: 'unknown', reason: `unexpected error: ${cause.message}` }
+  }
+  if (r.state === 'unknown') {
+    ctx.say('warn', `installed ship-bot freshness not known: ${r.reason}`)
+    return
+  }
+  if (r.state === 'current') return
+  const text = `installed ship-bot (${short(installedSha)}) is behind origin/main: ${short(r.latest)} changed what install.sh copies, so the bot runs old code until it is reinstalled`
+  ctx.say('warn', text)
+  const memo = (ctx.state.data.ownInstall ??= {})
+  if (memo.notifiedFor === r.latest || ctx.dry) return
+  memo.notifiedFor = r.latest
+  ctx.state.save()
+  await notify(ctx, text, true)
 }
 
 async function dryRunMerge(ctx, repo, pr, tag, plan) {
@@ -744,7 +788,7 @@ async function liveMerge(ctx, repo, pr, tag, plan) {
     return true
   }
   ctx.say('info', `${tag}: merged as ${short(mergeSha)}`)
-  if (repo.slug === GATES_REPO) await advanceGates(ctx, repo)
+  await advanceTools(ctx, repo)
 
   if (!deploys) {
     const why = repo.mode === 'merge-only' ? `deploying is a session's job for this repo (${repo.reason})` : 'it has no `Release:` line in its description, so it was not tagged and not deployed. A release pull request carries `Release: X.Y.Z One sentence.` on its own line'

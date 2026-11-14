@@ -7,9 +7,11 @@
  * local row that could not be read is null for the same reason.
  */
 import { execFileSync } from 'node:child_process'
-import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync, realpathSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
+
+import { installedTools } from './installed-tools.mjs'
 
 const DAY = 86_400_000
 const HOUR = 3_600_000
@@ -208,11 +210,28 @@ export function idleSessions(dir = SESSIONS_DIR, now = Date.now()) {
 }
 
 /** The whole `local` object for status.json. Each row is null when it could not be measured. */
-export function collectLocal(root, { fetch = true, now = Date.now(), sessionsDir = SESSIONS_DIR } = {}) {
+export function collectLocal(root, { fetch = true, now = Date.now(), sessionsDir = SESSIONS_DIR, home = homedir(), launchAgents } = {}) {
   const some = primaryClones(root).length > 0 // an empty clone list is a wrong root, not a clean fleet
   const d = dirtyClones(root)
   const b = behindClones(root, { fetch })
   const w = oldWorktrees(root, now)
+  let t
+  try {
+    t = installedTools({ home, root, launchAgents })
+  } catch (cause) {
+    t = { behind: [], checked: 0, unread: [`installed tools: ${String(cause.message).split('\n')[0]}`], repos: [] }
+  }
+  // Behind counts read the refs the clones-behind fetch refreshed: no fetch, a failed one, or a tool's clone
+  // the clones-behind row does not fetch (not directly under the root) is not a measurement. Nothing found is too.
+  const real = (p) => {
+    try {
+      return realpathSync(p)
+    } catch {
+      return p
+    }
+  }
+  const fetchedClones = new Set(primaryClones(root).map((n) => real(join(root, n))))
+  const toolsFetched = fetch && t.checked > 0 && t.repos.every((r) => fetchedClones.has(real(r)) && !b.fetchFailed.includes(basename(r)))
   return {
     measuredAt: new Date(now).toISOString(),
     dirtyClones: some && d.unread.length === 0 ? d.dirty : null,
@@ -222,5 +241,7 @@ export function collectLocal(root, { fetch = true, now = Date.now(), sessionsDir
     oldWorktrees: some && w.unread.length === 0 ? w.old : null,
     unread: [...new Set([...d.unread, ...b.unread, ...w.unread])],
     idleSessions: idleSessions(sessionsDir, now),
+    installedTools: some && toolsFetched && t.unread.length === 0 ? t.behind : null,
+    installedToolsUnread: t.unread,
   }
 }
