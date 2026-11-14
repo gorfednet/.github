@@ -1,18 +1,18 @@
 {
-  "generatedAt": "2026-11-14T02:32:09.796Z",
-  "renderedAt": "2026-11-14T02:32:09.796Z",
+  "generatedAt": "2026-11-14T04:31:16.293Z",
+  "renderedAt": "2026-11-14T04:31:16.293Z",
   "repos": [
     {
       "slug": "gorfednet/bindercurve.com",
       "redacted": true,
-      "mainRed": true,
+      "mainRed": false,
       "openPrCount": 6,
       "lapsedBacklogCount": 0,
       "noPrCount": 78,
       "idlePrCount": 0,
       "duplicatePrCount": 0,
       "dependabotRedCount": 0,
-      "kitVersion": "0.49.0"
+      "kitVersion": "0.61.0"
     },
     {
       "slug": "gorfednet/4thcltr.com",
@@ -105,7 +105,7 @@
       "openPrCount": 2,
       "lapsedBacklogCount": 0,
       "noPrCount": 20,
-      "idlePrCount": 0,
+      "idlePrCount": 1,
       "duplicatePrCount": 0,
       "dependabotRedCount": 0,
       "kitVersion": "0.61.0"
@@ -258,7 +258,7 @@
           "labels": [],
           "draft": true,
           "review": "not-run",
-          "headSha": "5f9fb24462628a606b1c434bf7c7f1d8c822f544",
+          "headSha": "be920f0ff0a21c94bb4ff6154e26ba3d23b100e1",
           "ci": "none",
           "next": "Desk appends each pass's line until the 02:00 ET rotation (hold: the log is still being written)",
           "author": "gorfednet"
@@ -278,7 +278,7 @@
         {
           "number": 136,
           "title": "Handoff: session audit 12 November",
-          "ageDays": 0,
+          "ageDays": 1,
           "labels": [],
           "draft": true,
           "review": "not-run",
@@ -330,7 +330,7 @@
         {
           "number": 113,
           "title": ".github: Mostly-static sites inherited product-site Playwright and Bugbot settings",
-          "ageDays": 3,
+          "ageDays": 4,
           "labels": [],
           "draft": true,
           "review": "not-run",
@@ -342,7 +342,7 @@
         {
           "number": 112,
           "title": ".github: A script that names a location instead of deriving one runs on exactly one machine",
-          "ageDays": 3,
+          "ageDays": 4,
           "labels": [],
           "draft": true,
           "review": "not-run",
@@ -533,11 +533,11 @@
       "idlePrs": [
         {
           "number": 113,
-          "idleDays": 3
+          "idleDays": 4
         },
         {
           "number": 112,
-          "idleDays": 3
+          "idleDays": 4
         },
         {
           "number": 103,
@@ -668,9 +668,9 @@
     }
   ],
   "branchesReadAt": "2026-11-14T02:32:09.796Z",
-  "carried": false,
+  "carried": true,
   "inventory": {
-    "measuredAt": "2026-11-14T02:32:09.796Z",
+    "measuredAt": "2026-11-14T04:31:16.293Z",
     "counts": {
       "pr": {
         "total": 111,
