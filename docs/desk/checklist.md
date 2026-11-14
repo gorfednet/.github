@@ -148,5 +148,5 @@ Weekly 9% at 11:21 ET. Full speed, cost-aware. One line to the owner at about 90
 - [ ] bc 659: failed jobs rerun after the 11:34 ET network drop; then 660, 655, then the owner's one dapyllil install
 - [ ] 1.17 orphan decisions at 15:29 ET
 - [ ] Local models first eval tonight from 22:00 ET (3 candidates), scores Sun 15 Nov ~09:00 ET; reviewer and builder tasks first, copy and triage after 1.27b
-- [ ] Model and skill currency, weekly in the Friday lessons run (1.29): builder starts when load is under 10
+- [ ] Model and skill currency (1.29): .github 196 in review; first run found 4 stale items
 - [ ] Always-PR hook false "no open PR" (gh --json url state): fix PR queued, builder when load is under 10
