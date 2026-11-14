@@ -7,7 +7,7 @@ Applies to every word a visitor reads on any site Michael publishes, and the rep
 - **Sound like a person.** Contractions (I'm, it's, don't), concrete names and numbers, no hedges or intensifiers, no filler openers. On his own pages: leader first, then the hands-on part.
 - **No process detail (2026-11-06).** Profiles, bios, About, product and social copy say what shipped and who it's for. Never how the checks work (gates, CI, test floors, merge rules). Method pages, papers and READMEs are exempt.
 - **No AI tells.** No "X, not Y" antithesis, no colon-led punchlines, no triads for rhythm, no aphorisms, no software metaphors, no praise-then-pivot summaries, no repeated sentence openings.
-- **Numbers.** Digits for every number; dates as "25 October 2026"; times in Eastern with ET.
+- **Numbers (Canadian Press, 14 November 2026).** In prose, spell out one to nine and use digits from 10 up. Digits always for money, percentages, dates, times, ages, measurements, scores and versions. Dates as "25 October 2026"; times in Eastern with ET.
 - **Spelling.** Canadian Press: behaviour, centre, colour, with -ize (organize, optimize).
 - **AI use tag (owner, 11 November 2026).** On heuristics.4thcltr.com and papers.4thcltr.com, every new or edited page carries an AI Use Levels tag (spec 1.2, gorfednet/ai-use-levels) stating how that change was made, set in the same pull request. Each repo's CI fails a page with no tag, or with changed content and an untouched tag. The contract is in each repo's CLAUDE.md and REVIEW.md.
 - `check-voice` lints the banned phrases; the editor catches the rest.
