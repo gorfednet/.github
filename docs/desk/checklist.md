@@ -164,3 +164,10 @@ Weekly 9% at 11:21 ET. Full speed, cost-aware. One line to the owner at about 90
 - [x] .github 196 merged (weekly lessons wording fix)
 - [ ] Ship-bot behind origin/main af4e6dd (199 changed the gates lib): owner reinstall
 - [ ] bc 655 and 657 nudged (CI pool order 655, then 660); 4thcltr 276 e2e (4) nudged
+
+## Added 14 Nov evening (22nd Desk)
+- [x] bc 661 Claude review clean (18:15 ET); [ ] Fable read; [ ] planted-PR proof; [ ] label
+- [x] 1.27b after-merge reruns started (18:10 ET)
+- [ ] 199's 2 Lows: backlog entry in .github 201
+- [ ] Mac Pro Ubuntu CI host (ops-gowyllop 99): steps 3 and 5 running
+- [ ] Local models first eval 22:00 ET, only with CPU idle at 40% or more
