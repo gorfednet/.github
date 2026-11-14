@@ -529,6 +529,18 @@
       "reviewBy": "2026-11-27",
       "created": "2026-11-13",
       "updated": "2026-11-13"
+    },
+    {
+      "id": "janitor-prompt-199-lows",
+      "title": "Janitor PROMPT.md: two Low findings left from .github 199",
+      "status": "confirmed-bug",
+      "assignee": "main-model",
+      "userSymptom": "The janitor's prompt describes session rows that never occur, and the digest's cost line fails for a second session on the same branch.",
+      "evidence": "Fable read of .github 199 (merged 14 November 2026): janitor/PROMPT.md:72 describes no-worktree merged and unmerged rows, but sessionState only gives missing and no-repo without a worktree. janitor/PROMPT.md:89 says other sessions on the same branch need no second call, which leaves their pr-<id8>.json missing, so pr-cost.mjs fails for them.",
+      "note": "Trim line 72 to the states sessionState produces. At line 89, write pr-<id8>.json for every session on the branch, or have pr-cost.mjs skip a missing one with a reason. janitor/ is control plane: Fable read and a clean review before the label.",
+      "reviewBy": "2026-11-28",
+      "created": "2026-11-14",
+      "updated": "2026-11-14"
     }
   ]
 }
