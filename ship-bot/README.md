@@ -319,6 +319,14 @@ on its row in `~/.ship-bot/config.json`.
    phone through ntfy as well; a failed send is one line in the log, never a
    stopped pass.
 
+Every pull request that changes `ship-bot/` or the gate scripts
+(`scripts/review-status.mjs`, `scripts/gates/`, `scripts/lib/`) carries this
+line under `## Next`: `- [ ] After merge: reinstall from origin/main`. Until
+the reinstall, the installed bot is behind `origin/main`. It says so every
+pass and merges no pull request that changes control-plane paths. It does the
+same when it can't read how fresh its install is. Other pull requests still
+merge (INCIDENTS.md, 14 November 2026, ops 94).
+
 To stop it: add the **`hold`** label to a pull request, or run
 `node ~/.ship-bot/app/ship-bot.mjs --set-live false` to stop everything, or run
 `ship-bot/install.sh --uninstall` to remove it from the Mac.

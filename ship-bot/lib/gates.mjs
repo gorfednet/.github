@@ -227,6 +227,12 @@ const firstLine = (result, redactor) => {
 }
 
 /**
+ * Does a reviewer thread open with Low (`Low: x`, `**Low**`, `Severity: Low`)? Fail closed: anything
+ * else (High, Medium, plain prose, an empty body, `Lowering x`, `Low-risk`) is counted as Medium.
+ */
+export const opensWithLow = (body) => /^[^a-z]*(?:severity\b[^a-z]*)?low(?![\w-])/i.test(String(body ?? '').trim())
+
+/**
  * Parse review-status's first line: `#N  state  detail`. It exits 0 only for
  * `clean`, 1 for `findings` or `not-run`, 2 when GitHub cannot be read.
  * Anything else is undetermined.
@@ -325,14 +331,14 @@ export async function evaluateReview(ctx, repo, pr, sha, { headSince, memo, draf
   // that changes control-plane paths while a Medium or High reviewer thread stands: .github 164 merged
   // at 19:08 ET on 13 November 2026 with 5 threads open, each "answered" by the session that wrote it.
   let strict = requireClean
-  if (!strict && controlPlane && !status.relief) {
+  if (!strict && controlPlane) {
     // A resolve is the same as a reply, so a thread opened on this head's commit counts resolved or not.
-    // One from before this head (a fixed High on an earlier commit, resolved) must not deadlock the pull request,
-    // nor a Low-only relief round past the cap (skipped above).
+    // One from before this head (a fixed High on an earlier commit, resolved) must not deadlock the pull request.
+    // A Low-only relief round past the cap is not skipped: a reply never lifts a Medium or High here.
     const all = (await ctx.github.listReviewThreads(repo.slug, pr.number)).filter(
       (t) => isReviewerUser(t.author) && (!t.isResolved || t.comments?.[0]?.commit === sha),
     )
-    if (all.some((t) => /^[^a-z]*(high|medium)\b/i.test(String(t.body ?? '').trim())) && (await controlPlane())) strict = true
+    if (all.some((t) => !opensWithLow(t.body)) && (await controlPlane())) strict = true
   }
   if (strict) {
     return {
@@ -340,7 +346,7 @@ export async function evaluateReview(ctx, repo, pr, sha, { headSince, memo, draf
         {
           key: 'review-not-clean',
           kind: 'fail',
-          reason: `The Claude reviewer reported findings on this head (${ctx.redactor.apply(status.detail)}). ${requireClean ? 'The bot readies or readied this pull request itself and the repo deploys' : 'This pull request changes control-plane paths and a Medium or High thread was raised on it (fix whatever this head still has, then get a clean review)'}, so it merges only on a clean review: push a fix and get a clean review of the new commit. ${requireClean ? 'A reply or resolving a thread does not lift this.' : "A reply does not lift this, nor does resolving a thread opened on this head's commit. A Medium or High from an earlier commit that has been fixed can be resolved, and then no longer counts."} A change that must merge with its findings goes in a fresh pull request that a session labels after reading them.`,
+          reason: `The Claude reviewer reported findings on this head (${ctx.redactor.apply(status.detail)}). ${requireClean ? 'The bot readies or readied this pull request itself and the repo deploys' : 'This pull request changes control-plane paths and a Medium or High thread was raised on it (a thread that does not open with Low counts as Medium; fix whatever this head still has, then get a clean review)'}, so it merges only on a clean review: push a fix and get a clean review of the new commit. ${requireClean ? 'A reply or resolving a thread does not lift this.' : "A reply does not lift this, nor does resolving a thread opened on this head's commit. A Medium or High from an earlier commit that has been fixed can be resolved, and then no longer counts."} A change that must merge with its findings goes in a fresh pull request that a session labels after reading them.`,
         },
       ],
     }

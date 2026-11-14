@@ -297,6 +297,49 @@ describe('ship-bot warns when its own install is behind main', () => {
     assert.equal(s.runner.ofKind('notify').length, 0)
   })
 
+  // ops 94 (14 November 2026): an install 5 h behind the control-plane thread rule merged a scripts/lib/ change.
+  const merges = (gh) => gh.writes.filter((w) => w.name === 'mergePull')
+  const held = (s) => s.logs.filter((l) => /^warn .*#7 .*not merging: it changes control-plane paths/.test(l))
+  const withPr = (box, files) => {
+    const github = new FakeGitHub({ pullsBySlug: { [GATES_REPO]: [] }, files })
+    return scenario({ repos: [gatesRow(), mergeOnly()], github, runner: runnerFor(box), configOverrides: { notify: true } })
+  }
+
+  it('stale: a green labelled control-plane PR is not merged, said once per PR; it merges once the install is current', async () => {
+    const box = { latest: 'b'.repeat(40), current: false }
+    const s = withPr(box, ['scripts/lib/x.mjs'])
+    const installedSha = 'a'.repeat(40)
+    await s.run('live', { installedSha })
+    await s.run('live', { installedSha })
+    assert.equal(merges(s.github).length, 0, s.logs.join('\n'))
+    assert.equal(held(s).length, 1, 'one warning for the PR, debug after that')
+    assert.match(held(s)[0], /installed ship-bot is behind origin\/main \(bbbbbbb\)/)
+    assert.equal(s.runner.ofKind('notify').length, 2, 'one for the stale install, one for the held PR')
+    box.current = true
+    await s.run('live', { installedSha })
+    assert.equal(merges(s.github).length, 1)
+  })
+
+  it('stale: a PR on ordinary paths still merges', async () => {
+    const s = withPr({ latest: 'b'.repeat(40), current: false }, ['docs/readme.md'])
+    await s.run('live', { installedSha: 'a'.repeat(40) })
+    assert.equal(merges(s.github).length, 1, s.logs.join('\n'))
+    assert.equal(held(s).length, 0)
+  })
+
+  it('freshness unreadable (git fails, or no .github row): held like stale; ordinary paths merge', async () => {
+    const broken = () => makeRunner({ handle: (c) => (c.kind === 'git-read' ? { code: 128, stderr: 'fatal: not a git repository' } : undefined) })
+    for (const repos of [[gatesRow(), mergeOnly()], [mergeOnly()]]) {
+      for (const [files, want] of [[['scripts/lib/x.mjs'], 0], [['docs/readme.md'], 1]]) {
+        const s = scenario({ repos, github: new FakeGitHub({ pullsBySlug: { [GATES_REPO]: [] }, files }), runner: broken() })
+        await s.run('live', { installedSha: 'a'.repeat(40) })
+        assert.equal(merges(s.github).length, want, `${repos.length} rows, ${files}: ${s.logs.join('\n')}`)
+        assert.equal(held(s).length, want ? 0 : 1)
+        if (!want) assert.match(held(s)[0], /freshness could not be read/)
+      }
+    }
+  })
+
   it('no installed copy (run from a checkout): no check', async () => {
     const s = scenario({ repos: [gatesRow()] })
     await s.run('live')

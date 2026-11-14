@@ -82,7 +82,8 @@ export async function runOnce(deps) {
 
   const repos = selectRepos(config.repos, deps.repoNames)
   recoverInterruptedDeploys(ctx)
-  if (deps.installedSha) await checkOwnInstall(ctx, deps.installedSha)
+  // Run from a checkout (no installed copy) there is nothing to be behind.
+  ctx.ownInstall = deps.installedSha ? await checkOwnInstall(ctx, deps.installedSha) : { state: 'current' }
   if (quotaPaused(ctx)) {
     stateStore.save()
     return ctx.decisions
@@ -409,6 +410,13 @@ async function processPull(ctx, repo, pr, defaultBranch) {
     return false
   }
   delete headState.stall
+
+  // A stale or unreadable install gates with old rules (ops 94, INCIDENTS.md 14 November 2026), so it
+  // merges nothing that changes control-plane paths. Everything else still merges.
+  if (ctx.ownInstall.state !== 'current' && (await controlPlane())) {
+    await holdForStaleInstall(ctx, tag, `${repo.slug}#${pr.number}`)
+    return false
+  }
 
   // Re-read right before merging: a push or a hold label since the gates ran
   // means start again next run.
@@ -782,13 +790,21 @@ async function advanceTools(ctx, repo) {
 /**
  * Says, every pass, when the installed bot is behind the last origin/main
  * commit touching ship-bot/ or scripts/, and sends one notification per such
- * commit (state `ownInstall.notifiedFor`). It never blocks the pass: a stale
- * bot still gates with the scripts it has, and a person reinstalls.
+ * commit (state `ownInstall.notifiedFor`). It never stops the pass, and it
+ * returns what it found: while that is not `current`, processPull merges no
+ * pull request that changes control-plane paths. No .github row or a failed
+ * read is `unknown`, which holds them the same way.
+ *
+ * @returns {Promise<{state: 'current'} | {state: 'stale', latest: string} | {state: 'unknown', reason: string}>}
  */
 async function checkOwnInstall(ctx, installedSha) {
   const row = ctx.config.repos.find((r) => r.slug === GATES_REPO)
   const wt = row && toolWorktreeFor(ctx.config, row)
-  if (!wt) return
+  if (!wt) {
+    const r = { state: 'unknown', reason: `no ${GATES_REPO} row with a tools worktree in the config` }
+    ctx.say('warn', `installed ship-bot freshness not known: ${r.reason}`)
+    return r
+  }
   const git = (args) => ctx.runner.run({ kind: 'git-read', cmd: 'git', args, env: ctx.baseEnv, timeoutMs: 15_000 })
   let r
   try {
@@ -798,14 +814,33 @@ async function checkOwnInstall(ctx, installedSha) {
   }
   if (r.state === 'unknown') {
     ctx.say('warn', `installed ship-bot freshness not known: ${r.reason}`)
-    return
+    return r
   }
-  if (r.state === 'current') return
+  if (r.state === 'current') {
+    delete ctx.state.data.ownInstall?.held
+    return r
+  }
   const text = `installed ship-bot (${short(installedSha)}) is behind origin/main: ${short(r.latest)} changed what install.sh copies, so the bot runs old code until it is reinstalled`
   ctx.say('warn', text)
   const memo = (ctx.state.data.ownInstall ??= {})
-  if (memo.notifiedFor === r.latest || ctx.dry) return
+  if (memo.notifiedFor === r.latest || ctx.dry) return r
   memo.notifiedFor = r.latest
+  ctx.state.save()
+  await notify(ctx, text, true)
+  return r
+}
+
+/** Says why a ready control-plane pull request is not merged by a stale install: one warning and one notification per pull request per stale commit (state `ownInstall.held`), a debug line after that. */
+async function holdForStaleInstall(ctx, tag, key) {
+  const own = ctx.ownInstall
+  const why = own.state === 'stale' ? `the installed ship-bot is behind origin/main (${short(own.latest)})` : `the installed ship-bot's freshness could not be read (${own.reason})`
+  const text = `${tag}: every gate passed, but not merging: it changes control-plane paths and ${why}. It merges after ship-bot is reinstalled from origin/main`
+  const held = ((ctx.state.data.ownInstall ??= {}).held ??= {})
+  const mark = own.latest ?? 'unknown'
+  const seen = held[key] === mark
+  ctx.say(seen ? 'debug' : 'warn', text)
+  if (seen || ctx.dry) return
+  held[key] = mark
   ctx.state.save()
   await notify(ctx, text, true)
 }
