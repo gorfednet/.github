@@ -77,7 +77,7 @@ describe('M1: copy is scored only on text check-voice actually read', () => {
   it('refuses a copy answer that hides text where check-voice does not read: fences, comments, inline code, link targets, reference lines, tags, URLs, front matter', () => {
     const hiding = ['```\nThis is fine.\n```', '~~~md\nx\n~~~', 'Plain. <!-- hidden -->', '  ```js\ncode\n```',
       "It's here.\n\n`The original paragraph, unchanged.`", 'See [this](http://x.test/a) now.', 'Text.\n\n[ref]: http://x.test hidden words', '<span>Hidden words here.</span>', 'Visit http://x.test/a now.', '---\ntitle: Hidden words\n---\nBody.',
-      'It\'s here. "The original paragraph, unchanged."', 'It\'s here. \u201cThe original paragraph.\u201d', 'It\'s here. \u2018The original paragraph.\u2019']
+      'It\'s here. "The original paragraph, unchanged."', 'It\'s here. \u201cThe original paragraph.\u201d', 'It\'s here. \u2018The original paragraph.\u2019', 'It\'s here.\n\n"The original paragraph,\nunchanged."']
     for (const text of hiding) {
       assert.equal(hidesFromVoice(text), true, text)
       assert.equal(keyOf('copy', { text }), null, text)

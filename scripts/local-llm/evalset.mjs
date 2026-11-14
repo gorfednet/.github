@@ -35,10 +35,10 @@ const labelOk = (task, l) => (task === 'builder' ? /^files:[0-9a-f]{64}$/.test(l
 
 /**
  * check-voice reads none of: fenced code, HTML comments, inline code spans, link reference definitions, link targets, bare URLs, HTML tags,
- * front matter, and anything inside "double" or curly quotes (stripQuoted blanks it before every rule). An answer that carries any of them can hide text from the check, so it isn't a valid copy answer. (A constructed pass kept the
+ * front matter, and anything inside "double" or curly quotes (stripQuoted blanks it before every rule, after check-voice has joined a paragraph's lines, so a quote that crosses a line break is caught too). An answer that carries any of them can hide text from the check, so it isn't a valid copy answer. (A constructed pass kept the
  * input in backticks beside "It's here." and scored 8 of 8.)
  */
-export const HIDING = [/^\s{0,3}(`{3,}|~{3,})/m, /<!--/, /`/, /^\s{0,3}\[[^\]]+\]:\s*\S/m, /\]\(|\]\[/, /\bhttps?:\/\//i, /<\/?[a-z!]/i, /^---\s*$/m, /"[^"\n]*"/, /“[^”]*”/, /‘[^’]*’/]
+export const HIDING = [/^\s{0,3}(`{3,}|~{3,})/m, /<!--/, /`/, /^\s{0,3}\[[^\]]+\]:\s*\S/m, /\]\(|\]\[/, /\bhttps?:\/\//i, /<\/?[a-z!]/i, /^---\s*$/m, /"[^"]*"/, /“[^”]*”/, /‘[^’]*’/]
 export const hidesFromVoice = (text) => HIDING.some((re) => re.test(text))
 
 export const SCORING_VERSION = 3
