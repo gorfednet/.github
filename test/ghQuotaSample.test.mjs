@@ -48,7 +48,7 @@ test('the call log redacts tokens and --body values, is owner-only, and marks a 
 })
 
 test('the sampler lists a plain node or python script, not only gh and our tools', () => {
-  assert.ok(CALLER.test('812 00:40 node /Users/x/scratch/poll.mjs'))
+  assert.ok(CALLER.test('812 00:40 node scratch/poll.mjs'))
   assert.ok(CALLER.test('813 00:40 python3 /tmp/loop.py'))
   assert.ok(CALLER.test('814 00:05 gh run watch 5 --interval 60'))
   assert.ok(!CALLER.test('815 00:05 /usr/bin/vim notes.md'))
