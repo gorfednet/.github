@@ -19,6 +19,7 @@ TAG_PUSH = re.compile(
     re.IGNORECASE,
 )
 GIT_COMMIT_OR_PUSH = re.compile(r"\bgit\b.*\b(commit|push)\b", re.IGNORECASE)
+NO_PR_FOUND = re.compile(r"no pull requests? found", re.IGNORECASE)
 CD_PREFIX = re.compile(r"^\s*cd\s+([^\s;&]+)\s*&&")
 
 
@@ -74,7 +75,7 @@ def _has_open_pr(cwd: str) -> bool | None:
     """True if this HEAD already has a PR. None if we cannot tell."""
     try:
         proc = _run(
-            ["gh", "pr", "view", "--json", "url", "state"],
+            ["gh", "pr", "view", "--json", "url,state"],
             cwd,
             timeout=5.0,
         )
@@ -83,7 +84,11 @@ def _has_open_pr(cwd: str) -> bool | None:
     except (OSError, subprocess.TimeoutExpired):
         return None
     if proc.returncode != 0:
-        return False
+        # Only gh's own "no pull requests found for branch" means no PR. Any other
+        # failure (auth, network, rate limit) is "cannot tell", never a false "no PR".
+        if NO_PR_FOUND.search(proc.stderr or ""):
+            return False
+        return None
     try:
         data = json.loads(proc.stdout)
     except json.JSONDecodeError:
