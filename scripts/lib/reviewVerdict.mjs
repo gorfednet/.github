@@ -20,7 +20,7 @@ export const REVIEW_ROUND_CAP = 4
 /**
  * @param {Array<{ body?: string | null, user?: { login?: string } | null, html_url?: string, created_at?: string }>} comments
  * @param {string} head
- * @returns {{ state: 'clean' | 'findings' | 'not-run', findings: number, round: number, cap: number, triageOnly: boolean, url: string | null, reviewedHeads: string[], cleanHeads: string[] }}
+ * @returns {{ state: 'clean' | 'findings' | 'not-run', findings: number, round: number, cap: number, triageOnly: boolean, url: string | null, reviewedHeads: string[], cleanHeads: string[], lastReview: { head: string, findings: number } | null }}
  */
 export function claudeReviewVerdict(comments, head) {
   let latest = null
@@ -28,6 +28,7 @@ export function claudeReviewVerdict(comments, head) {
   const stamps = []
   const heads = []
   const clean = []
+  const all = []
   for (const comment of comments) {
     if (comment?.user?.login !== REVIEW_BOT_LOGIN) continue
     const match = MARKER.exec(comment.body ?? '')
@@ -35,6 +36,7 @@ export function claudeReviewVerdict(comments, head) {
     reviewedHeads.push(match[1])
     stamps.push(String(comment.created_at ?? ''))
     heads.push(match[1])
+    all.push({ head: match[1], findings: Number(match[2]), at: String(comment.created_at ?? '') })
     if (Number(match[2]) === 0) clean.push({ head: match[1], at: String(comment.created_at ?? '') })
     if (match[1] !== head) continue
     if (!latest || String(comment.created_at ?? '') >= String(latest.created_at ?? '')) {
@@ -43,7 +45,9 @@ export function claudeReviewVerdict(comments, head) {
   }
   // Heads the reviewer found clean, newest first (a later review of one head moves it up).
   const cleanHeads = [...new Set(clean.sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0)).map((c) => c.head))]
-  if (!latest) return { state: 'not-run', findings: 0, round: 0, cap: REVIEW_ROUND_CAP, triageOnly: false, url: null, reviewedHeads, cleanHeads }
+  // The newest verdict on the pull request, whatever head it was for: only a clean one can stand in for an unreviewed merge of main.
+  const lastReview = all.sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0))[0] ?? null
+  if (!latest) return { state: 'not-run', findings: 0, round: 0, cap: REVIEW_ROUND_CAP, triageOnly: false, url: null, reviewedHeads, cleanHeads, lastReview }
   // The round is the number of distinct heads reviewed up to this verdict, so repeat reviews of one head are one round.
   const at = String(latest.created_at ?? '')
   const round = new Set(heads.filter((_, i) => stamps[i] <= at)).size
@@ -57,5 +61,6 @@ export function claudeReviewVerdict(comments, head) {
     url: latest.html_url ?? null,
     reviewedHeads,
     cleanHeads,
+    lastReview,
   }
 }

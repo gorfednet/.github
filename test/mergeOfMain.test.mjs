@@ -60,6 +60,39 @@ describe('onlyCleanMergesOfMain', () => {
   })
 })
 
+describe('merges that hide a resolution or a bad shape', () => {
+  it('refuses a conflict resolved by taking one side, and a merge -s ours', () => {
+    git(['checkout', '-q', '-b', 'c1', b1])
+    commit('x.txt', 'one\nTWO-branch\nthree\n', 'c1 edits x')
+    const reviewed = git(['rev-parse', 'HEAD']).trim()
+    git(['checkout', '-q', 'main'])
+    commit('x.txt', 'one\nTWO-main\nthree\n', 'm4 edits x')
+    git(['update-ref', 'refs/remotes/origin/main', 'main'])
+    git(['checkout', '-q', 'c1'])
+    try { git(['merge', '-q', '--no-edit', 'refs/remotes/origin/main']) } catch { /* conflict */ }
+    git(['checkout', '--ours', 'x.txt']); git(['add', 'x.txt']); git(['commit', '-q', '--no-edit'])
+    assert.equal(run(reviewed, git(['rev-parse', 'HEAD']).trim()).ok, false, '--ours resolution')
+    git(['reset', '-q', '--hard', reviewed])
+    git(['merge', '-q', '-s', 'ours', '--no-edit', 'refs/remotes/origin/main'])
+    assert.equal(run(reviewed, git(['rev-parse', 'HEAD']).trim()).ok, false, '-s ours')
+    git(['checkout', '-q', 'pr'])
+  })
+  it('refuses swapped parents (main merged into the branch the wrong way round) and a base that is not an ancestor', () => {
+    git(['checkout', '-q', '-b', 'swap', 'refs/remotes/origin/main'])
+    git(['merge', '-q', '--no-edit', b1])
+    assert.equal(run(b1, git(['rev-parse', 'HEAD']).trim()).ok, false)
+    git(['checkout', '-q', 'pr'])
+    const other = 'a1' + b1.slice(2)
+    assert.equal(run(other, cleanMerge).ok, false)
+    git(['checkout', '-q', '-b', 'b2line', b1])
+    const b2 = commit('feature.txt', 'f\nb2\n', 'b2 reviewed')
+    git(['reset', '-q', '--hard', b1])
+    git(['merge', '-q', '--no-edit', 'refs/remotes/origin/main'])
+    assert.equal(run(b2, git(['rev-parse', 'HEAD']).trim()).ok, false, 'reviewed head no longer on the line')
+    git(['checkout', '-q', 'pr'])
+  })
+})
+
 describe('the clean heads a verdict reports', () => {
   const bot = (head, findings, at) => ({ body: `<!-- claude-review head=${head} findings=${findings} -->`, user: { login: REVIEW_BOT_LOGIN }, created_at: at })
   it('lists heads with no findings, newest first, and none for a head with findings', () => {
@@ -67,15 +100,22 @@ describe('the clean heads a verdict reports', () => {
     const v = claudeReviewVerdict([bot(A, 0, '2026-11-13T10:00:00Z'), bot(B, 2, '2026-11-13T11:00:00Z'), bot(C, 0, '2026-11-13T12:00:00Z')], 'd'.repeat(40))
     assert.equal(v.state, 'not-run')
     assert.deepEqual(v.cleanHeads, [C, A])
+    assert.deepEqual(v.lastReview, { head: C, findings: 0, at: '2026-11-13T12:00:00Z' })
+  })
+  it('a later findings review, even of the same head, is the last review', () => {
+    const A = 'a'.repeat(40)
+    const v = claudeReviewVerdict([bot(A, 0, '2026-11-13T10:00:00Z'), bot(A, 2, '2026-11-13T11:00:00Z')], 'd'.repeat(40))
+    assert.equal(v.lastReview.findings, 2)
   })
 })
 
 describe('review-status.mjs --clone', () => {
   const comments = JSON.stringify([[{ body: `<!-- claude-review head=${b1} findings=0 -->`, user: { login: REVIEW_BOT_LOGIN }, created_at: '2026-11-13T10:00:00Z', html_url: 'u' }]])
-  const fakeGh = (head) => {
+
+  const fakeGh = (head, body = JSON.parse(comments)) => {
     const bin = mkdtempSync(join(tmpdir(), 'mom-gh-'))
     after(() => rmSync(bin, { recursive: true, force: true }))
-    writeFileSync(join(bin, 'gh'), `#!/bin/sh\ncase "$*" in\n  *pulls/*) echo ${head} ;;\n  *comments*) cat <<'EOF'\n${comments}\nEOF\n ;;\nesac\n`, { mode: 0o755 })
+    writeFileSync(join(bin, 'gh'), `#!/bin/sh\ncase "$*" in\n  *pulls/*) echo ${head} ;;\n  *comments*) cat <<'EOF'\n${JSON.stringify(body)}\nEOF\n ;;\nesac\n`, { mode: 0o755 })
     return bin
   }
   const status = (head, extra) => {
@@ -86,6 +126,12 @@ describe('review-status.mjs --clone', () => {
       return { code: e.status, out: String(e.stdout) }
     }
   }
+  it('stays not-run when a later review of the same head found something', () => {
+    const bin = fakeGh(cleanMerge, [[{ body: `<!-- claude-review head=${b1} findings=0 -->`, user: { login: REVIEW_BOT_LOGIN }, created_at: '2026-11-13T10:00:00Z' }, { body: `<!-- claude-review head=${b1} findings=2 -->`, user: { login: REVIEW_BOT_LOGIN }, created_at: '2026-11-13T11:00:00Z' }]])
+    let code = 0
+    try { execFileSync('node', ['scripts/review-status.mjs', '--pr', '9', '--repo', 'o/r', '--clone', dir], { encoding: 'utf8', stdio: 'pipe', env: { ...process.env, PATH: `${bin}:${process.env.PATH}` } }) } catch (e) { code = e.status }
+    assert.equal(code, 1)
+  })
   it('reads clean for a clean merge of main after the clean head, not-run without --clone or after a code commit', () => {
     const ok = status(cleanMerge, ['--clone', dir])
     assert.equal(ok.code, 0)

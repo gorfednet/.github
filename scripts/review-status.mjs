@@ -58,12 +58,14 @@ try {
     process.exit(1)
   }
   const clone = arg('clone')
-  const base = verdict.cleanHeads[0]
+  // Only when the newest review on the pull request is a clean one: a later findings review (even of the same head) wins.
+  const base = verdict.lastReview?.findings === 0 ? verdict.lastReview.head : undefined
   if (clone && base) {
     const git = (args) => execFileSync('git', ['-C', clone, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
     // Best effort: the clone needs the head and main to judge. A failed fetch leaves whatever it already has.
-    try { git(['fetch', '-q', 'origin', 'main', `pull/${pr}/head`]) } catch { /* judged on what is local */ }
+    try { git(['fetch', '-q', 'origin', '+refs/heads/main:refs/remotes/origin/main', `pull/${pr}/head`]) } catch (e) { console.error(`review-status: fetch failed (${String(e.message).split('\n')[0]}); judged on what the clone has`) }
     const merged = onlyCleanMergesOfMain({ git, base, head })
+    if (!merged.ok) console.error(`review-status: not accepted as clean merges of main: ${merged.why}`)
     if (merged.ok) {
       console.log(`#${pr}  clean  Claude reviewed ${base.slice(0, 9)} (clean); ${merged.merges} later commit(s) up to ${short} are clean merges of main`)
       process.exit(0)

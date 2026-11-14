@@ -3,9 +3,9 @@
  *
  * Main's code was reviewed on its own pull requests, so a head that only adds merges of main (no
  * conflict edits) to a head the Claude reviewer found clean needs no new review
- * (~/.claude/rules/shipping.md). A merge is clean when `git show --cc` prints no hunk: the combined
- * diff shows only what differs from every parent, so conflict edits and any other change made in
- * the merge commit itself show up there.
+ * (~/.claude/rules/shipping.md). A merge is clean when redoing it (`git merge-tree --write-tree`)
+ * has no conflict and yields the merge commit's own tree. `git show --cc` is not enough: it hides
+ * a conflict resolved by taking one side (`--ours`, `-s ours`).
  *
  * `git` runs `git <args>` in the target repository's clone and returns stdout; it throws on a
  * non-zero exit. Anything missing from the clone (a commit never fetched) is an error, which reads
@@ -14,7 +14,7 @@
  * @param {{ git: (args: string[]) => string, base: string, head: string, main?: string }} input
  * @returns {{ ok: boolean, merges: number, why: string }}
  */
-export function onlyCleanMergesOfMain({ git, base, head, main = 'origin/main' }) {
+export function onlyCleanMergesOfMain({ git, base, head, main = 'refs/remotes/origin/main' }) {
   const no = (why) => ({ ok: false, merges: 0, why })
   try {
     if (base === head) return no('the head itself was reviewed')
@@ -26,7 +26,9 @@ export function onlyCleanMergesOfMain({ git, base, head, main = 'origin/main' })
       const [sha, ...parents] = line.split(/\s+/)
       if (parents.length !== 2) return no(`${sha.slice(0, 9)} is not a merge commit`)
       git(['merge-base', '--is-ancestor', parents[1], main])
-      if (git(['show', '--cc', '--format=', sha]).trim() !== '') return no(`${sha.slice(0, 9)} edits code in the merge itself`)
+      // Exits non-zero on any conflict, so a merge that needed a resolution is never clean here.
+      const redone = git(['merge-tree', '--write-tree', parents[0], parents[1]]).split('\n')[0].trim()
+      if (redone !== git(['rev-parse', `${sha}^{tree}`]).trim()) return no(`${sha.slice(0, 9)} differs from a fresh merge of its parents`)
     }
     return { ok: true, merges: commits.length, why: '' }
   } catch (error) {

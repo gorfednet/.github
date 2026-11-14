@@ -7,7 +7,7 @@
  * so on the PR once per head.
  */
 import { createHash } from 'node:crypto'
-import { dirname } from 'node:path'
+import { dirname, join } from 'node:path'
 import { HOLD_LABEL, READY_LABEL } from './config.mjs'
 import { RateLimitError } from './github.mjs'
 import { succeeded } from './runner.mjs'
@@ -157,7 +157,7 @@ export function evaluateChecks({ runs, statuses, expectedChecks, graceOver, labe
   return blocks
 }
 
-/** Run one of the verification kit's gate scripts. Read-only: they only GET. */
+/** Run one of the verification kit's gate scripts. They only GET, except review-status, which fetches into the clone it is given. */
 export function runGateScript(ctx, script, args, extraEnv = {}) {
   const env = { ...ctx.baseEnv, GH_TOKEN: ctx.token, ...extraEnv }
   delete env.GITHUB_EVENT_PATH
@@ -281,10 +281,13 @@ export function isTriaged(thread, allowedAuthors) {
  *
  * Returns `{blocks}`.
  */
+/** The local clone review-status judges merges of main in: a deploy row's sourceDir, else the one under sourceRoot. */
+const cloneDir = (ctx, repo) => repo.sourceDir ?? (ctx.config.sourceRoot && repo.dir ? join(ctx.config.sourceRoot, repo.dir) : null)
+
 export async function evaluateReview(ctx, repo, pr, sha, { headSince, memo, draft = false, requireClean = false }) {
   const now = ctx.clock.now()
   // --clone lets review-status accept a head that only adds clean merges of main to a clean-reviewed head.
-  const script = await gate(ctx, ctx.config.scripts.reviewStatus, ['--pr', String(pr.number), '--repo', repo.slug, ...(repo.sourceDir ? ['--clone', repo.sourceDir] : [])], {}, memo)
+  const script = await gate(ctx, ctx.config.scripts.reviewStatus, ['--pr', String(pr.number), '--repo', repo.slug, ...(cloneDir(ctx, repo) ? ['--clone', cloneDir(ctx, repo)] : [])], {}, memo)
   const status = parseReviewStatus(script, pr.number)
   if (status.state === 'undetermined') {
     return { blocks: [{ key: 'review-undetermined', kind: 'wait', reason: `Claude review state unknown: ${ctx.redactor.apply(status.detail)}` }] }
