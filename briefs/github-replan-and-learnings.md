@@ -17,7 +17,7 @@ Owner, 14 Nov 2026: "update any learnings from all plans and apply to new rules 
 - The always-PR hook says `desk-log` has no PR on every push, while draft PR 139 is open on it.
 - claude-review finished green on .github 185 and 4thcltr 273 heads with no verdict posted (14 Nov, 07:3x ET): a check that passes without reviewing.
 - Times in handoffs and Desk log lines were written without `date` (14 Nov: a session reported "about 9:00 am ET" at 07:30 ET).
-- The owner declined scheduled-task wakes for Desk passes (14 Nov).
+- The owner declined scheduled-task wakes for Desk passes early on 14 Nov, then said yes at 11:47 ET ("we need a timer"). `desk-pass-timer` runs every 30 minutes. Keep it until he uses his reset.
 
 ## Boundaries
 No visibility or privacy change anywhere (owner, 14 Nov 2026). Never read `*.env*`, `ops/credentials.json` or `~/.ship-bot/config.json`. Ship-bot merges. Each PR carries `## Next`.
