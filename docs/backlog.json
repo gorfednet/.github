@@ -505,14 +505,15 @@
     },
     {
       "id": "assess-1112-a1-kit-copied-not-distributed-drift-warns-only",
-      "title": "A1: Kit refresh: every active repo on one version; check-kit-drift fails when more than one minor behind",
+      "title": "A1: Kit refresh: every active repo on one version; drift stays in the scheduled reports",
       "status": "confirmed-bug",
       "assignee": "main-model",
       "userSymptom": "Seven repos run kit 0.49 and three have no kit while main is 0.59",
       "evidence": "Installed versions read from each repo's origin/main, 12 Nov 2026 audit; V77 reached main with .github PR 132 (kit 0.61.0, 12 Nov); main is at 0.62.0 on 14 Nov. Plan: docs/assessment-2026-11-12-output-quality.md. Who: runner, one refresh PR per repo.",
       "reviewBy": "2026-12-01",
       "created": "2026-11-12",
-      "updated": "2026-11-12"
+      "updated": "2026-11-14",
+      "note": "A per-PR drift failure was retired on purpose (docs/verification-rules.md): another repository cannot fail a pull request."
     },
     {
       "id": "assess-1112-a2-skills-and-agents-still-name-cursor",
@@ -528,13 +529,15 @@
     {
       "id": "assess-1112-a3-design-and-security-plugins-not-installed",
       "title": "A3: Install seven official plugins, remove the dead MCP, run fewer-permission-prompts and consolidate-memory",
-      "status": "confirmed-bug",
+      "status": "landed",
       "assignee": "main-model",
       "userSymptom": "The frontend-design skill and other official plugins are not installed, and figma-desktop fails in every session",
       "evidence": "Plugin catalogue and ~/.claude/plugins, 12 Nov 2026; 11 Nov assessment (git show 6b8a1b3:docs/assessment-2026-11-11.md, .github PR 117) section 3. Plan: docs/assessment-2026-11-12-output-quality.md. Who: main session.",
       "reviewBy": "2026-12-01",
       "created": "2026-11-12",
-      "updated": "2026-11-12"
+      "updated": "2026-11-14",
+      "pr": 135,
+      "note": "Landed by .github PR 135 (plugins installed, figma-desktop removed). .github 186 then switched pr-review-toolkit, session-report and code-simplifier off by design (docs/claude-home/plugins.md). The brief was dropped."
     },
     {
       "id": "assess-1112-a4-must-rules-live-in-prose",
