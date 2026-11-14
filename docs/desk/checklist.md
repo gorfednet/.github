@@ -1,6 +1,6 @@
 # Fleet checklist (Desk keeps this current; posted to the owner on every pass and every deploy)
 
-Updated 13 Nov 2026, 19:50 ET.
+Updated 13 Nov 2026, 22:47 ET.
 
 ## Bottlenecks
 - [x] Ship-bot API use cut from about 1,800 to about 100 calls an hour (.github 143, merged 10:35 ET; reinstall in progress)
@@ -55,8 +55,13 @@ Weekly 9% at 11:21 ET. Full speed, cost-aware. One line to the owner at about 90
 - Mac mini (2010) as second Pi-hole: owner "one day not now". No dapyllil replica either (owner, 13 Nov). The Pi-hole board stays the only resolver until the Mac mini. Raise again only if he does.
 
 ## Added 13 Nov evening (Fable reviews)
-- [ ] PACE HOLD: 26% used at 19:50 ET; no new starts until under pace
+- [ ] PACE HOLD: 30% used at 22:47 ET; no new starts until under pace
 - [x] Backup keys in the password manager (owner, 19:50 ET)
 - [ ] Installed tools track main (1.18, installed-drift)
 - [ ] Papers deploy wordmark timing (card wordmark-timing); papers blocked
 - [ ] Actions spend meter; ingress pin by digest; heuristics 95 and 93
+- [x] Ship-bot back after the 20:16 ET outage (owner patch, 20:20 ET)
+- [ ] Quota burn fix: bindercurve 659 (full gate rerunning), then the owner's dapyllil install
+- [x] Settings: 5 allows, 21 delete denies (.github 177, applied live)
+- [x] Reminders moved to durable scheduled tasks
+- [ ] Local models (1.19) and encrypted m.2 (1.20): after the hold
