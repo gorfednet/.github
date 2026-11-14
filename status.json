@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-11-14T18:32:03.205Z",
-  "renderedAt": "2026-11-14T18:32:03.205Z",
+  "generatedAt": "2026-11-14T20:32:03.447Z",
+  "renderedAt": "2026-11-14T20:32:03.447Z",
   "repos": [
     {
       "slug": "gorfednet/bindercurve.com",
@@ -140,27 +140,27 @@
       "mainRed": false,
       "openPrs": [
         {
-          "number": 193,
-          "title": "Eval set 1.27: manifest schema, case verification and scorer",
-          "ageDays": 0,
-          "labels": [],
-          "draft": true,
-          "review": "not-run",
-          "headSha": "6fe81e4c6530048d9fe974a162c51609f78f2704",
-          "ci": "pending",
-          "next": "Fable reviewer checks every label rule and the pass bar (design decision, brief 1.27)",
-          "author": "gorfednet"
-        },
-        {
-          "number": 191,
-          "title": "Cost per PR: tokens by model from session transcripts (plan row 1.26)",
+          "number": 197,
+          "title": "Always-PR hook: read the PR with --json url,state",
           "ageDays": 0,
           "labels": [],
           "draft": true,
           "review": "findings",
-          "headSha": "458decda4566bd0a087755e58aa7329948164a70",
-          "ci": "pending",
-          "next": "Claude review on the head, then label `ready-to-merge` when the gates are clean (session brave-hugle-97fcf2 does it).",
+          "headSha": "f486a69352ca419b91b99764477d093c0d0bc2f2",
+          "ci": "green",
+          "next": "Claude review clean",
+          "author": "gorfednet"
+        },
+        {
+          "number": 196,
+          "title": "Weekly lessons: model and skill currency (1.29)",
+          "ageDays": 0,
+          "labels": [],
+          "draft": true,
+          "review": "findings",
+          "headSha": "572b0d2a423a847a4714df25bb2da75e2c22455f",
+          "ci": "green",
+          "next": "Claude review clean",
           "author": "gorfednet"
         },
         {
@@ -194,7 +194,7 @@
           "labels": [],
           "draft": true,
           "review": "not-run",
-          "headSha": "018c5752a56d161ada67ac1650671b6daddd260c",
+          "headSha": "d6ff81fb8af4ed84abd919cee6739657e2790c69",
           "ci": "none",
           "next": "Desk appends each pass's line until the 02:00 ET rotation (hold: the log is still being written)",
           "author": "gorfednet"
@@ -456,7 +456,7 @@
     {
       "slug": "gorfednet/MoonMan",
       "redacted": true,
-      "mainRed": false,
+      "mainRed": true,
       "openPrCount": 9,
       "lapsedBacklogCount": 0,
       "noPrCount": 41,
@@ -557,7 +557,7 @@
       "slug": "gorfednet/ops",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 5,
+      "openPrCount": 3,
       "lapsedBacklogCount": 0,
       "noPrCount": 0,
       "idlePrCount": 0,
@@ -573,11 +573,11 @@
   "branchesReadAt": "2026-11-14T02:32:09.796Z",
   "carried": true,
   "inventory": {
-    "measuredAt": "2026-11-14T18:32:03.205Z",
+    "measuredAt": "2026-11-14T20:32:03.447Z",
     "counts": {
       "pr": {
-        "total": 109,
-        "orphans": 62
+        "total": 107,
+        "orphans": 61
       },
       "session": null,
       "worktree": null,
@@ -591,8 +591,16 @@
       {
         "kind": "pr",
         "repo": "gorfednet/.github",
-        "ref": "#193",
-        "label": "Eval set 1.27: manifest schema, case verification and scorer",
+        "ref": "#197",
+        "label": "Always-PR hook: read the PR with --json url,state",
+        "private": false,
+        "lapsed": false
+      },
+      {
+        "kind": "pr",
+        "repo": "gorfednet/.github",
+        "ref": "#196",
+        "label": "Weekly lessons: model and skill currency (1.29)",
         "private": false,
         "lapsed": false
       },
@@ -693,7 +701,7 @@
         "lapsed": true
       }
     ],
-    "hiddenPrivate": 50,
+    "hiddenPrivate": 48,
     "privateReposNotItemised": 18
   }
 }
