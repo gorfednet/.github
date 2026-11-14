@@ -75,7 +75,7 @@ test("janitor sets up its own checkout, so the scheduled task's older starter te
 
 test("janitor never rescues a session whose branch has an open pull request, and rescues commits pushed after a merge", () => {
   assert.match(prompt, /`dirty`:[^\n]*first make the `gh pr list` call[^\n]*On `OPEN` or `CLOSED`, propose only/);
-  assert.match(prompt, /`MERGED`: run `git rev-list --count <headRefOid>\.\.HEAD`[^\n]*squash-merged[^\n]*Archive it\. More than 0[^\n]*Treat it like the no-PR case/);
+  assert.match(prompt, /`MERGED`: run `git -C "\$\(cat \$R\/worktree-<id8>\.txt\)" rev-list --count <headRefOid>\.\.HEAD`[^\n]*squash-merged[^\n]*Archive it\. More than 0[^\n]*Treat it like the no-PR case/);
 });
 
 test("janitor never archives a session whose folder holds ignored local state", () => {
@@ -155,7 +155,29 @@ test("janitor puts no branch, title or worktree on a command line: each goes thr
   assert.ok(spans.length > 10, "found the prompt's commands");
   for (const c of spans) assert.doesNotMatch(c, /<(branch|title|worktree|the branch you pushed)>/, `untrusted text pasted into: ${c}`);
   assert.match(prompt, /Untrusted text never reaches a command line/);
-  for (const c of spans.filter((x) => /--head|--branch|--worktree|--title/.test(x))) assert.match(c, /\$\(cat \$R\/|\$\(git branch --show-current\)/, `read from a file: ${c}`);
+  assert.ok(quotedFileFlags(spans) >= 9);
+  assert.match(prompt, /`test -s`/);
+  assert.match(prompt, /skip that session/);
+});
+
+/** Every untrusted-valued flag takes `"$(cat $R/<name>-<id8>.txt)"` with its double quotes; `-C` may also take the owner's `$J` or `$G`. Returns how many it checked. */
+function quotedFileFlags(spans) {
+  let seen = 0;
+  for (const c of spans) {
+    for (const m of c.matchAll(/(?:^| )(-C|--head|--branch|--worktree|--title) (\S+)/g)) {
+      if (m[1] === "-C" && /^\$[JG]$/.test(m[2])) continue;
+      seen += 1;
+      assert.match(c.slice(m.index + m[0].indexOf(m[1]) + m[1].length + 1), /^"\$\(cat \$R\/[a-z]+-<id8>\.txt\)"/, `${m[1]} must read a quoted file: ${c}`);
+    }
+  }
+  return seen;
+}
+
+test("the quoted-form check rejects an unquoted or pasted value", () => {
+  assert.throws(() => quotedFileFlags(["gh pr create --title $(cat $R/title-<id8>.txt) --x"]));
+  assert.throws(() => quotedFileFlags(["git -C <worktree> status"]));
+  assert.throws(() => quotedFileFlags(['gh pr list --head "<branch>" --state all']));
+  assert.equal(quotedFileFlags(['git -C "$(cat $R/worktree-<id8>.txt)" status']), 1);
 });
 
 test("the quoted file form runs nothing a hostile title or branch holds", () => {
