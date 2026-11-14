@@ -20,13 +20,14 @@ export const REVIEW_ROUND_CAP = 4
 /**
  * @param {Array<{ body?: string | null, user?: { login?: string } | null, html_url?: string, created_at?: string }>} comments
  * @param {string} head
- * @returns {{ state: 'clean' | 'findings' | 'not-run', findings: number, round: number, cap: number, triageOnly: boolean, url: string | null, reviewedHeads: string[] }}
+ * @returns {{ state: 'clean' | 'findings' | 'not-run', findings: number, round: number, cap: number, triageOnly: boolean, url: string | null, reviewedHeads: string[], cleanHeads: string[] }}
  */
 export function claudeReviewVerdict(comments, head) {
   let latest = null
   const reviewedHeads = []
   const stamps = []
   const heads = []
+  const clean = []
   for (const comment of comments) {
     if (comment?.user?.login !== REVIEW_BOT_LOGIN) continue
     const match = MARKER.exec(comment.body ?? '')
@@ -34,12 +35,15 @@ export function claudeReviewVerdict(comments, head) {
     reviewedHeads.push(match[1])
     stamps.push(String(comment.created_at ?? ''))
     heads.push(match[1])
+    if (Number(match[2]) === 0) clean.push({ head: match[1], at: String(comment.created_at ?? '') })
     if (match[1] !== head) continue
     if (!latest || String(comment.created_at ?? '') >= String(latest.created_at ?? '')) {
       latest = { ...comment, findings: Number(match[2]), blocking: match[3] === undefined ? null : Number(match[3]) }
     }
   }
-  if (!latest) return { state: 'not-run', findings: 0, round: 0, cap: REVIEW_ROUND_CAP, triageOnly: false, url: null, reviewedHeads }
+  // Heads the reviewer found clean, newest first (a later review of one head moves it up).
+  const cleanHeads = [...new Set(clean.sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0)).map((c) => c.head))]
+  if (!latest) return { state: 'not-run', findings: 0, round: 0, cap: REVIEW_ROUND_CAP, triageOnly: false, url: null, reviewedHeads, cleanHeads }
   // The round is the number of distinct heads reviewed up to this verdict, so repeat reviews of one head are one round.
   const at = String(latest.created_at ?? '')
   const round = new Set(heads.filter((_, i) => stamps[i] <= at)).size
@@ -52,5 +56,6 @@ export function claudeReviewVerdict(comments, head) {
     triageOnly,
     url: latest.html_url ?? null,
     reviewedHeads,
+    cleanHeads,
   }
 }
