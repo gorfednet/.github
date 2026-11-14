@@ -108,6 +108,19 @@ describe('unanswered reviewer findings get needs-fix (row 1.14)', () => {
       assert.deepEqual(writes(gh, 'removeLabel').map((w) => w.label), ['needs-fix'], labels.join())
     }
   })
+  it('a bot-readied PR in a deploy repo (review-not-clean) gets the label too, and a not-yet-computed mergeability keeps it', async () => {
+    const gh = new FakeGitHub({ threads: [thread] })
+    const s = scenario({ repos: [repoEntry({ claudeReview: true })], github: gh, runner: makeRunner({ handle: findings }) })
+    // The bot labelled it itself, so the deploy repo wants a clean review.
+    const st = s.state()
+    st.pr(SLUG, 7).botReadied = { sha: null, at: 'x' }
+    st.save()
+    await s.run()
+    assert.deepEqual(writes(gh, 'addLabels').map((w) => w.labels), [['needs-fix']])
+    const g2 = new FakeGitHub({ pulls: [makePr({ labels: [{ name: 'ready-to-merge' }, { name: 'needs-fix' }], mergeable: null })] })
+    await scenario({ repos: [repoEntry({ claudeReview: true })], github: g2 }).run()
+    assert.equal(writes(g2, 'removeLabel').length, 0, 'mergeability not computed yet is transient')
+  })
   it('a dry run only says so, and a block that hides the review gate keeps the label', async () => {
     const { gh, s } = setup()
     await s.run('dry-run')

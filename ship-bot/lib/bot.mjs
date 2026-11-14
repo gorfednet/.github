@@ -274,7 +274,8 @@ async function processRepo(ctx, repo) {
     const skip2 = ineligibleReason(pr, repo, defaultBranch, ctx.config.allowedAuthors) ?? unmergeableReason(pr)
     if (skip2) {
       ctx.say('debug', `${repo.slug}#${pr.number}: ignored (${skip2})`)
-      await dropStaleNeedsFix(ctx, repo, pr, skip2)
+      // GitHub's "not computed yet" after a push is transient: keep the label rather than flap it.
+      if (!/not computed yet/.test(skip2)) await dropStaleNeedsFix(ctx, repo, pr, skip2)
       continue
     }
     const acted = await processPull(ctx, repo, pr, defaultBranch)
@@ -307,7 +308,7 @@ function queueDiagnosis(ctx, repo, blocked) {
  */
 async function syncNeedsFix(ctx, repo, pr, result) {
   const labels = (pr.labels ?? []).map((l) => l.name)
-  const wants = result.blocks.some((b) => b.key === 'review-threads')
+  const wants = result.blocks.some((b) => ['review-threads', 'review-not-clean', 'review-findings-no-threads'].includes(b.key))
   const tag = `${repo.slug}#${pr.number}`
   // Gates stop at the first block, so an earlier block hides the review gate:
   // the label only comes off once every gate has passed.
