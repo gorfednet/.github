@@ -97,7 +97,13 @@
       "Bash(gate-run *gh secret delete*)",
       "Bash(gh variable delete *)",
       "Bash(hc *gh variable delete*)",
-      "Bash(gate-run *gh variable delete*)"
+      "Bash(gate-run *gh variable delete*)",
+      "Bash(gh secret remove *)",
+      "Bash(hc *gh secret remove*)",
+      "Bash(gate-run *gh secret remove*)",
+      "Bash(gh variable remove *)",
+      "Bash(hc *gh variable remove*)",
+      "Bash(gate-run *gh variable remove*)"
     ],
     "defaultMode": "auto"
   },
