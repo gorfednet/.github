@@ -473,11 +473,10 @@
       "assignee": "main-model",
       "userSymptom": "A papers.4thcltr.com deploy from ship-bot fails at make verify when the Mac is under load.",
       "evidence": "ship-bot deploy log 2026-11-11T19-34-59-231Z-papers.4thcltr.com-pr33 and ~/.ship-bot/work/papers.4thcltr.com/test-results/.last-run.json (18 papers verify specs failed on 11 November 2026). Cause confirmed 13 November 2026: the same wordmark and filter specs fail 27 of 87 under taskpolicy -b (background policy) and pass 87 of 87 at normal priority at a load of 7 on 10 cores, with default and 2 workers. The installed plist (written 12 November 22:10 ET) has no ProcessType. docs/handoff/2026-11-13-deploy-root-causes.md. 14 Nov 2026: default launchd class (no ProcessType) still throttles; launchd reproduction 10/24 fail default vs 24/24 Interactive; papers PR 40.",
-      "note": "Not load as such: the process class. PR 128 dropped Background but left the default, which still throttles. Fix: ProcessType Interactive in install.sh, then rerun it.",
+      "note": "Not load as such: the process class. PR 128 dropped Background but left the default, which still throttles. Fix (.github 188): ProcessType Interactive in install.sh, then rerun it.",
       "reviewBy": "2026-12-12",
       "created": "2026-11-12",
-      "updated": "2026-11-14",
-      "pr": 128
+      "updated": "2026-11-14"
     },
     {
       "id": "ship-bot-default-rollback-cannot-pass-tip-guard",
