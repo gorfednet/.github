@@ -141,6 +141,42 @@ describe('command line', () => {
     assert.equal(h.runner.calls.length, 0)
   })
 
+  it('a paused deploy unblocks only with --deployed naming its commit, which it records as live (plan row 1.25)', async () => {
+    const h = harness()
+    const statePath = join(h.config.stateDir, 'state.json')
+    const sha = 'e'.repeat(40)
+    const store = new StateStore(statePath)
+    Object.assign(store.repo('gorfednet/site'), { blocked: { reason: 'paused', at: 'x', pausedSha: sha, pausedKind: 'release' }, lastDeployedSha: 'd'.repeat(40) })
+    store.save()
+    const read = () => JSON.parse(readFileSync(statePath, 'utf8')).repos['gorfednet/site']
+    assert.equal(await main(['--unblock', 'site'], h.deps), 2)
+    assert.match(h.out.join('\n'), /--deployed eeeeeee/)
+    assert.ok(read().blocked, 'a plain unblock leaves a paused block')
+    assert.equal(await main(['--unblock', 'site', '--deployed', 'ffffffff'], h.deps), 2)
+    assert.ok(read().blocked, 'the wrong commit is refused')
+    assert.equal(await main(['--unblock', 'site', '--deployed', 'eeeeeee'], h.deps), 0)
+    assert.equal(read().blocked, undefined)
+    assert.equal(read().lastDeployedSha, sha)
+    assert.ok(read().lastReleasedAt, 'a release deployed by hand starts the weekly clock')
+  })
+
+  it('a queued unblock of a paused deploy needs --deployed too; without it the block stays', async () => {
+    const h = harness({ lock: { pid: process.pid, startedAt: 'now' } })
+    const statePath = join(h.config.stateDir, 'state.json')
+    const sha = 'e'.repeat(40)
+    const store = new StateStore(statePath)
+    store.repo('gorfednet/site').blocked = { reason: 'paused', at: '2026-10-09T11:00:00.000Z', pausedSha: sha }
+    store.save()
+    assert.equal(await main(['--unblock', 'site'], h.deps), 2)
+    assert.equal(existsSync(join(h.config.stateDir, 'unblock')), false)
+    assert.equal(await main(['--unblock', 'site', '--deployed', sha], h.deps), 0)
+    rmSync(join(h.config.stateDir, 'run.lock'))
+    assert.equal(await main(['--live', '--once'], h.deps), 0, h.out.join('\n'))
+    const after = JSON.parse(readFileSync(statePath, 'utf8')).repos['gorfednet/site']
+    assert.equal(after.blocked, undefined)
+    assert.equal(after.lastDeployedSha, sha)
+  })
+
   it('--unblock while a pass holds the lock writes no state, and the next pass applies it', async () => {
     const h = harness({ lock: { pid: process.pid, startedAt: 'now' } })
     const statePath = join(h.config.stateDir, 'state.json')

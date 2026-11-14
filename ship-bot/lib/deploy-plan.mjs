@@ -67,7 +67,7 @@ export function releaseNotes(body) {
 }
 
 // A value that says the step did not happen is not evidence that it did.
-const EMPTY_VALUE = /^(?:n\/?a|none|no|not run|not done|skipped|todo|tbd|pending|later|-+|\.+|<[^>]*>)\.?$/i
+const EMPTY_VALUE = /^(?:(?:n\/?a|none|not|skipped|skip|todo|tbd|pending|later)\b|no\.?$|-+$|\.+$|<[^>]*>$)/i
 const lineValue = (text, name, { bullet = true } = {}) => {
   const re = new RegExp(`^${bullet ? '(?:[-*][ \\t]+)?' : ''}${name}:[ \\t]+(\\S.*?)[ \\t]*$`, 'm')
   const m = visibleText(text).match(re)

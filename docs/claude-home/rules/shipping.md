@@ -27,12 +27,12 @@ When several pull requests are waiting for CI, carry them in one train instead o
 
 ## Releases (owner, 14 November 2026)
 
-- A release is one pull request per repository, labelled `release`. It carries what's still open as a train. When everything is already on `main`, it carries only its notes, added to `RELEASES.md` so it has a commit.
+- A release is one pull request per repository, labelled `release`. It carries what's still open as a train. The carried pull requests don't get `ready-to-merge`: the train merges them. Ship-bot takes a release before plain merges. When everything is already on `main`, it carries only its notes, added to `RELEASES.md` so it has a commit.
 - At most one a week per repository. Ship-bot allows 6 days between them. The owner can ask for one sooner: the body then says `Early release: <why>` on a line of its own.
-- Desk starts one release session a week for each visitor-facing repository with merged work that isn't live.
+- Desk starts one release session a week for each visitor-facing repository with merged work that isn't live (commits on `main` since `lastDeployedSha` in `~/.ship-bot/state.json`).
 - The release head must contain `main`. Merge `main` in, then run the full local gate on this Mac through `gate-run` and smoke the built site or app on a local or preview host. Both run on that head.
 - The body has a `## Release notes` section with a bullet per change, a `Local gate:` line naming the gate's log and a `Smoke:` line saying what was read. Ship-bot refuses a release without them. It can't tell whether they ran, so never write a line for a step you didn't run.
-- A release deploys everything merged since the last deploy. A tag repository (4thcltr.com) also keeps its `Release: X.Y.Z One sentence.` line.
+- A release deploys everything merged since the last deploy. When ship-bot pauses one, deploy that commit by hand, then `ship-bot --unblock <repo> --deployed <sha>`. That records it as live. A tag repository (4thcltr.com) also keeps its `Release: X.Y.Z One sentence.` line.
 
 ## Runners (owner, 2026-10-19; cap changed 13 November 2026)
 

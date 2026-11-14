@@ -92,8 +92,12 @@ rollback redeploys that commit. With no deploy on record, every tracked path
 counts as changed, and the default rollback has nothing safe to redeploy, so
 it reports "nothing was rolled back" rather than redeploying the merge's first
 parent, which may never have been live. A paused deploy's block remembers its
-commit: deploy that exact commit by hand, then `--unblock` records it as
-deployed, so the next release diffs from there instead of pausing again. A
+commit: deploy that exact commit by hand, then
+`ship-bot --unblock <repo> --deployed <sha>` records it as deployed (and, for a
+release, starts the weekly clock), so the next release diffs from there
+instead of pausing again. A plain `--unblock` is refused for that block. A
+release or hotfix pull request is looked at before the plain ones, so a plain
+merge does not land ahead of it and push its head behind main. A
 hotfix also checks, after the merge, that the merge's first parent is the last
 deploy. The comment and the phone say "as a release" or "as a hotfix".
 HTML comments and fenced code in the description are ignored, and a

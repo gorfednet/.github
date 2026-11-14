@@ -246,7 +246,9 @@ async function processRepo(ctx, repo) {
   const info = await ctx.github.getRepo(repo.slug)
   const defaultBranch = info?.default_branch
   if (!defaultBranch) throw new Error('GitHub did not report a default branch')
-  const pulls = [...(await ctx.github.listOpenPulls(repo.slug))].sort((a, b) => a.number - b.number)
+  // A release or hotfix goes first (plan row 1.25): its head must contain main, so a plain merge ahead of it would force a new gate and smoke.
+  const deploysFirst = (p) => ((p.labels ?? []).some((l) => [RELEASE_LABEL, HOTFIX_LABEL].includes(String(l.name).toLowerCase())) ? 0 : 1)
+  const pulls = [...(await ctx.github.listOpenPulls(repo.slug))].sort((a, b) => deploysFirst(a) - deploysFirst(b) || a.number - b.number)
 
   for (const listed of pulls) {
     // A person who took the bot's label off has taken the pull request back:
@@ -936,8 +938,8 @@ async function report(ctx, repo, pr, mergeSha, outcome, deployLog, release = nul
     await notify(ctx, `${repo.name} #${pr.number} merged and deployed${as}`)
   } else if (outcome.status === 'paused') {
     // The block remembers the commit: unblocking it says a person deployed that commit by hand, so the next diff starts there.
-    block(`the changes up to #${pr.number} include ${outcome.paused.join(', ')}, which this repo deploys by hand`, { pausedSha: mergeSha })
-    body = `Merged as ${short(mergeSha)} but **not deployed**: the changes since the last deploy include ${outcome.paused.map((p) => `\`${p}\``).join(', ')}, which this repo never deploys unattended. Deploy ${short(mergeSha)} from a session.\n\n${unblock} Unblocking records ${short(mergeSha)} as deployed, so deploy that exact commit first.`
+    block(`the changes up to #${pr.number} include ${outcome.paused.join(', ')}, which this repo deploys by hand: deploy ${short(mergeSha)} by hand, then --unblock ${repo.name} --deployed ${short(mergeSha)}`, { pausedSha: mergeSha, pausedKind: plan?.kind ?? null })
+    body = `Merged as ${short(mergeSha)} but **not deployed**: the changes since the last deploy include ${outcome.paused.map((p) => `\`${p}\``).join(', ')}, which this repo never deploys unattended. Deploy ${short(mergeSha)} from a session.\n\nOnce ${short(mergeSha)} is live, run \`ship-bot --unblock ${repo.name} --deployed ${short(mergeSha)}\`: that records it as deployed, so the next release diffs from there. A plain \`--unblock\` is refused for this block.`
     ctx.say('warn', `${tag}: merged, deploy paused (${outcome.paused.join(', ')})`)
     await notify(ctx, `${repo.name} #${pr.number} merged; deploy paused for a person`)
   } else if (outcome.status === 'not-started') {

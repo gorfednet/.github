@@ -18,9 +18,14 @@ describe('release description parsing (plan row 1.25): near misses fail closed',
 
   it('the gate and smoke lines are not the notes, and an empty or placeholder value is no line', () => {
     assert.match(releaseProblems('## Release notes\n\n- Local gate: x\n- Smoke: y\n').join(), /no bullet saying what ships/)
-    for (const v of ['n/a', 'N/A', 'none', 'not run', 'skipped', 'TBD', '-', '...', '<log>', 'todo.']) {
+    for (const v of ['n/a', 'N/A', 'none', 'not run', 'skipped', 'TBD', '-', '...', '<log>', 'todo.', 'n/a (docs only)', 'not run yet', 'no']) {
       assert.match(releaseProblems(GOOD.replace('gate-run make verify, exit 0, log x', v)).join(), /no `Local gate:` line/, v)
     }
+  })
+
+  it('a real value that starts with a common word still counts', () => {
+    assert.deepEqual(releaseProblems(GOOD.replace('gate-run make verify, exit 0, log x', 'no failures, gate-run make verify, log x')), [])
+    assert.deepEqual(releaseProblems(GOOD.replace('npm run preview, read /', 'notes page and / read on npm run preview')), [])
   })
 
   it('a bullet under a later heading is not a note; a ### notes section ends at the next ## or ###', () => {

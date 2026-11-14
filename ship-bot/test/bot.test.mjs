@@ -1636,9 +1636,10 @@ describe('releases: what the first review found (plan row 1.25)', () => {
     const s = rel({ runner, row: { pausedIfChanged: ['server/'] }, state: { lastDeployedSha: LAST } })
     await s.run()
     assert.equal(runner.ofKind('deploy').length, 0)
-    assert.match(bodies(s.github)[0], /Unblocking records bbbbbbb as deployed/)
+    assert.match(bodies(s.github)[0], /ship-bot --unblock site --deployed bbbbbbb/)
     const st = s.state()
     assert.equal(st.repo(SLUG).blocked.pausedSha, MERGE)
+    assert.equal(st.repo(SLUG).blocked.pausedKind, 'release')
     assert.equal(clearBlock(st.repo(SLUG)), MERGE)
     assert.equal(st.repo(SLUG).blocked, undefined)
     assert.equal(st.repo(SLUG).lastDeployedSha, MERGE)
@@ -1765,5 +1766,16 @@ describe('releases: what the first review found (plan row 1.25)', () => {
     await s.run('dry-run')
     assert.equal(s.github.writes.length, 0)
     assert.ok(s.logs.some((l) => /not merging: it has a `## Release notes` section but no `release` or `hotfix` label/.test(l)), s.logs.join('\n'))
+  })
+})
+
+describe('a release goes before plain merges (plan row 1.25, review round 2)', () => {
+  it('with one merge a pass, the release merges first even when a plain pull request is older', async () => {
+    const notes = '## Release notes\n\n- a\n\nLocal gate: gate-run make verify, log x\nSmoke: read / on preview\n'
+    const github = new FakeGitHub({ pulls: [makePr({ number: 40, body: 'plain' }), makePr({ number: 42, body: notes, labels: [{ name: 'ready-to-merge' }, { name: 'release' }] })] })
+    const s = scenario({ github, repos: [repoEntry({ deployOn: 'release' })], configOverrides: { maxMergesPerPass: 1 } })
+    await s.run()
+    assert.deepEqual(merges(s.github).map((m) => m.n), [42])
+    assert.deepEqual(s.runner.commandLines('deploy'), ['make deploy'])
   })
 })

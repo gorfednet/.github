@@ -15,6 +15,8 @@
  *                                          (preflight-launchd.sh runs this inside a LaunchAgent)
  *   node ship-bot.mjs --repo MoonMan       only this repo (repeatable)
  *   node ship-bot.mjs --unblock MoonMan    clear a block left by a failed deploy
+ *   node ship-bot.mjs --unblock MoonMan --deployed <sha>
+ *                                          clear a paused deploy's block once that commit was deployed by hand
  *   node ship-bot.mjs --config <path>      default ~/.ship-bot/config.json
  *   node ship-bot.mjs --verbose            also print why each PR was ignored
  *   node ship-bot.mjs --rotate-log <path>  first move <path> to <path>.1 if it is over 5 MB
@@ -41,7 +43,7 @@ import { isMain } from './lib/isMain.mjs'
 import { formatValidation, validateExpectedChecks } from './lib/validate.mjs'
 
 const USAGE =
-  'usage: ship-bot.mjs [--dry-run | --live] [--once] [--repo <name>]... [--config <path>] [--verbose] [--unblock <name>] [--rotate-log <path>]\n' +
+  'usage: ship-bot.mjs [--dry-run | --live] [--once] [--repo <name>]... [--config <path>] [--verbose] [--unblock <name> [--deployed <sha>]] [--rotate-log <path>]\n' +
   '       ship-bot.mjs --set-live true|false | --set-repo-live <slug> true|false | --validate [--repo <name>]... | --check-preflight'
 
 const parseBool = (flag, v) => {
@@ -57,6 +59,7 @@ export function parseArgs(argv) {
     config: '~/.ship-bot/config.json',
     verbose: false,
     unblock: undefined,
+    deployed: undefined,
     rotateLog: undefined,
     setLive: undefined,
     setRepoLive: undefined,
@@ -80,6 +83,7 @@ export function parseArgs(argv) {
     else if (flag === '--config') args.config = value()
     else if (flag === '--verbose') args.verbose = true
     else if (flag === '--unblock') args.unblock = value()
+    else if (flag === '--deployed') args.deployed = value()
     else if (flag === '--rotate-log') args.rotateLog = value()
     else if (flag === '--set-live') args.setLive = parseBool(flag, value())
     else if (flag === '--set-repo-live') {
@@ -163,7 +167,7 @@ export async function main(argv, overrides = {}) {
       return 2
     }
 
-    if (args.unblock) return unblock(config, args.unblock, deps)
+    if (args.unblock) return unblock(config, args.unblock, deps, args.deployed)
     if (args.checkPreflight) return checkPreflight(config, deps)
     if (args.validate) return validate(config, args, deps, print)
 
@@ -468,7 +472,7 @@ async function validate(config, args, deps, print) {
   return results.every((r) => r.ok) ? 0 : 1
 }
 
-function unblock(config, name, deps) {
+function unblock(config, name, deps, deployed) {
   let repo
   try {
     ;[repo] = selectRepos(config.repos, [name])
@@ -481,12 +485,18 @@ function unblock(config, name, deps) {
   // holds the lock: it leaves a request file, which the next pass applies right after loading state.
   const lock = acquireLock(lockPath(config.stateDir))
   if (!lock.ok) {
-    if (!JSON.parse(existsSync(join(config.stateDir, 'state.json')) ? readFileSync(join(config.stateDir, 'state.json'), 'utf8') : '{}').repos?.[repo.slug]?.blocked) {
+    const current = JSON.parse(existsSync(join(config.stateDir, 'state.json')) ? readFileSync(join(config.stateDir, 'state.json'), 'utf8') : '{}').repos?.[repo.slug]?.blocked
+    if (!current) {
       deps.out(`${repo.slug} is not blocked.`)
       return 0
     }
+    const refused = pausedRefusal(repo, current, deployed)
+    if (refused) {
+      deps.out(refused)
+      return 2
+    }
     mkdirSync(unblockDir(config.stateDir), { recursive: true })
-    writeFileSync(join(unblockDir(config.stateDir), `${repo.slug.replace('/', '__')}.json`), JSON.stringify({ slug: repo.slug, at: deps.clock.now().toISOString() }))
+    writeFileSync(join(unblockDir(config.stateDir), `${repo.slug.replace('/', '__')}.json`), JSON.stringify({ slug: repo.slug, at: deps.clock.now().toISOString(), ...(deployed ? { deployed } : {}) }))
     deps.out(`a pass is running (${lock.holder}); the unblock of ${repo.slug} is queued and the next pass applies it`)
     return 0
   }
@@ -497,8 +507,13 @@ function unblock(config, name, deps) {
       deps.out(`${repo.slug} is not blocked.`)
       return 0
     }
+    const refused = pausedRefusal(repo, rs.blocked, deployed)
+    if (refused) {
+      deps.out(refused)
+      return 2
+    }
     deps.out(`unblocking ${repo.slug} (was: ${rs.blocked.reason})`)
-    const recorded = clearBlock(rs)
+    const recorded = clearBlock(rs, deps.clock.now())
     if (recorded) deps.out(`${repo.slug}: recorded ${recorded.slice(0, 7)} as deployed (the paused commit a person deployed by hand); the next release diffs from there`)
     state.save()
     return 0
@@ -516,14 +531,30 @@ const unblockDir = (stateDir) => join(stateDir, 'unblock')
  * from the old commit, see the paused path again, and pause forever (plan row 1.25).
  * Returns the sha recorded, if any.
  */
-export function clearBlock(rs) {
+export function clearBlock(rs, now = new Date()) {
   const sha = rs.blocked?.pausedSha
+  const wasRelease = rs.blocked?.pausedKind === 'release'
   delete rs.blocked
   if (typeof sha === 'string' && /^[0-9a-f]{40}$/.test(sha)) {
     rs.lastDeployedSha = sha
+    // A release deployed by hand still starts the weekly clock.
+    if (wasRelease) rs.lastReleasedAt = now.toISOString()
     return sha
   }
   return null
+}
+
+/**
+ * Unblocking a paused deploy records a commit as live, so it needs the person
+ * to name that commit (`--deployed <sha>`): "I checked the site" is not "I
+ * deployed the API". Returns the refusal, or null when the unblock may go ahead.
+ */
+export function pausedRefusal(repo, blocked, deployed) {
+  const sha = blocked?.pausedSha
+  if (!sha) return null
+  const given = String(deployed ?? '').toLowerCase()
+  if (given.length >= 7 && /^[0-9a-f]+$/.test(given) && sha.startsWith(given)) return null
+  return `${repo.slug}: this block is a paused deploy of ${sha.slice(0, 7)}. Unblocking records that commit as live. Deploy it by hand first, then run: ship-bot --unblock ${repo.name} --deployed ${sha.slice(0, 7)}. Nothing was changed.`
 }
 
 /** Apply the unblock requests left while a pass held the lock. Called by a pass that holds it, right after loading state. */
@@ -542,10 +573,17 @@ function applyUnblockRequests(config, state, print) {
     // Only a block that already stood when the request was written: a block made since (a merge that timed
     // out in the very pass that held the lock) is a new fact nobody has looked at.
     let requestedAt
-    try { requestedAt = JSON.parse(readFileSync(join(dir, file), 'utf8')).at } catch { requestedAt = undefined }
-    if (rs?.blocked && requestedAt && String(rs.blocked.at) <= String(requestedAt)) {
+    let deployed
+    try {
+      ;({ at: requestedAt, deployed } = JSON.parse(readFileSync(join(dir, file), 'utf8')))
+    } catch {
+      requestedAt = undefined
+    }
+    if (rs?.blocked && requestedAt && String(rs.blocked.at) <= String(requestedAt) && pausedRefusal({ slug, name: slug.split('/')[1] }, rs.blocked, deployed)) {
+      print('warn', `${slug}: an unblock request without the paused commit dropped; the block stays (${rs.blocked.reason})`)
+    } else if (rs?.blocked && requestedAt && String(rs.blocked.at) <= String(requestedAt)) {
       print('info', `${slug}: unblocked on request (was: ${rs.blocked.reason})`)
-      const recorded = clearBlock(rs)
+      const recorded = clearBlock(rs, new Date())
       if (recorded) print('info', `${slug}: recorded ${recorded.slice(0, 7)} as deployed (the paused commit a person deployed by hand)`)
     } else if (rs?.blocked) {
       print('warn', `${slug}: an unblock request from ${requestedAt} is older than the block set at ${rs.blocked.at}; dropped, the block stays`)
