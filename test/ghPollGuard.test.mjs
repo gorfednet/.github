@@ -6,17 +6,20 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const HOOK = join(here, '..', 'docs', 'claude-home', 'hooks', 'gh-poll-guard.py');
+// Every spawn writes its call log here, never to the owner's real ~/.gh-quota/calls.log.
+const ENV = { ...process.env, GH_GUARD_LOG: join(mkdtempSync(join(tmpdir(), 'ghguard-')), 'calls.log') };
 const fixture = (name) => readFileSync(join(here, 'fixtures', 'gh-poll-guard', name), 'utf8');
 
 function run(command, extra = {}) {
   const input = JSON.stringify({ tool_name: 'Bash', tool_input: { command }, ...extra });
-  const r = spawnSync('python3', ['-I', HOOK], { input, encoding: 'utf8' });
+  const r = spawnSync('python3', ['-I', HOOK], { input, encoding: 'utf8', env: ENV });
   assert.equal(r.status, 0, `hook exited ${r.status}: ${r.stderr}`);
   if (!r.stdout.trim()) return null;
   const out = JSON.parse(r.stdout).hookSpecificOutput;
@@ -147,12 +150,13 @@ test('covers the Monitor tool too', () => {
   const r = spawnSync('python3', ['-I', HOOK], {
     input: JSON.stringify({ tool_name: 'Monitor', tool_input: { command: 'while true; do gh pr checks 5; sleep 30; done' } }),
     encoding: 'utf8',
+    env: ENV,
   });
   assert.equal(JSON.parse(r.stdout).hookSpecificOutput.permissionDecision, 'deny');
 });
 
 test('fails open on input it cannot read', () => {
-  const r = spawnSync('python3', ['-I', HOOK], { input: 'not json', encoding: 'utf8' });
+  const r = spawnSync('python3', ['-I', HOOK], { input: 'not json', encoding: 'utf8', env: ENV });
   assert.equal(r.status, 0);
   assert.equal(r.stdout.trim(), '');
   assert.equal(run('while true; do gh api x; sleep 1; done', { tool_name: 'Read' }), null);

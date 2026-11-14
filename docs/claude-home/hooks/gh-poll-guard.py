@@ -27,8 +27,10 @@ Fails open: unreadable input or an internal error allows the command.
 from __future__ import annotations
 
 import json
+import os
 import re
 import sys
+import time
 
 _SHELLS = r"(?:bash|sh|zsh|dash|ksh)"
 _KEYWORD = re.compile(
@@ -268,6 +270,52 @@ def verdict(command: str) -> str | None:
     return None
 
 
+_VALUE = r"""(?:'[^']*'|"[^"]*"|\S+)"""
+_SECRETS = re.compile(
+    "|".join(
+        [
+            r"gh[pousr]_\w+",
+            r"github_pat_\w+",
+            r"(?i:(?:token|secret|password|passwd|api[_-]?key|auth)\w*)=" + _VALUE,
+            r"--(?:with-token|body|field|raw-field)[ \t=]+(?:<<<[ \t]*)?" + _VALUE,
+            r"-[bfF][ \t]+" + _VALUE,
+            r"<<<[ \t]*" + _VALUE,
+            r"<<-?[ \t]*['\"]?\w+['\"]?[^\n]*\n[\s\S]*",
+            r"\b(?:echo|printf)\b[^|\n]*(?=\|[ \t]*gh[ \t]+(?:secret|variable|auth)\b)",
+            r"(?i:authorization:?)[ \t]*(?i:bearer|token|basic)?[ \t]*[\w.+/=-]+",
+        ]
+    )
+)
+
+
+def _redact(command: str) -> str:
+    return _SECRETS.sub("<redacted>", command)
+
+
+def record(payload: dict, command: str, denied: bool = False) -> None:
+    """One line per command that calls GitHub, so a quota burn can be matched to a session (13 November 2026,
+    third time at 0: nothing recorded who was calling). Token-shaped strings and --body/--field/--with-token
+    values are redacted; the file is 0600 in a 0700 folder. A command the guard refused is logged with
+    "denied": true, since it never ran. Never raises; GH_GUARD_LOG overrides the path."""
+    try:
+        if not re.search(r"\b(gh|review-status|assert-checks-started|fleet-status)\b", command):
+            return
+        path = os.environ.get("GH_GUARD_LOG") or os.path.expanduser("~/.gh-quota/calls.log")
+        os.makedirs(os.path.dirname(path), mode=0o700, exist_ok=True)
+        line = {
+            "at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+            "session": payload.get("session_id"),
+            "cwd": payload.get("cwd"),
+            "denied": denied,
+            "cmd": _redact(command[:2000])[:240],
+        }
+        fd = os.open(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
+        with os.fdopen(fd, "a") as fh:
+            fh.write(json.dumps(line) + "\n")
+    except Exception:
+        pass
+
+
 def main() -> int:
     try:
         payload = json.load(sys.stdin)
@@ -275,6 +323,8 @@ def main() -> int:
             return 0
         command = (payload.get("tool_input") or {}).get("command") or ""
         why = verdict(command) if isinstance(command, str) else None
+        if isinstance(command, str):
+            record(payload, command, denied=bool(why))
     except Exception:  # fail open: a broken guard must not block every session
         return 0
     if why:
