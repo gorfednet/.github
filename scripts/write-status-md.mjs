@@ -36,6 +36,36 @@ export const waitingOnOwner = (pr) => pr.labels.includes('needs-owner') || (pr.n
 
 const short = (slug) => slug.replace(/^gorfednet\//, '')
 
+/** 1234567 -> "1.2M", 45678 -> "46k", 900 -> "900". */
+export const compact = (n) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${Math.round(n / 1e3)}k` : String(n))
+
+/**
+ * "Cost per PR" (plan row 1.26), from `status.prCost`. Fresh tokens are input + cache write + output: what costs full
+ * price. Cache reads are listed apart because they are about 90% of every session and cost a tenth. Null prCost is
+ * "not measured", never zero. Repository names and PR numbers only.
+ */
+export function renderPrCost(c) {
+  const out = [`## Cost per PR, last ${c?.days ?? 7} days`, '']
+  if (c === null || c === undefined) return [...out, 'not measured', '']
+  if (c.prs === 0) out.push('No closed PR has a recorded cost in this window.', '')
+  else {
+    const fresh = Object.values(c.byRepo).reduce((n, r) => n + r.fresh, 0)
+    out.push(`${c.prs} PRs closed, ${compact(fresh)} fresh tokens (input, cache write and output; cache reads not counted).`, '')
+    out.push('| Repository | Kind | PRs | Fresh tokens | Per PR |', '|---|---|---|---|---|')
+    for (const [key, v] of Object.entries(c.byRepoKind).sort((a, b) => b[1].fresh - a[1].fresh)) {
+      const [repo, kind] = key.split(' ')
+      out.push(`| ${short(repo)} | ${kind} | ${v.prs} | ${compact(v.fresh)} | ${compact(Math.round(v.fresh / v.prs))} |`)
+    }
+    out.push('', 'Dearest 5:', '')
+    for (const d of c.dearest) out.push(`- ${short(d.repo)} #${d.number} (${d.kind}): ${compact(d.fresh)} fresh tokens${d.freshPerAddedLine === null ? ', added lines unknown' : `, ${d.freshPerAddedLine} per added line over ${d.additions} lines`}`)
+    out.push('', '| Model | Input | Cache read | Cache write | Output |', '|---|---|---|---|---|')
+    for (const [m, t] of Object.entries(c.perModel).sort((a, b) => b[1].output - a[1].output)) out.push(`| ${m} | ${compact(t.input)} | ${compact(t.cacheRead)} | ${compact(t.cacheWrite)} | ${compact(t.output)} |`)
+    out.push('')
+  }
+  if (c.unattributed) out.push(`Tokens in these ${c.days} days that match no PR: ${compact(c.unattributed.tokens)} of ${compact(c.unattributed.of)} (${(c.unattributed.share * 100).toFixed(1)}%); fresh only, ${compact(c.unattributed.fresh)} of ${compact(c.unattributed.freshOf)} (${c.unattributed.freshOf > 0 ? ((c.unattributed.fresh / c.unattributed.freshOf) * 100).toFixed(1) : '0.0'}%).`, '')
+  return out
+}
+
 export function summarize(status) {
   const ok = status.repos.filter((r) => !r.unavailable)
   const full = ok.filter((r) => !r.redacted)
@@ -142,6 +172,7 @@ export function render(status) {
     if ((l.installedToolsUnread ?? []).length > 0) out.push(`Installed tools not read (their row is not measured): ${l.installedToolsUnread.join(', ')}`, '')
     if (l.behindFetchFailed.length > 0) out.push(`Fetch failed, so clones behind origin is not measured: ${l.behindFetchFailed.join(', ')}`, '')
   }
+  if (status.prCost !== undefined) out.push(...renderPrCost(status.prCost))
   if (status.inventory) out.push(renderInventory(status.inventory, etStamp))
   if (status.dirtyLocal) {
     out.push('## Local clones with unsaved work', '')
