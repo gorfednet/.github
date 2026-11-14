@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 // Fixed eval set (plan row 1.27): manifest schema, case verification and scorer.
 // This repository is public. The manifest holds only {id, task, label, sha256}; case bodies are private.
-// evalset.mjs --manifest m.json --haiku h.json --nomodel n.json --arm name=f.json [--tasks a,b] [--grades g.json] [--check-voice path]
-// arm file: {caseId: {verdict | files | text, ms}}   grades file: {caseId: 0..5} from a Fable editor
+// evalset.mjs --manifest m.json --haiku h.json --nomodel n.json --arm name=f.json [--tasks a,b] [--grades g.json] [--salt-file f] [--check-voice path]
+// arm file:    {caseId: {verdict | files | text, ms?, cause?}}   ms only when the arm was timed; cause set by evalset-run from private truth
+// grades file: {armName: {sha256(answer text): 0..5}} from a tool-less Fable grader, integers only
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -11,25 +12,34 @@ import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 
 export const TASKS = ['reviewer', 'builder', 'triage', 'copy']
-export const LABELS = { reviewer: ['valid', 'invalid'], triage: ['real', 'flake', 'infra'], copy: ['voice-clean'] }
+export const LABELS = { reviewer: ['valid', 'invalid'], triage: ['real', 'flake', 'infra'] }
 const SHA = /^[0-9a-f]{64}$/
-const GRADED = new Set(['builder', 'copy'])
-const FLOOR = 0.7
+export const MANIFEST_VERSION = 2
+// Copy is the only task a model grade gates. Builder returns when an arm produces a diff, not a file list.
+const GRADED = new Set(['copy'])
+export const GRADE_MEAN = 4
+export const GRADE_MIN = 3
 export const MAX_MS = 60000
-const median = (xs) => (xs.length ? [...xs].sort((a, b) => a - b)[Math.floor((xs.length - 1) / 2)] : Infinity)
-export const filesLabel = (files) => `files:${crypto.createHash('sha256').update([...new Set(files)].sort().join('\n')).digest('hex')}`
+export const sha256 = (s) => crypto.createHash('sha256').update(s).digest('hex')
+const median = (xs) => [...xs].sort((a, b) => a - b)[Math.floor((xs.length - 1) / 2)]
+/** Salted per case, so a file list guessed from a repository cannot be checked against the public label. */
+export const filesLabel = (files, salt, id) => {
+  if (typeof salt !== 'string' || !salt) throw new Error('builder labels need a salt (--salt-file)')
+  return `files:${sha256(`${salt}\n${id}\n${[...new Set(files)].sort().join('\n')}`)}`
+}
+const labelOk = (task, l) => (task === 'builder' ? /^files:[0-9a-f]{64}$/.test(l) : task === 'copy' ? /^voice:[1-9]\d*$/.test(l) : LABELS[task].includes(l))
 
 /** Returns a list of problems; empty means the manifest is well formed. */
 export function validateManifest(m) {
   const bad = []
-  if (!m || m.version !== 1 || !Array.isArray(m.cases) || !m.cases.length) return ['manifest: version 1 and a non-empty cases list are required']
+  if (!m || m.version !== MANIFEST_VERSION || !Array.isArray(m.cases) || !m.cases.length) return [`manifest: version ${MANIFEST_VERSION} and a non-empty cases list are required`]
   const ids = new Set()
   for (const c of m.cases) {
     if (!c || typeof c.id !== 'string' || !/^[a-z]{3}-\d{2,}$/.test(c.id)) { bad.push(`case ${JSON.stringify(c?.id)}: id must look like rev-01`); continue }
     if (ids.has(c.id)) bad.push(`${c.id}: duplicate id`)
     ids.add(c.id)
     if (!TASKS.includes(c.task)) bad.push(`${c.id}: unknown task ${c.task}`)
-    else if (c.task === 'builder' ? !/^files:[0-9a-f]{64}$/.test(c.label) : !LABELS[c.task].includes(c.label)) bad.push(`${c.id}: label ${c.label} not allowed for ${c.task}`)
+    else if (!labelOk(c.task, c.label)) bad.push(`${c.id}: label ${c.label} not allowed for ${c.task}`)
     if (!SHA.test(c.sha256 ?? '')) bad.push(`${c.id}: sha256 must be 64 hex characters`)
     const extra = Object.keys(c).filter((k) => !['id', 'task', 'label', 'sha256'].includes(k))
     if (extra.length) bad.push(`${c.id}: only id, task, label and sha256 may be listed (found ${extra.join(', ')})`)
@@ -44,87 +54,119 @@ export function verifyCases(m, dir) {
   for (const c of m.cases) {
     let bytes
     try { bytes = fs.readFileSync(path.join(dir, `${c.id}.json`)) } catch { bad.push(`${c.id}: body missing`); continue }
-    if (crypto.createHash('sha256').update(bytes).digest('hex') !== c.sha256) bad.push(`${c.id}: sha256 does not match the manifest`)
+    if (sha256(bytes) !== c.sha256) bad.push(`${c.id}: sha256 does not match the manifest`)
   }
   return bad
 }
 
-/** The answer's comparable key, or null when the answer is not valid for the task. */
-export function keyOf(task, o) {
+/** The answer's comparable key, or null when the answer is not valid for the task. ctx = {salt, id} (builder only). */
+export function keyOf(task, o, ctx = {}) {
   if (!o || typeof o !== 'object') return null
-  if (task === 'builder') return Array.isArray(o.files) && o.files.length >= 1 && o.files.length <= 25 && o.files.every((f) => typeof f === 'string' && f.length > 0) ? filesLabel(o.files) : null
+  if (task === 'builder') return Array.isArray(o.files) && o.files.length >= 1 && o.files.length <= 25 && o.files.every((f) => typeof f === 'string' && f.length > 0) ? filesLabel(o.files, ctx.salt, ctx.id) : null
   if (task === 'copy') return typeof o.text === 'string' && o.text.trim().length > 0 ? o.text : null
   return LABELS[task].includes(o.verdict) ? o.verdict : null
 }
 
+/** Runs check-voice on a text and returns how many rule findings it reports. */
 export function defaultVoice(checkVoice) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'voice-'))
   return (text) => {
     fs.writeFileSync(path.join(dir, 'p.md'), `${text}\n`)
     const r = spawnSync('node', [checkVoice, 'p.md'], { cwd: dir, encoding: 'utf8' })
     if (r.error || ![0, 1].includes(r.status)) throw new Error(`check-voice did not run: ${r.error?.message ?? `exit ${r.status}`}`)
-    return !`${r.stdout}`.split('\n').some((l) => /: (warning )?rule /.test(l))
+    return `${r.stdout}`.split('\n').filter((l) => /: (warning )?rule /.test(l)).length
   }
 }
 
-export function score(cases, arm, { voice } = {}) {
+/** voice(text) returns the number of check-voice findings. Copy cases are labelled voice:<findings before the rewrite>. */
+export function score(cases, arm, { voice, salt } = {}) {
   const t = cases[0]?.task
-  let correct = 0, schema = 0, dangerous = 0
+  let correct = 0, schema = 0, dangerous = 0, cause = 0, drop = 0, start = 0, hasCause = false
   const ms = []
   for (const c of cases) {
     const o = arm[c.id]
-    const key = keyOf(c.task, o)
+    const startN = t === 'copy' ? Number(c.label.slice(6)) : 0
+    start += startN
+    const key = keyOf(c.task, o, { salt, id: c.id })
     if (key === null) continue
     schema++
-    if (c.task === 'copy') { if (voice(o.text)) correct++ }
+    if (c.task === 'copy') { const after = voice(o.text); if (after === 0) correct++; drop += Math.max(0, startN - after) }
     else if (key === c.label) correct++
     else if ((c.task === 'reviewer' && c.label === 'valid') || (c.task === 'triage' && c.label === 'real')) dangerous++
+    if (c.task === 'triage' && 'cause' in o) { hasCause = true; if (o.cause === true) cause++ }
     if (Number.isFinite(o.ms)) ms.push(o.ms)
   }
-  return { task: t, n: cases.length, correct, schema, dangerous, medianMs: median(ms) }
+  return { task: t, n: cases.length, correct, schema, dangerous, cause, hasCause, drop, start, timed: ms.length, medianMs: ms.length ? median(ms) : null }
 }
 
-const meanGrade = (cases, grades) => {
-  const g = cases.map((c) => grades?.[c.id]).filter((x) => Number.isFinite(x))
-  return { graded: g.length, mean: g.length ? g.reduce((a, b) => a + b, 0) / g.length : null }
+/** Grades for one arm: keyed by the sha256 of the answer text, integers 0..5, mean and per-case minimum. */
+export function gradeStats(cases, arm, armGrades, ctx) {
+  const bad = [], got = []
+  for (const c of cases) {
+    const key = keyOf(c.task, arm[c.id], ctx)
+    if (key === null) continue
+    const g = armGrades?.[sha256(key)]
+    if (g === undefined) continue
+    if (!Number.isInteger(g) || g < 0 || g > 5) bad.push(`${c.id}: grade ${JSON.stringify(g)} is not an integer 0..5`)
+    else got.push(g)
+  }
+  return { graded: got.length + bad.length, valid: got.length, bad, mean: got.length ? got.reduce((a, b) => a + b, 0) / got.length : null, min: got.length ? Math.min(...got) : null }
 }
 
 /** Rejections first, as eval.mjs does: a constant arm and an arm equal to the no-model arm, per task. */
-export function rejections(cases, arm, nomodel) {
+export function rejections(cases, arm, nomodel, { salt } = {}) {
   const reasons = []
   for (const t of TASKS) {
     const cs = cases.filter((c) => c.task === t)
     if (!cs.length) continue
-    const keys = cs.map((c) => keyOf(t, arm[c.id]))
-    if (new Set(keys).size === 1) reasons.push(`rejected: constant answer on ${t}`)
-    if (cs.every((c) => JSON.stringify(keyOf(t, arm[c.id])) === JSON.stringify(keyOf(t, nomodel[c.id])))) reasons.push(`rejected: ${t} answers equal the no-model arm`)
+    // Compare the answers themselves: the salted builder key differs per case, so identical file lists would not look constant.
+    const k = (a, c) => (t === 'builder' ? (keyOf(t, a[c.id], { salt, id: c.id }) === null ? null : [...new Set(a[c.id].files)].sort().join('\n')) : keyOf(t, a[c.id], { salt, id: c.id }))
+    if (new Set(cs.map((c) => k(arm, c))).size === 1) reasons.push(`rejected: constant answer on ${t}`)
+    if (cs.every((c) => JSON.stringify(k(arm, c)) === JSON.stringify(k(nomodel, c)))) reasons.push(`rejected: ${t} answers equal the no-model arm`)
   }
   return reasons
 }
 
-export function judge(manifest, arm, haiku, nomodel, { voice, grades, tasks = TASKS } = {}) {
+export function judge(manifest, arm, haiku, nomodel, { name = 'arm', voice, grades, salt, tasks = TASKS } = {}) {
   const cases = manifest.cases.filter((c) => tasks.includes(c.task))
-  const rej = rejections(cases, arm, nomodel)
+  const rej = rejections(cases, arm, nomodel, { salt })
   if (rej.length) return { status: 'FAIL', reasons: rej, scores: null }
-  const reasons = [], pending = [], scores = {}
+  // The reference arm must itself survive the rejections, task by task, or there is nothing to compare with.
+  const noRef = new Map()
+  for (const r of rejections(cases, haiku, nomodel, { salt })) noRef.set(r.match(/ on (\w+)$| (\w+) answers equal/).slice(1).find(Boolean), r)
+  const reasons = [], pending = [], missing = [], scores = {}
   for (const t of tasks) {
     const cs = cases.filter((c) => c.task === t)
     if (!cs.length) continue
-    const s = score(cs, arm, { voice }), h = score(cs, haiku, { voice }), z = score(cs, nomodel, { voice })
+    const s = score(cs, arm, { voice, salt }), h = score(cs, haiku, { voice, salt }), z = score(cs, nomodel, { voice, salt })
     scores[t] = { arm: s, haiku: h, nomodel: z }
-    const floor = Math.ceil(FLOOR * s.n)
-    if (s.correct < h.correct - 1 || s.correct < floor) reasons.push(`${t}: ${s.correct}/${s.n} below max(haiku-1=${h.correct - 1}, ${floor})`)
-    if (s.correct < z.correct + 2) reasons.push(`${t}: ${s.correct} below no-model ${z.correct} + 2`)
-    if (s.dangerous > h.dangerous) reasons.push(`${t}: dangerous misses ${s.dangerous} above haiku ${h.dangerous}`)
     if (s.schema !== s.n) reasons.push(`${t}: schema valid ${s.schema}/${s.n}`)
-    if (!(s.medianMs <= MAX_MS)) reasons.push(`${t}: median latency ${s.medianMs} ms over ${MAX_MS}`)
+    // Latency applies only to an arm that was timed. An ingested Claude arm has no timings: skip, never Infinity.
+    if (s.timed > 0 && s.timed < s.schema) reasons.push(`${t}: timings on ${s.timed} of ${s.schema} answers`)
+    else if (s.timed > 0 && !(s.medianMs <= MAX_MS)) reasons.push(`${t}: median latency ${s.medianMs} ms over ${MAX_MS}`)
+    if (noRef.has(t)) { scores[t].reference = 'none'; missing.push(`${t}: no reference (${noRef.get(t)} on the Haiku arm)`) }
+    else {
+      if (s.correct < h.correct - 1) reasons.push(`${t}: ${s.correct}/${s.n} below Haiku ${h.correct} - 1`)
+      if (s.dangerous > h.dangerous) reasons.push(`${t}: dangerous misses ${s.dangerous} above haiku ${h.dangerous}`)
+      if (t === 'copy' && s.drop < h.drop - 1) reasons.push(`copy: voice findings dropped by ${s.drop} of ${s.start}, Haiku ${h.drop}`)
+      if (t === 'triage') {
+        if (!s.hasCause) reasons.push('triage: no cause lines scored in the arm file')
+        else if (s.cause < h.cause) reasons.push(`triage: cause ${s.cause} below haiku ${h.cause}`)
+        if (s.cause < z.cause + 2) reasons.push(`triage: cause ${s.cause} below no-model ${z.cause} + 2`)
+      }
+    }
+    if (s.correct < z.correct + 2) reasons.push(`${t}: ${s.correct} below no-model ${z.correct} + 2`)
     if (GRADED.has(t)) {
-      const g = meanGrade(cs, grades)
+      const g = gradeStats(cs, arm, grades?.[name], { salt })
       scores[t].grade = g
-      if (g.graded < cs.length) pending.push(`${t}: ${g.graded}/${cs.length} graded by the Fable editor`)
+      reasons.push(...g.bad)
+      if (g.valid < s.schema && !g.bad.length) pending.push(`${t}: ${g.valid}/${s.n} graded by the tool-less grader`)
+      if (g.mean !== null && g.mean < GRADE_MEAN) reasons.push(`${t}: fact-kept grade mean ${g.mean.toFixed(2)} below ${GRADE_MEAN}`)
+      if (g.min !== null && g.min < GRADE_MIN) reasons.push(`${t}: lowest case grade ${g.min} below ${GRADE_MIN}`)
     }
   }
   if (reasons.length) return { status: 'FAIL', reasons, scores }
+  if (missing.length) return { status: 'NO-REFERENCE', reasons: missing, scores }
   if (pending.length) return { status: 'PENDING-GRADE', reasons: pending, scores }
   return { status: 'PASS', reasons: [], scores }
 }
@@ -142,11 +184,13 @@ function main(argv) {
   if (!tasks.every((t) => TASKS.includes(t))) throw new Error(`unknown task in --tasks ${tasks}`)
   const cv = val('--check-voice')
   if (tasks.includes('copy') && !cv) throw new Error('copy needs --check-voice <path to check-voice.mjs>')
+  const salt = val('--salt-file') ? fs.readFileSync(val('--salt-file'), 'utf8').trim() : undefined
+  if (tasks.includes('builder') && !salt) throw new Error('builder needs --salt-file')
   const voice = tasks.includes('copy') ? defaultVoice(cv) : undefined
   const grades = val('--grades') ? load(val('--grades')) : undefined
   let bad = 0
   for (const [name, file] of arms) {
-    const r = judge(manifest, load(file), haiku, nomodel, { voice, grades, tasks })
+    const r = judge(manifest, load(file), haiku, nomodel, { name, voice, grades, salt, tasks })
     const line = Object.entries(r.scores ?? {}).map(([t, v]) => `${t} ${v.arm.correct}/${v.arm.n} (haiku ${v.haiku.correct}, no-model ${v.nomodel.correct})`).join(', ')
     console.log(`${name}: ${r.status} ${line} ${r.reasons.join('; ')}`)
     if (r.status !== 'PASS') bad++

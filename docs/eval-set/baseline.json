@@ -1,0 +1,91 @@
+{
+  "frozen": "2026-11-14",
+  "manifestSha256": "baff2a3d1573125b37232dced6de448b0421b2920962c96cc60b664a2f993ed0",
+  "note": "Reviewer, builder and copy only. Triage bodies are on the USB m.2 and were not scored. Claude arms were ingested (no timings); copy fact-kept grades are not in.",
+  "arms": [
+    {
+      "name": "haiku",
+      "armSha256": "c635dbc4142a5f94308fd4f0b342a30a4966a1515aa1359b6cc4d21482d2a575",
+      "scores": {
+        "reviewer": {
+          "n": 30,
+          "correct": 28,
+          "schema": 30,
+          "dangerous": 0
+        },
+        "builder": {
+          "n": 10,
+          "correct": 5,
+          "schema": 10,
+          "dangerous": 0
+        },
+        "copy": {
+          "n": 10,
+          "correct": 9,
+          "schema": 10,
+          "dangerous": 0,
+          "drop": 9,
+          "start": 10
+        }
+      }
+    },
+    {
+      "name": "nomodel",
+      "armSha256": "2a6f0fd89cd53d145299461fcba675c0f2e3f29d318d986be61ae51740e7d951",
+      "scores": {
+        "reviewer": {
+          "n": 30,
+          "correct": 15,
+          "schema": 30,
+          "dangerous": 0
+        },
+        "builder": {
+          "n": 10,
+          "correct": 2,
+          "schema": 10,
+          "dangerous": 0
+        },
+        "triage": {
+          "n": 12,
+          "correct": 6,
+          "schema": 12,
+          "dangerous": 0
+        },
+        "copy": {
+          "n": 10,
+          "correct": 0,
+          "schema": 10,
+          "dangerous": 0,
+          "drop": 0,
+          "start": 10
+        }
+      }
+    },
+    {
+      "name": "sonnet",
+      "armSha256": "24cc3dcccee758a6951b3dbaa7e8f43489761161f30c22e575511e846d3e802d",
+      "scores": {
+        "reviewer": {
+          "n": 30,
+          "correct": 29,
+          "schema": 30,
+          "dangerous": 0
+        },
+        "builder": {
+          "n": 10,
+          "correct": 6,
+          "schema": 10,
+          "dangerous": 0
+        },
+        "copy": {
+          "n": 10,
+          "correct": 7,
+          "schema": 10,
+          "dangerous": 0,
+          "drop": 7,
+          "start": 10
+        }
+      }
+    }
+  ]
+}
