@@ -8,7 +8,7 @@ You are a fresh session with no other context. Turn this week's incidents and ow
 - You never push to `main`, merge, tag or deploy. Ship-bot merges. Never change visibility or privacy anywhere.
 
 ## 1. Read (dated this week only)
-- Every `docs/incidents.md`, `docs/INCIDENTS.md` or ledger line dated this week, in each fleet clone under `~/Developer/gorfednet` whose directory name is the repository's (not `wt-*`, `hx-*` or other worktrees). `git fetch -q` the clone, then `git show origin/main:<file>` and grep for this week's dates in both forms (`2026-11-14`, `14 Nov`).
+- Every `docs/incidents.md`, `docs/INCIDENTS.md` or ledger line dated this week, in each fleet clone under `~/Developer/gorfednet` whose directory name is the repository's (not `wt-*`, `hx-*` or other worktrees). `git fetch -q` the clone, then `git show origin/main:<file>` and grep for each of the 7 days to today from `TZ=America/Toronto date`, in both forms (`yyyy-mm-dd` and `d Mon`, for example `2026-11-20` and `20 Nov`).
 - Owner corrections: `git show origin/desk-log:docs/desk/<date>.md` for each of the past 7 days. Take lines where the owner corrected, redirected or said "root cause", and Desk lines that begin "Lesson".
 - Cost: the "Cost per PR, last 7 days" section of `STATUS.md` on the `status` branch (plan row 1.26), its 5 dearest PRs. If the section doesn't exist yet, say so in the digest and skip it. Never build a substitute from transcripts.
 - Open leads: `git show origin/desk-log:briefs/github-replan-and-learnings.md`, section "Leads already seen". Check each lead against the live source before using it, and drop the ones already fixed.
@@ -29,6 +29,6 @@ Give the reviewer the candidate list with each evidence line, not your conclusio
 ## 4. Open and report
 - Open one draft PR titled `Weekly lessons <d Mon yyyy>` and mark it ready. Marking it ready starts the Claude review, so don't also comment `claude review`. Comment it only after a later push that changes code or wording. The body lists each change with its evidence and ends with `## Next`:
   - `- [ ] Merge once the gates are clean.`
-- Gates: `assert-checks-started`, `review-status.mjs` clean or triaged, `check-closing-keywords`, the diff read. When they pass, add `ready-to-merge` yourself. There is no owner approval step, and the owner is never sent to GitHub.
+- Gates: `assert-checks-started`, `review-status.mjs` clean or triaged, `check-closing-keywords`, the diff read. If the diff touches a control-plane path (`touchesControlPlane` in `ship-bot/lib/drafts.mjs`: for example any `CLAUDE.md`, `REVIEW.md`, `SKILL.md` or `scripts/`), labelling also needs a Fable `reviewer` read of the whole diff and a `clean` review, with no findings merely triaged. When they pass, add `ready-to-merge` yourself. There is no owner approval step, and the owner is never sent to GitHub.
 - Add one line to the 07:00 ET digest source (the day's `docs/desk/<date>.md` on `desk-log`): `Weekly lessons: <n> changes, <short list>` or `Weekly lessons: nothing worth a change`. Say anything the owner must act on in the same line, in full.
 - End the session when the PR merges.
