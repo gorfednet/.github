@@ -1,7 +1,7 @@
 # Brief: move the fleet into one GitHub organization (assessment only)
 
 Model: Opus 5.5 (judgement with no reviewer behind it yet; a Fable `reviewer` pass follows). Repo: gorfednet/.github. Plan: infra, priority 1.
-Owner, 14 Nov 2026, 07:33 ET: "part of our plan is to make an org". 07:36 ET: "ensure no privacy/visibility changes throughout these changes- keep my stuff safe and secure".
+Owner, 14 Nov 2026, 07:30 ET: "part of our plan is to make an org". 07:31 ET: "ensure no privacy/visibility changes throughout these changes- keep my stuff safe and secure".
 
 ## Hard rule (the owner's): no privacy or visibility change
 - Every repo keeps its current visibility: 26 private, 3 public (`.github`, and the 2 others in `gh repo list gorfednet --json name,visibility`). Record that list as the baseline in the plan and diff it after every step.
