@@ -172,7 +172,7 @@ export function createGitHubClient({ token, fetchImpl = globalThis.fetch, api = 
       let after = null
       for (let page = 0; page < 20; page += 1) {
         const data = await graphql(
-          `query($owner:String!,$name:String!,$n:Int!,$after:String){repository(owner:$owner,name:$name){pullRequest(number:$n){reviewThreads(first:100,after:$after){pageInfo{hasNextPage endCursor} nodes{isResolved path line comments(first:100){totalCount nodes{author{login} url createdAt}}}}}}}`,
+          `query($owner:String!,$name:String!,$n:Int!,$after:String){repository(owner:$owner,name:$name){pullRequest(number:$n){reviewThreads(first:100,after:$after){pageInfo{hasNextPage endCursor} nodes{isResolved path line comments(first:100){totalCount nodes{author{login} url createdAt body}}}}}}}`,
           { owner, name, n, after },
         )
         const conn = data?.repository?.pullRequest?.reviewThreads
@@ -190,6 +190,7 @@ export function createGitHubClient({ token, fetchImpl = globalThis.fetch, api = 
             line: t.line,
             author: nodes[0]?.author?.login ?? '',
             url: nodes[0]?.url ?? '',
+            body: String(nodes[0]?.body ?? '').slice(0, 200),
             comments: nodes.map((c) => ({ author: c.author?.login ?? '', createdAt: c.createdAt ?? null })),
           })
         }
