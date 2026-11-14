@@ -26,6 +26,14 @@ Give the reviewer the candidate list with each evidence line, not your conclusio
 - At most 5 changes, in one pull request under about 400 added lines. Run the repository's unit suite and lint.
 - If nothing survives the drop rule, open no pull request and say so in the digest.
 
+## Currency (plan row 1.29, read-only, proposals only)
+Run these three checks each week. Download, install and adopt nothing. Anything a lookup can't verify is written "unverified", never guessed.
+- Local models. For each family in `docs/models.json` (and the llama.app version against `/Applications/Llama.app`), look for a new or updated GGUF that fits this Mac's memory: file size plus the 4 GB reserve in `scripts/local-llm/route.mjs` under the free memory. If `models.json` has no rows, list the tasks that have no model instead. A candidate is a proposal only. It must pass the `scripts/local-llm/evalset*.mjs` set (README there) before any routing or `models.json` row. Until plan row 1.27b lands, only a PASS on the builder task counts. Snapshot shas stay pinned, so "latest" means the latest that passes.
+- Claude models. Compare the roster in `docs/claude-home/agents/` (`model:` lines) and the tier table in `docs/claude-home/rules/agents-and-cost.md` with the model list your own session shows. Propose a row change where a newer model replaces one named.
+- Skills and plugins. Run `SearchPlugins` for copy, review, release and CI triage. Check Anthropic's skills for the same. Then diff each `~/.claude/skills/<name>` and `~/.claude/agents/<name>.md` against `docs/claude-home/` on `origin/main`. Report any installed file with no copy on main, or any that differs. Never edit `~/.claude`.
+- Proposals go in the weekly-lessons PR as a "Currency" list, each with its evidence (file and line, or version strings). A model change cites its eval score. A skill or plugin adoption gets its own PR, never this one. A stale item that is a real fix goes in as one of the 5 changes. The rest become `- [ ] Later:` lines in `## Next`.
+- Add one clause to the digest line: `Currency: <n> stale, <n> proposed`.
+
 ## 4. Open and report
 - Open one draft PR titled `Weekly lessons <d Mon yyyy>` and mark it ready. Marking it ready starts the Claude review, so don't also comment `claude review`. Comment it only after a later push that changes code or wording. The body lists each change with its evidence and ends with `## Next`:
   - `- [ ] Merge once the gates are clean.`
