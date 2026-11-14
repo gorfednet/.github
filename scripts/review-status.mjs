@@ -72,7 +72,9 @@ try {
       git(['cat-file', '-e', `${mainTip}^{commit}`])
       merged = onlyCleanMergesOfMain({ git, base, head, main: mainTip })
     } catch (e) {
-      merged.why = `could not read main or fetch it into the clone (${String(e.message).split('\n')[0]})`
+      // Could not read or fetch (a network blip, a git lock): exit 2, so the bot waits and does not cache a not-run for 10 minutes.
+      console.error(`review-status: could not read main or fetch it into the clone: ${String(e.message).split('\n')[0]}`)
+      process.exit(2)
     }
     if (!merged.ok) console.error(`review-status: not accepted as clean merges of main: ${merged.why}`)
     if (merged.ok) {
