@@ -47,8 +47,8 @@ test("janitor reads the whole status file and carries on past an unreadable repo
   assert.doesNotMatch(prompt, /If it exits non-zero, post the unreadable repositories to ntfy and stop/);
 });
 
-test("janitor never prunes the gate or desk worktrees, and prunes only through the script", () => {
-  assert.match(prompt, /Remove `gates-main`, `desk-log` or `janitor-main`/);
+test("janitor never prunes the tools or desk worktrees, and prunes only through the script", () => {
+  assert.match(prompt, /Remove `gates-main`, `tools-main`, `desk-log` or `janitor-main`/);
   assert.match(prompt, /Never remove a worktree any other way/);
   assert.match(prompt, /git worktree remove --force/);
 });

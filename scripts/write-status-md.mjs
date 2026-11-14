@@ -10,6 +10,7 @@
 import { readFileSync, writeFileSync } from 'node:fs'
 
 import { isMain } from '../templates/verification-kit/lib/isMain.mjs'
+import { showInstalled } from './lib/installed-tools.mjs'
 import { renderInventory } from './lib/inventory.mjs'
 import { kitSummary } from './lib/kit-version.mjs'
 
@@ -73,6 +74,7 @@ export function hygiene(status) {
   return [
     { row: 'Dirty clones', count: loc('dirtyClones') },
     { row: 'Clones behind origin', count: loc('behindClones') },
+    { row: 'Installed tools behind main', count: loc('installedTools') },
     { row: 'Branches with no PR', count: hosted(len('branchesAhead'), 'noPrCount') },
     { row: 'Worktrees over 7 days', count: loc('oldWorktrees') },
     { row: 'PRs idle over 3 days', count: hosted(len('idlePrs'), 'idlePrCount') },
@@ -129,12 +131,14 @@ export function render(status) {
     const l = status.local
     const rows = [
       ['Clones behind origin', l.behindClones, (b) => `${b.dir} (${b.branch}, ${b.behind} behind)`],
+      ['Installed tools behind main', l.installedTools ?? null, showInstalled],
       ['Worktrees over 7 days', l.oldWorktrees, (w) => `${w.clone}: ${w.path} (${w.ageDays === null ? 'missing' : `${w.ageDays} d`})`],
       ['Sessions idle over 24 h', l.idleSessions, (x) => `${x.id} (${x.idleHours} h)`],
     ]
     out.push(`## Mac hygiene (measured ${etStamp(l.measuredAt)})`, '')
     for (const [name, list, show] of rows) out.push(`${name}: ${list === null ? 'not measured' : list.length === 0 ? 'none' : list.map(show).map(cell).join('; ')}`, '')
     if (l.unread.length > 0) out.push(`Unreadable clones (their rows are not measured): ${l.unread.join(', ')}`, '')
+    if ((l.installedToolsUnread ?? []).length > 0) out.push(`Installed tools not read (their row is not measured): ${l.installedToolsUnread.join(', ')}`, '')
     if (l.behindFetchFailed.length > 0) out.push(`Fetch failed, so clones behind origin is not measured: ${l.behindFetchFailed.join(', ')}`, '')
   }
   if (status.inventory) out.push(renderInventory(status.inventory, etStamp))

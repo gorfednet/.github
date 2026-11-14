@@ -53,6 +53,13 @@ describe('a ready pull request', () => {
     assert.deepEqual(started.args.slice(1), ['--pr', '7', '--repo', SLUG])
   })
 
+  it('a review-only repo (no expected checks, an ops-shaped head with zero runs) asks assert-checks-started for no minimum', async () => {
+    const s = scenario({ repos: [{ slug: SLUG, dir: 'site', mode: 'merge-only', reason: 'r', live: true, claudeReview: true, expectedChecks: [] }], github: new FakeGitHub({ runs: [] }) })
+    await s.run()
+    const started = s.runner.ofKind('gate').find((c) => c.args[0].endsWith('assert-checks-started.mjs'))
+    assert.deepEqual(started.args.slice(1), ['--pr', '7', '--repo', SLUG, '--min-runs', '0'])
+  })
+
   it('merges at most one PR per repo per run', async () => {
     const gh = new FakeGitHub({ pulls: [makePr({ number: 7 }), makePr({ number: 8, head: { sha: 'd'.repeat(40), repo: { full_name: SLUG } } })] })
     const s = scenario({ github: gh })

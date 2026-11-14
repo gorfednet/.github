@@ -93,6 +93,17 @@ describe('config validation', () => {
     assert.match(problemsFor(base([mergeOnly])), /unknown key "release"/)
   })
 
+  it('refuses an expected check the reviewer workflow produces (the old ops row), and allows an empty list only with claudeReview', () => {
+    const ops = { slug: 'gorfednet/ops', dir: 'ops', mode: 'merge-only', reason: 'r', claudeReview: true, live: false }
+    assert.match(problemsFor(base([{ ...ops, expectedChecks: ['review / review'] }])), /produced by the Claude reviewer workflow/)
+    assert.match(problemsFor(base([{ ...ops, expectedChecks: ['review / trigger', 'check / check'] }])), /review \/ trigger/)
+    assert.deepEqual(validateConfig(base([{ ...ops, expectedChecks: [] }])), [])
+    assert.deepEqual(validateConfig(base([{ ...ops, expectedChecks: ['check / check'] }])), [])
+    assert.match(problemsFor(base([{ ...ops, claudeReview: false, expectedChecks: [] }])), /empty only for a merge-only repo with claudeReview true/)
+    // A deploy repo whose CI silently did not run must not merge on the review verdict alone.
+    assert.match(problemsFor(base([deployRepo({ expectedChecks: [], claudeReview: true })])), /expectedChecks: required and non-empty for mode "deploy"/)
+  })
+
   it('env: names and values are checked, and a GitHub token is refused', () => {
     assert.deepEqual(validateConfig(base([deployRepo({ env: { ASSESS_JOBS: '~/x' } })])), [])
     assert.match(problemsFor(base([deployRepo({ env: { lower: 'x' } })])), /env\.lower: a name is capital letters/)
@@ -170,13 +181,12 @@ describe('config validation', () => {
       assert.equal(r.live, false, slug)
       assert.deepEqual(r.expectedChecks, checks, slug)
     }
-    // ops: one expected check, the review caller's own job, which proves the workflow ran on the head;
-    // the verdict is review-status.mjs. A draft's run is skipped, and evaluateChecks takes only success
-    // for an expected check, so a draft's head can never satisfy it.
-    assert.deepEqual(rows['gorfednet/ops'].expectedChecks, ['review / review'])
+    // ops: no expected check. The review caller's job attaches only when a PR opens, so it would strand a
+    // pushed head; the verdict is review-status.mjs.
+    assert.deepEqual(rows['gorfednet/ops'].expectedChecks, [])
     assert.equal(rows['gorfednet/ops'].claudeReview, true)
     assert.equal(rows['gorfednet/ops'].live, false)
-    assert.match(rows['gorfednet/ops'].note, /not on a push/)
+    assert.match(rows['gorfednet/ops'].note, /only when a pull request opens/)
   })
 
   it('validates coveredChecks like ignoredChecks: an array of non-empty strings, and it is a known repo key', () => {
@@ -251,7 +261,7 @@ describe('config validation', () => {
   })
 
   it('requires expectedChecks for every mode except off', () => {
-    assert.match(problemsFor(base([deployRepo({ expectedChecks: [] })])), /expectedChecks: required and non-empty for mode "deploy"/)
+    assert.match(problemsFor(base([deployRepo({ expectedChecks: [], claudeReview: false })])), /expectedChecks: required and non-empty for mode "deploy"/)
     const mergeOnly = { slug: 'gorfednet/x', dir: 'x', mode: 'merge-only', reason: 'r', claudeReview: false }
     assert.match(problemsFor(base([mergeOnly])), /expectedChecks: required and non-empty for mode "merge-only"/)
     assert.deepEqual(validateConfig(base([{ slug: 'gorfednet/x', dir: 'x', mode: 'off' }])), [])

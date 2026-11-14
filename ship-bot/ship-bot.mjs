@@ -231,6 +231,7 @@ async function onePass(loaded, args, deps, print) {
       token,
       repoNames: args.repos,
       baseEnv: deps.baseEnv,
+      installedSha: gates.installedSha,
       log: (level, text) => {
         if (observe) print(level === 'error' || level === 'warn' ? level : 'info', `OBSERVE ${text}`)
         else if (level !== 'debug' || args.verbose) print(level, text)

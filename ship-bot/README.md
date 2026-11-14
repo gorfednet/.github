@@ -413,11 +413,25 @@ resolves inside the copy. A fix to a bot too broken to merge it is merged by
 the owner on GitHub, then installed the same way. While that copy exists the bot runs it and nothing else, and an
 incomplete copy refuses the pass. The gate commands on PATH (`~/.local/bin/review-status` and its siblings,
 plan row 1.7) are a different copy: symlinks into the detached worktree
-`.claude/worktrees/gates-main` of the .github clone. After the bot merges a
-pull request into `gorfednet/.github` it runs `git fetch origin` and
-`git checkout --detach origin/main` there (`lib/gates-worktree.mjs`). A worktree
-with uncommitted changes to tracked files is left alone, logged as an error and
-sent to the phone. Each wrapper also prints one warning line on stderr when its
+`.claude/worktrees/gates-main` of the .github clone. The Herdr commands, the
+herdr-core templates and the herdr-reconcile agent link into
+`.claude/worktrees/tools-main` of the ops clone. After the bot merges a pull
+request into `gorfednet/.github` or `gorfednet/ops` it runs `git fetch origin`
+and `git checkout --detach origin/main` in that repository's worktree
+(`lib/gates-worktree.mjs`, `TOOL_WORKTREES`). A worktree with uncommitted
+changes to tracked files is left alone, logged as an error and sent to the
+phone. Untracked files stay (Herdr's importer writes generated jobs into
+`tools-main`), except one that main now adds with the same bytes, which is
+cleared so the checkout can run. An untracked file that main adds with
+different bytes stops the advance the same way.
+
+Install rule (13 November 2026): every tool on this Mac installs from one of
+these ship-bot-advanced worktrees, never a working checkout. `install-gates.sh`,
+`capacity/install.sh` and ops' Herdr `install.sh` refuse anything else.
+fleet-status's "Installed tools behind main" row flags a link into a working
+checkout, a worktree behind origin/main, and an installed copy (this bot, the
+capacity app, the gh-poll-guard hook) that differs from main
+(`scripts/lib/installed-tools.mjs`). Each wrapper also prints one warning line on stderr when its
 checkout is not at the last fetched `origin/main`. The fetch also moves
 `origin/main` for the whole .github clone, so a bot run from a checkout with no
 installed gate-scripts copy (the fallback above) would see its clone's HEAD
