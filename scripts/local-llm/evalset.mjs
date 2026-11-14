@@ -35,10 +35,10 @@ const labelOk = (task, l) => (task === 'builder' ? /^files:[0-9a-f]{64}$/.test(l
 
 /**
  * check-voice reads none of: fenced code, HTML comments, inline code spans, link reference definitions, link targets, bare URLs, HTML tags,
- * front matter. An answer that carries any of them can hide text from the check, so it isn't a valid copy answer. (A constructed pass kept the
+ * front matter, and anything inside "double" or curly quotes (stripQuoted blanks it before every rule). An answer that carries any of them can hide text from the check, so it isn't a valid copy answer. (A constructed pass kept the
  * input in backticks beside "It's here." and scored 8 of 8.)
  */
-export const HIDING = [/^\s{0,3}(`{3,}|~{3,})/m, /<!--/, /`/, /^\s{0,3}\[[^\]]+\]:\s*\S/m, /\]\(|\]\[/, /\bhttps?:\/\//i, /<\/?[a-z!]/i, /^---\s*$/m]
+export const HIDING = [/^\s{0,3}(`{3,}|~{3,})/m, /<!--/, /`/, /^\s{0,3}\[[^\]]+\]:\s*\S/m, /\]\(|\]\[/, /\bhttps?:\/\//i, /<\/?[a-z!]/i, /^---\s*$/m, /"[^"\n]*"/, /“[^”]*”/, /‘[^’]*’/]
 export const hidesFromVoice = (text) => HIDING.some((re) => re.test(text))
 
 export const SCORING_VERSION = 3
@@ -207,6 +207,12 @@ export function judge(manifest, arm, haiku, nomodel, { name = 'arm', haikuName =
   if (tasks.includes('triage') && cases.some((c) => c.task === 'triage'))
     for (const [n, a] of [[name, arm], ['haiku', haiku], ...nomodels.map((x, i) => [`no-model ${i + 1}`, x])])
       if (a[cases.find((c) => c.task === 'triage').id] !== undefined && !stamped(a)) unstamped.push(`triage: ${n} arm file has no scoringVersion ${SCORING_VERSION} (cause is set by the runner; regenerate it)`)
+  // A Claude-tier answer is blind only when it came through --ingest with the id map (blind: true); a served model's arm says which model answered. Triage only: builder arms from before this are still used.
+  if (tasks.includes('triage') && cases.some((c) => c.task === 'triage')) {
+    const t0 = cases.find((c) => c.task === 'triage').id
+    if (haiku[t0] !== undefined && haiku.blind !== true) unstamped.push('triage: haiku arm file is not marked blind: true (rerun it through --emit-inputs and --ingest with the id map)')
+    if (arm[t0] !== undefined && arm.blind !== true && !arm._model) unstamped.push(`triage: ${name} arm file is neither blind: true nor a served model run (_model)`)
+  }
   if (unstamped.length) return { status: 'FAIL', reasons: unstamped, scores: null }
   const rej = rejections(cases, arm, nomodels, { salt })
   if (rej.length) return { status: 'FAIL', reasons: rej, scores: null }

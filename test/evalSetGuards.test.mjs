@@ -76,7 +76,8 @@ describe('M1: copy is scored only on text check-voice actually read', () => {
   })
   it('refuses a copy answer that hides text where check-voice does not read: fences, comments, inline code, link targets, reference lines, tags, URLs, front matter', () => {
     const hiding = ['```\nThis is fine.\n```', '~~~md\nx\n~~~', 'Plain. <!-- hidden -->', '  ```js\ncode\n```',
-      "It's here.\n\n`The original paragraph, unchanged.`", 'See [this](http://x.test/a) now.', 'Text.\n\n[ref]: http://x.test hidden words', '<span>Hidden words here.</span>', 'Visit http://x.test/a now.', '---\ntitle: Hidden words\n---\nBody.']
+      "It's here.\n\n`The original paragraph, unchanged.`", 'See [this](http://x.test/a) now.', 'Text.\n\n[ref]: http://x.test hidden words', '<span>Hidden words here.</span>', 'Visit http://x.test/a now.', '---\ntitle: Hidden words\n---\nBody.',
+      'It\'s here. "The original paragraph, unchanged."', 'It\'s here. \u201cThe original paragraph.\u201d', 'It\'s here. \u2018The original paragraph.\u2019']
     for (const text of hiding) {
       assert.equal(hidesFromVoice(text), true, text)
       assert.equal(keyOf('copy', { text }), null, text)
@@ -229,7 +230,7 @@ describe('a run stops, aborts, unloads and frees the lock on SIGINT, and records
 
 describe('M4: the scorer refuses a triage arm file the runner did not stamp', () => {
   const tri = Array.from({ length: 4 }, (_, i) => ({ id: `tri-0${i + 1}`, task: 'triage', label: ['real', 'flake', 'real', 'flake'][i], sha256: 'a'.repeat(64) }))
-  const mkArm = (extra = {}) => ({ ...extra, ...Object.fromEntries(tri.map((c) => [c.id, { verdict: c.label, lines: [1], cause: true, rule: 'error-line' }])) })
+  const mkArm = (extra = {}) => ({ blind: true, ...extra, ...Object.fromEntries(tri.map((c) => [c.id, { verdict: c.label, lines: [1], cause: true, rule: 'error-line' }])) })
   const manifest = { version: 2, cases: tri }
   it('fails an arm, a Haiku or a no-model file with no scoringVersion, and says why', () => {
     const ok = mkArm({ scoringVersion: 3 })
@@ -240,12 +241,29 @@ describe('M4: the scorer refuses a triage arm file the runner did not stamp', ()
     assert.match(judge(manifest, ok, ok, [mkArm()], { tasks: ['triage'] }).reasons.join(), /no-model 1 arm file/)
     assert.equal(stamped({ scoringVersion: 2 }), false)
   })
+  it('refuses a Haiku file that is not blind, and an arm that is neither blind nor a served model run', () => {
+    const ok = mkArm({ scoringVersion: 3 })
+    const nm = mkArm({ scoringVersion: 3 }); for (const c of tri) nm[c.id].verdict = 'real'
+    delete nm.blind
+    const haikuNotBlind = mkArm({ scoringVersion: 3 }); delete haikuNotBlind.blind
+    assert.match(judge(manifest, ok, haikuNotBlind, [nm], { tasks: ['triage'] }).reasons.join(), /haiku arm file is not marked blind/)
+    const armNotBlind = mkArm({ scoringVersion: 3 }); delete armNotBlind.blind
+    assert.match(judge(manifest, armNotBlind, ok, [nm], { tasks: ['triage'] }).reasons.join(), /neither blind/)
+    armNotBlind._model = { id: 'm', sha: 'x' }
+    assert.doesNotMatch(judge(manifest, armNotBlind, ok, [nm], { tasks: ['triage'] }).reasons.join(), /neither blind/)
+  })
+  it('does not ask a builder-only judgement for blind arms (builder arms from before are still used)', () => {
+    const b = Array.from({ length: 4 }, (_, i) => ({ id: `bld-0${i + 1}`, task: 'builder', label: 'x', sha256: 'a'.repeat(64) }))
+    const old = (files) => Object.fromEntries(b.map((c, i) => [c.id, { files: files(i) }]))
+    const r = judge({ version: 2, cases: b }, old((i) => [`a${i}`]), old((i) => [`a${i}`, 'z']), [old(() => ['q'])], { tasks: ['builder'], salt: 's' })
+    assert.doesNotMatch(r.reasons.join(), /blind|scoringVersion/)
+  })
   it('stamps the no-model arm', () => {
     assert.equal(nomodelArm([{ id: 'rev-01', task: 'reviewer', label: 'valid', body: { input: {} } }]).scoringVersion, 3)
   })
   it('takes the cause floor from the best any no-model arm reaches, not from the one with the best verdicts', () => {
     const cs = Array.from({ length: 8 }, (_, i) => ({ id: `tri-0${i + 1}`, task: 'triage', label: i % 2 ? 'flake' : 'real', sha256: 'a'.repeat(64) }))
-    const mk = (f) => ({ scoringVersion: 3, ...Object.fromEntries(cs.map((c, i) => [c.id, { lines: [1], rule: 'error-line', ...f(c, i) }])) })
+    const mk = (f) => ({ scoringVersion: 3, blind: true, ...Object.fromEntries(cs.map((c, i) => [c.id, { lines: [1], rule: 'error-line', ...f(c, i) }])) })
     const a = mk((c, i) => ({ verdict: i < 6 ? c.label : 'infra', cause: false })) // 6 right, no cause hits
     const b = mk(() => ({ verdict: 'real', cause: true })) // 4 right, every cause hit
     const full = mk((c) => ({ verdict: c.label, cause: true }))

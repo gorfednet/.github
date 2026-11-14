@@ -31,7 +31,7 @@ const answer = (c, right, timed) => {
   if (c.task === 'triage') return { verdict: right ? c.label : wrong[c.label], lines: [1], cause: right, ...t }
   return { verdict: right ? c.label : wrong[c.label], ...t }
 }
-const arm = (right = () => true, timed = false) => ({ scoringVersion: 3, ...Object.fromEntries(cases.map((c, i) => [c.id, answer(c, right(c, i), timed)])) })
+const arm = (right = () => true, timed = false) => ({ scoringVersion: 3, blind: true, ...Object.fromEntries(cases.map((c, i) => [c.id, answer(c, right(c, i), timed)])) })
 const haiku = arm((c, i) => i % 5 !== 0)
 // a floor that knows a little: right on the first 2 of each task
 const nomodel = (() => { const seen = {}; return arm((c) => { seen[c.task] = (seen[c.task] || 0) + 1; return seen[c.task] <= 2 }) })()
