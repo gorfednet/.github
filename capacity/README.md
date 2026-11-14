@@ -14,6 +14,6 @@ Pool queue: set `CAPACITY_QUEUE_CMD` to a command that prints one number (one ca
 
 ntfy topic `ops-report` (token from `~/.ship-bot/ntfy.token`) gets "headroom for N, M queued" or "overloaded, hold" only when the state changes. A change into `steady` pushes nothing.
 
-Install: `capacity/install.sh` (runs the tests first). Remove: `capacity/install.sh --uninstall`. Tests: `capacity/check.sh`.
+Install: `capacity/install.sh` (runs the tests first), from the gates-main worktree only. The script refuses any other checkout, because a copy installed from a working checkout drifts behind main (13 November 2026: 3 commits behind). fleet-status's "Installed tools behind main" row reports a stale copy. Remove: `capacity/install.sh --uninstall`. Tests: `capacity/check.sh`.
 
 Failure handling: if a run throws, it writes `state: "unknown"` with an `error` and exits 1. If the session store is missing or empty, `working` is `null` and the state is at most `steady`. Desk treats a missing file, `unknown`, or `at` older than 30 minutes as unknown. A push is retried each run until it succeeds (`lastPushedState`). The installed plist sets no `CAPACITY_QUEUE_CMD`; add it to the plist's EnvironmentVariables by hand and note that re-running `install.sh` overwrites it. This job is a standing automation; the owner asked for the scheduled check on 13 November 2026.

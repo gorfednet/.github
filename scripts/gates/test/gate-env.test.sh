@@ -36,7 +36,7 @@ pass() { echo "ok   - $1"; }
 fail() { echo "FAIL - $1"; echo "       $2"; failures=$((failures + 1)); }
 
 # Install the wrappers into a temp bin dir through the real install script.
-if ! bash "$root/scripts/install-gates.sh" "$linkbin" >"$work/install.log" 2>&1; then
+if ! INSTALL_GATES_ANY_CHECKOUT=1 bash "$root/scripts/install-gates.sh" "$linkbin" >"$work/install.log" 2>&1; then
   fail "install-gates.sh runs" "$(cat "$work/install.log")"
   echo "1 failure(s)"; exit 1
 fi
@@ -164,6 +164,27 @@ done
 git -C "$stale_co" checkout -q --detach origin/main
 out=$(stale_run review-status)
 if ! grep -q "warning" "$work/stale-stderr"; then pass "advanced checkout: warning gone"; else fail "advanced checkout: warning gone" "$(cat "$work/stale-stderr")"; fi
+
+# install-gates.sh installs only from a gates-main worktree detached at origin/main with no tracked edits.
+if bash "$root/scripts/install-gates.sh" "$work/guard-bin" >"$work/guard.log" 2>&1; then fail "install-gates refuses a working checkout" "$(cat "$work/guard.log")"
+elif grep -q "install from <.github clone>/.claude/worktrees/gates-main" "$work/guard.log"; then pass "install-gates refuses a working checkout"
+else fail "install-gates refuses a working checkout" "$(cat "$work/guard.log")"; fi
+g() { git -c user.email=a@b.c -c user.name=t "$@"; }
+gw="$work/guard"
+mkdir -p "$gw"
+g init -q --bare -b main "$gw/origin.git"
+g clone -q "$gw/origin.git" "$gw/clone" 2>/dev/null
+mkdir -p "$gw/clone/scripts/gates"
+cp "$root/scripts/install-gates.sh" "$gw/clone/scripts/"
+cp -R "$root/scripts/gates/bin" "$gw/clone/scripts/gates/"
+(cd "$gw/clone" && g checkout -q -b main && g add -A && g commit -q -m copy && g push -q origin main && g worktree add -q --detach .claude/worktrees/gates-main origin/main)
+wt="$gw/clone/.claude/worktrees/gates-main"
+if bash "$wt/scripts/install-gates.sh" "$work/guard-bin" >"$work/guard.log" 2>&1; then pass "install-gates installs from a clean gates-main at origin/main"
+else fail "install-gates installs from a clean gates-main at origin/main" "$(cat "$work/guard.log")"; fi
+echo "# edited" >> "$wt/scripts/gates/bin/review-status"
+if bash "$wt/scripts/install-gates.sh" "$work/guard-bin" >"$work/guard.log" 2>&1; then fail "install-gates refuses a gates-main with tracked edits" "installed"
+elif grep -q "changed tracked files" "$work/guard.log"; then pass "install-gates refuses a gates-main with tracked edits"
+else fail "install-gates refuses a gates-main with tracked edits" "$(cat "$work/guard.log")"; fi
 
 if [ "$failures" -eq 0 ]; then echo "all gate-env checks passed"; exit 0; fi
 echo "$failures failure(s)"; exit 1
