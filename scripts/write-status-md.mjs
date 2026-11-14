@@ -10,6 +10,7 @@
 import { readFileSync, writeFileSync } from 'node:fs'
 
 import { isMain } from '../templates/verification-kit/lib/isMain.mjs'
+import { renderInventory } from './lib/inventory.mjs'
 import { kitSummary } from './lib/kit-version.mjs'
 
 /** The canonical kit version: this repository's own manifest, which is what a refresh pulls. */
@@ -136,6 +137,7 @@ export function render(status) {
     if (l.unread.length > 0) out.push(`Unreadable clones (their rows are not measured): ${l.unread.join(', ')}`, '')
     if (l.behindFetchFailed.length > 0) out.push(`Fetch failed, so clones behind origin is not measured: ${l.behindFetchFailed.join(', ')}`, '')
   }
+  if (status.inventory) out.push(renderInventory(status.inventory, etStamp))
   if (status.dirtyLocal) {
     out.push('## Local clones with unsaved work', '')
     if (status.dirtyLocal.length === 0) out.push('None.', '')

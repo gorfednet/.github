@@ -133,6 +133,10 @@ describe('gate helpers', () => {
     const notRun = '#5  not-run  no Claude review of abcdef123\n  Comment "claude review" on the pull request and wait for its verdict comment.\n'
     assert.equal(parseReviewStatus({ code: 0, stdout: clean }, 5).state, 'clean')
     assert.equal(parseReviewStatus({ code: 1, stdout: findings }, 5).state, 'findings')
+    // Past the round cap a Low-only round prints clean, triage by reply: the bot must still read findings.
+    const triage = '#5  clean  Claude reviewed abcdef123 (round 5 of 4): 2 Low finding(s), triage by reply\n'
+    assert.equal(parseReviewStatus({ code: 0, stdout: triage }, 5).state, 'findings', 'triage-only is findings to the bot')
+    assert.equal(parseReviewStatus({ code: 1, stdout: triage }, 5).state, 'undetermined', 'triage that exited 1')
     assert.equal(parseReviewStatus({ code: 1, stdout: notRun }, 5).state, 'not-run')
     assert.equal(parseReviewStatus({ code: 0, stdout: clean.replace('#5', '#6') }, 5).state, 'undetermined', 'another PR')
     assert.equal(parseReviewStatus({ code: 1, stdout: clean }, 5).state, 'undetermined', 'exit disagrees')
@@ -173,7 +177,7 @@ describe('branch protection plan', () => {
     const plan = protectionPlan(normalizeConfig(raw, { home: tmpdir() }))
     const slugs = plan.map((p) => p.slug)
     assert.ok(!slugs.includes('gorfednet/TowIt') && !slugs.includes('gorfednet/wychwood'))
-    assert.equal(slugs.length, 19)
+    assert.equal(slugs.length, 20)
     assert.deepEqual(plan.find((p) => p.slug === 'gorfednet/ops').body.required_status_checks, { strict: false, contexts: ['review / review'] })
     const moon = plan.find((p) => p.slug === 'gorfednet/MoonMan').body
     assert.deepEqual(moon, {

@@ -65,7 +65,7 @@ jobs:
              && git show origin/status:status.json > "${RUNNER_TEMP}/prior.json"; then
             carry=(--carry-branches "${RUNNER_TEMP}/prior.json")
           fi
-          node scripts/fleet-status.mjs --out status.json "${carry[@]}"
+          node scripts/fleet-status.mjs --inventory --out status.json "${carry[@]}"
           echo "code=$?" >> "$GITHUB_OUTPUT"
           test -s status.json
 
