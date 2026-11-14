@@ -32,4 +32,4 @@ Not covered: `~/.claude/hooks/always-pr-remind.py`, `context-handoff-nudge.py` a
 
 ## Lesson for plan row 1.18 (done-when)
 
-An install validates the live config with the new code before it replaces the running copy, and refuses with the patch to apply. The 20:16 ET outage on 13 November 2026 came from swapping first.
+An install validates the live config with the new code before it replaces the running copy. On refusal it leaves the running app and LaunchAgent untouched and names no patch, because a patch for a stricter validator can be refused by the running one. The 20:16 ET outage on 13 November 2026 came from swapping first.
