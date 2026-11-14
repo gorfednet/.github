@@ -3,7 +3,8 @@
   "tiers": [
     { "rank": 1, "name": "Infrastructure and automation", "repos": [
       { "slug": "gorfednet/.github", "dir": "gorfednet.github" },
-      { "slug": "gorfednet/ops", "dir": "ops", "backlog": "docs/operating-backlog.json" }
+      { "slug": "gorfednet/ops", "dir": "ops", "backlog": "docs/operating-backlog.json" },
+      { "slug": "gorfednet/scratch-bootstrap-5-6", "dir": "scratch-bootstrap-5-6" }
     ] },
     { "rank": 2, "name": "4thcltr.com and its subdomains", "repos": [
       { "slug": "gorfednet/4thcltr.com", "dir": "4thcltr.com" },
