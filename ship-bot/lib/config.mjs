@@ -206,8 +206,8 @@ function validateRepo(repo, i, problems, seen) {
   // A repo the bot can merge in must say exactly which checks prove a pull
   // request is good. Without the list, a workflow that silently did not run
   // leaves nothing to fail, and "every check passed" is true of zero checks.
-  // Empty only for a repo whose single gate is the Claude review (ops): review-status.mjs and
-  // assert-checks-started still stand behind it, and any check that does appear must pass.
+  // Empty only for a repo whose single gate is the Claude review (ops): review-status.mjs is the gate
+  // (assert-checks-started runs with --min-runs 0 there), and any check that does appear must pass.
   if (!isStringArray(repo.expectedChecks) || (repo.expectedChecks.length === 0 && repo.claudeReview !== true)) {
     problems.push(`${label}.expectedChecks: required and non-empty for mode "${repo.mode}" (empty only with claudeReview true)`)
   }
