@@ -55,6 +55,16 @@ describe('resolve_node', () => {
     assert.equal(r.stdout.trim(), link)
   })
 
+  it('NODE_BIN refuses a binary whose version output is not a number', () => {
+    const home = mac()
+    const odd = join(home, 'odd-node')
+    writeFileSync(odd, '#!/bin/sh\necho "$@"\n')
+    chmodSync(odd, 0o755)
+    const r = resolve(home, { NODE_BIN: odd })
+    assert.notEqual(r.status, 0)
+    assert.equal(r.stdout, '')
+  })
+
   it('skips a candidate below the version floor', () => {
     const home = mac()
     const old = join(home, 'usr', 'bin', 'node')

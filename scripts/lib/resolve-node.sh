@@ -36,7 +36,7 @@ resolve_node() {
       return 1
     fi
     major="$("${real}" -p 'process.versions.node.split(".")[0]' 2>/dev/null || echo 0)"
-    if [[ "${major}" -lt "${NODE_MIN_MAJOR}" ]]; then
+    if ! [[ "${major}" =~ ^[0-9]+$ && "${major}" -ge "${NODE_MIN_MAJOR}" ]]; then
       echo "resolve-node: needs Node ${NODE_MIN_MAJOR} or newer; NODE_BIN=${override} is $("${real}" --version 2>/dev/null || echo unknown)." >&2
       return 1
     fi
