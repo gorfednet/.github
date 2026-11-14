@@ -541,6 +541,18 @@
       "reviewBy": "2026-11-28",
       "created": "2026-11-14",
       "updated": "2026-11-14"
+    },
+    {
+      "id": "eval-triage-dangerous-must-be-zero",
+      "title": "Eval judge lets a candidate match Haiku's dangerous triage misses instead of requiring none",
+      "status": "confirmed-bug",
+      "assignee": "main-model",
+      "userSymptom": "A local model could call a real CI failure a flake and still pass the triage eval, so a retry loop could burn runner time on a real defect.",
+      "evidence": "Frozen Haiku triage has dangerous=1 (tri-03, a real failure called flake) in docs/eval-set/baseline.json. The judge only fails an arm whose dangerous count is above Haiku's (scripts/local-llm/evalset.mjs, 'dangerous misses ... above haiku'), so a candidate may miss 1 of 5 real failures. Found in the Fable read of .github 202 and ops 100 on 14 November 2026.",
+      "note": "Triage dangerous must be 0 regardless of the reference, before triage counts for routing. Deferred: not changed in the refreeze pair (.github 202, ops 100). A guard needs a watched failure (verification-floor rule 4).",
+      "reviewBy": "2026-11-28",
+      "created": "2026-11-14",
+      "updated": "2026-11-14"
     }
   ]
 }
