@@ -280,6 +280,7 @@ _SECRETS = re.compile(
             r"--(?:with-token|body|field|raw-field)[ \t=]+(?:<<<[ \t]*)?" + _VALUE,
             r"-[bfF][ \t]+" + _VALUE,
             r"<<<[ \t]*" + _VALUE,
+            r"<<-?[ \t]*['\"]?\w+['\"]?[^\n]*\n[\s\S]*",
             r"\b(?:echo|printf)\b[^|\n]*(?=\|[ \t]*gh[ \t]+(?:secret|variable|auth)\b)",
             r"(?i:authorization:?)[ \t]*(?i:bearer|token|basic)?[ \t]*[\w.+/=-]+",
         ]

@@ -22,6 +22,7 @@ const SECRETS = new RegExp(
     String.raw`--(?:with-token|body|field|raw-field)[ \t=]+(?:<<<[ \t]*)?${VALUE}`,
     String.raw`-[bfF][ \t]+${VALUE}`,
     String.raw`<<<[ \t]*${VALUE}`,
+    String.raw`<<-?[ \t]*['"]?\w+['"]?[^\n]*\n[\s\S]*`,
     String.raw`\b(?:echo|printf)\b[^|\n]*(?=\|[ \t]*gh[ \t]+(?:secret|variable|auth)\b)`,
     String.raw`authorization:?[ \t]*(?:bearer|token|basic)?[ \t]*[\w.+/=-]+`,
   ].join('|'),
