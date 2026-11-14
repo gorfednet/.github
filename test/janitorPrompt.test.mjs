@@ -205,6 +205,17 @@ test("a session with no worktree is archived without it, and what needs one is p
   assert.match(prompt, /with no `--worktree` argument/);
 });
 
+test("a dirty session with no branch (detached HEAD) still reaches the rescue", () => {
+  const rescue = prompt.match(/\n   6\. Rescue,[^\n]*/)[0];
+  assert.match(rescue, /run `test -s` on it/, "the rescue checks the worktree file");
+  assert.doesNotMatch(rescue, /branch-<id8>\.txt/, "the rescue never needs the branch file, which a detached HEAD lacks");
+  assert.match(rescue, /detached HEAD has no branch/);
+  const dirty = prompt.match(/- `dirty`:[^\n]*/)[0];
+  assert.match(dirty, /if it has a `branch`, first make the `gh pr list` call[^\n]*Otherwise rescue it/, "a branchless one skips the PR call and goes to the rescue");
+  const call = prompt.match(/1\. Read the pull request into a file[^\n]*/)[0];
+  assert.match(call, /after `test -s \$R\/branch-<id8>\.txt`/, "the branch file is checked where it is used");
+});
+
 test("the quoted file form runs nothing a hostile title or branch holds", () => {
   const dir = mkdtempSync(join(tmpdir(), "janitor-title-"));
   const pwn = join(dir, "pwn");
