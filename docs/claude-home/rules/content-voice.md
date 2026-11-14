@@ -11,4 +11,4 @@ Applies to every word a visitor reads on any site Michael publishes, and the rep
 - **Spelling.** Canadian Press: behaviour, centre, colour, with -ize (organize, optimize).
 - **AI use tag (owner, 11 November 2026).** On heuristics.4thcltr.com and papers.4thcltr.com, every new or edited page carries an AI Use Levels tag (spec 1.2, gorfednet/ai-use-levels) stating how that change was made, set in the same pull request. Each repo's CI fails a page with no tag, or with changed content and an untouched tag. The contract is in each repo's CLAUDE.md and REVIEW.md.
 - `check-voice` lints the banned phrases; the editor catches the rest.
-- **`/copy` runs the workflow (14 November 2026).** Any copy change on any site goes through the `copy` skill: guideline and speaker row, draft or edit, `check-voice`, editor pass, AI Use tag where it applies. Read the guideline from `gorfednet.github`, not a vendored copy, which can trail the kit.
+- **`/copy` runs the workflow (14 November 2026).** Any copy change goes through the `copy` skill. It reads the guideline from `gorfednet.github` `origin/main`, not a vendored copy, which can trail the kit.
