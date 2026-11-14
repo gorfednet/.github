@@ -480,6 +480,10 @@ function unblock(config, name, deps) {
   // holds the lock: it leaves a request file, which the next pass applies right after loading state.
   const lock = acquireLock(lockPath(config.stateDir))
   if (!lock.ok) {
+    if (!JSON.parse(existsSync(join(config.stateDir, 'state.json')) ? readFileSync(join(config.stateDir, 'state.json'), 'utf8') : '{}').repos?.[repo.slug]?.blocked) {
+      deps.out(`${repo.slug} is not blocked.`)
+      return 0
+    }
     mkdirSync(unblockDir(config.stateDir), { recursive: true })
     writeFileSync(join(unblockDir(config.stateDir), `${repo.slug.replace('/', '__')}.json`), JSON.stringify({ slug: repo.slug, at: deps.clock.now().toISOString() }))
     deps.out(`a pass is running (${lock.holder}); the unblock of ${repo.slug} is queued and the next pass applies it`)
@@ -516,9 +520,15 @@ function applyUnblockRequests(config, state, print) {
       continue
     }
     const rs = state.data.repos[slug]
-    if (rs?.blocked) {
+    // Only a block that already stood when the request was written: a block made since (a merge that timed
+    // out in the very pass that held the lock) is a new fact nobody has looked at.
+    let requestedAt
+    try { requestedAt = JSON.parse(readFileSync(join(dir, file), 'utf8')).at } catch { requestedAt = undefined }
+    if (rs?.blocked && requestedAt && String(rs.blocked.at) <= String(requestedAt)) {
       print('info', `${slug}: unblocked on request (was: ${rs.blocked.reason})`)
       delete rs.blocked
+    } else if (rs?.blocked) {
+      print('warn', `${slug}: an unblock request from ${requestedAt} is older than the block set at ${rs.blocked.at}; dropped, the block stays`)
     }
     rmSync(join(dir, file), { force: true })
   }

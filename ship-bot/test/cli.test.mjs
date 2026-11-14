@@ -145,7 +145,7 @@ describe('command line', () => {
     const h = harness({ lock: { pid: process.pid, startedAt: 'now' } })
     const statePath = join(h.config.stateDir, 'state.json')
     const store = new StateStore(statePath)
-    store.repo('gorfednet/site').blocked = { reason: 'deploy failed', at: 'x' }
+    store.repo('gorfednet/site').blocked = { reason: 'deploy failed', at: '2026-10-09T11:00:00.000Z' }
     store.save()
     const before = readFileSync(statePath, 'utf8')
     assert.equal(await main(['--unblock', 'site'], h.deps), 0)
@@ -155,6 +155,26 @@ describe('command line', () => {
     assert.equal(await main(['--live', '--once'], h.deps), 0, h.out.join('\n'))
     assert.equal(JSON.parse(readFileSync(statePath, 'utf8')).repos['gorfednet/site'].blocked, undefined)
     assert.deepEqual(readdirSync(join(h.config.stateDir, 'unblock')), [])
+  })
+
+  it('a queued unblock never lifts a block set after it was written, and an unblocked repo is not queued', async () => {
+    const h = harness({ lock: { pid: process.pid, startedAt: 'now' } })
+    const statePath = join(h.config.stateDir, 'state.json')
+    new StateStore(statePath).save()
+    assert.equal(await main(['--unblock', 'site'], h.deps), 0)
+    assert.match(h.out.join('\n'), /is not blocked/)
+    assert.equal(existsSync(join(h.config.stateDir, 'unblock')), false)
+    const store = new StateStore(statePath)
+    store.repo('gorfednet/site').blocked = { reason: 'old', at: '2026-10-09T11:00:00.000Z' }
+    store.save()
+    assert.equal(await main(['--unblock', 'site'], h.deps), 0)
+    assert.match(h.out.join('\n'), /queued/)
+    const newer = new StateStore(statePath).load()
+    newer.repo('gorfednet/site').blocked = { reason: 'new: merge outcome unknown', at: '2026-10-09T13:00:00.000Z' }
+    newer.save()
+    rmSync(join(h.config.stateDir, 'run.lock'))
+    await main(['--live', '--once'], h.deps)
+    assert.equal(JSON.parse(readFileSync(statePath, 'utf8')).repos['gorfednet/site'].blocked.reason, 'new: merge outcome unknown')
   })
 
   it('--rotate-log rotates a log past 5 MB before the pass', async () => {
