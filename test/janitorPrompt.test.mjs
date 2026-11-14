@@ -47,8 +47,8 @@ test("janitor reads the whole status file and carries on past an unreadable repo
   assert.doesNotMatch(prompt, /If it exits non-zero, post the unreadable repositories to ntfy and stop/);
 });
 
-test("janitor never prunes the gate or desk worktrees, and prunes only through the script", () => {
-  assert.match(prompt, /Remove `gates-main`, `desk-log` or `janitor-main`/);
+test("janitor never prunes the tools or desk worktrees, and prunes only through the script", () => {
+  assert.match(prompt, /Remove `gates-main`, `tools-main`, `desk-log` or `janitor-main`/);
   assert.match(prompt, /Never remove a worktree any other way/);
   assert.match(prompt, /git worktree remove --force/);
 });
@@ -76,4 +76,19 @@ test("janitor never rescues a session whose branch has an open pull request, and
 
 test("janitor never archives a session whose folder holds ignored local state", () => {
   assert.match(prompt, /`ignored` list[^\n]*Propose only/);
+});
+
+test("janitor pings its dead-man check last, after the digest", () => {
+  assert.match(prompt, /\n9\. Last of all, ping the dead-man check: `node \$J\/scripts\/heartbeat\.mjs janitor`/);
+  assert.ok(prompt.indexOf("\n8. Report, last") < prompt.indexOf("\n9. Last of all"));
+});
+
+test("janitor step 3b builds housekeeping trains through the script and never labels or merges them", () => {
+  const step = prompt.match(/\n3b\. Housekeeping trains\.[\s\S]*?(?=\n4\. Sessions\.)/);
+  assert.ok(step, "step 3b exists between 3 and 4");
+  assert.match(step[0], /janitor-train\.mjs/);
+  assert.match(step[0], /adding `--apply` in a live run only/);
+  assert.match(step[0], /Any other kind stays out/);
+  assert.match(step[0], /never labels or merges/);
+  assert.match(step[0], /check-closing-keywords/);
 });

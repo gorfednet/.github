@@ -85,7 +85,7 @@ const TERMS = `${TERM}(?:(?:\\s*,\\s*${TERM})*\\s*,?\\s+and\\s+${TERM})?`
 const DATE = '\\d{4}-\\d{2}-\\d{2}'
 export const RETIREMENT_LINE = {
   pattern: new RegExp(
-    `\\b${TERMS}\\s+(?:(?:was|were|is|are|has been|have been)\\s+)?retired(?:\\s+on)?\\s+${DATE}` +
+    `(?<![\\w.])${TERMS}\\s+(?:(?:was|were|is|are|has been|have been)\\s+)?retired(?:\\s+on)?\\s+${DATE}` +
       `|\\bretired\\s+(?:the\\s+)?${TERMS}\\s+(?:on\\s+)?${DATE}`,
     'gi',
   ),

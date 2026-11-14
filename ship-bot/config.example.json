@@ -877,10 +877,19 @@
       "reason": "host configuration and installers; applying them on dapyllil stays a session's job (owner, 11 November 2026: merge-only, gated on the Claude review check)",
       "claudeReview": true,
       "live": false,
+      "expectedChecks": [],
+      "note": "ops has no test CI. Its one workflow is the Claude review caller, whose review / review check attaches only when a pull request opens, so it is not an expected check (a push after ready left ops 62, 74, 76 and 77 waiting on it). The verdict comes from review-status.mjs (claudeReview); a check that does appear must still pass."
+    },
+    {
+      "slug": "gorfednet/scratch-bootstrap-5-6",
+      "dir": "scratch-bootstrap-5-6",
+      "mode": "merge-only",
+      "reason": "a new repository: deploy steps come in a later patch, once it has something to deploy",
+      "claudeReview": true,
+      "live": false,
       "expectedChecks": [
-        "review / review"
-      ],
-      "note": "ops has no test CI. Its one workflow is the Claude review caller, which posts review / review on the head when a pull request opens or leaves draft, not on a push (a `claude review` comment reruns the review but posts no check on the head, so a head pushed after ready needs draft and ready again). The check proves the workflow ran on this head; the verdict still comes from review-status.mjs (claudeReview). Switched on for ops#63 on 11 November 2026; #59 merged as a draft with no check, so --validate reports review / review on 2 of 3 until it ages out."
+        "check / check"
+      ]
     }
   ]
 }

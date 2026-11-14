@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { errorRecord, classify, parseVmStat, countWorking, run, message } from '../capacity.mjs'
+import { errorRecord, classify, parseVmStat, countWorking, run, message, afterRun, loadHelpers } from '../capacity.mjs'
 
 const base = { cores: 10, freeGb: 8, working: 2, load1: 3 }
 
@@ -142,4 +142,65 @@ test('after a failed run, recovery into an already-announced state does not push
   h.deps.readPrevious = () => err
   await run(h.deps)
   assert.deepEqual(h.pushes, [])
+})
+
+// Plan row 1.13: the heartbeat ping and the 70%/90% weekly-usage pushes ride on each run.
+const homeWith = (pct) => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'cap-home-'))
+  fs.mkdirSync(path.join(home, '.herdr-jobs'))
+  fs.writeFileSync(path.join(home, '.herdr-jobs', 'state.json'), JSON.stringify({ usage: { pct } }))
+  return home
+}
+const fakeHelpers = async (calls) => {
+  const real = await loadHelpers()
+  return {
+    usage: real.usage,
+    heartbeat: {
+      ping: async (name, o) => (calls.push(['ping', name, o?.ok ?? true]), { sent: true }),
+      pushOffbox: async (text) => (calls.push(['offbox', text]), { sent: true }),
+    },
+  }
+}
+
+test('afterRun: planted 90% usage pushes once on both paths, records it, then pings capacity', async () => {
+  const home = homeWith(90)
+  const calls = []
+  const helpers = await fakeHelpers(calls)
+  const ops = []
+  const r = await afterRun({ helpers, home, pushOps: async (t) => { ops.push(t) } })
+  assert.equal(r.usage.action, 'pushed')
+  assert.deepEqual(ops, ['weekly usage at 90% (passed 90%)'])
+  assert.deepEqual(calls.map((c) => c[0]), ['offbox', 'ping'])
+  assert.deepEqual(calls[1], ['ping', 'capacity', true])
+  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(home, '.desk', 'usage-alerts.json'), 'utf8')).fired, [70, 90])
+  const again = await afterRun({ helpers, home, pushOps: async (t) => { ops.push(t) } })
+  assert.equal(again.usage.action, 'none')
+  assert.equal(ops.length, 1, 'no second push for the same week')
+})
+
+test('afterRun: under 70% pushes nothing and still pings', async () => {
+  const calls = []
+  const r = await afterRun({ helpers: await fakeHelpers(calls), home: homeWith(27), pushOps: async () => assert.fail('no push under 70%') })
+  assert.equal(r.usage.action, 'none')
+  assert.deepEqual(calls.map((c) => c[0]), ['ping'])
+})
+
+test('loadHelpers: the installed lib/ copy first, the repository path otherwise, null when neither', async () => {
+  const seen = []
+  const importer = async (p) => (seen.push(p), {})
+  const repo = await loadHelpers(path.join(import.meta.dirname, '..'), importer)
+  assert.ok(repo.heartbeat && repo.usage)
+  assert.ok(seen.some((p) => p.endsWith(path.join('ship-bot', 'lib', 'heartbeat.mjs'))), seen.join(' '))
+  const app = fs.mkdtempSync(path.join(os.tmpdir(), 'cap-app-'))
+  fs.mkdirSync(path.join(app, 'lib'))
+  fs.writeFileSync(path.join(app, 'lib', 'heartbeat.mjs'), '')
+  seen.length = 0
+  const installed = await loadHelpers(app, importer)
+  assert.ok(installed.heartbeat)
+  assert.equal(installed.usage, null, 'a missing helper is null, never a throw')
+  assert.deepEqual(seen, [path.join(app, 'lib', 'heartbeat.mjs')])
+  const logs = []
+  const r = await afterRun({ helpers: installed.usage ? installed : { heartbeat: null, usage: null }, home: homeWith(95), pushOps: async () => {}, log: (l) => logs.push(l) })
+  assert.deepEqual(r, { usage: null, ping: null })
+  assert.equal(logs.length, 2)
 })

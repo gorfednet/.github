@@ -206,6 +206,15 @@
       "owner": "gorf",
       "verifiedAt": "2026-10-26",
       "note": "4th Culture's public documents: frameworks (AI Use Levels first, vendored by tag from the public gorfednet/ai-use-levels), public versions of proposals and papers, each at a versioned address with a PDF and a machine-readable spec.json. Cloned from heuristics.4thcltr.com: the same node build, no client JavaScript but the Plausible init and the wordmark. Tier 2: the shared gate asserts an executed floor of 96 over the Vitest report and the verify step 49 over the Playwright smoke (320, 375 and 1440). Vhost live in ops since 2026-10-25; first deploy pending the site copy."
+    },
+    {
+      "slug": "gorfednet/scratch-bootstrap-5-6",
+      "archetype": "static-no-npm",
+      "tier": 1,
+      "monitorClass": "tool",
+      "owner": "gorf",
+      "verifiedAt": "2026-11-13",
+      "note": "Scratch repository for plan row 5.6, which proves one bootstrap run registers a repository everywhere. Registered by scripts/register-repo.mjs on 2026-11-13."
     }
   ]
 }

@@ -10,7 +10,7 @@ import { join } from 'node:path'
 import { describe, it } from 'node:test'
 
 import { behindClones, collectLocal, dirtyClones, duplicatePrs, idlePrs, idleSessions, oldWorktrees } from '../scripts/lib/hygiene.mjs'
-import { aheadCounts, ciState, collectRepo, dependabotRed, isPrivateRepo, latestDeploy, nextItem, recentLines, redactRepo, repoList, dormantRepos } from '../scripts/fleet-status.mjs'
+import { aheadCounts, carryMap, ciState, collectRepo, mapLimit, dependabotRed, isPrivateRepo, latestDeploy, nextItem, recentLines, redactRepo, repoList, dormantRepos } from '../scripts/fleet-status.mjs'
 import { workflowTriggers } from '../scripts/lib/workflowTriggers.mjs'
 import { digest, etStamp, hygiene, lowerMeridiem, render, summaryLine } from '../scripts/write-status-md.mjs'
 
@@ -248,10 +248,11 @@ describe('STATUS.md', () => {
 
 describe('fleet-status.yml', () => {
   const text = readFileSync(new URL('../.github/workflows/fleet-status.yml', import.meta.url), 'utf8')
-  it('runs daily at 06:30 UTC and on demand, never on a pull request', () => {
+  it('runs every 2 hours at :30 and on demand, never on a pull request', () => {
     const triggers = workflowTriggers(text)
     assert.deepEqual(triggers.events, ['schedule', 'workflow_dispatch'])
-    assert.match(text, /cron: '30 6 \* \* \*'/)
+    assert.match(text, /cron: '30 \*\/2 \* \* \*'/)
+    assert.match(text, /--carry-branches/, 'the 2-hourly run is light')
   })
   it('uses the read token, force-with-lease and the ops-report topic', () => {
     assert.match(text, /secrets\.FLEET_READ_TOKEN/)
@@ -263,7 +264,8 @@ describe('fleet-status.yml', () => {
     const names = steps.map((s) => s.split('\n')[0])
     assert.ok(steps.length >= 7, names.join(', '))
     // checkout, setup-node, the token check and the read itself run only when everything before them passed.
-    for (const step of steps.slice(4)) assert.match(step, /if: \$\{\{ !cancelled\(\) \}\}/, step.split('\n')[0])
+    // The ntfy digest adds one condition: it goes out only on the run that did the full read.
+    for (const step of steps.slice(4)) assert.match(step, /if: \$\{\{ !cancelled\(\)( && steps\.read\.outputs\.digest != 'no')? \}\}/, step.split('\n')[0])
   })
 })
 
@@ -274,7 +276,7 @@ describe('hygiene rows', () => {
     delete hosted.local
     delete hosted.dirtyLocal
     const rows = Object.fromEntries(hygiene(hosted).map((h) => [h.row, h.count]))
-    for (const row of ['Dirty clones', 'Clones behind origin', 'Worktrees over 7 days', 'Sessions idle over 24 h']) assert.equal(rows[row], null, row)
+    for (const row of ['Dirty clones', 'Clones behind origin', 'Installed tools behind main', 'Worktrees over 7 days', 'Sessions idle over 24 h']) assert.equal(rows[row], null, row)
     assert.equal(rows['PRs idle over 3 days'], 1)
     assert.match(render(hosted), /\| Dirty clones \| not measured \|/)
   })
@@ -285,8 +287,10 @@ describe('hygiene rows', () => {
   })
   it('counts the fixture and a null local row stays not measured', () => {
     const rows = Object.fromEntries(hygiene(fixture).map((h) => [h.row, h.count]))
-    assert.deepEqual(rows, { 'Dirty clones': 1, 'Clones behind origin': 1, 'Branches with no PR': 2, 'Worktrees over 7 days': 1, 'PRs idle over 3 days': 1, 'Sessions idle over 24 h': null, 'Backlog entries past reviewBy': 2, 'Duplicate PRs per backlog id': 1 })
+    assert.deepEqual(rows, { 'Dirty clones': 1, 'Clones behind origin': 1, 'Installed tools behind main': 1, 'Branches with no PR': 2, 'Worktrees over 7 days': 1, 'PRs idle over 3 days': 1, 'Sessions idle over 24 h': null, 'Backlog entries past reviewBy': 2, 'Duplicate PRs per backlog id': 1 })
     assert.match(render(fixture), /Sessions idle over 24 h: not measured/)
+    assert.match(render(fixture), /Installed tools behind main: capacity check \(~\/\.desk\/capacity-app\/capacity\.mjs: 3 behind, copy of gorfednet\.github\/capacity\/capacity\.mjs\)/)
+    assert.match(render(fixture), /\| Installed tools behind main \| 1 \|/)
   })
   it('idlePrs keeps only PRs untouched over 3 days', () => {
     const at = (d) => new Date(now - d * 86_400_000).toISOString()
@@ -400,5 +404,73 @@ describe('hygiene rows', () => {
     const line = digest(fixture).split('\n').find((l) => l.startsWith('Hygiene:'))
     assert.match(line, /^Hygiene: 1 rows not measured; /)
     assert.ok(line.length > 150 && /reviewBy/.test(line), line)
+  })
+})
+
+describe('the 2-hourly light run (plan row 1.14)', () => {
+  it('STATUS.md says when the carried branch list was read', () => {
+    const light = { ...fixture, carried: true, branchesReadAt: '2026-11-13T11:30:00Z' }
+    assert.match(render(light), /Branches with no PR are as of /)
+    assert.doesNotMatch(render({ ...fixture, carried: false, branchesReadAt: '2026-11-13T11:30:00Z' }), /Branches with no PR are as of/)
+  })
+  const notFound = () => Object.assign(new Error('HTTP 404'), { stderr: 'HTTP 404' })
+  const fakeJson = (calls) => (args) => {
+    calls.push(args.join(' '))
+    const path = args[0] === 'pr' ? 'pr list' : args[args.length - 1]
+    if (path === 'repos/o/p') return { private: false, visibility: 'public', default_branch: 'main' }
+    if (path === 'pr list') return []
+    if (path.includes('/branches')) return [[{ name: 'main' }, { name: 'old' }]]
+    if (path.includes('/contents/')) throw notFound()
+    if (path.endsWith('/workflows?per_page=100')) return { workflows: [] }
+    if (path.includes('/commits/main')) return { sha: 'abc' }
+    if (path.includes('/actions/runs') ) return [{ workflow_runs: [] }]
+    if (path.includes('/status')) return { state: 'success', statuses: [] }
+    throw new Error(`unexpected call ${args.join(' ')}`)
+  }
+  it('keeps the earlier branch list and never lists or compares branches', async () => {
+    const calls = []
+    const carried = [{ branch: 'old', ahead: 3 }]
+    const row = await collectRepo('o/p', new Date('2026-11-13T12:00:00Z'), { json: fakeJson(calls), log: () => {}, carryBranches: carried })
+    assert.deepEqual(row.branchesAhead, carried)
+    // A branch that has since gained a PR drops out of the carried list.
+    const withPr = (args) => (args[0] === 'pr' ? [{ number: 9, title: 't', createdAt: '2026-11-13T00:00:00Z', updatedAt: '2026-11-13T00:00:00Z', labels: [], isDraft: false, headRefName: 'old', headRefOid: 'f'.repeat(40), body: '', author: { login: 'x' } }] : args.includes('--paginate') && String(args.at(-1)).includes('/comments') ? [[]] : fakeJson([])(args))
+    const row2 = await collectRepo('o/p', new Date('2026-11-13T12:00:00Z'), { json: withPr, log: () => {}, carryBranches: carried })
+    assert.deepEqual(row2.branchesAhead, [])
+    assert.ok(!calls.some((c) => c.includes('/branches')), calls.join('\n'))
+  })
+  it('a prior read older than 23 hours is not carried: the run is full and says so', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'fs-carry-'))
+    const prior = join(dir, 'prior.json')
+    writeFileSync(prior, JSON.stringify({ branchesReadAt: '2020-01-01T00:00:00Z', repos: [] }))
+    const r = spawnSync(process.execPath, ['scripts/fleet-status.mjs', '--only', 'nobody/nothing', '--carry-branches', prior, '--out', join(dir, 'o.json')], { encoding: 'utf8', env: { ...process.env, GH_TOKEN: '' } })
+    assert.equal(r.status, 0, r.stderr) // zero repos matched: an empty full read
+    const out = JSON.parse(readFileSync(join(dir, 'o.json'), 'utf8'))
+    assert.equal(out.carried, false)
+    assert.ok(Date.now() - Date.parse(out.branchesReadAt) < 60000)
+  })
+  it('a redacted private row is carried by its count, so private repositories cost no branch calls either', () => {
+    const m = carryMap({ repos: [{ slug: 'o/private', redacted: true, noPrCount: 2 }, { slug: 'o/pub', branchesAhead: [{ branch: 'b', ahead: 1 }] }, { slug: 'o/gone', unavailable: 'x' }] })
+    assert.equal(m.get('o/private').length, 2)
+    assert.deepEqual(redactRepo({ slug: 'o/private', branchesAhead: m.get('o/private'), openPrs: [], lapsedBacklog: [], idlePrs: [], duplicatePrs: [], lastDeploy: null, incidents7d: 0, dependabotRed: [], kitVersion: null, mainRed: false, defaultBranch: 'main' }).noPrCount, 2)
+    assert.equal(m.get('o/pub').length, 1)
+    assert.equal(m.get('o/gone'), undefined)
+  })
+  it('a full run (no carry) does list branches', async () => {
+    const calls = []
+    await collectRepo('o/p', new Date('2026-11-13T12:00:00Z'), { json: fakeJson(calls), log: () => {} }).catch(() => {})
+    assert.ok(calls.some((c) => c.includes('/branches')))
+  })
+  it('mapLimit keeps input order and never runs more than the limit at once', async () => {
+    let live = 0
+    let peak = 0
+    const out = await mapLimit([5, 1, 4, 2, 3, 0], 2, async (n) => {
+      live += 1
+      peak = Math.max(peak, live)
+      await new Promise((r) => setTimeout(r, n))
+      live -= 1
+      return n * 10
+    })
+    assert.deepEqual(out, [50, 10, 40, 20, 30, 0])
+    assert.equal(peak, 2)
   })
 })

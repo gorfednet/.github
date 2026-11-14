@@ -146,6 +146,43 @@
         "ageDays": 9
       }
     ],
-    "idleSessions": null
+    "idleSessions": null,
+    "installedTools": [
+      {
+        "tool": "capacity check",
+        "source": "~/.desk/capacity-app/capacity.mjs",
+        "behind": 3,
+        "detail": "copy of gorfednet.github/capacity/capacity.mjs"
+      }
+    ],
+    "installedToolsUnread": []
+  },
+  "inventory": {
+    "measuredAt": "2026-11-07T11:30:00.000Z",
+    "counts": {
+      "pr": {
+        "total": 3,
+        "orphans": 1
+      },
+      "session": null,
+      "worktree": null,
+      "job": null,
+      "backlog": {
+        "total": 5,
+        "orphans": 0
+      }
+    },
+    "orphans": [
+      {
+        "kind": "pr",
+        "repo": "gorfednet/example",
+        "ref": "#9",
+        "label": "misc cleanup",
+        "private": false,
+        "lapsed": false
+      }
+    ],
+    "hiddenPrivate": 2,
+    "privateReposNotItemised": 1
   }
 }

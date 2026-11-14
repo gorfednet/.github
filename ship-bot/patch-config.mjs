@@ -8,6 +8,9 @@
  * the repository, reviewed on a pull request, and applied by the owner with
  * this. A patch is {"label": "...", "repos": {"owner/name": {"key": value}}}:
  * each key replaces that key in the named row. A null value removes the key.
+ * A patch may also carry "add": [row, ...], whole rows for repositories the
+ * config does not have yet (scripts/register-repo.mjs writes these). An added
+ * row whose slug is already in the config is refused, never merged.
  *
  * It backs the file up first (config.json.bak-<label>), validates the result
  * with the installed bot's own validator, and writes only when that passes.
@@ -22,6 +25,18 @@ import { validateConfig } from './lib/config.mjs'
 export function applyPatch(raw, patch) {
   const changed = []
   const problems = []
+  for (const row of patch.add ?? []) {
+    if (typeof row?.slug !== 'string') {
+      problems.push('add: every row needs a slug')
+      continue
+    }
+    if (raw.repos.some((r) => r.slug === row.slug)) {
+      problems.push(`${row.slug}: already has a row; add only takes new repositories`)
+      continue
+    }
+    raw.repos.push(structuredClone(row))
+    changed.push(`${row.slug}: added row`)
+  }
   for (const [slug, fields] of Object.entries(patch.repos ?? {})) {
     const row = raw.repos.find((r) => r.slug === slug)
     if (!row) {

@@ -50,6 +50,11 @@ Never write the mode file. Desk or the owner writes `live` after 3 dry runs in a
    - Its repository was readable this run (its row in `status.json` has no `unavailable`).
 
    Then, in a live run, call `list_scheduled_tasks` and disable (`update_scheduled_task` with `enabled: false`) each one-time task (it has `fireAt`) that is still enabled and has a `lastRunAt`.
+3b. Housekeeping trains. Kit refreshes, backlog reconciles, drain drafts and incident lines ride one pull request per repository per week (`shipping.md`, "Release trains"), never one each.
+   - For each repository in `status.json` that has an open pull request whose title starts `kit:`, `backlog:`, `drain:` or `incident:`, or that carries a `housekeeping:<kind>` label, write that repository's open pull requests to `$R/prs-<repo>.json` (`number`, `repo`, `title`, `body`, `labels`, `draft`, `headRef`, `headSha`, `review` and `reviewedSha` (its `headSha`) from `status.json`; the rest from one `gh pr view <n> --json title,body,labels,isDraft,headRefName,headRefOid` per candidate, read in the same moment as `review`). Run `node $J/scripts/janitor-train.mjs --prs $R/prs-<repo>.json --clone <the repository's clone> --repo <owner>/<repo>`, adding `--apply` in a live run only.
+   - The script carries only pull requests of a known kind that are not held and whose review is `clean`. Any other kind stays out, so a feature is never carried. It builds from `origin/main` with merge commits and drops a piece that conflicts, whose head moved, or whose title, body or commits hold a closing phrase. It refuses a piece cut from an unmerged feature. It never resolves a conflict. Ship-bot labels the draft train once its gates pass; the janitor does not. A train whose pull request was closed unmerged keeps its pieces off later trains while its branch exists on origin: propose deleting that branch in the digest, never delete it yourself. A train that touches `verification-kit/` is a control-plane change that ship-bot refuses, so a person labels it.
+   - Live, it pushes `janitor/train-<repo>-<ISO week>`, opens one draft pull request listing what it carries, and comments on each carried one. It never labels or merges. Put each train and each piece left out in the digest.
+   - `check-closing-keywords` scans the pull requests a train carries (every pull request whose head is among its commits), so a train with a closing phrase fails CI and is not merged.
 4. Sessions. This is the only step that archives sessions.
    1. Call `list_sessions` with limit 100. Write the array it returns to `$R/sessions.json`. If it returned 100 sessions, say in the digest that the list may be cut, and run step 5 without `--apply` this run.
    2. Run `node $J/scripts/janitor-prune.mjs sessions $R/sessions.json > $R/sessions.jsonl`. Each line is one session, named by its `sessionId` and `title`. It gives the session's `state`, `slug`, `branch`, `defaultBranch`, `worktree` and `mainCheckout`. The script reads git only.
@@ -75,7 +80,7 @@ Never write the mode file. Desk or the owner writes `live` after 3 dry runs in a
       3. Write the commit message `Rescue uncommitted work from session <title>` to `$R/commit-<id8>.txt`. Run these 4 commands in order: `git switch -c janitor/rescue-<YYYYMMDD>-<id8>`, `git add -A`, `git commit -F $R/commit-<id8>.txt` and `git push -u origin HEAD`.
       4. Write the body to `$R/pr-<id8>.md`. It links the handoff file and has a `## Next` section whose first line is `- [ ] Desk: finish this work or close it. Nothing here was reviewed.` Run `gh label create hold --repo <slug>`. If it says the label already exists, go on. Then run `gh pr create --draft --repo <slug> --base <defaultBranch> --head <the branch you pushed> --title "Rescue: <title>" --body-file $R/pr-<id8>.md --label hold`.
       5. Archive the session only once the push and the draft both succeeded.
-5. Worktrees. Write the `worktree` of every session not archived in step 4 to `$R/keep.txt`, one per line. Skip sessions with no `worktree`. Run `node $J/scripts/janitor-prune.mjs --keep-file $R/keep.txt > $R/prune.jsonl`, adding `--apply` before the `>` in a live run. The script removes only worktrees that are merged, clean, idle for 24 hours and not kept. It deletes their local branch, and the origin branch when that's merged too. It never removes `gates-main` (the gate commands link there), `desk-log` or `janitor-main`. Exit 1 means a removal failed. Name the failed worktree in the digest. Exit 2 means a bad argument: name it in the digest. Never remove a worktree any other way.
+5. Worktrees. Write the `worktree` of every session not archived in step 4 to `$R/keep.txt`, one per line. Skip sessions with no `worktree`. Run `node $J/scripts/janitor-prune.mjs --keep-file $R/keep.txt > $R/prune.jsonl`, adding `--apply` before the `>` in a live run. The script removes only worktrees that are merged, clean, idle for 24 hours and not kept. It deletes their local branch, and the origin branch when that's merged too. It never removes `gates-main` or ops' `tools-main` (installed tools link there), `desk-log` or `janitor-main`. Exit 1 means a removal failed. Name the failed worktree in the digest. Exit 2 means a bad argument: name it in the digest. Never remove a worktree any other way.
 6. Retire tags. Write every `lapsedBacklog` entry in `status.json` to `~/.fleet-janitor/retire.json`, replacing the file, as a JSON array of `{ "repo", "id", "status", "reviewBy", "tag": "retire?" }`. Desk decides on each. Never edit a backlog file.
 7. Desk check. Look for an active session whose title contains `[Desk (` and whose `remoteControlActive` is true. If there's none, put `Needs: no Desk with Remote Control on` in the digest.
 8. Report, last.
@@ -87,6 +92,7 @@ Never write the mode file. Desk or the owner writes `live` after 3 dry runs in a
      4. the Herdr lines
    - Run `bash $J/scripts/janitor-notify.sh $R/digest.txt`.
    - Append `<ISO time in UTC> <mode> v4` to `~/.fleet-janitor/runs.log`.
+9. Last of all, ping the dead-man check: `node $J/scripts/heartbeat.mjs janitor`. Do it even when there was nothing to do; a day with no ping is what alerts. It prints `unconfigured` until `~/.heartbeats/janitor.url` exists, which is fine.
 
 ## Only propose, never do
 
@@ -104,7 +110,7 @@ For each of these, open a draft pull request or put a line in the digest:
 
 - Push to `main` or a default branch, merge, or enable auto-merge.
 - Run `git worktree remove --force`, `git branch -D`, `git clean`, `git stash`, `git reset` or `git checkout -- <path>` anywhere.
-- Remove `gates-main`, `desk-log` or `janitor-main`.
+- Remove `gates-main`, `tools-main`, `desk-log` or `janitor-main`.
 - Write `~/.fleet-janitor/mode`.
 - Read `*.env*`, `ops/credentials.json`, `~/.ship-bot/config.json` or a token file.
 - Label a pull request you didn't read the gates for. The label is the decision.
@@ -114,5 +120,5 @@ For each of these, open a draft pull request or put a line in the digest:
 
 - `STATUS.md` on the `status` branch of `gorfednet/.github` is the shared view. Ship-bot merges labelled pull requests (`shipping.md`), so a wrong label ends in a merge.
 - Ship-bot merges with merge commits only. That's how `janitor-prune.mjs sessions` tells a `merged` branch from a `fresh` one without asking GitHub.
-- The owner's GitHub quota is shared by every session and ship-bot. Your only GitHub calls are step 3's file lists and labels, step 4's `gh pr list`, a rescue's push, `gh label create` and `gh pr create`, and the origin branch deletes in step 5.
+- The owner's GitHub quota is shared by every session and ship-bot. Your only GitHub calls are step 3's file lists and labels, step 4's `gh pr list`, a rescue's push, `gh label create` and `gh pr create`, the origin branch deletes in step 5, and step 3b's one `gh pr view` per housekeeping candidate, one push, one `gh pr create --draft` and one `gh pr comment` per carried pull request.
 - Every pull request you open has a `## Next` section with `- [ ]` lines.

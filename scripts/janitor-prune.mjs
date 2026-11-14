@@ -15,7 +15,7 @@
  *
  * A worktree is pruned only when all of these hold:
  *   - it is a linked worktree, never a clone's main checkout
- *   - its name is not protected (gates-main: the gate commands link there; desk-log; janitor-main)
+ *   - its name is not protected (gates-main and ops' tools-main: installed tools link there; desk-log; janitor-main)
  *   - its path is not in the keep file (the working folders of live sessions)
  *   - `git status --porcelain` is empty and nothing is ahead of its upstream
  *   - it holds no ignored file except `node_modules` and `.DS_Store` (git removes ignored files silently)
@@ -38,7 +38,7 @@ import { basename, join, resolve } from 'node:path'
 import { parseGitHubSlug } from './lib/githubSlug.mjs'
 import { isMain } from './lib/isMain.mjs'
 
-export const PROTECTED_NAMES = new Set(['gates-main', 'desk-log', 'janitor-main'])
+export const PROTECTED_NAMES = new Set(['gates-main', 'tools-main', 'desk-log', 'janitor-main'])
 const PROTECTED_BRANCHES = new Set(['main', 'master', 'status', 'desk-log'])
 /** Ignored paths a worktree may hold that are safe to delete with it. Anything else ignored keeps the worktree. */
 const DISPOSABLE = new Set(['node_modules', '.DS_Store'])
