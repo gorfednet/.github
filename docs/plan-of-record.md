@@ -141,6 +141,36 @@ Each row: owner agent and model; root cause to verify (hypothesis, not finding);
 | 6.3 | Homebridge: healthy; add it to the restic include list and a healthchecks ping | `runner` Haiku | restore drill includes `/opt/homebridge` |
 | 6.4 | Docker engine: watchtower policy (pin the production images: moonman, nginx, cloudflared; auto-update only the arrs), `docker system prune` weekly with the backup; incident ledger `~/incidents` moved into ops | `builder` Sonnet in ops, `reviewer` Fable for the pin list | `docker images` dangling 0 at the Sunday report; pinned images listed in ops |
 
+### Phase 7: 4thcltr.com forms, chat intake, design (priority 2; owner ask 14 November 2026)
+
+Plan: `gorfednet/4thcltr.com` `docs/plans/2026-11-forms-chat-design.md`. One brief per row in that repo's `docs/briefs/` (start with its `README.md`). The planning reports are in `docs/handoff/2026-11-14-forms-chat-design.md`. Each row is one session; a row with several pieces reviews them as drafts and carries them in one train.
+
+| # | Item | Repo | Session model | Brief | After |
+|---|---|---|---|---|---|
+| 7.0 | Record: plan, handoff, briefs, backlog entries, these rows | 4thcltr.com, .github | planning session, Fable | n/a | done when both docs pull requests merge |
+| 7.1 | Organisation optional on the brief, end to end | propose, intake | Opus | `7.01-organisation-optional.md` | 7.0; reviewer rollout (5.3) or a stated Fable read |
+| 7.2 | Forms groundwork: request descriptions, in-memory draft, vendored contract, CI send tests | 4thcltr.com | Opus | `7.02-forms-groundwork.md` | 7.0 |
+| 7.3 | Sheets with the form first, then release | 4thcltr.com | Opus | `7.03-sheets-form-first.md` | 7.2; 7.1 deployed |
+| 7.4 | Order link at the top of the heuristics site | heuristics | Sonnet | `7.04-heuristics-order-link.md` | 7.0 |
+| 7.5 | The chat collects and sends a brief or an assessment, then release | 4thcltr.com | Opus | `7.05-chat-collects-and-sends.md` | 7.3 released |
+| 7.6 | Assist service: table rebuild (any time), then the two offers | ask-collector | Opus | `7.06-assist-offers.md` | offers only after 7.5 is released |
+| 7.7 | Capture harness and contact sheets; settle 4thcltr 263 to 266 | 4thcltr.com | Sonnet | `7.07-capture-harness.md` | 4thcltr 257 merged |
+| 7.8 | Design and tooling assessment. Owner checkpoint 1 | 4thcltr.com | Fable | `7.08-design-assessment.md` | 7.7's run on disk |
+| 7.9 | Three flagship concepts. Owner checkpoint 2 | 4thcltr.com | Fable | `7.09-flagship-concepts.md` | owner's yes at checkpoint 1 |
+| 7.10 | `Home.tsx` into sections, pure move | 4thcltr.com | Sonnet | `7.10-home-sections-split.md` | 4thcltr 255, 268, 269 merged or closed |
+| 7.11 | Flagship model at `?design=studio`, with guards | 4thcltr.com | Opus | `7.11-flagship-model.md` | 7.10 |
+| 7.12 | Flagship fonts, open licence, self-hosted | 4thcltr.com | Sonnet | `7.12-flagship-fonts.md` | checkpoint 2 |
+| 7.13 | Flagship hero and sections, released dark | 4thcltr.com | Fable composes, Opus builders | `7.13-flagship-build.md` | 7.11, 7.12 |
+| 7.14 | Flagship launch. Owner checkpoint 3 | 4thcltr.com, heuristics, papers | Opus | `7.14-flagship-launch.md` | owner's go, on his phone |
+
+Start order as slots free: 7.2, 7.7, 7.1, 7.4, 7.8, 7.3, 7.6 (table rebuild), 7.5, 7.9, 7.10, 7.11, 7.12, 7.6 (offers), 7.13, 7.14. Infra rows still win a slot. Never start a row before its "After".
+
+Also for Desk: 4thcltr 202 (the brief-to-proposal plan, draft since 23 October) lands as docs before 7.2, since it holds decision 19's text. The 4thcltr.com main checkout sits on `drain/4thcltr.com`, 155 commits behind `origin/main`: count it under "Clones behind origin". Rows 7.9 to 7.14 start only on the owner's yes at checkpoint 1.
+
+Owner checkpoints (the only things that reach him from this phase): 1 the assessment's recommendation and whether to build a flagship; 2 the concept and typeface, from pictures; 3 the go to make it the default, and how Shuffle alternates.
+
+Estimates (ET, subject to slots and the pool): assessment and recommendation Tuesday 17 November; forms live Wednesday 18 November; concepts Friday 20 November; chat sends briefs and assessments Monday 23 November; flagship dark Friday 27 November.
+
 ## Owner decisions and access (the only things that reach him)
 
 1. Access, once, in one message with exact items: Tailscale SSH approval (docker host), optional billing read on the existing token (never ask again for the token itself), folder trust clicks for Herdr jobs, Mac sleep setting, dapyllil `sudo install.sh` for the pool resize (command given only when 3.1 is ready).
