@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-11-14T10:32:04.803Z",
-  "renderedAt": "2026-11-14T10:32:04.803Z",
+  "generatedAt": "2026-11-14T12:32:02.317Z",
+  "renderedAt": "2026-11-14T12:32:02.317Z",
   "repos": [
     {
       "slug": "gorfednet/bindercurve.com",
@@ -18,7 +18,7 @@
       "slug": "gorfednet/4thcltr.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 20,
+      "openPrCount": 21,
       "lapsedBacklogCount": 0,
       "noPrCount": 13,
       "idlePrCount": 7,
@@ -30,7 +30,7 @@
       "slug": "gorfednet/gorfed.net",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 6,
+      "openPrCount": 5,
       "lapsedBacklogCount": 0,
       "noPrCount": 2,
       "idlePrCount": 1,
@@ -164,6 +164,18 @@
       "mainRed": false,
       "openPrs": [
         {
+          "number": 185,
+          "title": "Plan of record: Phase 7, 4thcltr.com forms, chat intake and design",
+          "ageDays": 0,
+          "labels": [],
+          "draft": false,
+          "review": "not-run",
+          "headSha": "ac86d7dcf74b6102896d56f757b6fd5f5c9616e9",
+          "ci": "pending",
+          "next": "Merge once the gates are clean. Docs only.",
+          "author": "gorfednet"
+        },
+        {
           "number": 175,
           "title": "Quota attribution: guard call log and burn sampler",
           "ageDays": 0,
@@ -217,7 +229,9 @@
           "number": 151,
           "title": "ship-bot example rows: blackpixelrecords env file, gorfed.net work content",
           "ageDays": 0,
-          "labels": [],
+          "labels": [
+            "ready-to-merge"
+          ],
           "draft": false,
           "review": "clean",
           "headSha": "bccf265d0278272540a2d5c6b2624cc49a1cf590",
@@ -230,7 +244,8 @@
           "title": "Handoff: worktree drain (plan 2.3)",
           "ageDays": 0,
           "labels": [
-            "ready-to-merge"
+            "ready-to-merge",
+            "needs-fix"
           ],
           "draft": false,
           "review": "findings",
@@ -258,7 +273,7 @@
           "labels": [],
           "draft": true,
           "review": "not-run",
-          "headSha": "d2305b7bbf3fedf8fd0c9a20435919fe5db7e1e0",
+          "headSha": "133da9b7513b3c9132ce29f2b6bb51831d122ff8",
           "ci": "none",
           "next": "Desk appends each pass's line until the 02:00 ET rotation (hold: the log is still being written)",
           "author": "gorfednet"
@@ -266,7 +281,7 @@
         {
           "number": 137,
           "title": ".github: check-sitemap-pages ships in the kit but the shared verification gate does not run it",
-          "ageDays": 0,
+          "ageDays": 1,
           "labels": [],
           "draft": true,
           "review": "not-run",
@@ -306,7 +321,8 @@
           "title": "Handoff: release loop 4",
           "ageDays": 2,
           "labels": [
-            "ready-to-merge"
+            "ready-to-merge",
+            "needs-fix"
           ],
           "draft": false,
           "review": "findings",
@@ -558,7 +574,7 @@
       "slug": "gorfednet/MoonMan",
       "redacted": true,
       "mainRed": true,
-      "openPrCount": 8,
+      "openPrCount": 9,
       "lapsedBacklogCount": 0,
       "noPrCount": 41,
       "idlePrCount": 0,
@@ -658,7 +674,7 @@
       "slug": "gorfednet/ops",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 6,
+      "openPrCount": 7,
       "lapsedBacklogCount": 0,
       "noPrCount": 0,
       "idlePrCount": 0,
@@ -670,11 +686,11 @@
   "branchesReadAt": "2026-11-14T02:32:09.796Z",
   "carried": true,
   "inventory": {
-    "measuredAt": "2026-11-14T10:32:04.803Z",
+    "measuredAt": "2026-11-14T12:32:02.317Z",
     "counts": {
       "pr": {
-        "total": 110,
-        "orphans": 61
+        "total": 113,
+        "orphans": 65
       },
       "session": null,
       "worktree": null,
@@ -685,6 +701,14 @@
       }
     },
     "orphans": [
+      {
+        "kind": "pr",
+        "repo": "gorfednet/.github",
+        "ref": "#185",
+        "label": "Plan of record: Phase 7, 4thcltr.com forms, chat intake and design",
+        "private": false,
+        "lapsed": false
+      },
       {
         "kind": "pr",
         "repo": "gorfednet/.github",
@@ -846,7 +870,7 @@
         "lapsed": false
       }
     ],
-    "hiddenPrivate": 46,
+    "hiddenPrivate": 49,
     "privateReposNotItemised": 20
   }
 }
