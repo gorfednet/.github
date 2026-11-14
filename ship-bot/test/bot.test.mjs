@@ -54,7 +54,7 @@ describe('a ready pull request', () => {
   })
 
   it('a review-only repo (no expected checks, an ops-shaped head with zero runs) asks assert-checks-started for no minimum', async () => {
-    const s = scenario({ repos: [repoEntry({ claudeReview: true, expectedChecks: [] })], github: new FakeGitHub({ runs: [] }) })
+    const s = scenario({ repos: [{ slug: SLUG, dir: 'site', mode: 'merge-only', reason: 'r', live: true, claudeReview: true, expectedChecks: [] }], github: new FakeGitHub({ runs: [] }) })
     await s.run()
     const started = s.runner.ofKind('gate').find((c) => c.args[0].endsWith('assert-checks-started.mjs'))
     assert.deepEqual(started.args.slice(1), ['--pr', '7', '--repo', SLUG, '--min-runs', '0'])
