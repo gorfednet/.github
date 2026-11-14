@@ -55,7 +55,7 @@ Weekly 9% at 11:21 ET. Full speed, cost-aware. One line to the owner at about 90
 - Mac mini (2010) as second Pi-hole: owner "one day not now". No dapyllil replica either (owner, 13 Nov). The Pi-hole board stays the only resolver until the Mac mini. Raise again only if he does.
 
 ## Added 13 Nov evening (Fable reviews)
-- [ ] PACE HOLD: 30% used at 22:47 ET; no new starts until under pace
+- [x] PACE HOLD lifted by the owner, 14 Nov 01:20 ET (he can reset the week)
 - [x] Backup keys in the password manager (owner, 19:50 ET)
 - [ ] Installed tools track main (1.18, installed-drift)
 - [ ] Papers deploy wordmark timing (card wordmark-timing); papers blocked
