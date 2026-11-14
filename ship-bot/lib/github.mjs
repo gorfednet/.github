@@ -146,6 +146,10 @@ export function createGitHubClient({ token, fetchImpl = globalThis.fetch, api = 
     getRepo: (slug) => request('GET', `/repos/${slug}`),
     listOpenPulls: (slug) => paginate(`/repos/${slug}/pulls?state=open&sort=created&direction=asc`),
     getPull: (slug, n) => request('GET', `/repos/${slug}/pulls/${n}`),
+    /** The branch's head commit right now, for a hotfix's "main is still what was deployed" check (lib/deploy-plan.mjs). */
+    getBranchSha: (slug, branch) => request('GET', `/repos/${slug}/git/ref/heads/${branch.split('/').map(encodeURIComponent).join('/')}`).then((r) => r?.object?.sha ?? null),
+    /** GitHub's compare of base...head: 'ahead', 'identical', 'behind' or 'diverged'. A release head must contain main (lib/deploy-plan.mjs). */
+    compareStatus: (slug, base, head) => request('GET', `/repos/${slug}/compare/${encodeURIComponent(base)}...${encodeURIComponent(head)}?per_page=1`).then((r) => r?.status ?? null),
     /** The `limit` most recently merged pull requests (closed-but-unmerged ones are skipped), only those carrying `label` when given. Used by --validate only. */
     async listMergedPulls(slug, limit = 3, label) {
       const out = []
@@ -172,7 +176,7 @@ export function createGitHubClient({ token, fetchImpl = globalThis.fetch, api = 
       let after = null
       for (let page = 0; page < 20; page += 1) {
         const data = await graphql(
-          `query($owner:String!,$name:String!,$n:Int!,$after:String){repository(owner:$owner,name:$name){pullRequest(number:$n){reviewThreads(first:100,after:$after){pageInfo{hasNextPage endCursor} nodes{isResolved path line comments(first:100){totalCount nodes{author{login} url createdAt}}}}}}}`,
+          `query($owner:String!,$name:String!,$n:Int!,$after:String){repository(owner:$owner,name:$name){pullRequest(number:$n){reviewThreads(first:100,after:$after){pageInfo{hasNextPage endCursor} nodes{isResolved path line comments(first:100){totalCount nodes{author{login} url createdAt body originalCommit{oid}}}}}}}}`,
           { owner, name, n, after },
         )
         const conn = data?.repository?.pullRequest?.reviewThreads
@@ -190,7 +194,8 @@ export function createGitHubClient({ token, fetchImpl = globalThis.fetch, api = 
             line: t.line,
             author: nodes[0]?.author?.login ?? '',
             url: nodes[0]?.url ?? '',
-            comments: nodes.map((c) => ({ author: c.author?.login ?? '', createdAt: c.createdAt ?? null })),
+            body: String(nodes[0]?.body ?? '').slice(0, 200),
+            comments: nodes.map((c) => ({ author: c.author?.login ?? '', createdAt: c.createdAt ?? null, commit: c.originalCommit?.oid ?? null })),
           })
         }
         if (!conn.pageInfo?.hasNextPage) return threads

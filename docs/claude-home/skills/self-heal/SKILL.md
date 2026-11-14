@@ -14,7 +14,7 @@ Ask which is wanted if it is not obvious from the request:
 
 **First, check whether the repo has the shared kit.** If `verification-kit/`
 exists, most of what follows is already a script — use it rather than
-reimplementing it, and read `docs/verification-rules.md` (`V1`…`V38`) before
+reimplementing it, and read `docs/verification-rules.md` (every `V` rule) before
 writing a new guard, because the class has usually been named already. If the
 kit is absent, the `verification-bootstrap` skill installs it; that is often the
 right response to "this bug keeps coming back", since the answer is usually a

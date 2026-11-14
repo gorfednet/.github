@@ -10,7 +10,7 @@ node with no dependencies and no `package.json`, because most of this fleet is
 static sites and a kit that needs a toolchain is a kit those projects never get.
 
 Canonical source: `gorfednet/.github` → `templates/verification-kit/`.
-Rules: `docs/verification-rules.md` (`V1`…`V38`).
+Rules: `docs/verification-rules.md` (every `V` rule).
 
 ## 1. Pick the tier honestly
 

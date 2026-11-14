@@ -39,6 +39,56 @@ export function draftIneligibleReason(pr, repo, defaultBranch, allowedAuthors) {
   return null
 }
 
+/**
+ * Paths whose change alters what merges unattended, or how: CI and the shared
+ * actions, the bot, the gate scripts and their libraries, the reviewer's and
+ * agents' briefs, the janitor and the capacity starter. A draft touching any
+ * of them is never the bot's to mark ready (plan row 1.12, Fable review of 13
+ * November 2026, finding 3): a builder's own `## Next` line could otherwise
+ * ready, merge and deploy a change to its own gates. A person labels such a
+ * pull request after reading it.
+ *
+ * A prefix ending in `/` names a directory at any depth below it (and the
+ * bare name, a symlink or submodule); anything else names one file at the
+ * root. BASENAMES match at any depth. Matching ignores case, since a clone on
+ * a case-insensitive disk lands `Ship-bot/x` on `ship-bot/x`.
+ */
+export const CONTROL_PLANE_PATHS = ['.github/', '.claude/', 'ship-bot/', 'scripts/gates/', 'scripts/lib/', 'scripts/review-status.mjs', 'janitor/', 'capacity/', 'verification-kit/']
+/** Rules files every reviewer or session reads as house rules, wherever they sit. */
+export const CONTROL_PLANE_BASENAMES = ['REVIEW.md', 'CLAUDE.md', 'AGENTS.md', 'SKILL.md', 'canaries.json']
+/**
+ * In gorfednet/.github every script is fleet control plane: deploy-mode repos
+ * check it out at main and run its deploy scripts with their secrets, reading
+ * their per-site safety settings from fleet.json. templates/ holds the
+ * canonical verification kit every project's refresh-kit pulls from main.
+ */
+const REPO_EXTRA = { 'gorfednet/.github': ['scripts/', 'fleet.json', 'templates/'] }
+
+export function touchesControlPlane(path, slug = '') {
+  const p = path.replace(/^\.?\//, '').toLowerCase()
+  const prefixes = [...CONTROL_PLANE_PATHS, ...(REPO_EXTRA[slug.toLowerCase()] ?? [])].map((x) => x.toLowerCase())
+  if (prefixes.some((x) => (x.endsWith('/') ? p.startsWith(x) || p === x.slice(0, -1) : p === x))) return true
+  const base = p.split('/').pop()
+  return CONTROL_PLANE_BASENAMES.some((b) => b.toLowerCase() === base)
+}
+
+/**
+ * Which changed files are control-plane paths. Each entry is a pulls/files
+ * item; a rename counts by both its old and new name, so moving a gate out of
+ * `scripts/gates/` is caught too. An entry without a filename is a shape the
+ * bot cannot judge, so it is returned as a hit (fail closed).
+ */
+export function controlPlaneFiles(files, slug = '') {
+  if (!Array.isArray(files)) return ['(file list unreadable)']
+  const hits = []
+  for (const f of files) {
+    const names = [f?.filename, f?.previous_filename].filter((n) => typeof n === 'string' && n)
+    if (!names.length) hits.push('(entry with no filename)')
+    for (const n of names) if (touchesControlPlane(n, slug)) hits.push(n)
+  }
+  return [...new Set(hits)]
+}
+
 /** Every line under `## Next` up to the next heading, blank lines dropped. */
 export function nextSectionLines(body) {
   const lines = String(body ?? '').split(/\r?\n/)

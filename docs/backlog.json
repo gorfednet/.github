@@ -273,9 +273,9 @@
       "userSymptom": "A social card fixed and deployed keeps showing the old image when a link is shared, with nothing in the repository left to fix.",
       "evidence": "The vhost serves \\.(png|svg|css|js|...)$ with expires 1y and Cache-Control: public, immutable - confirmed live, max-age=31536000. Any card at a fixed name inherits that, so replacing it in place reaches nobody for up to a year. ssatcy.com is fixed: scripts/generate-og-image.mjs writes og-card-<hash12>.png and rewrites index.html and _headers, so the URL changes exactly when the pixels do. 4thcltr.com/og-image.png is live under the same header and is the next one. The remaining sites are getting a first card, so their URL is new either way - the risk is the SECOND card.",
       "reviewBy": "2026-11-15",
-      "note": "check-live-og-image.mjs catches the symptom after a deploy by comparing the bytes the og:image URL serves against the dimensions the page declares, and notes an immutable Cache-Control so the next person is told why a replacement will not reach anyone. That is detection. Prevention is the content-addressed name, which needs doing per site; ssatcy.com is the pattern to copy.",
+      "note": "check-live-og-image.mjs catches the symptom after a deploy by comparing the bytes the og:image URL serves against the dimensions the page declares, and notes an immutable Cache-Control so the next person is told why a replacement will not reach anyone. That is detection. Prevention is the content-addressed name, which needs doing per site; ssatcy.com is the pattern to copy. 2026-11-08: prevention gate added. check-og-image.mjs --content-addressed (gate input og-content-addressed, default false) fails a card whose file name carries no hash; the test fails without it. Still open per site: set og-content-addressed once a site names its card og-card-<hash>.png (4thcltr.com/og-image.png is next). Move to landed when 4thcltr.com has switched.",
       "created": "2026-09-14",
-      "updated": "2026-09-14"
+      "updated": "2026-11-08"
     },
     {
       "id": "publish-the-server-never-saw",
@@ -469,15 +469,14 @@
     {
       "id": "papers-deploy-verify-fails-under-load",
       "title": "papers deploy fails make verify under load",
-      "status": "landed",
+      "status": "confirmed-bug",
       "assignee": "main-model",
       "userSymptom": "A papers.4thcltr.com deploy from ship-bot fails at make verify when the Mac is under load.",
-      "evidence": "ship-bot deploy log 2026-11-11T19-34-59-231Z-papers.4thcltr.com-pr33 and ~/.ship-bot/work/papers.4thcltr.com/test-results/.last-run.json (18 papers verify specs failed on 11 November 2026). Cause confirmed 13 November 2026: the same wordmark and filter specs fail 27 of 87 under taskpolicy -b (background policy) and pass 87 of 87 at normal priority at a load of 7 on 10 cores, with default and 2 workers. The installed plist (written 12 November 22:10 ET) has no ProcessType. docs/handoff/2026-11-13-deploy-root-causes.md.",
-      "note": "Not load as such: the Background process class. PR 128 dropped it and install.sh was rerun.",
+      "evidence": "ship-bot deploy log 2026-11-11T19-34-59-231Z-papers.4thcltr.com-pr33 and ~/.ship-bot/work/papers.4thcltr.com/test-results/.last-run.json (18 papers verify specs failed on 11 November 2026). Cause confirmed 13 November 2026: the same wordmark and filter specs fail 27 of 87 under taskpolicy -b (background policy) and pass 87 of 87 at normal priority at a load of 7 on 10 cores, with default and 2 workers. The installed plist (written 12 November 22:10 ET) has no ProcessType. docs/handoff/2026-11-13-deploy-root-causes.md. 14 Nov 2026: default launchd class (no ProcessType) still throttles; launchd reproduction 10/24 fail default vs 24/24 Interactive; papers PR 40.",
+      "note": "Not load as such: the process class. PR 128 dropped Background but left the default, which still throttles. Fix (.github 188): ProcessType Interactive in install.sh, then rerun it.",
       "reviewBy": "2026-12-12",
       "created": "2026-11-12",
-      "updated": "2026-11-13",
-      "pr": 128
+      "updated": "2026-11-14"
     },
     {
       "id": "ship-bot-default-rollback-cannot-pass-tip-guard",
@@ -487,6 +486,43 @@
       "userSymptom": "A deploy that fails after publishing leaves the repo blocked with 'the rollback failed too', and the site stays on the failed release.",
       "evidence": "A row with no rollback list redeploys the parent commit, and site-deploy.sh refuses it as behind origin/main: ssatcy 35 (deploy log 2026-11-13T03-25-47-166Z) and MoonMan 324 (2026-11-13T03-14-59-833Z). On MoonMan, the rollback re-ran deploy:infra from the parent first and put the parent's nginx conf back live. docs/handoff/2026-11-13-deploy-root-causes.md.",
       "note": "Fix per row: split make deploy into build, publish and live-check steps, and give the row a make rollback step onlyAfterFailureOf the steps after the publish. Then retire the default, or refuse it for site rows.",
+      "reviewBy": "2026-12-13",
+      "created": "2026-11-13",
+      "updated": "2026-11-13"
+    },
+    {
+      "id": "healthchecks-alerts-email-only",
+      "title": "Dead-man alerts reach the owner by email only: healthchecks.io has no ntfy integration",
+      "status": "confirmed-bug",
+      "assignee": "main-model",
+      "userSymptom": "If the Mac's automation stops, the only alert is an email to the owner; there is no phone push, and the ntfy topics are not wired to healthchecks.io.",
+      "evidence": "docs/heartbeats.md, row 1.13 proofs, 14 November 2026: the capacity check's Notification Methods list shows one channel, email to the owner. All 8 checks in the project show the same single email integration.",
+      "note": "Add a healthchecks.io webhook integration that POSTs 'down' and 'up' to the off-box ntfy.sh topic (the topic is the secret: put it in the integration, never in the repository). Needs the owner's say-so: it is a standing integration holding the topic name.",
+      "reviewBy": "2026-12-14",
+      "created": "2026-11-14",
+      "updated": "2026-11-14"
+    },
+    {
+      "id": "heartbeat-deadman-deliberate-stop-unproven",
+      "title": "Row 1.13's deliberate dead-man proof (stop the job, see the alert) has not run",
+      "status": "confirmed-bug",
+      "assignee": "main-model",
+      "userSymptom": "Nothing proves a stopped capacity job produces an alert to the owner, only that healthchecks.io flips a check down 25 minutes after the last ping.",
+      "evidence": "14 November 2026: `launchctl bootout gui/501/net.gorfed.capacity` from a side session was denied by the sandbox classifier. healthchecks.io's event log shows the up to down flip at exactly period plus grace after a missed ping (10:40 ET ping, down at 11:05 ET), but its UI has no per-flip notification log, so email delivery was not read.",
+      "note": "Run it from a session where the stop is approved: bootout, wait 25 minutes, confirm the email arrived (or read it through a connector), bootstrap again. Record the times in docs/heartbeats.md.",
+      "reviewBy": "2026-11-28",
+      "created": "2026-11-14",
+      "updated": "2026-11-14"
+    },
+    {
+      "id": "ship-bot-unblock-lost-to-running-pass",
+      "title": "ship-bot --unblock can be undone by a pass that is already running",
+      "status": "landed",
+      "pr": 168,
+      "assignee": "main-model",
+      "userSymptom": "An unblock reports success, then the repo is blocked again with the same reason and the same since-time.",
+      "evidence": "13 November 2026: gorfed.net and blackpixelrecords.com were unblocked during a live pass. The next passes still reported 'blocked since 14:41/14:35' with the old reasons. Running --unblock again between passes held. --unblock writes state.json without the pass lock, and the running pass saved the state it had loaded earlier.",
+      "note": "Fixed on main by 2bdc7ef before this entry merged: --unblock takes the pass lock and, when a pass holds it, queues a request in stateDir/unblock/ that the next pass applies (ship-bot/README.md).",
       "reviewBy": "2026-12-13",
       "created": "2026-11-13",
       "updated": "2026-11-13"

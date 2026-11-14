@@ -176,6 +176,14 @@ on:
         required: false
         type: number
         default: 15
+      og-content-addressed:
+        description: >-
+          When "true", the social card's file name must carry a content hash
+          (og-card-<hash12>.png). The host serves images immutable for a year, so
+          a card replaced at a fixed name reaches nobody.
+        required: false
+        type: string
+        default: "false"
 jobs:
   check:
     runs-on: ${{ fromJSON(inputs.runs-on != '' && inputs.runs-on || '"ubuntu-latest"') }}
@@ -227,3 +235,4 @@ jobs:
           error-page-root: ${{ inputs.error-page-root }}
           error-page-markers: ${{ inputs.error-page-markers }}
           allow-machine-paths: ${{ inputs.allow-machine-paths }}
+          og-content-addressed: ${{ inputs.og-content-addressed }}

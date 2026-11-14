@@ -160,5 +160,5 @@ A repository adopts it with a copy of [`templates/claude-review.yml`](templates/
 ## Fleet status
 
 [`STATUS.md`](https://github.com/gorfednet/.github/blob/status/STATUS.md) on the `status` branch is the one view of open pull requests, lapsed backlog items and red mains across the fleet.
-`.github/workflows/fleet-status.yml` rebuilds it daily at 06:30 UTC with `scripts/fleet-status.mjs` and `scripts/write-status-md.mjs`, and posts a digest to ntfy `ops-report`.
-On the Mac, `scripts/fleet-status-local.sh` (symlinked as `fleet-status`) prints it with dirty local clones added. The daily janitor's prompt is `janitor/PROMPT.md`.
+`.github/workflows/fleet-status.yml` rebuilds it every 2 hours (at :30) with `scripts/fleet-status.mjs` and `scripts/write-status-md.mjs`, and posts a digest to ntfy `ops-report` once a day, on the run that did the full branch read.
+On the Mac, `scripts/fleet-status-local.sh` (symlinked as `fleet-status`) prints it with the Mac hygiene rows added (dirty clones, clones behind origin, worktrees over 7 days, sessions idle over 24 h). It runs `git fetch origin` in every clone first, which is slow; pass `--no-fetch` to skip it, and the behind row then says not measured. The daily janitor's prompt is `janitor/PROMPT.md`.

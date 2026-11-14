@@ -18,14 +18,15 @@ pull request, asks:
    failed, was cancelled, or never ran at all means "not yet".
 3. Did the **Claude reviewer review the latest commit**, and either find
    nothing or have **every one of its comments answered**, with a reply
-   written after the comment or by resolving it? It reads this with
-   `review-status.mjs`. A latest commit the reviewer has not reviewed always
-   waits, however many earlier commits it reviewed. The bot never asks for a
+   written after the comment or by resolving it? (Exception: a pull request that changes control-plane paths and has a Medium or High thread merges only on a clean review of a new head; a reply never lifts it, and resolving lifts it only for a thread opened on an earlier commit, which then does not count.) It reads this with
+   `review-status.mjs`. A latest commit the reviewer has not reviewed
+   waits, however many earlier commits it reviewed, unless it only adds clean
+   merges of `main` (redone with `git merge-tree`, no conflict, same tree) to a
+   head whose newest review is clean: `review-status.mjs --clone` reads that as clean. The bot never asks for a
    review itself: whether a push needs one is a judgement (a clean merge of
    `main`, a regenerated file, a moved pin or a lint fix does not). After 15
    minutes without one it says so once per commit in a comment: comment
-   `claude review` if the push changed code, or merge by hand after saying on
-   the pull request which kind of push it was. A repository without the
+   `claude review` for any other push (code, a regenerated file, a moved pin or a lint fix). A repository without the
    reviewer yet is held the same way, and a session merges it after reading
    the diff.
 4. Does the description avoid phrases like "fixes #12" that would close an
@@ -37,11 +38,13 @@ so in a comment on the pull request (once, not every two minutes).
 If every answer is yes, it **merges** (always a merge commit) and then, depending
 on the repository:
 
-- **Deploys it** (MoonMan and the websites): it builds and publishes from its
-  own copy of the code in `~/.ship-bot/work/`, never from your folders. The
-  deploy checks the live site itself. If anything fails it **puts the previous
-  version back**, comments on the pull request, shows a Mac notification, and
-  **stops touching that repository** until someone has looked.
+- **Deploys it, but only for a release** (MoonMan and the websites): it
+  builds and publishes from its own copy of the code in `~/.ship-bot/work/`,
+  never from your folders. The deploy checks the live site itself. If anything
+  fails it **puts the previous version back**, comments on the pull request,
+  shows a Mac notification, and **stops touching that repository** until
+  someone has looked. See "Releases, not every merge" below: an ordinary merge
+  is not deployed.
 - **Merges only** (BinderCurve, 4thcltr, ACID2REAPER, .github): those ship
   through a release step in a session, so the bot just says "Merged; deploying
   is a session's job for this repo".
@@ -50,6 +53,56 @@ on the repository:
 promptboi.com is special: the bot only ever publishes its website. If a merge
 changes the API or the database (`server/`), the bot merges it but does **not**
 deploy, says so, and leaves the deploy to a session.
+
+## Releases, not every merge (plan row 1.25)
+
+Owner, 14 November 2026: "We need to slow down now. Big releases, not
+incremental. More local testing before deploying live." So in every `deploy`
+row merging and deploying are split (`deployOn`, default `"release"`;
+`lib/deploy-plan.mjs`):
+
+- **A plain merge is not deployed.** It goes live with the next release, and
+  its comment says so.
+- **Label `release`: a release.** One per repository a week (6 days apart, so a
+  weekly release at a slightly earlier hour still goes). The description needs a
+  `## Release notes` section with at least one bullet, a `Local gate:` line
+  (the full local gate through `gate-run` on this Mac, and where its log is) and
+  a `Smoke:` line (the built site or app read on a local or preview host, and
+  what was checked). An `Early release: <why>` line lets one through sooner
+  when the owner asked. A tag repo (4thcltr.com) also needs its `Release:` line,
+  and a `Release:` line without the label stops the merge.
+- **Label `hotfix`: an exemption**, said on its own line:
+  `Exemption: security <why>` or `Exemption: outage <why>`. It deploys on merge
+  only when main is still the commit last deployed, so a hotfix never carries
+  undeployed merges live. Otherwise: cut a release, or deploy the fix by hand.
+- **The release head must contain main** (GitHub's compare says `ahead` or
+  `identical`). Otherwise main holds merges the gate and the smoke never saw:
+  merge main in and run both again.
+- **A forgotten label stops the merge.** Release notes, an `Exemption:` line or
+  a `Release:` line with neither label is refused, so it never becomes a quiet
+  merge that is not live. Labels match whatever their case.
+- **`deployOn: "merge"`** keeps the old deploy on every merge, for a row whose
+  deploy no visitor sees. It needs `deployOnMergeReason`. No row uses it today:
+  the infra repositories (`.github`, `ops`) are `merge-only`.
+
+A release deploys everything merged since the commit last deployed
+(`lastDeployedSha` in `~/.ship-bot/state.json`): changed paths,
+`pausedIfChanged` and `onlyIfChanged` count from there, and the default
+rollback redeploys that commit. With no deploy on record, every tracked path
+counts as changed, and the default rollback has nothing safe to redeploy, so
+it reports "nothing was rolled back" rather than redeploying the merge's first
+parent, which may never have been live. A paused deploy's block remembers its
+commit: deploy that exact commit by hand, then
+`ship-bot --unblock <repo> --deployed <sha>` records it as deployed (and, for a
+release, starts the weekly clock), so the next release diffs from there
+instead of pausing again. A plain `--unblock` is refused for that block. A
+release or hotfix pull request is looked at before the plain ones, so a plain
+merge does not land ahead of it and push its head behind main. A
+hotfix also checks, after the merge, that the merge's first parent is the last
+deploy. The comment and the phone say "as a release" or "as a hotfix".
+HTML comments and fenced code in the description are ignored, and a
+placeholder such as `n/a` or `<log>` is no line. The bot reads labels and lines; it cannot prove the gate or
+the smoke ran. The session that labels the release runs them and names the log.
 
 ## Watching first
 
@@ -197,7 +250,28 @@ bot now takes a draft itself when **all** of these hold:
   commit. Findings with an unanswered thread keep the draft a draft; nothing
   is said on the pull request, the log says why;
 - no `hold` label, no merge conflict, not opened by Dependabot, and the author
-  is allowlisted.
+  is allowlisted;
+- it changes no control-plane path (`CONTROL_PLANE_PATHS` and
+  `CONTROL_PLANE_BASENAMES` in `lib/drafts.mjs`): anything under `.github/`,
+  `.claude/`, `ship-bot/`, `scripts/gates/`, `scripts/lib/`, `janitor/` or
+  `capacity/` or `verification-kit/`, `scripts/review-status.mjs`, any
+  `REVIEW.md`, `CLAUDE.md`, `AGENTS.md`, `SKILL.md` or `canaries.json`, and in
+  `gorfednet/.github` all of `scripts/` and `templates/` and `fleet.json`.
+  Matching ignores case, and a rename counts by its old name too. Such a draft
+  changes what merges unattended, so the bot comments once per commit naming
+  the paths and leaves it to the owning session (plan row 1.12);
+- in a repository that deploys, its review is `clean`. Answered findings are
+  not enough there: every session posts as the owner's login, so an answer
+  proves no person read the finding. A deploy repository with no Claude
+  reviewer never has a draft readied.
+
+A pull request the bot readied stays under both guards on the merge path,
+whoever owns its label: each later commit is checked for control-plane paths
+again, and in a deploy repository merges only on a clean review. The bot
+knows it readied one from its state file or, if that is lost, from its own
+draft-ready comment. That holds even after the label comes off and goes back
+on: every session labels as the owner, so a control-plane change that must
+merge goes in a fresh pull request.
 
 Then it comments once, "Ship-bot: gates clean, marking ready and labelling;
 merges on the next pass", adds `ready-to-merge` and marks the pull request
@@ -341,13 +415,14 @@ the NAS and the Docker host work from launchd's context, where the keychain-held
 key and a terminal's Tailscale login may be missing? It never touches the real
 agent; run it before switching any deploy-mode repository on.
 
-**12 November 2026:** the agent runs at launchd's default process class. A
-`ProcessType Background` throttled every child process, Playwright and its
-browsers included, and failed 18 papers verify specs on 11 November 2026 (PR
-128). To check an install, run
+**14 November 2026:** the agent runs as `ProcessType Interactive`. Both
+`Background` (18 papers verify specs failed on 11 November 2026, PR 128) and
+launchd's default class with no key (10 of 24 wordmark specs failed, papers PR
+40) throttle every child process, Playwright and its browsers included. To
+check an install, run
 `plutil -extract ProcessType raw ~/Library/LaunchAgents/net.gorfed.ship-bot.plist`.
-It should fail with "No value at that key path". If it prints `Background`,
-re-run `ship-bot/install.sh` so the loaded plist matches this file. (`active
+It should print `Interactive`. Anything else, or "No value at that key path",
+means re-run `ship-bot/install.sh` so the loaded plist matches this file. (`active
 count` in `launchctl print` is no use here: the job is idle between runs.)
 
 **13 November 2026:** a row whose steps need `node_modules` must install it.
@@ -383,6 +458,45 @@ repository's merge gate, and `scripts/gates/assert-checks-started.mjs` and
 repository's own CI run), and the example points at the
 `~/Developer/gorfednet/gorfednet.github` clone.
 
+The bot does not run them from that clone, where a session can switch
+branches (plan row 1.12). `install.sh` exports `origin/main`'s commit with
+`git archive` (never the working tree), runs the suite from it, and copies the
+three scripts and `scripts/lib/` into `~/.ship-bot/app/gate-scripts/` with the
+commit in `SOURCE`, after `lib/gate-imports.mjs` confirms every import
+resolves inside the copy. A fix to a bot too broken to merge it is merged by
+the owner on GitHub, then installed the same way. While that copy exists the bot runs it and nothing else, and an
+incomplete copy refuses the pass. The gate commands on PATH (`~/.local/bin/review-status` and its siblings,
+plan row 1.7) are a different copy: symlinks into the detached worktree
+`.claude/worktrees/gates-main` of the .github clone. The Herdr commands, the
+herdr-core templates and the herdr-reconcile agent link into
+`.claude/worktrees/tools-main` of the ops clone. After the bot merges a pull
+request into `gorfednet/.github` or `gorfednet/ops` it runs `git fetch origin`
+and `git checkout --detach origin/main` in that repository's worktree
+(`lib/gates-worktree.mjs`, `TOOL_WORKTREES`). A worktree with uncommitted
+changes to tracked files is left alone, logged as an error and sent to the
+phone. Untracked files stay (Herdr's importer writes generated jobs into
+`tools-main`), except one that main now adds with the same bytes, which is
+cleared so the checkout can run. An untracked file that main adds with
+different bytes stops the advance the same way.
+
+Install rule (13 November 2026): every tool on this Mac installs from one of
+these ship-bot-advanced worktrees, never a working checkout. `install-gates.sh`,
+`capacity/install.sh` and ops' Herdr `install.sh` refuse anything else.
+fleet-status's "Installed tools behind main" row flags a link into a working
+checkout, a worktree behind origin/main, and an installed copy (this bot, the
+capacity app, the gh-poll-guard hook) that differs from main
+(`scripts/lib/installed-tools.mjs`). Each wrapper also prints one warning line on stderr when its
+checkout is not at the last fetched `origin/main`. The fetch also moves
+`origin/main` for the whole .github clone, so a bot run from a checkout with no
+installed gate-scripts copy (the fallback above) would see its clone's HEAD
+behind and refuse passes until that clone is pulled. The installed copy is the
+normal mode and is unaffected.
+
+Run from a checkout with no installed copy,
+the bot checks that each configured script's clone is at `origin/main` and
+clean, and otherwise refuses the pass: no gate runs, nothing is readied or
+merged. Each pass logs `gate scripts from the ...` with the source.
+
 ### The rules it follows
 
 - Gates are evaluated on the pull request's current head commit, and the merge
@@ -397,6 +511,12 @@ repository's own CI run), and the example points at the
 - Before the first merge in a deploy-mode repository each run, the config's
   `preflight` steps (ssh to the NAS and to the Docker host) must succeed; if
   not, only merge-only repositories merge that run.
+- A deploy row with `"needsHeadroom": true` merges only while this Mac's
+  1-minute load average is at or below its core count. Use it for a row whose
+  setup or deploy steps are timing-sensitive, such as a local Playwright suite
+  (papers.4thcltr.com). Above that, or when either number can't be read, the
+  bot logs the load and looks again next pass. It posts nothing on the pull
+  request and never blocks the repository for it. The default is false.
 - When a check name appears more than once on a commit (a re-run), only its
   latest run counts.
 - `~/.ship-bot/logs/ship-bot.log` moves to `ship-bot.log.1` once it passes 5 MB.
@@ -407,3 +527,10 @@ repository's own CI run), and the example points at the
   logged, or passed on a command line. A failed read is tried again twice, about two
   seconds apart; if all three fail the pass does nothing and the log gives each
   attempt's exit code, stderr and the length (never the content) of stdout.
+
+## Detect and repair (plan row 1.14)
+
+- A repo block (`--unblock` territory) queues one diagnosis job: `lib/herdr-jobs.mjs` writes `blk-<repo>-<hash>.json` into the ops clone's Herdr jobs folder (`<sourceRoot>/ops/hosts/gorfpael/herdr/jobs`) with `wx`, so the file is the claim and later passes write nothing. No ops clone, no job; a dry run only says so. The reconciler starts it under its caps.
+- A pull request gets the `needs-fix` label when its review gate blocks it: unanswered reviewer threads, a review that is not clean, or findings with no thread to answer. The label comes off once every gate passes, and a pull request the bot skips (hold, no ready label, conflicts) keeps none. Herdr's importer turns the label into a continue-this-PR job.
+
+Stall and unblock details (row 1.14): a labelled pull request refused for the same failing reason for over 2 hours queues one `stl-…` Herdr job, which pushes to that PR's branch (waits such as pending checks never count, nor do refusals no push can fix, such as review-required or review-not-run). `needs-fix` also comes off a PR that is on hold, lost `ready-to-merge` or conflicts. `--unblock` acts at once only when no pass is running; otherwise it queues a request that the next pass applies, and a block set after the request was written survives it.

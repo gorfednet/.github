@@ -1,0 +1,25 @@
+# Verification floor
+
+Applies in every repository. Rewritten 2026-10-03 from verification-baseline and durable-plan-and-self-healing (originals in `~/.claude/rules-archive-2026-10-03/`). A green check is the thing most likely to be lying: an assertion that cannot fail looks exactly like one that passes. These are the rules with an incident behind each; the case file is BinderCurve's `docs/audit/verification-teardown.md`.
+
+## Five rules
+
+1. **Count what ran.** A fully skipped suite exits 0. Assert an executed-test floor (`assert-tests-executed`), not an exit code.
+2. **Fail closed on selection.** An unmatched filter, an empty file list, an unassigned spec, an env read that decides whether a check runs: each is an error, never a default.
+3. **`if: ${{ !cancelled() }}` on every assertion step.** GitHub defaults a step to `success()`, so an unrelated earlier failure silently switches the check off.
+4. **Watch a new guard fail once, and narrow what it searches.** Break the thing it protects, see red, restore, see green, and say so in the PR. Write the near-miss negative case. When a guard searches a tree or a closure, ask what the least related thing that could satisfy it is; a loose subject passes with the fix removed.
+5. **A pull request check fails only on something that pull request can change.** Dates, the network, upstream releases, other repositories and GitHub state belong in scheduled reports, never in a per-PR gate. A check that goes red for a reason unrelated to what it guards teaches everyone to ignore it.
+
+Never read a site through this Mac's DNS (owner, 6 November 2026). The Mac resolves through a Pi-hole (100.100.100.100, then 192.168.2.14). It answers 0.0.0.0 or `::` for analytics, tag and bot-sensor hosts, so a page can render broken in a way no visitor sees. Every load that feeds a published finding goes through the engine's egress proxy and its own resolver: captures, live checks, probes and screenshots. Plain Playwright, curl, the built-in browser or Claude in Chrome don't count. A run must prove its path before it loads anything. It resolves a set of 6 canary hosts through the same path (`CANARY_HOSTS` in assess `src/net/canary.ts`: analytics, tag and bot-sensor hosts on the Pi-hole's current lists) and stops if any answer is 0.0.0.0, `::`, private or missing, or if the set is empty. No one name carries the proof: on 13 November 2026 the Pi-hole began forwarding `edge.adobedc.net`, the one name this rule had named, and a leaked read would have passed on it alone. A list can drop any host, so `node tools/canary-audit.ts` in assess, run on this Mac, checks that the Pi-hole still sinkholes all 6 and that the canary fails through it and passes through the engine's resolver; run it before a study that has not had one in a week, and when it fails, replace the host. A capture or live-check log without that proof is unverified. Captures before 25 October 2026 and the live checks before this rule went through the Pi-hole, and the audit in heuristics.4thcltr.com `docs/audit/pihole-artefacts.md` rechecks them.
+
+Count what was collected, too (owner, 6 November 2026). A search, scrape or import that finishes isn't one that saw everything. Before calling one done, check it against its own limits: a result cap reached, a page budget stopped while pages were still full, a filter missing, a source not run. Each is a gap to close or to accept with a written reason. A run that only says it completed has proved nothing. On 6 November 2026 a job search hit LinkedIn's 100-result limit on nearly every query, and the owner was the one who noticed. The job pipeline's gate is `docs/resume/audit_search.py` in career-portfolio.
+
+A sitemap URL must be a page worth indexing (owner ask, 12 November 2026, after Search Console flagged soft 404s on gorfmusic.com). A 200 isn't enough. Each listed URL must be self-canonical, carry no noindex and no meta refresh, have real content, and be in the exact form the server answers 200 to. A made-up URL and `/404.html` by name answer 404, and www redirects. The fleet probe found 6 more sites failing this while every check was green. The checks are `check-sitemap-pages` per PR and `production-healthcheck` on a schedule (kit V77).
+
+Also: Vitest strips types, so a green suite says nothing about types; run the typecheck too.
+
+A fault reported on a real device is not fixed until it has been run on that kind of device (owner, 2026-10-31). MoonMan PR 300 shipped a sound fix proven only on the simulator, which has no real audio session, and the fault came back. If the device can't be reached, say the fix is unproven.
+
+## Plan of record
+
+Open work lives in the repository as a typed list (symptom in the user's words, evidence, status, assignee), not in a session. Never record a status the repository can contradict. Dates on entries and quarantines are reminders: a scheduled report lists the lapsed ones for a decision; they never fail a test suite or a push. Prefer deriving a list from the code over checking a hand-kept one; add a sync check only after a list has drifted once or when its drift would reach users.

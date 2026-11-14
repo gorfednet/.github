@@ -59,7 +59,12 @@
       "mcp__ccd_session_mgmt__get_usage",
       "mcp__ccd_session_mgmt__get_session",
       "mcp__scheduled-tasks__list_task_runs",
-      "mcp__ccd_session_mgmt__archive_session"
+      "mcp__ccd_session_mgmt__archive_session",
+      "Bash(gh pr reopen *)",
+      "Bash(gh workflow run *)",
+      "mcp__ccd_session_mgmt__stop_session",
+      "mcp__ccd_session_mgmt__set_remote_control",
+      "mcp__ccd_session_mgmt__send_message"
     ],
     "deny": [
       "Bash(gh pr merge *)",
@@ -177,7 +182,28 @@
       "Bash(hc *git push*--mirror*)",
       "Bash(hc *git push*--prune*)",
       "Bash(gate-run *git push*--mirror*)",
-      "Bash(gate-run *git push*--prune*)"
+      "Bash(gate-run *git push*--prune*)",
+      "Bash(gh run delete *)",
+      "Bash(hc *gh run delete*)",
+      "Bash(gate-run *gh run delete*)",
+      "Bash(gh label delete *)",
+      "Bash(hc *gh label delete*)",
+      "Bash(gate-run *gh label delete*)",
+      "Bash(gh release delete *)",
+      "Bash(hc *gh release delete*)",
+      "Bash(gate-run *gh release delete*)",
+      "Bash(gh secret delete *)",
+      "Bash(hc *gh secret delete*)",
+      "Bash(gate-run *gh secret delete*)",
+      "Bash(gh variable delete *)",
+      "Bash(hc *gh variable delete*)",
+      "Bash(gate-run *gh variable delete*)",
+      "Bash(gh secret remove *)",
+      "Bash(hc *gh secret remove*)",
+      "Bash(gate-run *gh secret remove*)",
+      "Bash(gh variable remove *)",
+      "Bash(hc *gh variable remove*)",
+      "Bash(gate-run *gh variable remove*)"
     ],
     "defaultMode": "auto"
   },
@@ -264,12 +290,12 @@
     "command": "python3 ~/.claude/scripts/statusline.py"
   },
   "enabledPlugins": {
-    "frontend-design@claude-plugins-official": true,
-    "pr-review-toolkit@claude-plugins-official": true,
-    "claude-md-management@claude-plugins-official": true,
-    "session-report@claude-plugins-official": true,
-    "code-simplifier@claude-plugins-official": true,
-    "hookify@claude-plugins-official": true,
+    "frontend-design@claude-plugins-official": false,
+    "pr-review-toolkit@claude-plugins-official": false,
+    "claude-md-management@claude-plugins-official": false,
+    "session-report@claude-plugins-official": false,
+    "code-simplifier@claude-plugins-official": false,
+    "hookify@claude-plugins-official": false,
     "security-guidance@claude-plugins-official": true
   },
   "theme": "dark",
