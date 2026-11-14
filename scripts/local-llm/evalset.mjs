@@ -167,7 +167,8 @@ export function referenceProblems(cases, haiku, nomodels, { voice, salt, grades,
     const h = score(cs, haiku, { voice, salt })
     if (h.schema !== h.n) note(t, `Haiku schema valid ${h.schema}/${h.n}`)
     const z = bestNoModel(cs, nomodels, { voice, salt })
-    if (z && h.correct < z.correct + 2) note(t, `Haiku ${h.correct} is under no-model ${z.correct} + 2`)
+    if (!z) note(t, `no no-model arm covers ${t}`)
+    else if (h.correct < z.correct + 2) note(t, `Haiku ${h.correct} is under no-model ${z.correct} + 2`)
     if (GRADED.has(t)) {
       const g = gradeStats(cs, haiku, grades?.[haikuName], { salt })
       if (g.bad.length || g.valid < h.schema) note(t, `Haiku is graded ${g.valid}/${h.n}`)
@@ -188,7 +189,7 @@ export function judge(manifest, arm, haiku, nomodel, { name = 'arm', haikuName =
   for (const t of tasks) {
     const cs = cases.filter((c) => c.task === t)
     if (!cs.length) continue
-    const s = score(cs, arm, { voice, salt }), h = score(cs, haiku, { voice, salt }), z = bestNoModel(cs, nomodels, { voice, salt }) ?? score(cs, {}, { voice, salt })
+    const s = score(cs, arm, { voice, salt }), h = score(cs, haiku, { voice, salt }), z = bestNoModel(cs, nomodels, { voice, salt }) // null: no floor, so noRef holds this task and nothing below reads z
     scores[t] = { arm: s, haiku: h, nomodel: z }
     if (s.schema !== s.n) reasons.push(`${t}: schema valid ${s.schema}/${s.n}`)
     // Latency applies only to an arm that was timed. An ingested Claude arm has no timings: skip, never Infinity.
@@ -205,7 +206,7 @@ export function judge(manifest, arm, haiku, nomodel, { name = 'arm', haikuName =
         if (s.cause < z.cause + 2) reasons.push(`triage: cause ${s.cause} below no-model ${z.cause} + 2`)
       }
     }
-    if (s.correct < z.correct + 2) reasons.push(`${t}: ${s.correct} below no-model ${z.correct} + 2`)
+    if (z && s.correct < z.correct + 2) reasons.push(`${t}: ${s.correct} below no-model ${z.correct} + 2`)
     if (GRADED.has(t)) {
       const g = gradeStats(cs, arm, grades?.[name], { salt })
       scores[t].grade = g

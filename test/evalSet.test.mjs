@@ -11,7 +11,8 @@ import { parseAnswer, promptFor, nomodelArm, majority, withCause, ruleVerdict, r
 const sha = (s) => crypto.createHash('sha256').update(s).digest('hex')
 const SALT = 'test-salt'
 const F = (names, id) => filesLabel(names, SALT, id)
-// 30 reviewer (15 pairs, 15 valid), 10 builder, 12 triage (6 real, 5 flake, 1 infra), 10 copy (3 findings each): the real set's proportions
+// A 62-case fixture: 30 reviewer (15 pairs, 15 valid), 10 builder, 12 triage (6 real, 5 flake, 1 infra), 10 copy (3 findings each).
+// The real frozen set is 56 cases: 28 reviewer, 10 builder, 10 triage, 8 copy (asserted in 'manifest schema').
 const TRI = ['real', 'real', 'real', 'real', 'real', 'real', 'flake', 'flake', 'flake', 'flake', 'flake', 'infra']
 const cases = [
   ...Array.from({ length: 30 }, (_, i) => ({ id: `rev-${String(i + 1).padStart(2, '0')}`, task: 'reviewer', label: i % 2 ? 'valid' : 'invalid', sha256: sha(`r${i}`) })),
@@ -196,6 +197,33 @@ describe('judge', () => {
     const weak = arm((c, i) => i % 3 !== 0)
     assert.equal(judge(manifest, weak, haiku, nomodel, opts(weak)).status, 'FAIL')
   })
+  it('fails an arm that is below Haiku by more than one and differs from it on nothing else', () => {
+    const b = cases.filter((c) => c.task === 'builder')
+    const wrongIds = b.filter((c) => haiku[c.id].files[0].startsWith('a')).slice(0, 2).map((c) => c.id) // two more misses than Haiku
+    const m = { ...haiku, ...Object.fromEntries(wrongIds.map((id) => [id, { files: [`zzz-${id}.js`] }])) }
+    const r = judge(manifest, m, haiku, nomodel, { ...opts(m), tasks: ['builder'] })
+    assert.equal(r.status, 'FAIL')
+    assert.equal(r.reasons.length, 1)
+    assert.match(r.reasons[0], /builder: 6\/10 below Haiku 8 - 1/)
+  })
+  it('fails an arm whose voice findings drop by 2 more than Haiku, with the same answers right', () => {
+    const wrongCopy = cases.filter((c, i) => c.task === 'copy' && i % 5 === 0).map((c) => c.id) // the cases Haiku misses
+    assert.equal(wrongCopy.length, 2)
+    const hk = { ...haiku, ...Object.fromEntries(wrongCopy.map((id) => [id, { text: `HALF ${id}` }])) } // Haiku half-fixes them
+    const m = { ...haiku } // the arm leaves BAD in the same cases: same correct count, 1 fewer finding dropped each
+    const o = { voice, salt: SALT, name: 'm', grades: { m: grade(m, 5), haiku: grade(hk, 5) } }
+    const r = judge(manifest, m, hk, nomodel, { ...o, tasks: ['copy'] })
+    assert.equal(r.status, 'FAIL')
+    assert.deepEqual(r.reasons.length, 1)
+    assert.match(r.reasons[0], /copy: voice findings dropped by 26 of 30, Haiku 28/)
+  })
+  it('is NO-REFERENCE, never PASS, when no no-model arm covers a task, and names the task', () => {
+    const m = arm()
+    const partial = Object.fromEntries(Object.entries(nomodel).filter(([id]) => !id.startsWith('tri-')))
+    const r = judge(manifest, m, haiku, partial, { ...opts(m), tasks: ['triage'] })
+    assert.equal(r.status, 'NO-REFERENCE')
+    assert.match(r.reasons.join(), /triage: no reference \(no no-model arm covers triage\)/)
+  })
   it('fails a miss on a dangerous label above Haiku', () => {
     const risky = arm((c) => c.id !== 'rev-02')
     assert.match(judge(manifest, risky, arm(), nomodel, opts(risky)).reasons.join(), /dangerous/)
@@ -283,8 +311,20 @@ describe('triage cause lines', () => {
   it('fails an arm whose file carries no cause scoring, and one whose cause hits fall below Haiku or no-model + 2', () => {
     const m = arm(); for (const c of cases.filter((x) => x.task === 'triage')) delete m[c.id].cause
     assert.match(judge(manifest, m, haiku, nomodel, { ...opts(m), tasks: ['triage'] }).reasons.join(), /no cause lines scored/)
-    const low = arm((c) => true); for (const c of cases.filter((x) => x.task === 'triage')) low[c.id].cause = c.id === 'tri-01'
-    assert.match(judge(manifest, low, haiku, nomodel, { ...opts(low), tasks: ['triage'] }).reasons.join(), /cause 1 below/)
+  })
+  const tri = cases.filter((x) => x.task === 'triage')
+  const only = (m, nm) => judge(manifest, m, haiku, nm, { ...opts(m), tasks: ['triage'] }).reasons
+  it('fails a cause count below Haiku\'s, and only that bar', () => {
+    const m = structuredClone(haiku); const hit = tri.filter((c) => m[c.id].cause)[0]; m[hit.id].cause = false
+    const r = only(m, nomodel)
+    assert.equal(r.length, 1)
+    assert.match(r[0], /triage: cause 8 below haiku 9/)
+  })
+  it('fails a cause count below no-model + 2, and only that bar', () => {
+    const nm = structuredClone(nomodel); for (const c of tri) nm[c.id].cause = true // a floor that guesses lines well, same verdicts
+    const r = only(structuredClone(haiku), nm)
+    assert.equal(r.length, 1)
+    assert.match(r[0], /triage: cause 9 below no-model 12 \+ 2/)
   })
 })
 
@@ -381,9 +421,9 @@ describe('two no-model arms', () => {
 
 describe('rule arm and triage prompts', () => {
   it('calls a region invalid when it holds code from the finding\'s own Fix sentence, and valid otherwise', () => {
-    const finding = 'Medium: `walk` hashes untracked files, so a `.DS_Store` moves the hash. Fix: hash only tracked files (`git ls-files`), or skip ignored names.'
-    assert.equal(ruleVerdict({ finding, region: 'const out = walk(root)' }), 'valid')
-    assert.equal(ruleVerdict({ finding, region: "execFileSync('git', ['ls-files', '-z'])" }), 'invalid')
+    const finding = 'Medium: `renderRow` prints empty cells as the word undefined. Fix: filter the cells first (`cells.filter(Boolean)`), or default them.'
+    assert.equal(ruleVerdict({ finding, region: 'const out = renderRow(cells)' }), 'valid')
+    assert.equal(ruleVerdict({ finding, region: 'const out = renderRow(cells.filter(Boolean))' }), 'invalid')
     assert.equal(ruleVerdict({ finding: 'no remedy given here', region: 'git ls-files' }), 'valid')
   })
   it('does not count a name the finding already used before its Fix sentence', () => {
@@ -434,6 +474,18 @@ describe('triage answers are held to the lines the model saw; the run builds eve
     const ok = await runModel([c], 'm', 'http://stub', io('{"verdict":"real","lines":[230]}', []))
     assert.deepEqual([ok['tri-01'].verdict, ok['tri-01'].lines], ['real', [230]])
   })
+  it('unloads the model and releases the lock after a run, and when chat throws', async () => {
+    for (const chatFails of [false, true]) {
+      const { c } = mk()
+      const calls = []
+      const i = io('{"verdict":"real","lines":[230]}', calls)
+      if (chatFails) i.chat = async () => { calls.push('chat'); throw new Error('boom') }
+      const arm = await runModel([c], 'm', 'http://stub', i)
+      assert.equal(calls.includes('unload'), true)
+      assert.equal(fs.existsSync(i.lock), false, 'lock file left behind')
+      assert.equal(arm['tri-01'].invalid === true, chatFails)
+    }
+  })
   it('holds an ingested Claude-tier answer to the same lines', () => {
     const { c } = mk()
     const allowed = prepare([c]).get('tri-01').allowed
@@ -449,6 +501,53 @@ describe('triage answers are held to the lines the model saw; the run builds eve
       await assert.rejects(runModel([rev, c], 'm', 'http://stub', io('{"verdict":"valid"}', calls)), /sha256 changed|ENOENT/)
       assert.deepEqual(calls, [])
     }
+  })
+})
+
+describe('evalset-run refuses unsafe command lines', () => {
+  const script = new URL('../scripts/local-llm/evalset-run.mjs', import.meta.url).pathname
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'es-cli-run-'))
+  const bodies = {
+    'rev-01': { input: { path: 'p', line: 1, finding: 'F', region: 'R' } }, 'bld-01': { input: { title: 't', summary: 's', candidates: ['a.js'] } },
+    'tri-01': { input: {} }, 'cpy-01': { input: { instruction: 'i', text: 't' } },
+  }
+  const cs = [['rev-01', 'reviewer', 'valid'], ['bld-01', 'builder', 'files:' + 'ab'.repeat(32)], ['tri-01', 'triage', 'real'], ['cpy-01', 'copy', 'voice:3']]
+  for (const [id] of cs) fs.writeFileSync(path.join(dir, `${id}.json`), JSON.stringify(bodies[id]))
+  const man = path.join(dir, 'manifest.json')
+  fs.writeFileSync(man, JSON.stringify({ version: 2, cases: cs.map(([id, task, label]) => ({ id, task, label, sha256: sha(JSON.stringify(bodies[id])) })) }))
+  const run = (...a) => spawnSync('node', [script, '--manifest', man, '--cases', dir, ...a], { cwd: dir, encoding: 'utf8' })
+  it('the fixture itself runs', () => {
+    assert.equal(run('--nomodel', path.join(dir, 'ok.json')).status, 0)
+    assert.equal(fs.existsSync(path.join(dir, 'ok.json')), true)
+  })
+  it('rejects an unknown --tasks value and writes nothing', () => {
+    const r = run('--tasks', 'reviewer,bogus', '--nomodel', path.join(dir, 'bad-tasks.json'))
+    assert.notEqual(r.status, 0)
+    assert.match(r.stderr, /unknown task bogus/)
+    assert.equal(fs.existsSync(path.join(dir, 'bad-tasks.json')), false)
+  })
+  it('rejects a flag whose value is missing or is another flag, and writes no file named after a flag', () => {
+    const r = run('--nomodel', '--model', 'x', '--out', path.join(dir, 'o.json'))
+    assert.notEqual(r.status, 0)
+    assert.match(r.stderr, /--nomodel <value> is required/)
+    assert.equal(fs.existsSync(path.join(dir, '--model')), false)
+    assert.notEqual(run('--nomodel').status, 0)
+  })
+})
+
+describe('evalset-baseline refuses a no-model arm that skips a task', () => {
+  it('names the missing task and writes nothing', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'es-bl2-'))
+    const w = (f, v) => { fs.writeFileSync(path.join(dir, f), JSON.stringify(v)); return path.join(dir, f) }
+    const man = w('manifest.json', manifest), salt = path.join(dir, 'salt'); fs.writeFileSync(salt, 's')
+    const arms = path.join(dir, 'arms'); fs.mkdirSync(arms)
+    fs.writeFileSync(path.join(arms, 'nomodel.json'), JSON.stringify(Object.fromEntries(Object.entries(nomodel).filter(([id]) => !id.startsWith('cpy-')))))
+    const cv = new URL('../templates/verification-kit/bin/check-voice.mjs', import.meta.url).pathname
+    const out = path.join(dir, 'b.json')
+    const r = spawnSync('node', [new URL('../scripts/local-llm/evalset-baseline.mjs', import.meta.url).pathname, '--manifest', man, '--arms', arms, '--salt-file', salt, '--check-voice', cv, '--note', 'n', '--out', out], { encoding: 'utf8' })
+    assert.notEqual(r.status, 0)
+    assert.match(r.stderr, /nomodel: no answers for copy/)
+    assert.equal(fs.existsSync(out), false)
   })
 })
 

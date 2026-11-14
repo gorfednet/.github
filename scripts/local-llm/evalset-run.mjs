@@ -147,12 +147,21 @@ export async function runModel(cases, id, base, io = {}) {
 }
 
 async function main(argv) {
-  const val = (k) => (argv.includes(k) ? argv[argv.indexOf(k) + 1] : undefined)
+  // A flag that is present needs a value that is not another flag: `--nomodel --model x` once wrote a file named "--model".
+  const val = (k) => {
+    if (!argv.includes(k)) return undefined
+    const v = argv[argv.indexOf(k) + 1]
+    if (v === undefined || v.startsWith('--')) throw new Error(`${k} <value> is required`)
+    return v
+  }
   // Check --out before a 56-case model run, not after it.
   if ((val('--ingest') || val('--model')) && (!val('--out') || val('--out').startsWith('--'))) throw new Error('--out <file> is required with --model and --ingest')
   const manifest = JSON.parse(fs.readFileSync(val('--manifest'), 'utf8'))
   const tasks = val('--tasks') ? val('--tasks').split(',') : TASKS
+  const unknown = tasks.filter((t) => !TASKS.includes(t))
+  if (unknown.length) throw new Error(`unknown task ${unknown.join(', ')} (known: ${TASKS.join(', ')})`)
   const cases = loadCases(manifest, val('--cases')).filter((c) => tasks.includes(c.task))
+  if (!cases.length) throw new Error('no cases to run')
   if (val('--nomodel')) { fs.writeFileSync(val('--nomodel'), `${JSON.stringify(nomodelArm(cases), null, 2)}\n`); return 0 }
   if (val('--nomodel-rule')) { fs.writeFileSync(val('--nomodel-rule'), `${JSON.stringify(ruleArm(cases), null, 2)}\n`); return 0 }
   if (val('--emit-inputs')) { emitInputs(cases, val('--emit-inputs')); return 0 }

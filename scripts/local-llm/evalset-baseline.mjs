@@ -31,6 +31,9 @@ for (const f of fs.readdirSync(val('--arms')).filter((x) => x.endsWith('.json'))
     const s = score(cs, arm, { voice, salt })
     scores[t] = { n: s.n, correct: s.correct, schema: s.schema, dangerous: s.dangerous, ...(t === 'copy' ? { drop: s.drop, start: s.start } : {}) }
   }
+  // The no-model floor is every task's bar: a frozen floor that skips one would let the judge fall back to 0.
+  const name = f.replace(/\.json$/, '')
+  if (name === 'nomodel') for (const t of TASKS) if (manifest.cases.some((c) => c.task === t) && !manifest.cases.filter((c) => c.task === t).every((c) => arm[c.id] !== undefined)) throw new Error(`evalset-baseline: nomodel: no answers for ${t}`)
   arms.push({ name: f.replace(/\.json$/, ''), armSha256: sha256(bytes), scores })
 }
 const out = { frozen: new Date().toISOString().slice(0, 10), manifestSha256: sha256(raw), note: val('--note'), arms }
