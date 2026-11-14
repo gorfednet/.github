@@ -75,7 +75,7 @@ test("janitor sets up its own checkout, so the scheduled task's older starter te
 
 test("janitor never rescues a session whose branch has an open pull request, and rescues commits pushed after a merge", () => {
   assert.match(prompt, /`dirty`:[^\n]*first make the `gh pr list` call[^\n]*On `OPEN` or `CLOSED`, propose only/);
-  assert.match(prompt, /`MERGED`: run `git rev-list --count <headRefOid>\.\.HEAD`[^\n]*squash-merged[^\n]*Archive it\. More than 0[^\n]*Treat it like the no-PR case/);
+  assert.match(prompt, /`MERGED`: run `git -C "\$\(cat \$R\/worktree-<id8>\.txt\)" rev-list --count <headRefOid>\.\.HEAD`[^\n]*squash-merged[^\n]*Archive it\. More than 0[^\n]*Treat it like the no-PR case/);
 });
 
 test("janitor never archives a session whose folder holds ignored local state", () => {
@@ -148,4 +148,82 @@ test("janitor control-plane command never runs a changed file's name", () => {
   assert.equal(status, 0, "odd names under docs/ are still plain docs");
   assert.deepEqual(readdirSync(dir), ["files-x-1.json"]);
   assert.equal(existsSync(join(dir, "PWNED")), false);
+});
+
+test("janitor puts no branch, title or worktree on a command line: each goes through a file", () => {
+  const spans = [...prompt.matchAll(/`([^`\n]+)`/g)].map((m) => m[1]).filter((c) => /^(gh|git|node) /.test(c));
+  assert.ok(spans.length > 10, "found the prompt's commands");
+  for (const c of spans) assert.doesNotMatch(c, /<(branch|title|worktree|the branch you pushed)>/, `untrusted text pasted into: ${c}`);
+  assert.match(prompt, /Untrusted text never reaches a command line/);
+  assert.ok(quotedFileFlags(spans) >= 9);
+  assert.match(prompt, /`test -s`/);
+  assert.match(prompt, /skip that session/);
+});
+
+/** Every untrusted-valued flag takes `"$(cat $R/<name>-<id8>.txt)"` with its double quotes; `-C` may also take the owner's `$J` or `$G`. Returns how many it checked. */
+function quotedFileFlags(spans) {
+  let seen = 0;
+  for (const c of spans) {
+    for (const m of c.matchAll(/(?:^| )(-C|--head|--branch|--worktree|--title) (\S+)/g)) {
+      if (m[1] === "-C" && /^\$[JG]$/.test(m[2])) continue;
+      seen += 1;
+      assert.match(c.slice(m.index + m[0].indexOf(m[1]) + m[1].length + 1), /^"\$\(cat \$R\/[a-z]+-<id8>\.txt\)"/, `${m[1]} must read a quoted file: ${c}`);
+    }
+  }
+  return seen;
+}
+
+test("the quoted-form check rejects an unquoted or pasted value", () => {
+  assert.throws(() => quotedFileFlags(["gh pr create --title $(cat $R/title-<id8>.txt) --x"]));
+  assert.throws(() => quotedFileFlags(["git -C <worktree> status"]));
+  assert.throws(() => quotedFileFlags(['gh pr list --head "<branch>" --state all']));
+  assert.equal(quotedFileFlags(['git -C "$(cat $R/worktree-<id8>.txt)" status']), 1);
+});
+
+/** Index of the first read and the first write of `$R/<name>-<id8>.txt` in a prompt text (-1 when none). */
+function firstReadWrite(text, name) {
+  const file = `\\$R/${name}-<id8>\\.txt`;
+  const read = text.search(new RegExp(`\\$\\(cat ${file}\\)`));
+  const write = text.search(new RegExp(`(?:[Ww]rite|> )[^\\n]*?${file}(?!\\))`));
+  return { read, write };
+}
+
+test("every value file is written before the first command that reads it", () => {
+  for (const name of ["branch", "worktree", "title", "head"]) {
+    const { read, write } = firstReadWrite(prompt, name);
+    assert.ok(read > 0, `${name} is read`);
+    assert.ok(write > 0 && write < read, `${name}-<id8>.txt must be written (at ${write}) before its first read (at ${read})`);
+  }
+  const bad = 'run `gh pr list --head "$(cat $R/branch-<id8>.txt)"`. Then write `$R/branch-<id8>.txt`.';
+  const { read, write } = firstReadWrite(bad, "branch");
+  assert.ok(!(write < read), "the checker sees a read that comes first");
+});
+
+test("a session with no worktree is archived without it, and what needs one is propose-only", () => {
+  assert.match(prompt, /A session with no `worktree` has no worktree file: it is still handled by its `state` below\. A `merged` one is archived\. An `unmerged` one with an `OPEN` or `CLOSED` pull request is left or proposed as below, never archived\./);
+  assert.doesNotMatch(prompt, /can still be archived as `unmerged`/, "OPEN and CLOSED unmerged sessions are never archived");
+  assert.match(prompt, /the `MERGED` `rev-list` check, a rescue\) is propose-only/);
+  assert.match(prompt, /with no `--worktree` argument/);
+});
+
+test("a dirty session with no branch (detached HEAD) still reaches the rescue", () => {
+  const rescue = prompt.match(/\n   6\. Rescue,[^\n]*/)[0];
+  assert.match(rescue, /run `test -s` on it/, "the rescue checks the worktree file");
+  assert.doesNotMatch(rescue, /branch-<id8>\.txt/, "the rescue never needs the branch file, which a detached HEAD lacks");
+  assert.match(rescue, /detached HEAD has no branch/);
+  const dirty = prompt.match(/- `dirty`:[^\n]*/)[0];
+  assert.match(dirty, /if it has a `branch`, first make the `gh pr list` call[^\n]*Otherwise rescue it/, "a branchless one skips the PR call and goes to the rescue");
+  const call = prompt.match(/1\. Read the pull request into a file[^\n]*/)[0];
+  assert.match(call, /after `test -s \$R\/branch-<id8>\.txt`/, "the branch file is checked where it is used");
+});
+
+test("the quoted file form runs nothing a hostile title or branch holds", () => {
+  const dir = mkdtempSync(join(tmpdir(), "janitor-title-"));
+  const pwn = join(dir, "pwn");
+  for (const hostile of [`x"; touch ${pwn}; echo "`, "$(touch " + pwn + ")", "`touch " + pwn + "`"]) {
+    writeFileSync(join(dir, "title.txt"), hostile);
+    const r = spawnSync("bash", ["-c", `printf '%s' "$(cat ${join(dir, "title.txt")})"`], { encoding: "utf8" });
+    assert.equal(r.stdout, hostile, "the argument arrives as the same text");
+    assert.equal(existsSync(pwn), false, `ran: ${hostile}`);
+  }
 });
