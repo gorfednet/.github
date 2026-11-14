@@ -1,0 +1,306 @@
+{
+  "version": 1,
+  "collected": "2026-11-14",
+  "cases": [
+    {
+      "id": "bld-01",
+      "task": "builder",
+      "label": "files:b90455c850b195aeb61a6a77c189b4bcc5728cfc35db8d771445a045bbd65c02",
+      "sha256": "3095a6e94b129512e8c05899f31375dcfc54707d7615e7c6233fcac2f66d1612"
+    },
+    {
+      "id": "bld-02",
+      "task": "builder",
+      "label": "files:2b30c7384816d36c3c1351d01f4981efa6acca35e70ad603e0921126a13887c2",
+      "sha256": "d2813c9b0bc59c12f221f7df912e685fbed778bd386da2223b8fcebb9e89f2a1"
+    },
+    {
+      "id": "bld-03",
+      "task": "builder",
+      "label": "files:f21dc414020b8c3cf9b380dcba598c85e542634e3b4d8e964705bb7193b91710",
+      "sha256": "416feaf626be4483e168d7e21097b5c4491e8f24351b4b9f3cfaddf0bf358b1c"
+    },
+    {
+      "id": "bld-04",
+      "task": "builder",
+      "label": "files:c8e7c54b041107d7ae3ec5a25e79a43316006a3261e21b9bd4f49c065f2fcf69",
+      "sha256": "a8b2e724d100775b1a919ddd23f791dc22b5eabce2fd491b2fd4e30db27ecbbe"
+    },
+    {
+      "id": "bld-05",
+      "task": "builder",
+      "label": "files:d7f36fa4a0a7075466e8591009e94ffb51093f6851a1a0205b79a4c5e521d937",
+      "sha256": "0d48cdef4be7f229d1ce6c0b65cf80fef03c98ff5a7802cb6868d04b91921c64"
+    },
+    {
+      "id": "bld-06",
+      "task": "builder",
+      "label": "files:8dd959429f511c3a154e54a89bf51e1988d1b57210cedb33edce3a86bd26c527",
+      "sha256": "7796c5e4b23c279afc508c09d093f2d7c68c45a83b3403c7adbcdf39a519d927"
+    },
+    {
+      "id": "bld-07",
+      "task": "builder",
+      "label": "files:997847f809775d51e93d734f28392ff6c2a853979619a7bec47a59feb41b346b",
+      "sha256": "90b37fed468ac032380848a88c883200c159b9d994b83d100dc0c581311f7e9a"
+    },
+    {
+      "id": "bld-08",
+      "task": "builder",
+      "label": "files:0351393777005cfe00fa1f4e2e80935e74cb22d0f7f91bb5c07284309fea6993",
+      "sha256": "68786655d9af19f3bda5d83d25bbbe5b85b2d7669f35f9ffdd868d91f7252f82"
+    },
+    {
+      "id": "bld-09",
+      "task": "builder",
+      "label": "files:d8ea715dec033f6562271a0af01f45048e2785d5d17ee4230ff0dbeeca9d0afb",
+      "sha256": "ad9f568180ffb5f1880603a0be7068a5481de67dcd0bd45a0f048e80b8e6362a"
+    },
+    {
+      "id": "bld-10",
+      "task": "builder",
+      "label": "files:2d8f2a9187a7b1f9d87b03aa4559542ce193d02f63193a73e9f2b0e85a3ac13f",
+      "sha256": "7da6d05045a6358779cdea2e5f58ead32bed08f8907cf102ec9b20a875da58da"
+    },
+    {
+      "id": "cpy-01",
+      "task": "copy",
+      "label": "voice-clean",
+      "sha256": "2efdda48caa7c4901deb6aafec07daa40853bf82b4f26532b41e1fb76c5f0323"
+    },
+    {
+      "id": "cpy-02",
+      "task": "copy",
+      "label": "voice-clean",
+      "sha256": "f9ea29f9835200b13c57a4aa4170b709e6667dc9ede6ce3227882ea3a2163ede"
+    },
+    {
+      "id": "cpy-03",
+      "task": "copy",
+      "label": "voice-clean",
+      "sha256": "82a17893776bdc34174f7a97ecc51bdca6d3efca31aa7ba0f3aeeb73037546bc"
+    },
+    {
+      "id": "cpy-04",
+      "task": "copy",
+      "label": "voice-clean",
+      "sha256": "efe714e00929a6ce9ea6fe28340d1ac097ddcc397ad39630e20c9b28b568f309"
+    },
+    {
+      "id": "cpy-05",
+      "task": "copy",
+      "label": "voice-clean",
+      "sha256": "ff7d71199e1e501e83dfce0a2e2545519df1084728f716201a83aef434c9a8ec"
+    },
+    {
+      "id": "cpy-06",
+      "task": "copy",
+      "label": "voice-clean",
+      "sha256": "77dc7de361e022f7d9d76b8ce3aece05ece1a841003094558a8de89f9ff52e9e"
+    },
+    {
+      "id": "cpy-07",
+      "task": "copy",
+      "label": "voice-clean",
+      "sha256": "49dfad65432f575ab81a9600628ba0670354a4ee3b8ee6e806d2754ea3dc661f"
+    },
+    {
+      "id": "cpy-08",
+      "task": "copy",
+      "label": "voice-clean",
+      "sha256": "21409cbcf947edd121a82db1b8db1ab5ff820db52f41090d6138dc84d06f7782"
+    },
+    {
+      "id": "cpy-09",
+      "task": "copy",
+      "label": "voice-clean",
+      "sha256": "012f4ca09a24f8b82b1d3cf760c4a155c1c4ce2c3e168fa986d6bc8140fd0c15"
+    },
+    {
+      "id": "cpy-10",
+      "task": "copy",
+      "label": "voice-clean",
+      "sha256": "76cf44e6a933e60b1b686c4aaeeea6e13ee36553ce0ac7f9b42f30b62ea6ab7b"
+    },
+    {
+      "id": "rev-01",
+      "task": "reviewer",
+      "label": "valid",
+      "sha256": "79e82a88a0fd2490df7748e9634a53635ad28bf48e6f77832cadf64b9de97421"
+    },
+    {
+      "id": "rev-02",
+      "task": "reviewer",
+      "label": "valid",
+      "sha256": "8e5ee042d7102efc03ac03bf63ab69c6c3288083afafddc482b60eee61cdc07b"
+    },
+    {
+      "id": "rev-03",
+      "task": "reviewer",
+      "label": "valid",
+      "sha256": "9730d4386c557d44556722830840b0205ed22d01c370d3621a4ab609bc230e76"
+    },
+    {
+      "id": "rev-04",
+      "task": "reviewer",
+      "label": "invalid",
+      "sha256": "05ff8b2836234aa08178c0c6377865ae0c2904f288bbc35badef5aa591cfe827"
+    },
+    {
+      "id": "rev-05",
+      "task": "reviewer",
+      "label": "valid",
+      "sha256": "2cda13a54b5b3780899eb0f87a5012b90dc4ce8b4618fcdf5f600af9d03afc6a"
+    },
+    {
+      "id": "rev-06",
+      "task": "reviewer",
+      "label": "valid",
+      "sha256": "52cd0271e54193ddc125c63d9b6affbe5cd9e2ac56333a9f2cfee945402c4ba1"
+    },
+    {
+      "id": "rev-07",
+      "task": "reviewer",
+      "label": "valid",
+      "sha256": "92bf1db8604eaba25c5c6bcdd657b53ca1f2268340f9de081bf57449374c8828"
+    },
+    {
+      "id": "rev-08",
+      "task": "reviewer",
+      "label": "valid",
+      "sha256": "890143c012df4d8cd5d8fd8a6d3d38f0da3976a7bf4f72bdce3f230063d01ab0"
+    },
+    {
+      "id": "rev-09",
+      "task": "reviewer",
+      "label": "invalid",
+      "sha256": "b31c8fdf70a793ac9254c4e4d185db1ddaeb16ffc7927e637af3d65462dcf32d"
+    },
+    {
+      "id": "rev-10",
+      "task": "reviewer",
+      "label": "valid",
+      "sha256": "fa58cee11a06a56299c761ac3a47ec263322e4fbb299fa51dc7c95e2e4b07000"
+    },
+    {
+      "id": "rev-11",
+      "task": "reviewer",
+      "label": "invalid",
+      "sha256": "95a41fc856ce08d15f2806e648eb4c94065a45f8f34c827f5e2f45246a4ce745"
+    },
+    {
+      "id": "rev-12",
+      "task": "reviewer",
+      "label": "valid",
+      "sha256": "d6e7b5e10cddb19db52303ddfd5f3059d1ee517dccc1feaaff3a3b6248fb9ba1"
+    },
+    {
+      "id": "rev-13",
+      "task": "reviewer",
+      "label": "invalid",
+      "sha256": "7a1cc56e160d47dff520b9f6a79bc9d8169e0131345b90d7c5977d7a94a4fed0"
+    },
+    {
+      "id": "rev-14",
+      "task": "reviewer",
+      "label": "valid",
+      "sha256": "7a5d0d9b6a7453a3ed036f06946cac512c754c38c21d0477ca0d5fe6c18a5ec1"
+    },
+    {
+      "id": "rev-15",
+      "task": "reviewer",
+      "label": "invalid",
+      "sha256": "f352ea885d3e17b63d76f4bf2c80bd97f2a49883ef19e90438610a7182d9e4e5"
+    },
+    {
+      "id": "rev-16",
+      "task": "reviewer",
+      "label": "valid",
+      "sha256": "ace6e32a2194d69d24c999c359b4b477e7ac1672006ae09766616ea02207ba44"
+    },
+    {
+      "id": "rev-17",
+      "task": "reviewer",
+      "label": "invalid",
+      "sha256": "d756ae4592dc031c94391925b34f319baf5f2f444a20e72a7fb91fe8aa68904a"
+    },
+    {
+      "id": "rev-18",
+      "task": "reviewer",
+      "label": "invalid",
+      "sha256": "3f93d1e666ae9a7902dc33893b7c07c51c92ed1156a93a84ae13e9e32a7cf9c8"
+    },
+    {
+      "id": "rev-19",
+      "task": "reviewer",
+      "label": "valid",
+      "sha256": "a51073ace66ccceeebadb6353df530b35bc44a297636ae8d020d40fd702d57bd"
+    },
+    {
+      "id": "rev-20",
+      "task": "reviewer",
+      "label": "valid",
+      "sha256": "1fcbdfa4ad0b88981fa0e4654e48ff784ea0f6f9ce741e69de2625ebf54152a8"
+    },
+    {
+      "id": "tri-01",
+      "task": "triage",
+      "label": "flake",
+      "sha256": "d6d2fd5723605fabf49cd725f10f564025d7e98b8e9de357adbb9ea6e78d36c9"
+    },
+    {
+      "id": "tri-02",
+      "task": "triage",
+      "label": "flake",
+      "sha256": "01f038479b04bb10104f9768aafe7044007f042c47862c9e44949a7e9a7aa4d1"
+    },
+    {
+      "id": "tri-03",
+      "task": "triage",
+      "label": "real",
+      "sha256": "16211f6af20afe89aca743b80f57da85e3c1bd4d0afde6f3ade0b004141dddd0"
+    },
+    {
+      "id": "tri-04",
+      "task": "triage",
+      "label": "real",
+      "sha256": "0eb218b8bd99c154e05add8aced7eb39ac941e87c0b1f912f925bef2200826a0"
+    },
+    {
+      "id": "tri-05",
+      "task": "triage",
+      "label": "infra",
+      "sha256": "8afa4a9cd7b762c84ff9b68f8488ebcc32c0b39d360a1fa9a89a45bf8c74d72c"
+    },
+    {
+      "id": "tri-06",
+      "task": "triage",
+      "label": "flake",
+      "sha256": "10b452457b29a25a9d2af3d338963a4b59328c20861ec8c7a925454acbdde2c4"
+    },
+    {
+      "id": "tri-07",
+      "task": "triage",
+      "label": "infra",
+      "sha256": "ec84898671f029b712f94368d1444e1d095731569b70a434bc6edab439b7ae7c"
+    },
+    {
+      "id": "tri-08",
+      "task": "triage",
+      "label": "real",
+      "sha256": "6245a01b03a780c36436f6719590f669506ed8f4aef75b91517ce88662e15842"
+    },
+    {
+      "id": "tri-09",
+      "task": "triage",
+      "label": "real",
+      "sha256": "b7f018358cf761d2426da8939b6427d4022a104f2d35b5761bcf33397b431c00"
+    },
+    {
+      "id": "tri-10",
+      "task": "triage",
+      "label": "real",
+      "sha256": "80b557b873a7994a21d5e4c5c2f398e15666b07e39001a2b1cd1605ee27c33ba"
+    }
+  ]
+}
