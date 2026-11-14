@@ -82,3 +82,13 @@ test("janitor pings its dead-man check last, after the digest", () => {
   assert.match(prompt, /\n9\. Last of all, ping the dead-man check: `node \$J\/scripts\/heartbeat\.mjs janitor`/);
   assert.ok(prompt.indexOf("\n8. Report, last") < prompt.indexOf("\n9. Last of all"));
 });
+
+test("janitor step 3b builds housekeeping trains through the script and never labels or merges them", () => {
+  const step = prompt.match(/\n3b\. Housekeeping trains\.[\s\S]*?(?=\n4\. Sessions\.)/);
+  assert.ok(step, "step 3b exists between 3 and 4");
+  assert.match(step[0], /janitor-train\.mjs/);
+  assert.match(step[0], /adding `--apply` in a live run only/);
+  assert.match(step[0], /Any other kind stays out/);
+  assert.match(step[0], /never labels or merges/);
+  assert.match(step[0], /check-closing-keywords/);
+});

@@ -86,7 +86,8 @@
                 "review": { "enum": ["clean", "findings", "not-run"] },
                 "ci": { "enum": ["green", "red", "pending", "none"] },
                 "next": { "type": ["string", "null"] },
-                "author": { "type": ["string", "null"] }
+                "author": { "type": ["string", "null"] },
+                "headSha": { "type": "string" }
               }
             }
           }
