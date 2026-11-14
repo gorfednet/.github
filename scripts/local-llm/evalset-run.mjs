@@ -197,13 +197,14 @@ export async function runModel(cases, id, base, io = {}) {
   const sha = live.find((m) => m.id === id).sha
   const arm = { scoringVersion: SCORING_VERSION, _model: { id, sha, ...(sha ? {} : { warning: 'no snapshot sha: the served file is not pinned' }) } }
   // Ctrl-C mid-run: stop the loop, abort the request in flight, unload, free the lock, exit 130. A second signal while unloading frees the lock and exits at once.
-  let stopping = false
+  let stopping = false, handled = null
   const ctrl = new AbortController()
-  const onSignal = async () => {
-    if (stopping) { releaseLock(lock, process.pid); proc.exit(130); return }
+  const onSignal = () => {
+    if (stopping) { releaseLock(lock, process.pid); proc.exit(130); return handled }
     stopping = true
     ctrl.abort()
-    try { await drop(base, id) } finally { releaseLock(lock, process.pid); proc.exit(130) }
+    handled = (async () => { try { await drop(base, id) } finally { releaseLock(lock, process.pid); proc.exit(130) } })()
+    return handled
   }
   proc.on('SIGINT', onSignal)
   proc.on('SIGTERM', onSignal)
@@ -218,6 +219,9 @@ export async function runModel(cases, id, base, io = {}) {
       process.stderr.write('.')
     }
   } finally {
+    // When stopping, the handler owns the unload: wait for it (it frees the lock and exits 130) before this run's error reaches main, which would exit 2.
+    // The listeners stay until then, so a second Ctrl-C during the unload still reaches the handler.
+    if (stopping) await handled
     proc.removeListener('SIGINT', onSignal)
     proc.removeListener('SIGTERM', onSignal)
     if (!stopping) { await drop(base, id); releaseLock(lock, process.pid) } // when stopping, the handler owns the unload and the lock

@@ -195,6 +195,8 @@ describe('a run stops, aborts, unloads and frees the lock on SIGINT, and records
       if (io.calls.filter((c) => c === 'chat').length > 1) resolve({ text: '{"verdict":"valid"}', ms: 1 })
     })
     await assert.rejects(runModel(cs, 'm', 'http://stub', io), /interrupted/)
+    // main exits 2 on this rejection: the unload, the lock and exit 130 must already be done when it arrives
+    assert.deepEqual(io.proc.exits, [130], 'the run rejected before the handler finished')
     await new Promise((r) => setTimeout(r, 80))
     assert.equal(io.calls.filter((c) => c === 'chat').length, 1, 'a second request was sent after the signal')
     assert.deepEqual(io.proc.exits, [130])
@@ -202,12 +204,15 @@ describe('a run stops, aborts, unloads and frees the lock on SIGINT, and records
     assert.deepEqual(io.calls, ['chat', 'unload', 'exit:lock-free'])
     assert.equal(io.proc.listenerCount('SIGINT') + io.proc.listenerCount('SIGTERM'), 0)
   })
-  it('a second signal during the unload frees the lock and exits at once', async () => {
+  it('a second signal during the unload still reaches the handler: it frees the lock and exits at once', async () => {
     const io = mk()
     io.unload = async () => { io.calls.push('unload'); await new Promise((r) => setTimeout(r, 300)) }
-    io.chat = (base, id, msgs, t, mt, signal) => new Promise((resolve, reject) => { setTimeout(() => { io.proc.emit('SIGINT'); io.proc.emit('SIGINT') }, 5); signal.addEventListener('abort', () => reject(new Error('aborted'))) })
+    io.chat = (base, id, msgs, t, mt, signal) => new Promise((resolve, reject) => { setTimeout(() => io.proc.emit('SIGINT'), 5); signal.addEventListener('abort', () => reject(new Error('aborted'))) })
     const run = runModel(cs, 'm', 'http://stub', io).catch(() => {})
-    await new Promise((r) => setTimeout(r, 100))
+    await new Promise((r) => setTimeout(r, 100)) // the aborted request has rejected and the loop has stopped; the unload is still waiting
+    assert.deepEqual(io.proc.exits, [])
+    assert.equal(io.proc.listenerCount('SIGINT'), 1, 'the listener was removed before the unload finished')
+    io.proc.emit('SIGINT')
     assert.equal(io.proc.exits[0], 130)
     assert.equal(fs.existsSync(io.lock), false)
     assert.deepEqual(io.calls.slice(0, 2), ['unload', 'exit:lock-free'])
