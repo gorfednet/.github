@@ -28,6 +28,8 @@ Never idle with budget left (owner, 13 Nov 2026, 14:55 ET: "we should never not 
 When `hc machine ls` shows dapyllil and gorfednas unreachable with "Could not resolve hostname" and 100.100.100.100 does not answer ping, Tailscale on the Mac is down. Ask the owner in one line to reconnect it from the menu bar (14 Nov 2026: after an 11:46 ET network drop it stayed down until he reconnected at 11:56 ET). Retry downloads and probes only after it answers.
 Check the live state first (`gh secret list`, settings, a recent run), never a doc's claim. When ship-bot's log says it is waiting for a Tailscale approval, tell the owner in one line to run `ssh dapyllil true` and approve (the check period is 7 days).
 
+Give a background `gh run watch` its own stdin (`</dev/null`) and find run ids only after the runs exist (an `issue_comment` review run sits on `main`, not the PR's commit). On 14 Nov 2026, 2 background watches without it exited 1 within a minute while the runs were still going, and the same watch with it passed. That points to stdin but doesn't prove it.
+
 Write each `gh` write as its own plain command, never inside a loop or a shell function (13 Nov 2026, 21:36 ET): `Bash(gh run *)` is allowed, but auto mode refused a `for` loop of `gh run cancel` and passed the same call issued plainly. GitHub won't cancel or force-cancel a ghost run that never reached the queue (409). Deleting it is denied by settings, so leave it.
 
 
