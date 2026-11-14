@@ -3,12 +3,13 @@ import http from 'node:http'
 import { utimesSync, mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { spawnSync } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
+import { renameSync } from 'node:fs'
 import { after, before, describe, it } from 'node:test'
 import { pick, queue, takeLock } from '../scripts/local-llm/route.mjs'
 import { chat } from '../scripts/local-llm/client.mjs'
 import { score, judge } from '../scripts/local-llm/eval.mjs'
-import { prefilter, parse, MAX_CHARS } from '../scripts/local-llm/tasks/ci-triage.mjs'
+import { prefilter, parse, MAX_CHARS, MAX_LINE } from '../scripts/local-llm/tasks/ci-triage.mjs'
 const tmp = mkdtempSync(join(tmpdir(), 'llm-'))
 const SHA = 'abc123'
 const FILE = join(tmp, 'models', 'snapshots', SHA, 'm.gguf')
@@ -94,6 +95,33 @@ describe('lock and memory edge cases', () => {
     assert.equal(takeLock(dir, 1, { beforeTakeover: swap }), false)
     assert.equal(readFileSync(join(dir, 'pid'), 'utf8'), String(process.pid))
   })
+  it('does not delete a fresh lock that replaced a pid-less stale one mid-takeover', () => {
+    const dir = join(tmp, 'aba', 'lock')
+    mkdirSync(dir, { recursive: true })
+    const old = new Date(Date.now() - 120_000)
+    utimesSync(dir, old, old)
+    // Another taker removes the stale lock and has made its own, pid not yet written.
+    const swap = () => { renameSync(dir, `${dir}.gone`); mkdirSync(dir) }
+    assert.equal(takeLock(dir, process.pid, { beforeTakeover: swap }), false)
+    assert.equal(existsSync(dir), true)
+  })
+  it('two concurrent takers of a stale lock end with exactly one holder', async () => {
+    const mod = new URL('../scripts/local-llm/route.mjs', import.meta.url).href
+    const code = `import { takeLock } from ${JSON.stringify(mod)}; process.stdout.write(String(takeLock(process.argv[1], process.pid)) + '\\n'); process.stdin.resume()`
+    // Each taker stays alive (reading stdin) until both have answered, so a winner's pid is never dead.
+    const taker = (dir) => { const c = spawn('node', ['--input-type=module', '-e', code, dir]); const answer = new Promise((res) => c.stdout.once('data', (d) => res(String(d).trim()))); return { c, answer } }
+    for (let round = 0; round < 15; round++) {
+      const dir = join(tmp, `conc${round}`, 'lock')
+      mkdirSync(dir, { recursive: true })
+      if (round % 2) writeFileSync(join(dir, 'pid'), '2147483646')
+      else { const old = new Date(Date.now() - 120_000); utimesSync(dir, old, old) }
+      const ts = [taker(dir), taker(dir)]
+      const got = await Promise.all(ts.map((t) => t.answer))
+      ts.forEach((t) => t.c.kill())
+      assert.deepEqual(got.slice().sort(), ['false', 'true'], `round ${round}: ${got}`)
+      assert.match(readFileSync(join(dir, 'pid'), 'utf8'), /^\d+$/)
+    }
+  })
   it('does not move or take a lock while another taker holds the takeover guard', () => {
     const dir = join(tmp, 'guard', 'lock')
     mkdirSync(dir, { recursive: true })
@@ -152,6 +180,16 @@ describe('ci-triage contract', () => {
     assert.ok(p.numbers.includes(11))
     assert.ok(p.numbers.includes(300))
   })
+  it('keeps the ##[error] line when a 30,000-character line sits in its window', () => {
+    const log = Array.from({ length: 40 }, (_, i) => (i === 20 ? '##[error]boom' : i === 22 ? 'y'.repeat(30000) : `l${i}`)).join('\n')
+    const p = prefilter(log)
+    assert.ok(p.numbers.includes(21))
+    assert.ok(p.text.length <= MAX_CHARS)
+    assert.match(p.text, /line truncated, 30000 chars/)
+    const huge = prefilter(['##[error]' + 'z'.repeat(50000), 'tail'].join('\n'))
+    assert.ok(huge.numbers.includes(1))
+    assert.ok(huge.text.split('\n')[0].length < MAX_LINE + 100)
+  })
   it('prefilters a 200,000-line step in linear time', () => {
     const log = Array.from({ length: 200000 }, (_, i) => `build\tRun tests\tt${i}`).join('\n')
     const t = Date.now()
@@ -202,7 +240,10 @@ describe('docs/models.md', () => {
   })
   it('is never imported by the merge path', () => {
     const walk = (d) => readdirSync(d, { withFileTypes: true }).flatMap((e) => (e.name === 'node_modules' ? [] : e.isDirectory() ? walk(join(d, e.name)) : [join(d, e.name)]))
-    for (const f of ['ship-bot', 'janitor', 'scripts/gates'].flatMap((d) => (existsSync(d) ? walk(d) : [])).filter((f) => /\.(mjs|js|sh)$/.test(f)))
+    const roots = ['ship-bot', 'janitor', 'scripts/gates', '.github/workflows', '.github/actions']
+    const files = [...roots.flatMap((d) => (existsSync(d) ? walk(d) : [])), 'scripts/review-status.mjs', 'scripts/janitor-train.mjs', 'scripts/janitor-prune.mjs', 'scripts/janitor-notify.sh']
+    assert.ok(files.length > 10)
+    for (const f of files.filter((f) => existsSync(f) && /\.(mjs|cjs|js|ts|sh|ya?ml|json)$/.test(f)))
       assert.doesNotMatch(readFileSync(f, 'utf8'), /local-llm/, f)
   })
 })
