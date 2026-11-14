@@ -5,7 +5,7 @@ import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { describe, it } from 'node:test'
 
 const lib = new URL('../../scripts/lib/resolve-node.sh', import.meta.url).pathname
@@ -34,13 +34,25 @@ describe('resolve_node', () => {
     assert.match(r.stderr, /refusing .*\.hermes\/node\/bin\/node: it lives in another tool's private folder/)
   })
 
-  it('prefers a system node over a private one earlier on PATH, and prints its real path', () => {
+  it('prefers a system node over a private one earlier on PATH, and prints its path', () => {
     const home = mac()
     const sys = join(home, 'usr', 'bin', 'node')
     fake(sys, '24')
     const r = resolve(home, { RESOLVE_NODE_CANDIDATES: sys })
     assert.equal(r.status, 0, r.stderr)
     assert.equal(r.stdout.trim(), sys)
+  })
+
+  it('prints a stable symlink, not the versioned keg it points at', () => {
+    const home = mac()
+    const keg = join(home, 'opt', 'Cellar', 'node', '24.1.0', 'bin', 'node')
+    fake(keg, '24')
+    const link = join(home, 'opt', 'bin', 'node')
+    mkdirSync(dirname(link), { recursive: true })
+    symlinkSync(keg, link)
+    const r = resolve(home, { RESOLVE_NODE_CANDIDATES: link })
+    assert.equal(r.status, 0, r.stderr)
+    assert.equal(r.stdout.trim(), link)
   })
 
   it('skips a candidate below the version floor', () => {

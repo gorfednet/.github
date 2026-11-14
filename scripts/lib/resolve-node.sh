@@ -10,7 +10,7 @@
 #   - otherwise the first of /usr/local/bin/node, /opt/homebrew/bin/node and the PATH's node whose
 #     realpath is NOT inside another tool's private folder ($HOME/.<name>/...) and is Node 22+;
 #   - no such binary: a message on stderr and a non-zero exit. Never a silent fallback.
-# Prints the realpath on stdout. HOME and the candidate list are read at call time (tests set them).
+# Prints the candidate's own path (not its realpath) on stdout, so launchd follows a stable symlink. HOME and the candidate list are read at call time (tests set them).
 
 NODE_MIN_MAJOR=22
 
@@ -40,7 +40,7 @@ resolve_node() {
       echo "resolve-node: needs Node ${NODE_MIN_MAJOR} or newer; NODE_BIN=${override} is $("${real}" --version 2>/dev/null || echo unknown)." >&2
       return 1
     fi
-    echo "${real}"
+    echo "${override}" # the path as given: a stable symlink survives upgrades
     return 0
   fi
   # RESOLVE_NODE_CANDIDATES (space-separated) replaces the two fixed paths; for tests.
@@ -57,7 +57,7 @@ resolve_node() {
     fi
     major="$("${real}" -p 'process.versions.node.split(".")[0]' 2>/dev/null || echo 0)"
     [[ "${major}" -ge "${NODE_MIN_MAJOR}" ]] || continue
-    echo "${real}"
+    echo "${cand}" # the stable path, not its versioned realpath (a brew upgrade removes old kegs)
     return 0
   done
   if [[ -n "${seen_private}" ]]; then

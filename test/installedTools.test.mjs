@@ -134,7 +134,7 @@ describe('LaunchAgents on another tool\'s Node', () => {
     mkdirSync(f.agents, { recursive: true })
     put(join(f.agents, `${name}.plist`), `<?xml version="1.0" encoding="UTF-8"?>\n<plist version="1.0"><dict><key>Label</key><string>${name}</string><key>ProgramArguments</key><array><string>${program}</string><string>${join(f.home, '.ship-bot', 'app', 'ship-bot.mjs')}</string></array></dict></plist>\n`)
   }
-  it('flags a program that resolves into ~/.hermes through a symlink, not one in /usr/bin or app paths under ~/.ship-bot', { skip: !hasPlutil }, () => {
+  it('flags a program that resolves into ~/.hermes through a symlink, not one in /usr/bin or app paths under ~/.ship-bot', () => {
     const f = fixture()
     const real = join(f.home, '.hermes', 'node', 'bin', 'node')
     put(real, '#!/bin/sh\n', 0o755)
@@ -146,7 +146,7 @@ describe('LaunchAgents on another tool\'s Node', () => {
     assert.equal(hit[0].tool, 'LaunchAgent net.gorfed.ship-bot')
     assert.match(hit[0].detail, /\.hermes\/node\/bin\/node, inside another tool's private folder/)
   })
-  it('reports a LaunchAgent whose program no longer exists as behind, not unread', { skip: !hasPlutil }, () => {
+  it('reports a LaunchAgent whose program no longer exists as behind, not unread', () => {
     const f = fixture()
     const real = join(f.home, '.hermes', 'node', 'bin', 'node')
     put(real, '#!/bin/sh\n', 0o755)

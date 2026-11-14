@@ -18,7 +18,7 @@
  * one in a repository a tool comes from) means the result is not a measurement, and the row is null.
  */
 import { execFileSync } from 'node:child_process'
-import { existsSync, lstatSync, readdirSync, readlinkSync, realpathSync, statSync } from 'node:fs'
+import { existsSync, lstatSync, readdirSync, readlinkSync, realpathSync, statSync, readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join, relative, resolve, sep } from 'node:path'
 
@@ -51,6 +51,14 @@ function plistPaths(file) {
   try {
     const json = execFileSync('plutil', ['-extract', 'ProgramArguments', 'json', '-o', '-', file], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
     return JSON.parse(json).filter((a) => typeof a === 'string' && a.startsWith('/'))
+  } catch (e) {
+    if (e.code !== 'ENOENT') return null
+  }
+  // No plutil (Linux CI): read the XML plist directly.
+  try {
+    const arr = readFileSync(file, 'utf8').match(/<key>ProgramArguments<\/key>\s*<array>([\s\S]*?)<\/array>/)
+    if (!arr) return null
+    return [...arr[1].matchAll(/<string>([^<]*)<\/string>/g)].map((m) => m[1]).filter((a) => a.startsWith('/'))
   } catch {
     return null
   }
@@ -91,6 +99,18 @@ export function linkedTools(home, root, { launchAgents = join(home, 'Library', '
  * net.gorfed.* LaunchAgents whose program (first argument) resolves under a dot-folder of home, such as
  * ~/.hermes/node/bin/node. Read-only; the app paths (~/.ship-bot/app, ~/.desk/...) are later arguments, never the program.
  */
+/** ProgramArguments[0] of a plist: plutil on macOS, else the XML itself (Linux CI has no plutil). Throws when absent. */
+export function firstProgramArgument(file) {
+  try {
+    return execFileSync('plutil', ['-extract', 'ProgramArguments.0', 'raw', '-o', '-', file], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim()
+  } catch (e) {
+    if (e.code !== 'ENOENT') throw e
+  }
+  const m = readFileSync(file, 'utf8').match(/<key>ProgramArguments<\/key>\s*<array>\s*<string>([^<]*)<\/string>/)
+  if (!m) throw new Error(`no ProgramArguments in ${file}`)
+  return m[1].replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+}
+
 export function privateInterpreters(home, launchAgents) {
   const out = []
   if (!existsSync(launchAgents)) return out
@@ -99,7 +119,7 @@ export function privateInterpreters(home, launchAgents) {
     const agent = name.replace(/\.plist$/, '')
     let program
     try {
-      program = execFileSync('plutil', ['-extract', 'ProgramArguments.0', 'raw', '-o', '-', join(launchAgents, name)], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim()
+      program = firstProgramArgument(join(launchAgents, name))
     } catch {
       continue // no ProgramArguments (a Program key), or unreadable: nothing to say about an interpreter
     }
