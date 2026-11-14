@@ -180,6 +180,31 @@ test("the quoted-form check rejects an unquoted or pasted value", () => {
   assert.equal(quotedFileFlags(['git -C "$(cat $R/worktree-<id8>.txt)" status']), 1);
 });
 
+/** Index of the first read and the first write of `$R/<name>-<id8>.txt` in a prompt text (-1 when none). */
+function firstReadWrite(text, name) {
+  const file = `\\$R/${name}-<id8>\\.txt`;
+  const read = text.search(new RegExp(`\\$\\(cat ${file}\\)`));
+  const write = text.search(new RegExp(`(?:[Ww]rite|> )[^\\n]*?${file}(?!\\))`));
+  return { read, write };
+}
+
+test("every value file is written before the first command that reads it", () => {
+  for (const name of ["branch", "worktree", "title", "head"]) {
+    const { read, write } = firstReadWrite(prompt, name);
+    assert.ok(read > 0, `${name} is read`);
+    assert.ok(write > 0 && write < read, `${name}-<id8>.txt must be written (at ${write}) before its first read (at ${read})`);
+  }
+  const bad = 'run `gh pr list --head "$(cat $R/branch-<id8>.txt)"`. Then write `$R/branch-<id8>.txt`.';
+  const { read, write } = firstReadWrite(bad, "branch");
+  assert.ok(!(write < read), "the checker sees a read that comes first");
+});
+
+test("a session with no worktree is archived without it, and what needs one is propose-only", () => {
+  assert.match(prompt, /A session with no `worktree` has no worktree file: it can still be archived as `merged`/);
+  assert.match(prompt, /the `MERGED` `rev-list` check, a rescue\) is propose-only/);
+  assert.match(prompt, /with no `--worktree` argument/);
+});
+
 test("the quoted file form runs nothing a hostile title or branch holds", () => {
   const dir = mkdtempSync(join(tmpdir(), "janitor-title-"));
   const pwn = join(dir, "pwn");
