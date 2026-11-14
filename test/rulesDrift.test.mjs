@@ -110,6 +110,12 @@ describe('check-rules-drift', () => {
     assert.equal(run(repo({ 'REVIEW.md': 'Cursor, Bugbot and coordinator sessions were retired on 2026-10-16.\n' })).status, 0)
   })
 
+  it('excuses a passive retirement statement whose first term starts with a backtick or a dot', () => {
+    const r = run(repo({ 'REVIEW.md': '`.cursor/` was retired on 2026-10-16.\n' }))
+    assert.equal(r.status, 0, r.out)
+    assert.equal(run(repo({ 'REVIEW.md': '.cursor/ was retired on 2026-10-16.\n' })).status, 0)
+  })
+
   it('excuses a dated archive file, and not an undated one beside it', () => {
     assert.equal(run(repo({ 'docs/handoff/2026-11-07-x.md': 'the coordinator session\n' })).status, 0)
     assert.equal(run(repo({ 'docs/handoff/notes.md': 'the coordinator session\n' })).status, 1)
