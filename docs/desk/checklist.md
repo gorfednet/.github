@@ -150,3 +150,12 @@ Weekly 9% at 11:21 ET. Full speed, cost-aware. One line to the owner at about 90
 - [ ] Local models first eval tonight from 22:00 ET (3 candidates), scores Sun 15 Nov ~09:00 ET; reviewer and builder tasks first, copy and triage after 1.27b
 - [ ] Model and skill currency (1.29): .github 196 in review; first run found 4 stale items
 - [x] Always-PR hook fix: .github 197 merged, hook copied to ~/.claude (16:1x ET)
+
+## Added 14 Nov evening (20th Desk)
+- [x] .github 196 (1.29 currency) labelled; ops 96 builder-ok backup case merged and live
+- [x] ops 94 merged by a stale ship-bot: root cause found; .github 200 fix merged; owner reinstalled 8e42797 (17:39 ET)
+- [x] ops 98 (94 follow-ups) merged
+- [ ] 1.27b: .github 198 + ops 97, label together
+- [ ] .github 199 (janitor untrusted strings, 191 follow-ups): before 07:00 ET
+- [ ] 3.10 BinderCurve gate class + rename-hole fix: bc 661 in review
+- [ ] Local models first eval tonight 22:00 ET (builder task), scores Sun ~09:00 ET
