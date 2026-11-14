@@ -277,8 +277,10 @@ _SECRETS = re.compile(
             r"gh[pousr]_\w+",
             r"github_pat_\w+",
             r"(?i:(?:token|secret|password|passwd|api[_-]?key|auth)\w*)=" + _VALUE,
-            r"--(?:with-token|body|field|raw-field)[ \t=]+" + _VALUE,
+            r"--(?:with-token|body|field|raw-field)[ \t=]+(?:<<<[ \t]*)?" + _VALUE,
             r"-[bfF][ \t]+" + _VALUE,
+            r"<<<[ \t]*" + _VALUE,
+            r"\b(?:echo|printf)\b[^|\n]*(?=\|[ \t]*gh[ \t]+(?:secret|variable|auth)\b)",
             r"(?i:authorization:?)[ \t]*(?i:bearer|token|basic)?[ \t]*[\w.+/=-]+",
         ]
     )

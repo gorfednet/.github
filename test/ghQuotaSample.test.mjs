@@ -2,7 +2,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
-import { mkdtempSync, readFileSync, statSync } from 'node:fs'
+import { chmodSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { CALLER, SPIKE, makeSample, redact } from '../scripts/gh-quota-sample.mjs'
@@ -38,14 +38,16 @@ test('the call log redacts tokens and --body values, is owner-only, and marks a 
   run("gh secret set X --body 'hunter2hunter2'")
   run('echo github_pat_11AAA | gh auth login --with-token')
   run('gh secret set DEPLOY_KEY -b s3cr3tshort')
+  run("echo 'hunter2longpass' | gh secret set DEPLOY_KEY")
+  run('gh auth login --with-token <<< plainvalue99')
   run('gh secret set Y --body "two words secret"')
   const refused = run('while true; do gh api x; sleep 1; done')
   assert.match(refused.stdout, /deny/)
   const text = readFileSync(log, 'utf8')
-  for (const secret of ['ghp_abc123', 'hunter2hunter2', 'github_pat_11AAA', 's3cr3tshort', 'two words secret', 'words secret']) assert.ok(!text.includes(secret), `${secret} leaked into the call log`)
+  for (const secret of ['ghp_abc123', 'hunter2hunter2', 'github_pat_11AAA', 's3cr3tshort', 'two words secret', 'words secret', 'hunter2longpass', 'plainvalue99']) assert.ok(!text.includes(secret), `${secret} leaked into the call log`)
   const lines = text.trim().split('\n').map((l) => JSON.parse(l))
-  assert.equal(lines.length, 6)
-  assert.deepEqual(lines.map((l) => l.denied), [false, false, false, false, false, true])
+  assert.equal(lines.length, 8)
+  assert.deepEqual(lines.map((l) => l.denied), [false, false, false, false, false, false, false, true])
   assert.equal(statSync(log).mode & 0o077, 0)
 })
 
@@ -61,13 +63,15 @@ test('the sampler redacts tokens in a process line before saving it, and writes 
   assert.ok(!redact(line).includes('ghp_test123'))
   assert.ok(!redact('node poll.mjs GH_TOKEN=abc123def').includes('abc123def'))
   assert.ok(!redact('gh secret set X -b "two words"').includes('words'))
+  assert.ok(!redact("echo 'hunter2longpass' | gh secret set X").includes('hunter2'))
   assert.match(redact('gh run watch 5 --interval 60'), /--interval 60/)
   const dir = mkdtempSync(join(tmpdir(), 'ghq-'))
   const file = join(dir, 'sub', 'samples.jsonl')
-  const r = spawnSync('node', [new URL('../scripts/gh-quota-sample.mjs', import.meta.url).pathname], { env: { ...process.env, GH_QUOTA_LOG: file, PATH: `${dir}:${process.env.PATH}` }, encoding: 'utf8' })
-  // no gh on this PATH in CI: the run may fail, which is fine; when it wrote the file it must be 0600
-  if (r.status === 0) {
-    assert.equal(statSync(file).mode & 0o077, 0)
-    assert.equal(statSync(join(dir, 'sub')).mode & 0o077, 0)
-  }
+  // A fake gh first on PATH: the test never calls GitHub, and the run must succeed so the mode checks always run.
+  writeFileSync(join(dir, 'gh'), '#!/bin/sh\necho \'{"resources":{"core":{"remaining":4000,"reset":1}}}\'\n')
+  chmodSync(join(dir, 'gh'), 0o755)
+  const r = spawnSync(process.execPath, [new URL('../scripts/gh-quota-sample.mjs', import.meta.url).pathname], { env: { ...process.env, GH_QUOTA_LOG: file, PATH: `${dir}:${process.env.PATH}` }, encoding: 'utf8' })
+  assert.equal(r.status, 0, r.stderr)
+  assert.equal(statSync(file).mode & 0o077, 0)
+  assert.equal(statSync(join(dir, 'sub')).mode & 0o077, 0)
 })
