@@ -415,13 +415,14 @@ the NAS and the Docker host work from launchd's context, where the keychain-held
 key and a terminal's Tailscale login may be missing? It never touches the real
 agent; run it before switching any deploy-mode repository on.
 
-**12 November 2026:** the agent runs at launchd's default process class. A
-`ProcessType Background` throttled every child process, Playwright and its
-browsers included, and failed 18 papers verify specs on 11 November 2026 (PR
-128). To check an install, run
+**14 November 2026:** the agent runs as `ProcessType Interactive`. Both
+`Background` (18 papers verify specs failed on 11 November 2026, PR 128) and
+launchd's default class with no key (10 of 24 wordmark specs failed, papers PR
+40) throttle every child process, Playwright and its browsers included. To
+check an install, run
 `plutil -extract ProcessType raw ~/Library/LaunchAgents/net.gorfed.ship-bot.plist`.
-It should fail with "No value at that key path". If it prints `Background`,
-re-run `ship-bot/install.sh` so the loaded plist matches this file. (`active
+It should print `Interactive`. Anything else, or "No value at that key path",
+means re-run `ship-bot/install.sh` so the loaded plist matches this file. (`active
 count` in `launchctl print` is no use here: the job is idle between runs.)
 
 **13 November 2026:** a row whose steps need `node_modules` must install it.

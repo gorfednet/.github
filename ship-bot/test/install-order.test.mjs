@@ -20,4 +20,12 @@ describe('install.sh order', () => {
     assert.ok(refuse > validate && refuse < swap, 'a refusal must exit before the swap')
     assert.ok(!script.includes("import('${APP_DIR}/lib/config.mjs')"), 'the installed copy must not be the one that validates')
   })
+
+  // 14 November 2026: launchd's default class throttles CPU, so deploy `verify` browsers ran on a throttled
+  // frame clock (papers wordmark specs: 10 of 24 failed by default, 24 of 24 passed as Interactive).
+  it('writes ProcessType Interactive into the LaunchAgent plist', () => {
+    const heredoc = script.slice(at('<plist version="1.0">'), at('</plist>'))
+    assert.match(heredoc, /<key>ProcessType<\/key>\s*<string>Interactive<\/string>/)
+    assert.ok(!/<key>ProcessType<\/key>\s*<string>(Background|Adaptive|Standard)<\/string>/.test(heredoc))
+  })
 })

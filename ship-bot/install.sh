@@ -136,9 +136,10 @@ rm -rf "${APP_DIR}.old"
 
 xml() { sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g' <<<"$1"; }
 
-# No ProcessType key: Background throttles the CPU and timers of every child, and papers' deploy
-# `make verify` (Playwright, flicker timing) failed 18 specs under it on 11 November 2026 and passed
-# without it. A deploy step must run at normal priority.
+# ProcessType Interactive: launchd's default class (no key) throttles the CPU and timers of every
+# child, so papers' deploy `make verify` (Playwright, frame-clock timing) failed 10 of 24 wordmark specs
+# under it and passed 24 of 24 as Interactive (14 November 2026; Background failed 18 on 11 November).
+# A deploy step must run at normal priority.
 # launchd starts jobs with a bare PATH; give it the one this shell has, so
 # git, gh, npm, make, python3 and rsync resolve the same way they do by hand.
 cat >"${PLIST}.tmp" <<EOF
@@ -163,6 +164,8 @@ cat >"${PLIST}.tmp" <<EOF
   <integer>120</integer>
   <key>RunAtLoad</key>
   <true/>
+  <key>ProcessType</key>
+  <string>Interactive</string>
   <key>WorkingDirectory</key>
   <string>$(xml "${BOT_HOME}")</string>
   <key>EnvironmentVariables</key>
