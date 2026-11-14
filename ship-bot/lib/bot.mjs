@@ -318,6 +318,8 @@ async function syncNeedsFix(ctx, repo, pr, result) {
 }
 
 const STALL_MINUTES = 120
+/** Refusals a push cannot fix (a block flagged `noStall`, such as review-required: only a person's label lifts it) never age into a job. */
+export const stallable = (blocks) => blocks.filter((b) => !b.noStall)
 
 /**
  * The same refusal for over 2 hours is a finding, not a wait (row 1.14): one continue-this-PR Herdr job per
@@ -396,7 +398,8 @@ async function processPull(ctx, repo, pr, defaultBranch) {
     }
     for (const block of fails.filter((b) => b.notify)) await notifyOnce(ctx, headState, tag, block)
     // Only refusals a person or a builder can fix: a wait (checks pending, a read that failed) is the bot's or CI's, not the branch's.
-    if (fails.length > 0) trackStall(ctx, repo, pr, headState, fails)
+    const fixable = stallable(fails)
+    if (fixable.length > 0) trackStall(ctx, repo, pr, headState, fixable)
     else delete headState.stall
     return false
   }

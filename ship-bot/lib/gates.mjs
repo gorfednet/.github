@@ -448,7 +448,7 @@ export async function evaluatePull(ctx, repo, pr, { headState, fresh = false, dr
   // (d) the Claude reviewer's verdict on this head. A clean review that is
   // required cannot come from a repo with no reviewer: fail closed.
   if (requireClean && !repo.claudeReview) {
-    return blocked([{ key: 'review-required', kind: 'fail', reason: 'The bot readied this pull request itself and the repo deploys, so it needs a clean Claude review, but this repo has no Claude reviewer configured. A person labels it.' }])
+    return blocked([{ key: 'review-required', kind: 'fail', noStall: true, reason: 'The bot readied this pull request itself and the repo deploys, so it needs a clean Claude review, but this repo has no Claude reviewer configured. A person labels it.' }])
   }
   if (repo.claudeReview) {
     let result

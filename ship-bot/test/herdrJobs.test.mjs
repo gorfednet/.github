@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { existsSync, mkdirSync, readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, it } from 'node:test'
+import { stallable } from '../lib/bot.mjs'
 import { JOBS_SUBDIR, diagnosisJob, writeJobOnce } from '../lib/herdr-jobs.mjs'
 import { FakeGitHub, SLUG, makePr, makeRunner, repoEntry, scenario } from './fakes.mjs'
 
@@ -152,6 +153,11 @@ describe('a labelled PR refused for the same reason over 2 hours becomes a job (
     s.clock.advance(300)
     await s.run()
     assert.deepEqual(jobsOf(s), [])
+  })
+  it('a refusal no push can fix (review-required) is never counted toward a stall', () => {
+    const fixable = { key: 'checks-failed', kind: 'fail' }
+    assert.deepEqual(stallable([{ key: 'review-required', kind: 'fail', noStall: true }, fixable]), [fixable])
+    assert.deepEqual(stallable([{ key: 'review-required', kind: 'fail', noStall: true }]), [])
   })
   it('a changed reason restarts the clock', async () => {
     const { gh, s } = setup()
