@@ -66,15 +66,17 @@ Weekly 9% at 11:21 ET. Full speed, cost-aware. One line to the owner at about 90
 - [x] Reminders moved to durable scheduled tasks
 - [ ] Local models (1.19) and encrypted m.2 (1.20): after the hold
 - [x] FileVault on the Mac (on 13 Nov, 23:45 ET); fresh recovery key saved 23:47 ET
-- [ ] Backblaze: add the gorfkcits drive, exclude its models folder (owner)
+- [x] Backblaze: gorfkcits added, models excluded (owner, 14 Nov)
 - [ ] Ship-bot and capacity off Hermes's Node (1.22a); Hermes keep or archive (1.22b)
 
 ## Added 14 Nov overnight (9th Desk)
 - [x] FileVault on, recovery key rotated and saved
 - [x] USB m.2 encrypted APFS (1.20); models redownloading, priority order
-- [x] Phone-alert cause found and fixed (ops 82 merged); owner: ntfy install plus token copy, healthchecks ntfy integration, rerun the test
-- [x] Ship-bot and capacity installers pick their own Node (.github 179 merged); [ ] reinstall onto /usr/local/bin/node
+- [x] Phone-alert cause found and fixed (ops 82 merged); [x] ntfy installed on dapyllil (owner, 14 Nov); [ ] token copy, healthchecks ntfy integration, rerun the test
+- [x] Ship-bot and capacity installers pick their own Node (.github 179 merged); [x] reinstalled onto /usr/local/bin/node (06:24 ET)
 - [x] Weekly disk hygiene, dry run (ops 83, 84 merged)
 - [x] Local-model harness (.github 180, 181 merged); [ ] fixtures (ops 85), baseline, first eval
-- [ ] Hermes archive (owner's yes); Screen Sharing over Tailscale (yes); 9.9.9.9 fallback (yes); Time Machine destination; Backblaze drive
+- [ ] Hermes archive (yes; .github 182 running; owner revokes Nous); Screen Sharing over Tailscale (on, phone not connecting yet); 9.9.9.9 fallback via Pi-hole DHCP (owner step); Time Machine re-add tm_gorfpael (owner: later)
+- [ ] Remote-access doc (1.23, ops 86, re-review)
+- [ ] bc 659: conflict with main fixed 06:40 ET, full gate running
 - [ ] bc 659 merge, then the supervisor install on dapyllil
