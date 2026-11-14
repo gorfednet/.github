@@ -24,6 +24,9 @@ A blocked item never stalls the plan, as a rule (owner, 13 Nov 2026, 14:30 ET: "
 Never idle with budget left (owner, 13 Nov 2026, 14:55 ET: "we should never not be working while we have most of our token usage available"). While weekly usage is under pace (percent used under percent of the week gone, plus 10), keep the app's 5 working slots full from the plan by priority. Trust live `list_sessions` over a stale `capacity.json`. Hold only on load over 10, free memory under 4 GB, or a pool queue the work would worsen.
 Check the live state first (`gh secret list`, settings, a recent run), never a doc's claim. When ship-bot's log says it is waiting for a Tailscale approval, tell the owner in one line to run `ssh dapyllil true` and approve (the check period is 7 days).
 
+Write each `gh` write as its own plain command, never inside a loop or a shell function (13 Nov 2026, 21:36 ET): `Bash(gh run *)` is allowed, but auto mode refused a `for` loop of `gh run cancel` and passed the same call issued plainly. GitHub won't cancel or force-cancel a ghost run that never reached the queue (409). Deleting it is denied by settings, so leave it.
+
+
 ## Root causes, not symptoms
 An assessment whose findings set the plan gets a Fable `reviewer` pass over the raw artefacts before the plan is acted on. Haiku scouts may gather inventories, but their claims are leads, not findings (13 Nov 2026, 19:36 ET: the morning plan came from Haiku scouts and missed stale tool copies, ship-bot's ops review row and the pool-to-hosted gap, all found by hand that evening).
 Every red, block or flake gets its cause established before a fix, a test or guard that fails on it (watched failing once), and a dated ledger line. Update the skill, rule or brief that would have prevented it, in the same PR.
