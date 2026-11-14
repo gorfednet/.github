@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { existsSync, mkdirSync, mkdtempSync, statSync, writeFileSync, readFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, statSync, writeFileSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, it } from 'node:test'
@@ -139,6 +139,22 @@ describe('command line', () => {
     assert.equal(code, 0)
     assert.equal(JSON.parse(readFileSync(join(h.config.stateDir, 'state.json'), 'utf8')).repos['gorfednet/site'].blocked, undefined)
     assert.equal(h.runner.calls.length, 0)
+  })
+
+  it('--unblock while a pass holds the lock writes no state, and the next pass applies it', async () => {
+    const h = harness({ lock: { pid: process.pid, startedAt: 'now' } })
+    const statePath = join(h.config.stateDir, 'state.json')
+    const store = new StateStore(statePath)
+    store.repo('gorfednet/site').blocked = { reason: 'deploy failed', at: 'x' }
+    store.save()
+    const before = readFileSync(statePath, 'utf8')
+    assert.equal(await main(['--unblock', 'site'], h.deps), 0)
+    assert.match(h.out.join('\n'), /queued/)
+    assert.equal(readFileSync(statePath, 'utf8'), before, 'a running pass would save over a write made now')
+    rmSync(join(h.config.stateDir, 'run.lock'))
+    assert.equal(await main(['--live', '--once'], h.deps), 0, h.out.join('\n'))
+    assert.equal(JSON.parse(readFileSync(statePath, 'utf8')).repos['gorfednet/site'].blocked, undefined)
+    assert.deepEqual(readdirSync(join(h.config.stateDir, 'unblock')), [])
   })
 
   it('--rotate-log rotates a log past 5 MB before the pass', async () => {
