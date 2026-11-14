@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, it } from 'node:test'
@@ -145,5 +145,18 @@ describe('LaunchAgents on another tool\'s Node', () => {
     assert.equal(hit.length, 1)
     assert.equal(hit[0].tool, 'LaunchAgent net.gorfed.ship-bot')
     assert.match(hit[0].detail, /\.hermes\/node\/bin\/node, inside another tool's private folder/)
+  })
+  it('reports a LaunchAgent whose program no longer exists as behind, not unread', { skip: !hasPlutil }, () => {
+    const f = fixture()
+    const real = join(f.home, '.hermes', 'node', 'bin', 'node')
+    put(real, '#!/bin/sh\n', 0o755)
+    symlinkSync(real, join(f.home, '.local', 'bin', 'node'))
+    rmSync(real)
+    agent(f, 'net.gorfed.ship-bot', join(f.home, '.local', 'bin', 'node'))
+    const r = run(f)
+    assert.ok(!r.unread.some((u) => u.startsWith('LaunchAgent')), 'a dangling program is a known fault, not "not read"')
+    const hit = r.behind.filter((b) => b.tool === 'LaunchAgent net.gorfed.ship-bot')
+    assert.equal(hit.length, 1)
+    assert.match(hit[0].detail, /which does not exist/)
   })
 })

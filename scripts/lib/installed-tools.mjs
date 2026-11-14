@@ -108,7 +108,7 @@ export function privateInterpreters(home, launchAgents) {
     try {
       real = realpathSync(program)
     } catch {
-      out.push({ agent, program, real: program, unread: true })
+      out.push({ agent, program, real: program, missing: true }) // a dangling program: the agent can't start
       continue
     }
     const rel = relative(homeReal, real)
@@ -219,7 +219,7 @@ export function installedTools({ home = homedir(), root, launchAgents } = {}) {
   // Hermes's Node through a symlink; archiving Hermes would have stopped the only merger).
   for (const p of privateInterpreters(home, launchAgents ?? join(home, 'Library', 'LaunchAgents'))) {
     checked++
-    if (p.unread) unread.push(`LaunchAgent ${p.agent}`)
+    if (p.missing) behind.push({ tool: `LaunchAgent ${p.agent}`, source: p.program, behind: null, detail: `runs ${p.program}, which does not exist` })
     else behind.push({ tool: `LaunchAgent ${p.agent}`, source: p.program, behind: null, detail: `runs ${p.real}, inside another tool's private folder` })
   }
 
