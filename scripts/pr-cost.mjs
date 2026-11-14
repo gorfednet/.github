@@ -3,6 +3,7 @@
  * What a pull request cost in tokens (plan row 1.26).
  *
  *   node scripts/pr-cost.mjs pr     --repo owner/name --number N [--branch B] [--worktree PATH] [--since ISO]
+ *   node scripts/pr-cost.mjs record --repo owner/name --number N --branch B [--worktree PATH] --pr-json <gh-pr-list.json>
  *   node scripts/pr-cost.mjs record --repo owner/name --number N --state MERGED|CLOSED --branch B [--worktree PATH]
  *                                   [--title T] [--additions N] [--deletions N] [--created ISO] [--closed ISO] [--label L]...
  *                                   [--infra] [--out ~/.desk/pr-cost.jsonl]
@@ -31,7 +32,7 @@ import { DEFAULT_FILE, DEFAULT_PROJECTS, costRecord, costReport, infraRepo, late
 
 function parseArgs(argv) {
   const opts = { labels: [] }
-  const takes = new Set(['--repo', '--number', '--branch', '--worktree', '--since', '--state', '--title', '--additions', '--deletions', '--created', '--closed', '--out', '--days', '--file', '--projects', '--label', '--prs'])
+  const takes = new Set(['--repo', '--number', '--branch', '--worktree', '--since', '--state', '--title', '--additions', '--deletions', '--created', '--closed', '--out', '--days', '--file', '--projects', '--label', '--prs', '--pr-json'])
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]
     if (a === '--infra') opts.infra = true
@@ -69,6 +70,19 @@ export async function main(argv) {
   if (cmd === 'pr' || cmd === 'record') {
     if (!/^[\w.-]+\/[\w.-]+$/.test(opts.repo ?? '')) throw new Error('--repo owner/name is required')
     if (opts.number === undefined) throw new Error('--number is required')
+    if (opts['pr-json']) {
+      // The janitor passes PR text through a file, never a command line (a title can hold backticks and quotes).
+      const pr = [].concat(JSON.parse(readFileSync(opts['pr-json'], 'utf8')))[0]
+      if (!pr || !Number.isInteger(pr.number)) throw new Error('--pr-json holds no pull request')
+      if (String(pr.number) !== String(opts.number)) throw new Error(`--pr-json is pull request ${pr.number}, not ${opts.number}`)
+      opts.title = pr.title
+      opts.state = pr.state
+      opts.additions = pr.additions === undefined ? undefined : String(pr.additions)
+      opts.deletions = pr.deletions === undefined ? undefined : String(pr.deletions)
+      opts.created = pr.createdAt
+      opts.closed = pr.mergedAt ?? pr.closedAt
+      opts.labels = (pr.labels ?? []).map((l) => l.name ?? l)
+    }
     if (cmd === 'record' && !['MERGED', 'CLOSED'].includes(opts.state)) throw new Error('--state must be MERGED or CLOSED')
     const { models, files } = await prTokens(opts)
     const t = sumModels(models)

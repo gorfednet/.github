@@ -147,6 +147,12 @@ describe('report', () => {
     const r = costRecord({ repo: 'o/a', number: 1, title: 'Fix a secret thing', branch: 'b', state: 'MERGED', additions: 1, deletions: 0 }, { m: { input: 1, cacheRead: 0, cacheWrite: 0, output: 1, messages: 1 } })
     assert.doesNotMatch(JSON.stringify(r), /secret|Users|home/)
   })
+  it('collectPrCost names a damaged ledger rather than reporting "not measured" with no cause', async () => {
+    const dir = projects({ 'p/S1.jsonl': [assistant({ min: 1 })], 'led.jsonl': ['{"repo":"a/b"}', '{half a line'] })
+    const c = await collectPrCost({ projects: dir, file: join(dir, 'led.jsonl'), now: new Date(T(10)) })
+    assert.match(c.error, /led\.jsonl line 2 is not JSON/)
+    assert.match(renderPrCost(null, c.error).join('\n'), /not measured: .*line 2 is not JSON/)
+  })
   it('collectPrCost output fits the status.json schema keys', async () => {
     const schema = JSON.parse(readFileSync(new URL('../scripts/lib/status.schema.json', import.meta.url), 'utf8')).properties.prCost
     const dir = projects({ 'p/S1.jsonl': [assistant({ min: 1 })] })
@@ -207,6 +213,23 @@ describe('the command', () => {
     assert.deepEqual(j.results.map((x) => [x.number, x.recorded, x.total]), [[7, true, 1111], [9, false, 0]])
     assert.equal(readFileSync(out, 'utf8').trim().split('\n').length, 1, 'the open PR and the PR with no tokens write no line')
   })
+  it('record reads the PR from a file, so no PR text rides the command line', () => {
+    const { dir, out } = setup()
+    const pj = join(dir, 'pr.json')
+    writeFileSync(pj, JSON.stringify([{ number: 7, title: 'Fix `isMain` in "scripts" $(x)', state: 'MERGED', additions: 5, deletions: 1, createdAt: T(0), mergedAt: T(30), labels: [{ name: 'hold' }] }]))
+    const r = run('record', '--repo', 'o/.github', '--number', '7', '--branch', 'claude/a-1', '--worktree', WT, '--pr-json', pj, '--projects', dir, '--out', out)
+    assert.equal(r.status, 0, r.stderr)
+    const line = JSON.parse(readFileSync(out, 'utf8').trim())
+    assert.deepEqual([line.kind, line.state, line.additions, line.deletions, line.closedAt], ['fix', 'MERGED', 5, 1, T(30)])
+  })
+  it('refuses a file for another pull request', () => {
+    const { dir, out } = setup()
+    const pj = join(dir, 'pr.json')
+    writeFileSync(pj, JSON.stringify([{ number: 99, title: 't', state: 'MERGED' }]))
+    const r = run('record', '--repo', 'o/r', '--number', '7', '--branch', 'b', '--pr-json', pj, '--projects', dir, '--out', out)
+    assert.equal(r.status, 2)
+    assert.match(r.stderr, /is pull request 99, not 7/)
+  })
   it('exits 2 with the cause on a bad argument', () => {
     for (const args of [[], ['pr'], ['pr', '--repo', 'bad', '--number', '1'], ['record', '--repo', 'o/r', '--number', '1', '--state', 'OPEN'], ['pr', '--bogus']]) {
       const r = run(...args)
@@ -222,6 +245,9 @@ describe('janitor prompt', () => {
     assert.match(prompt, /`merged`: its pull request merged\. Record its cost \(step 4\.7\), then archive it/)
     assert.match(prompt, /pr-cost\.mjs record/)
     assert.match(prompt, /a failed cost line never blocks archiving/)
+    const step = prompt.match(/7\. Cost \(plan row 1\.26\)[\s\S]*?(?=\n5\. Worktrees)/)[0]
+    assert.match(step, /--pr-json \$R\/pr-<id8>\.json/)
+    assert.doesNotMatch(step, /--title|--label/, 'no pull request text on the command line')
   })
 })
 

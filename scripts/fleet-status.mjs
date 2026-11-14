@@ -431,7 +431,9 @@ if (isMain(import.meta.url)) {
   if (process.argv.includes('--local') && !process.argv.includes('--no-pr-cost')) {
     // Plan row 1.26: token cost of PRs closed in the last 7 days, from this Mac's transcripts and ~/.desk/pr-cost.jsonl.
     // Local only: the hosted run has neither, so the published STATUS.md never carries it. Null is "not measured".
-    status.prCost = await collectPrCost({ now })
+    const cost = await collectPrCost({ now })
+    status.prCost = cost.error ? null : cost
+    if (cost.error) status.prCostUnread = cost.error
   }
   if (process.argv.includes('--inventory')) {
     status.inventory = collectInventory(status, { includePrivate: process.argv.includes('--include-private'), local: process.argv.includes('--local'), now })

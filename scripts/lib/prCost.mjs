@@ -327,7 +327,7 @@ export function readLines(file) {
       try {
         return JSON.parse(l)
       } catch {
-        throw new Error(`${file} line ${i + 1} is not JSON`)
+        throw new Error(`${tilde(file, homedir())} line ${i + 1} is not JSON`)
       }
     })
 }
@@ -340,12 +340,12 @@ export async function windowTotals({ projects = DEFAULT_PROJECTS, days = 7, now 
   return { days, files, attributed, unattributed }
 }
 
-/** What fleet-status shows: the report plus when it was measured. Null when the transcripts could not be read. */
+/** What fleet-status shows: the report plus when it was measured, or `{ error }` naming what could not be read (a damaged ledger, an unreadable folder). */
 export async function collectPrCost({ projects = DEFAULT_PROJECTS, file = DEFAULT_FILE, days = 7, now = new Date() } = {}) {
   try {
     const window = await windowTotals({ projects, days, now })
     return { measuredAt: now.toISOString(), ...costReport(readLines(file), { now, days, window }) }
-  } catch {
-    return null
+  } catch (error) {
+    return { error: tilde(String(error.message).replaceAll(homedir(), '~'), homedir()) }
   }
 }

@@ -44,9 +44,9 @@ export const compact = (n) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 
  * price. Cache reads are listed apart because they are about 90% of every session and cost a tenth. Null prCost is
  * "not measured", never zero. Repository names and PR numbers only.
  */
-export function renderPrCost(c) {
+export function renderPrCost(c, unread) {
   const out = [`## Cost per PR, last ${c?.days ?? 7} days`, '']
-  if (c === null || c === undefined) return [...out, 'not measured', '']
+  if (c === null || c === undefined) return [...out, unread ? `not measured: ${unread}` : 'not measured', '']
   if (c.prs === 0) out.push('No closed PR has a recorded cost in this window.', '')
   else {
     const fresh = Object.values(c.byRepo).reduce((n, r) => n + r.fresh, 0)
@@ -177,7 +177,7 @@ export function render(status) {
     if ((l.installedToolsUnread ?? []).length > 0) out.push(`Installed tools not read (their row is not measured): ${l.installedToolsUnread.join(', ')}`, '')
     if (l.behindFetchFailed.length > 0) out.push(`Fetch failed, so clones behind origin is not measured: ${l.behindFetchFailed.join(', ')}`, '')
   }
-  if (status.prCost !== undefined) out.push(...renderPrCost(status.prCost))
+  if (status.prCost !== undefined) out.push(...renderPrCost(status.prCost, status.prCostUnread))
   if (status.inventory) out.push(renderInventory(status.inventory, etStamp))
   if (status.dirtyLocal) {
     out.push('## Local clones with unsaved work', '')
