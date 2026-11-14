@@ -10,7 +10,8 @@ const NEXT_OTHER = '## Next\n\n- [ ] rename the flag\n- [ ] merge\n'
 const draft = (overrides = {}) => makePr({ draft: true, node_id: 'PR_node7', labels: [], body: NEXT_MERGE, ...overrides })
 const isStatus = (cmd) => cmd.args?.[0]?.endsWith('/review-status.mjs')
 const reviewed = () => [repoEntry({ claudeReview: true })]
-const writes = (gh, name) => gh.writes.filter((w) => w.name === name)
+// `needs-fix` labels (row 1.14) are not what these tests are about: the ready label and readying are.
+const writes = (gh, name) => gh.writes.filter((w) => w.name === name && !(name === 'addLabels' && w.labels?.[0] === 'needs-fix'))
 const readyComments = (gh) => gh.commentsPosted().filter((c) => c.body.startsWith(DRAFT_READY_COMMENT))
 
 describe("which drafts are the bot's", () => {
