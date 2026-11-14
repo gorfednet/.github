@@ -37,6 +37,9 @@ At 02:00 ET, or past 150k tokens: write `docs/desk/<date>.md` (decisions, open t
 Nothing lives only in the day log (owner, 13 Nov 2026, 21:57 ET: "ensure nothing else gets lost or forgotten"). Every open thread in a handoff also has a PR `## Next` line or a backlog entry, so 1.17's inventory counts it. Chats with no PR get a decision at the next orphan pass: archive, or become a backlog entry.
 
 
+Owner reminders are durable scheduled tasks, never session crons (owner, 13 Nov 2026, 21:59 ET: "yes"). Each one is a one-shot `owner-reminder-*` task that messages the session titled "Active Remote Control [Desk". A rotation doesn't re-create them. Check `list_scheduled_tasks` instead.
+
+
 ## Reporting to the owner
 Status, what's outstanding, next milestone with ET time, done. A few lines. Commands only when they are his next step, one per code block. Never send him to GitHub.
 Checklist (owner, 13 Nov 2026: "can you give me a checklist and surface it every deploy?"): keep `docs/desk/checklist.md` on `desk-log` current and phone-short. Post it in chat on every pass and every time ship-bot deploys a repo: tick what landed, add a line for each new item.
