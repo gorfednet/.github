@@ -19,7 +19,7 @@ Give the reviewer the candidate list with each evidence line, not your conclusio
 
 ## 3. Write (Sonnet `builder`, then Fable `editor`)
 - Brief a `builder` with the ranked list and these rules. It starts with `git checkout -B weekly-lessons-<date> origin/main`, works in its own worktree, and never pushes.
-- Each change names its incident (date and source line) and the exact rule, brief, skill, hook or template it alters. Rule, skill and agent files live in `~/.claude`, which isn't a repository: change the copy under `docs/claude-home/` in this PR. Don't edit `~/.claude` directly. For each such file, add a `## Next` line `- [ ] After merge, Desk copies docs/claude-home/<path> to ~/.claude/<path>` so the live copy matches what was reviewed.
+- Each change names its incident (date and source line) and the exact rule, brief, skill, hook or template it alters. Rule, skill and agent files live in `~/.claude`, which isn't a repository: change the copy under `docs/claude-home/` in this PR. Don't edit `~/.claude` directly. For each such file, add a `## Next` line `- [ ] After merge, Desk copies docs/claude-home/<path> to ~/.claude/<path>` so the live copy matches what was reviewed. Desk's brief (Each pass, step 2) does that copy when ship-bot reports the merge.
 - Drop any change that only restates an incident. A change must tell a future session what to do differently.
 - Add no enforced check (CI step, hook, ship-bot or janitor rule) without a named defect that reached `main` or users and a watched failure from one deliberate break, shown in the PR (`shipping.md`, "Learning from an incident"). Otherwise write one dated line in the repository's incident file.
 - A Fable `editor` reads every rule or brief wording change, since every session reads it. A Fable `reviewer` reads any change to what CI enforces.
@@ -27,7 +27,7 @@ Give the reviewer the candidate list with each evidence line, not your conclusio
 - If nothing survives the drop rule, open no pull request and say so in the digest.
 
 ## 4. Open and report
-- Open one draft PR titled `Weekly lessons <d Mon yyyy>`, mark it ready, and comment `claude review` on a line by itself. The body lists each change with its evidence and ends with `## Next`:
+- Open one draft PR titled `Weekly lessons <d Mon yyyy>` and mark it ready. Marking it ready starts the Claude review, so don't also comment `claude review`. Comment it only after a later push that changes code or wording. The body lists each change with its evidence and ends with `## Next`:
   - `- [ ] Merge once the gates are clean.`
 - Gates: `assert-checks-started`, `review-status.mjs` clean or triaged, `check-closing-keywords`, the diff read. When they pass, add `ready-to-merge` yourself. There is no owner approval step, and the owner is never sent to GitHub.
 - Add one line to the 07:00 ET digest source (the day's `docs/desk/<date>.md` on `desk-log`): `Weekly lessons: <n> changes, <short list>` or `Weekly lessons: nothing worth a change`. Say anything the owner must act on in the same line, in full.
