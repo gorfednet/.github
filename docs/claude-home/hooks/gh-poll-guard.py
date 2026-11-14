@@ -270,9 +270,18 @@ def verdict(command: str) -> str | None:
     return None
 
 
+_VALUE = r"""(?:'[^']*'|"[^"]*"|\S+)"""
 _SECRETS = re.compile(
-    r"gh[pousr]_\w+|github_pat_\w+|(?i:(?:token|secret|password|passwd|api[_-]?key|auth)\w*)=\S+"
-    r"|--(?:with-token|body|field|raw-field|f|F)[ \t=]+\S+|-[fF][ \t]+\S+"
+    "|".join(
+        [
+            r"gh[pousr]_\w+",
+            r"github_pat_\w+",
+            r"(?i:(?:token|secret|password|passwd|api[_-]?key|auth)\w*)=" + _VALUE,
+            r"--(?:with-token|body|field|raw-field)[ \t=]+" + _VALUE,
+            r"-[bfF][ \t]+" + _VALUE,
+            r"(?i:authorization:?)[ \t]*(?i:bearer|token|basic)?[ \t]*[\w.+/=-]+",
+        ]
+    )
 )
 
 

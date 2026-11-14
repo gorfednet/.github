@@ -5,7 +5,7 @@ import { spawnSync } from 'node:child_process'
 import { mkdtempSync, readFileSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { CALLER, SPIKE, makeSample } from '../scripts/gh-quota-sample.mjs'
+import { CALLER, SPIKE, makeSample, redact } from '../scripts/gh-quota-sample.mjs'
 
 test('a drop of SPIKE or more in one window carries the callers; a quiet minute or a new window does not', () => {
   const ps = () => ['1 00:10 gh run watch 5 --interval 60']
@@ -37,13 +37,15 @@ test('the call log redacts tokens and --body values, is owner-only, and marks a 
   run('GH_TOKEN=ghp_abc123 gh api user')
   run("gh secret set X --body 'hunter2hunter2'")
   run('echo github_pat_11AAA | gh auth login --with-token')
+  run('gh secret set DEPLOY_KEY -b s3cr3tshort')
+  run('gh secret set Y --body "two words secret"')
   const refused = run('while true; do gh api x; sleep 1; done')
   assert.match(refused.stdout, /deny/)
   const text = readFileSync(log, 'utf8')
-  for (const secret of ['ghp_abc123', 'hunter2hunter2', 'github_pat_11AAA']) assert.ok(!text.includes(secret), `${secret} leaked into the call log`)
+  for (const secret of ['ghp_abc123', 'hunter2hunter2', 'github_pat_11AAA', 's3cr3tshort', 'two words secret', 'words secret']) assert.ok(!text.includes(secret), `${secret} leaked into the call log`)
   const lines = text.trim().split('\n').map((l) => JSON.parse(l))
-  assert.equal(lines.length, 4)
-  assert.deepEqual(lines.map((l) => l.denied), [false, false, false, true])
+  assert.equal(lines.length, 6)
+  assert.deepEqual(lines.map((l) => l.denied), [false, false, false, false, false, true])
   assert.equal(statSync(log).mode & 0o077, 0)
 })
 
@@ -52,4 +54,20 @@ test('the sampler lists a plain node or python script, not only gh and our tools
   assert.ok(CALLER.test('813 00:40 python3 /tmp/loop.py'))
   assert.ok(CALLER.test('814 00:05 gh run watch 5 --interval 60'))
   assert.ok(!CALLER.test('815 00:05 /usr/bin/vim notes.md'))
+})
+
+test('the sampler redacts tokens in a process line before saving it, and writes owner-only', () => {
+  const line = 'curl -s -H "Authorization: token ghp_test123" https://api.github.com/rate_limit'
+  assert.ok(!redact(line).includes('ghp_test123'))
+  assert.ok(!redact('node poll.mjs GH_TOKEN=abc123def').includes('abc123def'))
+  assert.ok(!redact('gh secret set X -b "two words"').includes('words'))
+  assert.match(redact('gh run watch 5 --interval 60'), /--interval 60/)
+  const dir = mkdtempSync(join(tmpdir(), 'ghq-'))
+  const file = join(dir, 'sub', 'samples.jsonl')
+  const r = spawnSync('node', [new URL('../scripts/gh-quota-sample.mjs', import.meta.url).pathname], { env: { ...process.env, GH_QUOTA_LOG: file, PATH: `${dir}:${process.env.PATH}` }, encoding: 'utf8' })
+  // no gh on this PATH in CI: the run may fail, which is fine; when it wrote the file it must be 0600
+  if (r.status === 0) {
+    assert.equal(statSync(file).mode & 0o077, 0)
+    assert.equal(statSync(join(dir, 'sub')).mode & 0o077, 0)
+  }
 })
