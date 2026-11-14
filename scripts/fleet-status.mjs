@@ -31,6 +31,7 @@ import { promisify } from 'node:util'
 import { isMain } from '../templates/verification-kit/lib/isMain.mjs'
 import { lapsedBacklog } from './fleet-report.mjs'
 import { backlogIds, collectLocal, duplicatePrs, idlePrs } from './lib/hygiene.mjs'
+import { collectPrCost } from './lib/prCost.mjs'
 import { backlogFromStatus, buildInventory, collectHerdrJobs, collectSessions, collectWorktrees, fetchOpenPrs, planRows, summarizeInventory } from './lib/inventory.mjs'
 import { claudeReviewVerdict } from './lib/reviewVerdict.mjs'
 
@@ -426,6 +427,13 @@ if (isMain(import.meta.url)) {
     // The `local` object exists only when this run looked at the Mac; its absence means "not measured".
     status.local = collectLocal(join(homedir(), 'Developer', 'gorfednet'), { fetch: !process.argv.includes('--no-fetch') })
     if (status.local.dirtyClones !== null) status.dirtyLocal = status.local.dirtyClones
+  }
+  if (process.argv.includes('--local') && !process.argv.includes('--no-pr-cost')) {
+    // Plan row 1.26: token cost of PRs closed in the last 7 days, from this Mac's transcripts and ~/.desk/pr-cost.jsonl.
+    // Local only: the hosted run has neither, so the published STATUS.md never carries it. Null is "not measured".
+    const cost = await collectPrCost({ now })
+    status.prCost = cost.error ? null : cost
+    if (cost.error) status.prCostUnread = cost.error
   }
   if (process.argv.includes('--inventory')) {
     status.inventory = collectInventory(status, { includePrivate: process.argv.includes('--include-private'), local: process.argv.includes('--local'), now })

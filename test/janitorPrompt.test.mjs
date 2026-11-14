@@ -17,7 +17,7 @@ test("janitor does not rely on gh pr diff --name-only for the allowlist", () => 
 test("janitor step 4 sweeps sessions and guards live ones and owner questions", () => {
   const step = prompt.match(/\n4\. Sessions\.[\s\S]*?(?=\n5\. Worktrees)/);
   assert.ok(step, "step 4 exists");
-  assert.match(step[0], /`merged`: its pull request merged\. Archive it/);
+  assert.match(step[0], /`merged`: its pull request merged\. Record its cost \(step 4\.7\), then archive it/);
   assert.match(step[0], /isRunning/);
   assert.match(step[0], /question or a decision for the owner/);
   assert.match(step[0], /idle over 48 hours/);
@@ -54,7 +54,7 @@ test("janitor never prunes the tools or desk worktrees, and prunes only through 
 });
 
 test("janitor rescues dirty work through a draft held from ship-bot before archiving", () => {
-  const rescue = prompt.match(/\n   6\. Rescue,[\s\S]*?(?=\n5\. Worktrees)/);
+  const rescue = prompt.match(/\n   6\. Rescue,[\s\S]*?(?=\n   7\. Cost|\n5\. Worktrees)/);
   assert.ok(rescue, "rescue procedure exists");
   assert.match(rescue[0], /--draft[^\n]*--label hold/);
   assert.match(rescue[0], /looks secret/);
