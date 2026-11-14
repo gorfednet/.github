@@ -39,7 +39,7 @@ Fable reviewer, read-only. Desk accepted it at 02:00 ET and started PR 1.
 - Done when: stub tests cover every fail-closed link and the 75; the scorer rejects a constant arm and a no-model-equal arm; one guard watched failing; real `local-llm queue` output on the PR.
 - Waits: fixtures, labels, baseline, the ctx preset, the session rule line, the weekly Hugging Face sha job, (b), (c), (e).
 
-## Step 0 result and decision (14 Nov 2026, 08:35 ET)
+## Step 0 result and decision (14 Nov 2026, 08:17 ET)
 - Measured by a Sonnet builder from 684 session transcripts modified in the 7 days to 14 Nov (tool-result characters, not tokens): `gh run view --log*` is 0.37% of all tool-result characters, about 1.2% without images. Images (base64) are 70.4%.
 - Decision (Desk): task (a) CI-log triage is dropped, by this design's own rule ("if logs are a few percent, (a) drops too"). The 20-item manifest in ops `docs/evals/ci-triage.json` stays for a later eval if the share changes.
 - Caution: base64 characters overstate images against tokens (an image costs a fixed token budget, not its byte size). Before (c) screenshot screening is chosen, step 0 is redone in tokens. Until then (c) and (b) stay waiting; no local model is adopted.
