@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { FakeGitHub, HEAD, makeRunner, repoEntry, scenario } from './fakes.mjs'
+import { FakeGitHub, HEAD, makePr, makeRunner, repoEntry, scenario } from './fakes.mjs'
 
 const merges = (gh) => gh.writes.filter((w) => w.name === 'mergePull')
 const findings = (cmd) => (cmd.args?.[0]?.endsWith('/review-status.mjs') ? { code: 1, stdout: '#7  findings  Claude reviewed aaaaaaaaa: 1 finding(s)\n' } : undefined)
@@ -12,11 +12,13 @@ const answered = (body) => ({
   body,
   comments: [{ author: 'github-actions', createdAt: '2026-10-09T10:00:00Z' }, { author: 'gorfednet', createdAt: '2026-10-09T10:30:00Z' }],
 })
-const run = async (files, body, { resolved = false, handle = findings, onHead = false } = {}) => {
+const run = async (files, body, { resolved = false, handle = findings, onHead = false, slug } = {}) => {
   const thread = answered(body)
   if (onHead) thread.comments[0].commit = HEAD
-  const gh = new FakeGitHub({ threads: [{ ...thread, isResolved: resolved }], files })
-  const s = scenario({ repos: [repoEntry({ claudeReview: true, mode: 'merge-only', reason: 'r', envFiles: undefined, setup: undefined, deploy: undefined })].map(({ envFiles, setup, deploy, ...r }) => r), github: gh, runner: makeRunner({ handle }) })
+  // A head in another repository is a fork and never merges, so the pull's head follows the slug.
+  const pulls = slug ? { pulls: [makePr({ head: { sha: HEAD, repo: { full_name: slug } } })] } : {}
+  const gh = new FakeGitHub({ threads: [{ ...thread, isResolved: resolved }], files, ...pulls })
+  const s = scenario({ repos: [repoEntry({ ...(slug ? { slug } : {}), claudeReview: true, mode: 'merge-only', reason: 'r', envFiles: undefined, setup: undefined, deploy: undefined })].map(({ envFiles, setup, deploy, ...r }) => r), github: gh, runner: makeRunner({ handle }) })
   await s.run()
   return { gh, s }
 }
@@ -40,5 +42,10 @@ describe('control-plane PRs need a clean review for Medium and High threads (row
   it('a Low thread answered, or any thread on an ordinary path, still merges on the reply', async () => {
     assert.equal(merges((await run(['ship-bot/lib/bot.mjs'], 'Low: x')).gh).length, 1)
     assert.equal(merges((await run(['docs/readme.md'], 'High: x')).gh).length, 1)
+  })
+  it('in gorfednet/.github docs/claude-home/ is such a path; in another repo it is ordinary docs', async () => {
+    assert.equal(merges((await run(['docs/claude-home/rules/x.md'], 'High: x', { slug: 'gorfednet/.github' })).gh).length, 0)
+    assert.equal(merges((await run(['docs/claude-home/rules/x.md'], 'High: x')).gh).length, 1)
+    assert.equal(merges((await run(['docs/readme.md'], 'High: x', { slug: 'gorfednet/.github' })).gh).length, 1, 'the .github fixture itself can merge')
   })
 })

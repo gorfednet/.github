@@ -43,7 +43,8 @@ Never write the mode file. Desk or the owner writes `live` after 3 dry runs in a
      - `gh pr view --json files` has no previous name and `gh pr diff --name-only` shows only the new one, so neither is enough.
      - The allowlist is the root `README.md`, or a file under `docs/` whose extension is `.md`, `.txt`, `.json`, `.csv`, `.png`, `.jpg`, `.svg` or `.webp`. Nothing else.
      - Any other path means the pull request touches code or instructions and gets no label.
-     - A path under `.github/`, `.claude/`, `janitor/` or `ship-bot/`, or a file named `REVIEW.md`, `CLAUDE.md`, `AGENTS.md` or `SKILL.md`, is never labelled, even under `docs/`.
+     - A path that ship-bot's `touchesControlPlane(path, slug)` matches is never labelled, even under `docs/`. That covers `.github/`, `.claude/`, `janitor/` and `ship-bot/`, a file named `REVIEW.md`, `CLAUDE.md`, `AGENTS.md` or `SKILL.md`, and in `gorfednet/.github` everything under `docs/claude-home/`, which Desk copies into `~/.claude` after merge.
+     - Check each `filename` and `previous_filename` with `node -e "import('$J/ship-bot/lib/drafts.mjs').then((m) => process.exit(m.touchesControlPlane(process.argv[1], process.argv[2]) ? 1 : 0))" <path> <owner>/<repo>`. Exit 1 means control plane: no label. If the check can't run, no label.
      - An empty list means no label.
    - Its review is `clean` and its CI is `green` in `status.json`.
    - It isn't a draft and doesn't carry `hold`.

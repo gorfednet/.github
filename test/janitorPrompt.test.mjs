@@ -92,3 +92,12 @@ test("janitor step 3b builds housekeeping trains through the script and never la
   assert.match(step[0], /never labels or merges/);
   assert.match(step[0], /check-closing-keywords/);
 });
+
+test("janitor never labels a path ship-bot calls control plane, docs/claude-home/ included", () => {
+  const step = prompt.match(/\n3\. Labels\.[\s\S]*?(?=\n4\. Sessions)/);
+  assert.ok(step, "step 3 exists");
+  assert.match(step[0], /`touchesControlPlane\(path, slug\)`[^\n]*is never labelled, even under `docs\/`/);
+  assert.match(step[0], /\$J\/ship-bot\/lib\/drafts\.mjs/);
+  assert.match(step[0], /in `gorfednet\/\.github` everything under `docs\/claude-home\/`/);
+  assert.match(step[0], /If the check can't run, no label/);
+});

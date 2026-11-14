@@ -62,8 +62,9 @@ export const CONTROL_PLANE_BASENAMES = ['REVIEW.md', 'CLAUDE.md', 'AGENTS.md', '
  * their per-site safety settings from fleet.json. templates/ holds the
  * canonical verification kit every project's refresh-kit pulls from main.
  * docs/claude-home/ is the reviewed copy of `~/.claude` (rules, agents, skills,
- * settings): Desk copies its files into the live `~/.claude` after merge, so a
- * change there changes the rules every session runs on (plan row 1.28).
+ * settings): Desk copies merged files listed in the PR's `## Next` into the
+ * live `~/.claude`, so a change there changes the rules every session runs on
+ * (.github PR 192, weekly lessons).
  */
 const REPO_EXTRA = { 'gorfednet/.github': ['scripts/', 'fleet.json', 'templates/', 'docs/claude-home/'] }
 
