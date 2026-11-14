@@ -1,11 +1,11 @@
 {
-  "generatedAt": "2026-11-14T20:32:03.447Z",
-  "renderedAt": "2026-11-14T20:32:03.447Z",
+  "generatedAt": "2026-11-14T22:32:18.289Z",
+  "renderedAt": "2026-11-14T22:32:18.289Z",
   "repos": [
     {
       "slug": "gorfednet/bindercurve.com",
       "redacted": true,
-      "mainRed": true,
+      "mainRed": false,
       "openPrCount": 6,
       "lapsedBacklogCount": 0,
       "noPrCount": 78,
@@ -140,25 +140,40 @@
       "mainRed": false,
       "openPrs": [
         {
-          "number": 197,
-          "title": "Always-PR hook: read the PR with --json url,state",
+          "number": 199,
+          "title": "Cost per PR follow-ups: link-taught window, janitor untrusted strings via files (191)",
+          "ageDays": 0,
+          "labels": [],
+          "draft": false,
+          "review": "findings",
+          "headSha": "ea2636681c75222dd316d2d5c0ffeae2686239e7",
+          "ci": "green",
+          "next": "Claude review clean and a Fable reviewer read (control plane), then Desk labels",
+          "author": "gorfednet"
+        },
+        {
+          "number": 198,
+          "title": "Eval set scoring v3 (plan 1.27b, part 1)",
           "ageDays": 0,
           "labels": [],
           "draft": true,
           "review": "findings",
-          "headSha": "f486a69352ca419b91b99764477d093c0d0bc2f2",
+          "headSha": "f43c871c2ecd9bd3ebbaaa04da041e0d8e41e3e7",
           "ci": "green",
-          "next": "Claude review clean",
+          "next": "Later: copy scoring refuses any quoted span (round 4, f43c871), which also rejects honest copy that quotes a phrase. Revisit with the copy grader: score only the text check-voice reads and require it to cover most of the answer",
           "author": "gorfednet"
         },
         {
           "number": 196,
           "title": "Weekly lessons: model and skill currency (1.29)",
           "ageDays": 0,
-          "labels": [],
-          "draft": true,
+          "labels": [
+            "ready-to-merge",
+            "needs-fix"
+          ],
+          "draft": false,
           "review": "findings",
-          "headSha": "572b0d2a423a847a4714df25bb2da75e2c22455f",
+          "headSha": "41b392755b70c67a5e84bc6f2d1437eb8ac89e6b",
           "ci": "green",
           "next": "Claude review clean",
           "author": "gorfednet"
@@ -194,7 +209,7 @@
           "labels": [],
           "draft": true,
           "review": "not-run",
-          "headSha": "d6ff81fb8af4ed84abd919cee6739657e2790c69",
+          "headSha": "2e8a5b13bea93a5844eef57f90d466d5551a1309",
           "ci": "none",
           "next": "Desk appends each pass's line until the 02:00 ET rotation (hold: the log is still being written)",
           "author": "gorfednet"
@@ -276,7 +291,7 @@
         {
           "number": 103,
           "title": "Handoff: recovery of 38 failed Herdr jobs",
-          "ageDays": 4,
+          "ageDays": 5,
           "labels": [],
           "draft": true,
           "review": "not-run",
@@ -288,7 +303,7 @@
         {
           "number": 102,
           "title": "build-rewrites-tracked-files",
-          "ageDays": 4,
+          "ageDays": 5,
           "labels": [],
           "draft": true,
           "review": "not-run",
@@ -440,11 +455,11 @@
         },
         {
           "number": 103,
-          "idleDays": 4
+          "idleDays": 5
         },
         {
           "number": 102,
-          "idleDays": 4
+          "idleDays": 5
         }
       ],
       "duplicatePrs": [],
@@ -557,7 +572,7 @@
       "slug": "gorfednet/ops",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 3,
+      "openPrCount": 4,
       "lapsedBacklogCount": 0,
       "noPrCount": 0,
       "idlePrCount": 0,
@@ -573,11 +588,11 @@
   "branchesReadAt": "2026-11-14T02:32:09.796Z",
   "carried": true,
   "inventory": {
-    "measuredAt": "2026-11-14T20:32:03.447Z",
+    "measuredAt": "2026-11-14T22:32:18.289Z",
     "counts": {
       "pr": {
-        "total": 107,
-        "orphans": 61
+        "total": 109,
+        "orphans": 64
       },
       "session": null,
       "worktree": null,
@@ -591,8 +606,16 @@
       {
         "kind": "pr",
         "repo": "gorfednet/.github",
-        "ref": "#197",
-        "label": "Always-PR hook: read the PR with --json url,state",
+        "ref": "#199",
+        "label": "Cost per PR follow-ups: link-taught window, janitor untrusted strings via files (191)",
+        "private": false,
+        "lapsed": false
+      },
+      {
+        "kind": "pr",
+        "repo": "gorfednet/.github",
+        "ref": "#198",
+        "label": "Eval set scoring v3 (plan 1.27b, part 1)",
         "private": false,
         "lapsed": false
       },
@@ -701,7 +724,7 @@
         "lapsed": true
       }
     ],
-    "hiddenPrivate": 48,
+    "hiddenPrivate": 50,
     "privateReposNotItemised": 18
   }
 }
