@@ -40,10 +40,8 @@ if [[ "$(uname -s)" != "Darwin" ]]; then
   exit 1
 fi
 
-unload() {
-  # Not loaded is fine; anything else is reported by launchctl itself.
-  launchctl bootout "${DOMAIN}/${LABEL}" 2>/dev/null || true
-}
+# shellcheck source=launchd-load.sh
+source "${HERE}/launchd-load.sh"
 
 if [[ "${1:-}" == "--uninstall" ]]; then
   unload
@@ -175,8 +173,7 @@ EOF
 plutil -lint "${PLIST}.tmp" >/dev/null
 mv "${PLIST}.tmp" "${PLIST}"
 
-unload
-launchctl bootstrap "${DOMAIN}" "${PLIST}"
+load_agent
 echo "Loaded ${LABEL}: every 120 s, logging to ${BOT_HOME}/logs/ship-bot.log."
 echo "Until ${BOT_HOME}/config.json says \"live\": true it only observes (see OBSERVE lines in the log)."
 echo "To let it merge and deploy: ${NODE_BIN} ${APP_DIR}/ship-bot.mjs --set-live true"
