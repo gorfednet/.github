@@ -141,12 +141,22 @@ describe('review-status.mjs --clone', () => {
       return { code: e.status, out: String(e.stdout) }
     }
   }
-  it('exits 2, not not-run, when main cannot be fetched into the clone', () => {
+  it('reads not-run for a clone that cannot be used', () => {
     const bad = mkdtempSync(join(tmpdir(), 'mom-bad-'))
     after(() => rmSync(bad, { recursive: true, force: true }))
     execFileSync('git', ['-C', bad, 'init', '-q'])
     const r = status(cleanMerge, ['--clone', bad])
-    assert.equal(r.code, 2)
+    assert.equal(r.code, 1, 'a clone with no origin never clears: not-run')
+    assert.match(r.out, /not-run/)
+    const gone = status(cleanMerge, ['--clone', join(bad, 'nowhere')])
+    assert.equal(gone.code, 1, 'a missing clone is not-run too')
+  })
+  it('exits 2 when the clone is usable but the fetch fails', () => {
+    const lost = mkdtempSync(join(tmpdir(), 'mom-lost-'))
+    after(() => rmSync(lost, { recursive: true, force: true }))
+    execFileSync('git', ['-C', lost, 'init', '-q'])
+    execFileSync('git', ['-C', lost, 'remote', 'add', 'origin', join(lost, 'nowhere')])
+    assert.equal(status(cleanMerge, ['--clone', lost]).code, 2)
   })
   it('stays not-run when a later review of the same head found something', () => {
     const bin = fakeGh(cleanMerge, [[{ body: `<!-- claude-review head=${b1} findings=0 -->`, user: { login: REVIEW_BOT_LOGIN }, created_at: '2026-11-13T10:00:00Z' }, { body: `<!-- claude-review head=${b1} findings=2 -->`, user: { login: REVIEW_BOT_LOGIN }, created_at: '2026-11-13T11:00:00Z' }]])

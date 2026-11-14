@@ -62,17 +62,20 @@ try {
   const base = verdict.lastReview?.findings === 0 ? verdict.lastReview.head : undefined
   if (clone && base) {
     // main's tip comes from GitHub, never from the clone's own refs, and the clone must contain it.
-    // Replace refs are off. A fetch that fails, or a clone that lacks the tip, is not-run.
+    // Replace refs are off. A clone that lacks the tip or cannot be used reads not-run; a fetch or API read that fails reads exit 2 (retry).
     const git = (args) => execFileSync('git', ['--no-replace-objects', '-C', clone, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 60000 })
     let merged = { ok: false, merges: 0, why: 'not judged' }
-    try {
+    let usable = true
+    // A clone that is missing, not a repository or without an origin never clears: that is not-run, not a wait.
+    try { git(['remote', 'get-url', 'origin']) } catch (e) { usable = false; merged.why = `the clone cannot be used (${String(e.message).split('\n')[0]})` }
+    if (usable) try {
       const baseRef = gh(['api', `repos/${repo}/pulls/${pr}`, '--jq', '.base.ref']).trim()
       const mainTip = gh(['api', `repos/${repo}/branches/${baseRef}`, '--jq', '.commit.sha']).trim()
       git(['fetch', '-q', '--no-write-fetch-head', 'origin', mainTip, `refs/pull/${pr}/head`])
       git(['cat-file', '-e', `${mainTip}^{commit}`])
       merged = onlyCleanMergesOfMain({ git, base, head, main: mainTip })
     } catch (e) {
-      // Could not read or fetch (a network blip, a git lock): exit 2, so the bot waits and does not cache a not-run for 10 minutes.
+      // Could not read or fetch (a network blip, a git lock) from a usable clone: exit 2, so the bot waits and a not-run is not cached for 10 minutes.
       console.error(`review-status: could not read main or fetch it into the clone: ${String(e.message).split('\n')[0]}`)
       process.exit(2)
     }
