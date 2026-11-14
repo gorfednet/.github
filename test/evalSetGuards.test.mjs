@@ -146,6 +146,7 @@ describe('M4: triage cause needs precision, and the ##[error]-line rule arm is t
     assert.equal(withCause(c, { verdict: 'real', lines: [48, 52, 99, 120] }).cause, true)
     assert.equal(withCause(c, { verdict: 'real', lines: [50, 1, 2, 3, 4, 5, 6, 7, 8, 9] }).cause, false) // shotgun: 1 of 10
     assert.equal(withCause(c, { verdict: 'real', lines: [] }).cause, false)
+    assert.equal(withCause(c, { verdict: 'real', lines: [50, 50, 50, 50, 50, 1, 2, 3, 4, 5] }).cause, false) // repeats count once: 1 of 6
   })
   const mkLog = (lines) => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'es-m4-'))

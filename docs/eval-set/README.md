@@ -39,10 +39,10 @@ Rules the scorer enforces, per task:
 
 Version 3 changes:
 
-- Copy: an answer is invalid when it carries anything check-voice doesn't read: a code fence, an HTML comment, an inline code span, a link target, a reference line, an HTML tag, a bare URL or front matter. A check-voice run that read 0 strings never counts as clean.
+- Copy: an answer is invalid when it carries anything check-voice doesn't read: a code fence, an HTML comment, an inline code span, a link target, a reference line, an HTML tag, a bare URL, front matter, or a span in double or curly quotes. A check-voice run that read 0 strings never counts as clean.
 - Claude-tier arm inputs (`--emit-inputs dir --id-map map.json`) carry opaque names, no case id and no task, and are written in a random order. The inputs directory must be empty. The map is private (mode 0600), outside the inputs directory and outside any repository working tree. `--ingest raw.json --id-map map.json` is the only ingest: it translates the replies back and marks the arm file `blind: true`. Reviewer pairs share their finding text, so a Claude-tier arm answers one case per context: a context that sees both halves of a pair can match them.
 - Every arm file carries `scoringVersion: 3`. The scorer refuses a triage arm, Haiku file or no-model file without it, because `cause` is set by the runner from private truth.
-- Triage: a cause hit needs at least half of the named lines within 3 of a cause line. `--nomodel-rule` also writes a triage rule arm (the log's own `##[error]` lines, tagged `rule: "error-line"`). Triage reports `NO-REFERENCE` until a frozen no-model arm with that tag covers it, and its cause floor is the best any no-model arm reaches.
+- Triage: a cause hit needs at least half of the distinct named lines within 3 of a cause line. A repeated line counts once. `--nomodel-rule` also writes a triage rule arm (the log's own `##[error]` lines, tagged `rule: "error-line"`). Triage reports `NO-REFERENCE` until a frozen no-model arm with that tag covers it, and its cause floor is the best any no-model arm reaches.
 - The CLI prints `NO-REFERENCE` for a task with no no-model floor instead of crashing.
 - `--model` runs stop on Ctrl-C (SIGINT) or SIGTERM: no further request is sent, the request in flight is aborted, the model unloads, the lock is freed and the run exits 130 with no arm written. A second signal during the unload frees the lock and exits at once. The arm file carries `_model: {id, sha}` (the served model id and its snapshot sha, with a `warning` when the sha is missing).
 

@@ -75,13 +75,14 @@ const NEAR = 3
 export const PRECISION_MIN = 0.5
 /**
  * Triage cause scoring from the private truth: null when the case has no cause lines to score. Otherwise true when at least one
- * named line is near a cause line and at least half of the named lines are: naming 10 lines to catch one scores nothing.
+ * named line is near a cause line and at least half of the distinct named lines are: naming 10 lines to catch one scores nothing.
  */
 export function withCause(c, a) {
   if (c.task !== 'triage' || !a || a.invalid) return a
   const want = c.body.truth?.causeLines ?? []
-  const hits = a.lines.filter((l) => want.some((w) => Math.abs(l - w) <= NEAR)).length
-  return { ...a, cause: want.length ? hits > 0 && hits / a.lines.length >= PRECISION_MIN : null }
+  const named = [...new Set(a.lines)] // a repeated line counts once, so copies of one hit can't pad precision
+  const hits = named.filter((l) => want.some((w) => Math.abs(l - w) <= NEAR)).length
+  return { ...a, cause: want.length ? hits > 0 && hits / named.length >= PRECISION_MIN : null }
 }
 
 export function nomodelArm(cases) {
