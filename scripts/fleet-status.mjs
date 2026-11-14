@@ -8,8 +8,9 @@
  * `## Next` line), branches ahead of the default branch with no pull request, lapsed
  * backlog dates, the last successful deploy run, incident lines dated in the last
  * 7 days, dependabot pull requests that are red or unreviewed, and whether the
- * default branch is red. `--local` adds clones under ~/Developer/gorfednet with
- * uncommitted or unpushed work. `--from` reuses an earlier status.json for the
+ * default branch is red. `--local` adds the Mac rows (`local`: dirty clones,
+ * clones behind origin, worktrees over 7 days, sessions idle over 24 h; `--no-fetch` skips the git fetch).
+ * Hosted rows per repository: `idlePrs` (untouched over 3 days) and `duplicatePrs` (two open PRs naming one backlog id). `--from` reuses an earlier status.json for the
  * repositories (so --local can be added to a fresh copy without asking GitHub again).
  *
  * A private repository's row is reduced to its slug and counts (`redacted: true`),
@@ -21,18 +22,29 @@
  * FLEET_READ_TOKEN or GH_TOKEN.
  */
 import { execFile, execFileSync } from 'node:child_process'
-import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
-import { homedir } from 'node:os'
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { homedir, tmpdir } from 'node:os'
+import { fileURLToPath } from 'node:url'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
 
 import { isMain } from '../templates/verification-kit/lib/isMain.mjs'
 import { lapsedBacklog } from './fleet-report.mjs'
+import { backlogIds, collectLocal, duplicatePrs, idlePrs } from './lib/hygiene.mjs'
+import { backlogFromStatus, buildInventory, collectHerdrJobs, collectSessions, collectWorktrees, fetchOpenPrs, planRows, summarizeInventory } from './lib/inventory.mjs'
 import { claudeReviewVerdict } from './lib/reviewVerdict.mjs'
 
 const DAY = 86_400_000
 const FAILED = new Set(['FAILURE', 'TIMED_OUT', 'CANCELLED', 'ACTION_REQUIRED', 'STARTUP_FAILURE', 'ERROR', 'STALE'])
 const INCIDENT_FILES = ['docs/incidents.md', 'docs/ledger.md', 'docs/incident-ledger.md', 'INCIDENTS.md', 'docs/audit/incidents.md', 'docs/audit/ledger.md']
+
+/** Open (not landed, not declined) backlog entries, enough to map them: id, title, status, reviewBy. */
+export function openBacklog(backlog) {
+  const entries = Array.isArray(backlog) ? backlog : (backlog?.entries ?? [])
+  return entries
+    .filter((e) => e && typeof e.id === 'string' && !['landed', 'declined'].includes(e.status) && e.id !== 'example-entry-replace-me')
+    .map((e) => ({ id: e.id, title: String(e.title ?? ''), status: String(e.status ?? ''), reviewBy: typeof e.reviewBy === 'string' ? e.reviewBy : null }))
+}
 
 /** The first unchecked `- [ ]` line under a `## Next` heading, else null. */
 export function nextItem(body) {
@@ -179,6 +191,9 @@ export function redactRepo(full) {
     mainRed: full.mainRed,
     openPrCount: full.openPrs.length,
     lapsedBacklogCount: full.lapsedBacklog.length,
+    noPrCount: full.branchesAhead.length,
+    idlePrCount: full.idlePrs.length,
+    duplicatePrCount: full.duplicatePrs.length,
     dependabotRedCount: full.dependabotRed,
     // A version number is not private; the fleet-wide check needs it from every row.
     kitVersion: full.kitVersion,
@@ -191,7 +206,7 @@ export function redactRepo(full) {
  * private repository that then fails to read publishes only the word "unreadable" (an error message can
  * quote the file it choked on). `json` and `log` are injectable for tests.
  */
-export async function collectRepo(slug, now = new Date(), { includePrivate = false, json = ghJson, log = console.error, kitPath = KIT_MANIFEST } = {}) {
+export async function collectRepo(slug, now = new Date(), { includePrivate = false, json = ghJson, log = console.error, kitPath = KIT_MANIFEST, carryBranches } = {}) {
   let repo
   let isPrivate = true
   try {
@@ -202,7 +217,7 @@ export async function collectRepo(slug, now = new Date(), { includePrivate = fal
   }
   try {
     if (repo instanceof Error) throw repo
-    return await gatherRepo(slug, now, { includePrivate, json, repo, kitPath })
+    return await gatherRepo(slug, now, { includePrivate, json, repo, kitPath, carryBranches })
   } catch (cause) {
     const detail = String(cause.stderr || cause.message).trim().split('\n')[0]
     const reason = isPrivate && !includePrivate ? 'unreadable' : detail
@@ -219,14 +234,14 @@ function ciForCommit(slug, sha, json) {
   return ciState(runs, status)
 }
 
-export async function gatherRepo(slug, now = new Date(), { includePrivate = false, json = ghJson, repo = null, kitPath = KIT_MANIFEST } = {}) {
+export async function gatherRepo(slug, now = new Date(), { includePrivate = false, json = ghJson, repo = null, kitPath = KIT_MANIFEST, carryBranches } = {}) {
   const today = now.toISOString().slice(0, 10)
   if (repo === null) repo = json(['api', `repos/${slug}`])
   const base = repo.default_branch
   const isPrivate = isPrivateRepo(repo)
   const raw = json([
     'pr', 'list', '--repo', slug, '--state', 'open', '--limit', '100',
-    '--json', 'number,title,createdAt,labels,isDraft,headRefName,headRefOid,body,author',
+    '--json', 'number,title,createdAt,updatedAt,labels,isDraft,headRefName,headRefOid,body,author',
   ])
   const openPrs = raw.map((p) => {
     const comments = json(['api', '--paginate', '--slurp', `repos/${slug}/issues/${p.number}/comments?per_page=100`]).flat()
@@ -238,21 +253,30 @@ export async function gatherRepo(slug, now = new Date(), { includePrivate = fals
       labels: p.labels.map((l) => l.name),
       draft: p.isDraft,
       review: claudeReviewVerdict(comments, p.headRefOid).state,
+      headSha: p.headRefOid,
       ci,
       next: nextItem(p.body),
       author: p.author?.login ?? null,
     }
   })
   const prBranches = new Set(raw.map((p) => p.headRefName))
-  const branches = json(['api', '--paginate', '--slurp', `repos/${slug}/branches?per_page=100`]).flat()
-  // `status` is this report's own orphan branch (fleet-status.yml), with no history in common with main.
-  const candidates = branches.map((b) => b.name).filter((n) => n !== base && n !== 'status' && !prBranches.has(n))
-  const counts = await aheadCounts(slug, base, candidates)
-  const branchesAhead = candidates
-    .map((branch, i) => (counts[i] === null ? { branch, ahead: 0, unrelated: true } : { branch, ahead: counts[i] }))
-    .filter((b) => b.unrelated || b.ahead > 0)
+  // A light run (every 2 hours) keeps the previous full run's branch list: the compare calls, one per
+  // branch, are the bulk of a run's GitHub requests, and the owner's 5,000-an-hour quota is shared.
+  let branchesAhead
+  // The carried list is the last full read's, so branches that have since gained a PR are dropped from it.
+  if (carryBranches) branchesAhead = carryBranches.filter((b) => !prBranches.has(b.branch))
+  else {
+    const branches = json(['api', '--paginate', '--slurp', `repos/${slug}/branches?per_page=100`]).flat()
+    // `status` is this report's own orphan branch (fleet-status.yml), with no history in common with main.
+    const candidates = branches.map((b) => b.name).filter((n) => n !== base && n !== 'status' && !prBranches.has(n))
+    const counts = await aheadCounts(slug, base, candidates)
+    branchesAhead = candidates
+      .map((branch, i) => (counts[i] === null ? { branch, ahead: 0, unrelated: true } : { branch, ahead: counts[i] }))
+      .filter((b) => b.unrelated || b.ahead > 0)
+  }
   const backlogText = fileText(slug, 'docs/backlog.json', json)
-  const lapsed = backlogText === null ? [] : lapsedBacklog(JSON.parse(backlogText), today)
+  const backlog = backlogText === null ? null : JSON.parse(backlogText)
+  const lapsed = backlog === null ? [] : lapsedBacklog(backlog, today)
   const deploy = latestDeploy(slug, (path) => json(['api', path]))
   let incidents = 0
   for (const path of INCIDENT_FILES) {
@@ -274,6 +298,9 @@ export async function gatherRepo(slug, now = new Date(), { includePrivate = fals
     openPrs,
     branchesAhead,
     lapsedBacklog: lapsed,
+    backlogOpen: openBacklog(backlog),
+    idlePrs: idlePrs(raw, now),
+    duplicatePrs: backlog === null ? [] : duplicatePrs(raw, backlogIds(backlog)),
     lastDeploy: deploy,
     incidents7d: incidents,
     dependabotRed: dependabotRed(openPrs),
@@ -282,27 +309,59 @@ export async function gatherRepo(slug, now = new Date(), { includePrivate = fals
   return isPrivate && !includePrivate ? redactRepo(full) : full
 }
 
-/** Clones with uncommitted or unpushed work. */
-export function dirtyLocal(root) {
-  const out = []
-  const git = (dir, ...args) => execFileSync('git', ['-C', dir, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
-  for (const name of readdirSync(root).sort()) {
-    const dir = join(root, name)
-    if (!existsSync(join(dir, '.git'))) continue
+/** slug -> branch list to carry from an earlier status.json. A redacted private row has only a count: carried as that many placeholders, so redactRepo gives the same count and no branch call is made. */
+export function carryMap(earlier) {
+  return new Map(earlier.repos.map((r) => [r.slug, r.branchesAhead ?? (Number.isInteger(r.noPrCount) ? Array.from({ length: r.noPrCount }, () => ({ branch: '(private)', ahead: 1 })) : undefined)]))
+}
+
+/** Run `fn` over `items`, at most `limit` at once; results keep the input order. */
+export async function mapLimit(items, limit, fn) {
+  const out = new Array(items.length)
+  let next = 0
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (next < items.length) {
+      const i = next++
+      out[i] = await fn(items[i], i)
+    }
+  }))
+  return out
+}
+
+/**
+ * The inventory (plan row 1.17). PRs come from one cached GraphQL search; backlog entries from the rows
+ * above; sessions, worktrees and Herdr jobs only on a run that looked at the Mac. Anything that could not
+ * be read is null ("not measured").
+ */
+export function collectInventory(status, { includePrivate = false, local = false, now = new Date() } = {}) {
+  const readText = (rel) => {
     try {
-      const dirty = git(dir, 'status', '--porcelain').split('\n').filter(Boolean).length
-      let unpushed = 0
-      try {
-        unpushed = Number(git(dir, 'rev-list', '--count', '@{u}..HEAD').trim())
-      } catch {
-        unpushed = 0 // no upstream
-      }
-      if (dirty > 0 || unpushed > 0) out.push({ dir: name, branch: git(dir, 'branch', '--show-current').trim() || '(detached)', uncommitted: dirty, unpushed })
+      return readFileSync(new URL(`../${rel}`, import.meta.url), 'utf8')
     } catch {
-      /* not a readable clone */
+      return null
     }
   }
-  return out
+  const planText = readText('docs/plan-of-record.md') ?? ''
+  const ranking = readText('docs/plan-ranking.json')
+  let prs = null
+  try {
+    prs = fetchOpenPrs({ cacheFile: join(process.env.TMPDIR ?? '/tmp', 'fleet-inventory-prs.json') })
+  } catch (cause) {
+    console.error(`::warning::inventory: pull requests not measured: ${String(cause.message).split('\n')[0]}`)
+  }
+  const backlog = backlogFromStatus(status)
+  const root = join(homedir(), 'Developer', 'gorfednet')
+  const inv = buildInventory({
+    rows: planRows(planText),
+    planText,
+    today: now.toISOString().slice(0, 10),
+    prs,
+    backlog,
+    sessions: local ? collectSessions() : null,
+    worktrees: local ? collectWorktrees(root) : null,
+    jobs: local ? collectHerdrJobs() : null,
+    rankedRepos: ranking ? JSON.parse(ranking).tiers.flatMap((t) => t.repos.map((r) => r.slug)) : [],
+  })
+  return summarizeInventory(inv, { includePrivate, now, privateReposNotItemised: (status.repos ?? []).filter((r) => r.redacted).length })
 }
 
 function arg(name) {
@@ -320,20 +379,52 @@ if (isMain(import.meta.url)) {
   if (arg('--only')) slugs = slugs.filter((s) => s === arg('--only'))
   let repos = []
   let failed = 0
+  let carriedFrom = null
   if (arg('--from')) {
     repos = JSON.parse(readFileSync(arg('--from'), 'utf8')).repos
     failed = repos.filter((r) => r.unavailable).length
   } else {
-    for (const slug of slugs) {
-      const row = await collectRepo(slug, now, { includePrivate: process.argv.includes('--include-private'), kitPath: kitPathFor(fleet.projects.find((p) => p.slug === slug)) })
+    // Fanned out (plan row 1.14): the run is every 2 hours on a hosted runner, so it
+    // has to take seconds. Each repository is read by its own `--only` child,
+    // 10 at a time; a child that dies yields an `unavailable` row, never a gap.
+    const extra = process.argv.includes('--include-private') ? ['--include-private'] : []
+    // --carry-branches <earlier status.json>: a light run, reusing each repository's branch list from it.
+    // Only while that read is under 23 hours old (it carries `branchesReadAt`): a dropped or late daily run
+    // makes the next one full, whatever the hour is.
+    const earlier = arg('--carry-branches') ? JSON.parse(readFileSync(arg('--carry-branches'), 'utf8')) : null
+    const fresh = earlier?.branchesReadAt && now - Date.parse(earlier.branchesReadAt) < 23 * 3600 * 1000
+    const carry = fresh ? carryMap(earlier) : null
+    if (carry) extra.push('--carry-branches', arg('--carry-branches'))
+    carriedFrom = carry ? earlier.branchesReadAt : null
+    const rows = await mapLimit(slugs, 10, async (slug) => {
+      if (slugs.length === 1) return collectRepo(slug, now, { includePrivate: process.argv.includes('--include-private'), carryBranches: carry?.get(slug), kitPath: kitPathFor(fleet.projects.find((p) => p.slug === slug)) })
+      try {
+        const tmp = join(mkdtempSync(join(tmpdir(), 'fleet-status-')), 'one.json')
+        await execFileAsync(process.execPath, [fileURLToPath(import.meta.url), '--only', slug, '--out', tmp, ...extra], { env: process.env, maxBuffer: 1 << 26 })
+          .then((r) => process.stderr.write(r.stderr))
+          // A child that could not read its repository exits 1 after writing its row; its ::error:: lines still reach the log.
+          .catch((e) => process.stderr.write(e.stderr ?? ''))
+        return JSON.parse(readFileSync(tmp, 'utf8')).repos[0]
+      } catch (cause) {
+        return { slug, unavailable: `read process failed: ${String(cause.message).split('\n')[0]}` }
+      }
+    })
+    for (const row of rows) {
       if (row.unavailable) failed += 1
       repos.push(row)
     }
   }
   // With --from the repository data is the earlier snapshot's, so its generatedAt is kept.
   const prior = arg('--from') ? JSON.parse(readFileSync(arg('--from'), 'utf8')).generatedAt : null
-  const status = { generatedAt: prior ?? now.toISOString(), renderedAt: now.toISOString(), repos }
-  if (process.argv.includes('--local')) status.dirtyLocal = dirtyLocal(join(homedir(), 'Developer', 'gorfednet'))
+  const status = { generatedAt: prior ?? now.toISOString(), renderedAt: now.toISOString(), repos, branchesReadAt: carriedFrom ?? now.toISOString(), carried: carriedFrom !== null }
+  if (process.argv.includes('--local')) {
+    // The `local` object exists only when this run looked at the Mac; its absence means "not measured".
+    status.local = collectLocal(join(homedir(), 'Developer', 'gorfednet'), { fetch: !process.argv.includes('--no-fetch') })
+    if (status.local.dirtyClones !== null) status.dirtyLocal = status.local.dirtyClones
+  }
+  if (process.argv.includes('--inventory')) {
+    status.inventory = collectInventory(status, { includePrivate: process.argv.includes('--include-private'), local: process.argv.includes('--local'), now })
+  }
   writeFileSync(outPath, `${JSON.stringify(status, null, 2)}\n`)
   console.log(`fleet-status: ${repos.length} repositories, ${failed} unavailable -> ${outPath}`)
   if (failed > 0) process.exit(1)

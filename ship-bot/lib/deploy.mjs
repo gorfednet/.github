@@ -268,6 +268,10 @@ async function rollBack(ctx, log, repo, { parent, selected, failedStep }) {
       return { applied: true, method: 'rollback steps', ok: false, error: cause.message }
     }
   }
+  if (!parent) {
+    log.write('\n[ship-bot] no rollback steps configured and no deploy on record to redeploy; nothing was rolled back\n')
+    return { applied: false, method: 'no rollback', ok: false, error: 'no rollback steps are configured and the bot has no record of the commit that was live' }
+  }
   log.write(`\n[ship-bot] no rollback steps configured; redeploying the previous commit ${parent}\n`)
   try {
     await prepareWorkspace(ctx, log, repo, parent)
@@ -277,6 +281,12 @@ async function rollBack(ctx, log, repo, { parent, selected, failedStep }) {
   } catch (cause) {
     return { applied: true, method: `redeploying the previous commit ${parent.slice(0, 7)}`, ok: false, error: cause.message }
   }
+}
+
+/** `git merge-base --is-ancestor`: exit 0 yes, 1 no; anything else (an unknown commit) is no. */
+async function isAncestor(ctx, log, path, a, b) {
+  const r = await exec(ctx, log, { label: `is ${a.slice(0, 7)} an ancestor of ${b.slice(0, 7)}`, kind: 'workspace', cmd: 'git', args: ['-C', path, 'merge-base', '--is-ancestor', a, b], env: gitEnv(ctx), timeoutMs: 60_000 })
+  return succeeded(r)
 }
 
 /**
@@ -305,19 +315,32 @@ async function tagRelease(ctx, log, repo, mergeSha, release, onPushing = () => {
  * @returns {Promise<{status: 'deployed'|'paused'|'not-started'|'rolled-back'|'rollback-failed'|'failed-not-rolled-back',
  *   steps?: string[], paused?: string[], error?: string, rollback?: object}>}
  */
-export async function deployMerged(ctx, repo, { mergeSha, log, release = null }) {
+export async function deployMerged(ctx, repo, { mergeSha, log, release = null, since = null, expectParent = null }) {
   let parent
   let changed
+  let base
   try {
     await prepareWorkspace(ctx, log, repo, mergeSha)
     parent = (await git(ctx, log, repo.workDir, 'read the previous default-branch commit', ['rev-parse', `${mergeSha}^1`])).stdout.trim()
     if (!/^[0-9a-f]{40}$/.test(parent)) throw new StepFailed(`no first parent for ${mergeSha}`, { code: 1 })
-    const diff = await git(ctx, log, repo.workDir, 'list changed paths', ['diff', '--name-only', parent, mergeSha])
-    changed = diff.stdout.split('\n').map((l) => l.trim()).filter(Boolean)
+    // A hotfix was allowed because main was the last deploy when it was checked; a push since then would ride along.
+    if (expectParent && parent !== expectParent) throw new StepFailed(`main moved to ${parent.slice(0, 7)} between the hotfix check and the merge (expected the last deploy ${expectParent.slice(0, 7)}), so a deploy would ship merges no release covered`, { code: 1 })
+    // What is live is the commit last deployed, not the merge's first parent:
+    // merges between the two were never deployed (plan row 1.25), so the
+    // changed paths, pausedIfChanged and onlyIfChanged count from there.
+    base = since && /^[0-9a-f]{40}$/.test(since) && (await isAncestor(ctx, log, repo.workDir, since, mergeSha)) ? since : null
+    if (base) {
+      const diff = await git(ctx, log, repo.workDir, 'list changed paths', ['diff', '--name-only', base, mergeSha])
+      changed = diff.stdout.split('\n').map((l) => l.trim()).filter(Boolean)
+    } else {
+      // No known deployed commit: every tracked path counts as changed, so no pause and no conditional step is skipped by not knowing.
+      const all = await git(ctx, log, repo.workDir, 'list every tracked path', ['ls-tree', '-r', '--name-only', mergeSha])
+      changed = all.stdout.split('\n').map((l) => l.trim()).filter(Boolean)
+    }
   } catch (cause) {
     return { status: 'not-started', error: `preparing the workspace failed: ${cause.message}` }
   }
-  log.write(`\n[ship-bot] ${changed.length} path(s) changed since ${parent.slice(0, 7)}\n`)
+  log.write(base ? `\n[ship-bot] ${changed.length} path(s) changed since the last deploy ${base.slice(0, 7)}\n` : `\n[ship-bot] no known last deploy${since ? ` (${since.slice(0, 7)} is not an ancestor of ${mergeSha.slice(0, 7)})` : ''}: treating all ${changed.length} tracked path(s) as changed\n`)
 
   const paused = matchingFiles(changed, repo.pausedIfChanged)
   if (paused.length > 0) return { status: 'paused', paused }
@@ -355,7 +378,10 @@ export async function deployMerged(ctx, repo, { mergeSha, log, release = null })
     try {
       steps.push(...(await runSteps(ctx, log, repo, [step], 'deploy')))
     } catch (cause) {
-      const rollback = await rollBack(ctx, log, repo, { parent, selected, failedStep: step.name })
+      // The default rollback redeploys what was live: the last deployed commit. With none known, the first parent
+      // may hold merges that were never live, so in release mode there is nothing safe to redeploy.
+      const previous = base ?? (repo.deployOn === 'merge' ? parent : null)
+      const rollback = await rollBack(ctx, log, repo, { parent: previous, selected, failedStep: step.name })
       const status = !rollback.applied ? 'failed-not-rolled-back' : rollback.ok ? 'rolled-back' : 'rollback-failed'
       return { status, tagged, steps, error: cause.message, failedStep: step.name, rollback }
     }

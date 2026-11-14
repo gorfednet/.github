@@ -9,7 +9,8 @@
 import { spawn } from 'node:child_process'
 
 /** Kinds that only read. Everything else changes something somewhere. */
-export const READ_ONLY_KINDS = new Set(['gate', 'auth'])
+// git-read: git commands that only read refs (the installed bot's freshness check), allowed in dry and observe runs.
+export const READ_ONLY_KINDS = new Set(['gate', 'auth', 'git-read'])
 
 const MAX_CAPTURE = 8 * 1024 * 1024
 

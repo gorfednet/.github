@@ -616,6 +616,14 @@
       "file": "templates/verification-kit/bin/check-sitemap-pages.mjs",
       "find": "} else if (canonicals[0] !== loc) {",
       "replace": "} else if (canonicals[0].replace(/\\/+$/, '') !== loc.replace(/\\/+$/, '')) {"
+    },
+    {
+      "id": "rules-drift-excuses-everything-retired",
+      "guards": "check-rules-drift fails on a retired term in a rule, skill, agent or memory file. Excusing every line that names a retired term turns the guard into a list of files it read and nothing else (plan row 5.4).",
+      "command": "node --test 'test/rulesDrift.test.mjs'",
+      "file": "scripts/check-rules-drift.mjs",
+      "find": "const text = excuseRetirements ? line.replace(RETIREMENT_LINE.pattern, ' ') : line",
+      "replace": "const text = excuseRetirements ? '' : line"
     }
   ]
 }

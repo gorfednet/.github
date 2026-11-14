@@ -273,9 +273,9 @@
       "userSymptom": "A social card fixed and deployed keeps showing the old image when a link is shared, with nothing in the repository left to fix.",
       "evidence": "The vhost serves \\.(png|svg|css|js|...)$ with expires 1y and Cache-Control: public, immutable - confirmed live, max-age=31536000. Any card at a fixed name inherits that, so replacing it in place reaches nobody for up to a year. ssatcy.com is fixed: scripts/generate-og-image.mjs writes og-card-<hash12>.png and rewrites index.html and _headers, so the URL changes exactly when the pixels do. 4thcltr.com/og-image.png is live under the same header and is the next one. The remaining sites are getting a first card, so their URL is new either way - the risk is the SECOND card.",
       "reviewBy": "2026-11-15",
-      "note": "check-live-og-image.mjs catches the symptom after a deploy by comparing the bytes the og:image URL serves against the dimensions the page declares, and notes an immutable Cache-Control so the next person is told why a replacement will not reach anyone. That is detection. Prevention is the content-addressed name, which needs doing per site; ssatcy.com is the pattern to copy.",
+      "note": "check-live-og-image.mjs catches the symptom after a deploy by comparing the bytes the og:image URL serves against the dimensions the page declares, and notes an immutable Cache-Control so the next person is told why a replacement will not reach anyone. That is detection. Prevention is the content-addressed name, which needs doing per site; ssatcy.com is the pattern to copy. 2026-11-08: prevention gate added. check-og-image.mjs --content-addressed (gate input og-content-addressed, default false) fails a card whose file name carries no hash; the test fails without it. Still open per site: set og-content-addressed once a site names its card og-card-<hash>.png (4thcltr.com/og-image.png is next). Move to landed when 4thcltr.com has switched.",
       "created": "2026-09-14",
-      "updated": "2026-09-14"
+      "updated": "2026-11-08"
     },
     {
       "id": "publish-the-server-never-saw",
@@ -472,11 +472,11 @@
       "status": "confirmed-bug",
       "assignee": "main-model",
       "userSymptom": "A papers.4thcltr.com deploy from ship-bot fails at make verify when the Mac is under load.",
-      "evidence": "ship-bot deploy log 2026-11-11T19-34-59-231Z-papers.4thcltr.com-pr33 and ~/.ship-bot/work/papers.4thcltr.com/test-results/.last-run.json (18 papers verify specs failed on 11 November 2026). Cause confirmed 13 November 2026: the same wordmark and filter specs fail 27 of 87 under taskpolicy -b (background policy) and pass 87 of 87 at normal priority at a load of 7 on 10 cores, with default and 2 workers. The installed plist (written 12 November 22:10 ET) has no ProcessType. docs/handoff/2026-11-13-deploy-root-causes.md. Reopened 13 November 2026: #35's deploy (11:33 ET, normal priority, no ProcessType) failed 7 wordmark timing specs again (deploy log 2026-11-13T16-33-07-039Z-papers.4thcltr.com-pr35). Background made it worse (27 of 87) but was not the whole cause. In the 13 November probe, --workers=2 passed 87 of 87 at a load of 15.8.",
-      "note": "Load, not only the process class. PR 128's fix was necessary, not sufficient. Fix direction: the deploy's verify runs Playwright with 2 workers (the rule for a loaded Mac), or leaves out the frame-timing specs CI already ran on the PR head.",
+      "evidence": "ship-bot deploy log 2026-11-11T19-34-59-231Z-papers.4thcltr.com-pr33 and ~/.ship-bot/work/papers.4thcltr.com/test-results/.last-run.json (18 papers verify specs failed on 11 November 2026). Cause confirmed 13 November 2026: the same wordmark and filter specs fail 27 of 87 under taskpolicy -b (background policy) and pass 87 of 87 at normal priority at a load of 7 on 10 cores, with default and 2 workers. The installed plist (written 12 November 22:10 ET) has no ProcessType. docs/handoff/2026-11-13-deploy-root-causes.md. 14 Nov 2026: default launchd class (no ProcessType) still throttles; launchd reproduction 10/24 fail default vs 24/24 Interactive; papers PR 40.",
+      "note": "Not load as such: the process class. PR 128 dropped Background but left the default, which still throttles. Fix (.github 188): ProcessType Interactive in install.sh, then rerun it.",
       "reviewBy": "2026-12-12",
       "created": "2026-11-12",
-      "updated": "2026-11-13"
+      "updated": "2026-11-14"
     },
     {
       "id": "ship-bot-default-rollback-cannot-pass-tip-guard",

@@ -36,7 +36,7 @@ pass() { echo "ok   - $1"; }
 fail() { echo "FAIL - $1"; echo "       $2"; failures=$((failures + 1)); }
 
 # Install the wrappers into a temp bin dir through the real install script.
-if ! bash "$root/scripts/install-gates.sh" "$linkbin" >"$work/install.log" 2>&1; then
+if ! INSTALL_GATES_ANY_CHECKOUT=1 bash "$root/scripts/install-gates.sh" "$linkbin" >"$work/install.log" 2>&1; then
   fail "install-gates.sh runs" "$(cat "$work/install.log")"
   echo "1 failure(s)"; exit 1
 fi
@@ -126,6 +126,65 @@ if invoke "$clone_gitlab" check-closing-keywords GITHUB_REPOSITORY= GH_TOKEN= --
 else
   pass "non-github origin refuses"
 fi
+
+# Stale checkout warning (13 November 2026 incident): a gate whose checkout is not at origin/main
+# says so on stderr and still runs; a current one is silent. Watched failing once: the
+# stale case must warn, and the current case must not.
+stale_origin="$work/stale-origin.git"; stale_co="$work/stale-checkout"; stale_bin="$work/stale-bin"
+git init -q --bare -b main "$stale_origin"
+git clone -q "$stale_origin" "$stale_co" 2>/dev/null
+mkdir -p "$stale_co/scripts/gates" "$stale_bin"
+cp -R "$root/scripts/gates/bin" "$stale_co/scripts/gates/bin"
+git -C "$stale_co" checkout -q -b main
+git -C "$stale_co" add -A
+git -C "$stale_co" -c user.name=t -c user.email=t@t commit -q -m one
+git -C "$stale_co" push -q origin main
+git -C "$stale_co" fetch -q origin
+git -C "$stale_co" checkout -q --detach origin/main
+for name in assert-checks-started check-closing-keywords review-status; do ln -s "$stale_co/scripts/gates/bin/$name" "$stale_bin/$name"; done
+stale_run() { (cd "$clone_ssh" && env -i HOME="$HOME" PATH="$fakebin:/usr/bin:/bin" GITHUB_REPOSITORY= GH_TOKEN=x "$stale_bin/$1" --pr 1) 2>"$work/stale-stderr"; }
+
+out=$(stale_run review-status); status=$?
+if [ "$status" -eq 0 ] && ! grep -q "warning" "$work/stale-stderr"; then pass "current checkout: no warning"; else fail "current checkout: no warning" "exit $status: $(cat "$work/stale-stderr")"; fi
+
+# origin/main moves on (a merge elsewhere); the checkout stays where it was.
+git clone -q "$stale_origin" "$work/stale-pusher" 2>/dev/null
+git -C "$work/stale-pusher" -c user.name=t -c user.email=t@t commit -q --allow-empty -m two
+git -C "$work/stale-pusher" push -q origin HEAD:main
+git -C "$stale_co" fetch -q origin
+for name in review-status assert-checks-started check-closing-keywords; do
+  out=$(stale_run "$name"); status=$?
+  if [ "$status" -eq 0 ] && grep -q "$name: warning: gate scripts are at" "$work/stale-stderr" && grep -q "origin/main is" "$work/stale-stderr"; then
+    pass "stale checkout warns and still runs ($name)"
+  else
+    fail "stale checkout warns and still runs ($name)" "exit $status: $(cat "$work/stale-stderr")"
+  fi
+  expect_line "stale checkout still passes its arguments ($name)" "$out" "ARGS=--pr 1 --repo gorfednet/MoonMan"
+done
+git -C "$stale_co" checkout -q --detach origin/main
+out=$(stale_run review-status)
+if ! grep -q "warning" "$work/stale-stderr"; then pass "advanced checkout: warning gone"; else fail "advanced checkout: warning gone" "$(cat "$work/stale-stderr")"; fi
+
+# install-gates.sh installs only from a gates-main worktree detached at origin/main with no tracked edits.
+if bash "$root/scripts/install-gates.sh" "$work/guard-bin" >"$work/guard.log" 2>&1; then fail "install-gates refuses a working checkout" "$(cat "$work/guard.log")"
+elif grep -q "install from <.github clone>/.claude/worktrees/gates-main" "$work/guard.log"; then pass "install-gates refuses a working checkout"
+else fail "install-gates refuses a working checkout" "$(cat "$work/guard.log")"; fi
+g() { git -c user.email=a@b.c -c user.name=t "$@"; }
+gw="$work/guard"
+mkdir -p "$gw"
+g init -q --bare -b main "$gw/origin.git"
+g clone -q "$gw/origin.git" "$gw/clone" 2>/dev/null
+mkdir -p "$gw/clone/scripts/gates"
+cp "$root/scripts/install-gates.sh" "$gw/clone/scripts/"
+cp -R "$root/scripts/gates/bin" "$gw/clone/scripts/gates/"
+(cd "$gw/clone" && g checkout -q -b main && g add -A && g commit -q -m copy && g push -q origin main && g worktree add -q --detach .claude/worktrees/gates-main origin/main)
+wt="$gw/clone/.claude/worktrees/gates-main"
+if bash "$wt/scripts/install-gates.sh" "$work/guard-bin" >"$work/guard.log" 2>&1; then pass "install-gates installs from a clean gates-main at origin/main"
+else fail "install-gates installs from a clean gates-main at origin/main" "$(cat "$work/guard.log")"; fi
+echo "# edited" >> "$wt/scripts/gates/bin/review-status"
+if bash "$wt/scripts/install-gates.sh" "$work/guard-bin" >"$work/guard.log" 2>&1; then fail "install-gates refuses a gates-main with tracked edits" "installed"
+elif grep -q "changed tracked files" "$work/guard.log"; then pass "install-gates refuses a gates-main with tracked edits"
+else fail "install-gates refuses a gates-main with tracked edits" "$(cat "$work/guard.log")"; fi
 
 if [ "$failures" -eq 0 ]; then echo "all gate-env checks passed"; exit 0; fi
 echo "$failures failure(s)"; exit 1

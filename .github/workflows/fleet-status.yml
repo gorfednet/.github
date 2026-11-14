@@ -14,8 +14,9 @@ name: fleet-status
 
 on:
   schedule:
-    # 06:30 UTC daily.
-    - cron: '30 6 * * *'
+    # Every 2 hours (plan row 1.14), at :30 past, so detection is hours old at
+    # most. One run is seconds on a hosted runner (the repository is public).
+    - cron: '30 */2 * * *'
   workflow_dispatch:
 # Not on pull_request: a pull request cannot be given the token.
 
@@ -24,7 +25,7 @@ permissions:
 
 # Hosted, on purpose, for the same reason as fleet-audit.yml: this repository is
 # public, so the dapyllil pool refuses it by design, and hosted runners are not
-# billed for a public repository. One short job a day.
+# billed for a public repository. One short job every 2 hours.
 jobs:
   status:
     # Hosted: public repository, see the note above jobs.
@@ -52,10 +53,23 @@ jobs:
         id: read
         env:
           FLEET_READ_TOKEN: ${{ secrets.FLEET_READ_TOKEN }}
+          EVENT: ${{ github.event_name }}
         run: |
           set +e
-          node scripts/fleet-status.mjs --out status.json
+          # Light run: a scheduled run reuses the branch lists of the last published status.json while
+          # that full read is under 23 hours old (the script decides, from `branchesReadAt`), which saves
+          # the one-request-per-branch compare calls that make up most of a full read. The owner's
+          # 5,000-an-hour quota is shared. A manual run is always full.
+          carry=()
+          if [ "${EVENT}" = "schedule" ] \
+             && git fetch --quiet --depth 1 origin status \
+             && git show origin/status:status.json > "${RUNNER_TEMP}/prior.json"; then
+            carry=(--carry-branches "${RUNNER_TEMP}/prior.json")
+          fi
+          node scripts/fleet-status.mjs --inventory --out status.json "${carry[@]}"
           echo "code=$?" >> "$GITHUB_OUTPUT"
+          # The ntfy digest goes out once a day, on the run that did the full read.
+          echo "digest=$(node -p "require('./status.json').carried ? 'no' : 'yes'" 2>/dev/null || echo yes)" >> "$GITHUB_OUTPUT"
           test -s status.json
 
       - name: Render STATUS.md
@@ -105,7 +119,7 @@ jobs:
           git push --force-with-lease origin status
 
       - name: Post the digest to ntfy
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.read.outputs.digest != 'no' }}
         env:
           NTFY_URL: https://ntfy.gorfed.net/ops-report
           NTFY_TOKEN: ${{ secrets.NTFY_TOKEN }}

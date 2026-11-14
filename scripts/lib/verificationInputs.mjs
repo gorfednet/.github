@@ -114,6 +114,15 @@ export const VERIFICATION_INPUTS = {
         type: string
         default: "300000"`,
 
+  'og-content-addressed': `      og-content-addressed:
+        description: >-
+          When "true", the social card's file name must carry a content hash
+          (og-card-<hash12>.png). The host serves images immutable for a year, so
+          a card replaced at a fixed name reaches nobody.
+        required: false
+        type: string
+        default: "false"`,
+
   'require-jsonld': `      require-jsonld:
         description: >-
           When "true", every checked page must carry a JSON-LD block. Off by
@@ -170,6 +179,7 @@ export const GATE_ARGUMENTS = {
   'metadata-pages': 'metadata-pages',
   'publish-root': 'publish-root',
   'og-max-bytes': 'og-max-bytes',
+  'og-content-addressed': 'og-content-addressed',
   'require-jsonld': 'require-jsonld',
   'error-page-root': 'error-page-root',
   'error-page-markers': 'error-page-markers',

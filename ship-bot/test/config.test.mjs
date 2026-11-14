@@ -78,6 +78,20 @@ describe('config validation', () => {
     assert.equal(config.repos.find((r) => r.name === 'heuristics.4thcltr.com').env.ASSESS_JOBS, join(HOME, 'Developer', 'gorfednet', 'assess', 'jobs'))
   })
 
+  it('deployOn: "release" by default; "merge" only with a reason; nowhere else (plan row 1.25)', () => {
+    assert.equal(normalizeConfig(base([deployRepo()]), { home: HOME }).repos[0].deployOn, 'release')
+    assert.deepEqual(validateConfig(base([deployRepo({ deployOn: 'release' })])), [])
+    assert.deepEqual(validateConfig(base([deployRepo({ deployOn: 'merge', deployOnMergeReason: 'an API no visitor sees' })])), [])
+    assert.match(problemsFor(base([deployRepo({ deployOn: 'merge' })])), /deployOnMergeReason: required with deployOn "merge"/)
+    assert.match(problemsFor(base([deployRepo({ deployOn: 'merge', deployOnMergeReason: ' ' })])), /deployOnMergeReason: required/)
+    assert.match(problemsFor(base([deployRepo({ deployOn: 'tag' })])), /deployOn: must be "release" \(the default\) or "merge"/)
+    assert.match(problemsFor(base([deployRepo({ deployOnMergeReason: 'x' })])), /deployOnMergeReason: only with deployOn "merge"/)
+    const mergeOnly = { slug: 'gorfednet/m', dir: 'm', mode: 'merge-only', reason: 'x', claudeReview: true, expectedChecks: ['c'], deployOn: 'merge' }
+    assert.match(problemsFor(base([mergeOnly])), /unknown key "deployOn"/)
+    // The example config sets none, so every visitor-facing row there deploys only from a release.
+    assert.ok(normalizeConfig(example(), { home: HOME }).repos.filter((r) => r.mode === 'deploy').every((r) => r.deployOn === 'release'))
+  })
+
   it('release: an optional object with a letters-only tagPrefix; defaults to v; off for every other row', () => {
     assert.deepEqual(validateConfig(base([deployRepo({ release: {} })])), [])
     assert.deepEqual(validateConfig(base([deployRepo({ release: { tagPrefix: 'rel' } })])), [])
@@ -91,6 +105,17 @@ describe('config validation', () => {
     assert.equal(without.release, null)
     const mergeOnly = { slug: 'gorfednet/m', dir: 'm', mode: 'merge-only', reason: 'x', claudeReview: true, expectedChecks: ['c'], release: {} }
     assert.match(problemsFor(base([mergeOnly])), /unknown key "release"/)
+  })
+
+  it('refuses an expected check the reviewer workflow produces (the old ops row), and allows an empty list only with claudeReview', () => {
+    const ops = { slug: 'gorfednet/ops', dir: 'ops', mode: 'merge-only', reason: 'r', claudeReview: true, live: false }
+    assert.match(problemsFor(base([{ ...ops, expectedChecks: ['review / review'] }])), /produced by the Claude reviewer workflow/)
+    assert.match(problemsFor(base([{ ...ops, expectedChecks: ['review / trigger', 'check / check'] }])), /review \/ trigger/)
+    assert.deepEqual(validateConfig(base([{ ...ops, expectedChecks: [] }])), [])
+    assert.deepEqual(validateConfig(base([{ ...ops, expectedChecks: ['check / check'] }])), [])
+    assert.match(problemsFor(base([{ ...ops, claudeReview: false, expectedChecks: [] }])), /empty only for a merge-only repo with claudeReview true/)
+    // A deploy repo whose CI silently did not run must not merge on the review verdict alone.
+    assert.match(problemsFor(base([deployRepo({ expectedChecks: [], claudeReview: true })])), /expectedChecks: required and non-empty for mode "deploy"/)
   })
 
   it('env: names and values are checked, and a GitHub token is refused', () => {
@@ -135,6 +160,8 @@ describe('config validation', () => {
       wychwood: 'off',
       // ops has no test CI; its one check is the Claude review caller's review / review (owner, 11 November 2026).
       ops: 'merge-only',
+      // Plan row 5.6's scratch repository, registered by scripts/register-repo.mjs (13 November 2026).
+      'scratch-bootstrap-5-6': 'merge-only',
     })
   })
 
@@ -168,13 +195,12 @@ describe('config validation', () => {
       assert.equal(r.live, false, slug)
       assert.deepEqual(r.expectedChecks, checks, slug)
     }
-    // ops: one expected check, the review caller's own job, which proves the workflow ran on the head;
-    // the verdict is review-status.mjs. A draft's run is skipped, and evaluateChecks takes only success
-    // for an expected check, so a draft's head can never satisfy it.
-    assert.deepEqual(rows['gorfednet/ops'].expectedChecks, ['review / review'])
+    // ops: no expected check. The review caller's job attaches only when a PR opens, so it would strand a
+    // pushed head; the verdict is review-status.mjs.
+    assert.deepEqual(rows['gorfednet/ops'].expectedChecks, [])
     assert.equal(rows['gorfednet/ops'].claudeReview, true)
     assert.equal(rows['gorfednet/ops'].live, false)
-    assert.match(rows['gorfednet/ops'].note, /not on a push/)
+    assert.match(rows['gorfednet/ops'].note, /only when a pull request opens/)
   })
 
   it('validates coveredChecks like ignoredChecks: an array of non-empty strings, and it is a known repo key', () => {
@@ -231,13 +257,25 @@ describe('config validation', () => {
     assert.match(problemsFor(base([deployRepo({ pausedIfChange: ['server/'] })])), /unknown key "pausedIfChange"/)
   })
 
+  it('needsHeadroom is true or false on a deploy row, and false when absent', () => {
+    assert.deepEqual(validateConfig(base([deployRepo({ needsHeadroom: true })])), [])
+    assert.match(problemsFor(base([deployRepo({ needsHeadroom: 'yes' })])), /needsHeadroom: must be true or false/)
+    assert.match(problemsFor(base([deployRepo({ needsHeadroom: 1 })])), /needsHeadroom: must be true or false/)
+    const flag = (extra) => normalizeConfig(base([deployRepo(extra)]), { home: HOME }).repos[0].needsHeadroom
+    assert.equal(flag({}), false)
+    assert.equal(flag({ needsHeadroom: true }), true)
+    const mergeOnly = { slug: 'gorfednet/lib', dir: 'lib', mode: 'merge-only', reason: 'r', claudeReview: false, expectedChecks: ['c'], needsHeadroom: true }
+    assert.match(problemsFor(base([mergeOnly])), /unknown key "needsHeadroom"/)
+    assert.equal(normalizeConfig(example(), { home: HOME }).repos.find((r) => r.name === 'papers.4thcltr.com').needsHeadroom, true)
+  })
+
   it('rejects a deploy-only key on a merge-only repo', () => {
     const repo = { slug: 'gorfednet/x', dir: 'x', mode: 'merge-only', reason: 'r', claudeReview: false, expectedChecks: ['c'], deploy: [] }
     assert.match(problemsFor(base([repo])), /unknown key "deploy"/)
   })
 
   it('requires expectedChecks for every mode except off', () => {
-    assert.match(problemsFor(base([deployRepo({ expectedChecks: [] })])), /expectedChecks: required and non-empty for mode "deploy"/)
+    assert.match(problemsFor(base([deployRepo({ expectedChecks: [], claudeReview: false })])), /expectedChecks: required and non-empty for mode "deploy"/)
     const mergeOnly = { slug: 'gorfednet/x', dir: 'x', mode: 'merge-only', reason: 'r', claudeReview: false }
     assert.match(problemsFor(base([mergeOnly])), /expectedChecks: required and non-empty for mode "merge-only"/)
     assert.deepEqual(validateConfig(base([{ slug: 'gorfednet/x', dir: 'x', mode: 'off' }])), [])
