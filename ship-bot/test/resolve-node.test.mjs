@@ -75,8 +75,10 @@ describe('resolve_node', () => {
     assert.notEqual(resolve(home, { NODE_BIN: join(home, 'missing') }).status, 0)
   })
 
-  it('both installers use it and stop when it refuses', () => {
-    for (const f of ['../install.sh', '../../capacity/install.sh']) {
+  // Only ship-bot's own installer here: install.sh runs these tests from a `git archive` of
+  // ship-bot/ and scripts/, which has no capacity/ (test/installersNode.test.mjs checks both).
+  it('ship-bot\'s installer uses it and stops when it refuses', () => {
+    for (const f of ['../install.sh']) {
       const s = readFileSync(new URL(f, import.meta.url), 'utf8')
       assert.match(s, /source "\$\{HERE\}\/\.\.\/scripts\/lib\/resolve-node\.sh"/, f)
       assert.match(s, /NODE_BIN="\$\(resolve_node\)" \|\| \{[^}]*exit 1/, f)
