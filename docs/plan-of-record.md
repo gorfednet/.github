@@ -79,6 +79,7 @@ Each row: owner agent and model; root cause to verify (hypothesis, not finding);
 | 1.7 | Gate scripts on PATH: `install.sh` in `.github` symlinks `assert-checks-started`, `review-status`, `check-closing-keywords` into `~/.local/bin`, with `GITHUB_REPOSITORY` derived from the cwd | `runner` Haiku | never installed | `which` finds all three in a fresh shell; `check-closing-keywords` run from MoonMan reports MoonMan | none |
 | 1.8 | Herdr: Claude Code `Stop` hook writes `~/.herdr-jobs/turns/<session>` so `hc wait` returns; drop TowIt and wychwood jobs; trust the active folders; make `hc ls` exit 0 on success (ops PR to Herdr config or upstream issue if it is the binary) | `builder` Opus in ops | OSC 7501 never answered; registry holds defunct repos | `hc wait` returns within 2 s of a turn end; 0 parked jobs; `hc ls; echo $?` prints 0 | folder trust (owner clicks once per folder) |
 | 1.9 | Mac headroom: Desk holds new starts while 1-minute load is over 10 or free memory under 4 GB; janitor archives sessions idle over 24 h; cap live sessions at 12; prune the 92 worktrees that have merged or no PR (after 2.3 drains them) | `runner` Haiku, policy by Desk | 24 `claude` processes with 262 MB free | `vm_stat` free over 4 GB at the 07:00 report for 5 days; worktree count under 30 | none |
+| 1.10 | GitHub org: move the 29 repositories from the `gorfednet` personal account into one organization, with no visibility or privacy change (owner, 14 November 2026: "Yes, plan it"). Plan and move order: `docs/plans/github-org-migration.md`. Recommended path: a new org plus transfers in waves, `.github` last | assessment Opus; Fable `reviewer` on the plan before anything moves; step 0 PRs `builder` Sonnet; checks and remote sweep `runner` Haiku; transfers and org settings by the owner | the 82 `uses: gorfednet/.github` lines don't follow redirects; the private ship-bot and pool Apps install only on their owner | `scripts/visibility-baseline.sh` OK after every step (26 private, 3 public, against the private baseline in `ops`); one runner smoke per pool repository; ship-bot live again | owner picks the path, the org name, Team at US$4 a month, and the cutover sitting; he creates the org, sets its budget and transfers |
 
 ### Phase 2: drain everything open (days 1 to 5, in parallel with phase 1, Desk-driven)
 
@@ -147,6 +148,7 @@ Each row: owner agent and model; root cause to verify (hypothesis, not finding);
 2. RED upload credit: yes or park (6.2 waits on it).
 3. The dated items in 2.8, each at its moment.
 4. Deletions from the NAS top-10 list (3.9).
+5. The GitHub org move (1.10): path, org name, Team plan and the cutover sitting, after the Fable review is clean.
 
 Everything else is decided by Desk under the rules.
 
