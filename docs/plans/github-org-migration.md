@@ -19,21 +19,21 @@ Baseline, read 14 November 2026 07:40 ET from `gh api user/repos?affiliation=own
 | Visibility | Repositories |
 |---|---|
 | public (3) | `.github`, `ACID2REAPER`, `ai-use-levels` |
-| private (26) | `4thcltr.com`, `MoonMan`, `TowIt` (archived), `WhyWait` (archived), `anal0g.org`, `ask-collector`, `assess`, `bindercurve.com`, `blackpixelrecords.com`, `broadcast`, `career-portfolio`, `denseware.com`, `gorfed.net`, `gorfmusic.com`, `heuristics.4thcltr.com`, `intake`, `ops`, `papers.4thcltr.com`, `political-records`, `promptboi.com`, `propose`, `rowanmcarthur.com`, `scratch-bootstrap-5-6`, `ssatcy.com`, `subrythm.com`, `wychwood` (archived) |
+| private (26) | named only in the private baseline file, 3 of them archived |
 
-The machine copy is [`github-org-migration-baseline.tsv`](github-org-migration-baseline.tsv). The check is read-only:
+This repository is public, so the private names stay out of it. The baseline file is `docs/github-org/visibility-baseline.tsv` in the private `gorfednet/ops` repository (its own draft PR). The check is read-only and reads that file from the `ops` clone:
 
 ```
 scripts/visibility-baseline.sh gorfednet NEW-ORG
 ```
 
-It lists both owners, takes the union by name and diffs name, visibility, fork flag and Pages against the baseline. A repository missing, extra, listed under both owners, changed in visibility, or an empty listing exits 1. An API error exits non-zero. Run on 14 November 2026: OK, 29 match. With `ops` flipped to public in a copy of the baseline it exits 1 and names `ops`. With `political-records` removed from the copy it exits 1 and names it. Every step below runs it before and after.
+It lists both owners, takes the union by name and diffs name, visibility, fork flag and Pages against the baseline. A repository missing, extra, listed under both owners, changed in visibility, or an empty listing exits 1. An API error exits non-zero. Run on 14 November 2026: OK, 29 match. With `ops` flipped to public in a copy of the baseline it exits 1 and names `ops`. With one private repository removed from the copy it exits 1 and names it. With no baseline file it exits 2. Every step below runs it before and after.
 
 What else must not widen, and how each is held:
 
 - **Secrets.** Repository secrets move with the repository (docs). No org secret is created in this migration. If one is made later, it is scoped to selected repositories, the same set that holds the repository secret today.
 - **Members.** The org has one member, the owner, with membership private. Base permission is none.
-- **Forks.** `ACID2REAPER` has one public fork, `todgru/ACID2REAPER`, made from a public repository. It stays as it is. Forking of private repositories is off in the org.
+- **Forks.** `ACID2REAPER` has one public fork, owned by another user and made from a public repository. It stays as it is. Forking of private repositories is off in the org.
 - **Actions logs.** Private repositories' logs stay readable only by people with access, which stays the owner alone. Public repositories' logs are public today and stay so.
 - **Pages.** None of the 29 has Pages, so no site URL or custom domain moves.
 - **Packages.** Not checked. The token has no `read:packages` scope. The owner can see them at github.com/gorfednet?tab=packages before the pilot.
@@ -46,11 +46,11 @@ Read 14 November 2026, 07:33 to 07:45 ET.
 - **Plan.** Not readable (the API needs the `user` scope). 12 private repositories have branch protection on `main`, which a Free personal account can't have, so the account is almost certainly on Pro.
 - **Secrets and variables.** 23 repositories hold at least 1 secret. In the 8 whose names were read, each holds `CLAUDE_CODE_OAUTH_TOKEN`. `.github` also holds `FLEET_READ_TOKEN`. `bindercurve.com` holds 18. 6 repositories hold `HEAVY_RUNS_ON` and `HEAVY_RUNNER_HEARTBEAT` variables. Dependabot secrets: 0.
 - **Webhooks.** 0 on every repository.
-- **Deploy keys.** 2 on `bindercurve.com` (`bindercurve-prod-2026-07-25`, `dapyllil read-only (expiry watch)`), 1 on `ops`. All read-only.
-- **Environments.** `bindercurve.com` has `production` (branch policy, no named reviewer) and `production-ops`.
+- **Deploy keys.** 2 on `bindercurve.com`, 1 on `ops`. All read-only.
+- **Environments.** `bindercurve.com` has 2. The protected one uses a branch policy and names no reviewer, so no user login is tied to it.
 - **Rulesets and protection.** 2 rulesets, 1 on `4thcltr.com` and "No Delete No Force" on `bindercurve.com`. Branch protection on `main` in 12 private and 3 public repositories.
-- **Self-hosted runners.** Repo-level, ephemeral, minted by the dapyllil supervisor per pool row (`bindercurve.com` `infra/ci-runner/README.md`: 17 rows). At about 07:40 ET: 1 online on `assess`, 1 on `bindercurve.com`, 2 on `MoonMan`. The supervisor calls through the `gorfednet-ci-pool` App, with one fine-grained PAT per repository (resource owner `gorfednet`) as the fallback.
-- **GitHub Apps.** Two are registered by the account, both private: `gorfednet-ship-bot` (`ship-bot/github-app/manifest.json`) and `gorfednet-ci-pool`. Installations can't be listed with this token. On 13 November at about 09:30 ET the owner's browser showed "No installed GitHub Apps" (`docs/handoff/2026-11-13-cloud-start-failure.md`). The Claude App was authorized there, not installed. Whether `gorfednet-ci-pool` was installed later that day isn't known.
+- **Self-hosted runners.** Repo-level, ephemeral, minted by the dapyllil supervisor per pool row (`bindercurve.com` `infra/ci-runner/README.md`: 17 rows). At about 07:40 ET: 1 online on `assess`, 1 on `bindercurve.com`, 2 on `MoonMan`. The supervisor calls through its own private GitHub App, with one fine-grained PAT per repository (resource owner `gorfednet`) as the fallback.
+- **GitHub Apps.** Two are registered by the account, both private: `gorfednet-ship-bot` (`ship-bot/github-app/manifest.json`) and the pool's App. Installations can't be listed with this token. On 13 November at about 09:30 ET the owner's browser showed "No installed GitHub Apps" (`docs/handoff/2026-11-13-cloud-start-failure.md`). The Claude App was authorized there, not installed. Whether the pool's App was installed later that day isn't known.
 - **Reviewer.** `claude-review.yml` runs on `github.token` plus `CLAUDE_CODE_OAUTH_TOKEN`. It doesn't need the Claude App.
 - **Dependabot.** 13 repositories have `.github/dependabot.yml`. `.github` has secret scanning and push protection on.
 - **References.** 82 `uses: gorfednet/.github/...@main` lines in 22 repositories' workflows. About 2,500 `gorfednet/` strings in tracked files across the 28 local clones, in scripts (`--repo gorfednet/x`), `fleet.json` (21), ship-bot config (`owners`), the pool's `pools.conf`, docs and remotes.
@@ -71,7 +71,7 @@ Docs: [converting a user](https://docs.github.com/en/account-and-profile/how-tos
 | Pages and custom domains | none in use | none in use |
 | Secrets, variables, deploy keys, webhooks | stay | move with the repository (docs) |
 | Self-hosted runners | repo-level runners keep their repos | runners are registered against `gorfednet/x`. The supervisor's `pools.conf` and tokens point at the new owner in the same sitting. Whether a registration POST follows the redirect is not documented |
-| Installed Apps | all uninstalled (docs) | stay on the personal account. The private ship-bot and ci-pool Apps can only install on their owner, so their ownership moves to the org, or the org registers new ones (`create.mjs --org`) |
+| Installed Apps | all uninstalled (docs) | stay on the personal account. The private ship-bot and pool Apps can only install on their owner, so their ownership moves to the org, or the org registers new ones (`create.mjs --org`) |
 | App registrations | not documented | stay with the personal account until transferred |
 | PATs and `gh` auth (Mac, dapyllil) | OAuth tokens don't carry over (docs). PATs are assumed dead. Every login is redone with the new account | keep working. GitHub CLI and other OAuth apps need the org's approval while third-party access restrictions are on. Fine-grained PATs (pool fallback, `FLEET_READ_TOKEN`) are reissued with the org as resource owner |
 | Actions | docs: not enabled automatically, re-enabled by a new workflow file. Untested for 29 repos | stays on per repository. The org Actions policy applies |
@@ -90,9 +90,9 @@ Each step lists its undo and its baseline check. "Check" means `scripts/visibili
 1. **Owner creates the org** with the name he picks, on Team. This accepts GitHub's terms and starts US$4 a month. Undo: delete the empty org. Check: 29 under `gorfednet`, 0 in the org.
 2. **Owner locks the org down** before anything moves in: base permission none. Members can't create public or internal repositories or change visibility. Forking private repositories off. 2FA required. His membership private. Third-party OAuth access restricted, with GitHub CLI approved. Fine-grained PATs need approval. Self-hosted runners: default group, private repositories only. Actions: fork PR workflows from outside collaborators need approval. A session reads `gh api orgs/NEW-ORG` and confirms each field. Undo: none needed, the org is empty. Check: unchanged.
 3. **Owner sets the org's Actions budget.** The US$100 cap is across all repositories, so the personal account and the org share it while repositories sit in both. Suggested: the org at US$100 and the personal account at US$0 once the last heavy repository moves. Undo: edit the budget.
-4. **Apps into the org.** The owner transfers `gorfednet-ship-bot` and `gorfednet-ci-pool` to the org, or registers new ones with `create.mjs --org`, and installs each on "Only select repositories": the pilot first. The Claude App the same way, if cloud sessions need it. Undo: uninstall, transfer the App back. Check: unchanged.
-5. **Freeze, then the pilot.** A session sets ship-bot `--set-live false`. The owner transfers `political-records` (private, 9 KB, no workflows). Check: 28 under `gorfednet`, 1 in the org, all 29 as before. A session reads its settings page through the API. Undo: transfer it back.
-6. **Wave 1, the quiet ones.** `TowIt`, `WhyWait` and `wychwood` (archived, so no CI runs), then `broadcast`, `intake`, `ACID2REAPER` and `ai-use-levels` (none calls `.github` or the pool). Check after each. Undo: transfer back.
+4. **Apps into the org.** The owner transfers `gorfednet-ship-bot` and the pool's App to the org, or registers new ones with `create.mjs --org`, and installs each on "Only select repositories": the pilot first. The Claude App the same way, if cloud sessions need it. Undo: uninstall, transfer the App back. Check: unchanged.
+5. **Freeze, then the pilot.** A session sets ship-bot `--set-live false`. The owner transfers the smallest private repository (9 KB, no workflows, named in the baseline file). Check: 28 under `gorfednet`, 1 in the org, all 29 as before. A session reads its settings page through the API. Undo: transfer it back.
+6. **Wave 1, the quiet ones.** The 3 archived private repositories (no CI runs), then 2 small private ones, `ACID2REAPER` and `ai-use-levels`. None of the last 4 calls `.github` or the pool. Check after each. Undo: transfer back.
 7. **The cutover sitting.** Pool idle, ship-bot frozen. The owner transfers the 20 remaining repositories, then `.github` last. The check runs after each. The prepared PRs come out of draft and run CI on their new references. Pool tokens or the App point at the org, and one runner smoke runs per pool repository. Undo: any repository but `.github` transfers back. `.github` can't return to `gorfednet/.github` (retired), so its undo is to stay in the org or go back under another name. That's why it moves last, after 28 have proved the path.
 8. **Reconnect.** A runner (Haiku) runs `git remote set-url` across every clone and worktree on this Mac and dapyllil. `FLEET_READ_TOKEN` is reissued for the org. Ship-bot goes live again. Check: 0 under `gorfednet`, 29 in the org, all as before.
 9. **A week of checks.** The baseline check runs once a day for 7 days from a scheduled report, never as a PR gate. Then the owner decides whether to keep Pro on his personal account.

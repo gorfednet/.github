@@ -8,11 +8,11 @@
 #   scripts/visibility-baseline.sh                       # owner gorfednet
 #   scripts/visibility-baseline.sh gorfednet NEW-ORG     # during and after the moves
 #
-# BASELINE=path overrides the baseline file (used by the deliberate-break test).
+# The baseline names private repositories, so it lives in the private ops repo,
+# never here (this repository is public). BASELINE=path overrides it.
 set -euo pipefail
 
-here=$(cd "$(dirname "$0")/.." && pwd)
-baseline=${BASELINE:-$here/docs/plans/github-org-migration-baseline.tsv}
+baseline=${BASELINE:-$HOME/Developer/gorfednet/ops/docs/github-org/visibility-baseline.tsv}
 [ -s "$baseline" ] || { echo "visibility-baseline: no baseline at $baseline" >&2; exit 2; }
 [ $# -gt 0 ] || set -- gorfednet
 
