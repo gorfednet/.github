@@ -240,7 +240,7 @@ export function parseReviewStatus(result, prNumber) {
   // `requireClean` and every thread answered, so it reads it as findings.
   if (state === 'clean' && /triage by reply/.test(m[3])) {
     if (result.code !== 0 || result.timedOut || result.error) return { state: 'undetermined', detail: `printed clean but exited ${result.code}` }
-    return { state: 'findings', detail: m[3] }
+    return { state: 'findings', detail: m[3], relief: true }
   }
   // Exit code and printed state must agree; if they do not, trust neither.
   if (result.code !== (state === 'clean' ? 0 : 1) || result.timedOut || result.error) {
@@ -319,8 +319,10 @@ export async function evaluateReview(ctx, repo, pr, sha, { headSince, memo, draf
   // that changes control-plane paths while a Medium or High reviewer thread stands: .github 164 merged
   // at 19:08 ET on 13 November 2026 with 5 threads open, each "answered" by the session that wrote it.
   let strict = requireClean
-  if (!strict && controlPlane) {
-    const all = (await ctx.github.listReviewThreads(repo.slug, pr.number)).filter((t) => isReviewerUser(t.author))
+  if (!strict && controlPlane && !status.relief) {
+    // Unresolved threads only: a High that was fixed and resolved, or a Low-only relief round past the cap,
+    // must not deadlock the pull request.
+    const all = (await ctx.github.listReviewThreads(repo.slug, pr.number)).filter((t) => isReviewerUser(t.author) && !t.isResolved)
     if (all.some((t) => /^[^a-z]*(high|medium)\b/i.test(String(t.body ?? '').trim())) && (await controlPlane())) strict = true
   }
   if (strict) {
