@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import http from 'node:http'
-import { utimesSync, mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync, rmSync } from 'node:fs'
+import { statSync, utimesSync, mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { spawn, spawnSync } from 'node:child_process'
@@ -97,6 +97,21 @@ describe('lock and memory edge cases', () => {
     assert.equal(takeLock(file, 1, { beforeTakeover: swap }), false)
     assert.equal(readFileSync(file, 'utf8'), String(process.pid))
     assert.deepEqual(readdirSync(join(tmp, 'race')), ['lock'])
+  })
+  it('three pickers: B never moves the live lock A created after B judged the old one stale', () => {
+    const file = join(tmp, 'three', 'lock')
+    mkdirSync(join(tmp, 'three'), { recursive: true })
+    writeFileSync(file, '2147483646')
+    let before
+    // A runs inside B's hook: it moves S aside and creates N. The busy wait gives a later move or link a visible ctime change.
+    const hook = () => { assert.equal(takeLock(file, process.pid), true); before = statSync(file, { bigint: true }); const end = Date.now() + 20; while (Date.now() < end); }
+    assert.equal(takeLock(file, 1, { beforeTakeover: hook }), false) // B
+    const after = statSync(file, { bigint: true })
+    assert.equal(after.ino, before.ino, 'N replaced')
+    assert.equal(after.ctimeNs, before.ctimeNs, 'B touched N (moved or relinked it)')
+    assert.equal(readFileSync(file, 'utf8'), String(process.pid))
+    assert.equal(takeLock(file, 2), false) // C: N is held throughout
+    assert.deepEqual(readdirSync(join(tmp, 'three')), ['lock'])
   })
   it('two concurrent takers of a stale lock end with exactly one winner, 15 rounds', async () => {
     const mod = new URL('../scripts/local-llm/route.mjs', import.meta.url).href

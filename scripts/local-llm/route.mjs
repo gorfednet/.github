@@ -34,6 +34,11 @@ export function takeLock(file, pid, { beforeTakeover } = {}) {
   const held = /^\d+$/.test(content) ? alive(Number(content)) : content === '' && Date.now() - st.mtimeMs <= EMPTY_STALE_MS
   if (held) return false
   beforeTakeover?.()
+  // Recheck right before the move: if another taker already replaced the stale file, the file now there is a live lock and must not be touched, not even to put it back.
+  try {
+    const now = fs.statSync(file)
+    if (now.ino !== st.ino || fs.readFileSync(file, 'utf8').trim() !== content) return false
+  } catch (e) { return e.code === 'ENOENT' ? create() : false }
   const aside = `${file}.stale.${process.pid}.${Math.random().toString(36).slice(2)}`
   try { fs.renameSync(file, aside) } catch (e) { return e.code === 'ENOENT' ? create() : false }
   let same = false
