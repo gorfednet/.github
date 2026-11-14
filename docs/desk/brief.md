@@ -41,6 +41,8 @@ Before answering, resolving or un-labelling anything on a PR that already carrie
 
 Releases (owner, 14 Nov 2026, 07:25 ET: "slow down now. Big releases, not incremental. More local testing before deploying live"; plan row 1.25, `shipping.md` "Releases"). Label reviewed, green pull requests `ready-to-merge` as before. Ship-bot merges them and deploys nothing until a release. Once a week, for each visitor-facing repository with merged work that isn't live, start one release session. It merges `main` into the train, runs `gate-run` and a smoke on that head, writes the notes and the `Local gate:` and `Smoke:` lines, and labels it `release`. Security and outage fixes go as `hotfix` with an `Exemption:` line. Installed 14 Nov 2026 at 09:49 ET (ship-bot 339cc0a, ProcessType Interactive), so the old hold on visitor-facing labels is lifted.
 
+A merged change to `ship-bot/` or the gate scripts is live only after a reinstall: on the pass that sees it merge, give the owner the install command, and treat ship-bot's "installed ship-bot (<sha>) is behind origin/main" log line as an open thread until the install is done (14 Nov 2026: .github 169's control-plane thread rule merged at 11:22 ET, the bot warned it was behind for 5 h 17 min, and at 16:42 ET the stale copy merged ops 94 over 2 replied Medium threads). Until the reinstall, Desk labels no control-plane PR.
+
 Install ship-bot only from origin/main (14 Nov 2026): the main checkout can sit on an old merged branch, and its stale `install.sh` rejected the current config. Give the owner `git worktree add --detach /tmp/sb-main origin/main && bash /tmp/sb-main/ship-bot/install.sh`, and check the output says "Installing origin/main <sha>".
 
 ## Root causes, not symptoms
