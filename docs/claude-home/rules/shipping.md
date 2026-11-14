@@ -24,9 +24,15 @@ When several pull requests are waiting for CI, carry them in one train instead o
 - A red train: find the piece that broke it, fix it on that piece's branch or drop the piece and rebuild. Never merge a train over red.
 - Keep a change out of a train when it needs separate rollback, a separate release, or the owner's review on its own. Small repositories with short CI need no train; one pull request is fine.
 
-## Runners (owner, 2026-10-19)
+## Runners (owner, 2026-10-19; cap changed 13 November 2026)
 
-Every CI job in every repository runs on our self-hosted runners on dapyllil by default: tests, builds, e2e, smoke, canaries, deploys, alerts. GitHub-hosted minutes have a ceiling of about $50 a month across all repositories, and the aim is to stay well under it. Hosted is allowed for a pool-liveness preflight (it must run off the pool to notice the pool is down; seconds per run), a release blocked by a dead pool, or a pool that is backed up (owner, 2026-10-30: "hosted runners when backed up yes"). Each time, say so to the owner and restore the pool setting once the queue clears; the ceiling still holds. A repository that runs heavy jobs hosted without saying so is a bug to fix.
+Every CI job in every repository runs on our self-hosted runners on dapyllil by default: tests, builds, e2e, smoke, canaries, deploys, alerts.
+
+- Hosted minutes have a hard cap of US$100 a month across all repositories (owner, 13 November 2026: "Yes, US$100 hard cap"). November 2026 may reach US$150 (owner: "if this month goes to 150 cause of the mistakes and transitions its ok but let's aim for 100 tops"). A GitHub billing budget on Actions stops usage at the cap.
+- Hosted is allowed for the reviewer, roll-ups, the pool-liveness preflight (it must run off the pool to notice the pool is down) and light gates on heuristics, papers and gorfed.net.
+- Overflow is automatic (owner, 2026-10-30: "hosted runners when backed up yes"). When the pool heartbeat is stale or the oldest queued job has waited over 15 minutes, priority 1 to 5 work goes hosted. BinderCurve waits. The pool setting comes back once the queue clears.
+- Overflow minutes are reported in the daily digest, not to the owner each time.
+- A repository that runs heavy jobs hosted outside these cases is a bug to fix.
 
 ## Before merging, ask the scripts, not the checks panel
 
