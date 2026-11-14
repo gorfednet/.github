@@ -117,3 +117,41 @@ describe('unanswered reviewer findings get needs-fix (row 1.14)', () => {
     assert.equal(writes(red, 'removeLabel').length, 0, 'failing checks stop the gates before the review one: the label is not judged')
   })
 })
+
+describe('a labelled PR refused for the same reason over 2 hours becomes a job (row 1.14)', () => {
+  const red = (name = 'check / check') => [{ name, status: 'completed', conclusion: 'failure', started_at: '2026-10-09T12:00:00Z' }]
+  const setup = () => {
+    const gh = new FakeGitHub({ runs: red() })
+    const s = scenario({ github: gh })
+    withJobsDir(s)
+    return { gh, s }
+  }
+  it('writes exactly one job once the same refusal is 2 hours old, not before', async () => {
+    const { s } = setup()
+    await s.run()
+    s.clock.advance(119)
+    await s.run()
+    assert.deepEqual(jobsOf(s), [])
+    s.clock.advance(2)
+    await s.run()
+    await s.run()
+    s.clock.advance(60)
+    await s.run()
+    const files = jobsOf(s)
+    assert.equal(files.length, 1)
+    const job = JSON.parse(readFileSync(join(s.home, 'src', JOBS_SUBDIR, files[0]), 'utf8'))
+    assert.match(job.id, /^stl-site-7-/)
+    assert.equal(job.next, 'https://github.com/gorfednet/site/pull/7')
+    assert.equal(job.run.pr, true)
+  })
+  it('a changed reason restarts the clock', async () => {
+    const { gh, s } = setup()
+    await s.run()
+    s.clock.advance(100)
+    gh.runs = []
+    await s.run()
+    s.clock.advance(100)
+    await s.run()
+    assert.deepEqual(jobsOf(s), [], 'two refusals of 100 minutes each, for different reasons')
+  })
+})

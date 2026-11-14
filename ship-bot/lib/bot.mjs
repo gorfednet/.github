@@ -10,7 +10,7 @@ import { createHash } from 'node:crypto'
 import os from 'node:os'
 import { join } from 'node:path'
 import { HOLD_LABEL, READY_LABEL } from './config.mjs'
-import { diagnosisJob, jobsDir, writeJobOnce } from './herdr-jobs.mjs'
+import { diagnosisJob, jobsDir, stallJob, writeJobOnce } from './herdr-jobs.mjs'
 import { DeployLog, deployMerged, envSecrets, matchingFiles, preflight, realFs, selectSteps } from './deploy.mjs'
 import { controlPlaneFiles, draftClaim, draftIneligibleReason } from './drafts.mjs'
 import { evaluatePull, ineligibleReason, unmergeableReason } from './gates.mjs'
@@ -317,6 +317,32 @@ async function syncNeedsFix(ctx, repo, pr, result) {
   else await ctx.github.removeLabel(repo.slug, pr.number, NEEDS_FIX_LABEL)
 }
 
+const STALL_MINUTES = 120
+
+/**
+ * The same refusal for over 2 hours is a finding, not a wait (row 1.14): one continue-this-PR Herdr job per
+ * head and reason. The clock restarts when the reason changes.
+ */
+function trackStall(ctx, repo, pr, headState, blocks) {
+  const key = blocks.map((b) => b.key).sort().join('+')
+  const now = ctx.clock.now()
+  if (headState.stall?.key !== key) headState.stall = { key, since: now.toISOString() }
+  const st = headState.stall
+  if (st.job || (now - new Date(st.since)) / 60000 < STALL_MINUTES) return
+  const dir = jobsDir(ctx.config)
+  if (!dir) return
+  const job = stallJob(repo, pr, st, repo.sourceDir ?? join(ctx.config.sourceRoot, repo.dir))
+  if (ctx.dry) return ctx.say('info', `${repo.slug}#${pr.number}: would queue stall job ${job.id}`)
+  try {
+    writeJobOnce(dir, job)
+    st.job = job.id
+    ctx.say('info', `${repo.slug}#${pr.number}: refused for over ${STALL_MINUTES / 60} h (${key}); queued ${job.id} for Herdr`)
+    ctx.state.save()
+  } catch (cause) {
+    ctx.say('warn', `${repo.slug}#${pr.number}: could not write the stall job: ${cause.message}`)
+  }
+}
+
 /** A PR the bot has stopped looking at (hold, no ready label, conflicts) keeps no `needs-fix`: Herdr must not keep fixing a PR the owner paused. */
 async function dropStaleNeedsFix(ctx, repo, pr, why) {
   if (!(pr.labels ?? []).some((l) => l.name === NEEDS_FIX_LABEL)) return
@@ -369,8 +395,10 @@ async function processPull(ctx, repo, pr, defaultBranch) {
       await postOnce(ctx, repo, pr.number, sha, key, `Ship bot is not merging this yet.\n\n${reasons}\n\nIt checks again every couple of minutes. Add the \`${HOLD_LABEL}\` label to make it stop looking.`)
     }
     for (const block of fails.filter((b) => b.notify)) await notifyOnce(ctx, headState, tag, block)
+    trackStall(ctx, repo, pr, headState, result.blocks)
     return false
   }
+  delete headState.stall
 
   if (repo.mode === 'deploy') {
     const problems = preflight(repo, ctx.fsx)

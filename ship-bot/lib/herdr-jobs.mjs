@@ -31,6 +31,25 @@ export function diagnosisJob(repo, blocked, sourceDir) {
   }
 }
 
+/**
+ * A labelled PR the bot has refused for the same reason for over 2 hours (row 1.14): a continue-this-PR job,
+ * once per head and reason. Its `next` is the PR URL, so Herdr pushes to the existing branch.
+ */
+export function stallJob(repo, pr, stall, sourceDir) {
+  const name = repo.slug.split('/')[1].toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 10)
+  return {
+    id: `stl-${name}-${pr.number}-${hash(`${repo.slug}|${pr.number}|${pr.head.sha}|${stall.key}`)}`,
+    title: `${repo.slug} #${pr.number} stalled on ${stall.key}`,
+    status: 'queued', kind: 'claude', owner: 'herdr', budget: 'sonnet', restart: 'never', maxAttempts: 2,
+    priority: 1, repo: repo.slug, trigger: { type: 'once' },
+    run: {
+      role: 'builder', pr: true, maxMinutes: 45, maxTokens: 300000, cwd: sourceDir,
+      task: `Ship-bot has refused ${repo.slug}#${pr.number} since ${stall.since} for the same reason (${stall.key}). Read the bot's latest comment on the pull request for the reason, fix whatever on the branch is the cause, and update ## Next. Never merge and never change labels.`,
+    },
+    next: `https://github.com/${repo.slug}/pull/${pr.number}`,
+  }
+}
+
 /** Write a job file once. 'written', or 'exists' when the claim is already made. */
 export function writeJobOnce(dir, job, write = writeFileSync) {
   try {
