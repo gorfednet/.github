@@ -138,7 +138,7 @@ describe('report', () => {
     const lines = [rec(2, 900, 3, '2026-11-12T00:00:00Z', 'fix')]
     const text = renderPrCost(costReport(lines, { now, window: { attributed: {}, unattributed: {} } })).join('\n')
     assert.match(text, /## Cost per PR, last 7 days/)
-    assert.match(text, /\| o\/a \| fix \| 1 \| 900 \| 900 \|/)
+    assert.match(text, /\| o\/a \| 1 \| 900 \| 900 \|  \| 900 \(1\) \|  \|  \|/)
     assert.match(text, /a #2 \(fix\): 900 fresh tokens, 300 per added line over 3 lines/)
     assert.match(renderPrCost(null).join('\n'), /not measured/)
     assert.equal(compact(1234567), '1.2M')

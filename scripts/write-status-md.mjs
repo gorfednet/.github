@@ -51,13 +51,18 @@ export function renderPrCost(c) {
   else {
     const fresh = Object.values(c.byRepo).reduce((n, r) => n + r.fresh, 0)
     out.push(`${c.prs} PRs closed, ${compact(fresh)} fresh tokens (input, cache write and output; cache reads not counted).`, '')
-    out.push('| Repository | Kind | PRs | Fresh tokens | Per PR |', '|---|---|---|---|---|')
-    for (const [key, v] of Object.entries(c.byRepoKind).sort((a, b) => b[1].fresh - a[1].fresh)) {
-      const [repo, kind] = key.split(' ')
-      out.push(`| ${short(repo)} | ${kind} | ${v.prs} | ${compact(v.fresh)} | ${compact(Math.round(v.fresh / v.prs))} |`)
+    const kinds = ['feature', 'fix', 'docs', 'infra']
+    out.push(`| Repository | PRs | Fresh tokens | Per PR | ${kinds.join(' | ')} |`, `|---|---|---|---|${kinds.map(() => '---').join('|')}|`)
+    for (const [repo, v] of Object.entries(c.byRepo).sort((x, y) => y[1].fresh - x[1].fresh)) {
+      const cells = kinds.map((k) => {
+        const kv = c.byRepoKind[`${repo} ${k}`]
+        return kv ? `${compact(kv.fresh)} (${kv.prs})` : ''
+      })
+      out.push(`| ${short(repo)} | ${v.prs} | ${compact(v.fresh)} | ${compact(Math.round(v.fresh / v.prs))} | ${cells.join(' | ')} |`)
     }
+    out.push('', `By kind: ${kinds.filter((k) => c.byKind[k]).map((k) => `${k} ${c.byKind[k].prs} PRs, ${compact(c.byKind[k].fresh)}`).join('; ')}.`)
     out.push('', 'Dearest 5:', '')
-    for (const d of c.dearest) out.push(`- ${short(d.repo)} #${d.number} (${d.kind}): ${compact(d.fresh)} fresh tokens${d.freshPerAddedLine === null ? ', added lines unknown' : `, ${d.freshPerAddedLine} per added line over ${d.additions} lines`}`)
+    for (const d of c.dearest) out.push(`- ${short(d.repo)} #${d.number} (${d.kind}): ${compact(d.fresh)} fresh tokens${d.freshPerAddedLine === null ? ', added lines unknown' : `, ${compact(d.freshPerAddedLine)} per added line over ${d.additions} lines`}`)
     out.push('', '| Model | Input | Cache read | Cache write | Output |', '|---|---|---|---|---|')
     for (const [m, t] of Object.entries(c.perModel).sort((a, b) => b[1].output - a[1].output)) out.push(`| ${m} | ${compact(t.input)} | ${compact(t.cacheRead)} | ${compact(t.cacheWrite)} | ${compact(t.output)} |`)
     out.push('')
