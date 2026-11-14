@@ -203,13 +203,17 @@ export function attribute(sessions, namedPrs = []) {
       if (!DEFAULT_BRANCHES.has(m.branch)) {
         const pair = `${folderRoot(m.cwd)}|${m.branch}`
         const seen = taught.get(pair)
-        taught.set(pair, seen === undefined || seen === key ? key : null)
+        const win = { key, from: named?.from, to: named?.to }
+        if (seen === undefined) taught.set(pair, win)
+        else if (seen === null || seen.key !== key) taught.set(pair, null)
+        else taught.set(pair, { key, from: seen.from === undefined || win.from === undefined ? undefined : Math.min(seen.from, win.from), to: seen.to === undefined || win.to === undefined ? undefined : Math.max(seen.to, win.to) })
       }
     }
   }
   for (const m of rest) {
-    const key = DEFAULT_BRANCHES.has(m.branch) ? undefined : taught.get(`${folderRoot(m.cwd)}|${m.branch}`)
-    if (key) put(key, m)
+    const t = DEFAULT_BRANCHES.has(m.branch) ? undefined : taught.get(`${folderRoot(m.cwd)}|${m.branch}`)
+    // A taught PR keeps the stretch of time it was named for: work long after it closed is not its work.
+    if (t && !(t.from !== undefined && m.ts <= t.from) && !(t.to !== undefined && m.ts > t.to)) put(t.key, m)
     else addByModel(unattributed, m.model, m.usage)
   }
   return { perPr, unattributed }

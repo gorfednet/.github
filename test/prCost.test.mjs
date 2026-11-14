@@ -116,6 +116,16 @@ describe('a branch name used by two PRs', () => {
   })
 })
 
+describe('what a taught PR keeps', () => {
+  it('does not take work from after its window when the session has no pr-link', () => {
+    const msg = (min, id) => ({ id, ts: Date.parse(T(min)), model: 'm', usage: { input_tokens: 1, output_tokens: 1 }, cwd: '/w/gorfednet.github', branch: 'dependabot/x' })
+    const prs = [{ repo: 'o/.github', number: 10, branch: 'dependabot/x', endsAt: Date.parse(T(60)) }]
+    const { perPr, unattributed } = attribute([{ sessionId: 'A', links: [], messages: [msg(10, 'a'), msg(40, 'b'), msg(400, 'c')] }], prs)
+    assert.equal(sumModels(perPr.get('o/.github#10')).messages, 2)
+    assert.equal(sumModels(unattributed).messages, 1, 'the later work is not PR 10\'s: unattributed, not billed back')
+  })
+})
+
 describe('kind', () => {
   it('reads fix, docs, infra and feature from the title and branch', () => {
     assert.equal(classifyKind({ title: 'Fix the stale lock', branch: 'claude/x' }), 'fix')
