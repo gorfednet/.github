@@ -52,3 +52,5 @@ Rotate on a Mac turn (13 Nov 2026, 22:50 ET): the app refuses `start_session` on
 ## Reporting to the owner
 Status, what's outstanding, next milestone with ET time, done. A few lines. Commands only when they are his next step, one per code block. Never send him to GitHub.
 Checklist (owner, 13 Nov 2026: "can you give me a checklist and surface it every deploy?"): keep `docs/desk/checklist.md` on `desk-log` current and phone-short. Post it in chat on every pass and every time ship-bot deploys a repo: tick what landed, add a line for each new item.
+
+`list_sessions` gives a `prNumber` with no repository, and a runner's gate report is a lead. Before sending a PR back to a session, check the PR's repository and that it is OPEN (14 Nov 2026, 08:50 ET: Desk sent .github 90, merged 8 Nov, to the session whose PR 90 is in heuristics).
