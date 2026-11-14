@@ -302,6 +302,7 @@ export async function evaluateReview(ctx, repo, pr, sha, { headSince, memo, draf
         {
           key: 'review-not-run',
           kind: 'fail',
+          noStall: true, // only a comment on the pull request brings a review; a pushed fix is a new unreviewed head
           reason: [
             `The Claude reviewer has not reviewed this head (${sha.slice(0, 7)}), and nothing merges without a review of the final head. The bot never asks for one itself.`,
             '- If the commits since the last review changed code someone wrote, comment `claude review` here. The bot merges once that review is clean, or every finding has an answer.',
@@ -452,7 +453,7 @@ export async function evaluatePull(ctx, repo, pr, { headState, fresh = false, dr
   // (d) the Claude reviewer's verdict on this head. A clean review that is
   // required cannot come from a repo with no reviewer: fail closed.
   if (requireClean && !repo.claudeReview) {
-    return blocked([{ key: 'review-required', kind: 'fail', reason: 'The bot readied this pull request itself and the repo deploys, so it needs a clean Claude review, but this repo has no Claude reviewer configured. A person labels it.' }])
+    return blocked([{ key: 'review-required', kind: 'fail', noStall: true, reason: 'The bot readied this pull request itself and the repo deploys, so it needs a clean Claude review, but this repo has no Claude reviewer configured. A person labels it.' }])
   }
   if (repo.claudeReview) {
     let result

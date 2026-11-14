@@ -7,6 +7,8 @@
   "properties": {
     "generatedAt": { "type": "string" },
     "renderedAt": { "type": "string" },
+    "branchesReadAt": { "type": "string" },
+    "carried": { "type": "boolean" },
     "dirtyLocal": {
       "type": "array",
       "items": {

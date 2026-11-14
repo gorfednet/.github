@@ -10,6 +10,7 @@ import { createHash } from 'node:crypto'
 import os from 'node:os'
 import { join } from 'node:path'
 import { HOLD_LABEL, READY_LABEL } from './config.mjs'
+import { diagnosisJob, jobsDir, stallJob, writeJobOnce } from './herdr-jobs.mjs'
 import { DeployLog, deployMerged, envSecrets, matchingFiles, preflight, realFs, selectSteps } from './deploy.mjs'
 import { controlPlaneFiles, draftClaim, draftIneligibleReason } from './drafts.mjs'
 import { evaluatePull, ineligibleReason, unmergeableReason } from './gates.mjs'
@@ -20,6 +21,7 @@ import { guardCommands, succeeded } from './runner.mjs'
 import { GATES_REPO, advanceGatesWorktree, ownInstallFreshness, toolWorktreeFor } from './gates-worktree.mjs'
 import { StateStore } from './state.mjs'
 
+const NEEDS_FIX_LABEL = 'needs-fix'
 const short = (sha) => String(sha ?? '').slice(0, 7)
 const marker = (key, sha) => `<!-- ship-bot:${key}:${sha} -->`
 
@@ -228,6 +230,7 @@ async function processRepo(ctx, repo) {
   }
   const rs = ctx.state.repo(repo.slug)
   if (rs.blocked) {
+    queueDiagnosis(ctx, repo, rs.blocked)
     ctx.say('warn', `${repo.slug}: blocked since ${rs.blocked.at}: ${rs.blocked.reason}. Nothing will merge here until someone runs: ship-bot --unblock ${repo.name}`)
     return
   }
@@ -264,6 +267,7 @@ async function processRepo(ctx, repo) {
     const skip = ineligibleReason(listed, repo, defaultBranch, ctx.config.allowedAuthors)
     if (skip) {
       ctx.say('debug', `${repo.slug}#${listed.number}: ignored (${skip})`)
+      await dropStaleNeedsFix(ctx, repo, listed, skip)
       continue
     }
     checkQuota(ctx)
@@ -271,12 +275,83 @@ async function processRepo(ctx, repo) {
     const skip2 = ineligibleReason(pr, repo, defaultBranch, ctx.config.allowedAuthors) ?? unmergeableReason(pr)
     if (skip2) {
       ctx.say('debug', `${repo.slug}#${pr.number}: ignored (${skip2})`)
+      // GitHub's "not computed yet" after a push is transient: keep the label rather than flap it.
+      if (!/not computed yet/.test(skip2)) await dropStaleNeedsFix(ctx, repo, pr, skip2)
       continue
     }
     const acted = await processPull(ctx, repo, pr, defaultBranch)
     // One merge per repo per run: the next run re-reads everything fresh.
     if (acted) return
   }
+}
+
+/**
+ * A repo block no longer waits for an owner turn (plan row 1.14): the bot
+ * queues one diagnosis job for Herdr's reconciler. The job file is the claim,
+ * so every later pass over the same block writes nothing. Dry run only says so.
+ */
+function queueDiagnosis(ctx, repo, blocked) {
+  const dir = jobsDir(ctx.config)
+  if (!dir) return ctx.say('debug', `${repo.slug}: no Herdr jobs folder under ${ctx.config.sourceRoot}; block not queued for diagnosis`)
+  const job = diagnosisJob(repo, blocked, repo.sourceDir ?? join(ctx.config.sourceRoot, repo.dir))
+  if (ctx.dry) return ctx.say('info', `${repo.slug}: would queue diagnosis job ${job.id}`)
+  try {
+    if (writeJobOnce(dir, job) === 'written') ctx.say('info', `${repo.slug}: queued diagnosis job ${job.id} for Herdr`)
+  } catch (cause) {
+    ctx.say('warn', `${repo.slug}: could not write the diagnosis job: ${cause.message}`)
+  }
+}
+
+/**
+ * Reviewer threads with no answer get the `needs-fix` label, which Herdr's
+ * importer turns into a continue-this-PR job (row 1.14). The label comes off
+ * once no thread block remains.
+ */
+async function syncNeedsFix(ctx, repo, pr, result) {
+  const labels = (pr.labels ?? []).map((l) => l.name)
+  const wants = result.blocks.some((b) => ['review-threads', 'review-not-clean', 'review-findings-no-threads'].includes(b.key))
+  const tag = `${repo.slug}#${pr.number}`
+  // Gates stop at the first block, so an earlier block hides the review gate:
+  // the label only comes off once every gate has passed.
+  if (wants ? labels.includes(NEEDS_FIX_LABEL) : !result.ready || !labels.includes(NEEDS_FIX_LABEL)) return
+  if (ctx.dry) return ctx.say('info', `${tag}: would ${wants ? 'add' : 'remove'} ${NEEDS_FIX_LABEL}`)
+  if (wants) await ctx.github.addLabels(repo.slug, pr.number, [NEEDS_FIX_LABEL])
+  else await ctx.github.removeLabel(repo.slug, pr.number, NEEDS_FIX_LABEL)
+}
+
+const STALL_MINUTES = 120
+/** Refusals a push cannot fix (a block flagged `noStall`, such as review-required: only a person's label lifts it) never age into a job. */
+export const stallable = (blocks) => blocks.filter((b) => !b.noStall)
+
+/**
+ * The same refusal for over 2 hours is a finding, not a wait (row 1.14): one continue-this-PR Herdr job per
+ * head and reason. The clock restarts when the reason changes.
+ */
+function trackStall(ctx, repo, pr, headState, blocks) {
+  const key = blocks.map((b) => b.key).sort().join('+')
+  const now = ctx.clock.now()
+  if (headState.stall?.key !== key) headState.stall = { key, since: now.toISOString() }
+  const st = headState.stall
+  if (st.job || (now - new Date(st.since)) / 60000 < STALL_MINUTES) return
+  const dir = jobsDir(ctx.config)
+  if (!dir) return
+  const job = stallJob(repo, pr, st, repo.sourceDir ?? join(ctx.config.sourceRoot, repo.dir))
+  if (ctx.dry) return ctx.say('info', `${repo.slug}#${pr.number}: would queue stall job ${job.id}`)
+  try {
+    writeJobOnce(dir, job)
+    st.job = job.id
+    ctx.say('info', `${repo.slug}#${pr.number}: refused for over ${STALL_MINUTES / 60} h (${key}); queued ${job.id} for Herdr`)
+    ctx.state.save()
+  } catch (cause) {
+    ctx.say('warn', `${repo.slug}#${pr.number}: could not write the stall job: ${cause.message}`)
+  }
+}
+
+/** A PR the bot has stopped looking at (hold, no ready label, conflicts) keeps no `needs-fix`: Herdr must not keep fixing a PR the owner paused. */
+async function dropStaleNeedsFix(ctx, repo, pr, why) {
+  if (!(pr.labels ?? []).some((l) => l.name === NEEDS_FIX_LABEL)) return
+  if (ctx.dry) return ctx.say('info', `${repo.slug}#${pr.number}: would remove ${NEEDS_FIX_LABEL} (${why})`)
+  await ctx.github.removeLabel(repo.slug, pr.number, NEEDS_FIX_LABEL)
 }
 
 async function processPull(ctx, repo, pr, defaultBranch) {
@@ -305,6 +380,7 @@ async function processPull(ctx, repo, pr, defaultBranch) {
   let result = await evaluatePull(ctx, repo, pr, { headState, requireClean })
   // A merge never rests on a remembered gate answer: run every script again.
   if (result.ready && result.cached) result = await evaluatePull(ctx, repo, pr, { headState, fresh: true, requireClean })
+  await syncNeedsFix(ctx, repo, pr, result)
   if (result.ready && headState.readiedAt && (ctx.clock.now() - new Date(headState.readiedAt)) / 60000 < ctx.config.reviewGraceMinutes) {
     ctx.say('debug', `${tag}: not merging: the bot marked this draft ready at ${headState.readiedAt}; giving the ready-for-review review time to start`)
     return false
@@ -323,8 +399,13 @@ async function processPull(ctx, repo, pr, defaultBranch) {
       await postOnce(ctx, repo, pr.number, sha, key, `Ship bot is not merging this yet.\n\n${reasons}\n\nIt checks again every couple of minutes. Add the \`${HOLD_LABEL}\` label to make it stop looking.`)
     }
     for (const block of fails.filter((b) => b.notify)) await notifyOnce(ctx, headState, tag, block)
+    // Only refusals a person or a builder can fix: a wait (checks pending, a read that failed) is the bot's or CI's, not the branch's.
+    const fixable = stallable(fails)
+    if (fixable.length > 0) trackStall(ctx, repo, pr, headState, fixable)
+    else delete headState.stall
     return false
   }
+  delete headState.stall
 
   if (repo.mode === 'deploy') {
     const problems = preflight(repo, ctx.fsx)
@@ -546,6 +627,7 @@ async function takeDraft(ctx, repo, listed, defaultBranch) {
   }
   const headState = ctx.state.head(repo.slug, pr.number, sha, ctx.clock.now().toISOString())
   const result = await evaluatePull(ctx, repo, pr, { headState, draft: true, requireClean: repo.mode === 'deploy' })
+  await syncNeedsFix(ctx, repo, pr, result)
   if (!result.ready) {
     for (const block of result.blocks) {
       ctx.say(block.kind === 'wait' ? 'debug' : 'info', `${tag}: not marking ready (${claim}): ${block.reason}`)

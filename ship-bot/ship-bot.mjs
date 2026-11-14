@@ -22,7 +22,7 @@
  * Without --once it keeps running, one pass every two minutes. The LaunchAgent
  * runs it with --once and lets launchd do the scheduling.
  */
-import { chmodSync, existsSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { setTimeout as sleep } from 'node:timers/promises'
@@ -211,6 +211,7 @@ async function onePass(loaded, args, deps, print) {
     }
     const { token } = auth
     const state = new StateStore(join(config.stateDir, 'state.json'), { persist: live }).load()
+    if (live) applyUnblockRequests(config, state, print)
     // Safe to lose and safe for a dry run to write: it only saves quota.
     const readCache = deps.makeReadCache(join(config.stateDir, 'read-cache.json'), deps.clock)
     const observe = args.mode === 'observe'
@@ -475,16 +476,64 @@ function unblock(config, name, deps) {
     deps.out(`ship-bot: ${cause.message}`)
     return 2
   }
-  const state = new StateStore(join(config.stateDir, 'state.json')).load()
-  const rs = state.repo(repo.slug)
-  if (!rs.blocked) {
-    deps.out(`${repo.slug} is not blocked.`)
+  // A running pass holds the lock and will save its own copy of state.json over anything written here
+  // (papers' unblock at 19:16 ET on 13 November 2026 was lost that way). So this never writes while a pass
+  // holds the lock: it leaves a request file, which the next pass applies right after loading state.
+  const lock = acquireLock(lockPath(config.stateDir))
+  if (!lock.ok) {
+    if (!JSON.parse(existsSync(join(config.stateDir, 'state.json')) ? readFileSync(join(config.stateDir, 'state.json'), 'utf8') : '{}').repos?.[repo.slug]?.blocked) {
+      deps.out(`${repo.slug} is not blocked.`)
+      return 0
+    }
+    mkdirSync(unblockDir(config.stateDir), { recursive: true })
+    writeFileSync(join(unblockDir(config.stateDir), `${repo.slug.replace('/', '__')}.json`), JSON.stringify({ slug: repo.slug, at: deps.clock.now().toISOString() }))
+    deps.out(`a pass is running (${lock.holder}); the unblock of ${repo.slug} is queued and the next pass applies it`)
     return 0
   }
-  deps.out(`unblocking ${repo.slug} (was: ${rs.blocked.reason})`)
-  delete rs.blocked
+  try {
+    const state = new StateStore(join(config.stateDir, 'state.json')).load()
+    const rs = state.repo(repo.slug)
+    if (!rs.blocked) {
+      deps.out(`${repo.slug} is not blocked.`)
+      return 0
+    }
+    deps.out(`unblocking ${repo.slug} (was: ${rs.blocked.reason})`)
+    delete rs.blocked
+    state.save()
+    return 0
+  } finally {
+    lock.release()
+  }
+}
+
+const unblockDir = (stateDir) => join(stateDir, 'unblock')
+
+/** Apply the unblock requests left while a pass held the lock. Called by a pass that holds it, right after loading state. */
+function applyUnblockRequests(config, state, print) {
+  const dir = unblockDir(config.stateDir)
+  if (!existsSync(dir)) return
+  for (const file of readdirSync(dir).filter((f) => f.endsWith('.json'))) {
+    let slug
+    try {
+      slug = JSON.parse(readFileSync(join(dir, file), 'utf8')).slug
+    } catch {
+      rmSync(join(dir, file), { force: true })
+      continue
+    }
+    const rs = state.data.repos[slug]
+    // Only a block that already stood when the request was written: a block made since (a merge that timed
+    // out in the very pass that held the lock) is a new fact nobody has looked at.
+    let requestedAt
+    try { requestedAt = JSON.parse(readFileSync(join(dir, file), 'utf8')).at } catch { requestedAt = undefined }
+    if (rs?.blocked && requestedAt && String(rs.blocked.at) <= String(requestedAt)) {
+      print('info', `${slug}: unblocked on request (was: ${rs.blocked.reason})`)
+      delete rs.blocked
+    } else if (rs?.blocked) {
+      print('warn', `${slug}: an unblock request from ${requestedAt} is older than the block set at ${rs.blocked.at}; dropped, the block stays`)
+    }
+    rmSync(join(dir, file), { force: true })
+  }
   state.save()
-  return 0
 }
 
 if (isMain(import.meta.url)) {
