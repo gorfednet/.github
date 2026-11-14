@@ -270,16 +270,35 @@ def verdict(command: str) -> str | None:
     return None
 
 
-def record(payload: dict, command: str) -> None:
+_SECRETS = re.compile(
+    r"gh[pousr]_\w+|github_pat_\w+|(?i:(?:token|secret|password|passwd|api[_-]?key|auth)\w*)=\S+"
+    r"|--(?:with-token|body|field|raw-field|f|F)[ \t=]+\S+|-[fF][ \t]+\S+"
+)
+
+
+def _redact(command: str) -> str:
+    return _SECRETS.sub("<redacted>", command)
+
+
+def record(payload: dict, command: str, denied: bool = False) -> None:
     """One line per command that calls GitHub, so a quota burn can be matched to a session (13 November 2026,
-    third time at 0: nothing recorded who was calling). Never raises; GH_GUARD_LOG overrides the path."""
+    third time at 0: nothing recorded who was calling). Token-shaped strings and --body/--field/--with-token
+    values are redacted; the file is 0600 in a 0700 folder. A command the guard refused is logged with
+    "denied": true, since it never ran. Never raises; GH_GUARD_LOG overrides the path."""
     try:
         if not re.search(r"\b(gh|review-status|assert-checks-started|fleet-status)\b", command):
             return
         path = os.environ.get("GH_GUARD_LOG") or os.path.expanduser("~/.gh-quota/calls.log")
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        line = {"at": time.strftime("%Y-%m-%dT%H:%M:%S%z"), "session": payload.get("session_id"), "cwd": payload.get("cwd"), "cmd": command[:240]}
-        with open(path, "a") as fh:
+        os.makedirs(os.path.dirname(path), mode=0o700, exist_ok=True)
+        line = {
+            "at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+            "session": payload.get("session_id"),
+            "cwd": payload.get("cwd"),
+            "denied": denied,
+            "cmd": _redact(command[:2000])[:240],
+        }
+        fd = os.open(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
+        with os.fdopen(fd, "a") as fh:
             fh.write(json.dumps(line) + "\n")
     except Exception:
         pass
@@ -291,9 +310,9 @@ def main() -> int:
         if payload.get("tool_name", "Bash") not in ("Bash", "Monitor"):
             return 0
         command = (payload.get("tool_input") or {}).get("command") or ""
-        if isinstance(command, str):
-            record(payload, command)
         why = verdict(command) if isinstance(command, str) else None
+        if isinstance(command, str):
+            record(payload, command, denied=bool(why))
     except Exception:  # fail open: a broken guard must not block every session
         return 0
     if why:

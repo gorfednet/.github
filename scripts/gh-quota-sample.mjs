@@ -22,11 +22,16 @@ export function makeSample({ prev, remaining, resetAt, now, ps }) {
   return sample
 }
 
+// Any process that could be calling GitHub: the gh CLI and our tools, and any node, python, curl or bun script,
+// which can reach api.github.com with the owner's token without ever naming gh.
+export const CALLER = /\bgh\b|review-status|assert-checks-started|fleet-status|ship-bot|herdr-|\b(node|python3?|curl|bun|deno)\b/
+
 const psList = () =>
   execFileSync('ps', ['-axo', 'pid,etime,command'], { encoding: 'utf8' })
     .split('\n')
-    .filter((l) => /\bgh\b|review-status|assert-checks-started|fleet-status|ship-bot|herdr-/.test(l) && !/ps -axo|gh-quota-sample/.test(l))
+    .filter((l) => CALLER.test(l) && !/ps -axo|gh-quota-sample/.test(l))
     .map((l) => l.trim().slice(0, 200))
+    .slice(0, 60)
 
 if (isMain(import.meta.url)) {
   const file = process.env.GH_QUOTA_LOG ?? join(homedir(), '.gh-quota', 'samples.jsonl')
