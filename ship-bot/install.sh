@@ -54,13 +54,12 @@ if [[ $# -gt 0 ]]; then
   exit 2
 fi
 
-# The real node binary, not a version-manager shim that needs a shell's setup.
-NODE_BIN="$(node -p 'process.execPath')"
-major="$("${NODE_BIN}" -p 'process.versions.node.split(".")[0]')"
-if [[ "${major}" -lt 22 ]]; then
-  echo "install.sh: needs Node 22 or newer; ${NODE_BIN} is $("${NODE_BIN}" --version)." >&2
-  exit 1
-fi
+# A real node binary that is not inside another tool's private folder (scripts/lib/resolve-node.sh);
+# NODE_BIN=<path> overrides. Refuses, non-zero, when there is none (14 November 2026, INCIDENTS.md).
+# shellcheck source=../scripts/lib/resolve-node.sh
+source "${HERE}/../scripts/lib/resolve-node.sh"
+NODE_BIN="$(resolve_node)" || { echo "install.sh: no usable Node. Nothing was installed." >&2; exit 1; }
+echo "Using Node ${NODE_BIN} ($("${NODE_BIN}" --version))."
 
 # Install only merged code (plan row 1.12): the bot's code and its gate
 # scripts come from origin/main's commit, exported with git archive, so a

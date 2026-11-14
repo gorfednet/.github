@@ -87,6 +87,36 @@ export function linkedTools(home, root, { launchAgents = join(home, 'Library', '
   return { out, unread }
 }
 
+/**
+ * net.gorfed.* LaunchAgents whose program (first argument) resolves under a dot-folder of home, such as
+ * ~/.hermes/node/bin/node. Read-only; the app paths (~/.ship-bot/app, ~/.desk/...) are later arguments, never the program.
+ */
+export function privateInterpreters(home, launchAgents) {
+  const out = []
+  if (!existsSync(launchAgents)) return out
+  const homeReal = existsSync(home) ? realpathSync(home) : home
+  for (const name of readdirSync(launchAgents).filter((n) => /^net\.gorfed\..*\.plist$/.test(n))) {
+    const agent = name.replace(/\.plist$/, '')
+    let program
+    try {
+      program = execFileSync('plutil', ['-extract', 'ProgramArguments.0', 'raw', '-o', '-', join(launchAgents, name)], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim()
+    } catch {
+      continue // no ProgramArguments (a Program key), or unreadable: nothing to say about an interpreter
+    }
+    if (!program.startsWith('/')) continue
+    let real
+    try {
+      real = realpathSync(program)
+    } catch {
+      out.push({ agent, program, real: program, unread: true })
+      continue
+    }
+    const rel = relative(homeReal, real)
+    if (!rel.startsWith('..') && !rel.startsWith(sep) && /^\.[^/]+\//.test(rel.split(sep).join('/'))) out.push({ agent, program, real })
+  }
+  return out
+}
+
 /** The checkout a path lives in, and whether it is a ship-bot-advanced tool worktree. */
 function checkoutOf(target) {
   let dir = target
@@ -183,6 +213,14 @@ export function installedTools({ home = homedir(), root, launchAgents } = {}) {
       const why = [onBranch ? `on branch ${onBranch.replace('refs/heads/', '')}` : '', dirty ? 'tracked files changed' : '', !atMain ? (n > 0 ? 'behind origin/main' : 'not at origin/main') : ''].filter(Boolean).join(', ')
       behind.push({ tool: tools, source: where, behind: n, detail: `tools worktree ${why}` })
     }
+  }
+
+  // Interpreters inside another tool's private folder (14 November 2026: ship-bot and capacity ran on
+  // Hermes's Node through a symlink; archiving Hermes would have stopped the only merger).
+  for (const p of privateInterpreters(home, launchAgents ?? join(home, 'Library', 'LaunchAgents'))) {
+    checked++
+    if (p.unread) unread.push(`LaunchAgent ${p.agent}`)
+    else behind.push({ tool: `LaunchAgent ${p.agent}`, source: p.program, behind: null, detail: `runs ${p.real}, inside another tool's private folder` })
   }
 
   // Copies of committed files.

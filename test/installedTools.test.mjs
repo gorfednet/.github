@@ -127,3 +127,23 @@ describe('installed tools behind main', () => {
     assert.equal(collectLocal(f.root, { home: empty, launchAgents: f.agents, sessionsDir: none }).installedTools, null, 'no tool found is not a clean Mac')
   })
 })
+
+describe('LaunchAgents on another tool\'s Node', () => {
+  const hasPlutil = spawnSync('plutil', ['-help']).error === undefined
+  const agent = (f, name, program) => {
+    mkdirSync(f.agents, { recursive: true })
+    put(join(f.agents, `${name}.plist`), `<?xml version="1.0" encoding="UTF-8"?>\n<plist version="1.0"><dict><key>Label</key><string>${name}</string><key>ProgramArguments</key><array><string>${program}</string><string>${join(f.home, '.ship-bot', 'app', 'ship-bot.mjs')}</string></array></dict></plist>\n`)
+  }
+  it('flags a program that resolves into ~/.hermes through a symlink, not one in /usr/bin or app paths under ~/.ship-bot', { skip: !hasPlutil }, () => {
+    const f = fixture()
+    const real = join(f.home, '.hermes', 'node', 'bin', 'node')
+    put(real, '#!/bin/sh\n', 0o755)
+    symlinkSync(real, join(f.home, '.local', 'bin', 'node'))
+    agent(f, 'net.gorfed.ship-bot', join(f.home, '.local', 'bin', 'node'))
+    agent(f, 'net.gorfed.fine', '/usr/bin/true')
+    const hit = run(f).behind.filter((b) => b.tool.startsWith('LaunchAgent'))
+    assert.equal(hit.length, 1)
+    assert.equal(hit[0].tool, 'LaunchAgent net.gorfed.ship-bot')
+    assert.match(hit[0].detail, /\.hermes\/node\/bin\/node, inside another tool's private folder/)
+  })
+})
