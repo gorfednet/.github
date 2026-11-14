@@ -16,20 +16,17 @@ Owner said yes at 06:40 ET. Status at 07:50 ET: prepared, not finished. One orph
 - Nothing under `~/.claude` changed, so no `docs/claude-home/` update.
 - No stale-path check added: `scripts/lib/installed-tools.mjs` (1.22a) already refuses a Node inside another tool's folder, which is what row 1.22's done-when asks for.
 
-## Not done (blocked)
+## Finished at 08:05 ET
 
-An orphaned `vite preview` (pids 21710 and 21748, parent launchd, up 21 hours, port 4183, cwd `4thcltr.com/.claude/worktrees/composed-tickling-sundae`) runs on `~/.hermes/node`. No live session owns it. A BinderCurve job (`bc-wt-jobs-etag`, pid 76958) was also running. The rule is no swap while a process uses it, and stopping the orphan was refused in this session.
+The orphaned preview and the BinderCurve job exited on their own, `pgrep -f '\.hermes'` came back empty, and the rest ran:
 
-Remaining, in order, once `pgrep -f '\.hermes/node'` is empty:
+- `~/.local/bin/node`, `npm`, `npx` point at `~/.local/share/node/v22.23.1/bin/`. A fresh zsh reports v22.23.1, npm 10.9.8, prefix `~/.local`, `claude` 2.1.325. ship-bot `check.sh` 350 passed; 4thcltr.com 838 tests passed and typecheck exit 0, all through the new symlinks.
+- `~/.hermes` (minus the kept files), `~/.local/bin/hermes` and `/Applications/Hermes.app` are in the Trash (moved, not `rm`). Nothing from Hermes runs; the ship-bot and capacity launchd agents are loaded.
+- `auth.json` and `pairing/` sit in `~/.hermes-keep/` (mode 700) until the owner revokes the Nous sign-in.
 
-1. Repoint `~/.local/bin/node`, `npm`, `npx` at `~/.local/share/node/v22.23.1/bin/`.
-2. Check `which node` in a fresh shell, then one repo's `npm test` and the pre-push gate.
-3. Move `~/.hermes` (minus the kept files), `~/.local/bin/hermes` and `/Applications/Hermes.app` to the Trash.
-4. After the owner revokes the Nous sign-in: delete `auth.json` and `pairing/` from the archive.
-
-Plan row 1.22 lives on the `desk-log` branch (PR 139), not on main yet, so its text is updated there by Desk from this file.
+Plan row 1.22 lives on the `desk-log` branch (PR 139), not on main, so Desk updates its text from this file: 1.22b done 14 Nov 08:05 ET except the credential delete.
 
 ## Next
 
-- [ ] Stop the orphaned preview on port 4183 (or confirm it can go), then do steps 1 to 3.
-- [ ] Owner revokes the Nous sign-in, then step 4.
+- [ ] Owner revokes the Nous sign-in; then delete `auth.json` and `pairing/` from `~/.hermes-keep/`.
+- [ ] Empty the Trash copy of Hermes when the owner is happy (it holds sessions, memories and `state.db`).
