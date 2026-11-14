@@ -208,8 +208,8 @@ function validateRepo(repo, i, problems, seen) {
   // leaves nothing to fail, and "every check passed" is true of zero checks.
   // Empty only for a repo whose single gate is the Claude review (ops): review-status.mjs is the gate
   // (assert-checks-started runs with --min-runs 0 there), and any check that does appear must pass.
-  if (!isStringArray(repo.expectedChecks) || (repo.expectedChecks.length === 0 && repo.claudeReview !== true)) {
-    problems.push(`${label}.expectedChecks: required and non-empty for mode "${repo.mode}" (empty only with claudeReview true)`)
+  if (!isStringArray(repo.expectedChecks) || (repo.expectedChecks.length === 0 && !(repo.claudeReview === true && repo.mode === 'merge-only'))) {
+    problems.push(`${label}.expectedChecks: required and non-empty for mode "${repo.mode}" (empty only for a merge-only repo with claudeReview true)`)
   }
   for (const name of isStringArray(repo.expectedChecks) ? repo.expectedChecks.filter(isReviewerCheck) : []) {
     problems.push(`${label}.expectedChecks: "${name}" is produced by the Claude reviewer workflow, which attaches only when a pull request opens; the review verdict comes from review-status, so remove it`)

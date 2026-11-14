@@ -99,7 +99,9 @@ describe('config validation', () => {
     assert.match(problemsFor(base([{ ...ops, expectedChecks: ['review / trigger', 'check / check'] }])), /review \/ trigger/)
     assert.deepEqual(validateConfig(base([{ ...ops, expectedChecks: [] }])), [])
     assert.deepEqual(validateConfig(base([{ ...ops, expectedChecks: ['check / check'] }])), [])
-    assert.match(problemsFor(base([{ ...ops, claudeReview: false, expectedChecks: [] }])), /empty only with claudeReview true/)
+    assert.match(problemsFor(base([{ ...ops, claudeReview: false, expectedChecks: [] }])), /empty only for a merge-only repo with claudeReview true/)
+    // A deploy repo whose CI silently did not run must not merge on the review verdict alone.
+    assert.match(problemsFor(base([deployRepo({ expectedChecks: [], claudeReview: true })])), /expectedChecks: required and non-empty for mode "deploy"/)
   })
 
   it('env: names and values are checked, and a GitHub token is refused', () => {
