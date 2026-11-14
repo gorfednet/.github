@@ -90,4 +90,5 @@ Weekly 9% at 11:21 ET. Full speed, cost-aware. One line to the owner at about 90
 - [ ] CI pool: bc 659 jobs timed out at 06:35 ET (35 and 20 min limits); cause, 3.1 resize, land 659 (session ci-pool-fix)
 - [ ] Local models: 7 of 27 served, redownload running; CI-triage fixtures merged (ops 85); baseline then first eval (1.19)
 - [ ] MoonMan 336: 2 findings and quality red, triage next pass
+- [ ] Numbers in prose: one to nine spelled out (CP); rule then site sweep (copy-skill session)
 - [ ] 1.17 orphan decisions due 15:29 ET
