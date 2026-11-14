@@ -40,6 +40,9 @@ Nothing lives only in the day log (owner, 13 Nov 2026, 21:57 ET: "ensure nothing
 Owner reminders are durable scheduled tasks, never session crons (owner, 13 Nov 2026, 21:59 ET: "yes"). Each one is a one-shot `owner-reminder-*` task that messages the session titled "Active Remote Control [Desk". A rotation doesn't re-create them. Check `list_scheduled_tasks` instead.
 
 
+Rotate on a Mac turn (13 Nov 2026, 22:50 ET): the app refuses `start_session` on a turn the owner sent through Remote Control (refused twice that night). Start the successor at the first turn the owner sends from the Mac after passing 120k, without waiting for 150k. If the size passes while he's only on his phone, keep running and ask him once to send any message from the Mac. The janitor's 07:00 ET backstop covers the rest.
+
+
 ## Reporting to the owner
 Status, what's outstanding, next milestone with ET time, done. A few lines. Commands only when they are his next step, one per code block. Never send him to GitHub.
 Checklist (owner, 13 Nov 2026: "can you give me a checklist and surface it every deploy?"): keep `docs/desk/checklist.md` on `desk-log` current and phone-short. Post it in chat on every pass and every time ship-bot deploys a repo: tick what landed, add a line for each new item.
