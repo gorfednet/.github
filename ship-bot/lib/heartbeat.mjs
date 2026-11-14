@@ -4,8 +4,15 @@
 // the job is not enrolled yet: a no-op that says so, never an error.
 // scripts/heartbeat.mjs is the CLI over this file for shell and janitor use.
 import { readFileSync } from 'node:fs'
+import { setDefaultAutoSelectFamilyAttemptTimeout } from 'node:net'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
+
+// Node's dual-stack connect gives each address 250 ms. On this Mac hc-ping.com's IPv6 answers slower
+// than that, so 10 of 15 fresh-process pings failed with ETIMEDOUT (14 November 2026) and
+// healthchecks.io flagged 6 false downs on `capacity` in one morning. 2 s passed 15 of 15.
+export const CONNECT_ATTEMPT_MS = 2000
+setDefaultAutoSelectFamilyAttemptTimeout(CONNECT_ATTEMPT_MS)
 
 const NAME = /^[a-z0-9][a-z0-9-]*$/
 
