@@ -9,15 +9,15 @@ import { fileURLToPath } from 'node:url'
 import { parseVmStat } from '../../capacity/capacity.mjs'
 import { DEFAULT_BASE, listModels, unload } from './client.mjs'
 export const EXIT = { ok: 0, refused: 69, locked: 75 }
-export const MODELS_JSON = path.join(path.dirname(fileURLToPath(import.meta.url)), '../../docs/models.json')
+export const MODELS_JSON = process.env.LOCAL_LLM_MODELS || path.join(path.dirname(fileURLToPath(import.meta.url)), '../../docs/models.json')
 const GB = 1024 ** 3
 const RESERVE_GB = 4
 const PROMPT_ROOM = 1024
 const freeGbNow = () => parseVmStat(execFileSync('vm_stat', { encoding: 'utf8' }))
 const alive = (pid) => { try { process.kill(pid, 0); return true } catch (e) { return e.code === 'EPERM' } }
 const refuse = (link, why) => ({ code: EXIT.refused, message: `local-llm: ${link} failed (${why}); use the Claude tier` })
-/** mkdir lock with a pid file; stale when the pid is dead. */
-export function takeLock(dir, pid) {
+/** mkdir lock with a pid file; stale when the pid is dead. A lock with no pid yet is being written. */
+export function takeLock(dir, pid, { beforeTakeover } = {}) {
   for (let tries = 0; tries < 2; tries++) {
     try {
       fs.mkdirSync(path.dirname(dir), { recursive: true })
@@ -26,9 +26,17 @@ export function takeLock(dir, pid) {
       return true
     } catch (e) {
       if (e.code !== 'EEXIST') throw e
-      const held = Number(fs.readFileSync(path.join(dir, 'pid'), 'utf8').trim())
-      if (alive(held)) return false
-      fs.rmSync(dir, { recursive: true, force: true })
+      let held
+      try { held = fs.readFileSync(path.join(dir, 'pid'), 'utf8').trim() } catch { return false }
+      if (alive(Number(held))) return false
+      beforeTakeover?.()
+      // rename is atomic: one taker wins. Check what we moved; if it was a live lock, put it back.
+      const gone = `${dir}.stale-${process.pid}-${tries}`
+      try { fs.renameSync(dir, gone) } catch { return false }
+      let moved
+      try { moved = fs.readFileSync(path.join(gone, 'pid'), 'utf8').trim() } catch { moved = null }
+      if (moved !== held) { try { fs.renameSync(gone, dir) } catch {} return false }
+      fs.rmSync(gone, { recursive: true, force: true })
     }
   }
   return false
@@ -45,7 +53,7 @@ export async function pick(task, { base = DEFAULT_BASE, models = MODELS_JSON, in
   if (m.sha !== row.sha) return refuse('sha', `listed ${m.sha}, adopted ${row.sha}`)
   if (!m.file || !exists(m.file)) return refuse('file', `${m.file} missing (drive not mounted?)`)
   let need, free
-  try { need = size(m.file) / GB + RESERVE_GB; free = freeGb() } catch (e) { return refuse('memory', e.message) }
+  try { need = (m.status === 'loaded' ? 0 : size(m.file) / GB) + RESERVE_GB; free = freeGb() } catch (e) { return refuse('memory', e.message) }
   if (need > free) return refuse('memory', `needs ${need.toFixed(1)} GB, ${free.toFixed(1)} free`)
   const tokens = Math.ceil(inputBytes / 3)
   if (!m.ctx || tokens > m.ctx - PROMPT_ROOM) return refuse('context', `about ${tokens} tokens, ctx ${m.ctx}`)

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import http from 'node:http'
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { spawnSync } from 'node:child_process'
@@ -69,6 +69,26 @@ describe('pick fails closed, one link at a time', () => {
     assert.equal(takeLock(dir, process.pid), true)
   })
 })
+describe('lock and memory edge cases', () => {
+  it('does not throw on a lock with no pid file yet, and reports it held', () => {
+    const dir = join(tmp, 'nopid', 'lock')
+    mkdirSync(dir, { recursive: true })
+    assert.equal(takeLock(dir, process.pid), false)
+  })
+  it('does not delete a live lock that replaced the dead one mid-takeover', () => {
+    const dir = join(tmp, 'race', 'lock')
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(join(dir, 'pid'), '2147483646')
+    const swap = () => { rmSync(dir, { recursive: true }); mkdirSync(dir); writeFileSync(join(dir, 'pid'), String(process.pid)) }
+    assert.equal(takeLock(dir, 1, { beforeTakeover: swap }), false)
+    assert.equal(readFileSync(join(dir, 'pid'), 'utf8'), String(process.pid))
+  })
+  it('does not count the adopted model again when it is already loaded', async () => {
+    live = [{ ...entry('m1'), status: { value: 'loaded', args: ['--ctx-size', '4096', '--model', FILE] } }]
+    const r = await run({ freeGb: () => 5, size: () => 100 * 1024 ** 3 })
+    assert.equal(r.code, 0)
+  })
+})
 describe('queue and client', () => {
   it('lists live models with no row; a changed sha is new', async () => {
     live = [entry('m1'), entry('fresh'), entry('m1b', { file: FILE.replace(SHA, 'new') })]
@@ -80,8 +100,9 @@ describe('queue and client', () => {
     assert.match(r.text, /verdict/)
   })
   it('exits 69 with one stderr line from the CLI when the server is down', () => {
-    const r = spawnSync('node', ['scripts/local-llm/route.mjs', 'pick', 'ci-triage'], { encoding: 'utf8', env: { ...process.env, LOCAL_LLM_URL: 'http://127.0.0.1:1', HOME: tmp } })
+    const r = spawnSync('node', ['scripts/local-llm/route.mjs', 'pick', 'ci-triage'], { encoding: 'utf8', env: { ...process.env, LOCAL_LLM_URL: 'http://127.0.0.1:1', LOCAL_LLM_MODELS: modelsFile, HOME: tmp } })
     assert.equal(r.status, 69)
+    assert.match(r.stderr.trim(), /server failed/)
     assert.equal(r.stderr.trim().split('\n').length, 1)
   })
 })
