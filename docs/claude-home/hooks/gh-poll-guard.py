@@ -27,8 +27,10 @@ Fails open: unreadable input or an internal error allows the command.
 from __future__ import annotations
 
 import json
+import os
 import re
 import sys
+import time
 
 _SHELLS = r"(?:bash|sh|zsh|dash|ksh)"
 _KEYWORD = re.compile(
@@ -268,12 +270,29 @@ def verdict(command: str) -> str | None:
     return None
 
 
+def record(payload: dict, command: str) -> None:
+    """One line per command that calls GitHub, so a quota burn can be matched to a session (13 November 2026,
+    third time at 0: nothing recorded who was calling). Never raises; GH_GUARD_LOG overrides the path."""
+    try:
+        if not re.search(r"\b(gh|review-status|assert-checks-started|fleet-status)\b", command):
+            return
+        path = os.environ.get("GH_GUARD_LOG") or os.path.expanduser("~/.gh-quota/calls.log")
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        line = {"at": time.strftime("%Y-%m-%dT%H:%M:%S%z"), "session": payload.get("session_id"), "cwd": payload.get("cwd"), "cmd": command[:240]}
+        with open(path, "a") as fh:
+            fh.write(json.dumps(line) + "\n")
+    except Exception:
+        pass
+
+
 def main() -> int:
     try:
         payload = json.load(sys.stdin)
         if payload.get("tool_name", "Bash") not in ("Bash", "Monitor"):
             return 0
         command = (payload.get("tool_input") or {}).get("command") or ""
+        if isinstance(command, str):
+            record(payload, command)
         why = verdict(command) if isinstance(command, str) else None
     except Exception:  # fail open: a broken guard must not block every session
         return 0

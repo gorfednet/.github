@@ -1,0 +1,43 @@
+#!/usr/bin/env node
+// One sample of the owner's GitHub core quota (`gh api rate_limit` does not count against it), appended to
+// ~/.gh-quota/samples.jsonl. When the quota fell by SPIKE or more since the last sample, the same line carries a
+// snapshot of the running gh and node commands, so the next burn names its callers (13 November 2026: the third
+// time the quota hit 0, and nothing recorded who was calling). Run every minute by a Herdr command job.
+import { execFileSync } from 'node:child_process'
+import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs'
+import { homedir } from 'node:os'
+import { dirname, join } from 'node:path'
+import { isMain } from '../templates/verification-kit/lib/isMain.mjs'
+
+export const SPIKE = 100
+
+/** The record for one sample, given the previous record (or null) and a function that lists processes. */
+export function makeSample({ prev, remaining, resetAt, now, ps }) {
+  const sample = { at: now, remaining, resetAt }
+  const sameWindow = prev && prev.resetAt === resetAt
+  if (sameWindow) {
+    sample.spent = prev.remaining - remaining
+    if (sample.spent >= SPIKE) sample.callers = ps()
+  }
+  return sample
+}
+
+const psList = () =>
+  execFileSync('ps', ['-axo', 'pid,etime,command'], { encoding: 'utf8' })
+    .split('\n')
+    .filter((l) => /\bgh\b|review-status|assert-checks-started|fleet-status|ship-bot|herdr-/.test(l) && !/ps -axo|gh-quota-sample/.test(l))
+    .map((l) => l.trim().slice(0, 200))
+
+if (isMain(import.meta.url)) {
+  const file = process.env.GH_QUOTA_LOG ?? join(homedir(), '.gh-quota', 'samples.jsonl')
+  const core = JSON.parse(execFileSync('gh', ['api', 'rate_limit'], { encoding: 'utf8' })).resources.core
+  let prev = null
+  if (existsSync(file)) {
+    const lines = readFileSync(file, 'utf8').trim().split('\n')
+    try { prev = JSON.parse(lines.at(-1)) } catch { prev = null }
+  }
+  const sample = makeSample({ prev, remaining: core.remaining, resetAt: core.reset, now: new Date().toISOString(), ps: psList })
+  mkdirSync(dirname(file), { recursive: true })
+  appendFileSync(file, `${JSON.stringify(sample)}\n`)
+  console.log(`gh-quota: ${sample.remaining} left${sample.spent != null ? `, ${sample.spent} spent since the last sample` : ''}`)
+}
