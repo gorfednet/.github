@@ -1,5 +1,6 @@
 # Per-repo count of skills, agents and MCP servers a session really called, from ~/.claude/projects transcripts.
 # Run: python3 -I docs/claude-home/plugin-usage.py
+# Also counts slash commands the owner typed (<command-name> tags), which are not tool calls.
 # Parses every JSONL line (top-level and subagent transcripts), counts Skill, Agent and the older Task tool.
 import os, re, json, collections
 
@@ -48,6 +49,8 @@ for dp, _, fs in os.walk(root):
         files[r] += 1
         with open(os.path.join(dp, f), 'rb') as fh:
             for line in fh:
+                for m in re.finditer(rb'<command-name>/?([^<]+)</command-name>', line):
+                    res[r]['typed'][m.group(1).decode().strip()] += 1
                 if b'"tool_use"' not in line:
                     continue
                 try:
@@ -70,7 +73,7 @@ for dp, _, fs in os.walk(root):
 
 for r in sorted(files, key=lambda x: -files[x]):
     print('##', r, 'transcripts', files[r])
-    for k in ('skill', 'agent', 'mcp'):
+    for k in ('skill', 'agent', 'typed', 'mcp'):
         items = res[r][k].most_common(14)
         if items:
             print('  ', k, ', '.join(f'{a}={v}' for a, v in items))

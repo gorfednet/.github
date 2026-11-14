@@ -2,7 +2,7 @@
 
 Owner, 14 November 2026: switch them on and off as needed across projects. Every reply carries the tool and skill schemas of everything switched on, so a tool a repo never uses is a cost with no return. The global `~/.claude/settings.json` keeps only what every repo uses. A repo's own `.claude/settings.json` turns on the rest. A session's tool set is fixed when it starts, so nothing flips mid-session.
 
-Evidence is real tool calls (Skill, Agent and the older Task, parsed from the JSON, subagent transcripts included) across all session transcripts on 14 November 2026, plus the briefs and skills that name a plugin. Re-run the count before adding a line: `plugin-usage.py` beside this file counts them.
+Evidence is real tool calls (Skill, Agent and the older Task, parsed from the JSON, subagent transcripts included) and slash commands the owner typed across all session transcripts on 14 November 2026, plus the briefs and skills that name a plugin. Re-run the count before adding a line: `plugin-usage.py` beside this file counts them.
 
 ## Global (every repo)
 
