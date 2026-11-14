@@ -418,7 +418,11 @@ pull request into `gorfednet/.github` it runs `git fetch origin` and
 `git checkout --detach origin/main` there (`lib/gates-worktree.mjs`). A worktree
 with uncommitted changes to tracked files is left alone, logged as an error and
 sent to the phone. Each wrapper also prints one warning line on stderr when its
-checkout is not at the last fetched `origin/main`.
+checkout is not at the last fetched `origin/main`. The fetch also moves
+`origin/main` for the whole .github clone, so a bot run from a checkout with no
+installed gate-scripts copy (the fallback above) would see its clone's HEAD
+behind and refuse passes until that clone is pulled. The installed copy is the
+normal mode and is unaffected.
 
 Run from a checkout with no installed copy,
 the bot checks that each configured script's clone is at `origin/main` and

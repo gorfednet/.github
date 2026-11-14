@@ -71,6 +71,8 @@ describe('install.sh loads the LaunchAgent without racing launchd (13 November 2
   it('a job that never leaves is bounded: gives up waiting after the tries', () => {
     const r = run({ lingering: 1000, tries: 3 })
     assert.match(r.stderr, /still lists x\.bot after bootout/)
+    assert.notEqual(r.status, 0, 'print finds the departing job, but no bootstrap succeeded')
+    assert.match(r.stderr, /is NOT loaded/)
   })
 
   it('a bot that was not loaded just bootstraps', () => {

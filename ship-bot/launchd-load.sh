@@ -28,16 +28,21 @@ wait_until_unloaded() {
 }
 
 load_agent() {
+  local ok=0
   unload
   if ! wait_until_unloaded; then
     echo "install.sh: launchd still lists ${LABEL} after bootout; trying to bootstrap anyway." >&2
   fi
-  if ! "${LAUNCHCTL}" bootstrap "${DOMAIN}" "${PLIST}"; then
+  if "${LAUNCHCTL}" bootstrap "${DOMAIN}" "${PLIST}"; then
+    ok=1
+  else
     echo "install.sh: bootstrap failed; waiting and trying once more." >&2
     wait_until_unloaded || true
-    "${LAUNCHCTL}" bootstrap "${DOMAIN}" "${PLIST}" || true
+    "${LAUNCHCTL}" bootstrap "${DOMAIN}" "${PLIST}" && ok=1
   fi
-  if ! agent_loaded; then
+  # `print` alone cannot tell the new job from the old one still departing, so a bootstrap
+  # that never succeeded fails here whatever `print` says (round 2 on #166).
+  if [[ "${ok}" -ne 1 ]] || ! agent_loaded; then
     echo "install.sh: ${LABEL} is NOT loaded, so the ship bot is not running. Run: launchctl bootstrap ${DOMAIN} ${PLIST}" >&2
     return 1
   fi
