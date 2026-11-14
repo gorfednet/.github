@@ -323,9 +323,20 @@ Every pull request that changes `ship-bot/` or the gate scripts
 (`scripts/review-status.mjs`, `scripts/gates/`, `scripts/lib/`) carries this
 line under `## Next`: `- [ ] After merge: reinstall from origin/main`. Until
 the reinstall, the installed bot is behind `origin/main`. It says so every
-pass and merges no pull request that changes control-plane paths. It does the
-same when it can't read how fresh its install is. Other pull requests still
-merge (INCIDENTS.md, 14 November 2026, ops 94).
+pass and merges no pull request that changes control-plane paths. It comments
+once on each one it holds. It does the same when it can't read how fresh its
+install is: GitHub's `main` can't be read, the clone's `origin/main` differs
+from it after a fetch, or `gates-main` was not advanced. Other pull requests
+still merge (INCIDENTS.md, 14 November 2026, ops 94).
+
+This hold is in the bot's own code, so it starts with the first reinstall that
+includes it. A bot installed from an older commit still merges control-plane
+pull requests while it is behind.
+
+If `install.sh` refuses `origin/main` (`check.sh` or the import check fails),
+the fix is itself a `ship-bot/` pull request and the installed bot holds it.
+The owner merges that fix on GitHub, then reinstalls. `install.sh` installs
+only from `origin/main`, so there is no other route.
 
 To stop it: add the **`hold`** label to a pull request, or run
 `node ~/.ship-bot/app/ship-bot.mjs --set-live false` to stop everything, or run

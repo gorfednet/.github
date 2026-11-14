@@ -227,10 +227,11 @@ const firstLine = (result, redactor) => {
 }
 
 /**
- * Does a reviewer thread open with Low (`Low: x`, `**Low**`, `Severity: Low`)? Fail closed: anything
- * else (High, Medium, plain prose, an empty body, `Lowering x`, `Low-risk`) is counted as Medium.
+ * Does a reviewer thread open with Low and a delimiter: `Low: x`, `Low. x`, `Low - x`, `**Low** x`,
+ * `Severity: Low. x`? Fail closed: anything else is counted as Medium (High, Medium, plain prose, an empty
+ * body, `Lowering x`, `Low-risk`, `Low/Medium: x`, `Low to Medium`, `Low (High if x)`, `[Low] x`).
  */
-export const opensWithLow = (body) => /^[^a-z]*(?:severity\b[^a-z]*)?low(?![\w-])/i.test(String(body ?? '').trim())
+export const opensWithLow = (body) => /^[^a-z]*(?:severity\b[^a-z]*)?low(?:\*\*|[:.]|\s?[-–—]\s)/i.test(String(body ?? '').trim())
 
 /**
  * Parse review-status's first line: `#N  state  detail`. It exits 0 only for

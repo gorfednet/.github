@@ -119,12 +119,20 @@ export const OWN_INSTALL_PATHS = [
  * 163 merged. `installedSha` is the commit `install.sh` copied (gate-scripts/SOURCE).
  * The answer reads the refs of the .github clone as they are: ship-bot fetches
  * them when it advances gates-main after each .github merge, so no pass pays
- * for a fetch.
+ * for a fetch. Those refs lag when gates-main was not advanced, a fetch failed
+ * or someone else merged, so a caller passes `mainSha`, GitHub's main: a clone
+ * whose origin/main is another commit is `unknown` with `lagging`, never `current`.
  *
- * @returns {Promise<{state: 'current', latest: string} | {state: 'stale', latest: string} | {state: 'unknown', reason: string}>}
+ * @returns {Promise<{state: 'current', latest: string} | {state: 'stale', latest: string} | {state: 'unknown', reason: string, lagging?: true}>}
  */
-export async function ownInstallFreshness({ path, installedSha, git }) {
+export async function ownInstallFreshness({ path, installedSha, git, mainSha }) {
   const first = (r) => String(r.stderr || r.stdout || '').trim().split('\n')[0]
+  if (mainSha !== undefined) {
+    if (!/^[0-9a-f]{40}$/.test(String(mainSha))) return { state: 'unknown', reason: 'GitHub gave no sha for main' }
+    const tip = await git(['-C', path, 'rev-parse', '--verify', 'refs/remotes/origin/main'])
+    if (tip.code !== 0) return { state: 'unknown', reason: `cannot read origin/main in ${path} (${first(tip)})` }
+    if (tip.stdout.trim() !== mainSha) return { state: 'unknown', lagging: true, reason: `origin/main in ${path} (${tip.stdout.trim().slice(0, 7)}) is not GitHub's main (${mainSha.slice(0, 7)})` }
+  }
   const latest = await git(['-C', path, 'rev-list', '-1', 'refs/remotes/origin/main', '--', ...OWN_INSTALL_PATHS])
   const sha = latest.stdout?.trim() ?? ''
   if (latest.code !== 0 || !/^[0-9a-f]{40}$/.test(sha)) return { state: 'unknown', reason: `cannot read origin/main in ${path} (${first(latest)})` }

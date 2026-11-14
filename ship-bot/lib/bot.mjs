@@ -82,9 +82,17 @@ export async function runOnce(deps) {
 
   const repos = selectRepos(config.repos, deps.repoNames)
   recoverInterruptedDeploys(ctx)
-  // Run from a checkout (no installed copy) there is nothing to be behind.
-  ctx.ownInstall = deps.installedSha ? await checkOwnInstall(ctx, deps.installedSha) : { state: 'current' }
   if (quotaPaused(ctx)) {
+    stateStore.save()
+    return ctx.decisions
+  }
+  // Run from a checkout (no installed copy) there is nothing to be behind.
+  ctx.ownInstall = { state: 'current' }
+  try {
+    if (deps.installedSha) ctx.ownInstall = await checkOwnInstall(ctx, deps.installedSha)
+  } catch (cause) {
+    if (!(cause instanceof RateLimitError)) throw cause
+    await quotaLow(ctx, cause)
     stateStore.save()
     return ctx.decisions
   }
@@ -414,7 +422,7 @@ async function processPull(ctx, repo, pr, defaultBranch) {
   // A stale or unreadable install gates with old rules (ops 94, INCIDENTS.md 14 November 2026), so it
   // merges nothing that changes control-plane paths. Everything else still merges.
   if (ctx.ownInstall.state !== 'current' && (await controlPlane())) {
-    await holdForStaleInstall(ctx, tag, `${repo.slug}#${pr.number}`)
+    await holdForStaleInstall(ctx, repo, pr, tag)
     return false
   }
 
@@ -795,6 +803,12 @@ async function advanceTools(ctx, repo) {
  * pull request that changes control-plane paths. No .github row or a failed
  * read is `unknown`, which holds them the same way.
  *
+ * The clone's origin/main is only as new as its last fetch, so it is checked
+ * against GitHub's main (one API read a pass). When it lags, or gates-main was
+ * refused after an earlier merge (`toolsRefused`), a live pass tries the
+ * advance again, which fetches. Still lagging or refused is `unknown`. A
+ * RateLimitError is thrown on, and the caller stops the pass.
+ *
  * @returns {Promise<{state: 'current'} | {state: 'stale', latest: string} | {state: 'unknown', reason: string}>}
  */
 async function checkOwnInstall(ctx, installedSha) {
@@ -808,8 +822,16 @@ async function checkOwnInstall(ctx, installedSha) {
   const git = (args) => ctx.runner.run({ kind: 'git-read', cmd: 'git', args, env: ctx.baseEnv, timeoutMs: 15_000 })
   let r
   try {
-    r = await ownInstallFreshness({ path: wt.path, installedSha, git })
+    const mainSha = await ctx.github.getBranchSha(GATES_REPO, 'main')
+    const refused = () => ctx.state.data.toolsRefused?.[wt.name]
+    const read = async () => (refused() ? { state: 'unknown', lagging: true, reason: `${wt.name} was not advanced (${refused()})` } : ownInstallFreshness({ path: wt.path, installedSha, git, mainSha }))
+    r = await read()
+    if (r.lagging && !ctx.dry) {
+      await advanceTools(ctx, row)
+      r = await read()
+    }
   } catch (cause) {
+    if (cause instanceof RateLimitError) throw cause
     r = { state: 'unknown', reason: `unexpected error: ${cause.message}` }
   }
   if (r.state === 'unknown') {
@@ -830,15 +852,17 @@ async function checkOwnInstall(ctx, installedSha) {
   return r
 }
 
-/** Says why a ready control-plane pull request is not merged by a stale install: one warning and one notification per pull request per stale commit (state `ownInstall.held`), a debug line after that. */
-async function holdForStaleInstall(ctx, tag, key) {
+/** Says why a ready control-plane pull request is not merged by a stale install: one warning and one notification per pull request per stale commit (state `ownInstall.held`), a debug line after that, and one comment per head. */
+async function holdForStaleInstall(ctx, repo, pr, tag) {
   const own = ctx.ownInstall
+  const key = `${repo.slug}#${pr.number}`
   const why = own.state === 'stale' ? `the installed ship-bot is behind origin/main (${short(own.latest)})` : `the installed ship-bot's freshness could not be read (${own.reason})`
   const text = `${tag}: every gate passed, but not merging: it changes control-plane paths and ${why}. It merges after ship-bot is reinstalled from origin/main`
   const held = ((ctx.state.data.ownInstall ??= {}).held ??= {})
   const mark = own.latest ?? 'unknown'
   const seen = held[key] === mark
   ctx.say(seen ? 'debug' : 'warn', text)
+  await postOnce(ctx, repo, pr.number, pr.head.sha, 'stale-install', `Ship bot is not merging this yet. Every gate passed, but this pull request changes control-plane paths and ${why}. An out-of-date bot gates with out-of-date rules.\n\nIt merges on the first pass after ship-bot is reinstalled from origin/main. Nothing on this pull request needs to change.`)
   if (seen || ctx.dry) return
   held[key] = mark
   ctx.state.save()
@@ -890,6 +914,10 @@ async function liveMerge(ctx, repo, pr, tag, plan) {
     rs.deployInProgress = { pr: pr.number, sha, stage: 'merge', startedAt: ctx.clock.now().toISOString() }
     ctx.state.save()
   }
+
+  // A merge into .github can change what install.sh copies, and the freshness read at the top of the
+  // pass predates it. The rest of this pass (maxMergesPerPass can be over 1) treats the install as unread.
+  if (repo.slug === GATES_REPO) ctx.ownInstall = { state: 'unknown', reason: `#${pr.number} was merged into ${GATES_REPO} in this pass, after the freshness read` }
 
   let mergeSha
   try {

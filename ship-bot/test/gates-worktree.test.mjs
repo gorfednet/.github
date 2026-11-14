@@ -5,7 +5,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, it } from 'node:test'
 import { GATES_REPO, TOOL_WORKTREES, advanceGatesWorktree, ownInstallFreshness, toolWorktreeFor } from '../lib/gates-worktree.mjs'
-import { FakeGitHub, MERGE, makePr, makeRunner, repoEntry, scenario } from './fakes.mjs'
+import { RateLimitError } from '../lib/github.mjs'
+import { FakeGitHub, MERGE, PARENT, makePr, makeRunner, repoEntry, scenario } from './fakes.mjs'
 
 const g = (cwd, ...args) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...args], { cwd, encoding: 'utf8' }).trim()
 /** The real git, shaped like the bot's runner result. */
@@ -261,9 +262,13 @@ describe('ownInstallFreshness: the installed bot against origin/main (plan row 1
 
 describe('ship-bot warns when its own install is behind main', () => {
   const gatesRow = () => mergeOnly({ slug: GATES_REPO, dir: 'gorfednet.github' })
-  /** git answers: origin/main's last ship-bot/ commit is `latest`; `installed` contains it only when `current`. */
+  /** git answers: the clone's origin/main is `main` (GitHub's, unless a test says otherwise), its last ship-bot/ commit is `latest`; `installed` contains it only when `current`. A fetch moves origin/main to `afterFetch` when set. */
   const runnerFor = (box) => makeRunner({
     handle: (c) => {
+      if (c.cmd === 'git' && c.args[2] === 'fetch' && box.afterFetch) box.main = box.afterFetch
+      if (c.cmd === 'git' && c.args[2] === 'status' && box.dirty) return { stdout: ' M scripts/review-status.mjs\n' }
+      if (c.cmd === 'git' && c.args[2] === 'rev-parse' && c.args[3] === '--show-prefix') return { stdout: '' }
+      if (c.cmd === 'git' && c.args[2] === 'rev-parse' && c.args.at(-1) === 'refs/remotes/origin/main') return { stdout: box.main ?? PARENT }
       if (c.kind !== 'git-read') return undefined
       if (c.args[2] === 'rev-list') return { stdout: box.latest }
       if (c.args[2] === 'merge-base') return { code: box.current ? 0 : 1, stdout: '' }
@@ -315,6 +320,8 @@ describe('ship-bot warns when its own install is behind main', () => {
     assert.equal(held(s).length, 1, 'one warning for the PR, debug after that')
     assert.match(held(s)[0], /installed ship-bot is behind origin\/main \(bbbbbbb\)/)
     assert.equal(s.runner.ofKind('notify').length, 2, 'one for the stale install, one for the held PR')
+    const said = s.github.commentsPosted().filter((c) => /changes control-plane paths and the installed ship-bot is behind origin\/main/.test(c.body))
+    assert.equal(said.length, 1, 'one comment on the held PR for this head')
     box.current = true
     await s.run('live', { installedSha })
     assert.equal(merges(s.github).length, 1)
@@ -338,6 +345,61 @@ describe('ship-bot warns when its own install is behind main', () => {
         if (!want) assert.match(held(s)[0], /freshness could not be read/)
       }
     }
+  })
+
+  it('a merge into .github in this pass makes the install unread for the rest of it: a later control-plane PR waits', async () => {
+    const github = new FakeGitHub({ pullsBySlug: { [GATES_REPO]: [gatesPr()] }, files: ['scripts/lib/x.mjs'] })
+    const s = scenario({ repos: [gatesRow(), mergeOnly()], github, runner: runnerFor({ latest: 'b'.repeat(40), current: true }) })
+    await s.run('live', { installedSha: 'a'.repeat(40) })
+    assert.deepEqual(merges(github).map((w) => w.slug), [GATES_REPO], s.logs.join('\n'))
+    assert.match(held(s)[0], /freshness could not be read \(#7 was merged into gorfednet\/\.github in this pass/)
+  })
+
+  it("the clone's origin/main is not GitHub's main: one fetch is tried; still behind is held, caught up merges", async () => {
+    const lagging = { latest: 'b'.repeat(40), current: true, main: 'e'.repeat(40) }
+    const s = withPr(lagging, ['scripts/lib/x.mjs'])
+    await s.run('live', { installedSha: 'a'.repeat(40) })
+    assert.equal(merges(s.github).length, 0, s.logs.join('\n'))
+    assert.match(held(s)[0], /origin\/main in .* \(eeeeeee\) is not GitHub's main \(ccccccc\)/)
+    assert.equal(s.runner.calls.filter((c) => c.args?.[2] === 'fetch').length, 1)
+    const ordinary = withPr({ ...lagging }, ['docs/readme.md'])
+    await ordinary.run('live', { installedSha: 'a'.repeat(40) })
+    assert.equal(merges(ordinary.github).length, 1)
+    const caughtUp = withPr({ ...lagging, afterFetch: PARENT }, ['scripts/lib/x.mjs'])
+    await caughtUp.run('live', { installedSha: 'a'.repeat(40) })
+    assert.equal(merges(caughtUp.github).length, 1, caughtUp.logs.join('\n'))
+  })
+
+  it('gates-main refused after an earlier merge (toolsRefused): held while it stays refused, merges once it advances', async () => {
+    const seed = (s) => {
+      const st = s.state()
+      st.data.toolsRefused = { 'gates-main': 'it had uncommitted changes' }
+      st.save()
+    }
+    const s = withPr({ latest: 'b'.repeat(40), current: true, dirty: true }, ['scripts/lib/x.mjs'])
+    seed(s)
+    await s.run('live', { installedSha: 'a'.repeat(40) })
+    assert.equal(merges(s.github).length, 0, s.logs.join('\n'))
+    assert.match(held(s)[0], /gates-main was not advanced/)
+    const clean = withPr({ latest: 'b'.repeat(40), current: true }, ['scripts/lib/x.mjs'])
+    seed(clean)
+    await clean.run('live', { installedSha: 'a'.repeat(40) })
+    assert.equal(clean.state().data.toolsRefused?.['gates-main'], undefined, clean.logs.join('\n'))
+    assert.equal(merges(clean.github).length, 1, clean.logs.join('\n'))
+  })
+
+  it("GitHub's main unreadable: held; a rate-limit refusal stops the pass before any pull request is read", async () => {
+    const s = withPr({ latest: 'b'.repeat(40), current: true }, ['scripts/lib/x.mjs'])
+    s.github.branchSha = new Error('HTTP 502')
+    await s.run('live', { installedSha: 'a'.repeat(40) })
+    assert.equal(merges(s.github).length, 0, s.logs.join('\n'))
+    assert.match(held(s)[0], /freshness could not be read \(unexpected error: HTTP 502\)/)
+    const limited = withPr({ latest: 'b'.repeat(40), current: true }, ['docs/readme.md'])
+    limited.github.branchSha = new RateLimitError({ remaining: 0, resetAt: '2026-10-09T12:30:00Z' })
+    await limited.run('live', { installedSha: 'a'.repeat(40) })
+    assert.equal(merges(limited.github).length, 0)
+    assert.equal(limited.github.calls.filter((c) => c.name === 'listOpenPulls').length, 0, limited.logs.join('\n'))
+    assert.ok(limited.state().data.rateLimits, 'the quota pause is recorded')
   })
 
   it('no installed copy (run from a checkout): no check', async () => {

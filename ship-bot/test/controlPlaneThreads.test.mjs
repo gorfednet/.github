@@ -44,11 +44,11 @@ describe('control-plane PRs need a clean review for Medium and High threads (row
     for (const body of ['High: x', 'Medium: x']) assert.equal(merges((await run(['ship-bot/lib/bot.mjs'], body, { handle: relief })).gh).length, 0, body)
   })
   it('severity is read fail closed: a thread that does not open with Low counts as Medium', async () => {
-    for (const body of ['**Medium** x', 'Severity: High. x', 'This loop never ends.', '', 'Lowering the timeout hides it', 'Low-risk, but it drops the check']) {
+    for (const body of ['**Medium** x', 'Severity: High. x', 'This loop never ends.', '', 'Lowering the timeout hides it', 'Low-risk, but it drops the check', 'Low/Medium: x', 'Low to Medium: x', 'Low (High if the lock is held): x', '[Low] x', '🟡 Low x']) {
       assert.equal(opensWithLow(body), false, body)
       assert.equal(merges((await run(['ship-bot/lib/bot.mjs'], body)).gh).length, 0, body)
     }
-    for (const body of ['Low: x', '**Low**: x', '[Low] x', 'Severity: Low. x', '🟡 Low x']) {
+    for (const body of ['Low: x', '**Low**: x', '**Low:** x', 'Low. x', 'Low - x', 'Low — x', '🟡 Low: x', 'Severity: Low. x']) {
       assert.equal(opensWithLow(body), true, body)
       assert.equal(merges((await run(['ship-bot/lib/bot.mjs'], body)).gh).length, 1, body)
     }
