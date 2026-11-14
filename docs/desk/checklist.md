@@ -104,3 +104,11 @@ Weekly 9% at 11:21 ET. Full speed, cost-aware. One line to the owner at about 90
 - [ ] Phase 7 docs: .github 185, 4thcltr 273 (review, label)
 - [ ] Local models first eval (1.19): next infra start, when load is under 10
 - [x] Full steam until the owner's resets; reset timing in the brief
+
+## Added 14 Nov morning (14th Desk)
+- [x] .github 185, 187, 188 merged; ops 74, 86 merged
+- [ ] Ship-bot reinstall (owner, Mac): installs release-only deploys and ProcessType Interactive; then unblock papers
+- [ ] Papers 40 and heuristics 99: wordmark specs read per cut (labelled / in review)
+- [ ] 4thcltr 273 (e2e timing flake, rerun) and 274 (full gate): labelled
+- [x] 1.19 step 0: CI-log triage dropped (logs about 1% of reads); [ ] remeasure images in tokens
+- [ ] AI Agent Check add-on: memo in 4thcltr 275; plan row after the Phase 7 forms
