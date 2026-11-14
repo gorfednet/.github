@@ -144,6 +144,15 @@ describe('a labelled PR refused for the same reason over 2 hours becomes a job (
     assert.equal(job.next, 'https://github.com/gorfednet/site/pull/7')
     assert.equal(job.run.pr, true)
   })
+  it('a wait (checks still pending) is never a stall, however long', async () => {
+    const gh = new FakeGitHub({ runs: [{ name: 'check / check', status: 'in_progress', conclusion: null, started_at: '2026-10-09T12:00:00Z' }] })
+    const s = scenario({ github: gh })
+    withJobsDir(s)
+    await s.run()
+    s.clock.advance(300)
+    await s.run()
+    assert.deepEqual(jobsOf(s), [])
+  })
   it('a changed reason restarts the clock', async () => {
     const { gh, s } = setup()
     await s.run()

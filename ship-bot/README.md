@@ -464,3 +464,5 @@ merged. Each pass logs `gate scripts from the ...` with the source.
 
 - A repo block (`--unblock` territory) queues one diagnosis job: `lib/herdr-jobs.mjs` writes `blk-<repo>-<hash>.json` into the ops clone's Herdr jobs folder (`<sourceRoot>/ops/hosts/gorfpael/herdr/jobs`) with `wx`, so the file is the claim and later passes write nothing. No ops clone, no job; a dry run only says so. The reconciler starts it under its caps.
 - A pull request whose reviewer threads have no answer gets the `needs-fix` label (removed once every gate passes). Herdr's importer turns that label into a continue-this-PR job.
+
+Stall and unblock details (row 1.14): a labelled pull request refused for the same failing reason for over 2 hours queues one `stl-…` Herdr job, which pushes to that PR's branch (waits such as pending checks never count). `needs-fix` also comes off a PR that is on hold, lost `ready-to-merge` or conflicts. `--unblock` acts at once only when no pass is running; otherwise it queues a request that the next pass applies, and a block set after the request was written survives it.

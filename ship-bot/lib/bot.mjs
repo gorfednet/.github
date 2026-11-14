@@ -395,7 +395,9 @@ async function processPull(ctx, repo, pr, defaultBranch) {
       await postOnce(ctx, repo, pr.number, sha, key, `Ship bot is not merging this yet.\n\n${reasons}\n\nIt checks again every couple of minutes. Add the \`${HOLD_LABEL}\` label to make it stop looking.`)
     }
     for (const block of fails.filter((b) => b.notify)) await notifyOnce(ctx, headState, tag, block)
-    trackStall(ctx, repo, pr, headState, result.blocks)
+    // Only refusals a person or a builder can fix: a wait (checks pending, a read that failed) is the bot's or CI's, not the branch's.
+    if (fails.length > 0) trackStall(ctx, repo, pr, headState, fails)
+    else delete headState.stall
     return false
   }
   delete headState.stall
