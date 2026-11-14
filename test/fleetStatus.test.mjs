@@ -10,7 +10,7 @@ import { join } from 'node:path'
 import { describe, it } from 'node:test'
 
 import { behindClones, collectLocal, dirtyClones, duplicatePrs, idlePrs, idleSessions, oldWorktrees } from '../scripts/lib/hygiene.mjs'
-import { aheadCounts, ciState, collectRepo, mapLimit, dependabotRed, isPrivateRepo, latestDeploy, nextItem, recentLines, redactRepo, repoList } from '../scripts/fleet-status.mjs'
+import { aheadCounts, carryMap, ciState, collectRepo, mapLimit, dependabotRed, isPrivateRepo, latestDeploy, nextItem, recentLines, redactRepo, repoList } from '../scripts/fleet-status.mjs'
 import { workflowTriggers } from '../scripts/lib/workflowTriggers.mjs'
 import { digest, etStamp, hygiene, lowerMeridiem, render, summaryLine } from '../scripts/write-status-md.mjs'
 
@@ -435,6 +435,13 @@ describe('the 2-hourly light run (plan row 1.14)', () => {
     const out = JSON.parse(readFileSync(join(dir, 'o.json'), 'utf8'))
     assert.equal(out.carried, false)
     assert.ok(Date.now() - Date.parse(out.branchesReadAt) < 60000)
+  })
+  it('a redacted private row is carried by its count, so private repositories cost no branch calls either', () => {
+    const m = carryMap({ repos: [{ slug: 'o/private', redacted: true, noPrCount: 2 }, { slug: 'o/pub', branchesAhead: [{ branch: 'b', ahead: 1 }] }, { slug: 'o/gone', unavailable: 'x' }] })
+    assert.equal(m.get('o/private').length, 2)
+    assert.deepEqual(redactRepo({ slug: 'o/private', branchesAhead: m.get('o/private'), openPrs: [], lapsedBacklog: [], idlePrs: [], duplicatePrs: [], lastDeploy: null, incidents7d: 0, dependabotRed: [], kitVersion: null, mainRed: false, defaultBranch: 'main' }).noPrCount, 2)
+    assert.equal(m.get('o/pub').length, 1)
+    assert.equal(m.get('o/gone'), undefined)
   })
   it('a full run (no carry) does list branches', async () => {
     const calls = []

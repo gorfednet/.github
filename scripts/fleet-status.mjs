@@ -309,6 +309,11 @@ export async function gatherRepo(slug, now = new Date(), { includePrivate = fals
   return isPrivate && !includePrivate ? redactRepo(full) : full
 }
 
+/** slug -> branch list to carry from an earlier status.json. A redacted private row has only a count: carried as that many placeholders, so redactRepo gives the same count and no branch call is made. */
+export function carryMap(earlier) {
+  return new Map(earlier.repos.map((r) => [r.slug, r.branchesAhead ?? (Number.isInteger(r.noPrCount) ? Array.from({ length: r.noPrCount }, () => ({ branch: '(private)', ahead: 1 })) : undefined)]))
+}
+
 /** Run `fn` over `items`, at most `limit` at once; results keep the input order. */
 export async function mapLimit(items, limit, fn) {
   const out = new Array(items.length)
@@ -388,7 +393,7 @@ if (isMain(import.meta.url)) {
     // makes the next one full, whatever the hour is.
     const earlier = arg('--carry-branches') ? JSON.parse(readFileSync(arg('--carry-branches'), 'utf8')) : null
     const fresh = earlier?.branchesReadAt && now - Date.parse(earlier.branchesReadAt) < 23 * 3600 * 1000
-    const carry = fresh ? new Map(earlier.repos.map((r) => [r.slug, r.branchesAhead])) : null
+    const carry = fresh ? carryMap(earlier) : null
     if (carry) extra.push('--carry-branches', arg('--carry-branches'))
     carriedFrom = carry ? earlier.branchesReadAt : null
     const rows = await mapLimit(slugs, 10, async (slug) => {
