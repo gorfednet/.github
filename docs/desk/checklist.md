@@ -114,10 +114,11 @@ Weekly 9% at 11:21 ET. Full speed, cost-aware. One line to the owner at about 90
 - [ ] AI Agent Check add-on: memo in 4thcltr 275; plan row after the Phase 7 forms
 
 ## Added 14 Nov late morning (15th Desk)
-- [x] Plex check false failures fixed (ops 91 merged); [ ] owner reruns plex-check
+- [x] Plex check false failures fixed (ops 91 merged); [x] owner reran plex-check, clean (10:50 ET)
 - [x] healthchecks.io: backup, Pi-hole export, Homebridge checks live
 - [x] Pi-hole nightly export to NAS (10:25 ET); [ ] restore-drill canary fix (builder, ops fix/pihole-drill-canary)
 - [x] Model downloads unblocked (Full Disk Access for Herdr Core); [ ] pass 2 retry of ~20 failed models
 - [x] Homebridge Ring back (Node 24 for Homebridge, new token)
-- [ ] ops 74 owner steps: docker policy, DSM checks
+- [x] ops 74 docker policy applied (10:54 ET: nginx 1.31-alpine and cloudflared 2026.11.0 pinned, arrs auto, 3.96 GB pruned); [ ] docker-policy counts in-use images as dangling (fix in ops)
+- [x] Hyper Backup last runs ok (servers 06:04, archive 07:05 ET); [ ] DSM: servers task to 10:00, music task, #recycle decisions
 - [ ] NAS restore-drill copy (owner, DSM)
