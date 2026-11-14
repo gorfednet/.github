@@ -1,12 +1,12 @@
 {
-  "generatedAt": "2026-11-14T16:32:17.544Z",
-  "renderedAt": "2026-11-14T16:32:17.544Z",
+  "generatedAt": "2026-11-14T18:32:03.205Z",
+  "renderedAt": "2026-11-14T18:32:03.205Z",
   "repos": [
     {
       "slug": "gorfednet/bindercurve.com",
       "redacted": true,
       "mainRed": true,
-      "openPrCount": 5,
+      "openPrCount": 6,
       "lapsedBacklogCount": 0,
       "noPrCount": 78,
       "idlePrCount": 0,
@@ -18,7 +18,7 @@
       "slug": "gorfednet/4thcltr.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 23,
+      "openPrCount": 24,
       "lapsedBacklogCount": 0,
       "noPrCount": 13,
       "idlePrCount": 7,
@@ -135,46 +135,32 @@
       "kitVersion": "0.61.0"
     },
     {
-      "slug": "gorfednet/TowIt",
-      "redacted": true,
-      "mainRed": false,
-      "openPrCount": 0,
-      "lapsedBacklogCount": 2,
-      "noPrCount": 3,
-      "idlePrCount": 0,
-      "duplicatePrCount": 0,
-      "dependabotRedCount": 0,
-      "kitVersion": "0.35.0"
-    },
-    {
-      "slug": "gorfednet/wychwood",
-      "redacted": true,
-      "mainRed": false,
-      "openPrCount": 0,
-      "lapsedBacklogCount": 0,
-      "noPrCount": 2,
-      "idlePrCount": 0,
-      "duplicatePrCount": 0,
-      "dependabotRedCount": 0,
-      "kitVersion": "0.35.0"
-    },
-    {
       "slug": "gorfednet/.github",
       "defaultBranch": "main",
       "mainRed": false,
       "openPrs": [
         {
-          "number": 190,
-          "title": "Row 1.13: record heartbeat proofs, fix IPv6 connect timeout behind false capacity downs",
+          "number": 193,
+          "title": "Eval set 1.27: manifest schema, case verification and scorer",
           "ageDays": 0,
-          "labels": [
-            "ready-to-merge"
-          ],
-          "draft": false,
-          "review": "clean",
-          "headSha": "ca9ad6c6035545ffdf87c66e7c70cf08f900e3ac",
-          "ci": "green",
-          "next": "Merge once `review-status` is clean and CI is green (ship-bot does it on the `ready-to-merge` label)",
+          "labels": [],
+          "draft": true,
+          "review": "not-run",
+          "headSha": "6fe81e4c6530048d9fe974a162c51609f78f2704",
+          "ci": "pending",
+          "next": "Fable reviewer checks every label rule and the pass bar (design decision, brief 1.27)",
+          "author": "gorfednet"
+        },
+        {
+          "number": 191,
+          "title": "Cost per PR: tokens by model from session transcripts (plan row 1.26)",
+          "ageDays": 0,
+          "labels": [],
+          "draft": true,
+          "review": "findings",
+          "headSha": "458decda4566bd0a087755e58aa7329948164a70",
+          "ci": "pending",
+          "next": "Claude review on the head, then label `ready-to-merge` when the gates are clean (session brave-hugle-97fcf2 does it).",
           "author": "gorfednet"
         },
         {
@@ -187,42 +173,6 @@
           "headSha": "87092f1b035d206c0d5f24d8830c5cc7b5815734",
           "ci": "green",
           "next": "Fable review, then Desk asks the owner (path, org name, Team plan, cutover sitting)",
-          "author": "gorfednet"
-        },
-        {
-          "number": 175,
-          "title": "Quota attribution: guard call log and burn sampler",
-          "ageDays": 0,
-          "labels": [],
-          "draft": false,
-          "review": "findings",
-          "headSha": "b4bbf5165bf4340bc0563da86c77408bd8b540af",
-          "ci": "green",
-          "next": "merge (the hook lives in `docs/claude-home/hooks/`: Desk copies it to `~/.claude/hooks/` after merge)",
-          "author": "gorfednet"
-        },
-        {
-          "number": 159,
-          "title": "settings: narrow the hc allow; deny merge, force-push and delete wrapped in hc or gate-run (row 5.5b)",
-          "ageDays": 0,
-          "labels": [],
-          "draft": false,
-          "review": "clean",
-          "headSha": "fa80a5e7aa309581647a436f99fb28d682c3a506",
-          "ci": "green",
-          "next": "Merge only after #153 has merged. This branch carries 153's commits, and 153 still has 2 unanswered Medium review threads (shipping.md janitor wording, desk-rotate step order). Don't label 159 before 153 merges, or 153's content lands with those threads open.",
-          "author": "gorfednet"
-        },
-        {
-          "number": 154,
-          "title": "Backlog triage (4.3), ranked-plan generator (4.1), dormant repos out of STATUS (4.7)",
-          "ageDays": 0,
-          "labels": [],
-          "draft": false,
-          "review": "not-run",
-          "headSha": "71d6eac5415dd22fac1b6053285e2328d54efb67",
-          "ci": "green",
-          "next": "Merge once CI is green and the review is clean.",
           "author": "gorfednet"
         },
         {
@@ -244,7 +194,7 @@
           "labels": [],
           "draft": true,
           "review": "not-run",
-          "headSha": "c361702aa9c200e408f9d0ad38a7d6ae2f3b1070",
+          "headSha": "018c5752a56d161ada67ac1650671b6daddd260c",
           "ci": "none",
           "next": "Desk appends each pass's line until the 02:00 ET rotation (hold: the log is still being written)",
           "author": "gorfednet"
@@ -282,9 +232,9 @@
           ],
           "draft": false,
           "review": "findings",
-          "headSha": "648359191ca0b3fa563db15ebd7454fc7a21f258",
-          "ci": "pending",
-          "next": "the Claude review of 941aab6 reads clean or triaged",
+          "headSha": "6c990d9381629a1e17cd708d27ddcf078391e375",
+          "ci": "green",
+          "next": "the Claude review of 6c990d9 (round 8) reads clean or triaged. Still labelled ready-to-merge, so ship-bot merges on that verdict. Past the cap, only a High or Medium forces another fix",
           "author": "gorfednet"
         },
         {
@@ -408,53 +358,8 @@
       ],
       "lapsedBacklog": [
         {
-          "id": "towit-open-security-bump",
-          "status": "confirmed-bug",
-          "reviewBy": "2026-10-15"
-        },
-        {
-          "id": "fleet-adoption-outstanding",
-          "status": "landed",
-          "reviewBy": "2026-11-01"
-        },
-        {
-          "id": "backlog-status-never-checked-against-github",
-          "status": "landed",
-          "reviewBy": "2026-11-01"
-        },
-        {
-          "id": "citation-scan-walks-untracked-third-party",
-          "status": "landed",
-          "reviewBy": "2026-11-01"
-        },
-        {
-          "id": "tier-2-evidence-proves-nothing",
-          "status": "landed",
-          "reviewBy": "2026-11-01"
-        },
-        {
-          "id": "drift-gate-treats-behind-as-broken",
-          "status": "landed",
-          "reviewBy": "2026-10-15"
-        },
-        {
-          "id": "five-projects-run-tests-with-no-floor",
-          "status": "landed",
-          "reviewBy": "2026-10-15"
-        },
-        {
           "id": "publish-the-server-never-saw",
           "status": "confirmed-bug",
-          "reviewBy": "2026-10-15"
-        },
-        {
-          "id": "build-rewrites-tracked-files",
-          "status": "landed",
-          "reviewBy": "2026-10-31"
-        },
-        {
-          "id": "paths-named-not-derived",
-          "status": "landed",
           "reviewBy": "2026-10-15"
         }
       ],
@@ -464,12 +369,6 @@
           "title": "The live healthcheck applied the HTML size floor to sitemaps and robots.txt",
           "status": "confirmed-bug",
           "reviewBy": "2026-12-01"
-        },
-        {
-          "id": "towit-open-security-bump",
-          "title": "towit.io has an open Dependabot PR bumping requests from 2.6.0 to 2.34.2",
-          "status": "confirmed-bug",
-          "reviewBy": "2026-10-15"
         },
         {
           "id": "cards-at-overwritable-urls",
@@ -506,6 +405,24 @@
           "title": "Ship-bot's default rollback can never pass site-deploy's merged-tip guard",
           "status": "confirmed-bug",
           "reviewBy": "2026-12-13"
+        },
+        {
+          "id": "healthchecks-alerts-email-only",
+          "title": "Dead-man alerts reach the owner by email only: healthchecks.io has no ntfy integration",
+          "status": "confirmed-bug",
+          "reviewBy": "2026-12-14"
+        },
+        {
+          "id": "heartbeat-deadman-deliberate-stop-unproven",
+          "title": "Row 1.13's deliberate dead-man proof (stop the job, see the alert) has not run",
+          "status": "confirmed-bug",
+          "reviewBy": "2026-11-28"
+        },
+        {
+          "id": "fleet-registry-missing-repos",
+          "title": "Six active repositories are missing from fleet.json",
+          "status": "confirmed-bug",
+          "reviewBy": "2026-11-27"
         }
       ],
       "idlePrs": [
@@ -540,7 +457,7 @@
       "slug": "gorfednet/MoonMan",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 10,
+      "openPrCount": 9,
       "lapsedBacklogCount": 0,
       "noPrCount": 41,
       "idlePrCount": 0,
@@ -592,7 +509,7 @@
       "slug": "gorfednet/heuristics.4thcltr.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 11,
+      "openPrCount": 10,
       "lapsedBacklogCount": 12,
       "noPrCount": 5,
       "idlePrCount": 0,
@@ -649,29 +566,33 @@
       "kitVersion": "0.61.0"
     }
   ],
+  "dormant": [
+    "gorfednet/TowIt",
+    "gorfednet/wychwood"
+  ],
   "branchesReadAt": "2026-11-14T02:32:09.796Z",
   "carried": true,
   "inventory": {
-    "measuredAt": "2026-11-14T16:32:17.544Z",
+    "measuredAt": "2026-11-14T18:32:03.205Z",
     "counts": {
       "pr": {
-        "total": 111,
-        "orphans": 64
+        "total": 109,
+        "orphans": 62
       },
       "session": null,
       "worktree": null,
       "job": null,
       "backlog": {
-        "total": 8,
-        "orphans": 5
+        "total": 10,
+        "orphans": 1
       }
     },
     "orphans": [
       {
         "kind": "pr",
         "repo": "gorfednet/.github",
-        "ref": "#190",
-        "label": "Row 1.13: record heartbeat proofs, fix IPv6 connect timeout behind false capacity downs",
+        "ref": "#193",
+        "label": "Eval set 1.27: manifest schema, case verification and scorer",
         "private": false,
         "lapsed": false
       },
@@ -680,14 +601,6 @@
         "repo": "gorfednet/.github",
         "ref": "#189",
         "label": "Plan: move the fleet into one GitHub organization (assessment only)",
-        "private": false,
-        "lapsed": false
-      },
-      {
-        "kind": "pr",
-        "repo": "gorfednet/.github",
-        "ref": "#175",
-        "label": "Quota attribution: guard call log and burn sampler",
         "private": false,
         "lapsed": false
       },
@@ -774,45 +687,13 @@
       {
         "kind": "backlog",
         "repo": "gorfednet/.github",
-        "ref": "html-min-bytes-applied-to-assets",
-        "label": "The live healthcheck applied the HTML size floor to sitemaps and robots.txt",
-        "private": false,
-        "lapsed": false
-      },
-      {
-        "kind": "backlog",
-        "repo": "gorfednet/.github",
-        "ref": "cards-at-overwritable-urls",
-        "label": "Most sites still declare a social card at a URL that cannot be replaced",
-        "private": false,
-        "lapsed": false
-      },
-      {
-        "kind": "backlog",
-        "repo": "gorfednet/.github",
         "ref": "publish-the-server-never-saw",
         "label": "Every deploy to the ten NAS sites reached the filesystem and not the visitor",
         "private": false,
         "lapsed": true
-      },
-      {
-        "kind": "backlog",
-        "repo": "gorfednet/.github",
-        "ref": "fleet-analytics-one-service",
-        "label": "The fleet has page-view analytics only, from Cloudflare, and no way to count an enquiry; BinderCurve also runs Google Tag Manager",
-        "private": false,
-        "lapsed": false
-      },
-      {
-        "kind": "backlog",
-        "repo": "gorfednet/.github",
-        "ref": "ship-bot-default-rollback-cannot-pass-tip-guard",
-        "label": "Ship-bot's default rollback can never pass site-deploy's merged-tip guard",
-        "private": false,
-        "lapsed": false
       }
     ],
-    "hiddenPrivate": 51,
-    "privateReposNotItemised": 20
+    "hiddenPrivate": 50,
+    "privateReposNotItemised": 18
   }
 }
