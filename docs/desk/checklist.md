@@ -131,8 +131,13 @@ Weekly 9% at 11:21 ET. Full speed, cost-aware. One line to the owner at about 90
 - [ ] ops 93: five ops 92 follow-ups
 - [ ] Infra PR sweep: .github 175, 159, 154, ops 73
 - [ ] 4thcltr 276 wordmark spec fix (3.3), then 273 shards 3 and 8
-- [ ] 1.26 cost per PR (running); [ ] 1.27 eval set; [ ] 1.28 weekly lessons PR, first Fri 20 Nov 09:00 ET
-- [ ] Time Machine first backup to tm_gorfpael (preparing since about 12:20 ET)
+- [ ] 1.26 cost per PR (.github 191, review); [ ] 1.27 eval set (.github 193 + ops 95: 3 Lows, then a Fable read, then label both); [x] 1.28 weekly lessons (192 and 194 merged, task live, first Fri 20 Nov 09:00 ET)
+- [x] Time Machine first backup to tm_gorfpael (copying since 12:43 ET)
 - [ ] Models: retry llama-redownload4 (pass 1 had 23 of 41 files)
 - [x] Tailscale back (owner reconnected, 11:56 ET)
 - [x] 15 finished chats archived (12:38 ET)
+
+## Added 14 Nov afternoon (18th Desk)
+- [ ] Expiry-watch false alarms: ops 77 merged, not installed. rdap 403 and IPv6 cause with ops-92-followups. One batched owner install later
+- [ ] Ship-bot REPO_EXTRA covers docs/claude-home/ (192 follow-up, Fable)
+- [x] gh-poll-guard hook (175) and the 194 rule lines copied to ~/.claude
