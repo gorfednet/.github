@@ -17,7 +17,7 @@ import { RateLimitError, guardWrites } from './github.mjs'
 import { planRelease } from './release.mjs'
 import { Redactor } from './redact.mjs'
 import { guardCommands, succeeded } from './runner.mjs'
-import { advanceGatesWorktree, toolWorktreeFor } from './gates-worktree.mjs'
+import { GATES_REPO, advanceGatesWorktree, ownInstallFreshness, toolWorktreeFor } from './gates-worktree.mjs'
 import { StateStore } from './state.mjs'
 
 const short = (sha) => String(sha ?? '').slice(0, 7)
@@ -80,6 +80,7 @@ export async function runOnce(deps) {
 
   const repos = selectRepos(config.repos, deps.repoNames)
   recoverInterruptedDeploys(ctx)
+  if (deps.installedSha) await checkOwnInstall(ctx, deps.installedSha)
   if (quotaPaused(ctx)) {
     stateStore.save()
     return ctx.decisions
@@ -671,6 +672,37 @@ async function advanceTools(ctx, repo) {
   }
   ctx.say('error', `${wt.tools} not advanced: ${result.reason}`)
   await notify(ctx, `${wt.tools} are stale after a ${repo.slug} merge: ${result.reason}`, true)
+}
+
+/**
+ * Says, every pass, when the installed bot is behind the last origin/main
+ * commit touching ship-bot/ or scripts/, and sends one notification per such
+ * commit (state `ownInstall.notifiedFor`). It never blocks the pass: a stale
+ * bot still gates with the scripts it has, and a person reinstalls.
+ */
+async function checkOwnInstall(ctx, installedSha) {
+  const row = ctx.config.repos.find((r) => r.slug === GATES_REPO)
+  const wt = row && toolWorktreeFor(ctx.config, row)
+  if (!wt) return
+  const git = (args) => ctx.runner.run({ kind: 'git-read', cmd: 'git', args, env: ctx.baseEnv, timeoutMs: 15_000 })
+  let r
+  try {
+    r = await ownInstallFreshness({ path: wt.path, installedSha, git })
+  } catch (cause) {
+    r = { state: 'unknown', reason: `unexpected error: ${cause.message}` }
+  }
+  if (r.state === 'unknown') {
+    ctx.say('warn', `installed ship-bot freshness not known: ${r.reason}`)
+    return
+  }
+  if (r.state === 'current') return
+  const text = `installed ship-bot (${short(installedSha)}) is behind origin/main: ${short(r.latest)} changed ship-bot/ or scripts/. Reinstall with ship-bot/install.sh from gates-main`
+  ctx.say('warn', text)
+  const memo = (ctx.state.data.ownInstall ??= {})
+  if (memo.notifiedFor === r.latest || ctx.dry) return
+  memo.notifiedFor = r.latest
+  ctx.state.save()
+  await notify(ctx, text, true)
 }
 
 async function dryRunMerge(ctx, repo, pr, tag, plan) {

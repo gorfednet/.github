@@ -100,3 +100,27 @@ export async function advanceGatesWorktree({ path, git }) {
   if (after.code !== 0 || after.stdout.trim() !== target) return { ok: false, reason: `${path} is not at origin/main ${target.slice(0, 7)} after the checkout` }
   return cleared.length > 0 ? { ok: true, sha: target, changed: true, cleared } : { ok: true, sha: target, changed: true }
 }
+
+/** Paths whose change on main means the installed bot (its code or its gate-scripts copy) is out of date. */
+export const OWN_INSTALL_PATHS = ['ship-bot', 'scripts']
+
+/**
+ * Is the installed bot behind main (plan row 1.18)? On 13 November 2026 the bot
+ * ran the gate scripts installed from 0de9d9f for 77 passes while 160, 162 and
+ * 163 merged. `installedSha` is the commit `install.sh` copied (gate-scripts/SOURCE).
+ * The answer reads the refs of the .github clone as they are: ship-bot fetches
+ * them when it advances gates-main after each .github merge, so no pass pays
+ * for a fetch.
+ *
+ * @returns {Promise<{state: 'current', latest: string} | {state: 'stale', latest: string} | {state: 'unknown', reason: string}>}
+ */
+export async function ownInstallFreshness({ path, installedSha, git }) {
+  const first = (r) => String(r.stderr || r.stdout || '').trim().split('\n')[0]
+  const latest = await git(['-C', path, 'rev-list', '-1', 'refs/remotes/origin/main', '--', ...OWN_INSTALL_PATHS])
+  const sha = latest.stdout?.trim() ?? ''
+  if (latest.code !== 0 || !/^[0-9a-f]{40}$/.test(sha)) return { state: 'unknown', reason: `cannot read origin/main in ${path} (${first(latest)})` }
+  const anc = await git(['-C', path, 'merge-base', '--is-ancestor', sha, installedSha])
+  if (anc.code === 0) return { state: 'current', latest: sha }
+  if (anc.code === 1) return { state: 'stale', latest: sha }
+  return { state: 'unknown', reason: `cannot compare ${installedSha.slice(0, 7)} with origin/main in ${path} (${first(anc)})` }
+}

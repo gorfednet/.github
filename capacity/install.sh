@@ -35,6 +35,10 @@ NODE_BIN="$(node -p 'process.execPath')"
 "${HERE}/check.sh"
 mkdir -p "${HOME_DIR}/logs" "${APP_DIR}" "${HOME}/Library/LaunchAgents"
 cp "${HERE}/capacity.mjs" "${APP_DIR}/capacity.mjs"
+# The heartbeat and weekly-usage helpers (plan row 1.13), beside it so the copy has no path into a checkout.
+mkdir -p "${APP_DIR}/lib"
+cp "${HERE}/../ship-bot/lib/heartbeat.mjs" "${APP_DIR}/lib/heartbeat.mjs"
+cp "${HERE}/../scripts/lib/usageAlert.mjs" "${APP_DIR}/lib/usageAlert.mjs"
 xml() { sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g' <<<"$1"; }
 cat >"${PLIST}.tmp" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>

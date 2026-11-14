@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, it } from 'node:test'
-import { GATES_REPO, TOOL_WORKTREES, advanceGatesWorktree, toolWorktreeFor } from '../lib/gates-worktree.mjs'
+import { GATES_REPO, TOOL_WORKTREES, advanceGatesWorktree, ownInstallFreshness, toolWorktreeFor } from '../lib/gates-worktree.mjs'
 import { FakeGitHub, MERGE, makePr, makeRunner, repoEntry, scenario } from './fakes.mjs'
 
 const g = (cwd, ...args) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...args], { cwd, encoding: 'utf8' }).trim()
@@ -183,5 +183,93 @@ describe('ship-bot after a merge into gorfednet/.github', () => {
     await s.run()
     assert.equal(s.github.writes.filter((w) => w.name === 'mergePull').length, 1)
     assert.equal(calls(s).length, 0)
+  })
+})
+
+describe('ownInstallFreshness: the installed bot against origin/main (plan row 1.18)', () => {
+  /** A clone whose origin/main has: a docs commit, then a ship-bot/ commit, then a docs commit. */
+  function history() {
+    const dir = mkdtempSync(join(tmpdir(), 'own-install-'))
+    const origin = join(dir, 'origin.git')
+    g(dir, 'init', '-q', '--bare', '-b', 'main', origin)
+    const clone = join(dir, 'clone')
+    g(dir, 'clone', '-q', origin, clone)
+    g(clone, 'checkout', '-q', '-b', 'main')
+    const commit = (file, msg) => {
+      mkdirSync(join(clone, file, '..'), { recursive: true })
+      writeFileSync(join(clone, file), `${msg}\n`)
+      g(clone, 'add', '-A')
+      g(clone, 'commit', '-q', '-m', msg)
+      return g(clone, 'rev-parse', 'HEAD')
+    }
+    const base = commit('ship-bot/bot.mjs', 'base')
+    const docs = commit('docs/a.md', 'docs')
+    const bot = commit('ship-bot/bot.mjs', 'bot change')
+    const after = commit('docs/b.md', 'later docs')
+    g(clone, 'push', '-q', 'origin', 'main')
+    g(clone, 'fetch', '-q', 'origin')
+    return { clone, base, docs, bot, after }
+  }
+
+  it('an install at or after the last ship-bot/ or scripts/ commit is current, even when docs moved on', async () => {
+    const h = history()
+    assert.deepEqual(await ownInstallFreshness({ path: h.clone, installedSha: h.bot, git: realGit }), { state: 'current', latest: h.bot })
+    assert.equal((await ownInstallFreshness({ path: h.clone, installedSha: h.after, git: realGit })).state, 'current')
+  })
+
+  it('an install from before it is stale and names the commit', async () => {
+    const h = history()
+    assert.deepEqual(await ownInstallFreshness({ path: h.clone, installedSha: h.docs, git: realGit }), { state: 'stale', latest: h.bot })
+  })
+
+  it('an unknown commit or a missing clone is unknown, never current', async () => {
+    const h = history()
+    assert.equal((await ownInstallFreshness({ path: h.clone, installedSha: 'f'.repeat(40), git: realGit })).state, 'unknown')
+    assert.equal((await ownInstallFreshness({ path: join(h.clone, 'nope'), installedSha: h.bot, git: realGit })).state, 'unknown')
+  })
+})
+
+describe('ship-bot warns when its own install is behind main', () => {
+  const gatesRow = () => mergeOnly({ slug: GATES_REPO, dir: 'gorfednet.github' })
+  /** git answers: origin/main's last ship-bot/ commit is `latest`; `installed` contains it only when `current`. */
+  const runnerFor = (box) => makeRunner({
+    handle: (c) => {
+      if (c.kind !== 'git-read') return undefined
+      if (c.args[2] === 'rev-list') return { stdout: box.latest }
+      if (c.args[2] === 'merge-base') return { code: box.current ? 0 : 1, stdout: '' }
+      return undefined
+    },
+  })
+
+  it('stale: a warning every pass, one notification per new main commit; current: silent', async () => {
+    const box = { latest: 'b'.repeat(40), current: false }
+    const s = scenario({ repos: [gatesRow()], runner: runnerFor(box), configOverrides: { notify: true } })
+    const installedSha = 'a'.repeat(40)
+    await s.run('live', { installedSha })
+    await s.run('live', { installedSha })
+    const warns = s.logs.filter((l) => /installed ship-bot \(aaaaaaa\) is behind origin\/main: bbbbbbb/.test(l))
+    assert.equal(warns.length, 2, s.logs.join('\n'))
+    assert.equal(s.runner.ofKind('notify').length, 1, 'notified once for bbbbbbb')
+    box.latest = 'c'.repeat(40)
+    await s.run('live', { installedSha })
+    assert.equal(s.runner.ofKind('notify').length, 2, 'a newer main commit notifies again')
+    box.current = true
+    const before = s.logs.length
+    await s.run('live', { installedSha })
+    assert.ok(!s.logs.slice(before).some((l) => /installed ship-bot/.test(l)))
+  })
+
+  it('a dry run reads it too (git-read is allowed) and notifies nothing', async () => {
+    const box = { latest: 'b'.repeat(40), current: false }
+    const s = scenario({ repos: [gatesRow()], runner: runnerFor(box), configOverrides: { notify: true } })
+    await s.run('dry-run', { installedSha: 'a'.repeat(40) })
+    assert.ok(s.logs.some((l) => /installed ship-bot .* is behind/.test(l)), s.logs.join('\n'))
+    assert.equal(s.runner.ofKind('notify').length, 0)
+  })
+
+  it('no installed copy (run from a checkout): no check', async () => {
+    const s = scenario({ repos: [gatesRow()] })
+    await s.run('live')
+    assert.equal(s.runner.ofKind('git-read').length, 0)
   })
 })

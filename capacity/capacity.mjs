@@ -93,6 +93,41 @@ export async function run(deps) {
   return out
 }
 
+/**
+ * The heartbeat and weekly-usage helpers (plan row 1.13). install.sh copies them into `lib/` beside
+ * this file; run from the repository they are found in place. A missing helper is reported and the
+ * run carries on: the dead-man service then sees no ping, which is the alert.
+ */
+export async function loadHelpers(here = path.dirname(fileURLToPath(import.meta.url)), importer = (p) => import(p)) {
+  const pick = async (installed, repo) => {
+    for (const rel of [installed, repo]) {
+      const p = path.join(here, rel)
+      if (fs.existsSync(p)) return importer(p)
+    }
+    return null
+  }
+  return { heartbeat: await pick('lib/heartbeat.mjs', '../ship-bot/lib/heartbeat.mjs'), usage: await pick('lib/usageAlert.mjs', '../scripts/lib/usageAlert.mjs') }
+}
+
+/** After a good run: the weekly-usage pushes (both ntfy paths; either delivering counts), then the ping. */
+export async function afterRun({ helpers, home, pushOps, log = console.log }) {
+  const done = { usage: null, ping: null }
+  if (helpers.usage && helpers.heartbeat) {
+    done.usage = await helpers.usage.checkUsage({
+      statePath: path.join(home, '.herdr-jobs', 'state.json'),
+      memoPath: path.join(home, '.desk', 'usage-alerts.json'),
+      push: async (text) => {
+        const ops = (await pushOps(text)) !== false
+        const off = (await helpers.heartbeat.pushOffbox(text, { home })).sent === true
+        return ops || off
+      },
+    })
+  } else log('capacity: usage helper not installed; no 70% or 90% push this run')
+  if (helpers.heartbeat) done.ping = await helpers.heartbeat.ping('capacity', { home })
+  else log('capacity: heartbeat helper not installed; no ping this run')
+  return done
+}
+
 async function main() {
   const home = os.homedir()
   const dir = path.join(home, '.desk')
@@ -115,19 +150,23 @@ async function main() {
     },
     readPrevious: () => { try { return JSON.parse(fs.readFileSync(file, 'utf8')) } catch { return null } },
     writeJson: (o) => { fs.mkdirSync(dir, { recursive: true }); fs.writeFileSync(file + '.tmp', JSON.stringify(o, null, 2) + '\n'); fs.renameSync(file + '.tmp', file) },
-    push: async (text) => {
+    push: (text) => pushOps(text),
+  })
+  console.log(JSON.stringify(out))
+  const done = await afterRun({ helpers: await loadHelpers(), home, pushOps })
+  console.log(JSON.stringify(done))
+
+  async function pushOps(text) {
       const headers = { Title: 'capacity', 'User-Agent': 'gorfednet-capacity' }
       try { const t = fs.readFileSync(cfgFile, 'utf8').trim(); if (t) headers.Authorization = `Bearer ${t}` } catch { /* no token file: topic may refuse */ }
       try {
         const res = await fetch('https://ntfy.gorfed.net/ops-report', { method: 'POST', headers, body: text, signal: AbortSignal.timeout(15000) })
         if (!res.ok) { console.error(`capacity: ntfy answered HTTP ${res.status}`); return false }
       } catch (e) { console.error(`capacity: ntfy failed: ${e.name}`); return false }
-    },
-  })
-  console.log(JSON.stringify(out))
+  }
 }
 
-// Same approach as ship-bot/lib/isMain.mjs, inlined because install.sh copies this one file.
+// Same approach as ship-bot/lib/isMain.mjs, inlined so the installed copy needs only its two helpers.
 function isMain(url) {
   try { return fs.realpathSync(fileURLToPath(url)) === fs.realpathSync(process.argv[1]) } catch { return false }
 }
@@ -141,5 +180,6 @@ if (isMain(import.meta.url)) main().catch((e) => {
       try { kept = JSON.parse(fs.readFileSync(f, 'utf8')).lastPushedState ?? null } catch { /* none */ }
       fs.writeFileSync(f, JSON.stringify(errorRecord(kept, e, Date.now()), null, 2) + '\n')
     } catch { /* nothing more to do */ }
-    process.exit(1)
+    // A failed run tells the dead-man service at once instead of waiting out the grace period.
+    loadHelpers().then((h) => h.heartbeat?.ping('capacity', { ok: false })).catch(() => {}).finally(() => process.exit(1))
   })
