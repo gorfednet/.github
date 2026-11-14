@@ -50,6 +50,16 @@ describe('a repo block queues one diagnosis job (row 1.14)', () => {
     await s.run()
     assert.equal(jobsOf(s).length, 2)
   })
+  it('a repo row without sourceDir (merge-only) still gets a working directory in its job', async () => {
+    const s = scenario({ repos: [{ slug: SLUG, dir: 'site', mode: 'merge-only', reason: 'r', live: true, claudeReview: false, expectedChecks: ['check / check'] }] })
+    withJobsDir(s)
+    const st = s.state()
+    st.repo(SLUG).blocked = { reason: 'seeded', at: '2026-10-09T11:00:00.000Z', pr: 7 }
+    st.save()
+    await s.run()
+    const [f] = jobsOf(s)
+    assert.equal(JSON.parse(readFileSync(join(s.home, 'src', JOBS_SUBDIR, f), 'utf8')).run.cwd, join(s.home, 'src', 'site'))
+  })
   it('a dry run and a machine without the ops clone write nothing', async () => {
     const s = blockedScenario()
     await s.run()
@@ -89,6 +99,13 @@ describe('unanswered reviewer findings get needs-fix (row 1.14)', () => {
     gh.threads = [{ ...thread, isResolved: true }]
     await s.run()
     assert.deepEqual(writes(gh, 'removeLabel').map((w) => w.label), ['needs-fix'])
+  })
+  it('a PR the owner puts on hold, or that loses ready-to-merge, loses needs-fix', async () => {
+    for (const labels of [['ready-to-merge', 'needs-fix', 'hold'], ['needs-fix']]) {
+      const gh = new FakeGitHub({ pulls: [makePr({ labels: labels.map((name) => ({ name })) })] })
+      await scenario({ repos: [repoEntry({ claudeReview: true })], github: gh }).run()
+      assert.deepEqual(writes(gh, 'removeLabel').map((w) => w.label), ['needs-fix'], labels.join())
+    }
   })
   it('a dry run only says so, and a block that hides the review gate keeps the label', async () => {
     const { gh, s } = setup()

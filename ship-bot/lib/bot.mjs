@@ -266,6 +266,7 @@ async function processRepo(ctx, repo) {
     const skip = ineligibleReason(listed, repo, defaultBranch, ctx.config.allowedAuthors)
     if (skip) {
       ctx.say('debug', `${repo.slug}#${listed.number}: ignored (${skip})`)
+      await dropStaleNeedsFix(ctx, repo, listed, skip)
       continue
     }
     checkQuota(ctx)
@@ -273,6 +274,7 @@ async function processRepo(ctx, repo) {
     const skip2 = ineligibleReason(pr, repo, defaultBranch, ctx.config.allowedAuthors) ?? unmergeableReason(pr)
     if (skip2) {
       ctx.say('debug', `${repo.slug}#${pr.number}: ignored (${skip2})`)
+      await dropStaleNeedsFix(ctx, repo, pr, skip2)
       continue
     }
     const acted = await processPull(ctx, repo, pr, defaultBranch)
@@ -289,7 +291,7 @@ async function processRepo(ctx, repo) {
 function queueDiagnosis(ctx, repo, blocked) {
   const dir = jobsDir(ctx.config)
   if (!dir) return ctx.say('debug', `${repo.slug}: no Herdr jobs folder under ${ctx.config.sourceRoot}; block not queued for diagnosis`)
-  const job = diagnosisJob(repo, blocked, repo.sourceDir)
+  const job = diagnosisJob(repo, blocked, repo.sourceDir ?? join(ctx.config.sourceRoot, repo.dir))
   if (ctx.dry) return ctx.say('info', `${repo.slug}: would queue diagnosis job ${job.id}`)
   try {
     if (writeJobOnce(dir, job) === 'written') ctx.say('info', `${repo.slug}: queued diagnosis job ${job.id} for Herdr`)
@@ -313,6 +315,13 @@ async function syncNeedsFix(ctx, repo, pr, result) {
   if (ctx.dry) return ctx.say('info', `${tag}: would ${wants ? 'add' : 'remove'} ${NEEDS_FIX_LABEL}`)
   if (wants) await ctx.github.addLabels(repo.slug, pr.number, [NEEDS_FIX_LABEL])
   else await ctx.github.removeLabel(repo.slug, pr.number, NEEDS_FIX_LABEL)
+}
+
+/** A PR the bot has stopped looking at (hold, no ready label, conflicts) keeps no `needs-fix`: Herdr must not keep fixing a PR the owner paused. */
+async function dropStaleNeedsFix(ctx, repo, pr, why) {
+  if (!(pr.labels ?? []).some((l) => l.name === NEEDS_FIX_LABEL)) return
+  if (ctx.dry) return ctx.say('info', `${repo.slug}#${pr.number}: would remove ${NEEDS_FIX_LABEL} (${why})`)
+  await ctx.github.removeLabel(repo.slug, pr.number, NEEDS_FIX_LABEL)
 }
 
 async function processPull(ctx, repo, pr, defaultBranch) {
