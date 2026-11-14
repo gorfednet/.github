@@ -7,7 +7,7 @@ Owner asks, 13 November 2026: stop, re-assess every open agent and every piece o
 Six read-only scouts gathered the state (fleet PRs and sessions, automation map, operating-model files, backlogs, Anthropic docs, infrastructure). Findings are summarised under "What is true today" below. That summary is the only record of the scout reports: the full reports stayed in the planning session's transcript and were not copied out.
 
 
-**Infra first (owner, 13 Nov 2026, 15:00 ET: "ensure all in flight and backlogged is accounted for and action the plan… where our process and infra is fixed before we do more actual work. Automate the shit out of this for me. Leave me to come up with the big ideas.").** No new product work starts until rows 1.11 to 1.17, 3.7, 3.9 and 5.8 to 5.10 have landed. Work already in flight finishes (the heuristics retry, 4thcltr 257). The owner's role is ideas. Everything else is automated or decided by Desk.
+**Infra first (owner, 13 Nov 2026, 15:00 ET: "ensure all in flight and backlogged is accounted for and action the plan… where our process and infra is fixed before we do more actual work. Automate the shit out of this for me. Leave me to come up with the big ideas.").** No new product work starts until rows 1.11 to 1.17 and 5.8 to 5.10 have landed. 3.7 and 3.9 run alongside and hold nothing, since each waits only on the owner (Desk, 13 Nov 2026, 19:24 ET, after the owner: "nas backup isnt blocking anything right"). Work already in flight finishes (the heuristics retry, 4thcltr 257). The owner's role is ideas. Everything else is automated or decided by Desk.
 
 ## What is true today (13 Nov 2026)
 
