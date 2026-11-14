@@ -2,7 +2,7 @@
 // Fixed eval set (plan row 1.27): manifest schema, case verification and scorer.
 // This repository is public. The manifest holds only {id, task, label, sha256}; case bodies are private.
 // evalset.mjs --manifest m.json --baseline baseline.json --haiku h.json --nomodel n.json [--nomodel n2.json ...] --arm name=f.json [--tasks a,b] [--grades g.json] [--salt-file f] [--check-voice path]
-// arm file:    {caseId: {verdict | files | text, ms?, cause?}}   ms only when the arm was timed; cause set by evalset-run from private truth
+// arm file:    {caseId: {verdict | files | text, ms?, cause?, rule?}, _model?: {id, sha}}   ms only when the arm was timed; cause set by evalset-run from private truth; rule 'error-line' tags the triage rule arm; _model is the served model and snapshot of a --model run
 // grades file: {armName: {gradeKey(caseId, answer text): 0..5}} from a tool-less Fable grader, integers only. Haiku must be graded too: its grades set the reference.
 // The reference files (--haiku and every --nomodel) must match the sha256 values frozen in baseline.json, and the baseline must name this manifest.
 // A no-model arm may cover only some tasks (the rule arm covers reviewer only): it is compared on the tasks it covers.
@@ -32,6 +32,12 @@ export const filesLabel = (files, salt, id) => {
   return `files:${sha256(`${salt}\n${id}\n${[...new Set(files)].sort().join('\n')}`)}`
 }
 const labelOk = (task, l) => (task === 'builder' ? /^files:[0-9a-f]{64}$/.test(l) : task === 'copy' ? /^voice:[1-9]\d*$/.test(l) : LABELS[task].includes(l))
+
+/**
+ * check-voice reads no fenced code and no HTML comments, so a rewrite that put its text inside one would score 0 findings without being read.
+ * Such an answer is not a valid copy answer.
+ */
+export const hidesFromVoice = (text) => /^\s{0,3}(`{3,}|~{3,})/m.test(text) || /<!--/.test(text)
 
 /** Returns a list of problems; empty means the manifest is well formed. */
 export function validateManifest(m) {
@@ -67,7 +73,7 @@ export function verifyCases(m, dir) {
 export function keyOf(task, o, ctx = {}) {
   if (!o || typeof o !== 'object') return null
   if (task === 'builder') return Array.isArray(o.files) && o.files.length >= 1 && o.files.length <= 25 && o.files.every((f) => typeof f === 'string' && f.length > 0) ? filesLabel(o.files, ctx.salt, ctx.id) : null
-  if (task === 'copy') return typeof o.text === 'string' && o.text.trim().length > 0 ? o.text : null
+  if (task === 'copy') return typeof o.text === 'string' && o.text.trim().length > 0 && !hidesFromVoice(o.text) ? o.text : null
   return LABELS[task].includes(o.verdict) ? o.verdict : null
 }
 
@@ -83,8 +89,11 @@ export function defaultVoice(checkVoice) {
     const rules = `${r.stdout}`.split('\n').filter((l) => /: (warning )?rule /.test(l)).length
     // Exit 1 is also what a crash, a missing module and check-voice's own fail() return. Only its findings summary on stderr is a real finding.
     const found = r.status === 1 && /✗ [\w-]+: \d+ hit\(s\) in \d+ file\(s\)/.test(`${r.stderr}`) && rules > 0
-    const clean = r.status === 0 && /✓ [\w-]+: \d+ file\(s\)/.test(`${r.stdout}`)
+    const read = `${r.stdout}`.match(/✓ [\w-]+: \d+ file\(s\), (\d+) string\(s\)/)
+    const clean = r.status === 0 && read !== null
     if (r.error || !(found || clean)) throw new Error(`check-voice did not run: ${r.error?.message ?? `exit ${r.status}`} ${`${r.stderr}`.trim().split('\n')[0]}`.trim())
+    // A clean run that read no strings read nothing: it is not a clean text, so it never counts as 0 findings.
+    if (clean && Number(read[1]) === 0) return Infinity
     return rules
   }
 }
@@ -144,14 +153,19 @@ export function rejections(cases, arm, nomodel, { salt } = {}) {
 
 /** The no-model arm that scores highest on the task, among those that cover it; null when none does. */
 function bestNoModel(cs, nomodels, ctx) {
-  let best = null
+  let best = null, cause = 0
   for (const n of nomodels) {
     if (!cs.every((c) => n[c.id] !== undefined)) continue
     const z = score(cs, n, ctx)
+    cause = Math.max(cause, z.cause) // the cause floor is the best any no-model arm reaches, not the one with the best verdicts
     if (!best || z.correct > best.correct || (z.correct === best.correct && z.cause > best.cause)) best = z
   }
-  return best
+  return best && { ...best, cause }
 }
+
+export const RULE_ARM = 'error-line'
+/** Triage's floor includes the rule arm (the log's own ##[error] lines): without it a model could clear "no-model + 2" against empty line lists. */
+const hasRuleArm = (cs, nomodels) => nomodels.some((n) => cs.every((c) => n[c.id]?.rule === RULE_ARM))
 
 /**
  * Reference check, task by task. Haiku is the bar only when it is itself a real answer: schema-valid on every case,
@@ -169,6 +183,7 @@ export function referenceProblems(cases, haiku, nomodels, { voice, salt, grades,
     const z = bestNoModel(cs, nomodels, { voice, salt })
     if (!z) note(t, `no no-model arm covers ${t}`)
     else if (h.correct < z.correct + 2) note(t, `Haiku ${h.correct} is under no-model ${z.correct} + 2`)
+    if (t === 'triage' && !hasRuleArm(cs, nomodels)) note(t, 'no ##[error]-line rule arm covers triage')
     if (GRADED.has(t)) {
       const g = gradeStats(cs, haiku, grades?.[haikuName], { salt })
       if (g.bad.length || g.valid < h.schema) note(t, `Haiku is graded ${g.valid}/${h.n}`)
@@ -245,6 +260,9 @@ export function checkReferences(baseline, manifestBytes, refs) {
   return bad
 }
 
+/** One line of scores. A task with no no-model floor (nomodel null) prints NO-REFERENCE, never a crash. */
+export const summary = (r) => Object.entries(r.scores ?? {}).map(([t, v]) => `${t} ${v.arm.correct}/${v.arm.n} (haiku ${v.haiku.correct}, no-model ${v.nomodel ? v.nomodel.correct : 'NO-REFERENCE'})`).join(', ')
+
 function main(argv) {
   const load = (f) => JSON.parse(fs.readFileSync(f, 'utf8'))
   const val = (k) => (argv.includes(k) ? argv[argv.indexOf(k) + 1] : undefined)
@@ -272,8 +290,7 @@ function main(argv) {
   let bad = 0
   for (const [name, file] of arms) {
     const r = judge(manifest, load(file), haiku, nomodel, { name, voice, grades, salt, tasks })
-    const line = Object.entries(r.scores ?? {}).map(([t, v]) => `${t} ${v.arm.correct}/${v.arm.n} (haiku ${v.haiku.correct}, no-model ${v.nomodel.correct})`).join(', ')
-    console.log(`${name}: ${r.status} ${line} ${r.reasons.join('; ')}`)
+    console.log(`${name}: ${r.status} ${summary(r)} ${r.reasons.join('; ')}`)
     if (r.status !== 'PASS') bad++
   }
   return bad ? 1 : 0

@@ -1,6 +1,8 @@
 # Fixed eval set (plan row 1.27)
 
-56 real cases from this fleet, scored on every new model and every served local model. The manifest lists only `{id, task, label, sha256}`. Case bodies are private and live in the ops repository.
+56 real cases from this fleet, scored on every new model and every served local model.
+
+**Scoring version 3 (plan row 1.27b, 14 November 2026).** A PASS recorded before this version doesn't count for routing, tier moves or adoption. The scorer used to accept copy that check-voice never read, count a cause hit for naming 10 lines to catch 1, and run triage against a floor with no line list. Rerun every arm on this version first (the builder task is the one unaffected). The next section lists what changed. The manifest lists only `{id, task, label, sha256}`. Case bodies are private and live in the ops repository.
 
 | Task | Cases | Label | Scored by |
 |------|-------|-------|-----------|
@@ -34,5 +36,13 @@ Rules the scorer enforces, per task:
 - Grades (copy only): `{armName: {sha256 of "<case id>\n<answer text>": integer 0..5}}` (`gradeKey` in `evalset.mjs`). A grade that isn't an integer 0 to 5 fails the arm. The mean must be at least 4 and no case below 3. Missing grades leave the arm `PENDING-GRADE`.
 
 `baseline.json` pins the manifest by sha256, and a test fails when the manifest changes without a refreeze.
+
+Version 3 changes:
+
+- Copy: an answer inside a code fence or an HTML comment is invalid (check-voice skips both), and a check-voice run that read 0 strings never counts as clean.
+- Claude-tier arm inputs (`--emit-inputs dir --id-map map.json`) carry opaque names, no case id and no task. The map stays private and outside the inputs directory. `--ingest raw.json --id-map map.json` translates the replies back.
+- Triage: a cause hit needs at least half of the named lines near a cause line. `--nomodel-rule` now also writes a triage rule arm (the log's own `##[error]` lines, tagged `rule: "error-line"`). Triage reports `NO-REFERENCE` until a frozen no-model arm with that tag covers it, and its cause floor is the best any no-model arm reaches.
+- The CLI prints `NO-REFERENCE` for a task with no no-model floor instead of crashing.
+- `--model` runs unload the model on Ctrl-C (SIGINT) or SIGTERM, free the lock and exit 130. The arm file carries `_model: {id, sha}` (the served model id and its snapshot sha).
 
 Local output is a lead until a model is adopted in `docs/models.json`. Model free text never reaches a Claude session from the router. The copy grade is the one eval-only exception, and it needs a tool-less grader (deferred, see the pull request's `## Next`).

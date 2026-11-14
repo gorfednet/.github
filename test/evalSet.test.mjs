@@ -35,6 +35,8 @@ const arm = (right = () => true, timed = false) => Object.fromEntries(cases.map(
 const haiku = arm((c, i) => i % 5 !== 0)
 // a floor that knows a little: right on the first 2 of each task
 const nomodel = (() => { const seen = {}; return arm((c) => { seen[c.task] = (seen[c.task] || 0) + 1; return seen[c.task] <= 2 }) })()
+// triage's floor includes the ##[error]-line rule arm: tag this stand-in as one
+for (const c of cases.filter((x) => x.task === 'triage')) nomodel[c.id].rule = 'error-line'
 const grade = (a, g) => Object.fromEntries(cases.filter((c) => c.task === 'copy').map((c) => [gradeKey(c.id, a[c.id].text), typeof g === 'function' ? g(c) : g]))
 // Haiku is graded too: its grades set the reference for the graded task
 const opts = (a, g = 5) => ({ name: 'm', voice, salt: SALT, grades: { m: grade(a, g), haiku: grade(haiku, 5) } })
@@ -440,12 +442,14 @@ describe('rule arm and triage prompts', () => {
     const tri = (h) => ({ id: 'tri-01', task: 'triage', body: { input: { bodyFile: log, bodySha256: h } } })
     const rev = { id: 'rev-01', task: 'reviewer', body: { input: { path: 'p', line: 1, finding: 'F', region: 'R' } } }
     const out = path.join(dir, 'out')
-    emitInputs([rev, tri(sha(fs.readFileSync(log)))], out)
-    assert.deepEqual(fs.readdirSync(out).sort(), ['rev-01.json', 'tri-01.json'])
-    const t = JSON.parse(fs.readFileSync(path.join(out, 'tri-01.json'), 'utf8'))
-    assert.equal(t.task, 'triage')
+    emitInputs([rev, tri(sha(fs.readFileSync(log)))], out, path.join(dir, 'map.json'))
+    const map = JSON.parse(fs.readFileSync(path.join(dir, 'map.json'), 'utf8'))
+    assert.deepEqual(Object.values(map).sort(), ['rev-01', 'tri-01'])
+    assert.deepEqual(fs.readdirSync(out).sort(), Object.keys(map).map((n) => `${n}.json`).sort())
+    const name = Object.keys(map).find((n) => map[n] === 'tri-01')
+    const t = JSON.parse(fs.readFileSync(path.join(out, `${name}.json`), 'utf8'))
     assert.ok(t.messages.length >= 2 && !JSON.stringify(t).includes('"label"'))
-    assert.throws(() => emitInputs([tri('0'.repeat(64))], path.join(dir, 'out2')), /log body sha256 changed/)
+    assert.throws(() => emitInputs([tri('0'.repeat(64))], path.join(dir, 'out2'), path.join(dir, 'm2.json')), /log body sha256 changed/)
   })
 })
 
