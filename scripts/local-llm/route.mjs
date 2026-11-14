@@ -13,48 +13,46 @@ export const MODELS_JSON = process.env.LOCAL_LLM_MODELS || path.join(path.dirnam
 const GB = 1024 ** 3
 const RESERVE_GB = 4
 const PROMPT_ROOM = 1024
-const PIDLESS_STALE_MS = 60_000
+const EMPTY_STALE_MS = 60_000
 const freeGbNow = () => parseVmStat(execFileSync('vm_stat', { encoding: 'utf8' }))
 const alive = (pid) => { try { process.kill(pid, 0); return true } catch (e) { return e.code === 'EPERM' } }
+const pidArg = (argv) => { const i = argv.indexOf('--pid'); return i >= 0 ? Number(argv[i + 1]) : process.ppid }
 const refuse = (link, why) => ({ code: EXIT.refused, message: `local-llm: ${link} failed (${why}); use the Claude tier` })
-/** The lock is a directory that never exists without its pid file: it is built under a temp name and renamed into place, which fails when a lock is there (a lock we build is never empty). Stale when the pid is dead, or, for a pid-less lock from older code, when its dir is 60 s old. Takeover is serialised by `<dir>.takeover`, and under it the lock is moved only if it is still the one that was judged stale (same pid, same inode). */
-export function takeLock(dir, pid, { beforeTakeover } = {}) {
-  const readPid = () => { try { return fs.readFileSync(path.join(dir, 'pid'), 'utf8').trim() } catch { return null } }
-  const inode = () => { try { return fs.statSync(dir).ino } catch { return null } }
-  const install = () => {
-    if (inode() !== null) return false // rename would replace an empty directory (older code's pid-less lock); a lock we built is never empty
-    const tmp = `${dir}.new-${pid}-${process.pid}-${Math.random().toString(36).slice(2)}`
-    fs.mkdirSync(tmp)
+/** The lock is one file holding the owner's pid, created with `wx`, so only one taker can create it. Held when the pid is alive, or the file is empty (its owner is between create and write) and under 60 s old. Anything else is stale: it is renamed aside, re-read to confirm it is the file that was judged (same content, same inode), and the create is retried once. */
+export function takeLock(file, pid, { beforeTakeover } = {}) {
+  const create = () => {
     try {
-      fs.writeFileSync(path.join(tmp, 'pid'), String(pid))
-      fs.renameSync(tmp, dir)
+      const fd = fs.openSync(file, 'wx')
+      try { fs.writeSync(fd, String(pid)) } finally { fs.closeSync(fd) }
       return true
-    } catch (e) {
-      fs.rmSync(tmp, { recursive: true, force: true })
-      if (['EEXIST', 'ENOTEMPTY', 'EISDIR', 'ENOTDIR'].includes(e.code)) return false
-      throw e
-    }
+    } catch (e) { if (e.code === 'EEXIST') return false; throw e }
   }
-  fs.mkdirSync(path.dirname(dir), { recursive: true })
-  for (let tries = 0; tries < 2; tries++) {
-    if (install()) return true
-    const held = readPid()
-    const ino = inode()
-    if (ino === null) continue // gone since we looked: try again
-    if (held === null) { // no pid: older code's lock, stale once its dir is past PIDLESS_STALE_MS
-      let age
-      try { age = Date.now() - fs.statSync(dir).mtimeMs } catch { continue }
-      if (age <= PIDLESS_STALE_MS) return false
-    } else if (alive(Number(held))) return false
-    beforeTakeover?.()
-    const guard = `${dir}.takeover`
-    try { fs.mkdirSync(guard) } catch { return false }
-    try {
-      if (readPid() !== held || inode() !== ino) return false
-      fs.rmSync(dir, { recursive: true, force: true })
-    } finally { fs.rmSync(guard, { recursive: true, force: true }) }
+  fs.mkdirSync(path.dirname(file), { recursive: true })
+  if (create()) return true
+  let content, st
+  try { content = fs.readFileSync(file, 'utf8').trim(); st = fs.statSync(file) } catch (e) { return e.code === 'ENOENT' ? create() : false }
+  const held = /^\d+$/.test(content) ? alive(Number(content)) : content === '' && Date.now() - st.mtimeMs <= EMPTY_STALE_MS
+  if (held) return false
+  beforeTakeover?.()
+  const aside = `${file}.stale.${process.pid}.${Math.random().toString(36).slice(2)}`
+  try { fs.renameSync(file, aside) } catch (e) { return e.code === 'ENOENT' ? create() : false }
+  let same = false
+  try { same = fs.statSync(aside).ino === st.ino && fs.readFileSync(aside, 'utf8').trim() === content } catch {}
+  if (!same) { // we moved a different lock than the one we judged: put it back if its place is still free, else drop it
+    try { fs.linkSync(aside, file) } catch {}
+    fs.rmSync(aside, { force: true })
+    return false
   }
-  return false
+  fs.rmSync(aside, { force: true })
+  return create()
+}
+/** Removes the lock only when `pid` is the one written in it. */
+export function releaseLock(file, pid) {
+  let held
+  try { held = fs.readFileSync(file, 'utf8').trim() } catch { return false }
+  if (held !== String(pid)) return false
+  fs.rmSync(file, { force: true })
+  return true
 }
 /** Every fail-closed link, in the design's order. Returns {code, message}. */
 export async function pick(task, { base = DEFAULT_BASE, models = MODELS_JSON, inputBytes = 0, home = path.join(os.homedir(), '.local-llm'), pid = process.ppid, freeGb = freeGbNow, exists = fs.existsSync, size = (f) => fs.statSync(f).size } = {}) {
@@ -88,13 +86,14 @@ async function main(argv) {
     return 0
   }
   if (cmd === 'release') {
+    const lock = path.join(os.homedir(), '.local-llm', 'lock')
+    if (!releaseLock(lock, pidArg(argv))) { console.error('local-llm: lock not held by this caller; nothing released'); return 1 }
     for (const m of (await listModels().catch(() => [])).filter((x) => x.status === 'loaded')) await unload(DEFAULT_BASE, m.id)
-    fs.rmSync(path.join(os.homedir(), '.local-llm', 'lock'), { recursive: true, force: true })
     return 0
   }
   if (cmd === 'pick' && task) {
     const i = argv.indexOf('--input')
-    const r = await pick(task, { inputBytes: i >= 0 ? fs.statSync(argv[i + 1]).size : 0 })
+    const r = await pick(task, { inputBytes: i >= 0 ? fs.statSync(argv[i + 1]).size : 0, pid: pidArg(argv) })
     ;(r.code === EXIT.ok ? console.log : console.error)(r.message)
     return r.code
   }

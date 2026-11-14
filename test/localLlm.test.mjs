@@ -6,7 +6,7 @@ import { join } from 'node:path'
 import { spawn, spawnSync } from 'node:child_process'
 import { renameSync } from 'node:fs'
 import { after, before, describe, it } from 'node:test'
-import { pick, queue, takeLock } from '../scripts/local-llm/route.mjs'
+import { pick, queue, takeLock, releaseLock } from '../scripts/local-llm/route.mjs'
 import { chat } from '../scripts/local-llm/client.mjs'
 import { score, judge } from '../scripts/local-llm/eval.mjs'
 import { prefilter, parse, MAX_CHARS, MAX_LINE } from '../scripts/local-llm/tasks/ci-triage.mjs'
@@ -38,7 +38,7 @@ describe('pick fails closed, one link at a time', () => {
     const home = join(tmp, 'homeOk')
     const r = await run({ home })
     assert.deepEqual(r, { code: 0, message: 'm1' })
-    assert.equal(readFileSync(join(home, 'lock', 'pid'), 'utf8'), String(process.pid))
+    assert.equal(readFileSync(join(home, 'lock'), 'utf8'), String(process.pid))
   })
   const refused = (name, link, setup, opts) => it(`69 on ${name}`, async () => {
     live = [entry('m1')]
@@ -64,72 +64,92 @@ describe('pick fails closed, one link at a time', () => {
     assert.equal((await run({ home })).code, 75)
   })
   it('takes over a lock whose pid is dead', () => {
-    const dir = join(tmp, 'stale', 'lock')
-    mkdirSync(dir, { recursive: true })
-    writeFileSync(join(dir, 'pid'), '2147483646')
-    assert.equal(takeLock(dir, process.pid), true)
+    const file = join(tmp, 'stale', 'lock')
+    mkdirSync(join(tmp, 'stale'), { recursive: true })
+    writeFileSync(file, '2147483646')
+    assert.equal(takeLock(file, process.pid), true)
+    assert.equal(readFileSync(file, 'utf8'), String(process.pid))
+    assert.deepEqual(readdirSync(join(tmp, 'stale')), ['lock'])
   })
 })
 describe('lock and memory edge cases', () => {
-  it('does not throw on a lock with no pid file yet, and reports it held', () => {
-    const dir = join(tmp, 'nopid', 'lock')
-    mkdirSync(dir, { recursive: true })
-    assert.equal(takeLock(dir, process.pid), false)
+  const emptyLock = (name, ageMs) => {
+    const file = join(tmp, name, 'lock')
+    mkdirSync(join(tmp, name), { recursive: true })
+    writeFileSync(file, '')
+    const t = new Date(Date.now() - ageMs)
+    utimesSync(file, t, t)
+    return file
+  }
+  it('reads a fresh empty lock as held', () => {
+    assert.equal(takeLock(emptyLock('freshempty', 1000), process.pid), false)
   })
-  it('takes over a pid-less lock older than 60 s, but not a fresh one', () => {
-    const dir = join(tmp, 'oldnopid', 'lock')
-    mkdirSync(dir, { recursive: true })
-    const old = new Date(Date.now() - 120_000)
-    utimesSync(dir, old, old)
-    assert.equal(takeLock(dir, process.pid), true)
-    assert.equal(readFileSync(join(dir, 'pid'), 'utf8'), String(process.pid))
-    const fresh = join(tmp, 'freshnopid', 'lock')
-    mkdirSync(fresh, { recursive: true })
-    assert.equal(takeLock(fresh, process.pid), false)
+  it('takes over an empty lock older than 60 s', () => {
+    const file = emptyLock('oldempty', 120_000)
+    assert.equal(takeLock(file, process.pid), true)
+    assert.equal(readFileSync(file, 'utf8'), String(process.pid))
   })
-  it('does not delete a live lock that replaced the dead one mid-takeover', () => {
-    const dir = join(tmp, 'race', 'lock')
-    mkdirSync(dir, { recursive: true })
-    writeFileSync(join(dir, 'pid'), '2147483646')
-    const swap = () => { rmSync(dir, { recursive: true }); mkdirSync(dir); writeFileSync(join(dir, 'pid'), String(process.pid)) }
-    assert.equal(takeLock(dir, 1, { beforeTakeover: swap }), false)
-    assert.equal(readFileSync(join(dir, 'pid'), 'utf8'), String(process.pid))
+  it('does not take a live lock that replaced the stale one between judging and moving it', () => {
+    const file = join(tmp, 'race', 'lock')
+    mkdirSync(join(tmp, 'race'), { recursive: true })
+    writeFileSync(file, '2147483646')
+    const swap = () => { rmSync(file); writeFileSync(file, String(process.pid)) }
+    assert.equal(takeLock(file, 1, { beforeTakeover: swap }), false)
+    assert.equal(readFileSync(file, 'utf8'), String(process.pid))
+    assert.deepEqual(readdirSync(join(tmp, 'race')), ['lock'])
   })
-  it('does not delete a fresh lock that replaced a pid-less stale one mid-takeover', () => {
-    const dir = join(tmp, 'aba', 'lock')
-    mkdirSync(dir, { recursive: true })
-    const old = new Date(Date.now() - 120_000)
-    utimesSync(dir, old, old)
-    // Another taker removes the stale lock and has made its own, pid not yet written.
-    const swap = () => { renameSync(dir, `${dir}.gone`); mkdirSync(dir) }
-    assert.equal(takeLock(dir, process.pid, { beforeTakeover: swap }), false)
-    assert.equal(existsSync(dir), true)
-  })
-  it('two concurrent takers of a stale lock end with exactly one holder', async () => {
+  it('two concurrent takers of a stale lock end with exactly one winner, 15 rounds', async () => {
     const mod = new URL('../scripts/local-llm/route.mjs', import.meta.url).href
     const code = `import { takeLock } from ${JSON.stringify(mod)}; process.stdout.write(String(takeLock(process.argv[1], process.pid)) + '\\n'); process.stdin.resume()`
     // Each taker stays alive (reading stdin) until both have answered, so a winner's pid is never dead.
-    const taker = (dir) => { const c = spawn('node', ['--input-type=module', '-e', code, dir]); const answer = new Promise((res) => c.stdout.once('data', (d) => res(String(d).trim()))); return { c, answer } }
+    const taker = (file) => { const c = spawn('node', ['--input-type=module', '-e', code, file]); const answer = new Promise((res) => c.stdout.once('data', (d) => res(String(d).trim()))); return { c, answer } }
     for (let round = 0; round < 15; round++) {
-      const dir = join(tmp, `conc${round}`, 'lock')
-      mkdirSync(dir, { recursive: true })
-      if (round % 2) writeFileSync(join(dir, 'pid'), '2147483646')
-      else { const old = new Date(Date.now() - 120_000); utimesSync(dir, old, old) }
-      const ts = [taker(dir), taker(dir)]
+      const file = join(tmp, `conc${round}`, 'lock')
+      mkdirSync(join(tmp, `conc${round}`), { recursive: true })
+      writeFileSync(file, round % 2 ? '2147483646' : '')
+      if (round % 2 === 0) { const old = new Date(Date.now() - 120_000); utimesSync(file, old, old) }
+      const ts = [taker(file), taker(file)]
       const got = await Promise.all(ts.map((t) => t.answer))
       ts.forEach((t) => t.c.kill())
       assert.deepEqual(got.slice().sort(), ['false', 'true'], `round ${round}: ${got}`)
-      assert.match(readFileSync(join(dir, 'pid'), 'utf8'), /^\d+$/)
+      assert.match(readFileSync(file, 'utf8'), /^\d+$/)
+      assert.deepEqual(readdirSync(join(tmp, `conc${round}`)), ['lock'], `round ${round}: stray files`)
     }
   })
-  it('does not move or take a lock while another taker holds the takeover guard', () => {
-    const dir = join(tmp, 'guard', 'lock')
-    mkdirSync(dir, { recursive: true })
-    writeFileSync(join(dir, 'pid'), '2147483646')
-    mkdirSync(`${dir}.takeover`)
-    assert.equal(takeLock(dir, process.pid), false)
-    assert.equal(readFileSync(join(dir, 'pid'), 'utf8'), '2147483646')
-    assert.equal(existsSync(`${dir}.takeover`), true)
+  it('never creates a .takeover path', () => {
+    const file = join(tmp, 'notakeover', 'lock')
+    mkdirSync(join(tmp, 'notakeover'), { recursive: true })
+    writeFileSync(file, '2147483646')
+    assert.equal(takeLock(file, process.pid), true)
+    assert.equal(readdirSync(join(tmp, 'notakeover')).some((f) => f.includes('takeover')), false)
+  })
+  it('release by a non-holder leaves the lock and the loaded model alone; the holder releases both', async () => {
+    const calls = []
+    const srv = http.createServer((req, res) => {
+      calls.push(req.url)
+      if (req.url === '/v1/models') return res.end(JSON.stringify({ data: [{ id: 'm1', status: { value: 'loaded', args: ['--ctx-size', '4096', '--model', FILE] } }] }))
+      res.end('{}')
+    })
+    await new Promise((r) => srv.listen(0, '127.0.0.1', r))
+    const home = join(tmp, 'relhome')
+    mkdirSync(join(home, '.local-llm'), { recursive: true })
+    const lock = join(home, '.local-llm', 'lock')
+    writeFileSync(lock, '4242')
+    const env = { ...process.env, HOME: home, LOCAL_LLM_URL: `http://127.0.0.1:${srv.address().port}` }
+    // Async: spawnSync would block the mock server that lives in this process.
+    const cli = (args) => new Promise((res) => { const c = spawn('node', ['scripts/local-llm/route.mjs', ...args], { env }); let err = ''; c.stderr.on('data', (d) => (err += d)); c.on('close', (status) => res({ status, stderr: err })) })
+    try {
+      const other = await cli(['release', '--pid', '999'])
+      assert.equal(other.status, 1)
+      assert.equal(other.stderr.trim().split('\n').length, 1)
+      assert.equal(readFileSync(lock, 'utf8'), '4242')
+      assert.deepEqual(calls, [])
+      assert.equal(releaseLock(lock, 999), false)
+      const holder = await cli(['release', '--pid', '4242'])
+      assert.equal(holder.status, 0)
+      assert.equal(existsSync(lock), false)
+      assert.ok(calls.length >= 2, `unload expected, got ${calls}`)
+    } finally { srv.close() }
   })
   it('does not count the adopted model again when it is already loaded', async () => {
     live = [{ ...entry('m1'), status: { value: 'loaded', args: ['--ctx-size', '4096', '--model', FILE] } }]
