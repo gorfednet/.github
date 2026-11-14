@@ -14,11 +14,22 @@ KNOWN = {'bindercurve-com': 'bindercurve-com', 'gorfednet-github': 'gorfednet-gi
          'ask-collector': 'ask-collector', 'hx-': 'heuristics-4thcltr-com', '4c-': '4thcltr-com',
          'gn-': 'gorfed-net', 'dotgithub': 'gorfednet-github'}
 
+SLUG_WORDS = {'4thcltr': '4thcltr-com', '4c-': '4thcltr-com', 'heuristics': 'heuristics-4thcltr-com', 'hx-': 'heuristics-4thcltr-com',
+              'papers': 'papers-4thcltr-com', 'gorfed': 'gorfed-net', 'gn-': 'gorfed-net', 'moonman': 'MoonMan',
+              'bindercurve': 'bindercurve-com', 'bc-': 'bindercurve-com', 'promptboi': 'promptboi-com', 'career': 'career-portfolio',
+              'ops': 'ops', 'assess': 'assess'}
+
 
 def repo(d):
     for pre in PREFIXES:
         if d.startswith(pre):
             s = re.sub(r'(--|-)claude-worktrees-.*', '', d[len(pre):]).lower()
+            if s.startswith('-worktrees-'):  # shared .worktrees folder: task slugs, named by a repo word first
+                s = s[len('-worktrees-'):]
+                for k, v in SLUG_WORDS.items():
+                    if s.startswith(k):
+                        return v
+                return 'other'
             for k, v in KNOWN.items():
                 if s.startswith(k):
                     return v
