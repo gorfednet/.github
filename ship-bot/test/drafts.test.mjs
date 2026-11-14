@@ -372,6 +372,16 @@ describe('plan row 1.12: control-plane paths', () => {
     const near = ['docs/ship-bot.md', 'docs/review.mdx', 'scripts/gates-notes.md', 'scripts/review-status.md', 'scripts/site-deploy.sh', 'github/workflows/x.yml', 'src/janitor/x.ts', 'ship-bot.md', 'docs/capacity/plan.md', 'capacityx/a', 'src/claude.ts']
     for (const f of near) assert.deepEqual(controlPlaneFiles([{ filename: f }]), [], f)
   })
+  it('in gorfednet/.github docs/claude-home/ is control plane: Desk copies it into ~/.claude after merge', () => {
+    const slug = 'gorfednet/.github'
+    assert.deepEqual(controlPlaneFiles([{ filename: 'docs/claude-home/rules/shipping.md' }], slug), ['docs/claude-home/rules/shipping.md'])
+    assert.deepEqual(controlPlaneFiles([{ filename: 'docs/claude-home/rules/shipping.md' }], 'gorfednet/ops'), [])
+    for (const f of ['docs/claude-homepage.md', 'docs/claude-home-old/x.md']) assert.deepEqual(controlPlaneFiles([{ filename: f }], slug), [], f)
+    assert.deepEqual(
+      controlPlaneFiles([{ filename: 'docs/x.md', previous_filename: 'docs/claude-home/settings.json', status: 'renamed' }], slug),
+      ['docs/claude-home/settings.json'],
+    )
+  })
   it('in gorfednet/.github every script is control plane, deploy scripts included', () => {
     assert.deepEqual(controlPlaneFiles([{ filename: 'scripts/site-deploy.sh' }], 'gorfednet/.github'), ['scripts/site-deploy.sh'])
     assert.deepEqual(controlPlaneFiles([{ filename: 'scripts/site-deploy.sh' }], 'gorfednet/site'), [])

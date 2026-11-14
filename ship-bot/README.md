@@ -258,7 +258,8 @@ bot now takes a draft itself when **all** of these hold:
   `.claude/`, `ship-bot/`, `scripts/gates/`, `scripts/lib/`, `janitor/` or
   `capacity/` or `verification-kit/`, `scripts/review-status.mjs`, any
   `REVIEW.md`, `CLAUDE.md`, `AGENTS.md`, `SKILL.md` or `canaries.json`, and in
-  `gorfednet/.github` all of `scripts/` and `templates/` and `fleet.json`.
+  `gorfednet/.github` all of `scripts/`, `templates/` and `docs/claude-home/`
+  (Desk copies it into `~/.claude` after merge) and `fleet.json`.
   Matching ignores case, and a rename counts by its old name too. Such a draft
   changes what merges unattended, so the bot comments once per commit naming
   the paths and leaves it to the owning session (plan row 1.12);
