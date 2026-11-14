@@ -76,7 +76,9 @@ Weekly 9% at 11:21 ET. Full speed, cost-aware. One line to the owner at about 90
 - [x] Ship-bot and capacity installers pick their own Node (.github 179 merged); [x] reinstalled onto /usr/local/bin/node (06:24 ET)
 - [x] Weekly disk hygiene, dry run (ops 83, 84 merged)
 - [x] Local-model harness (.github 180, 181 merged); [ ] fixtures (ops 85), baseline, first eval
-- [ ] Hermes archive (yes; .github 182 running; owner revokes Nous); [x] Screen Sharing over Tailscale (works, RealVNC); 9.9.9.9 fallback: [x] lease 24h, [x] Tailscale DNS, [ ] Pi-hole DHCP line (owner ssh); Time Machine re-add tm_gorfpael (owner: later)
+- [ ] Hermes archive (yes; .github 182 running; owner revokes Nous); [x] Screen Sharing over Tailscale (works, RealVNC); 9.9.9.9 fallback: [x] lease 24h, [x] Tailscale DNS, [x] Pi-hole DHCP line (owner, 06:58 ET); Time Machine re-add tm_gorfpael (owner: later)
 - [ ] Remote-access doc (1.23, ops 86, re-review)
 - [ ] bc 659: conflict with main fixed 06:40 ET, full gate running
 - [ ] bc 659 merge, then the supervisor install on dapyllil
+- [ ] healthchecks.io has no ntfy integration (email only): ops session hc-ntfy-1-13, then owner pastes the token
+- [ ] Egress canary edge.adobedc.net no longer blocked by the Pi-hole: session egress-canary (assess)
