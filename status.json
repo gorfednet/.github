@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-11-14T14:32:00.291Z",
-  "renderedAt": "2026-11-14T14:32:00.291Z",
+  "generatedAt": "2026-11-14T16:32:17.544Z",
+  "renderedAt": "2026-11-14T16:32:17.544Z",
   "repos": [
     {
       "slug": "gorfednet/bindercurve.com",
@@ -18,7 +18,7 @@
       "slug": "gorfednet/4thcltr.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 22,
+      "openPrCount": 23,
       "lapsedBacklogCount": 0,
       "noPrCount": 13,
       "idlePrCount": 7,
@@ -164,18 +164,29 @@
       "mainRed": false,
       "openPrs": [
         {
-          "number": 186,
-          "title": "claude-home: per-repo plugin map, global keeps only security-guidance",
+          "number": 190,
+          "title": "Row 1.13: record heartbeat proofs, fix IPv6 connect timeout behind false capacity downs",
           "ageDays": 0,
           "labels": [
-            "ready-to-merge",
-            "needs-fix"
+            "ready-to-merge"
           ],
           "draft": false,
-          "review": "findings",
-          "headSha": "ab7ddc6500cfc076cb23b0bd6920ec42169d85ba",
+          "review": "clean",
+          "headSha": "ca9ad6c6035545ffdf87c66e7c70cf08f900e3ac",
           "ci": "green",
-          "next": "Merge: ship-bot merges once labelled. Merge MoonMan#337 and 4thcltr.com#274 alongside (green CI plus a read of the 5-line diff; neither repo has a Claude review workflow).",
+          "next": "Merge once `review-status` is clean and CI is green (ship-bot does it on the `ready-to-merge` label)",
+          "author": "gorfednet"
+        },
+        {
+          "number": 189,
+          "title": "Plan: move the fleet into one GitHub organization (assessment only)",
+          "ageDays": 0,
+          "labels": [],
+          "draft": true,
+          "review": "findings",
+          "headSha": "87092f1b035d206c0d5f24d8830c5cc7b5815734",
+          "ci": "green",
+          "next": "Fable review, then Desk asks the owner (path, org name, Team plan, cutover sitting)",
           "author": "gorfednet"
         },
         {
@@ -188,20 +199,6 @@
           "headSha": "b4bbf5165bf4340bc0563da86c77408bd8b540af",
           "ci": "green",
           "next": "merge (the hook lives in `docs/claude-home/hooks/`: Desk copies it to `~/.claude/hooks/` after merge)",
-          "author": "gorfednet"
-        },
-        {
-          "number": 169,
-          "title": "ship-bot: control-plane threads need a clean review (row 1.14)",
-          "ageDays": 0,
-          "labels": [
-            "ready-to-merge"
-          ],
-          "draft": false,
-          "review": "clean",
-          "headSha": "80db204f2b319047a2d4e125b9eee1be8df5eeb1",
-          "ci": "green",
-          "next": "ship-bot merges it",
           "author": "gorfednet"
         },
         {
@@ -229,38 +226,9 @@
           "author": "gorfednet"
         },
         {
-          "number": 151,
-          "title": "ship-bot example rows: blackpixelrecords env file, gorfed.net work content",
-          "ageDays": 0,
-          "labels": [
-            "ready-to-merge"
-          ],
-          "draft": false,
-          "review": "findings",
-          "headSha": "b9cb867b0db09d6e79f49472a178ed1f79d366c2",
-          "ci": "pending",
-          "next": "Merge once the review is clean",
-          "author": "gorfednet"
-        },
-        {
-          "number": 150,
-          "title": "Handoff: worktree drain (plan 2.3)",
-          "ageDays": 0,
-          "labels": [
-            "ready-to-merge",
-            "needs-fix"
-          ],
-          "draft": false,
-          "review": "findings",
-          "headSha": "5e21ef05ede22689823fb2b8d89cc0d86cc133cd",
-          "ci": "green",
-          "next": "merge (docs only)",
-          "author": "gorfednet"
-        },
-        {
           "number": 149,
           "title": "Drain: fleet-report.mjs edit",
-          "ageDays": 0,
+          "ageDays": 1,
           "labels": [],
           "draft": true,
           "review": "not-run",
@@ -276,7 +244,7 @@
           "labels": [],
           "draft": true,
           "review": "not-run",
-          "headSha": "cb6aab512de8029783679e1be1fb9c4f525b669f",
+          "headSha": "c361702aa9c200e408f9d0ad38a7d6ae2f3b1070",
           "ci": "none",
           "next": "Desk appends each pass's line until the 02:00 ET rotation (hold: the log is still being written)",
           "author": "gorfednet"
@@ -313,25 +281,10 @@
             "ready-to-merge"
           ],
           "draft": false,
-          "review": "clean",
-          "headSha": "c35d91cc8cd53ce9bd7d6c449dca34a1036d9f6f",
-          "ci": "green",
-          "next": "Merge once the review on the new head is clean (docs-only). Ship-bot merges; it carries `ready-to-merge`.",
-          "author": "gorfednet"
-        },
-        {
-          "number": 129,
-          "title": "Handoff: release loop 4",
-          "ageDays": 2,
-          "labels": [
-            "ready-to-merge",
-            "needs-fix"
-          ],
-          "draft": false,
           "review": "findings",
-          "headSha": "bfd338cc8cfc2897c40627019ec10836250d6d76",
-          "ci": "green",
-          "next": null,
+          "headSha": "648359191ca0b3fa563db15ebd7454fc7a21f258",
+          "ci": "pending",
+          "next": "the Claude review of 941aab6 reads clean or triaged",
           "author": "gorfednet"
         },
         {
@@ -557,6 +510,10 @@
       ],
       "idlePrs": [
         {
+          "number": 117,
+          "idleDays": 3
+        },
+        {
           "number": 113,
           "idleDays": 4
         },
@@ -582,7 +539,7 @@
     {
       "slug": "gorfednet/MoonMan",
       "redacted": true,
-      "mainRed": true,
+      "mainRed": false,
       "openPrCount": 10,
       "lapsedBacklogCount": 0,
       "noPrCount": 41,
@@ -599,7 +556,7 @@
         {
           "number": 8,
           "title": "Drain: Acid3 sample fixtures",
-          "ageDays": 0,
+          "ageDays": 1,
           "labels": [],
           "draft": true,
           "review": "not-run",
@@ -635,7 +592,7 @@
       "slug": "gorfednet/heuristics.4thcltr.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 12,
+      "openPrCount": 11,
       "lapsedBacklogCount": 12,
       "noPrCount": 5,
       "idlePrCount": 0,
@@ -647,7 +604,7 @@
       "slug": "gorfednet/papers.4thcltr.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 7,
+      "openPrCount": 6,
       "lapsedBacklogCount": 0,
       "noPrCount": 1,
       "idlePrCount": 2,
@@ -683,7 +640,7 @@
       "slug": "gorfednet/ops",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 6,
+      "openPrCount": 5,
       "lapsedBacklogCount": 0,
       "noPrCount": 0,
       "idlePrCount": 0,
@@ -695,11 +652,11 @@
   "branchesReadAt": "2026-11-14T02:32:09.796Z",
   "carried": true,
   "inventory": {
-    "measuredAt": "2026-11-14T14:32:00.291Z",
+    "measuredAt": "2026-11-14T16:32:17.544Z",
     "counts": {
       "pr": {
-        "total": 116,
-        "orphans": 67
+        "total": 111,
+        "orphans": 64
       },
       "session": null,
       "worktree": null,
@@ -713,8 +670,16 @@
       {
         "kind": "pr",
         "repo": "gorfednet/.github",
-        "ref": "#186",
-        "label": "claude-home: per-repo plugin map, global keeps only security-guidance",
+        "ref": "#190",
+        "label": "Row 1.13: record heartbeat proofs, fix IPv6 connect timeout behind false capacity downs",
+        "private": false,
+        "lapsed": false
+      },
+      {
+        "kind": "pr",
+        "repo": "gorfednet/.github",
+        "ref": "#189",
+        "label": "Plan: move the fleet into one GitHub organization (assessment only)",
         "private": false,
         "lapsed": false
       },
@@ -723,30 +688,6 @@
         "repo": "gorfednet/.github",
         "ref": "#175",
         "label": "Quota attribution: guard call log and burn sampler",
-        "private": false,
-        "lapsed": false
-      },
-      {
-        "kind": "pr",
-        "repo": "gorfednet/.github",
-        "ref": "#169",
-        "label": "ship-bot: control-plane threads need a clean review (row 1.14)",
-        "private": false,
-        "lapsed": false
-      },
-      {
-        "kind": "pr",
-        "repo": "gorfednet/.github",
-        "ref": "#151",
-        "label": "ship-bot example rows: blackpixelrecords env file, gorfed.net work content",
-        "private": false,
-        "lapsed": false
-      },
-      {
-        "kind": "pr",
-        "repo": "gorfednet/.github",
-        "ref": "#150",
-        "label": "Handoff: worktree drain (plan 2.3)",
         "private": false,
         "lapsed": false
       },
@@ -779,14 +720,6 @@
         "repo": "gorfednet/ai-use-levels",
         "ref": "#23",
         "label": "Spec 1.2.1: a site footer mark, and ordering a long Tool list",
-        "private": false,
-        "lapsed": false
-      },
-      {
-        "kind": "pr",
-        "repo": "gorfednet/.github",
-        "ref": "#129",
-        "label": "Handoff: release loop 4",
         "private": false,
         "lapsed": false
       },
