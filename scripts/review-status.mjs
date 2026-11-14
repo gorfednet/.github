@@ -61,10 +61,19 @@ try {
   // Only when the newest review on the pull request is a clean one: a later findings review (even of the same head) wins.
   const base = verdict.lastReview?.findings === 0 ? verdict.lastReview.head : undefined
   if (clone && base) {
-    const git = (args) => execFileSync('git', ['-C', clone, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
-    // Best effort: the clone needs the head and main to judge. A failed fetch leaves whatever it already has.
-    try { git(['fetch', '-q', 'origin', '+refs/heads/main:refs/remotes/origin/main', `pull/${pr}/head`]) } catch (e) { console.error(`review-status: fetch failed (${String(e.message).split('\n')[0]}); judged on what the clone has`) }
-    const merged = onlyCleanMergesOfMain({ git, base, head })
+    // main's tip comes from GitHub, never from the clone's own refs, and the clone must contain it.
+    // Replace refs are off. A fetch that fails, or a clone that lacks the tip, is not-run.
+    const git = (args) => execFileSync('git', ['--no-replace-objects', '-C', clone, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 60000 })
+    let merged = { ok: false, merges: 0, why: 'not judged' }
+    try {
+      const baseRef = gh(['api', `repos/${repo}/pulls/${pr}`, '--jq', '.base.ref']).trim()
+      const mainTip = gh(['api', `repos/${repo}/branches/${baseRef}`, '--jq', '.commit.sha']).trim()
+      git(['fetch', '-q', '--no-write-fetch-head', 'origin', mainTip, `refs/pull/${pr}/head`])
+      git(['cat-file', '-e', `${mainTip}^{commit}`])
+      merged = onlyCleanMergesOfMain({ git, base, head, main: mainTip })
+    } catch (e) {
+      merged.why = `could not read main or fetch it into the clone (${String(e.message).split('\n')[0]})`
+    }
     if (!merged.ok) console.error(`review-status: not accepted as clean merges of main: ${merged.why}`)
     if (merged.ok) {
       console.log(`#${pr}  clean  Claude reviewed ${base.slice(0, 9)} (clean); ${merged.merges} later commit(s) up to ${short} are clean merges of main`)

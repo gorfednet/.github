@@ -11,10 +11,10 @@
  * non-zero exit. Anything missing from the clone (a commit never fetched) is an error, which reads
  * as "no": the check can only accept, never invent a review.
  *
- * @param {{ git: (args: string[]) => string, base: string, head: string, main?: string }} input
+ * @param {{ git: (args: string[]) => string, base: string, head: string, main: string }} input
  * @returns {{ ok: boolean, merges: number, why: string }}
  */
-export function onlyCleanMergesOfMain({ git, base, head, main = 'refs/remotes/origin/main' }) {
+export function onlyCleanMergesOfMain({ git, base, head, main }) {
   const no = (why) => ({ ok: false, merges: 0, why })
   try {
     if (base === head) return no('the head itself was reviewed')

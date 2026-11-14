@@ -24,7 +24,7 @@ git(['update-ref', 'refs/remotes/origin/main', 'main'])
 git(['checkout', '-q', 'pr'])
 git(['merge', '-q', '--no-edit', 'origin/main'])
 const cleanMerge = git(['rev-parse', 'HEAD']).trim()
-const run = (base, head) => onlyCleanMergesOfMain({ git, base, head })
+const run = (base, head) => onlyCleanMergesOfMain({ git, base, head, main: 'refs/remotes/origin/main' })
 
 describe('onlyCleanMergesOfMain', () => {
   it('accepts a head that only adds a clean merge of main to the reviewed head', () => {
@@ -77,6 +77,12 @@ describe('merges that hide a resolution or a bad shape', () => {
     assert.equal(run(reviewed, git(['rev-parse', 'HEAD']).trim()).ok, false, '-s ours')
     git(['checkout', '-q', 'pr'])
   })
+  it('refuses -s ours where the redo does not conflict (main touched a file the branch did not)', () => {
+    git(['checkout', '-q', '-b', 'ours2', b1])
+    git(['merge', '-q', '-s', 'ours', '--no-edit', 'refs/remotes/origin/main'])
+    assert.equal(run(b1, git(['rev-parse', 'HEAD']).trim()).ok, false)
+    git(['checkout', '-q', 'pr'])
+  })
   it('refuses swapped parents (main merged into the branch the wrong way round) and a base that is not an ancestor', () => {
     git(['checkout', '-q', '-b', 'swap', 'refs/remotes/origin/main'])
     git(['merge', '-q', '--no-edit', b1])
@@ -95,12 +101,16 @@ describe('merges that hide a resolution or a bad shape', () => {
 
 describe('the clean heads a verdict reports', () => {
   const bot = (head, findings, at) => ({ body: `<!-- claude-review head=${head} findings=${findings} -->`, user: { login: REVIEW_BOT_LOGIN }, created_at: at })
-  it('lists heads with no findings, newest first, and none for a head with findings', () => {
+  it('reports the newest verdict, and a findings verdict wins a same-second tie', () => {
     const A = 'a'.repeat(40), B = 'b'.repeat(40), C = 'c'.repeat(40)
     const v = claudeReviewVerdict([bot(A, 0, '2026-11-13T10:00:00Z'), bot(B, 2, '2026-11-13T11:00:00Z'), bot(C, 0, '2026-11-13T12:00:00Z')], 'd'.repeat(40))
     assert.equal(v.state, 'not-run')
-    assert.deepEqual(v.cleanHeads, [C, A])
     assert.deepEqual(v.lastReview, { head: C, findings: 0, at: '2026-11-13T12:00:00Z' })
+  })
+  it('a clean and a findings verdict in the same second: findings is the last review', () => {
+    const A = 'a'.repeat(40)
+    const v = claudeReviewVerdict([bot(A, 2, '2026-11-13T10:00:00Z'), bot(A, 0, '2026-11-13T10:00:00Z')], 'd'.repeat(40))
+    assert.equal(v.lastReview.findings, 2)
   })
   it('a later findings review, even of the same head, is the last review', () => {
     const A = 'a'.repeat(40)
@@ -110,12 +120,17 @@ describe('the clean heads a verdict reports', () => {
 })
 
 describe('review-status.mjs --clone', () => {
+  // The clone fetches from itself: main's tip comes from the (fake) API, the head from refs/pull/9/head.
+  const mainTip = git(['rev-parse', 'refs/remotes/origin/main']).trim()
+  git(['remote', 'add', 'origin', dir])
+  git(['update-ref', 'refs/pull/9/head', cleanMerge])
+  git(['config', 'uploadpack.allowAnySHA1InWant', 'true'])
   const comments = JSON.stringify([[{ body: `<!-- claude-review head=${b1} findings=0 -->`, user: { login: REVIEW_BOT_LOGIN }, created_at: '2026-11-13T10:00:00Z', html_url: 'u' }]])
 
   const fakeGh = (head, body = JSON.parse(comments)) => {
     const bin = mkdtempSync(join(tmpdir(), 'mom-gh-'))
     after(() => rmSync(bin, { recursive: true, force: true }))
-    writeFileSync(join(bin, 'gh'), `#!/bin/sh\ncase "$*" in\n  *pulls/*) echo ${head} ;;\n  *comments*) cat <<'EOF'\n${JSON.stringify(body)}\nEOF\n ;;\nesac\n`, { mode: 0o755 })
+    writeFileSync(join(bin, 'gh'), `#!/bin/sh\ncase "$*" in\n  *base.ref*) echo main ;;\n  *branches/main*) echo ${mainTip} ;;\n  *pulls/*) echo ${head} ;;\n  *comments*) cat <<'EOF'\n${JSON.stringify(body)}\nEOF\n ;;\nesac\n`, { mode: 0o755 })
     return bin
   }
   const status = (head, extra) => {
@@ -140,6 +155,7 @@ describe('review-status.mjs --clone', () => {
     assert.equal(without.code, 1)
     assert.match(without.out, /not-run/)
     const code = commit('feature.txt', 'f\nagain\n', 'b3')
+    git(['update-ref', 'refs/pull/9/head', code])
     const after3 = status(code, ['--clone', dir])
     assert.equal(after3.code, 1)
     assert.match(after3.out, /not-run/)
