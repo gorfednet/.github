@@ -146,6 +146,8 @@ export function createGitHubClient({ token, fetchImpl = globalThis.fetch, api = 
     getRepo: (slug) => request('GET', `/repos/${slug}`),
     listOpenPulls: (slug) => paginate(`/repos/${slug}/pulls?state=open&sort=created&direction=asc`),
     getPull: (slug, n) => request('GET', `/repos/${slug}/pulls/${n}`),
+    /** The branch's head commit right now, for a hotfix's "main is still what was deployed" check (lib/deploy-plan.mjs). */
+    getBranchSha: (slug, branch) => request('GET', `/repos/${slug}/git/ref/heads/${encodeURIComponent(branch)}`).then((r) => r?.object?.sha ?? null),
     /** The `limit` most recently merged pull requests (closed-but-unmerged ones are skipped), only those carrying `label` when given. Used by --validate only. */
     async listMergedPulls(slug, limit = 3, label) {
       const out = []

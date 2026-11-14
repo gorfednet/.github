@@ -78,6 +78,20 @@ describe('config validation', () => {
     assert.equal(config.repos.find((r) => r.name === 'heuristics.4thcltr.com').env.ASSESS_JOBS, join(HOME, 'Developer', 'gorfednet', 'assess', 'jobs'))
   })
 
+  it('deployOn: "release" by default; "merge" only with a reason; nowhere else (plan row 1.25)', () => {
+    assert.equal(normalizeConfig(base([deployRepo()]), { home: HOME }).repos[0].deployOn, 'release')
+    assert.deepEqual(validateConfig(base([deployRepo({ deployOn: 'release' })])), [])
+    assert.deepEqual(validateConfig(base([deployRepo({ deployOn: 'merge', deployOnMergeReason: 'an API no visitor sees' })])), [])
+    assert.match(problemsFor(base([deployRepo({ deployOn: 'merge' })])), /deployOnMergeReason: required with deployOn "merge"/)
+    assert.match(problemsFor(base([deployRepo({ deployOn: 'merge', deployOnMergeReason: ' ' })])), /deployOnMergeReason: required/)
+    assert.match(problemsFor(base([deployRepo({ deployOn: 'tag' })])), /deployOn: must be "release" \(the default\) or "merge"/)
+    assert.match(problemsFor(base([deployRepo({ deployOnMergeReason: 'x' })])), /deployOnMergeReason: only with deployOn "merge"/)
+    const mergeOnly = { slug: 'gorfednet/m', dir: 'm', mode: 'merge-only', reason: 'x', claudeReview: true, expectedChecks: ['c'], deployOn: 'merge' }
+    assert.match(problemsFor(base([mergeOnly])), /unknown key "deployOn"/)
+    // The example config sets none, so every visitor-facing row there deploys only from a release.
+    assert.ok(normalizeConfig(example(), { home: HOME }).repos.filter((r) => r.mode === 'deploy').every((r) => r.deployOn === 'release'))
+  })
+
   it('release: an optional object with a letters-only tagPrefix; defaults to v; off for every other row', () => {
     assert.deepEqual(validateConfig(base([deployRepo({ release: {} })])), [])
     assert.deepEqual(validateConfig(base([deployRepo({ release: { tagPrefix: 'rel' } })])), [])

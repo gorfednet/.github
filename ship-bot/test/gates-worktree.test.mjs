@@ -139,7 +139,7 @@ describe('advanceGatesWorktree: the checkout behind the gate commands on PATH fo
 
 const gatesPr = () => makePr({ head: { sha: 'a'.repeat(40), repo: { full_name: GATES_REPO } } })
 const mergeOnly = (o = {}) => {
-  const { setup, deploy, envFiles, ...rest } = repoEntry(o)
+  const { setup, deploy, envFiles, deployOn, deployOnMergeReason, ...rest } = repoEntry(o)
   return { ...rest, mode: 'merge-only', reason: 'test' }
 }
 

@@ -1416,3 +1416,189 @@ describe('release tags (a repository that ships only from a tag)', () => {
     assert.equal(s.runner.commandLines('workspace').filter((l) => l.includes(' tag ')).length, 0)
   })
 })
+
+describe('releases, not every merge (plan row 1.25)', () => {
+  const NOTES = '## Release notes\n\n- The new figures page.\n- Fixes the footer.\n\nLocal gate: gate-run make verify, exit 0, ~/Library/Logs/gate-run/x.log\nSmoke: npm run preview, read /, /figures and the 404 page\n'
+  const LAST = 'd'.repeat(40)
+  const rel = ({ body = NOTES, labels = ['ready-to-merge', 'release'], row = {}, state = {}, runner = makeRunner(), now } = {}) => {
+    const github = new FakeGitHub({ pulls: [makePr({ body, labels: labels.map((name) => ({ name })) })] })
+    const s = scenario({ github, runner, repos: [repoEntry({ deployOn: 'release', ...row })], ...(now ? { now } : {}) })
+    if (Object.keys(state).length > 0) {
+      mkdirSync(s.config.stateDir, { recursive: true })
+      writeFileSync(s.statePath, JSON.stringify({ version: 1, prs: {}, repos: { [SLUG]: state } }))
+    }
+    return s
+  }
+
+  it('a row with no deployOn deploys only from a release (the default)', async () => {
+    const { deployOn, deployOnMergeReason, ...row } = repoEntry()
+    const github = new FakeGitHub({ pulls: [makePr({ body: 'A fix.' })] })
+    const s = scenario({ github, repos: [row] })
+    assert.equal(s.config.repos[0].deployOn, 'release')
+    await s.run()
+    assert.equal(merges(s.github).length, 1)
+    assert.equal(s.runner.ofKind('deploy').length, 0)
+    assert.equal(s.runner.ofKind('setup').length, 0)
+  })
+
+  it('a ready pull request with no release label is merged, not deployed, and says it goes out with the next release', async () => {
+    const s = rel({ body: 'A fix.', labels: ['ready-to-merge'] })
+    await s.run()
+    assert.equal(merges(s.github).length, 1)
+    assert.equal(s.runner.ofKind('workspace').length, 0)
+    assert.equal(s.runner.ofKind('deploy').length, 0)
+    assert.equal(s.runner.ofKind('preflight').length, 0, 'no ssh preflight for a merge that deploys nothing')
+    assert.match(bodies(s.github)[0], /not deployed: this repo deploys only from a release\. It goes live with the next pull request labelled `release`/)
+    assert.equal(s.state().repo(SLUG).blocked, undefined)
+    assert.equal(s.state().repo(SLUG).deployInProgress, undefined)
+  })
+
+  it('a release with notes, a local gate line and a smoke line deploys everything since the last deploy and records the release', async () => {
+    const s = rel({ state: { lastDeployedSha: LAST } })
+    await s.run()
+    assert.equal(merges(s.github).length, 1)
+    assert.deepEqual(s.runner.commandLines('deploy'), ['make deploy'])
+    const ws = s.runner.commandLines('workspace')
+    assert.ok(ws.some((l) => l.endsWith(`merge-base --is-ancestor ${LAST} ${MERGE}`)), ws.join('\n'))
+    assert.ok(ws.some((l) => l.endsWith(`diff --name-only ${LAST} ${MERGE}`)), 'the diff counts from the last deploy, not the first parent')
+    assert.ok(!ws.some((l) => l.endsWith(`diff --name-only ${PARENT} ${MERGE}`)))
+    const st = s.state().repo(SLUG)
+    assert.equal(st.lastDeployedSha, MERGE)
+    assert.equal(st.lastReleasedAt, '2026-10-09T12:00:00.000Z')
+  })
+
+  it('refuses to merge a release missing its notes, a bullet, the local gate line or the smoke line', async () => {
+    const cases = {
+      'Local gate: x\nSmoke: y\n': /no `## Release notes` section/,
+      '## Release notes\n\nJust prose.\n\nLocal gate: x\nSmoke: y\n': /has no bullet/,
+      '## Release notes\n\n- a\n\nSmoke: y\n': /no `Local gate:` line/,
+      '## Release notes\n\n- a\n\nLocal gate: x\n': /no `Smoke:` line/,
+      '## Release notes\n\n- a\n\nLocal gate:\nSmoke: y\n': /no `Local gate:` line/,
+      // A bullet under a later heading is not in the notes.
+      '## Release notes\n\nprose\n\n## Next\n\n- [ ] merge\n\nLocal gate: x\nSmoke: y\n': /has no bullet/,
+    }
+    for (const [body, expected] of Object.entries(cases)) {
+      const s = rel({ body })
+      await s.run()
+      assert.equal(merges(s.github).length, 0, body)
+      assert.equal(s.runner.ofKind('deploy').length, 0, body)
+      assert.match(bodies(s.github)[0], expected, body)
+      assert.match(bodies(s.github)[0], /is missing what a release needs/, body)
+    }
+  })
+
+  it('at most one release a week: a second one within 6 days waits unless it says Early release', async () => {
+    const recent = { lastDeployedSha: LAST, lastReleasedAt: '2026-10-06T12:00:00Z' }
+    const s = rel({ state: recent })
+    await s.run()
+    assert.equal(merges(s.github).length, 0)
+    assert.match(bodies(s.github)[0], /the last release here was 3\.0 days ago, and a repo gets at most one release a week/)
+    const early = rel({ state: recent, body: `${NOTES}Early release: the owner asked for the price fix today\n` })
+    await early.run()
+    assert.equal(merges(early.github).length, 1)
+    assert.deepEqual(early.runner.commandLines('deploy'), ['make deploy'])
+    const weekLater = rel({ state: { lastDeployedSha: LAST, lastReleasedAt: '2026-10-03T11:00:00Z' } })
+    await weekLater.run()
+    assert.equal(merges(weekLater.github).length, 1)
+  })
+
+  it('a hotfix deploys on merge when it names its exemption and main is still the last deploy', async () => {
+    for (const ex of ['security', 'outage']) {
+      const s = rel({ labels: ['ready-to-merge', 'hotfix'], body: `Fix.\n\nExemption: ${ex} the login page leaks a token\n`, state: { lastDeployedSha: PARENT } })
+      await s.run()
+      assert.equal(merges(s.github).length, 1, ex)
+      assert.deepEqual(s.runner.commandLines('deploy'), ['make deploy'], ex)
+      assert.equal(s.state().repo(SLUG).lastDeployedSha, MERGE)
+      assert.equal(s.state().repo(SLUG).lastReleasedAt, undefined, 'a hotfix is not a release and does not reset the weekly clock')
+    }
+  })
+
+  it('refuses a hotfix with no exemption, a made-up one, no reason, two, or both labels', async () => {
+    const cases = [
+      [['hotfix'], 'Fix.', /says which exemption applies/],
+      [['hotfix'], 'Exemption: urgent the owner wants it', /"urgent" is not an exemption/],
+      [['hotfix'], 'Exemption: security', /needs a sentence saying why/],
+      [['hotfix'], 'Exemption: security a\nExemption: outage b', /2 "Exemption:" lines/],
+      [['hotfix', 'release'], `${NOTES}Exemption: security a`, /both the `release` and `hotfix` labels/],
+    ]
+    for (const [labels, body, expected] of cases) {
+      const s = rel({ labels: ['ready-to-merge', ...labels], body, state: { lastDeployedSha: PARENT } })
+      await s.run()
+      assert.equal(merges(s.github).length, 0, body)
+      assert.match(bodies(s.github)[0], expected, body)
+    }
+  })
+
+  it('a hotfix never ships undeployed merges: refused when main moved since the last deploy, or when no deploy is on record', async () => {
+    const moved = rel({ labels: ['ready-to-merge', 'hotfix'], body: 'Exemption: outage the site is down', state: { lastDeployedSha: LAST } })
+    await moved.run()
+    assert.equal(merges(moved.github).length, 0)
+    assert.match(bodies(moved.github)[0], /main \(ccccccc\) has merges since the last deploy \(ddddddd\)/)
+    const unknown = rel({ labels: ['ready-to-merge', 'hotfix'], body: 'Exemption: outage the site is down' })
+    await unknown.run()
+    assert.equal(merges(unknown.github).length, 0)
+    assert.match(bodies(unknown.github)[0], /no record of the commit this repo last deployed/)
+  })
+
+  it('with no deploy on record, every tracked path counts as changed, so pausedIfChanged still pauses', async () => {
+    const runner = makeRunner({ changed: ['deploy/nginx.conf', 'index.html'] })
+    const s = rel({ runner, row: { pausedIfChanged: ['deploy/'] } })
+    await s.run()
+    assert.ok(runner.commandLines('workspace').some((l) => l.endsWith(`ls-tree -r --name-only ${MERGE}`)))
+    assert.equal(runner.ofKind('deploy').length, 0)
+    assert.match(bodies(s.github)[0], /not deployed\*\*: it changes `deploy\/nginx\.conf`/)
+  })
+
+  it('a path changed by an earlier, undeployed merge still pauses the release (the diff starts at the last deploy)', async () => {
+    // The release's own merge touches only index.html; deploy/ changed in a merge since the last deploy.
+    const runner = makeRunner({ handle: (cmd) => (cmd.args?.[2] === 'diff' ? { stdout: cmd.args[4] === LAST ? 'deploy/nginx.conf\nindex.html\n' : 'index.html\n' } : undefined) })
+    const s = rel({ runner, row: { pausedIfChanged: ['deploy/'] }, state: { lastDeployedSha: LAST } })
+    await s.run()
+    assert.equal(runner.ofKind('deploy').length, 0)
+    assert.match(bodies(s.github)[0], /not deployed\*\*/)
+  })
+
+  it('the default rollback redeploys the last deployed commit, not the first parent', async () => {
+    let deploys = 0
+    const runner = makeRunner({ handle: (cmd) => (cmd.kind === 'deploy' && ++deploys === 1 ? { code: 1 } : undefined) })
+    const s = rel({ runner, state: { lastDeployedSha: LAST } })
+    await s.run()
+    assert.ok(runner.commandLines('workspace').some((l) => l.endsWith(`checkout --force --detach ${LAST}`)), runner.commandLines('workspace').join('\n'))
+    assert.match(bodies(s.github)[0], /Rolled back by redeploying the previous commit ddddddd/)
+  })
+
+  it('a tag repo needs the release label for its Release line, and the line for its release label', async () => {
+    const tagRow = { release: { tagPrefix: 'v' }, rollback: [{ name: 'previous release', command: ['make', 'rollback'] }] }
+    const lineOnly = rel({ labels: ['ready-to-merge'], body: 'Release: 3.9.7 New figures.', row: tagRow })
+    lineOnly.github.tags = ['v3.9.6']
+    await lineOnly.run()
+    assert.equal(merges(lineOnly.github).length, 0)
+    assert.match(bodies(lineOnly.github)[0], /has a `Release:` line but no `release` or `hotfix` label/)
+    const labelOnly = rel({ row: tagRow })
+    labelOnly.github.tags = ['v3.9.6']
+    await labelOnly.run()
+    assert.equal(merges(labelOnly.github).length, 0)
+    assert.match(bodies(labelOnly.github)[0], /needs a `Release: X\.Y\.Z One sentence\.` line/)
+    const both = rel({ row: tagRow, body: `${NOTES}\nRelease: 3.9.7 New figures.\n` })
+    both.github.tags = ['v3.9.6']
+    await both.run()
+    assert.equal(merges(both.github).length, 1)
+    assert.ok(both.runner.commandLines('workspace').some((l) => l.endsWith('push origin refs/tags/v3.9.7')))
+    assert.deepEqual(both.runner.commandLines('deploy'), ['make deploy'])
+    const plain = rel({ labels: ['ready-to-merge'], body: 'A fix.', row: tagRow })
+    plain.github.tags = ['v3.9.6']
+    await plain.run()
+    assert.equal(merges(plain.github).length, 1)
+    assert.equal(plain.runner.ofKind('workspace').length, 0)
+  })
+
+  it('a dry run says whether it would deploy, and why not', async () => {
+    const s = rel({ state: { lastDeployedSha: LAST } })
+    await s.run('dry-run')
+    assert.equal(s.github.writes.length, 0)
+    assert.ok(s.logs.some((l) => /would deploy it as a release, with everything merged since the last deploy/.test(l)), s.logs.join('\n'))
+    const none = rel({ labels: ['ready-to-merge'], body: 'x' })
+    await none.run('dry-run')
+    assert.ok(none.logs.some((l) => /would merge only: not deployed: this repo deploys only from a release/.test(l)), none.logs.join('\n'))
+  })
+})

@@ -38,11 +38,13 @@ so in a comment on the pull request (once, not every two minutes).
 If every answer is yes, it **merges** (always a merge commit) and then, depending
 on the repository:
 
-- **Deploys it** (MoonMan and the websites): it builds and publishes from its
-  own copy of the code in `~/.ship-bot/work/`, never from your folders. The
-  deploy checks the live site itself. If anything fails it **puts the previous
-  version back**, comments on the pull request, shows a Mac notification, and
-  **stops touching that repository** until someone has looked.
+- **Deploys it, but only for a release** (MoonMan and the websites): it
+  builds and publishes from its own copy of the code in `~/.ship-bot/work/`,
+  never from your folders. The deploy checks the live site itself. If anything
+  fails it **puts the previous version back**, comments on the pull request,
+  shows a Mac notification, and **stops touching that repository** until
+  someone has looked. See "Releases, not every merge" below: an ordinary merge
+  is not deployed.
 - **Merges only** (BinderCurve, 4thcltr, ACID2REAPER, .github): those ship
   through a release step in a session, so the bot just says "Merged; deploying
   is a session's job for this repo".
@@ -51,6 +53,38 @@ on the repository:
 promptboi.com is special: the bot only ever publishes its website. If a merge
 changes the API or the database (`server/`), the bot merges it but does **not**
 deploy, says so, and leaves the deploy to a session.
+
+## Releases, not every merge (plan row 1.25)
+
+Owner, 14 November 2026: "We need to slow down now. Big releases, not
+incremental. More local testing before deploying live." So in every `deploy`
+row merging and deploying are split (`deployOn`, default `"release"`;
+`lib/deploy-plan.mjs`):
+
+- **A plain merge is not deployed.** It goes live with the next release, and
+  its comment says so.
+- **Label `release`: a release.** One per repository a week (6 days apart, so a
+  weekly release at a slightly earlier hour still goes). The description needs a
+  `## Release notes` section with at least one bullet, a `Local gate:` line
+  (the full local gate through `gate-run` on this Mac, and where its log is) and
+  a `Smoke:` line (the built site or app read on a local or preview host, and
+  what was checked). An `Early release: <why>` line lets one through sooner
+  when the owner asked. A tag repo (4thcltr.com) also needs its `Release:` line,
+  and a `Release:` line without the label stops the merge.
+- **Label `hotfix`: an exemption**, said on its own line:
+  `Exemption: security <why>` or `Exemption: outage <why>`. It deploys on merge
+  only when main is still the commit last deployed, so a hotfix never carries
+  undeployed merges live. Otherwise: cut a release, or deploy the fix by hand.
+- **`deployOn: "merge"`** keeps the old deploy on every merge, for a row whose
+  deploy no visitor sees. It needs `deployOnMergeReason`. No row uses it today:
+  the infra repositories (`.github`, `ops`) are `merge-only`.
+
+A release deploys everything merged since the commit last deployed
+(`lastDeployedSha` in `~/.ship-bot/state.json`): changed paths,
+`pausedIfChanged` and `onlyIfChanged` count from there, and the default
+rollback redeploys that commit. With no deploy on record, every tracked path
+counts as changed. The bot reads labels and lines; it cannot prove the gate or
+the smoke ran. The session that labels the release runs them and names the log.
 
 ## Watching first
 
