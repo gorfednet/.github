@@ -19,13 +19,14 @@ pull request, asks:
 3. Did the **Claude reviewer review the latest commit**, and either find
    nothing or have **every one of its comments answered**, with a reply
    written after the comment or by resolving it? It reads this with
-   `review-status.mjs`. A latest commit the reviewer has not reviewed always
-   waits, however many earlier commits it reviewed. The bot never asks for a
+   `review-status.mjs`. A latest commit the reviewer has not reviewed
+   waits, however many earlier commits it reviewed, unless it only adds clean
+   merges of `main` (redone with `git merge-tree`, no conflict, same tree) to a
+   head whose newest review is clean: `review-status.mjs --clone` reads that as clean. The bot never asks for a
    review itself: whether a push needs one is a judgement (a clean merge of
    `main`, a regenerated file, a moved pin or a lint fix does not). After 15
    minutes without one it says so once per commit in a comment: comment
-   `claude review` if the push changed code, or merge by hand after saying on
-   the pull request which kind of push it was. A repository without the
+   `claude review` for any other push (code, a regenerated file, a moved pin or a lint fix). A repository without the
    reviewer yet is held the same way, and a session merges it after reading
    the diff.
 4. Does the description avoid phrases like "fixes #12" that would close an
