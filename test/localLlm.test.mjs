@@ -240,7 +240,8 @@ describe('docs/models.md', () => {
   })
   it('is never imported by the merge path', () => {
     const walk = (d) => readdirSync(d, { withFileTypes: true }).flatMap((e) => (e.name === 'node_modules' ? [] : e.isDirectory() ? walk(join(d, e.name)) : [join(d, e.name)]))
-    const roots = ['ship-bot', 'janitor', 'scripts/gates', '.github/workflows', '.github/actions']
+    // scripts/lib and capacity are on ship-bot's control-plane list and the merge path imports scripts/lib.
+    const roots = ['ship-bot', 'janitor', 'scripts/gates', 'scripts/lib', 'capacity', '.github/workflows', '.github/actions']
     const files = [...roots.flatMap((d) => (existsSync(d) ? walk(d) : [])), 'scripts/review-status.mjs', 'scripts/janitor-train.mjs', 'scripts/janitor-prune.mjs', 'scripts/janitor-notify.sh']
     assert.ok(files.length > 10)
     for (const f of files.filter((f) => existsSync(f) && /\.(mjs|cjs|js|ts|sh|ya?ml|json)$/.test(f)))
