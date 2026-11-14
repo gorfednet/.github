@@ -72,11 +72,11 @@ Weekly 9% at 11:21 ET. Full speed, cost-aware. One line to the owner at about 90
 ## Added 14 Nov overnight (9th Desk)
 - [x] FileVault on, recovery key rotated and saved
 - [x] USB m.2 encrypted APFS (1.20); models redownloading, priority order
-- [x] Phone-alert cause found and fixed (ops 82 merged); [x] ntfy installed on dapyllil (owner, 14 Nov); [ ] token copy, healthchecks ntfy integration, rerun the test
+- [x] Phone-alert cause found and fixed (ops 82 merged); [x] ntfy installed on dapyllil (owner, 14 Nov); [x] token copy (06:49 ET); [ ] healthchecks ntfy integration, rerun the test
 - [x] Ship-bot and capacity installers pick their own Node (.github 179 merged); [x] reinstalled onto /usr/local/bin/node (06:24 ET)
 - [x] Weekly disk hygiene, dry run (ops 83, 84 merged)
 - [x] Local-model harness (.github 180, 181 merged); [ ] fixtures (ops 85), baseline, first eval
-- [ ] Hermes archive (yes; .github 182 running; owner revokes Nous); Screen Sharing over Tailscale (on, phone not connecting yet); 9.9.9.9 fallback via Pi-hole DHCP (owner step); Time Machine re-add tm_gorfpael (owner: later)
+- [ ] Hermes archive (yes; .github 182 running; owner revokes Nous); [x] Screen Sharing over Tailscale (works, RealVNC); 9.9.9.9 fallback: [x] lease 24h, [x] Tailscale DNS, [ ] Pi-hole DHCP line (owner ssh); Time Machine re-add tm_gorfpael (owner: later)
 - [ ] Remote-access doc (1.23, ops 86, re-review)
 - [ ] bc 659: conflict with main fixed 06:40 ET, full gate running
 - [ ] bc 659 merge, then the supervisor install on dapyllil
