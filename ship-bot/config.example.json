@@ -135,10 +135,20 @@
       "envFiles": [
         ".deploy-env"
       ],
+      "env": {
+        "WORK_CONTENT_DIR": "../career-portfolio/content",
+        "WORK_EXPLORE_DIR": "~/Developer/gorfednet/career-portfolio/staging/explore/owner",
+        "WORK_PREVIEWS_DIR": "~/Developer/gorfednet/career-portfolio/staging/previews"
+      },
       "siblings": [
         {
           "dir": "gorfednet.github",
           "slug": "gorfednet/.github",
+          "branch": "main"
+        },
+        {
+          "dir": "career-portfolio",
+          "slug": "gorfednet/career-portfolio",
           "branch": "main"
         }
       ],
@@ -162,7 +172,7 @@
           "timeoutMinutes": 20
         }
       ],
-      "note": "make deploy builds dist/ (npm scripts + python3), requires WEB3FORMS_ACCESS_KEY from .deploy-env, rsyncs, restarts the static nginx container on dapyllil and compares the live index.html byte for byte (nas-ssh-deploy.sh)."
+      "note": "make deploy builds dist/ (npm scripts + python3), with /work/ from career-portfolio main (a sibling) and the owner-only archive from the owner's gitignored staging/ (deploy.sh refuses a fixture build: 13 November 2026, PR 140), requires WEB3FORMS_ACCESS_KEY from .deploy-env, rsyncs, restarts the static nginx container on dapyllil and compares the live index.html byte for byte (nas-ssh-deploy.sh)."
     },
     {
       "slug": "gorfednet/gorfmusic.com",
@@ -189,7 +199,16 @@
           "branch": "main"
         }
       ],
-      "setup": [],
+      "setup": [
+        {
+          "name": "install",
+          "command": [
+            "npm",
+            "ci"
+          ],
+          "note": "make deploy runs web3forms-preflight, which imports vite, before its own install: without this the cleaned workspace has no node_modules (12 November 2026, PR 49)."
+        }
+      ],
       "deploy": [
         {
           "name": "site",
@@ -271,6 +290,9 @@
           "branch": "main"
         }
       ],
+      "pausedIfChanged": [
+        "deploy/"
+      ],
       "setup": [
         {
           "name": "install",
@@ -337,7 +359,9 @@
       "expectedChecks": [
         "check / check"
       ],
-      "envFiles": [],
+      "envFiles": [
+        ".deploy-env"
+      ],
       "siblings": [
         {
           "dir": "gorfednet.github",
@@ -356,7 +380,7 @@
           "timeoutMinutes": 20
         }
       ],
-      "note": "deploy.sh writes route directories (404/, 500/, <page>/index.html) into the checkout before rsyncing it with --delete; the next deploy's git clean removes them. The owner's clone has no .deploy-env, so this deploys with the shared helper's defaults, as a manual deploy from that clone does today; accepted by the main session 2026-10-09."
+      "note": "deploy.sh writes route directories (404/, 500/, <page>/index.html) into the checkout before rsyncing it with --delete; the next deploy's git clean removes them. site-deploy.sh needs SITE from .deploy-env: without envFiles the cleaned workspace had none and the deploy refused (13 November 2026, PR 29)."
     },
     {
       "slug": "gorfednet/rowanmcarthur.com",
@@ -493,7 +517,22 @@
         "axe-firefox",
         "axe-webkit"
       ],
-      "note": "Check names confirmed against #396. heavy-runner-preflight is left out: a pool preflight that label re-runs duplicate; e2e-success and axe-chromium/firefox/webkit prove the full tier ran, after the label (requireChecksAfterLabel)."
+      "note": "Check names confirmed against #396. heavy-runner-preflight is left out: a pool preflight that label re-runs duplicate; e2e-success and axe-chromium/firefox/webkit prove the full tier ran, after the label (requireChecksAfterLabel). coveredChecks: e2e matrix, e2e-extra and e2e-visual sit behind e2e-success; mutation-canary shards behind mutation-canary-success; axe-${{ and e2e-${{ are matrix jobs cancelled or skipped before their matrix expanded, which GitHub posts under the template name; prune-dist and deploy-check-alert are cleanup and alert jobs; rerun-full-browser-gates is the label re-run helper; review is the Claude reviewer (gate d reads its verdict); smoke is the dispatch-only runner-smoke.",
+      "coveredChecks": [
+        "e2e-chromium-",
+        "e2e-firefox-",
+        "e2e-webkit-",
+        "e2e-extra-",
+        "e2e-visual",
+        "mutation-canary",
+        "axe-${{",
+        "e2e-${{",
+        "prune-dist",
+        "deploy-check-alert",
+        "rerun-full-browser-gates",
+        "review",
+        "smoke"
+      ]
     },
     {
       "slug": "gorfednet/4thcltr.com",
@@ -748,6 +787,7 @@
       "slug": "gorfednet/papers.4thcltr.com",
       "dir": "papers.4thcltr.com",
       "mode": "deploy",
+      "needsHeadroom": true,
       "claudeReview": true,
       "live": false,
       "expectedChecks": [
@@ -816,7 +856,7 @@
         }
       ],
       "rollback": [],
-      "note": "Observation first (live false). Equivalent to make deploy (verify, check-release, indexnow plan, upload, ping), split so the pre-upload gates are setup. rollback is an explicit empty list: nothing after the upload can fail the release (the ping ends in || true, and the engine switches itself back on a live mismatch), so a failure anywhere is reported and the repository blocked, never a redeploy of the previous commit (the engine refuses it) and never a make rollback that would step a verified release back. A ping that hangs past its timeout is such a failure: the release stands, the log says why."
+      "note": "Observation first (live false). Equivalent to make deploy (verify, check-release, indexnow plan, upload, ping), split so the pre-upload gates are setup. rollback is an explicit empty list: nothing after the upload can fail the release (the ping ends in || true, and the engine switches itself back on a live mismatch), so a failure anywhere is reported and the repository blocked, never a redeploy of the previous commit (the engine refuses it) and never a make rollback that would step a verified release back. A ping that hangs past its timeout is such a failure: the release stands, the log says why. needsHeadroom: make verify runs the full Playwright suite on this Mac, and its frame-timing specs fail when the load is above the core count (papers 35, 13 November 2026)."
     },
     {
       "slug": "gorfednet/TowIt",
@@ -837,10 +877,19 @@
       "reason": "host configuration and installers; applying them on dapyllil stays a session's job (owner, 11 November 2026: merge-only, gated on the Claude review check)",
       "claudeReview": true,
       "live": false,
+      "expectedChecks": [],
+      "note": "ops has no test CI. Its one workflow is the Claude review caller, whose review / review check attaches only when a pull request opens, so it is not an expected check (a push after ready left ops 62, 74, 76 and 77 waiting on it). The verdict comes from review-status.mjs (claudeReview); a check that does appear must still pass."
+    },
+    {
+      "slug": "gorfednet/scratch-bootstrap-5-6",
+      "dir": "scratch-bootstrap-5-6",
+      "mode": "merge-only",
+      "reason": "a new repository: deploy steps come in a later patch, once it has something to deploy",
+      "claudeReview": true,
+      "live": false,
       "expectedChecks": [
-        "review / review"
-      ],
-      "note": "ops has no test CI. Its one workflow is the Claude review caller, which posts review / review on the head when a pull request opens or leaves draft, not on a push (a `claude review` comment reruns the review but posts no check on the head, so a head pushed after ready needs draft and ready again). The check proves the workflow ran on this head; the verdict still comes from review-status.mjs (claudeReview). Switched on for ops#63 on 11 November 2026; #59 merged as a draft with no check, so --validate reports review / review on 2 of 3 until it ages out."
+        "check / check"
+      ]
     }
   ]
 }

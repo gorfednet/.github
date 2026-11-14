@@ -23,7 +23,7 @@
 # The `runs-on` input is still accepted from older callers and ignored.
 #
 # The verdict is machine-readable: the review ends with one pull request comment carrying
-# `<!-- claude-review head=<sha> findings=<n> -->`, which scripts/review-status.mjs (in this
+# `<!-- claude-review head=<sha> findings=<n> blocking=<m> -->`, which scripts/review-status.mjs (in this
 # repository) reads for the merge gate. The repository's REVIEW.md holds its house rules.
 name: claude-review
 
@@ -56,14 +56,19 @@ jobs:
   # `claude-review-<repo>-<pr>`, where a newer pending run replaces an older queued one, so a
   # comment that only mentions the words must never reach it (a prose mention would otherwise
   # cancel a real request queued behind a running review).
+  # Ship-bot asks for a draft's review by commenting `claude review`. As a GitHub App it posts
+  # as `<slug>[bot]`, type Bot, association NONE, so the org variable SHIP_BOT_LOGIN names that
+  # login (set it to `<slug>[bot]` once the App exists; unset, nothing matches). No other bot
+  # can start a review.
   trigger:
     if: >-
       (github.event_name == 'pull_request' && !github.event.pull_request.draft &&
        github.event.pull_request.user.login != 'dependabot[bot]') ||
       (github.event_name == 'issue_comment' && github.event.issue.pull_request &&
-       github.event.comment.user.type != 'Bot' &&
        contains(github.event.comment.body, 'claude review') &&
-       contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association))
+       ((github.event.comment.user.type != 'Bot' &&
+         contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)) ||
+        (vars.SHIP_BOT_LOGIN != '' && github.event.comment.user.login == vars.SHIP_BOT_LOGIN)))
     # The runs-on input is accepted and ignored.
     # Hosted: a review request should not wait behind the self-hosted pool's queue (seconds of work).
     runs-on: ubuntu-latest
@@ -228,8 +233,9 @@ jobs:
 
             Finish with exactly one top-level comment on the pull request (`gh pr comment`), whether
             or not you found anything: one or two sentences saying what you reviewed and what you
-            found, then this line exactly, with the number of inline comments you left:
-            <!-- claude-review head=${{ steps.pr.outputs.head }} findings=N -->
+            found, then this line exactly, with the number of inline comments you left (N) and how
+            many of them start with High or Medium (M; Low-only gives 0):
+            <!-- claude-review head=${{ steps.pr.outputs.head }} findings=N blocking=M -->
           claude_args: |
             --model ${{ steps.model.outputs.model }}
             --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr view:*),Bash(git show:*),Bash(git log:*),Bash(git diff:*),Read,Grep,Glob"

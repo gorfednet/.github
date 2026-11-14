@@ -7,28 +7,182 @@
       "defaultBranch": "main",
       "mainRed": false,
       "openPrs": [
-        { "number": 212, "title": "Fix the nav | pipes", "ageDays": 5, "labels": ["hold"], "draft": false, "review": "findings", "ci": "red", "next": "Owner picks the headline", "author": "gorfednet" },
-        { "number": 227, "title": "Bump vite", "ageDays": 1, "labels": [], "draft": true, "review": "not-run", "ci": "pending", "next": null, "author": "dependabot[bot]" }
+        {
+          "number": 212,
+          "title": "Fix the nav | pipes",
+          "ageDays": 5,
+          "labels": [
+            "hold"
+          ],
+          "draft": false,
+          "review": "findings",
+          "ci": "red",
+          "next": "Owner picks the headline",
+          "author": "gorfednet"
+        },
+        {
+          "number": 227,
+          "title": "Bump vite",
+          "ageDays": 1,
+          "labels": [],
+          "draft": true,
+          "review": "not-run",
+          "ci": "pending",
+          "next": null,
+          "author": "dependabot[bot]"
+        }
       ],
-      "branchesAhead": [{ "branch": "feat/old", "ahead": 3 }],
-      "lapsedBacklog": [{ "id": "stale-entry", "status": "confirmed-bug", "reviewBy": "2026-10-01" }],
-      "lastDeploy": { "name": "deploy", "at": "2026-11-06T15:00:00Z", "url": "https://github.com/gorfednet/4thcltr.com/actions/runs/1" },
+      "branchesAhead": [
+        {
+          "branch": "feat/old",
+          "ahead": 3
+        }
+      ],
+      "lapsedBacklog": [
+        {
+          "id": "stale-entry",
+          "status": "confirmed-bug",
+          "reviewBy": "2026-10-01"
+        }
+      ],
+      "lastDeploy": {
+        "name": "deploy",
+        "at": "2026-11-06T15:00:00Z",
+        "url": "https://github.com/gorfednet/4thcltr.com/actions/runs/1"
+      },
       "incidents7d": 2,
-      "dependabotRed": 1
+      "dependabotRed": 1,
+      "kitVersion": null,
+      "idlePrs": [
+        {
+          "number": 7,
+          "idleDays": 5
+        }
+      ],
+      "duplicatePrs": []
     },
     {
       "slug": "gorfednet/career-portfolio",
       "defaultBranch": "main",
       "mainRed": true,
-      "openPrs": [{ "number": 68, "title": "Search audit", "ageDays": 0, "labels": ["ready-to-merge"], "draft": false, "review": "clean", "ci": "green", "next": "Merge when green", "author": "gorfednet" }],
+      "openPrs": [
+        {
+          "number": 68,
+          "title": "Search audit",
+          "ageDays": 0,
+          "labels": [
+            "ready-to-merge"
+          ],
+          "draft": false,
+          "review": "clean",
+          "ci": "green",
+          "next": "Merge when green",
+          "author": "gorfednet"
+        }
+      ],
       "branchesAhead": [],
       "lapsedBacklog": [],
       "lastDeploy": null,
       "incidents7d": 0,
-      "dependabotRed": 0
+      "dependabotRed": 0,
+      "idlePrs": [],
+      "duplicatePrs": [
+        {
+          "id": "fleet-registry-sync",
+          "prs": [
+            11,
+            12
+          ]
+        }
+      ]
     },
-    { "slug": "gorfednet/private-archive", "redacted": true, "mainRed": false, "openPrCount": 2, "lapsedBacklogCount": 1, "dependabotRedCount": 1 },
-    { "slug": "gorfednet/wychwood", "unavailable": "HTTP 404: Not Found" }
+    {
+      "slug": "gorfednet/private-archive",
+      "redacted": true,
+      "mainRed": false,
+      "openPrCount": 2,
+      "lapsedBacklogCount": 1,
+      "dependabotRedCount": 1,
+      "noPrCount": 1,
+      "idlePrCount": 0,
+      "duplicatePrCount": 0
+    },
+    {
+      "slug": "gorfednet/wychwood",
+      "unavailable": "HTTP 404: Not Found"
+    }
   ],
-  "dirtyLocal": [{ "dir": "MoonMan", "branch": "main", "uncommitted": 2, "unpushed": 0 }]
+  "dirtyLocal": [
+    {
+      "dir": "MoonMan",
+      "branch": "main",
+      "uncommitted": 2,
+      "unpushed": 0
+    }
+  ],
+  "local": {
+    "measuredAt": "2026-11-07T12:00:00Z",
+    "dirtyClones": [
+      {
+        "dir": "MoonMan",
+        "branch": "main",
+        "uncommitted": 2,
+        "unpushed": 0
+      }
+    ],
+    "behindClones": [
+      {
+        "dir": "gorfed.net",
+        "branch": "main",
+        "behind": 3
+      }
+    ],
+    "behindFetchFailed": [],
+    "unread": [],
+    "oldWorktrees": [
+      {
+        "clone": "4thcltr.com",
+        "path": "/x/wt",
+        "ageDays": 9
+      }
+    ],
+    "idleSessions": null,
+    "installedTools": [
+      {
+        "tool": "capacity check",
+        "source": "~/.desk/capacity-app/capacity.mjs",
+        "behind": 3,
+        "detail": "copy of gorfednet.github/capacity/capacity.mjs"
+      }
+    ],
+    "installedToolsUnread": []
+  },
+  "inventory": {
+    "measuredAt": "2026-11-07T11:30:00.000Z",
+    "counts": {
+      "pr": {
+        "total": 3,
+        "orphans": 1
+      },
+      "session": null,
+      "worktree": null,
+      "job": null,
+      "backlog": {
+        "total": 5,
+        "orphans": 0
+      }
+    },
+    "orphans": [
+      {
+        "kind": "pr",
+        "repo": "gorfednet/example",
+        "ref": "#9",
+        "label": "misc cleanup",
+        "private": false,
+        "lapsed": false
+      }
+    ],
+    "hiddenPrivate": 2,
+    "privateReposNotItemised": 1
+  }
 }

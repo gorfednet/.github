@@ -7,6 +7,8 @@
   "properties": {
     "generatedAt": { "type": "string" },
     "renderedAt": { "type": "string" },
+    "branchesReadAt": { "type": "string" },
+    "carried": { "type": "boolean" },
     "dirtyLocal": {
       "type": "array",
       "items": {
@@ -21,6 +23,8 @@
         }
       }
     },
+    "inventory": {"type": "object", "$comment": "Plan row 1.17. A null count is a kind that could not be measured. Orphans of private repositories appear only in a run that included them.", "required": ["measuredAt", "counts", "orphans", "hiddenPrivate", "privateReposNotItemised"], "additionalProperties": false, "properties": {"measuredAt": {"type": "string"}, "counts": {"type": "object", "additionalProperties": {"type": ["object", "null"], "required": ["total", "orphans"], "properties": {"total": {"type": "integer"}, "orphans": {"type": "integer"}}}}, "orphans": {"type": "array", "items": {"type": "object", "required": ["kind", "repo", "ref", "label", "private", "lapsed"], "additionalProperties": false, "properties": {"kind": {"type": "string"}, "repo": {"type": ["string", "null"]}, "ref": {"type": "string"}, "label": {"type": "string"}, "private": {"type": "boolean"}, "lapsed": {"type": "boolean"}}}}, "hiddenPrivate": {"type": "integer"}, "privateReposNotItemised": {"type": "integer"}}},
+    "local": {"type": "object", "$comment": "Present only when the run looked at the Mac. A null row could not be measured (render: not measured, never 0).", "required": ["measuredAt", "dirtyClones", "behindClones", "behindFetchFailed", "oldWorktrees", "idleSessions", "unread"], "additionalProperties": false, "properties": {"measuredAt": {"type": "string"}, "dirtyClones": {"type": ["array", "null"], "items": {"type": "object", "required": ["dir", "branch", "uncommitted", "unpushed"], "additionalProperties": false, "properties": {"dir": {"type": "string"}, "branch": {"type": "string"}, "uncommitted": {"type": "integer"}, "unpushed": {"type": "integer"}}}}, "behindClones": {"type": ["array", "null"], "items": {"type": "object", "required": ["dir", "branch", "behind"], "additionalProperties": false, "properties": {"dir": {"type": "string"}, "branch": {"type": "string"}, "behind": {"type": "integer"}}}}, "behindFetchFailed": {"type": "array", "items": {"type": "string"}}, "unread": {"type": "array", "items": {"type": "string"}}, "oldWorktrees": {"type": ["array", "null"], "items": {"type": "object", "required": ["clone", "path", "ageDays"], "additionalProperties": false, "properties": {"clone": {"type": "string"}, "path": {"type": "string"}, "ageDays": {"type": ["integer", "null"]}}}}, "idleSessions": {"type": ["array", "null"], "items": {"type": "object", "required": ["id", "title", "idleHours"], "additionalProperties": false, "properties": {"id": {"type": "string"}, "title": {"type": "string"}, "idleHours": {"type": "integer"}}}}, "installedTools": {"type": ["array", "null"], "$comment": "Tools on this Mac that run from a working checkout or a copy behind origin/main (scripts/lib/installed-tools.mjs). Optional: older snapshots lack it.", "items": {"type": "object", "required": ["tool", "source", "behind", "detail"], "additionalProperties": false, "properties": {"tool": {"type": "string"}, "source": {"type": "string"}, "behind": {"type": ["integer", "null"]}, "detail": {"type": "string"}}}}, "installedToolsUnread": {"type": "array", "items": {"type": "string"}}}},
     "repos": {
       "type": "array",
       "items": {
@@ -34,8 +38,15 @@
           "openPrCount": { "type": "integer" },
           "lapsedBacklogCount": { "type": "integer" },
           "dependabotRedCount": { "type": "integer" },
+          "noPrCount": {"type":"integer"},
+          "idlePrCount": {"type":"integer"},
+          "duplicatePrCount": {"type":"integer"},
+          "backlogOpen": {"type": "array", "items": {"type": "object", "required": ["id", "title", "status", "reviewBy"], "additionalProperties": false, "properties": {"id": {"type": "string"}, "title": {"type": "string"}, "status": {"type": "string"}, "reviewBy": {"type": ["string", "null"]}}}},
+          "idlePrs": {"type": "array", "items": {"type": "object", "required": ["number", "idleDays"], "additionalProperties": false, "properties": {"number": {"type": "integer"}, "idleDays": {"type": "integer"}}}},
+          "duplicatePrs": {"type": "array", "items": {"type": "object", "required": ["id", "prs"], "additionalProperties": false, "properties": {"id": {"type": "string"}, "prs": {"type": "array", "items": {"type": "integer"}}}}},
           "defaultBranch": { "type": "string" },
           "mainRed": { "type": "boolean" },
+          "kitVersion": { "type": ["string", "null"], "$comment": "verification-kit/MANIFEST.json version in the repository; null when it carries no kit." },
           "dependabotRed": { "type": "integer" },
           "incidents7d": { "type": "integer" },
           "lastDeploy": {
@@ -77,7 +88,8 @@
                 "review": { "enum": ["clean", "findings", "not-run"] },
                 "ci": { "enum": ["green", "red", "pending", "none"] },
                 "next": { "type": ["string", "null"] },
-                "author": { "type": ["string", "null"] }
+                "author": { "type": ["string", "null"] },
+                "headSha": { "type": "string" }
               }
             }
           }

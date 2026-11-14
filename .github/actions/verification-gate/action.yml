@@ -74,6 +74,14 @@ inputs:
       3840x4557 background weighing 2.1 MB; some scrapers give up first.
     required: false
     default: "300000"
+  og-content-addressed:
+    description: >-
+      When "true", the social card's file name must carry a content hash
+      (og-card-<hash12>.png). The host serves images immutable for a year, so a
+      card replaced at a fixed name reaches nobody. Off by default until a site
+      has moved to hashed names.
+    required: false
+    default: "false"
   require-jsonld:
     description: >-
       When "true", every checked page must carry a JSON-LD block. Off by
@@ -253,6 +261,7 @@ runs:
           --site-url "${{ inputs.site-url }}" \
           --root "${{ inputs.publish-root }}" \
           --max-bytes "${{ inputs.og-max-bytes }}" \
+          ${{ inputs.og-content-addressed == 'true' && '--content-addressed' || '' }} \
           $(for page in ${{ inputs.metadata-pages }}; do printf -- '--page %s ' "$page"; done); then
           echo "::warning title=The social card is the image it says it is::An og:image does not resolve to an image of the stated kind and size. See this step's log."
         fi

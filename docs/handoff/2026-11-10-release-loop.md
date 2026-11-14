@@ -32,3 +32,16 @@ Blocked: ssatcy 34-38 (webkit `toHaveCount(0)` on the Privacy dialog at the smok
 - [ ] Owner: run the 649 runbook on dapyllil, then merge 649 and rebase 639.
 - [ ] Ship-bot stages 2 and 3 go live Thu 12 Nov: Wednesday evening, confirm `~/.ship-bot/config.json` rows and `--validate`.
 - [ ] Find the cause of the Playwright 1.64 Linux WebKit failures (ssatcy smoke, promptboi 64's note) before the Dependabot bumps move.
+
+## Loop 3 (Wed 11 Nov 2026, 9:05 AM to 3:00 PM ET; stopped at its token cap)
+
+Done: ship-bot app reinstalled and the heuristics and papers deploy rows applied (live false, observation; `--validate` ok for heuristics, papers shows the known `derive` sampling gap; `preflight-launchd.sh` passes with the `site deploy host` step). .github main kit repaired by #123, #124, #122 (not mine); #116 (4thcltr tag-deploy, observation) merged and installed. BinderCurve WebKit 1.64 cause found (16 per-cell backdrop-filter layers on the owned header); #650 carried #649 as a train and both merged. ssatcy.com #39 (wide CSS blurs starve Linux WebKit; guard added) gates all passed, review clean on c4bbb60e8.
+
+Next:
+- [ ] ssatcy.com #39: owner runs `gh pr merge 39 --repo gorfednet/ssatcy.com --merge` (command given 2:25 PM ET); then merge main into ssatcy 33 to 38 and re-run; 35 had 2 findings, 38 a Medium (verify-production.mjs runs after the deploy switched live). promptboi 56: check the same blur class.
+- [ ] BinderCurve #651 (replaces closed #639): bundle-budget fails, entry chunk 113,348 gzip vs 78,000; bisect the 23 updates. Never refresh the budget. Priority 6.
+- [ ] MoonMan 291: red draft, rebase on main (main green). Deploy is ship-bot stage 4 Sun 15 Nov.
+- [ ] Owner closes superseded drafts: `gh pr close 121 --repo gorfednet/.github`; ai-use-levels 3 is stale (kit 0.48.0, 49 files, conflicts): close and reinstall the kit at the current version.
+- [ ] Owner removes the 1 GB repro leftover: `ssh dapyllil 'rm -rf ~/repro-owned'`.
+- [ ] 6:00 PM ET Wed: `--validate` for the stage 2 and 3 repositories (9 of 18 differed at 11:08 AM ET), last 3 passes of `~/.ship-bot/logs/ship-bot.log`, 4thcltr row live flag and mode (tag-deploy session says deploy/release installed, rollback rehearsed); flip commands go to the owner only when ready. Reports to the owner 8:00 PM ET Wed and 8:00 AM ET Thu.
+- [ ] Triage .github 117 to 120, ops 62, heuristics 85, and the static-site worktree-* drafts one per pass. Weekly usage was 88% (Herdr holds at 90%).

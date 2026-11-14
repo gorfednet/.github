@@ -1,0 +1,207 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__ccd_pr__get_status",
+      "mcp__ccd_session_mgmt__list_events",
+      "mcp__ccd_session_mgmt__list_sessions",
+      "mcp__ccd_session_mgmt__search_session_transcripts",
+      "mcp__scheduled-tasks__list_scheduled_tasks",
+      "mcp__Claude_Browser__find",
+      "mcp__Claude_Browser__get_page_text",
+      "mcp__Claude_Browser__read_page",
+      "mcp__Claude_Browser__tabs_context",
+      "Bash(make deploy)",
+      "Bash(make deploy:*)",
+      "Bash(make -C * deploy)",
+      "Bash(gh pr view *)",
+      "Bash(gh pr checks *)",
+      "Bash(gh pr list *)",
+      "Bash(gh pr ready *)",
+      "Bash(gh pr edit *)",
+      "Bash(gh pr comment *)",
+      "Bash(gh pr close *)",
+      "Bash(gh pr create *)",
+      "Bash(gh run *)",
+      "Bash(gh api *)",
+      "Bash(gh label *)",
+      "Bash(gh repo view *)",
+      "Bash(gh repo archive *)",
+      "Bash(git status *)",
+      "Bash(git diff *)",
+      "Bash(git log *)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git push *)",
+      "Bash(git fetch *)",
+      "Bash(git pull *)",
+      "Bash(git worktree *)",
+      "Bash(git branch *)",
+      "Bash(git checkout *)",
+      "Bash(git switch *)",
+      "Bash(git merge *)",
+      "Bash(hc *)",
+      "Bash(gate-run *)",
+      "Bash(builder-ok *)",
+      "Bash(fleet-status *)",
+      "Bash(node scripts/*)",
+      "Bash(npm run *)",
+      "Bash(make *)",
+      "Bash(mkdir -p ~/.fleet-janitor*)",
+      "mcp__ccd_session_mgmt__get_usage",
+      "mcp__ccd_session_mgmt__get_session",
+      "mcp__scheduled-tasks__list_task_runs",
+      "mcp__ccd_session_mgmt__archive_session",
+      "Bash(gh pr reopen *)",
+      "Bash(gh workflow run *)",
+      "mcp__ccd_session_mgmt__stop_session",
+      "mcp__ccd_session_mgmt__set_remote_control",
+      "mcp__ccd_session_mgmt__send_message"
+    ],
+    "deny": [
+      "Bash(gh pr merge *)",
+      "Bash(git push --force *)",
+      "Bash(git push -f *)",
+      "Bash(git push --force-with-lease *)",
+      "Bash(git reset --hard *)",
+      "Bash(git clean -fd*)",
+      "Bash(gh repo delete *)",
+      "Bash(gh api -X DELETE *)",
+      "Bash(gh api --method DELETE *)",
+      "Bash(rm -rf /*)",
+      "Read(//**/*.env*)",
+      "Read(~/Developer/gorfednet/ops*/**/credentials.json)",
+      "Read(~/.ship-bot/config.json)",
+      "Edit(~/.ship-bot/config.json)",
+      "Bash(gh api *pulls/*/merge*)",
+      "Bash(gh api *-X DELETE*)",
+      "Bash(gh api *--method DELETE*)",
+      "Bash(gh api *-XDELETE*)",
+      "Bash(git push * --force*)",
+      "Bash(git push * -f*)",
+      "Bash(git push *+*)",
+      "Bash(gh api *--method=DELETE*)",
+      "Bash(gh api *-X=DELETE*)",
+      "Bash(gh api *mergePullRequest*)",
+      "Bash(gh api *AutoMerge*)",
+      "Bash(gh run delete *)",
+      "Bash(hc *gh run delete*)",
+      "Bash(gate-run *gh run delete*)",
+      "Bash(gh label delete *)",
+      "Bash(hc *gh label delete*)",
+      "Bash(gate-run *gh label delete*)",
+      "Bash(gh release delete *)",
+      "Bash(hc *gh release delete*)",
+      "Bash(gate-run *gh release delete*)",
+      "Bash(gh secret delete *)",
+      "Bash(hc *gh secret delete*)",
+      "Bash(gate-run *gh secret delete*)",
+      "Bash(gh variable delete *)",
+      "Bash(hc *gh variable delete*)",
+      "Bash(gate-run *gh variable delete*)",
+      "Bash(gh secret remove *)",
+      "Bash(hc *gh secret remove*)",
+      "Bash(gate-run *gh secret remove*)",
+      "Bash(gh variable remove *)",
+      "Bash(hc *gh variable remove*)",
+      "Bash(gate-run *gh variable remove*)"
+    ],
+    "defaultMode": "auto"
+  },
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ~/.claude/hooks/context-handoff-nudge.py",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.local/bin/herdr-turn-hook",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ~/.claude/hooks/always-pr-remind.py",
+            "timeout": 8
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.local/bin/herdr-turn-hook",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "StopFailure": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.local/bin/herdr-turn-hook",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.local/bin/herdr-turn-hook",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.local/bin/herdr-turn-hook",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  },
+  "statusLine": {
+    "type": "command",
+    "command": "python3 ~/.claude/scripts/statusline.py"
+  },
+  "enabledPlugins": {
+    "frontend-design@claude-plugins-official": true,
+    "pr-review-toolkit@claude-plugins-official": true,
+    "claude-md-management@claude-plugins-official": true,
+    "session-report@claude-plugins-official": true,
+    "code-simplifier@claude-plugins-official": true,
+    "hookify@claude-plugins-official": true,
+    "security-guidance@claude-plugins-official": true
+  },
+  "theme": "dark",
+  "inputNeededNotifEnabled": true,
+  "agentPushNotifEnabled": true,
+  "env": {
+    "ENABLE_CODE_SECURITY_REVIEW": "0"
+  }
+}

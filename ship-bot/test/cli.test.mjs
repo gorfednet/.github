@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { existsSync, mkdirSync, mkdtempSync, statSync, writeFileSync, readFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, statSync, writeFileSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, it } from 'node:test'
@@ -30,12 +30,14 @@ function harness({ live = true, lock, pulls = [], github = new FakeGitHub({ pull
   let constructed = 0
   const deps = {
     loadConfig: () => config,
+    gateScripts: (c) => ({ scripts: c.scripts, source: 'test' }),
     makeGithub: (token) => {
       constructed += 1
       assert.equal(token, TOKEN)
       return github
     },
     runner,
+    heartbeat: async () => {}, // never the real dead-man check from a test
     clock: { now: () => new Date('2026-10-09T12:00:00Z') },
     out: (line) => out.push(line),
     sleep: async () => {},
@@ -45,6 +47,29 @@ function harness({ live = true, lock, pulls = [], github = new FakeGitHub({ pull
 }
 
 describe('command line', () => {
+  it('pings its heartbeat after a live pass, and /fail when the pass throws; a hand dry run does not ping', async () => {
+    const calls = []
+    const h = harness({ live: true, pulls: [makePr()] })
+    h.deps.heartbeat = async (name, opts = {}) => { calls.push([name, opts.ok ?? true]) }
+    assert.equal(await main(['--live', '--once'], h.deps), 0)
+    assert.deepEqual(calls, [['ship-bot', true]])
+    const d = harness({ live: true, pulls: [makePr()] })
+    d.deps.heartbeat = async () => { calls.push('dry') }
+    await main(['--once'], d.deps)
+    assert.equal(calls.length, 1, 'dry run must not ping')
+    const bad = harness({ live: true })
+    bad.deps.heartbeat = async (name, opts = {}) => { calls.push([name, opts.ok ?? true]) }
+    bad.deps.makeGithub = () => { throw new Error('boom') }
+    assert.equal(await main(['--live', '--once'], bad.deps), 1)
+    assert.deepEqual(calls.at(-1), ['ship-bot', false])
+    const noAuth = harness({ live: true })
+    const authCalls = []
+    noAuth.deps.heartbeat = async (name, opts = {}) => { authCalls.push([name, opts.ok ?? true]) }
+    noAuth.deps.runner = makeRunner({ handle: () => ({ code: 1, stderr: 'no auth' }) })
+    assert.equal(await main(['--live', '--once'], noAuth.deps), 1)
+    assert.deepEqual(authCalls, [['ship-bot', false]], 'auth failure sends /fail at once')
+  })
+
   it('defaults to a dry run', () => {
     assert.equal(parseArgs([]).mode, 'dry-run')
   })
@@ -114,6 +139,78 @@ describe('command line', () => {
     assert.equal(code, 0)
     assert.equal(JSON.parse(readFileSync(join(h.config.stateDir, 'state.json'), 'utf8')).repos['gorfednet/site'].blocked, undefined)
     assert.equal(h.runner.calls.length, 0)
+  })
+
+  it('a paused deploy unblocks only with --deployed naming its commit, which it records as live (plan row 1.25)', async () => {
+    const h = harness()
+    const statePath = join(h.config.stateDir, 'state.json')
+    const sha = 'e'.repeat(40)
+    const store = new StateStore(statePath)
+    Object.assign(store.repo('gorfednet/site'), { blocked: { reason: 'paused', at: 'x', pausedSha: sha, pausedKind: 'release' }, lastDeployedSha: 'd'.repeat(40) })
+    store.save()
+    const read = () => JSON.parse(readFileSync(statePath, 'utf8')).repos['gorfednet/site']
+    assert.equal(await main(['--unblock', 'site'], h.deps), 2)
+    assert.match(h.out.join('\n'), /--deployed eeeeeee/)
+    assert.ok(read().blocked, 'a plain unblock leaves a paused block')
+    assert.equal(await main(['--unblock', 'site', '--deployed', 'ffffffff'], h.deps), 2)
+    assert.ok(read().blocked, 'the wrong commit is refused')
+    assert.equal(await main(['--unblock', 'site', '--deployed', 'eeeeeee'], h.deps), 0)
+    assert.equal(read().blocked, undefined)
+    assert.equal(read().lastDeployedSha, sha)
+    assert.ok(read().lastReleasedAt, 'a release deployed by hand starts the weekly clock')
+  })
+
+  it('a queued unblock of a paused deploy needs --deployed too; without it the block stays', async () => {
+    const h = harness({ lock: { pid: process.pid, startedAt: 'now' } })
+    const statePath = join(h.config.stateDir, 'state.json')
+    const sha = 'e'.repeat(40)
+    const store = new StateStore(statePath)
+    store.repo('gorfednet/site').blocked = { reason: 'paused', at: '2026-10-09T11:00:00.000Z', pausedSha: sha }
+    store.save()
+    assert.equal(await main(['--unblock', 'site'], h.deps), 2)
+    assert.equal(existsSync(join(h.config.stateDir, 'unblock')), false)
+    assert.equal(await main(['--unblock', 'site', '--deployed', sha], h.deps), 0)
+    rmSync(join(h.config.stateDir, 'run.lock'))
+    assert.equal(await main(['--live', '--once'], h.deps), 0, h.out.join('\n'))
+    const after = JSON.parse(readFileSync(statePath, 'utf8')).repos['gorfednet/site']
+    assert.equal(after.blocked, undefined)
+    assert.equal(after.lastDeployedSha, sha)
+  })
+
+  it('--unblock while a pass holds the lock writes no state, and the next pass applies it', async () => {
+    const h = harness({ lock: { pid: process.pid, startedAt: 'now' } })
+    const statePath = join(h.config.stateDir, 'state.json')
+    const store = new StateStore(statePath)
+    store.repo('gorfednet/site').blocked = { reason: 'deploy failed', at: '2026-10-09T11:00:00.000Z' }
+    store.save()
+    const before = readFileSync(statePath, 'utf8')
+    assert.equal(await main(['--unblock', 'site'], h.deps), 0)
+    assert.match(h.out.join('\n'), /queued/)
+    assert.equal(readFileSync(statePath, 'utf8'), before, 'a running pass would save over a write made now')
+    rmSync(join(h.config.stateDir, 'run.lock'))
+    assert.equal(await main(['--live', '--once'], h.deps), 0, h.out.join('\n'))
+    assert.equal(JSON.parse(readFileSync(statePath, 'utf8')).repos['gorfednet/site'].blocked, undefined)
+    assert.deepEqual(readdirSync(join(h.config.stateDir, 'unblock')), [])
+  })
+
+  it('a queued unblock never lifts a block set after it was written, and an unblocked repo is not queued', async () => {
+    const h = harness({ lock: { pid: process.pid, startedAt: 'now' } })
+    const statePath = join(h.config.stateDir, 'state.json')
+    new StateStore(statePath).save()
+    assert.equal(await main(['--unblock', 'site'], h.deps), 0)
+    assert.match(h.out.join('\n'), /is not blocked/)
+    assert.equal(existsSync(join(h.config.stateDir, 'unblock')), false)
+    const store = new StateStore(statePath)
+    store.repo('gorfednet/site').blocked = { reason: 'old', at: '2026-10-09T11:00:00.000Z' }
+    store.save()
+    assert.equal(await main(['--unblock', 'site'], h.deps), 0)
+    assert.match(h.out.join('\n'), /queued/)
+    const newer = new StateStore(statePath).load()
+    newer.repo('gorfednet/site').blocked = { reason: 'new: merge outcome unknown', at: '2026-10-09T13:00:00.000Z' }
+    newer.save()
+    rmSync(join(h.config.stateDir, 'run.lock'))
+    await main(['--live', '--once'], h.deps)
+    assert.equal(JSON.parse(readFileSync(statePath, 'utf8')).repos['gorfednet/site'].blocked.reason, 'new: merge outcome unknown')
   })
 
   it('--rotate-log rotates a log past 5 MB before the pass', async () => {
@@ -441,6 +538,22 @@ describe('--validate', () => {
     assert.match(withCovered.out, /  unexpected other \/ browser-compat \/ compat \(x\) \(on 3 of 3\)/)
     const without = await go([])
     assert.match(without.out, /unexpected browser-compat \/ compat \(chromium\)/)
+  })
+
+  it('requireChecksAfterLabel samples labelled merges only: an unlabelled merge never ran the full tier', async () => {
+    const lab = (number, sha) => ({ ...merged(number, sha), labels: [{ name: 'ready-to-merge' }] })
+    const full = [run('check / check', 'success'), run('axe-webkit', 'success')]
+    const gh = new FakeGitHub({
+      mergedPulls: [merged(9, 'u1'), lab(8, 's1'), lab(7, 's2'), lab(6, 's3')],
+      runsBySha: { u1: [run('check / check', 'success')], s1: full, s2: full, s3: full },
+    })
+    const x = harness({ live: false, github: gh, configOverrides: { repos: [repoEntry({ envFiles: [], expectedChecks: ['check / check', 'axe-webkit'], requireChecksAfterLabel: true })] } })
+    const code = await main(['--validate'], x.deps)
+    assert.equal(code, 0, x.out.join('\n'))
+    assert.match(x.out.join('\n'), /last 3 merged: #8, #7, #6/)
+    // near miss: without the flag the unlabelled merge is sampled and axe-webkit reads as missing
+    const y = harness({ live: false, github: gh, configOverrides: { repos: [repoEntry({ envFiles: [], expectedChecks: ['check / check', 'axe-webkit'] })] } })
+    assert.equal(await main(['--validate'], y.deps), 1)
   })
 
   it('a repo with no merged pull request, or an API error, is a failure to validate, not a pass', async () => {

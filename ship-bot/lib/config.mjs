@@ -21,6 +21,14 @@ export const HOLD_LABEL = 'hold'
  */
 export const DEFAULT_IGNORED_CHECKS = ['heavy-runner-preflight', 'review / trigger', 'review / review']
 
+/**
+ * Check names the shared Claude reviewer workflow produces. They attach only when a pull request opens
+ * or leaves draft (a later push attaches none), so as an expected check they strand every PR that was
+ * pushed to after ready: ops 62, 74, 76 and 77 sat on "required checks never appeared: review / review".
+ * The verdict comes from review-status.mjs (claudeReview), never from these runs.
+ */
+export const isReviewerCheck = (name) => /^review \/ /.test(name)
+
 const TOP_KEYS = new Set([
   'note',
   'live',
@@ -38,13 +46,15 @@ const TOP_KEYS = new Set([
   'notify',
   'preflight',
   'ghPath',
+  'githubApp',
   'scripts',
   'repos',
 ])
 const SCRIPT_KEYS = ['assertChecksStarted', 'reviewStatus', 'checkClosingKeywords']
 
-const COMMON_REPO_KEYS = ['slug', 'dir', 'mode', 'note', 'todo', 'live', 'claudeReview', 'expectedChecks', 'coveredChecks', 'requireChecksAfterLabel']
+const COMMON_REPO_KEYS = ['slug', 'dir', 'mode', 'note', 'todo', 'live', 'claudeReview', 'expectedChecks', 'coveredChecks', 'requireChecksAfterLabel', 'draftReady']
 const NTFY_KEYS = new Set(['url', 'topic', 'tokenFile'])
+const GITHUB_APP_KEYS = new Set(['appId', 'privateKeyFile', 'owner', 'installationId', 'slug'])
 const DEPLOY_REPO_KEYS = [
   'sourceDir',
   'workDir',
@@ -59,6 +69,9 @@ const DEPLOY_REPO_KEYS = [
   'rollback',
   'pausedIfChanged',
   'release',
+  'needsHeadroom',
+  'deployOn',
+  'deployOnMergeReason',
 ]
 const ALLOWED_REPO_KEYS = {
   deploy: new Set([...COMMON_REPO_KEYS, ...DEPLOY_REPO_KEYS]),
@@ -183,6 +196,7 @@ function validateRepo(repo, i, problems, seen) {
     problems.push(`${label}.requireChecksAfterLabel: must be true or false`)
   }
   if (repo.live !== undefined && typeof repo.live !== 'boolean') problems.push(`${label}.live: must be true or false`)
+  if (repo.draftReady !== undefined && typeof repo.draftReady !== 'boolean') problems.push(`${label}.draftReady: must be true or false`)
 
   // coveredChecks only quiets `--validate`; the merge gate never reads it.
   if (repo.coveredChecks !== undefined && !isStringArray(repo.coveredChecks)) {
@@ -194,8 +208,13 @@ function validateRepo(repo, i, problems, seen) {
   // A repo the bot can merge in must say exactly which checks prove a pull
   // request is good. Without the list, a workflow that silently did not run
   // leaves nothing to fail, and "every check passed" is true of zero checks.
-  if (!isStringArray(repo.expectedChecks) || repo.expectedChecks.length === 0) {
-    problems.push(`${label}.expectedChecks: required and non-empty for mode "${repo.mode}"`)
+  // Empty only for a repo whose single gate is the Claude review (ops): review-status.mjs is the gate
+  // (assert-checks-started runs with --min-runs 0 there), and any check that does appear must pass.
+  if (!isStringArray(repo.expectedChecks) || (repo.expectedChecks.length === 0 && !(repo.claudeReview === true && repo.mode === 'merge-only'))) {
+    problems.push(`${label}.expectedChecks: required and non-empty for mode "${repo.mode}" (empty only for a merge-only repo with claudeReview true)`)
+  }
+  for (const name of isStringArray(repo.expectedChecks) ? repo.expectedChecks.filter(isReviewerCheck) : []) {
+    problems.push(`${label}.expectedChecks: "${name}" is produced by the Claude reviewer workflow, which attaches only when a pull request opens; the review verdict comes from review-status, so remove it`)
   }
   if (typeof repo.claudeReview !== 'boolean') problems.push(`${label}.claudeReview: required, true or false`)
 
@@ -224,6 +243,11 @@ function validateRepo(repo, i, problems, seen) {
       }
     }
   }
+  if (repo.needsHeadroom !== undefined && typeof repo.needsHeadroom !== 'boolean') problems.push(`${label}.needsHeadroom: must be true or false`)
+  // Plan row 1.25: a visitor-facing row deploys only from a release. "merge" is the exemption for a deploy no visitor sees, and says why.
+  if (repo.deployOn !== undefined && !['release', 'merge'].includes(repo.deployOn)) problems.push(`${label}.deployOn: must be "release" (the default) or "merge"`)
+  if (repo.deployOn === 'merge' && !isNonEmptyString(repo.deployOnMergeReason)) problems.push(`${label}.deployOnMergeReason: required with deployOn "merge": why no visitor sees this deploy`)
+  if (repo.deployOnMergeReason !== undefined && repo.deployOn !== 'merge') problems.push(`${label}.deployOnMergeReason: only with deployOn "merge"`)
   if (repo.siblings !== undefined) {
     if (!Array.isArray(repo.siblings)) problems.push(`${label}.siblings: must be an array`)
     else {
@@ -310,6 +334,20 @@ export function validateConfig(raw) {
     }
   }
 
+  if (raw.githubApp !== undefined) {
+    const app = raw.githubApp
+    if (!isObject(app)) problems.push('githubApp: must be an object { appId, privateKeyFile } (optional owner, installationId)')
+    else {
+      checkUnknownKeys(app, GITHUB_APP_KEYS, 'githubApp', problems)
+      if (!(Number.isInteger(app.appId) && app.appId > 0)) problems.push('githubApp.appId: required, the App ID number from the App\'s settings page')
+      if (!isNonEmptyString(app.privateKeyFile)) problems.push('githubApp.privateKeyFile: required, the path to the App\'s private key (.pem), outside every repository')
+      else if (/^(\.|[^~/])/.test(app.privateKeyFile.trim())) problems.push('githubApp.privateKeyFile: must be an absolute path or start with ~/')
+      if (app.owner !== undefined && !(isNonEmptyString(app.owner) && /^[\w.-]+$/.test(app.owner))) problems.push('githubApp.owner: must be a GitHub account name')
+      if (app.installationId !== undefined && !(Number.isInteger(app.installationId) && app.installationId > 0)) problems.push('githubApp.installationId: must be a positive whole number')
+      if (app.slug !== undefined && !(isNonEmptyString(app.slug) && /^[\w.-]+$/.test(app.slug))) problems.push('githubApp.slug: must be the App\'s URL slug (its comments post as <slug>[bot])')
+    }
+  }
+
   if (!isObject(raw.scripts)) problems.push(`scripts: required, an object with ${SCRIPT_KEYS.join(', ')}`)
   else {
     checkUnknownKeys(raw.scripts, new Set(SCRIPT_KEYS), 'scripts', problems)
@@ -334,6 +372,23 @@ export function validateConfig(raw) {
  * @param {unknown} raw
  * @param {{home?: string}} [opts]
  */
+// Every site deploy runs the shared helper from the gorfednet.github checkout
+// next to the workspace (scripts/site-deploy.sh), and the helper refuses to run
+// unless that checkout is origin/main's tip. A row that did not list it as a
+// sibling ran with whatever an earlier deploy left there, and failed when main
+// had moved since (MoonMan 324, 13 November 2026). So every deploy row syncs
+// it, listed or not.
+export const HELPER_SIBLING = Object.freeze({ dir: 'gorfednet.github', slug: 'gorfednet/.github', branch: 'main' })
+
+function withHelper(repo) {
+  const listed = repo.siblings ?? []
+  if (repo.slug.toLowerCase() === HELPER_SIBLING.slug || listed.some((s) => s.dir === HELPER_SIBLING.dir)) return listed
+  // A custom workDir could sit next to the owner's own clones, and a sibling
+  // sync force-cleans its directory: only the bot's work root gets it implied.
+  if (repo.workDir !== undefined) return listed
+  return [{ ...HELPER_SIBLING }, ...listed]
+}
+
 export function normalizeConfig(raw, { home = homedir() } = {}) {
   const problems = validateConfig(raw)
   if (problems.length > 0) throw new ConfigError(problems)
@@ -363,6 +418,15 @@ export function normalizeConfig(raw, { home = homedir() } = {}) {
     notify: raw.notify ?? true,
     preflight: raw.preflight ?? [],
     ghPath: raw.ghPath ? expandHome(raw.ghPath, home) : 'gh',
+    githubApp: raw.githubApp
+      ? {
+          appId: raw.githubApp.appId,
+          privateKeyFile: x(raw.githubApp.privateKeyFile),
+          owner: raw.githubApp.owner ?? raw.repos[0].slug.split('/')[0],
+          installationId: raw.githubApp.installationId ?? null,
+          slug: raw.githubApp.slug ?? null,
+        }
+      : null,
     scripts: Object.fromEntries(SCRIPT_KEYS.map((k) => [k, x(raw.scripts[k])])),
     repos: raw.repos.map((repo) => {
       const base = {
@@ -378,6 +442,8 @@ export function normalizeConfig(raw, { home = homedir() } = {}) {
         expectedChecks: repo.expectedChecks ?? [],
         coveredChecks: repo.coveredChecks ?? [],
         requireChecksAfterLabel: repo.requireChecksAfterLabel ?? false,
+        // false opts a repo out of marking its own drafts ready (lib/drafts.mjs).
+        draftReady: repo.draftReady ?? true,
         reason: repo.reason ?? '',
       }
       if (repo.mode !== 'deploy') return base
@@ -391,7 +457,7 @@ export function normalizeConfig(raw, { home = homedir() } = {}) {
         env: Object.fromEntries(Object.entries(repo.env ?? {}).map(([k, v]) => [k, expandHome(v, home)])),
         copyFromSource: repo.copyFromSource ?? [],
         preserve: repo.preserve ?? [],
-        siblings: (repo.siblings ?? []).map((s) => ({
+        siblings: withHelper(repo).map((s) => ({
           ...s,
           path: join(dirname(workDir), s.dir),
           cloneUrl: `https://github.com/${s.slug}.git`,
@@ -401,8 +467,13 @@ export function normalizeConfig(raw, { home = homedir() } = {}) {
         // null: no list given, so a failure redeploys the previous commit. An explicit [] (or a list no step of which applies) rolls nothing back.
         rollback: repo.rollback ?? null,
         pausedIfChanged: repo.pausedIfChanged ?? [],
-        // null: every merge deploys. An object: only a pull request whose description says `Release: X.Y.Z sentence` is tagged and deployed (lib/release.mjs).
+        // null: no tag. An object: a deploy tags the merge commit from the description's `Release: X.Y.Z sentence` (lib/release.mjs), and a deploy needs that line.
         release: repo.release ? { tagPrefix: repo.release.tagPrefix ?? 'v' } : null,
+        // true: a merge waits while this Mac's 1-minute load is above its core count (the row's setup or deploy is timing-sensitive).
+        needsHeadroom: repo.needsHeadroom ?? false,
+        // "release": merges never deploy; only a `release` or `hotfix` pull request does (lib/deploy-plan.mjs). "merge": every merge deploys.
+        deployOn: repo.deployOn ?? 'release',
+        deployOnMergeReason: repo.deployOnMergeReason ?? '',
       }
     }),
   }

@@ -6,8 +6,10 @@
  * running) and is only logged. `kind: 'fail'` needs a person, and the bot says
  * so on the PR once per head.
  */
-import { dirname } from 'node:path'
+import { createHash } from 'node:crypto'
+import { dirname, join } from 'node:path'
 import { HOLD_LABEL, READY_LABEL } from './config.mjs'
+import { RateLimitError } from './github.mjs'
 import { succeeded } from './runner.mjs'
 
 export const OK_CONCLUSIONS = new Set(['success', 'skipped', 'neutral'])
@@ -155,7 +157,7 @@ export function evaluateChecks({ runs, statuses, expectedChecks, graceOver, labe
   return blocks
 }
 
-/** Run one of the verification kit's gate scripts. Read-only: they only GET. */
+/** Run one of the verification kit's gate scripts. They only GET, except review-status, which fetches into the clone it is given. */
 export function runGateScript(ctx, script, args, extraEnv = {}) {
   const env = { ...ctx.baseEnv, GH_TOKEN: ctx.token, ...extraEnv }
   delete env.GITHUB_EVENT_PATH
@@ -167,6 +169,52 @@ export function runGateScript(ctx, script, args, extraEnv = {}) {
     env,
     timeoutMs: ctx.config.gateTimeoutSeconds * 1000,
   })
+}
+
+/**
+ * Is this a verdict worth remembering? A pass (exit 0) always is. A "no" (exit
+ * 1) only from review-status with its verdict line: assert-checks-started and
+ * check-closing-keywords also exit 1 when they could not read GitHub, and a
+ * transient failure must clear on the next pass, not 10 minutes later.
+ */
+function cacheable(ctx, script, r) {
+  if (r.timedOut || r.error) return false
+  if (r.code === 0) return true
+  return r.code === 1 && script === ctx.config.scripts.reviewStatus && /^#\d+\s+(findings|not-run)\b/m.test(r.stdout ?? '')
+}
+
+/**
+ * Run a gate script, or reuse its output for the same inputs (cache.mjs).
+ * `memo.inputs` names everything the answer depends on that the bot can see;
+ * `memo.fresh` forces a real run (the re-check before a merge), and
+ * `memo.used` records that a remembered answer was given. Each script makes
+ * its own REST calls with the same token, so none starts on a spent quota.
+ */
+async function gate(ctx, script, args, extraEnv, memo) {
+  const key = memo && ctx.readCache ? `${script}|${args.join(' ')}|${memo.inputs}` : null
+  if (key && !memo.fresh) {
+    const hit = ctx.readCache.getGate(key)
+    if (hit) {
+      memo.used = true
+      if (ctx.gateStats) ctx.gateStats.cached += 1
+      return hit
+    }
+  }
+  const low = ctx.github.lowQuota?.()
+  if (low) throw new RateLimitError(low)
+  const result = await runGateScript(ctx, script, args, extraEnv)
+  if (ctx.gateStats) ctx.gateStats.ran += 1
+  if (key && cacheable(ctx, script, result)) ctx.readCache.setGate(key, result)
+  return result
+}
+
+/** Everything about the checks on a head that could change a gate script's answer. */
+export function checksDigest(runs, statuses) {
+  const lines = [
+    ...runs.map((r) => `r ${r.id ?? ''} ${r.name} ${r.status} ${r.conclusion ?? ''} ${r.started_at ?? ''}`),
+    ...statuses.map((s) => `s ${s.id ?? ''} ${s.context} ${s.state} ${s.created_at ?? ''}`),
+  ].sort()
+  return createHash('sha1').update(lines.join('\n')).digest('hex').slice(0, 16)
 }
 
 const firstLine = (result, redactor) => {
@@ -186,7 +234,14 @@ const firstLine = (result, redactor) => {
 export function parseReviewStatus(result, prNumber) {
   const m = /^#(\d+)\s+(clean|findings|not-run)\s*(.*)$/m.exec(result.stdout ?? '')
   if (!m || Number(m[1]) !== prNumber) return { state: 'undetermined', detail: 'unrecognised output from review-status' }
-  const state = m[2]
+  let state = m[2]
+  // Past the review round cap a Low-only round prints `clean ... triage by reply` (plan row 5.8).
+  // That is findings with a relief for the human gate, not a clean review: the bot still needs
+  // `requireClean` and every thread answered, so it reads it as findings.
+  if (state === 'clean' && /triage by reply/.test(m[3])) {
+    if (result.code !== 0 || result.timedOut || result.error) return { state: 'undetermined', detail: `printed clean but exited ${result.code}` }
+    return { state: 'findings', detail: m[3] }
+  }
   // Exit code and printed state must agree; if they do not, trust neither.
   if (result.code !== (state === 'clean' ? 0 : 1) || result.timedOut || result.error) {
     return { state: 'undetermined', detail: `printed ${state} but exited ${result.code}` }
@@ -226,9 +281,13 @@ export function isTriaged(thread, allowedAuthors) {
  *
  * Returns `{blocks}`.
  */
-export async function evaluateReview(ctx, repo, pr, sha, { headSince }) {
+/** The local clone review-status judges merges of main in: a deploy row's sourceDir, else the one under sourceRoot. */
+const cloneDir = (ctx, repo) => repo.sourceDir ?? (ctx.config.sourceRoot && repo.dir ? join(ctx.config.sourceRoot, repo.dir) : null)
+
+export async function evaluateReview(ctx, repo, pr, sha, { headSince, memo, draft = false, requireClean = false }) {
   const now = ctx.clock.now()
-  const script = await runGateScript(ctx, ctx.config.scripts.reviewStatus, ['--pr', String(pr.number), '--repo', repo.slug])
+  // --clone lets review-status accept a head that only adds clean merges of main to a clean-reviewed head.
+  const script = await gate(ctx, ctx.config.scripts.reviewStatus, ['--pr', String(pr.number), '--repo', repo.slug, ...(cloneDir(ctx, repo) ? ['--clone', cloneDir(ctx, repo)] : [])], {}, memo)
   const status = parseReviewStatus(script, pr.number)
   if (status.state === 'undetermined') {
     return { blocks: [{ key: 'review-undetermined', kind: 'wait', reason: `Claude review state unknown: ${ctx.redactor.apply(status.detail)}` }] }
@@ -236,6 +295,9 @@ export async function evaluateReview(ctx, repo, pr, sha, { headSince }) {
   if (status.state === 'clean') return { blocks: [] }
 
   if (status.state === 'not-run') {
+    // A draft gets no automatic review, so the bot asks for one (bot.mjs
+    // comments `claude review` once per head) and waits for the next pass.
+    if (draft) return { blocks: [{ key: 'draft-review-request', kind: 'request', reason: `the Claude reviewer has not run on this head (${sha.slice(0, 7)})` }] }
     if (minutesBetween(headSince, now) < ctx.config.reviewGraceMinutes) {
       return { blocks: [{ key: 'review-grace', kind: 'wait', reason: "giving the Claude reviewer's automatic review time to land" }] }
     }
@@ -244,12 +306,29 @@ export async function evaluateReview(ctx, repo, pr, sha, { headSince }) {
         {
           key: 'review-not-run',
           kind: 'fail',
+          noStall: true, // only a comment on the pull request brings a review; a pushed fix is a new unreviewed head
           reason: [
-            `The Claude reviewer has not reviewed this head (${sha.slice(0, 7)}), and nothing merges without a review of the final head. The bot never asks for one itself.`,
+            `The Claude reviewer has not reviewed this head (${sha.slice(0, 7)}), and nothing merges without a review of the final head, except a head that only adds clean merges of main (below). The bot never asks for one itself.`,
             '- If the commits since the last review changed code someone wrote, comment `claude review` here. The bot merges once that review is clean, or every finding has an answer.',
-            '- If they only merged main cleanly, regenerated files, moved a pin or budget number, or fixed lint, a session says so here and merges by hand (the bot cannot tell which kind a push was).',
+            '- A head that only adds conflict-free merges of main to a head whose newest review was clean reads clean without a new review. If this head did not (the newest review had findings, even Lows answered by reply; a merge needed a conflict resolution; or the clone is missing or lacks the tip of main), comment `claude review`. A fetch that fails is retried on the next pass.',
+            '- If they regenerated files, moved a pin or budget number, or fixed lint, say so here and comment `claude review` anyway: the bot cannot tell which kind a push was, and it merges on that review.',
             '- If this repository has no Claude reviewer yet, a session merges it after reading the diff.',
           ].join('\n'),
+        },
+      ],
+    }
+  }
+
+  // A pull request the bot readied itself, in a repo that deploys, merges on
+  // a clean review only. Every session posts as the owner's login, so "every
+  // finding has an answer" proves no person read it (plan row 1.12).
+  if (requireClean) {
+    return {
+      blocks: [
+        {
+          key: 'review-not-clean',
+          kind: 'fail',
+          reason: `The Claude reviewer reported findings on this head (${ctx.redactor.apply(status.detail)}). The bot readies or readied this pull request itself and the repo deploys, so it merges only on a clean review: push a fix and get a clean review of the new commit. Relabelling does not lift this; a change that must merge with its findings goes in a fresh pull request that a session labels after reading them.`,
         },
       ],
     }
@@ -291,12 +370,18 @@ export async function evaluateReview(ctx, repo, pr, sha, { headSince }) {
  * Every gate for one PR head. Stops at the first gate that blocks, so the
  * gate scripts only run on PRs whose checks are green.
  *
- * @returns {Promise<{ready: boolean, blocks: object[]}>}
+ * `fresh` runs every gate script for real. Without it a script's answer may be
+ * one remembered from an earlier pass with the same inputs, and the result
+ * says so with `cached: true`; the caller re-runs fresh before acting on a
+ * ready result.
+ *
+ * @returns {Promise<{ready: boolean, blocks: object[], cached: boolean}>}
  */
-export async function evaluatePull(ctx, repo, pr, { headState }) {
+export async function evaluatePull(ctx, repo, pr, { headState, fresh = false, draft = false, requireClean = false }) {
   const sha = pr.head.sha
   const now = ctx.clock.now()
-  const blocked = (blocks) => ({ ready: false, blocks })
+  const memo = { inputs: '', fresh, used: false }
+  const blocked = (blocks) => ({ ready: false, blocks, cached: memo.used })
 
   // (b) (c) (f)
   let runs
@@ -304,6 +389,7 @@ export async function evaluatePull(ctx, repo, pr, { headState }) {
   try {
     ;[runs, statuses] = await Promise.all([ctx.github.listCheckRuns(repo.slug, sha), ctx.github.listStatuses(repo.slug, sha)])
   } catch (cause) {
+    if (cause instanceof RateLimitError) throw cause
     return blocked([{ key: 'checks-unreadable', kind: 'wait', reason: `could not read checks: ${ctx.redactor.apply(cause.message)}` }])
   }
   // How long this head has existed: the earlier of when the bot first saw it
@@ -312,7 +398,8 @@ export async function evaluatePull(ctx, repo, pr, { headState }) {
   const headSince = [headState.firstSeenAt, ...runs.map((r) => r.started_at)].filter(Boolean).sort()[0]
   const graceOver = minutesBetween(headSince, now) >= ctx.config.checksGraceMinutes
   let labeledAt
-  if (repo.requireChecksAfterLabel) {
+  const requireAfterLabel = repo.requireChecksAfterLabel && !draft
+  if (requireAfterLabel) {
     try {
       const events = await ctx.github.listIssueEvents(repo.slug, pr.number)
       labeledAt = events
@@ -320,7 +407,8 @@ export async function evaluatePull(ctx, repo, pr, { headState }) {
         .map((e) => e.created_at)
         .sort()
         .pop()
-    } catch {
+    } catch (cause) {
+      if (cause instanceof RateLimitError) throw cause
       labeledAt = undefined
     }
   }
@@ -330,12 +418,23 @@ export async function evaluatePull(ctx, repo, pr, { headState }) {
     expectedChecks: repo.expectedChecks,
     graceOver,
     labeledAt,
-    requireAfterLabel: repo.requireChecksAfterLabel,
+    requireAfterLabel,
   })
   if (checkBlocks.length > 0) return blocked(checkBlocks)
 
+  // What the scripts below read, as far as the bot can see it: the head, the
+  // pull request's last change (title, body, labels and comments all move
+  // updated_at) and every check on the head.
+  memo.inputs = `${sha}|${pr.updated_at ?? 'unknown'}|${checksDigest(runs, statuses)}`
+  // Without updated_at the inputs are not known, so nothing is reused.
+  const scriptMemo = pr.updated_at ? memo : undefined
+
   // (a) the kit's own "did CI start at all" check.
-  const started = await runGateScript(ctx, ctx.config.scripts.assertChecksStarted, ['--pr', String(pr.number), '--repo', repo.slug])
+  // A repo whose only workflow is the reviewer caller (ops) expects no check, and a head pushed after
+  // ready has no run at all: the review verdict (gate d) is its gate, so zero runs is not a fault there.
+  // Runs that did start must still all have started.
+  const noCi = repo.expectedChecks.length === 0
+  const started = await gate(ctx, ctx.config.scripts.assertChecksStarted, ['--pr', String(pr.number), '--repo', repo.slug, ...(noCi ? ['--min-runs', '0'] : [])], {}, scriptMemo)
   if (!succeeded(started)) {
     return blocked([
       {
@@ -350,24 +449,27 @@ export async function evaluatePull(ctx, repo, pr, { headState }) {
   // GITHUB_REPOSITORY: the script in gorfednet/.github reads the flag, and an
   // older copy (bindercurve.com before 2026-10-20) read only the variable and
   // otherwise defaulted to bindercurve.com.
-  const closing = await runGateScript(ctx, ctx.config.scripts.checkClosingKeywords, ['--pr', String(pr.number), '--repo', repo.slug], {
-    GITHUB_REPOSITORY: repo.slug,
-  })
+  const closing = await gate(ctx, ctx.config.scripts.checkClosingKeywords, ['--pr', String(pr.number), '--repo', repo.slug], { GITHUB_REPOSITORY: repo.slug }, scriptMemo)
   const closingText = `${closing.stdout ?? ''}${closing.stderr ?? ''}`
   if (!succeeded(closing) || /nothing to scan/i.test(closingText)) {
     return blocked([{ key: 'closing-keywords', kind: 'fail', reason: `check-closing-keywords did not pass: ${firstLine(closing, ctx.redactor)}` }])
   }
 
-  // (d) the Claude reviewer's verdict on this head.
+  // (d) the Claude reviewer's verdict on this head. A clean review that is
+  // required cannot come from a repo with no reviewer: fail closed.
+  if (requireClean && !repo.claudeReview) {
+    return blocked([{ key: 'review-required', kind: 'fail', noStall: true, reason: 'The bot readied this pull request itself and the repo deploys, so it needs a clean Claude review, but this repo has no Claude reviewer configured. A person labels it.' }])
+  }
   if (repo.claudeReview) {
     let result
     try {
-      result = await evaluateReview(ctx, repo, pr, sha, { headSince })
+      result = await evaluateReview(ctx, repo, pr, sha, { headSince, memo: scriptMemo, draft, requireClean })
     } catch (cause) {
+      if (cause instanceof RateLimitError) throw cause
       return blocked([{ key: 'review-undetermined', kind: 'wait', reason: `could not read the Claude review state: ${ctx.redactor.apply(cause.message)}` }])
     }
     if (result.blocks.length > 0) return blocked(result.blocks)
   }
 
-  return { ready: true, blocks: [] }
+  return { ready: true, blocks: [], cached: memo.used }
 }
