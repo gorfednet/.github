@@ -18,7 +18,7 @@ pull request, asks:
    failed, was cancelled, or never ran at all means "not yet".
 3. Did the **Claude reviewer review the latest commit**, and either find
    nothing or have **every one of its comments answered**, with a reply
-   written after the comment or by resolving it? (Exception: a pull request that changes control-plane paths and has a Medium or High thread merges only on a clean review of a new head; a reply or resolving does not lift it, for a thread opened on this head's commit; a thread resolved from an earlier commit does not count.) It reads this with
+   written after the comment or by resolving it? (Exception: a pull request that changes control-plane paths and has a Medium or High thread merges only on a clean review of a new head; a reply never lifts it, and resolving lifts it only for a thread opened on an earlier commit, which then does not count.) It reads this with
    `review-status.mjs`. A latest commit the reviewer has not reviewed
    waits, however many earlier commits it reviewed, unless it only adds clean
    merges of `main` (redone with `git merge-tree`, no conflict, same tree) to a

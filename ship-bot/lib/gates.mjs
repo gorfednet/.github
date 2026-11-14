@@ -340,7 +340,7 @@ export async function evaluateReview(ctx, repo, pr, sha, { headSince, memo, draf
         {
           key: 'review-not-clean',
           kind: 'fail',
-          reason: `The Claude reviewer reported findings on this head (${ctx.redactor.apply(status.detail)}). ${requireClean ? 'The bot readies or readied this pull request itself and the repo deploys' : 'This pull request changes control-plane paths and a Medium or High thread was raised on it (fix whatever this head still has, then get a clean review)'}, so it merges only on a clean review: push a fix and get a clean review of the new commit. A reply does not lift this, nor does resolving a thread opened on this head's commit. A Medium or High from an earlier commit that has been fixed can be resolved, and then no longer counts. A change that must merge with its findings goes in a fresh pull request that a session labels after reading them.`,
+          reason: `The Claude reviewer reported findings on this head (${ctx.redactor.apply(status.detail)}). ${requireClean ? 'The bot readies or readied this pull request itself and the repo deploys' : 'This pull request changes control-plane paths and a Medium or High thread was raised on it (fix whatever this head still has, then get a clean review)'}, so it merges only on a clean review: push a fix and get a clean review of the new commit. ${requireClean ? 'A reply or resolving a thread does not lift this.' : "A reply does not lift this, nor does resolving a thread opened on this head's commit. A Medium or High from an earlier commit that has been fixed can be resolved, and then no longer counts."} A change that must merge with its findings goes in a fresh pull request that a session labels after reading them.`,
         },
       ],
     }
