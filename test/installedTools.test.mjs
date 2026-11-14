@@ -72,6 +72,24 @@ describe('installed tools behind main', () => {
     )
   })
 
+  it('an always-pr-remind hook copy left behind a committed fix is flagged', () => {
+    const f = fixture()
+    const src = join(f.clone, 'docs', 'claude-home', 'hooks', 'always-pr-remind.py')
+    put(src, '# old\n')
+    sh(f.clone, 'add', '-A')
+    sh(f.clone, 'commit', '-q', '-m', 'hook v1')
+    put(src, '# fixed\n')
+    sh(f.clone, 'add', '-A')
+    sh(f.clone, 'commit', '-q', '-m', 'hook v2')
+    sh(f.clone, 'push', '-q', 'origin', 'main')
+    put(join(f.home, '.claude', 'hooks', 'always-pr-remind.py'), '# old\n')
+    const r = run(f)
+    const hook = (x) => x.behind.filter((b) => b.tool === 'always-pr-remind hook')
+    assert.deepEqual(hook(r).map((b) => b.behind), [1])
+    put(join(f.home, '.claude', 'hooks', 'always-pr-remind.py'), '# fixed\n')
+    assert.deepEqual(hook(run(f)), [])
+  })
+
   it('a link into a working checkout is flagged even when that checkout is current', () => {
     const f = fixture()
     symlinkSync(join(f.clone, 'bin', 'tool'), join(f.home, '.local', 'bin', 'tool2'))
