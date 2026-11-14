@@ -73,12 +73,19 @@ export function keyOf(task, o, ctx = {}) {
 
 /** Runs check-voice on a text and returns how many rule findings it reports. */
 export function defaultVoice(checkVoice) {
+  // The spawn runs in a tmp dir, so a relative path would resolve there and Node would exit 1 (module not found).
+  const script = path.resolve(checkVoice)
+  if (!fs.existsSync(script)) throw new Error(`check-voice not found: ${script}`)
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'voice-'))
   return (text) => {
     fs.writeFileSync(path.join(dir, 'p.md'), `${text}\n`)
-    const r = spawnSync('node', [checkVoice, 'p.md'], { cwd: dir, encoding: 'utf8' })
-    if (r.error || ![0, 1].includes(r.status)) throw new Error(`check-voice did not run: ${r.error?.message ?? `exit ${r.status}`}`)
-    return `${r.stdout}`.split('\n').filter((l) => /: (warning )?rule /.test(l)).length
+    const r = spawnSync('node', [script, 'p.md'], { cwd: dir, encoding: 'utf8' })
+    const rules = `${r.stdout}`.split('\n').filter((l) => /: (warning )?rule /.test(l)).length
+    // Exit 1 is also what a crash, a missing module and check-voice's own fail() return. Only its findings summary on stderr is a real finding.
+    const found = r.status === 1 && /✗ [\w-]+: \d+ hit\(s\) in \d+ file\(s\)/.test(`${r.stderr}`) && rules > 0
+    const clean = r.status === 0 && /✓ [\w-]+: \d+ file\(s\)/.test(`${r.stdout}`)
+    if (r.error || !(found || clean)) throw new Error(`check-voice did not run: ${r.error?.message ?? `exit ${r.status}`} ${`${r.stderr}`.trim().split('\n')[0]}`.trim())
+    return rules
   }
 }
 
@@ -224,10 +231,16 @@ export function checkReferences(baseline, manifestBytes, refs) {
   if (baseline.manifestSha256 !== sha256(manifestBytes)) bad.push('baseline: manifestSha256 does not match the manifest (refreeze)')
   for (const r of refs) {
     const name = path.basename(r.file).replace(/\.json$/, '')
+    if (r.role === 'haiku' && name !== 'haiku') bad.push(`${name}: --haiku must be the frozen haiku arm`)
+    if (r.role === 'nomodel' && !/^nomodel(-|$)/.test(name)) bad.push(`${name}: --nomodel must be a frozen no-model arm`)
     const frozen = baseline.arms.find((a) => a.name === name)
     if (!frozen) bad.push(`${name}: not in baseline.json`)
     else if (frozen.armSha256 !== sha256(r.bytes)) bad.push(`${name}: ${r.file} does not match the hash frozen in baseline.json`)
   }
+  // Every no-model arm the baseline froze must be passed, or the bar drops from the better of rule and majority to the weaker one.
+  const given = new Set(refs.filter((r) => r.role === 'nomodel').map((r) => path.basename(r.file).replace(/\.json$/, '')))
+  if (refs.some((r) => r.role === 'nomodel'))
+    for (const a of baseline.arms) if (/^nomodel(-|$)/.test(a.name) && !given.has(a.name)) bad.push(`${a.name}: frozen in baseline.json but not passed with --nomodel`)
   return bad
 }
 
@@ -241,7 +254,7 @@ function main(argv) {
   if (problems.length) throw new Error(problems.join('; '))
   const nomodelFiles = argv.flatMap((a, i) => (a === '--nomodel' ? [argv[i + 1]] : []))
   if (!nomodelFiles.length || nomodelFiles.some((f) => !f || f.startsWith('--'))) throw new Error('--nomodel <file> is required (repeat it for the rule arm)')
-  const refs = [need('--haiku'), ...nomodelFiles].map((file) => ({ file, bytes: fs.readFileSync(file) }))
+  const refs = [need('--haiku'), ...nomodelFiles].map((file, i) => ({ file, role: i === 0 ? 'haiku' : 'nomodel', bytes: fs.readFileSync(file) }))
   const refBad = checkReferences(load(need('--baseline')), manifestBytes, refs)
   if (refBad.length) throw new Error(refBad.join('; '))
   const haiku = JSON.parse(refs[0].bytes), nomodel = refs.slice(1).map((r) => JSON.parse(r.bytes))

@@ -139,6 +139,8 @@ async function runModel(cases, id, base) {
 
 async function main(argv) {
   const val = (k) => (argv.includes(k) ? argv[argv.indexOf(k) + 1] : undefined)
+  // Check --out before a 56-case model run, not after it.
+  if ((val('--ingest') || val('--model')) && (!val('--out') || val('--out').startsWith('--'))) throw new Error('--out <file> is required with --model and --ingest')
   const manifest = JSON.parse(fs.readFileSync(val('--manifest'), 'utf8'))
   const tasks = val('--tasks') ? val('--tasks').split(',') : TASKS
   const cases = loadCases(manifest, val('--cases')).filter((c) => tasks.includes(c.task))

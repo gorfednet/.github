@@ -441,21 +441,22 @@ describe('references are the frozen ones', () => {
 
 describe('evalset-baseline refuses a missing flag', () => {
   const script = new URL('../scripts/local-llm/evalset-baseline.mjs', import.meta.url).pathname
+  const cvPath = new URL('../templates/verification-kit/bin/check-voice.mjs', import.meta.url).pathname
   it('exits non-zero and writes no file named after another flag when a flag is left out', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'es-bl-'))
     const man = path.join(dir, 'manifest.json'); fs.writeFileSync(man, JSON.stringify(manifest))
     const arms = path.join(dir, 'arms'); fs.mkdirSync(arms)
     const salt = path.join(dir, 'salt'); fs.writeFileSync(salt, 's')
     const run = (...a) => spawnSync('node', [script, ...a], { cwd: dir, encoding: 'utf8' })
-    const noNote = run('--manifest', man, '--arms', arms, '--salt-file', salt, '--check-voice', 'x', '--out', path.join(dir, 'b.json'))
+    const noNote = run('--manifest', man, '--arms', arms, '--salt-file', salt, '--check-voice', cvPath, '--out', path.join(dir, 'b.json'))
     assert.notEqual(noNote.status, 0)
     assert.match(noNote.stderr, /--note <value> is required/)
     assert.equal(fs.existsSync(path.join(dir, 'b.json')), false)
-    const noOut = run('--manifest', man, '--arms', arms, '--salt-file', salt, '--check-voice', 'x', '--note', 'n')
+    const noOut = run('--manifest', man, '--arms', arms, '--salt-file', salt, '--check-voice', cvPath, '--note', 'n')
     assert.notEqual(noOut.status, 0)
     assert.match(noOut.stderr, /--out <value> is required/)
     assert.equal(fs.existsSync(path.join(dir, '--manifest')), false)
-    assert.equal(run('--manifest', man, '--arms', arms, '--salt-file', salt, '--check-voice', 'x', '--note', 'n', '--out', path.join(dir, 'b.json')).status, 0)
+    assert.equal(run('--manifest', man, '--arms', arms, '--salt-file', salt, '--check-voice', cvPath, '--note', 'n', '--out', path.join(dir, 'b.json')).status, 0)
     assert.equal(JSON.parse(fs.readFileSync(path.join(dir, 'b.json'), 'utf8')).note, 'n')
   })
 })
