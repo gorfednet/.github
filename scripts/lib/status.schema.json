@@ -7,6 +7,7 @@
   "properties": {
     "generatedAt": { "type": "string" },
     "renderedAt": { "type": "string" },
+    "dormant": { "type": "array", "items": { "type": "string" } },
     "branchesReadAt": { "type": "string" },
     "carried": { "type": "boolean" },
     "dirtyLocal": {
