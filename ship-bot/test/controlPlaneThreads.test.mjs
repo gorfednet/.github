@@ -12,8 +12,10 @@ const answered = (body) => ({
   body,
   comments: [{ author: 'github-actions', createdAt: '2026-10-09T10:00:00Z' }, { author: 'gorfednet', createdAt: '2026-10-09T10:30:00Z' }],
 })
-const run = async (files, body, { resolved = false, handle = findings } = {}) => {
-  const gh = new FakeGitHub({ threads: [{ ...answered(body), isResolved: resolved }], files })
+const run = async (files, body, { resolved = false, handle = findings, openedAt } = {}) => {
+  const thread = answered(body)
+  if (openedAt) thread.comments[0].createdAt = openedAt
+  const gh = new FakeGitHub({ threads: [{ ...thread, isResolved: resolved }], files })
   const s = scenario({ repos: [repoEntry({ claudeReview: true, mode: 'merge-only', reason: 'r', envFiles: undefined, setup: undefined, deploy: undefined })].map(({ envFiles, setup, deploy, ...r }) => r), github: gh, runner: makeRunner({ handle }) })
   await s.run()
   return { gh, s }
@@ -31,6 +33,9 @@ describe('control-plane PRs need a clean review for Medium and High threads (row
     assert.equal(merges((await run(['ship-bot/lib/bot.mjs'], 'High: x', { resolved: true })).gh).length, 1)
     const relief = (cmd) => (cmd.args?.[0]?.endsWith('/review-status.mjs') ? { code: 0, stdout: '#7  clean  Claude reviewed aaaaaaaaa (round 5 of 4): 1 Low finding(s), triage by reply\n' } : undefined)
     assert.equal(merges((await run(['ship-bot/lib/bot.mjs'], 'High: x', { handle: relief })).gh).length, 1)
+  })
+  it('resolving a High thread this head\'s review opened is a reply, not a triage: still no merge', async () => {
+    assert.equal(merges((await run(['ship-bot/lib/bot.mjs'], 'High: x', { resolved: true, openedAt: '2026-10-09T12:05:00Z' })).gh).length, 0)
   })
   it('a Low thread answered, or any thread on an ordinary path, still merges on the reply', async () => {
     assert.equal(merges((await run(['ship-bot/lib/bot.mjs'], 'Low: x')).gh).length, 1)

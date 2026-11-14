@@ -320,9 +320,12 @@ export async function evaluateReview(ctx, repo, pr, sha, { headSince, memo, draf
   // at 19:08 ET on 13 November 2026 with 5 threads open, each "answered" by the session that wrote it.
   let strict = requireClean
   if (!strict && controlPlane && !status.relief) {
-    // Unresolved threads only: a High that was fixed and resolved, or a Low-only relief round past the cap,
-    // must not deadlock the pull request.
-    const all = (await ctx.github.listReviewThreads(repo.slug, pr.number)).filter((t) => isReviewerUser(t.author) && !t.isResolved)
+    // A resolve is the same as a reply, so a thread this head's review opened counts resolved or not.
+    // One from before this head (a fixed High on an earlier commit, resolved) must not deadlock the pull request,
+    // nor a Low-only relief round past the cap (skipped above).
+    const all = (await ctx.github.listReviewThreads(repo.slug, pr.number)).filter(
+      (t) => isReviewerUser(t.author) && (!t.isResolved || (headSince && t.comments?.[0]?.createdAt >= headSince)),
+    )
     if (all.some((t) => /^[^a-z]*(high|medium)\b/i.test(String(t.body ?? '').trim())) && (await controlPlane())) strict = true
   }
   if (strict) {
