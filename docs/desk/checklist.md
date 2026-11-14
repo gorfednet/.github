@@ -8,7 +8,7 @@ Updated 13 Nov 2026, 11:49 ET.
 - [x] CI waits at 60-second checks in every session (rule changed 10:00 ET)
 - [ ] CI pool resize (3.1/3.2, running)
 - [x] Deploy root-cause fix (.github 140, merged)
-- [ ] Blocked deploys: fix merged (.github 158), owner applies the config patch, then papers unblocks
+- [x] Blocked deploys: patch applied, papers unblocked (19:2x ET)
 - [x] Cloud start failure explained: an Anthropic overload (.github 142, labelled)
 
 ## Control plane
