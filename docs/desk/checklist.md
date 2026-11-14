@@ -141,3 +141,9 @@ Weekly 9% at 11:21 ET. Full speed, cost-aware. One line to the owner at about 90
 - [ ] Expiry-watch false alarms: ops 77 merged, not installed. rdap 403 and IPv6 cause with ops-92-followups. One batched owner install later
 - [ ] Ship-bot REPO_EXTRA covers docs/claude-home/ (192 follow-up, Fable)
 - [x] gh-poll-guard hook (175) and the 194 rule lines copied to ~/.claude
+
+## Added 14 Nov afternoon (19th Desk)
+- [ ] 1.27 eval set: 3 round-4 Lows fixed and pushed (.github ed105d4, ops 310f7b3); final Claude review and Fable read running, then label both
+- [ ] Ship-bot treats docs/claude-home/ as control plane (.github 195, draft): Claude review and Fable read running
+- [ ] bc 659: failed jobs rerun after the 11:34 ET network drop; then 660, 655, then the owner's one dapyllil install
+- [ ] 1.17 orphan decisions at 15:29 ET
