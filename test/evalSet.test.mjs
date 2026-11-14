@@ -31,7 +31,7 @@ const answer = (c, right, timed) => {
   if (c.task === 'triage') return { verdict: right ? c.label : wrong[c.label], lines: [1], cause: right, ...t }
   return { verdict: right ? c.label : wrong[c.label], ...t }
 }
-const arm = (right = () => true, timed = false) => Object.fromEntries(cases.map((c, i) => [c.id, answer(c, right(c, i), timed)]))
+const arm = (right = () => true, timed = false) => ({ scoringVersion: 3, ...Object.fromEntries(cases.map((c, i) => [c.id, answer(c, right(c, i), timed)])) })
 const haiku = arm((c, i) => i % 5 !== 0)
 // a floor that knows a little: right on the first 2 of each task
 const nomodel = (() => { const seen = {}; return arm((c) => { seen[c.task] = (seen[c.task] || 0) + 1; return seen[c.task] <= 2 }) })()
@@ -246,7 +246,7 @@ describe('latency applies only to timed arms', () => {
   })
   it('fails a timed arm slower than 60 s', () => {
     const slow = arm((c) => true, true)
-    for (const v of Object.values(slow)) v.ms = 90000
+    for (const v of Object.values(slow)) if (typeof v === 'object') v.ms = 90000
     assert.match(judge(manifest, slow, haiku, nomodel, opts(slow)).reasons.join(), /latency/)
   })
   it('fails an arm timed on only some of its answers', () => {
@@ -432,9 +432,9 @@ describe('rule arm and triage prompts', () => {
     const finding = 'Medium: `hashFiles` is called twice. Fix: call `hashFiles` once.'
     assert.equal(ruleVerdict({ finding, region: 'hashFiles(a); hashFiles(b)' }), 'valid')
   })
-  it('writes the rule arm for reviewer cases only', () => {
+  it('writes the rule arm for reviewer and triage cases only, stamped with the scoring version', () => {
     const a = ruleArm([{ id: 'rev-01', task: 'reviewer', body: { input: { finding: 'x. Fix: use `fooBar`', region: 'fooBar()' } } }, { id: 'cpy-01', task: 'copy', body: { input: { text: 't' } } }])
-    assert.deepEqual(a, { 'rev-01': { verdict: 'invalid' } })
+    assert.deepEqual(a, { scoringVersion: 3, 'rev-01': { verdict: 'invalid' } })
   })
   it('emits a prompt for a triage case too, and refuses a log whose sha256 changed', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'es-emit-'))

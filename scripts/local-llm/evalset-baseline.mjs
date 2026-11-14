@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Freezes the scores of the committed arm files into docs/eval-set/baseline.json (public: counts and hashes only).
 // evalset-baseline.mjs --manifest m.json --arms dir --salt-file f --check-voice p --out baseline.json --note "..."
-// <dir>/<name>.json for every arm; haiku.json, nomodel.json and nomodel-rule.json are the references (evalset.mjs checks their hashes here).
+// <dir>/<name>.json for every arm; haiku.json, nomodel.json and nomodel-rule.json (reviewer and triage) are the references (evalset.mjs checks their hashes here).
 // Triage is listed only when an arm ran it. Every flag is required.
 import fs from 'node:fs'
 import path from 'node:path'

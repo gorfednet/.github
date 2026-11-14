@@ -2,10 +2,10 @@
 // Fixed eval set (plan row 1.27): manifest schema, case verification and scorer.
 // This repository is public. The manifest holds only {id, task, label, sha256}; case bodies are private.
 // evalset.mjs --manifest m.json --baseline baseline.json --haiku h.json --nomodel n.json [--nomodel n2.json ...] --arm name=f.json [--tasks a,b] [--grades g.json] [--salt-file f] [--check-voice path]
-// arm file:    {caseId: {verdict | files | text, ms?, cause?, rule?}, _model?: {id, sha}}   ms only when the arm was timed; cause set by evalset-run from private truth; rule 'error-line' tags the triage rule arm; _model is the served model and snapshot of a --model run
+// arm file:    {caseId: {verdict | files | text, ms?, cause?, rule?}, _model?: {id, sha, warning?}, blind?: true, scoringVersion: 3}   ms only when the arm was timed; cause set by evalset-run from private truth; rule 'error-line' tags the triage rule arm; _model is the served model and snapshot of a --model run
 // grades file: {armName: {gradeKey(caseId, answer text): 0..5}} from a tool-less Fable grader, integers only. Haiku must be graded too: its grades set the reference.
 // The reference files (--haiku and every --nomodel) must match the sha256 values frozen in baseline.json, and the baseline must name this manifest.
-// A no-model arm may cover only some tasks (the rule arm covers reviewer only): it is compared on the tasks it covers.
+// A no-model arm may cover only some tasks (the rule arm covers reviewer and triage): it is compared on the tasks it covers.
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -34,10 +34,16 @@ export const filesLabel = (files, salt, id) => {
 const labelOk = (task, l) => (task === 'builder' ? /^files:[0-9a-f]{64}$/.test(l) : task === 'copy' ? /^voice:[1-9]\d*$/.test(l) : LABELS[task].includes(l))
 
 /**
- * check-voice reads no fenced code and no HTML comments, so a rewrite that put its text inside one would score 0 findings without being read.
- * Such an answer is not a valid copy answer.
+ * check-voice reads none of: fenced code, HTML comments, inline code spans, link reference definitions, link targets, bare URLs, HTML tags,
+ * front matter. An answer that carries any of them can hide text from the check, so it isn't a valid copy answer. (A constructed pass kept the
+ * input in backticks beside "It's here." and scored 8 of 8.)
  */
-export const hidesFromVoice = (text) => /^\s{0,3}(`{3,}|~{3,})/m.test(text) || /<!--/.test(text)
+export const HIDING = [/^\s{0,3}(`{3,}|~{3,})/m, /<!--/, /`/, /^\s{0,3}\[[^\]]+\]:\s*\S/m, /\]\(|\]\[/, /\bhttps?:\/\//i, /<\/?[a-z!]/i, /^---\s*$/m]
+export const hidesFromVoice = (text) => HIDING.some((re) => re.test(text))
+
+export const SCORING_VERSION = 3
+/** An arm file written by the version-3 runner. Triage `cause` is set by the runner from private truth, so an arm that didn't pass through it can't be trusted. */
+export const stamped = (arm) => arm?.scoringVersion === SCORING_VERSION
 
 /** Returns a list of problems; empty means the manifest is well formed. */
 export function validateManifest(m) {
@@ -197,6 +203,11 @@ export function referenceProblems(cases, haiku, nomodels, { voice, salt, grades,
 export function judge(manifest, arm, haiku, nomodel, { name = 'arm', haikuName = 'haiku', voice, grades, salt, tasks = TASKS } = {}) {
   const nomodels = Array.isArray(nomodel) ? nomodel : [nomodel]
   const cases = manifest.cases.filter((c) => tasks.includes(c.task))
+  const unstamped = []
+  if (tasks.includes('triage') && cases.some((c) => c.task === 'triage'))
+    for (const [n, a] of [[name, arm], ['haiku', haiku], ...nomodels.map((x, i) => [`no-model ${i + 1}`, x])])
+      if (a[cases.find((c) => c.task === 'triage').id] !== undefined && !stamped(a)) unstamped.push(`triage: ${n} arm file has no scoringVersion ${SCORING_VERSION} (cause is set by the runner; regenerate it)`)
+  if (unstamped.length) return { status: 'FAIL', reasons: unstamped, scores: null }
   const rej = rejections(cases, arm, nomodels, { salt })
   if (rej.length) return { status: 'FAIL', reasons: rej, scores: null }
   const noRef = referenceProblems(cases, haiku, nomodels, { voice, salt, grades, haikuName })
