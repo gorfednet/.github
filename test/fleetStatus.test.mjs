@@ -396,6 +396,11 @@ describe('hygiene rows', () => {
 })
 
 describe('the 2-hourly light run (plan row 1.14)', () => {
+  it('STATUS.md says when the carried branch list was read', () => {
+    const light = { ...fixture, carried: true, branchesReadAt: '2026-11-13T11:30:00Z' }
+    assert.match(render(light), /Branches with no PR are as of /)
+    assert.doesNotMatch(render({ ...fixture, carried: false, branchesReadAt: '2026-11-13T11:30:00Z' }), /Branches with no PR are as of/)
+  })
   const notFound = () => Object.assign(new Error('HTTP 404'), { stderr: 'HTTP 404' })
   const fakeJson = (calls) => (args) => {
     calls.push(args.join(' '))
