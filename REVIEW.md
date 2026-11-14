@@ -25,3 +25,4 @@ The fleet's shared CI: the reusable `pr-check-*`, `browser-compat`, `claude-revi
 - `test/*.test.mjs` (guards on this repository's own workflows), `canaries.json`
 - `.github/workflows/verification-kit.yml` (this repository's CI)
 - `ship-bot/README.md` for the merge bot
+- `scripts/local-llm/` output (local model verdicts and line numbers) is a lead only: nothing that merges imports it, and it never replaces a Claude read.
