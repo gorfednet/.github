@@ -34,8 +34,10 @@ require_gates_main() {
   fi
 }
 [[ "${CAPACITY_INSTALL_ANY_CHECKOUT:-0}" == "1" ]] || require_gates_main "${HERE}"
-NODE_BIN="$(node -p 'process.execPath')"
-"${HERE}/check.sh"
+# shellcheck source=../scripts/lib/resolve-node.sh
+source "${HERE}/../scripts/lib/resolve-node.sh"
+NODE_BIN="$(resolve_node)" || { echo "capacity/install.sh: no usable Node. Nothing was installed." >&2; exit 1; }
+NODE_BIN="${NODE_BIN}" "${HERE}/check.sh"
 mkdir -p "${HOME_DIR}/logs" "${APP_DIR}" "${HOME}/Library/LaunchAgents"
 cp "${HERE}/capacity.mjs" "${APP_DIR}/capacity.mjs"
 # The heartbeat and weekly-usage helpers (plan row 1.13), beside it so the copy has no path into a checkout.

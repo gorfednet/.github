@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, it } from 'node:test'
@@ -125,5 +125,38 @@ describe('installed tools behind main', () => {
     assert.equal(collectLocal(f.root, { fetch: false, home: f.home, launchAgents: f.agents, sessionsDir: none }).installedTools, null)
     const empty = join(f.top, 'empty-home')
     assert.equal(collectLocal(f.root, { home: empty, launchAgents: f.agents, sessionsDir: none }).installedTools, null, 'no tool found is not a clean Mac')
+  })
+})
+
+describe('LaunchAgents on another tool\'s Node', () => {
+  const hasPlutil = spawnSync('plutil', ['-help']).error === undefined
+  const agent = (f, name, program) => {
+    mkdirSync(f.agents, { recursive: true })
+    put(join(f.agents, `${name}.plist`), `<?xml version="1.0" encoding="UTF-8"?>\n<plist version="1.0"><dict><key>Label</key><string>${name}</string><key>ProgramArguments</key><array><string>${program}</string><string>${join(f.home, '.ship-bot', 'app', 'ship-bot.mjs')}</string></array></dict></plist>\n`)
+  }
+  it('flags a program that resolves into ~/.hermes through a symlink, not one in /usr/bin or app paths under ~/.ship-bot', () => {
+    const f = fixture()
+    const real = join(f.home, '.hermes', 'node', 'bin', 'node')
+    put(real, '#!/bin/sh\n', 0o755)
+    symlinkSync(real, join(f.home, '.local', 'bin', 'node'))
+    agent(f, 'net.gorfed.ship-bot', join(f.home, '.local', 'bin', 'node'))
+    agent(f, 'net.gorfed.fine', '/usr/bin/true')
+    const hit = run(f).behind.filter((b) => b.tool.startsWith('LaunchAgent'))
+    assert.equal(hit.length, 1)
+    assert.equal(hit[0].tool, 'LaunchAgent net.gorfed.ship-bot')
+    assert.match(hit[0].detail, /\.hermes\/node\/bin\/node, inside another tool's private folder/)
+  })
+  it('reports a LaunchAgent whose program no longer exists as behind, not unread', () => {
+    const f = fixture()
+    const real = join(f.home, '.hermes', 'node', 'bin', 'node')
+    put(real, '#!/bin/sh\n', 0o755)
+    symlinkSync(real, join(f.home, '.local', 'bin', 'node'))
+    rmSync(real)
+    agent(f, 'net.gorfed.ship-bot', join(f.home, '.local', 'bin', 'node'))
+    const r = run(f)
+    assert.ok(!r.unread.some((u) => u.startsWith('LaunchAgent')), 'a dangling program is a known fault, not "not read"')
+    const hit = r.behind.filter((b) => b.tool === 'LaunchAgent net.gorfed.ship-bot')
+    assert.equal(hit.length, 1)
+    assert.match(hit[0].detail, /which does not exist/)
   })
 })
