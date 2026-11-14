@@ -149,4 +149,4 @@ Weekly 9% at 11:21 ET. Full speed, cost-aware. One line to the owner at about 90
 - [x] 1.17 orphan decisions (15:4x ET): 4 chats archived, lidarr-fix parked, 336 stays a MoonMan row
 - [ ] Local models first eval tonight from 22:00 ET (3 candidates), scores Sun 15 Nov ~09:00 ET; reviewer and builder tasks first, copy and triage after 1.27b
 - [ ] Model and skill currency (1.29): .github 196 in review; first run found 4 stale items
-- [ ] Always-PR hook fix: .github 197 labelled (15:44 ET); copy to ~/.claude after merge
+- [x] Always-PR hook fix: .github 197 merged, hook copied to ~/.claude (16:1x ET)
