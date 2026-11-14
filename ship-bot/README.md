@@ -182,7 +182,7 @@ Every site deploys through the bot, in observation first (`live` false: the log 
 | Repository | Row | Goes live | Why then |
 |---|---|---|---|
 | gorfed.net, gorfmusic, denseware, ssatcy, anal0g, blackpixelrecords, rowanmcarthur, subrythm, promptboi (site only) | in the example since 9 October | Thu 12 Nov (stages 2 and 3) | unchanged |
-| MoonMan | in the example | Sun 15 Nov (stage 4) | unchanged |
+| MoonMan | in the example | in observation since 12 Nov (first bot deploy 324 failed, later ones deployed) | unchanged |
 | papers.4thcltr.com | `deploy`, observation | **Fri 13 Nov** | no private tests, static, the lowest-risk site on the shared engine; it is the one that proves the engine's rollback |
 | heuristics.4thcltr.com | `deploy`, observation | **Mon 16 Nov** | needs papers live first (one real deploy, no rollback), and its gate reads the owner's assess jobs folder |
 | 4thcltr.com | `deploy`, observation, release tags | **Mon 23 Nov**, if the release-tag change (below) lands by Thu 19 Nov | `make deploy` refuses any HEAD that is not on an exact release tag; the bot tags the merge commit of a pull request that declares a release |
@@ -198,6 +198,8 @@ Each flip needs all of this, read from the log and `--validate`, not remembered:
 4. `ship-bot/preflight-launchd.sh` passes every step, including `site deploy host` (`ssh sitedeploy@dapyllil true`, the login the engine uploads as), from launchd's context.
 5. For the first site only (papers): the rollback rehearsal below.
 6. For each later site: the earlier site has deployed live at least once through the bot with no rollback.
+7. Before the row's first live deploy, run its setup and deploy steps once by hand in the bot's own workspace. Clean it as the bot cleans it (`git clean -ffdx`). Give it only the row's `env`, `envFiles`, `siblings` and setup. Point it at the real target or a preview one, then read the result. No ship-bot flag does this without a merge: `--dry-run` only prints `would deploy from ... setup [...]`. A fresh clone isn't enough because it hides a stale sibling. Five first unattended deploys failed this way, each with its rollback: gorfmusic.com 49 (12 November 2026, 16:04 ET, no `node_modules`), MoonMan 324 and ssatcy.com 35 (12 November, 22:14 and 22:25 ET, a stale helper sibling and an nginx conf that needs sudo), blackpixelrecords.com 29 and gorfed.net 140 (13 November, no `envFiles`, no `WORK_CONTENT_DIR`). Source: `docs/handoff/2026-11-13-deploy-root-causes.md`.
+8. The row names an explicit `rollback` list, even an empty one. The default, a redeploy of the previous commit, can't pass the shared engine's merged-tip guard, so it fails after the release is live (and on MoonMan it reverted the infra first).
 
 **Rollback rehearsal (papers, before its first live deploy).** It proves the engine's rollback over the real key, with no code change and about 10 seconds on a static site. From the papers clone, after `make releases` shows at least two releases:
 

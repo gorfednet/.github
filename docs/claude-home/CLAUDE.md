@@ -1,6 +1,6 @@
 # Working rules for every project
 
-Times: give every time to the owner in Toronto local time (owner, 2026-10-19), never UTC, labelled ET. Convert with the system time-zone database (`TZ=America/Toronto date -d …`, or `date -j` / Intl with `America/Toronto`), never a hard-coded offset: Ontario may drop the daylight-time switch, and the database follows the law. Commit messages, PR bodies and logs may stay in UTC.
+Times: give every time to the owner in Toronto local time (owner, 2026-10-19), never UTC, labelled ET. Convert with the system time-zone database (`TZ=America/Toronto date -d …`, or `date -j` / Intl with `America/Toronto`), never a hard-coded offset: Ontario may drop the daylight-time switch, and the database follows the law. Commit messages, PR bodies and logs may stay in UTC. Every time a session writes (log line, handoff, PR body, report) comes from running `TZ=America/Toronto date` at that moment, never from memory or an estimate (Desk log, 13 November 2026; on 14 November 2026 stamps from 07:52 to 08:50 ET ran ahead of the clock, and a time at 12:43 ET was written without running `date`).
 
 Improve as you go (owner, 2026-10-31: "we need to self improve all processes over time when we see opportunity"): when a session spots a better way or gets corrected, it changes the skill, brief, rule or template that runs next time, in that session, and says so in one line. New enforced checks still follow `shipping.md`.
 
