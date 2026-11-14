@@ -20,7 +20,7 @@ Updated 13 Nov 2026, 22:47 ET.
 - [x] Herdr fixes (1.8, ops 70 merged)
 - [x] One queue and starter in Herdr (1.11, ops 76 merged 19:38 ET; done-when follow-up in 2.8)
 - [x] Ship-bot unattended-merge guards (1.12 merged; follow-up in .github 169)
-- [ ] Heartbeats and usage pushes (1.13 reopened: usage not wired, in 1.18; capacity dead-man ntfy proven 13 Nov); detect and repair (1.14: .github 161, 167-169, ops 78)
+- [ ] Heartbeats and usage pushes (1.13 reopened: usage not wired, in 1.18; capacity dead-man: healthchecks.io email arrived, ntfy did not, cause open); detect and repair (1.14: .github 161, 167-169, ops 78)
 - [x] Capacity check (1.9, .github 152 merged)
 - [ ] Rules, skills, settings sweep (5.x, .github 153, re-review running)
 - [x] ssatcy security headers live, ssatcy unblocked (11:51 ET)
