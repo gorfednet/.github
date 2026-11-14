@@ -496,7 +496,7 @@
       "status": "confirmed-bug",
       "assignee": "main-model",
       "userSymptom": "Seven repos run kit 0.49 and three have no kit while main is 0.59",
-      "evidence": "Installed versions read from each repo's origin/main, 12 Nov 2026 audit; rules cite V77 which is only on kit/soft404-sitemap-pages. Plan: docs/assessment-2026-11-12-output-quality.md. Who: runner; main session labels PR 132 ready-to-merge after reading gates, and ship-bot merges.",
+      "evidence": "Installed versions read from each repo's origin/main, 12 Nov 2026 audit; V77 reached main with .github PR 132 (kit 0.61.0, 12 Nov); main is at 0.62.0 on 14 Nov. Plan: docs/assessment-2026-11-12-output-quality.md. Who: runner, one refresh PR per repo.",
       "reviewBy": "2026-12-01",
       "created": "2026-11-12",
       "updated": "2026-11-12"
@@ -693,7 +693,7 @@
       "title": "E1: Execute as tiered in the 11 Nov plan after A1 to A4",
       "status": "confirmed-bug",
       "assignee": "main-model",
-      "userSymptom": "Desk session, ntfy hook, review re-runs, reviewer on pool, janitor and Herdr stall are still open",
+      "userSymptom": "ntfy hook, review re-runs, reviewer on pool, janitor and Herdr stall are still open",
       "evidence": "STATUS.md 12 Nov 2026; .github PR 117, 118, 120. Plan: docs/assessment-2026-11-12-output-quality.md. Who: as tiered in the 11 Nov plan.",
       "reviewBy": "2026-12-01",
       "created": "2026-11-12",
