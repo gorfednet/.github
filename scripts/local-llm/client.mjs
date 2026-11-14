@@ -19,13 +19,13 @@ export async function listModels(base = DEFAULT_BASE, timeoutMs = 2000) {
     }
   })
 }
-export async function chat(base, model, messages, timeoutMs = 180000, maxTokens = 200) {
+export async function chat(base, model, messages, timeoutMs = 180000, maxTokens = 200, abort) {
   const t0 = Date.now()
   const res = await fetch(`${base}/v1/chat/completions`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ model, messages, temperature: 0, max_tokens: maxTokens }),
-    signal: AbortSignal.timeout(timeoutMs),
+    signal: abort ? AbortSignal.any([AbortSignal.timeout(timeoutMs), abort]) : AbortSignal.timeout(timeoutMs),
   })
   if (!res.ok) throw new Error(`chat: HTTP ${res.status}`)
   const text = (await res.json())?.choices?.[0]?.message?.content
