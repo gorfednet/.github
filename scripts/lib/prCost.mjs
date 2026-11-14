@@ -24,6 +24,8 @@ import { join } from 'node:path'
 import { createInterface } from 'node:readline'
 
 export const FIELDS = ['input', 'cacheRead', 'cacheWrite', 'output']
+/** Work in the hours after a PR closes (the report, the cleanup) is still that PR's. */
+const AFTER_CLOSE_MS = 2 * 3600000
 const DEFAULT_BRANCHES = new Set(['main', 'master', 'HEAD', ''])
 
 export const zero = () => ({ input: 0, cacheRead: 0, cacheWrite: 0, output: 0, messages: 0 })
@@ -131,6 +133,8 @@ const folderNamedFor = (cwd, slug) => {
  * Without a branch, the worktree alone decides.
  */
 export function matchesPr(message, pr) {
+  if (pr.from !== undefined && message.ts <= pr.from) return false
+  if (pr.to !== undefined && message.ts > pr.to) return false
   const where = (pr.worktree && inside(message.cwd, pr.worktree)) || folderNamedFor(message.cwd, pr.repo)
   if (pr.branch && !DEFAULT_BRANCHES.has(pr.branch)) {
     // A worktree is reused for one branch after another, so a message on another branch is not this PR's.
@@ -138,6 +142,24 @@ export function matchesPr(message, pr) {
     return !DEFAULT_BRANCHES.has(message.branch) && message.branch === pr.branch && where
   }
   return Boolean(pr.worktree) && inside(message.cwd, pr.worktree)
+}
+
+/**
+ * Give PRs that share a repository and branch (a dependabot branch that comes back, a reused `fix/x`) each its own stretch
+ * of time: from the previous one's end to its own. Needs `endsAt` (ms) on the PR; one without it keeps no limit.
+ */
+export function withWindows(prs) {
+  const out = prs.map((p) => ({ ...p }))
+  const groups = new Map()
+  for (const p of out) if (p.branch && p.endsAt !== undefined) groups.set(`${p.repo}|${p.branch}`, [...(groups.get(`${p.repo}|${p.branch}`) ?? []), p])
+  for (const group of groups.values()) {
+    group.sort((a, b) => a.endsAt - b.endsAt)
+    group.forEach((p, i) => {
+      p.to = p.endsAt + AFTER_CLOSE_MS
+      if (i > 0) p.from = group[i - 1].endsAt + AFTER_CLOSE_MS
+    })
+  }
+  return out
 }
 
 /** A message's working folder, collapsed to its worktree root when it is inside one (`.../.claude/worktrees/<name>`). */
@@ -156,7 +178,8 @@ export function folderRoot(cwd) {
  * that reached the branch before the link) the PR of the same folder and branch. A pair that links two different PRs
  * is ambiguous and teaches nothing.
  */
-export function attribute(sessions, prs = []) {
+export function attribute(sessions, namedPrs = []) {
+  const prs = withWindows(namedPrs)
   const perPr = new Map()
   const unattributed = {}
   const taught = new Map()
@@ -333,8 +356,8 @@ export function readLines(file) {
 }
 
 /** The last `days` days of tokens, split between what a PR covers and what none does. */
-export async function windowTotals({ projects = DEFAULT_PROJECTS, days = 7, now = new Date() } = {}) {
-  const { perPr, unattributed, files } = await scanAll(projects, { sinceMs: now.getTime() - days * 86400000 })
+export async function windowTotals({ projects = DEFAULT_PROJECTS, days = 7, now = new Date(), prs = [] } = {}) {
+  const { perPr, unattributed, files } = await scanAll(projects, { sinceMs: now.getTime() - days * 86400000, prs })
   const attributed = {}
   for (const byModel of perPr.values()) mergeModels(attributed, byModel)
   return { days, files, attributed, unattributed }
@@ -343,8 +366,12 @@ export async function windowTotals({ projects = DEFAULT_PROJECTS, days = 7, now 
 /** What fleet-status shows: the report plus when it was measured, or `{ error }` naming what could not be read (a damaged ledger, an unreadable folder). */
 export async function collectPrCost({ projects = DEFAULT_PROJECTS, file = DEFAULT_FILE, days = 7, now = new Date() } = {}) {
   try {
-    const window = await windowTotals({ projects, days, now })
-    return { measuredAt: now.toISOString(), ...costReport(readLines(file), { now, days, window }) }
+    // The ledger's PRs are named to the scan, so a session that worked a recorded branch without a pr-link is counted
+    // under that PR here as it was when recorded, not again as unattributed.
+    const lines = readLines(file)
+    const prs = latestPerPr(lines).filter((l) => l.branch).map((l) => ({ repo: l.repo, number: l.number, branch: l.branch, endsAt: l.closedAt ? Date.parse(l.closedAt) : undefined }))
+    const window = await windowTotals({ projects, days, now, prs })
+    return { measuredAt: now.toISOString(), ...costReport(lines, { now, days, window }) }
   } catch (error) {
     return { error: tilde(String(error.message).replaceAll(homedir(), '~'), homedir()) }
   }

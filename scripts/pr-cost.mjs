@@ -57,7 +57,7 @@ const home = homedir()
 const tidy = (v) => (typeof v === 'string' && v.startsWith(`${home}/`) ? `~${v.slice(home.length)}` : v)
 
 export async function prTokens(opts) {
-  const prs = [{ repo: opts.repo, number: int(opts.number, '--number'), branch: opts.branch, worktree: opts.worktree }]
+  const prs = [{ repo: opts.repo, number: int(opts.number, '--number'), branch: opts.branch, worktree: opts.worktree, endsAt: opts.closed ? Date.parse(opts.closed) : undefined }]
   const sinceMs = opts.since ? Date.parse(opts.since) : null
   if (opts.since && Number.isNaN(sinceMs)) throw new Error(`--since is not a date: ${opts.since}`)
   const { perPr, files } = await scanAll(opts.projects ?? DEFAULT_PROJECTS, { sinceMs, prs })
@@ -73,7 +73,11 @@ export async function main(argv) {
     if (opts['pr-json']) {
       // The janitor passes PR text through a file, never a command line (a title can hold backticks and quotes).
       const pr = [].concat(JSON.parse(readFileSync(opts['pr-json'], 'utf8')))[0]
-      if (!pr || !Number.isInteger(pr.number)) throw new Error('--pr-json holds no pull request')
+      if (!pr) {
+        console.log(JSON.stringify({ recorded: false, reason: 'the file holds no pull request for this branch', repo: opts.repo, number: Number(opts.number) }))
+        return 0
+      }
+      if (!Number.isInteger(pr.number)) throw new Error('--pr-json holds no pull request')
       if (String(pr.number) !== String(opts.number)) throw new Error(`--pr-json is pull request ${pr.number}, not ${opts.number}`)
       opts.title = pr.title
       opts.state = pr.state
@@ -117,7 +121,7 @@ export async function main(argv) {
     const out = opts.out ?? DEFAULT_FILE
     const fleet = JSON.parse(readFileSync(new URL('../fleet.json', import.meta.url), 'utf8'))
     const earliest = Math.min(...list.map((p) => Date.parse(p.createdAt)).filter(Number.isFinite))
-    const named = list.filter((p) => p.state !== 'OPEN').map((p) => ({ repo: opts.repo, number: p.number, branch: p.headRefName }))
+    const named = list.filter((p) => p.state !== 'OPEN').map((p) => ({ repo: opts.repo, number: p.number, branch: p.headRefName, endsAt: Date.parse(p.mergedAt ?? p.closedAt) }))
     const { perPr } = await scanAll(opts.projects ?? DEFAULT_PROJECTS, { sinceMs: Number.isFinite(earliest) ? earliest - 86400000 : null, prs: named })
     const results = []
     for (const p of list) {

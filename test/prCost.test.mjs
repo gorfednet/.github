@@ -9,7 +9,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, it } from 'node:test'
 
-import { attribute, classifyKind, collectPrCost, costRecord, costReport, groupBySession, infraRepo, matchesPr, scanAll, scanFile, sumModels, totalTokens } from '../scripts/lib/prCost.mjs'
+import { attribute, withWindows, classifyKind, collectPrCost, costRecord, costReport, groupBySession, infraRepo, matchesPr, scanAll, scanFile, sumModels, totalTokens } from '../scripts/lib/prCost.mjs'
 import { compact, renderPrCost } from '../scripts/write-status-md.mjs'
 
 const CLI = new URL('../scripts/pr-cost.mjs', import.meta.url).pathname
@@ -103,6 +103,19 @@ describe('attribution', () => {
   })
 })
 
+describe('a branch name used by two PRs', () => {
+  const msg = (min, id) => ({ id, ts: Date.parse(T(min)), model: 'm', usage: { input_tokens: 1, output_tokens: 1 }, cwd: '/w/gorfednet.github', branch: 'dependabot/x' })
+  it('gives each its own stretch of time, so the newer one does not take both', () => {
+    const prs = [{ repo: 'o/.github', number: 20, branch: 'dependabot/x', endsAt: Date.parse(T(300)) }, { repo: 'o/.github', number: 10, branch: 'dependabot/x', endsAt: Date.parse(T(60)) }]
+    for (const order of [prs, [...prs].reverse()]) {
+      const { perPr } = attribute([{ sessionId: 'A', links: [], messages: [msg(10, 'a'), msg(40, 'b'), msg(200, 'c'), msg(250, 'd')] }], order)
+      assert.equal(sumModels(perPr.get('o/.github#10')).messages, 2)
+      assert.equal(sumModels(perPr.get('o/.github#20')).messages, 2)
+    }
+    assert.equal(withWindows(prs).find((p) => p.number === 10).from, undefined)
+  })
+})
+
 describe('kind', () => {
   it('reads fix, docs, infra and feature from the title and branch', () => {
     assert.equal(classifyKind({ title: 'Fix the stale lock', branch: 'claude/x' }), 'fix')
@@ -152,6 +165,12 @@ describe('report', () => {
     const c = await collectPrCost({ projects: dir, file: join(dir, 'led.jsonl'), now: new Date(T(10)) })
     assert.match(c.error, /led\.jsonl line 2 is not JSON/)
     assert.match(renderPrCost(null, c.error).join('\n'), /not measured: .*line 2 is not JSON/)
+  })
+  it('a session that worked a recorded branch with no pr-link is not also counted as unattributed', async () => {
+    const dir = projects({ 'p/S1.jsonl': [assistant({ min: 1 }), assistant({ min: 2, usage: [2, 20, 200, 2000] })], 'led.jsonl': [JSON.stringify({ repo: 'o/.github', number: 7, branch: 'claude/a-1', kind: 'fix', state: 'MERGED', additions: 1, closedAt: T(50), fresh: 1, total: 2, models: {} })] })
+    const c = await collectPrCost({ projects: dir, file: join(dir, 'led.jsonl'), now: new Date(T(60)) })
+    assert.equal(c.unattributed.tokens, 0)
+    assert.equal(c.unattributed.of, 3333, 'all of it was read, and all of it belongs to the recorded PR')
   })
   it('collectPrCost output fits the status.json schema keys', async () => {
     const schema = JSON.parse(readFileSync(new URL('../scripts/lib/status.schema.json', import.meta.url), 'utf8')).properties.prCost
@@ -222,6 +241,15 @@ describe('the command', () => {
     const line = JSON.parse(readFileSync(out, 'utf8').trim())
     assert.deepEqual([line.kind, line.state, line.additions, line.deletions, line.closedAt], ['fix', 'MERGED', 5, 1, T(30)])
   })
+  it('record with an empty PR file (a branch that never had a PR) records nothing and exits 0', () => {
+    const { dir, out } = setup()
+    const pj = join(dir, 'pr.json')
+    writeFileSync(pj, '[]')
+    const r = run('record', '--repo', 'o/r', '--number', '7', '--branch', 'b', '--pr-json', pj, '--projects', dir, '--out', out)
+    assert.equal(r.status, 0, r.stderr)
+    assert.match(r.stdout, /holds no pull request/)
+    assert.equal(existsSync(out), false)
+  })
   it('refuses a file for another pull request', () => {
     const { dir, out } = setup()
     const pj = join(dir, 'pr.json')
@@ -248,6 +276,7 @@ describe('janitor prompt', () => {
     const step = prompt.match(/7\. Cost \(plan row 1\.26\)[\s\S]*?(?=\n5\. Worktrees)/)[0]
     assert.match(step, /--pr-json \$R\/pr-<id8>\.json/)
     assert.doesNotMatch(step, /--title|--label/, 'no pull request text on the command line')
+    assert.match(step, /with no pull request, or only an `OPEN` one, has no cost line yet: skip it/)
   })
 })
 
