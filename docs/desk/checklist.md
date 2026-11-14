@@ -1,6 +1,6 @@
 # Fleet checklist (Desk keeps this current; posted to the owner on every pass and every deploy)
 
-Updated 13 Nov 2026, 11:49 ET.
+Updated 13 Nov 2026, 19:50 ET.
 
 ## Bottlenecks
 - [x] Ship-bot API use cut from about 1,800 to about 100 calls an hour (.github 143, merged 10:35 ET; reinstall in progress)
@@ -18,9 +18,9 @@ Updated 13 Nov 2026, 11:49 ET.
 - [x] Janitor live with auto-close (1.5, .github 148 merged; dry runs 14 to 16 Nov 07:00 ET)
 - [x] Hygiene counts in STATUS (1.6, .github 147, merged)
 - [x] Herdr fixes (1.8, ops 70 merged)
-- [ ] One queue and starter in Herdr (1.11, running)
-- [ ] Ship-bot unattended-merge guards (1.12, running)
-- [ ] Heartbeats and usage pushes (1.13, running); detect and repair loop (1.14) next
+- [x] One queue and starter in Herdr (1.11, ops 76 merged 19:38 ET; done-when follow-up in 2.8)
+- [x] Ship-bot unattended-merge guards (1.12 merged; follow-up in .github 169)
+- [ ] Heartbeats and usage pushes (1.13 reopened: capacity and usage not wired, in 1.18); detect and repair (1.14: .github 161, 167-169, ops 78)
 - [x] Capacity check (1.9, .github 152 merged)
 - [ ] Rules, skills, settings sweep (5.x, .github 153, re-review running)
 - [x] ssatcy security headers live, ssatcy unblocked (11:51 ET)
@@ -53,3 +53,10 @@ Weekly 9% at 11:21 ET. Full speed, cost-aware. One line to the owner at about 90
 - [ ] 14 Nov 10:07 ET: remind the owner about the 3.9 NAS backup steps (restore drill copy, music yes or no, key in the password manager). He asked; a cron is set in Desk 6, so a successor re-sets it if Desk has rotated.
 - [ ] 14 Nov 10:12 ET: remind the owner to swap the Pi-hole SD card (high-endurance microSD or USB SSD). He asked; a cron is set in Desk 6.
 - Mac mini (2010) as second Pi-hole: owner "one day not now". No dapyllil replica either (owner, 13 Nov). The Pi-hole board stays the only resolver until the Mac mini. Raise again only if he does.
+
+## Added 13 Nov evening (Fable reviews)
+- [ ] PACE HOLD: 26% used at 19:50 ET; no new starts until under pace
+- [x] Backup keys in the password manager (owner, 19:50 ET)
+- [ ] Installed tools track main (1.18, installed-drift)
+- [ ] Papers deploy wordmark timing (card wordmark-timing); papers blocked
+- [ ] Actions spend meter; ingress pin by digest; heuristics 95 and 93
