@@ -513,6 +513,19 @@
       "reviewBy": "2026-11-28",
       "created": "2026-11-14",
       "updated": "2026-11-14"
+    },
+    {
+      "id": "ship-bot-unblock-lost-to-running-pass",
+      "title": "ship-bot --unblock can be undone by a pass that is already running",
+      "status": "landed",
+      "pr": 168,
+      "assignee": "main-model",
+      "userSymptom": "An unblock reports success, then the repo is blocked again with the same reason and the same since-time.",
+      "evidence": "13 November 2026: gorfed.net and blackpixelrecords.com were unblocked during a live pass. The next passes still reported 'blocked since 14:41/14:35' with the old reasons. Running --unblock again between passes held. --unblock writes state.json without the pass lock, and the running pass saved the state it had loaded earlier.",
+      "note": "Fixed on main by 2bdc7ef before this entry merged: --unblock takes the pass lock and, when a pass holds it, queues a request in stateDir/unblock/ that the next pass applies (ship-bot/README.md).",
+      "reviewBy": "2026-12-13",
+      "created": "2026-11-13",
+      "updated": "2026-11-13"
     }
   ]
 }

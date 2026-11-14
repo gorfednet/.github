@@ -379,9 +379,10 @@ async function processPull(ctx, repo, pr, defaultBranch) {
     }
   }
   const requireClean = repo.mode === 'deploy' && byBot
-  let result = await evaluatePull(ctx, repo, pr, { headState, requireClean })
+  const controlPlane = async () => controlPlaneFiles(await ctx.github.listPullFiles(repo.slug, pr.number), repo.slug).length > 0
+  let result = await evaluatePull(ctx, repo, pr, { headState, requireClean, controlPlane })
   // A merge never rests on a remembered gate answer: run every script again.
-  if (result.ready && result.cached) result = await evaluatePull(ctx, repo, pr, { headState, fresh: true, requireClean })
+  if (result.ready && result.cached) result = await evaluatePull(ctx, repo, pr, { headState, fresh: true, requireClean, controlPlane })
   await syncNeedsFix(ctx, repo, pr, result)
   if (result.ready && headState.readiedAt && (ctx.clock.now() - new Date(headState.readiedAt)) / 60000 < ctx.config.reviewGraceMinutes) {
     ctx.say('debug', `${tag}: not merging: the bot marked this draft ready at ${headState.readiedAt}; giving the ready-for-review review time to start`)
