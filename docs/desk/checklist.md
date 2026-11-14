@@ -144,7 +144,7 @@ Weekly 9% at 11:21 ET. Full speed, cost-aware. One line to the owner at about 90
 
 ## Added 14 Nov afternoon (19th Desk)
 - [ ] 1.27 eval set: 3 round-4 Lows fixed and pushed (.github ed105d4, ops 310f7b3); final Claude review and Fable read running, then label both
-- [ ] Ship-bot treats docs/claude-home/ as control plane (.github 195, draft): Claude review and Fable read running
+- [x] Ship-bot and janitor treat docs/claude-home/ as control plane: .github 195 labelled (14:56 ET); [ ] copy agents-and-cost.md after merge
 - [ ] bc 659: failed jobs rerun after the 11:34 ET network drop; then 660, 655, then the owner's one dapyllil install
 - [ ] 1.17 orphan decisions at 15:29 ET
 - [ ] Local models first eval tonight from 22:00 ET (3 candidates), scores Sun 15 Nov ~09:00 ET; reviewer and builder tasks first, copy and triage after 1.27b
