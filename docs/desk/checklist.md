@@ -83,3 +83,11 @@ Weekly 9% at 11:21 ET. Full speed, cost-aware. One line to the owner at about 90
 - [ ] healthchecks.io has no ntfy integration (email only): ops session hc-ntfy-1-13, then owner pastes the token
 - [ ] Egress canary edge.adobedc.net no longer blocked by the Pi-hole: session egress-canary (assess)
 - [ ] MoonMan 2.0.0: 336 (plan, docs) review then label; wave 1 (S0, P1, D0) after it merges, by capacity
+
+## Added 14 Nov morning (11th Desk)
+- [ ] Release cadence: big weekly releases, local test first (1.25, session release-cadence). Desk holds visitor-facing labels until it lands
+- [ ] Security policy, key rotation, off-site copies (1.24, session security-1-24)
+- [ ] CI pool: bc 659 jobs timed out at 06:35 ET (35 and 20 min limits); cause, 3.1 resize, land 659 (session ci-pool-fix)
+- [ ] Local models: 7 of 27 served, redownload running; CI-triage fixtures merged (ops 85); baseline then first eval (1.19)
+- [ ] MoonMan 336: 2 findings and quality red, triage next pass
+- [ ] 1.17 orphan decisions due 15:29 ET

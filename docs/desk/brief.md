@@ -29,6 +29,8 @@ Write each `gh` write as its own plain command, never inside a loop or a shell f
 
 Ship-bot won't merge while any Claude-review thread is unanswered, even when every finding was triaged in a PR comment (14 Nov 2026, 02:10 ET: ops 83 held on 13 threads). After triage, resolve the answered threads in one aliased GraphQL `resolveReviewThread` mutation, never a loop of calls.
 
+Release cadence (owner, 14 Nov 2026, 07:25 ET: "slow down now. Big releases, not incremental. More local testing before deploying live"): until plan row 1.25 lands, Desk labels no visitor-facing PR that would deploy on merge. Those wait, reviewed and green, for their repo's release train. Security, outage and infra fixes still label as before. Keep sessions working; slow the deploys, not the work.
+
 ## Root causes, not symptoms
 An assessment whose findings set the plan gets a Fable `reviewer` pass over the raw artefacts before the plan is acted on. Haiku scouts may gather inventories, but their claims are leads, not findings (13 Nov 2026, 19:36 ET: the morning plan came from Haiku scouts and missed stale tool copies, ship-bot's ops review row and the pool-to-hosted gap, all found by hand that evening).
 Every red, block or flake gets its cause established before a fix, a test or guard that fails on it (watched failing once), and a dated ledger line. Update the skill, rule or brief that would have prevented it, in the same PR.
