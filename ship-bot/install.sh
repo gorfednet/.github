@@ -119,14 +119,14 @@ if ! "${NODE_BIN}" --input-type=module -e "
   import('${APP_DIR}.new/lib/config.mjs').then((m) => m.loadConfig('${BOT_HOME}/config.json'))
     .catch((e) => { console.error(e.message); process.exit(1) })"; then
   rm -rf "${APP_DIR}.new"
-  echo "install.sh: this ${main_sha:0:7} bot does not accept ${BOT_HOME}/config.json. Nothing was installed; the running bot is unchanged." >&2
-  shopt -s nullglob
-  patches=("${SRC}"/patches/*.json)
-  shopt -u nullglob
-  if [[ ${#patches[@]} -gt 0 ]]; then
-    echo "install.sh: if a reviewed row patch in ship-bot/patches/ fixes it, apply it with the RUNNING bot, then run this again:" >&2
-    for p in "${patches[@]}"; do echo "  ${NODE_BIN} ${APP_DIR}/patch-config.mjs ${REPO}/ship-bot/patches/$(basename "${p}")" >&2; done
+  if [[ -d "${APP_DIR}" ]]; then
+    echo "install.sh: this ${main_sha:0:7} bot does not accept ${BOT_HOME}/config.json, so ${APP_DIR} and the LaunchAgent were left as they were." >&2
+  else
+    echo "install.sh: this ${main_sha:0:7} bot does not accept ${BOT_HOME}/config.json, so no bot was installed." >&2
   fi
+  # No command is printed: a row patch written for a stricter validator may be refused by the running
+  # one (13 November 2026), so which patch to apply, and with which copy, is decided on its pull request.
+  echo "install.sh: the config needs the reviewed row change named in its pull request first; then run this again." >&2
   exit 1
 fi
 
