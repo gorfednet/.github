@@ -91,8 +91,16 @@ Weekly 9% at 11:21 ET. Full speed, cost-aware. One line to the owner at about 90
 - [ ] Local models: 7 of 27 served, redownload running; CI-triage fixtures merged (ops 85); baseline then first eval (1.19)
 - [ ] MoonMan 336: 2 findings and quality red, triage next pass
 - [x] Numbers in prose: cancelled by the owner, digits stay (14 Nov)
-- [ ] Over pace (36% at 16% of week): starts held below priority 2, 3 sessions max
+- [x] Over pace hold lifted: full steam until the owner uses his resets (14 Nov)
 - [ ] Herdr BinderCurve backlog: 29 failed overnight; pause and root-cause
 - [ ] Plugins: global minimum, per-repo on as needed (owner yes, 07:35 ET; session plugins-off)
 - [ ] 1.17 orphan decisions due 15:29 ET
 - [ ] GitHub: one organization for the fleet? (owner question 07:38 ET; Desk recommends one org, no account split)
+
+## Added 14 Nov morning (13th Desk)
+- [ ] GitHub org: plan (github-org-plan), Fable review, then the owner picks a path. No visibility change
+- [ ] Replan plus learnings into rules and skills, after all 5 plans
+- [x] Release cadence plan written (.github 187); [x] security plan (ops 88); [x] plugins trim (4thcltr 274)
+- [ ] Phase 7 docs: .github 185, 4thcltr 273 (review, label)
+- [ ] Local models first eval (1.19): next infra start, when load is under 10
+- [x] Full steam until the owner's resets; reset timing in the brief
