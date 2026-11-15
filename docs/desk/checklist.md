@@ -213,3 +213,7 @@ Weekly 9% at 11:21 ET. Full speed, cost-aware. One line to the owner at about 90
 - [x] bc 670 labelled (17:38 ET); [ ] merge, then the owner's fill spread line and reinstall
 - [x] 28th Desk retired and archived
 - [ ] Public .github upkeep (1.30): README 209 labelled; guard 211 in review; hook+rule next; move to ops running; [x] auto-delete merged branches on
+
+## Added 15 Nov evening (30th Desk)
+- [x] heuristics, papers, gorfed.net heavy CI hosted for the releases (18:20 ET); [ ] back to the pool once the 3 release PRs are green
+- [ ] 30th Desk: Time Machine pause decision (owner)
