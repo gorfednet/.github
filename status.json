@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-11-15T16:32:15.463Z",
-  "renderedAt": "2026-11-15T16:32:15.463Z",
+  "generatedAt": "2026-11-15T18:32:11.835Z",
+  "renderedAt": "2026-11-15T18:32:11.835Z",
   "repos": [
     {
       "slug": "gorfednet/bindercurve.com",
@@ -17,7 +17,7 @@
     {
       "slug": "gorfednet/4thcltr.com",
       "redacted": true,
-      "mainRed": true,
+      "mainRed": false,
       "openPrCount": 22,
       "lapsedBacklogCount": 0,
       "noPrCount": 13,
@@ -170,7 +170,7 @@
           "labels": [],
           "draft": true,
           "review": "not-run",
-          "headSha": "e4dd3e35c95081567fd7e9d12a7fae0549205f94",
+          "headSha": "5ba01b1d826838a55187f601f5e4f526df5f462a",
           "ci": "none",
           "next": "Desk appends each pass's line until the 02:00 ET rotation (hold: the log is still being written)",
           "author": "gorfednet"
@@ -197,20 +197,6 @@
           "headSha": "b4a3f6630435969d2a9e500d6bec0ee6ca0738ab",
           "ci": "green",
           "next": "Merge when checks are green (docs-only).",
-          "author": "gorfednet"
-        },
-        {
-          "number": 133,
-          "title": "Assessment 12 Nov: output quality, hardening, orchestration (plan, backlog, week-one briefs)",
-          "ageDays": 2,
-          "labels": [
-            "ready-to-merge"
-          ],
-          "draft": false,
-          "review": "findings",
-          "headSha": "6c990d9381629a1e17cd708d27ddcf078391e375",
-          "ci": "green",
-          "next": "the Claude review of 6c990d9 (round 8) reads clean or triaged. Still labelled ready-to-merge, so ship-bot merges on that verdict. Past the cap, only a High or Medium forces another fix",
           "author": "gorfednet"
         },
         {
@@ -395,6 +381,120 @@
           "reviewBy": "2026-11-28"
         },
         {
+          "id": "assess-1112-a1-kit-copied-not-distributed-drift-warns-only",
+          "title": "A1: Kit refresh: every active repo on one version; drift stays in the scheduled reports",
+          "status": "confirmed-bug",
+          "reviewBy": "2026-12-01"
+        },
+        {
+          "id": "assess-1112-a2-skills-and-agents-still-name-cursor",
+          "title": "A2: Rewrite the five files, move 4thcltr .cursor skills, add skill evals",
+          "status": "confirmed-bug",
+          "reviewBy": "2026-12-01"
+        },
+        {
+          "id": "assess-1112-a4-must-rules-live-in-prose",
+          "title": "A4: hookify them into PreToolUse and Stop hooks, each shown failing once",
+          "status": "confirmed-bug",
+          "reviewBy": "2026-12-01"
+        },
+        {
+          "id": "assess-1112-b1-no-shared-design-system",
+          "title": "B1: Design package distributed by the kit refresh, seeded from BinderCurve tokens.css",
+          "status": "confirmed-bug",
+          "reviewBy": "2026-12-01"
+        },
+        {
+          "id": "assess-1112-b2-no-design-direction-per-property",
+          "title": "B2: design-direction.md per property via frontend-design two-pass method; owner approves each",
+          "status": "confirmed-bug",
+          "reviewBy": "2026-12-01"
+        },
+        {
+          "id": "assess-1112-b3-no-design-review-in-gate",
+          "title": "B3: design-reviewer agent plus check-design-tells lint, watched failing once",
+          "status": "confirmed-bug",
+          "reviewBy": "2026-12-01"
+        },
+        {
+          "id": "assess-1112-b4-heroes-are-text-on-flat-background",
+          "title": "B4: One property per session: 4thcltr, gorfed.net, MoonMan landing, BinderCurve, four Figma-scaffold sites, music sites",
+          "status": "confirmed-bug",
+          "reviewBy": "2026-12-01"
+        },
+        {
+          "id": "assess-1112-b5-og-and-image-pipelines-copied-nine-times",
+          "title": "B5: One pipeline in the design package, gated by check-og-image and check-live-og-image",
+          "status": "confirmed-bug",
+          "reviewBy": "2026-12-01"
+        },
+        {
+          "id": "assess-1112-c1-moonman-main-red-and-repo-clutter",
+          "title": "C1: heal-drift root-cause fix, backlog sync, CLAUDE.md, gitignore, move renders, check the gate pin",
+          "status": "confirmed-bug",
+          "reviewBy": "2026-12-01"
+        },
+        {
+          "id": "assess-1112-c2-wall-clock-in-tests",
+          "title": "C2: check-test-clock and check-fail-closed lints in the kit",
+          "status": "confirmed-bug",
+          "reviewBy": "2026-12-01"
+        },
+        {
+          "id": "assess-1112-c3-five-projects-no-executed-floor-and-no-device-proof",
+          "title": "C3: assert-tests-executed in five repos; required device artifact on MoonMan release PRs",
+          "status": "confirmed-bug",
+          "reviewBy": "2026-12-01"
+        },
+        {
+          "id": "assess-1112-c4-runner-image-drifts-from-lockfiles",
+          "title": "C4: Derive the image from lockfiles, report queue depth, decide a second host from data",
+          "status": "confirmed-bug",
+          "reviewBy": "2026-12-01"
+        },
+        {
+          "id": "assess-1112-c5-declared-facts-drift",
+          "title": "C5: Inventory and derive declared facts; sync checks only where drift reached users",
+          "status": "confirmed-bug",
+          "reviewBy": "2026-12-01"
+        },
+        {
+          "id": "assess-1112-d1-security-headers-dropped-or-missing",
+          "title": "D1: check-security-headers in kit and healthcheck; deploy engine carries headers",
+          "status": "confirmed-bug",
+          "reviewBy": "2026-12-01"
+        },
+        {
+          "id": "assess-1112-d2-no-vuln-scan-on-money-and-server-repos",
+          "title": "D2: claude-security on those paths, security-guidance everywhere, actions pinned by SHA",
+          "status": "confirmed-bug",
+          "reviewBy": "2026-12-01"
+        },
+        {
+          "id": "assess-1112-d3-dependabot-and-branch-protection-open",
+          "title": "D3: Group updates, ship-bot labels green bumps, protect-branches on six repos",
+          "status": "confirmed-bug",
+          "reviewBy": "2026-12-01"
+        },
+        {
+          "id": "assess-1112-d4-settings-local-allowlists-uncommitted-and-stale",
+          "title": "D4: Committed .claude/settings.json per repo from fewer-permission-prompts",
+          "status": "confirmed-bug",
+          "reviewBy": "2026-12-01"
+        },
+        {
+          "id": "assess-1112-e1-eleven-nov-phases-b-and-c-open",
+          "title": "E1: Execute as tiered in the 11 Nov plan after A1 to A4",
+          "status": "confirmed-bug",
+          "reviewBy": "2026-12-01"
+        },
+        {
+          "id": "assess-1112-e3-session-cost-not-measured",
+          "title": "E3: Monthly session-report into docs/usage, act on the top item",
+          "status": "confirmed-bug",
+          "reviewBy": "2026-12-01"
+        },
+        {
           "id": "fleet-registry-missing-repos",
           "title": "Six active repositories are missing from fleet.json",
           "status": "confirmed-bug",
@@ -545,7 +645,7 @@
       "slug": "gorfednet/ops",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 3,
+      "openPrCount": 4,
       "lapsedBacklogCount": 0,
       "noPrCount": 0,
       "idlePrCount": 0,
@@ -561,7 +661,7 @@
   "branchesReadAt": "2026-11-15T02:31:55.477Z",
   "carried": true,
   "inventory": {
-    "measuredAt": "2026-11-15T16:32:15.463Z",
+    "measuredAt": "2026-11-15T18:32:11.835Z",
     "counts": {
       "pr": {
         "total": 100,
@@ -571,7 +671,7 @@
       "worktree": null,
       "job": null,
       "backlog": {
-        "total": 12,
+        "total": 31,
         "orphans": 1
       }
     },
@@ -597,14 +697,6 @@
         "repo": "gorfednet/.github",
         "ref": "#136",
         "label": "Handoff: session audit 12 November",
-        "private": false,
-        "lapsed": false
-      },
-      {
-        "kind": "pr",
-        "repo": "gorfednet/.github",
-        "ref": "#133",
-        "label": "Assessment 12 Nov: output quality, hardening, orchestration (plan, backlog, week-one briefs)",
         "private": false,
         "lapsed": false
       },
@@ -673,7 +765,7 @@
         "lapsed": true
       }
     ],
-    "hiddenPrivate": 47,
+    "hiddenPrivate": 48,
     "privateReposNotItemised": 18
   }
 }
