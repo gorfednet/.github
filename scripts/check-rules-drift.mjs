@@ -35,7 +35,13 @@
  * grows wide. (The retirement-clause rule is a pattern, not an entry, and is
  * not checked for use.)
  *
- * Usage: node scripts/check-rules-drift.mjs [--root <dir>]
+ * Two profiles. `github` (the default, run by this repository's CI) reads what
+ * .github still carries. `ops` reads the reviewed copy of `~/.claude`, Desk's
+ * brief and the handoffs, which plan row 1.30 moved to gorfednet/ops `control/`.
+ * Ops has no CI, so the weekly lessons run checks it by hand:
+ * `node scripts/check-rules-drift.mjs --profile ops --root <ops clone>`.
+ *
+ * Usage: node scripts/check-rules-drift.mjs [--root <dir>] [--profile github|ops]
  * Exit:  0 clean, 1 drift or a fail-closed error.
  */
 import { execFileSync } from 'node:child_process'
@@ -57,8 +63,16 @@ export const SCOPE = {
     'glob:**/rules/*.md',
   ],
   skills: ['glob:**/SKILL.md', 'glob:**/skills/**/*.md'],
-  agents: ['docs/desk/brief.md', 'glob:**/agents/*.md'],
-  memory: ['glob:**/MEMORY.md', 'glob:docs/handoff/*.md'],
+  agents: ['glob:**/agents/*.md'],
+  memory: ['glob:**/MEMORY.md'],
+}
+
+/** gorfednet/ops `control/`: the `~/.claude` copy, Desk's brief and .github's handoffs (plan row 1.30). */
+export const OPS_SCOPE = {
+  rules: ['control/claude-home/CLAUDE.md', 'glob:control/claude-home/rules/*.md'],
+  skills: ['glob:control/claude-home/skills/**/*.md'],
+  agents: ['control/desk/brief.md', 'glob:control/claude-home/agents/*.md'],
+  memory: ['glob:control/handoff/*.md'],
 }
 
 /**
@@ -69,9 +83,12 @@ export const SCOPE = {
  */
 export const ROSTER = { Haiku: '5.5', Sonnet: '5.5', Opus: '5.5', Fable: '5.2' }
 
-export const ARCHIVES = [
+/** .github keeps no dated archives in scope since its handoffs moved to ops. */
+export const ARCHIVES = []
+
+export const OPS_ARCHIVES = [
   {
-    pattern: /^docs\/handoff\/\d{4}-\d{2}-\d{2}-[^/]+\.md$/,
+    pattern: /^control\/handoff\/\d{4}-\d{2}-\d{2}-[^/]+\.md$/,
     reason: 'Dated session handoffs: a record of that day, written once and not maintained.',
   },
 ]
@@ -185,7 +202,7 @@ function globToRegExp(glob) {
 }
 
 /** The files in scope, and the fail-closed errors met while resolving them. */
-export function resolveScope(root, tracked, scope = SCOPE) {
+export function resolveScope(root, tracked, scope = SCOPE, archives = ARCHIVES) {
   const files = new Set()
   const errors = []
   for (const [kind, entries] of Object.entries(scope)) {
@@ -199,15 +216,15 @@ export function resolveScope(root, tracked, scope = SCOPE) {
     }
   }
   if (files.size === 0) errors.push('no files in scope: the guard would pass having read nothing')
-  else if ([...files].every((f) => ARCHIVES.some((a) => a.pattern.test(f)))) {
+  else if ([...files].every((f) => archives.some((a) => a.pattern.test(f)))) {
     errors.push('every file in scope is an excused archive: the guard would pass having checked nothing')
   }
   return { files: [...files].sort(), errors }
 }
 
-export function checkAllowlists() {
+export function checkAllowlists({ archives = ARCHIVES, lines = LINES } = {}) {
   const errors = []
-  for (const entry of [...ARCHIVES, RETIREMENT_LINE, ...LINES]) {
+  for (const entry of [...archives, RETIREMENT_LINE, ...lines]) {
     if (typeof entry.reason !== 'string' || entry.reason.trim().length < 20) {
       errors.push(`allowlist entry ${entry.text ?? entry.pattern} has no reason`)
     }
@@ -215,12 +232,12 @@ export function checkAllowlists() {
   return errors
 }
 
-export function scan(root, files) {
+export function scan(root, files, { archives = ARCHIVES, lines: allowed = LINES } = {}) {
   const findings = []
   const usedLines = new Set()
   const usedArchives = new Set()
   for (const file of files) {
-    const archive = ARCHIVES.find((a) => a.pattern.test(file))
+    const archive = archives.find((a) => a.pattern.test(file))
     if (archive) {
       usedArchives.add(archive)
       continue
@@ -231,7 +248,7 @@ export function scan(root, files) {
       // A LINES entry excuses its quoted fragment and nothing else: the
       // fragment is cut out and the rest of the line is read, so a retired
       // term or a model added beside it is still reported.
-      const excused = LINES.find((l) => l.file === file && line.includes(l.text))
+      const excused = allowed.find((l) => l.file === file && line.includes(l.text))
       if (excused) usedLines.add(excused)
       const rest = excused ? line.replace(excused.text, ' ') : line
       const found = lineFindings(rest, { excuseRetirements: true })
@@ -239,19 +256,39 @@ export function scan(root, files) {
     })
   }
   const stale = [
-    ...LINES.filter((l) => !usedLines.has(l)).map(
+    ...allowed.filter((l) => !usedLines.has(l)).map(
       (l) => `allowlist entry for ${l.file} matched nothing: "${l.text}". Remove it.`,
     ),
-    ...ARCHIVES.filter((a) => !usedArchives.has(a)).map(
+    ...archives.filter((a) => !usedArchives.has(a)).map(
       (a) => `archive allowlist pattern ${a.pattern} matched no file in scope. Remove it.`,
     ),
   ]
   return { findings, stale }
 }
 
+export const OPS_LINES = [
+  {
+    file: 'control/desk/brief.md',
+    text: 'held by the retired fleet-coordinator-5',
+    reason: 'Incident history: the name of a session that held Herdr jobs, quoted as it was.',
+  },
+]
+
+export const PROFILES = {
+  github: { scope: SCOPE, archives: ARCHIVES, lines: LINES },
+  ops: { scope: OPS_SCOPE, archives: OPS_ARCHIVES, lines: OPS_LINES },
+}
+
 function main(argv) {
   const rootFlag = argv.indexOf('--root')
   const root = rootFlag === -1 ? process.cwd() : argv[rootFlag + 1]
+  const profileFlag = argv.indexOf('--profile')
+  const name = profileFlag === -1 ? 'github' : argv[profileFlag + 1]
+  const profile = PROFILES[name]
+  if (!profile) {
+    console.error(`check-rules-drift: unknown --profile ${name}; use ${Object.keys(PROFILES).join(' or ')}`)
+    return 1
+  }
   let tracked
   try {
     tracked = execFileSync('git', ['ls-files', '-z'], { cwd: root, encoding: 'utf8' })
@@ -261,10 +298,10 @@ function main(argv) {
     console.error(`check-rules-drift: cannot list tracked files in ${root}: ${err.message}`)
     return 1
   }
-  const { files, errors } = resolveScope(root, tracked)
-  errors.push(...checkAllowlists())
-  const { findings, stale } = files.length ? scan(root, files) : { findings: [], stale: [] }
-  console.log(`check-rules-drift: scanned ${files.length} file(s)`)
+  const { files, errors } = resolveScope(root, tracked, profile.scope, profile.archives)
+  errors.push(...checkAllowlists(profile))
+  const { findings, stale } = files.length ? scan(root, files, profile) : { findings: [], stale: [] }
+  console.log(`check-rules-drift: scanned ${files.length} file(s) (profile ${name})`)
   for (const file of files) console.log(`  ${file}`)
   const problems = [...errors, ...stale, ...findings]
   if (problems.length === 0) {

@@ -72,6 +72,22 @@ jobs:
           echo "digest=$(node -p "require('./status.json').carried ? 'no' : 'yes'" 2>/dev/null || echo yes)" >> "$GITHUB_OUTPUT"
           test -s status.json
 
+      # Plan row 1.30 d: this public repository's own upkeep (branches, merged branches not
+      # deleted, files on main the privacy guard would refuse, README drift). Scheduled, never
+      # per pull request (verification-floor rule 5). Git only, so no GitHub API quota is spent;
+      # status.json gets counts and folder names, never a matched line. The digest carries it
+      # on Mondays.
+      - name: Measure this repository's upkeep
+        if: ${{ !cancelled() }}
+        env:
+          PRIVATE_REPOS: ${{ secrets.PRIVATE_REPOS }}
+        run: |
+          set -euo pipefail
+          test -s status.json
+          git fetch --quiet --unshallow origin '+refs/heads/*:refs/remotes/origin/*' 2>/dev/null \
+            || git fetch --quiet origin '+refs/heads/*:refs/remotes/origin/*'
+          node scripts/dotgithub-hygiene.mjs --in status.json
+
       - name: Render STATUS.md
         if: ${{ !cancelled() }}
         run: |

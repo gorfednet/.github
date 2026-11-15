@@ -12,6 +12,7 @@ import { readFileSync, writeFileSync } from 'node:fs'
 import { isMain } from '../templates/verification-kit/lib/isMain.mjs'
 import { showInstalled } from './lib/installed-tools.mjs'
 import { renderInventory } from './lib/inventory.mjs'
+import { digestLine, isWeeklyDay, renderDotgithub } from './dotgithub-hygiene.mjs'
 import { kitSummary } from './lib/kit-version.mjs'
 
 /** The canonical kit version: this repository's own manifest, which is what a refresh pulls. */
@@ -179,6 +180,7 @@ export function render(status) {
   }
   if (status.prCost !== undefined) out.push(...renderPrCost(status.prCost, status.prCostUnread))
   if (status.inventory) out.push(renderInventory(status.inventory, etStamp))
+  if (status.dotgithub) out.push(renderDotgithub(status.dotgithub, etStamp))
   if (status.dirtyLocal) {
     out.push('## Local clones with unsaved work', '')
     if (status.dirtyLocal.length === 0) out.push('None.', '')
@@ -202,6 +204,8 @@ export function digest(status) {
   for (const slug of s.redMains) lines.push(`Red main: ${short(slug)}`)
   for (const slug of s.unavailable) lines.push(`Unreadable: ${short(slug)}`)
   for (const p of s.prs.filter(waitingOnOwner).slice(0, 4)) lines.push(`Owner: ${short(p.slug)} #${p.number} ${p.title}`.slice(0, 120))
+  // Weekly (plan row 1.30 d): the Monday digest carries the public repository's upkeep line.
+  if (status.dotgithub && isWeeklyDay(new Date(status.generatedAt))) lines.splice(1, 0, digestLine(status.dotgithub))
   const kept = lines.length > 10 ? [...lines.slice(0, 9), `...and ${lines.length - 9} more, see STATUS.md`] : lines
   return `${kept.join('\n')}\n`
 }

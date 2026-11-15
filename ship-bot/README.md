@@ -258,8 +258,9 @@ bot now takes a draft itself when **all** of these hold:
   `.claude/`, `ship-bot/`, `scripts/gates/`, `scripts/lib/`, `janitor/` or
   `capacity/` or `verification-kit/`, `scripts/review-status.mjs`, any
   `REVIEW.md`, `CLAUDE.md`, `AGENTS.md`, `SKILL.md` or `canaries.json`, and in
-  `gorfednet/.github` all of `scripts/`, `templates/` and `docs/claude-home/`
-  (Desk copies it into `~/.claude` after merge) and `fleet.json`.
+  `gorfednet/.github` all of `scripts/`, `templates/`, `fleet.json` and the old
+  `docs/claude-home/`, and in `gorfednet/ops` `control/claude-home/` (the
+  reviewed copy of `~/.claude`, which Desk copies into it after merge).
   Matching ignores case, and a rename counts by its old name too. Such a draft
   changes what merges unattended, so the bot comments once per commit naming
   the paths and leaves it to the owning session (plan row 1.12);
@@ -458,7 +459,7 @@ commit, before any deploy step runs. Every deploy row in the bot's work root
 also syncs the `gorfednet.github` helper checkout to `origin/main`, listed in
 `siblings` or not, as part of preparing the workspace after the merge.
 `site-deploy.sh` refuses to run from a stale copy of itself (MoonMan 324). A
-row with a custom `workDir` gets no implied sibling. `docs/handoff/2026-11-13-deploy-root-causes.md` has the four
+row with a custom `workDir` gets no implied sibling. `control/handoff/2026-11-13-deploy-root-causes.md` in ops has the four
 causes.
 
 A dry run reads GitHub (it runs the verification kit's read-only gate scripts)

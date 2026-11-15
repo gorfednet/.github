@@ -12,7 +12,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const HOOK = join(here, '..', 'docs', 'claude-home', 'hooks', 'gh-poll-guard.py');
+const HOOK = join(here, '..', 'scripts', 'claude-hooks', 'gh-poll-guard.py');
 // Every spawn writes its call log here, never to the owner's real ~/.gh-quota/calls.log.
 const ENV = { ...process.env, GH_GUARD_LOG: join(mkdtempSync(join(tmpdir(), 'ghguard-')), 'calls.log') };
 const fixture = (name) => readFileSync(join(here, 'fixtures', 'gh-poll-guard', name), 'utf8');

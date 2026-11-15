@@ -74,7 +74,7 @@ describe('installed tools behind main', () => {
 
   it('an always-pr-remind hook copy left behind a committed fix is flagged', () => {
     const f = fixture()
-    const src = join(f.clone, 'docs', 'claude-home', 'hooks', 'always-pr-remind.py')
+    const src = join(f.clone, 'scripts', 'claude-hooks', 'always-pr-remind.py')
     put(src, '# old\n')
     sh(f.clone, 'add', '-A')
     sh(f.clone, 'commit', '-q', '-m', 'hook v1')

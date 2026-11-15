@@ -27,8 +27,8 @@ export const TOOL_WORKTREE_NAMES = ['gates-main', 'tools-main']
 
 /** Installed copies of committed files: where the copy lives (under home) and its source (clone dir, path). */
 export const COPIES = [
-  { tool: 'gh-poll-guard hook', copy: '.claude/hooks/gh-poll-guard.py', clone: 'gorfednet.github', source: 'docs/claude-home/hooks/gh-poll-guard.py' },
-  { tool: 'always-pr-remind hook', copy: '.claude/hooks/always-pr-remind.py', clone: 'gorfednet.github', source: 'docs/claude-home/hooks/always-pr-remind.py' },
+  { tool: 'gh-poll-guard hook', copy: '.claude/hooks/gh-poll-guard.py', clone: 'gorfednet.github', source: 'scripts/claude-hooks/gh-poll-guard.py' },
+  { tool: 'always-pr-remind hook', copy: '.claude/hooks/always-pr-remind.py', clone: 'gorfednet.github', source: 'scripts/claude-hooks/always-pr-remind.py' },
   { tool: 'capacity check', copy: '.desk/capacity-app/capacity.mjs', clone: 'gorfednet.github', source: 'capacity/capacity.mjs' },
   { tool: 'capacity heartbeat helper', copy: '.desk/capacity-app/lib/heartbeat.mjs', clone: 'gorfednet.github', source: 'ship-bot/lib/heartbeat.mjs' },
   { tool: 'capacity usage helper', copy: '.desk/capacity-app/lib/usageAlert.mjs', clone: 'gorfednet.github', source: 'scripts/lib/usageAlert.mjs' },
