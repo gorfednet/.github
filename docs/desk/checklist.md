@@ -179,4 +179,4 @@ Weekly 9% at 11:21 ET. Full speed, cost-aware. One line to the owner at about 90
 - [x] gowyllop 6a passed (owner, 00:30 ET)
 - [ ] bc 662: merge of main pushing, ship-bot merges on green; then owner step 6b
 - [ ] bc 661 (3.10): merge of main pushing; then ready and label
-- [ ] 1.19: gemma FAIL 3/10, gpt-oss FAIL 2/10; Qwen rerun crashed (fetch 300 s header timeout). Harness fix PR, then rerun all 3
+- [ ] 1.19: gemma FAIL 3/10, gpt-oss FAIL 2/10. Harness fix .github 203 in review; rerun all 3 next pass with headroom
