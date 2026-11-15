@@ -78,3 +78,5 @@ Checklist (owner, 13 Nov 2026: "can you give me a checklist and surface it every
 The Linux CI host on the Mac Pro is `gowyllop-ci` (100.122.77.87). Plain `gowyllop` is its macOS side, often offline, so a check against it times out and proves nothing (15 Nov 2026, 26th Desk).
 
 Herdr's live job files are untracked, in `ops/.claude/worktrees/tools-main/hosts/gorfpael/herdr/jobs/`, so no PR can change them. Owner `herdr` means the reconciler starts the job unattended. Never hand a heuristics deep-study or capture job to `herdr`: it would run past the monthly API spend check. A landed or declined backlog entry retires its job on the hourly sweep (15 Nov 2026, 26th Desk: 23 jobs held by the retired fleet-coordinator-5 were left held).
+
+A `runner` subagent gets no worktree of its own. It runs in Desk's current folder, so a brief that checks out a branch must open with `git worktree add <scratch path> <branch>` (15 Nov 2026: a runner switched the desk-log worktree onto a PR branch). A reviewer-thread reply that quotes a settings deny pattern is refused as if it were that command. Write the body to a file and pass `-F b=@file`.
