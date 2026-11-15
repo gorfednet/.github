@@ -53,6 +53,67 @@ Not recommended: more slots or new hardware. Use is 41%. Waits come from the out
 - Two fine-grained tokens for step 5, one each for `gorfednet/heuristics.4thcltr.com` and `gorfednet/papers.4thcltr.com`: Administration read and write, Actions read-only, with an expiry. Then on dapyllil `sudo infra/ci-runner/install.sh --set-token heuristics`, the same for `papers`, then `sudo systemctl restart bc-ci-runner`.
 - `gh auth refresh -h github.com -s user` on the Mac, for step 9.
 
+## Update 15 November 2026 (plan row 3.2): the pool takes the rest
+
+The pool supervisor mints runner tokens through its own GitHub App since 16:57 ET on 15 November, so the 11 repositories it skipped for "no token" now get runners. Nothing in their workflows had to change: every heavy job already reads `HEAVY_RUNS_ON`. The missing piece was the repository variable. A repository without it ran everything hosted.
+
+Set on 15 November 2026 (values are `["self-hosted","linux","<label>"]`):
+
+| Repository | Label | Pool job seen running |
+|---|---|---|
+| ssatcy.com | `ss-heavy` | `bc-ssatcy-dapyllil-*` (check, deploy-safety, 3 browser-compat) |
+| denseware.com | `dw-heavy` | `bc-denseware-dapyllil-*` |
+| gorfmusic.com | `gm-heavy` | `bc-gorfmusic-dapyllil-*` |
+| promptboi.com | `pb-heavy` | `bc-promptboi-dapyllil-*` |
+| anal0g.org | `an-heavy` | `bc-anal0g-dapyllil-gowyllop-ci-*` (remote slot) |
+| blackpixelrecords.com | `bp-heavy` | `bc-blackpixel-dapyllil-gowyllop-ci-*` |
+| rowanmcarthur.com | `rm-heavy` | `bc-rowan-dapyllil-gowyllop-ci-*` |
+| subrythm.com | `sr-heavy` | `bc-subrythm-dapyllil-gowyllop-ci-*` |
+| heuristics.4thcltr.com | `hx-heavy` | `bc-heuristics-dapyllil-gowyllop-ci-*` |
+| papers.4thcltr.com | `pp-heavy` | `bc-papers-dapyllil-*` (derive, check) |
+| gorfed.net | `gn-heavy` (was `ubuntu-latest`) | `bc-gorfed-dapyllil-*` |
+
+gorfed.net needed no image change: `bc-ci-runner:current` on dapyllil already carries rsync 3.2.7 (checked 15 November). gorfed.net's `ci.yml` has had the hosted `heavy-runner-preflight` since commit 3076b93 (every pool job `needs` it), so step 6's "add the hosted preflight" is already done and a dead pool fails its runs in seconds. Rolling back a repository is `gh variable set HEAVY_RUNS_ON --body '"ubuntu-latest"'` or deleting the variable; the hosted preflight fails a run in seconds if the pool stops reporting.
+
+### Jobs that stay hosted, and why
+
+| Repository | Hard-coded `ubuntu-latest` | Decision |
+|---|---|---|
+| ask-collector | `check` (compose config, `docker build`) | Stays hosted. Pool job containers have no Docker socket. Move it when the image build is split from the unit tests. |
+| bindercurve.com (26) | 4 preflights (`deploy-check`, `milestone-release`, `nightly-main`, `pr-fast-check`) and `pool-heartbeat` | Hosted by design: they must answer when the pool is dead. |
+| | roll-ups and alerts: `e2e-success`, `mutation-canary-success`, `deploy-check-alert`, `nightly-main-alert`, `security-nightly-alert`, `seed-freshness-alert` | Hosted: seconds of work that must run when the pool does not. |
+| | `e2e-visual`, `staging-e2e-visual` | Hosted: pool font rendering is not proven identical to `ubuntu-latest`, so pixel diffs would be noise. Revisit with a measured baseline compare. |
+| | `build-spa`, `deploy-canary`, `post-deploy-smoke`, `rollback`, `provider-pings`, the 4 `worker-release` jobs, the 3 `ops-*-prod` workflows | Hosted: they hold deploy, affiliate or provider secrets, and secret-holding jobs stay off the pool (2026-10-10 security review, M7; owner decision 2026-10-19). |
+| | `production-smoke` | Hosted: it probes production, so it must not depend on the host it watches. |
+| 4thcltr.com (3 plain, 1 fallback) | `heavy-runner-preflight`, `security-headers` (scheduled live check), `wcag-watch` (weekly, about a minute) | Stay hosted: preflight, live-state report, and a job too small to be worth a pool slot. The `ci.yml:326` fallback is intentional (a dead pool must not queue the sweep). |
+| MoonMan (3) | the `heavy-runner-preflight` in `ci.yml`, `full-walks.yml`, `visual-baselines.yml` | Stay hosted: they are the liveness preflights. |
+
+No workflow in these four repositories needed a change, so no pull request was opened for them. Plan row 3.2's counts (25 bindercurve, 6 4thcltr, 3 MoonMan) included `ubuntu-latest` fallbacks inside `fromJSON(vars.HEAVY_RUNS_ON || ...)` expressions, which follow the variable; the lists above are the plain hard-coded ones (26, 3 plus the one conditional fallback, 3). A guard that fails a new hard-coded `ubuntu-latest` outside this list belongs in fleet-status ("hosted jobs last 7 days"), plan row 3.2's own done-when.
+
+### If CI gets cut off: recovery
+
+Owner ask, 15 November 2026: "if CI gets cut off we need recovery plans". What exists today, what fails, and the manual way out. Hosted overflow is not built yet (session `pool-order-hosted-last` proposes it), so every row's "automatic" column is what happens now, not what is wanted.
+
+| Cut-off | What happens now | Recovery |
+|---|---|---|
+| dapyllil down or rebooting | Heartbeat goes stale. Each repo's hosted `heavy-runner-preflight` fails in seconds with the fix in its message. Pool jobs already queued wait, up to 24 hours before GitHub cancels them. The remote slots (gowyllop-ci, gamingpc-ci) are started by dapyllil's supervisor, so they stop too. | Bring dapyllil back (`ssh dapyllil`, `systemctl status bc-ci-runner`). If it stays down past an hour, flip the priority repos to hosted (below) and flip them back when the heartbeat is fresh. Boot hang: plan row 3.7. |
+| Supervisor cannot mint tokens (App or owner token at 0 of 5,000 an hour, or 403) | The journal says "GITHUB API FAILING" or "no token"; no runners start; heartbeats stop being written. 3 outages so far (3 to 5 and 6 November, 13 November). | `gh api rate_limit` for the owner token, then wait for the reset or flip to hosted. Journal: `journalctl -u bc-ci-runner`. The App's budget is separate from the owner's. |
+| One remote host down (gowyllop-ci or gamingpc-ci) | The supervisor gives that host 0 slots, logged ("engine did not answer over ssh"), and places work on the other hosts. Nothing fails. | None needed for correctness; capacity drops. gamingpc-ci has been at 0 slots since at least 15 November 16:51 ET: check the PC is on and Docker is up. |
+| Firewall rules missing on the pool | The supervisor refuses to start runners (fails closed) and now stops writing heartbeats, so the preflight goes red. | `infra/ci-runner/firewall.sh --check` on dapyllil, then rerun `install.sh`. |
+| GitHub Actions down | Nothing runs, hosted or pool. | Wait. No merges happen (ship-bot reads green checks). |
+| Hosted minutes cap (US$100 a month) reached | GitHub stops hosted jobs: the preflights, reviewer and scheduled reports fail to start. Pool jobs still run if their preflight ran earlier in the run; new runs cannot pass the preflight. | Raise the budget one step (owner), or wait for 1 December. Do not move reviewer or preflights to the pool to dodge it. |
+
+Flip every moved repository to hosted (cost: hosted minutes, so only for the repositories the outage blocks, priority 1 to 5 first):
+
+```sh
+for r in ssatcy.com denseware.com gorfmusic.com promptboi.com anal0g.org blackpixelrecords.com \
+         rowanmcarthur.com subrythm.com heuristics.4thcltr.com papers.4thcltr.com gorfed.net; do
+  gh variable set HEAVY_RUNS_ON -R gorfednet/$r --body '"ubuntu-latest"'
+done
+```
+
+Flip back by setting each to `["self-hosted","linux","<label>"]` (labels in the table above). bindercurve.com, 4thcltr.com, MoonMan, assess and career-portfolio use the same variable; do those only when the owner says, because their heavy runs are the ones that would burn the cap. The monthly failure drill in plan-of-record (quota at 0, ship-bot down, pool down) should run this table once and date the result here.
+
 ## Method
 
 Runs: `gh api repos/gorfednet/<repo>/actions/runs?created=>=2026-10-28` for 10 repositories, 4,000 runs (BinderCurve per workflow, past the 1,000-result cap). Jobs: `…/runs/<id>/jobs` for every heavy-workflow run and 25 sampled runs of the others, 1,249 runs. Pool: the supervisor journal on dapyllil (`journalctl -u bc-ci-runner`), `pools.conf` on BinderCurve main. Price: GitHub's 2026 Linux 2-core rate, US$0.006 a minute.
