@@ -74,6 +74,8 @@ Rotate on a Mac turn (13 Nov 2026, 22:50 ET): the app refuses `start_session` on
 Status, what's outstanding, next milestone with ET time, done. A few lines. Commands only when they are his next step, one per code block. Never send him to GitHub.
 Checklist (owner, 13 Nov 2026: "can you give me a checklist and surface it every deploy?"): keep `docs/desk/checklist.md` on `desk-log` current and phone-short. Post it in chat on every pass and every time ship-bot deploys a repo: tick what landed, add a line for each new item.
 
+Before starting a session from another session's card or brief, check `list_sessions` for one the owner already started from that card (15 Nov 2026: Desk and the owner both started part f of 1.30 within minutes, and Desk had to split the scope).
+
 `list_sessions` gives a `prNumber` with no repository, and a runner's gate report is a lead. Before sending a PR back to a session, check the PR's repository and that it is OPEN (14 Nov 2026, 08:22 ET: Desk sent .github 90, merged 8 Nov, to the session whose PR 90 is in heuristics).
 
 The Linux CI host on the Mac Pro is `gowyllop-ci` (100.122.77.87). Plain `gowyllop` is its macOS side, often offline, so a check against it times out and proves nothing (15 Nov 2026, 26th Desk).
