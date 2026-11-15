@@ -1,14 +1,14 @@
 {
-  "generatedAt": "2026-11-15T00:48:01.684Z",
-  "renderedAt": "2026-11-15T00:48:01.684Z",
+  "generatedAt": "2026-11-15T02:31:55.477Z",
+  "renderedAt": "2026-11-15T02:31:55.477Z",
   "repos": [
     {
       "slug": "gorfednet/bindercurve.com",
       "redacted": true,
-      "mainRed": false,
-      "openPrCount": 8,
+      "mainRed": true,
+      "openPrCount": 6,
       "lapsedBacklogCount": 0,
-      "noPrCount": 78,
+      "noPrCount": 79,
       "idlePrCount": 0,
       "duplicatePrCount": 0,
       "dependabotRedCount": 0,
@@ -18,7 +18,7 @@
       "slug": "gorfednet/4thcltr.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 23,
+      "openPrCount": 22,
       "lapsedBacklogCount": 0,
       "noPrCount": 13,
       "idlePrCount": 7,
@@ -170,7 +170,7 @@
           "labels": [],
           "draft": true,
           "review": "not-run",
-          "headSha": "408269629d3138c8d64899a78164b0bc1934f087",
+          "headSha": "8654233da17c3495484205c9ac8090012e395ee2",
           "ci": "none",
           "next": "Desk appends each pass's line until the 02:00 ET rotation (hold: the log is still being written)",
           "author": "gorfednet"
@@ -558,14 +558,14 @@
     "gorfednet/TowIt",
     "gorfednet/wychwood"
   ],
-  "branchesReadAt": "2026-11-14T02:32:09.796Z",
-  "carried": true,
+  "branchesReadAt": "2026-11-15T02:31:55.477Z",
+  "carried": false,
   "inventory": {
-    "measuredAt": "2026-11-15T00:48:01.684Z",
+    "measuredAt": "2026-11-15T02:31:55.477Z",
     "counts": {
       "pr": {
-        "total": 106,
-        "orphans": 63
+        "total": 103,
+        "orphans": 61
       },
       "session": null,
       "worktree": null,
@@ -673,7 +673,7 @@
         "lapsed": true
       }
     ],
-    "hiddenPrivate": 52,
+    "hiddenPrivate": 50,
     "privateReposNotItemised": 18
   }
 }
