@@ -73,7 +73,7 @@ Set on 15 November 2026 (values are `["self-hosted","linux","<label>"]`):
 | papers.4thcltr.com | `pp-heavy` | `bc-papers-dapyllil-*` (derive, check) |
 | gorfed.net | `gn-heavy` (was `ubuntu-latest`) | `bc-gorfed-dapyllil-*` |
 
-gorfed.net needed no image change: `bc-ci-runner:current` on dapyllil already carries rsync 3.2.7 (checked 15 November). Rolling back a repository is `gh variable set HEAVY_RUNS_ON --body '"ubuntu-latest"'` or deleting the variable; the hosted preflight fails a run in seconds if the pool stops reporting.
+gorfed.net needed no image change: `bc-ci-runner:current` on dapyllil already carries rsync 3.2.7 (checked 15 November). gorfed.net's `ci.yml` has had the hosted `heavy-runner-preflight` since commit 3076b93 (every pool job `needs` it), so step 6's "add the hosted preflight" is already done and a dead pool fails its runs in seconds. Rolling back a repository is `gh variable set HEAVY_RUNS_ON --body '"ubuntu-latest"'` or deleting the variable; the hosted preflight fails a run in seconds if the pool stops reporting.
 
 ### Jobs that stay hosted, and why
 
@@ -88,7 +88,7 @@ gorfed.net needed no image change: `bc-ci-runner:current` on dapyllil already ca
 | 4thcltr.com (3 plain, 1 fallback) | `heavy-runner-preflight`, `security-headers` (scheduled live check), `wcag-watch` (weekly, about a minute) | Stay hosted: preflight, live-state report, and a job too small to be worth a pool slot. The `ci.yml:326` fallback is intentional (a dead pool must not queue the sweep). |
 | MoonMan (3) | the `heavy-runner-preflight` in `ci.yml`, `full-walks.yml`, `visual-baselines.yml` | Stay hosted: they are the liveness preflights. |
 
-No workflow in these three repositories needed a change, so no pull request was opened for them. A guard that fails a new hard-coded `ubuntu-latest` outside this list belongs in fleet-status ("hosted jobs last 7 days"), plan row 3.2's own done-when.
+No workflow in these four repositories needed a change, so no pull request was opened for them. Plan row 3.2's counts (25 bindercurve, 6 4thcltr, 3 MoonMan) included `ubuntu-latest` fallbacks inside `fromJSON(vars.HEAVY_RUNS_ON || ...)` expressions, which follow the variable; the lists above are the plain hard-coded ones (26, 3 plus the one conditional fallback, 3). A guard that fails a new hard-coded `ubuntu-latest` outside this list belongs in fleet-status ("hosted jobs last 7 days"), plan row 3.2's own done-when.
 
 ## Method
 
