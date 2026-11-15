@@ -64,7 +64,8 @@ export function countExposure(files, guard, { privateRepos = '', allowText = '' 
   const rulesNotChecked = names.length === 0 ? ['private-repo'] : []
   // An empty list matches nothing, so the rule is reported as not checked rather than passed.
   const privateRepo = names.length === 0 ? /(?!)/ : guard.privateRepoPattern(names)
-  const exempt = (path, rule) => allow.paths.some((p) => p.re.test(path) && (p.rules === '*' || p.rules.has(rule)))
+  // The guard's own path rule when it exports one, so the count and the per-PR check never disagree.
+  const exempt = guard.pathExempt ? (path, rule) => guard.pathExempt(path, rule, allow) : (path, rule) => allow.paths.some((p) => p.re.test(path) && (p.rules === '*' || p.rules.has(rule)))
   const byRule = {}
   let exposed = 0
   for (const { path, text } of files) {
