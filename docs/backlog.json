@@ -622,7 +622,7 @@
     },
     {
       "id": "assess-1112-c1-moonman-main-red-and-repo-clutter",
-      "title": "C1: heal-drift root-cause fix, backlog sync, CLAUDE.md, gitignore, move renders, install kit",
+      "title": "C1: heal-drift root-cause fix, backlog sync, CLAUDE.md, gitignore, move renders, check the gate pin",
       "status": "confirmed-bug",
       "assignee": "main-model",
       "userSymptom": "MoonMan main is red, backlog statuses are wrong, no CLAUDE.md, 6.4 GB untracked .claude and loose renders at the root",

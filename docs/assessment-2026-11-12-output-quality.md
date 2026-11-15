@@ -67,9 +67,9 @@ Priority follows your order (infra, 4thcltr, gorfed.net, resumes, MoonMan, Binde
 
 ### Lane A: foundations the other lanes stand on (this week)
 
-**A1. Ship the kit that the rules already cite, and bring every repo to it.**
-Land `.github` PR 132 (kit 0.61.0, V77, `check-sitemap-pages`). Then one refresh PR per repo to 0.61 in priority order (4thcltr, gorfed.net, heuristics, papers, career-portfolio, MoonMan install from none, BinderCurve, sites, ops, intake). Root cause: copy-distribution, with drift seen only in reports. Fix: janitor opens the refresh PR weekly, drift stays in the scheduled reports (a per-PR drift failure was retired on purpose in `docs/verification-rules.md`: another repository cannot fail a pull request; amended 14 November 2026), and `write-manifest` tags a release so "which kit" is derivable.
-Who: main session labels PR 132 `ready-to-merge` after reading gates, and ship-bot merges; `runner` for each refresh PR; `reviewer` only where a refresh changes a workflow. Done: STATUS.md shows every active repo at the same kit version.
+**A1. Ship the kit that the rules already cite, and bring every repo's pinned gate ref to it.**
+Land `.github` PR 132 (kit 0.61.0, V77, `check-sitemap-pages`). The gate runs this repository's kit at the ref each caller pins, so a vendored copy changes nothing the gate runs (restated 15 November 2026; see `briefs/github-assess-1112-a1.md`). Move each stale pin forward in one small PR per repo, in priority order (4thcltr, gorfed.net, heuristics, papers, career-portfolio, MoonMan, BinderCurve, sites, ops, intake). No vendored-copy refresh PRs. Drift stays in the scheduled reports (a per-PR drift failure was retired on purpose in `docs/verification-rules.md`: another repository cannot fail a pull request; amended 14 November 2026), and `write-manifest` tags a release so "which kit" is derivable.
+Who: main session labels PR 132 `ready-to-merge` after reading gates, and ship-bot merges; `runner` for each pin PR; `reviewer` only where a pin move changes a workflow. Done: `fleet-audit.yml` or STATUS.md shows every active repo's pinned gate ref on the current kit.
 
 **A2. Stale skills and agents rewritten; Cursor leftovers removed.**
 `self-heal` (cites V1 to V38, `.cursor/rules`, "fifteen projects", no `gate-run`), `verification-bootstrap` (Bugbot tier, `/tmp` clone, V77 claimed), `full-codebase-assessment` (BinderCurve `.cursor` paths), `runner.md` ("composer-2.5-fast"), `builder.md` (conflicts with the 7 Nov handoff on `node_modules`; add `builder-ok`). Move 4thcltr's four `.cursor/skills` to `.claude/skills`, delete `.cursor/rules` in 4thcltr, gorfed.net, gorfmusic. Drop the Cursor translation table from `~/.claude/CLAUDE.md` once nothing needs it. Add a skill eval (skill-creator) for `self-heal` and `handoff` so a future rewrite is measured.
@@ -108,8 +108,8 @@ Who: Sonnet `builder`; `runner` migrates each repo. Done: every property's OG ca
 ### Lane C: verification health and the root causes
 
 **C1. MoonMan house in order (one session).**
-Fix `heal-drift` red on main at the cause (wall-clock in the audio engine test, pattern 5), correct the backlog statuses for 296 and 319 (and add the sync check `backlog-pr-claims` already drafted for 4thcltr, PR 248/250, as a kit script so every backlog is checked against GitHub), add a `CLAUDE.md` under 200 lines from the `claude-md-management` audit, bring REVIEW.md up to ship-bot and Herdr, gitignore `.claude/*` except shared `settings.json` and `launch.json`, move `icon-review/` and the two marketing PNGs into `assets/brand/marketing/` via the brand scripts or out of the repo, clear the 1 GB of October evidence. Install the kit (A1).
-Who: Sonnet `builder` for the test fix and hygiene; main session for CLAUDE.md and gitignore (changes what sessions read). Done: main green, backlog matches GitHub, repo root clean, kit installed.
+Fix `heal-drift` red on main at the cause (wall-clock in the audio engine test, pattern 5), correct the backlog statuses for 296 and 319 (and add the sync check `backlog-pr-claims` already drafted for 4thcltr, PR 248/250, as a kit script so every backlog is checked against GitHub), add a `CLAUDE.md` under 200 lines from the `claude-md-management` audit, bring REVIEW.md up to ship-bot and Herdr, gitignore `.claude/*` except shared `settings.json` and `launch.json`, move `icon-review/` and the two marketing PNGs into `assets/brand/marketing/` via the brand scripts or out of the repo, clear the 1 GB of October evidence. Check MoonMan's pinned gate ref (A1). It needs no vendored copy.
+Who: Sonnet `builder` for the test fix and hygiene; main session for CLAUDE.md and gitignore (changes what sessions read). Done: main green, backlog matches GitHub, repo root clean, gate pin on the current kit.
 
 **C2. Wall-clock lint, fleet-wide.**
 Six incidents came from `Date.now()` or `new Date()` in tests without fake timers or a fixture clock (MoonMan `heal-drift`, BinderCurve `welcomeFixtures` PR 652, heuristics font check). Add `check-test-clock` to the kit: a test file that reads the clock must import the repo's fake-timer helper or carry a `// clock: real` justification with a backlog id. Pattern 2 companion: `check-fail-closed` greps workflows for `|| '"ubuntu-latest"'`-style fallbacks on runner selection.
@@ -164,8 +164,8 @@ Who: as the 11 Nov plan tiers them.
 
 - Every new check: watched failing once on a deliberate break, restored, said on the PR, with a near-miss negative case (verification rule 4).
 - Every design PR: visual matrix with read baselines, `check-design-tells` clean, `design-reviewer` clean or triaged, `reduced-motion` spec green, Lighthouse accessibility 100 on the changed pages, the before-and-after contact sheet attached, and for MoonMan a check on your iPhone.
-- Every kit refresh: the repo's own gate green on the pool, and STATUS.md shows the new version.
-- Fleet level: STATUS.md shows one kit version, zero red mains, the lapsed count falling week over week; `session-report` shows the start-of-session token count down after A3.
+- Every pin move: the repo's own gate green on the pool, and the scheduled report shows the new pin.
+- Fleet level: every active repo's gate pin on the current kit, zero red mains, the lapsed count falling week over week; `session-report` shows the start-of-session token count down after A3.
 - Nothing in this plan weakens a check, raises a tolerance or refreshes a snapshot unread.
 
 ## Decisions I am making unless you say otherwise
