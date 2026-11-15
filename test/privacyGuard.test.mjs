@@ -9,7 +9,7 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
-import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
@@ -647,5 +647,33 @@ describe('privacy guard: push mode, where the remote\'s own tips are the line (-
   it('refuses a call that names no line, or two', () => {
     assert.equal(push({}, ['--head', 'pr']).status, 2)
     assert.equal(push({}, ['--head', 'pr', '--base', 'main', '--not', 'main']).status, 2)
+  })
+})
+
+describe('privacy guard: it runs however it is reached', () => {
+  it('runs, and finds the value, when started through a symlinked path', () => {
+    // Without a real-path comparison the script takes itself for an import and exits 0, reading nothing.
+    const tmp = mkdtempSync(join(tmpdir(), 'privacy-guard-link-'))
+    try {
+      const link = join(tmp, 'guard.mjs')
+      symlinkSync(GUARD, link)
+      const dir = join(tmp, 'repo')
+      mkdirSync(dir)
+      sh(dir, 'init', '-q', '-b', 'main')
+      writeFileSync(join(dir, 'a.md'), 'x\n')
+      sh(dir, 'add', '-A')
+      sh(dir, 'commit', '-q', '-m', 'base')
+      sh(dir, 'checkout', '-q', '-b', 'pr')
+      writeFileSync(join(dir, 'b.md'), `${PLANT['private-ip']}\n`)
+      sh(dir, 'add', '-A')
+      sh(dir, 'commit', '-q', '-m', 'work')
+      const r = spawnSync('node', [link, '--base', 'main', '--head', 'pr', '--dir', dir], {
+        encoding: 'utf8',
+        env: { PATH: process.env.PATH, PRIVATE_REPOS: 'secret-repo' },
+      })
+      assert.equal(r.status, 1, r.stdout + r.stderr)
+    } finally {
+      rmSync(tmp, { recursive: true, force: true })
+    }
   })
 })

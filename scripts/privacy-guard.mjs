@@ -56,7 +56,7 @@
  * that nothing is outgoing may treat 3 as a pass; the guard never does.
  */
 import { execFileSync } from 'node:child_process'
-import { readFileSync } from 'node:fs'
+import { readFileSync, realpathSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
@@ -678,7 +678,16 @@ export function run(argv, env = process.env, out = console) {
   return 0
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+// Compare real paths: node reports the module's real path, and a symlinked or /tmp-style path
+// would otherwise make this look like an import, so the script would exit 0 having read nothing.
+const realArgv = (() => {
+  try {
+    return process.argv[1] ? realpathSync(process.argv[1]) : null
+  } catch {
+    return process.argv[1] ?? null
+  }
+})()
+if (realArgv && import.meta.url === pathToFileURL(realArgv).href) {
   let status
   try {
     status = run(process.argv.slice(2))
