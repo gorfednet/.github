@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-11-15T18:32:11.835Z",
-  "renderedAt": "2026-11-15T18:32:11.835Z",
+  "generatedAt": "2026-11-15T20:31:58.538Z",
+  "renderedAt": "2026-11-15T20:31:58.538Z",
   "repos": [
     {
       "slug": "gorfednet/bindercurve.com",
@@ -18,7 +18,7 @@
       "slug": "gorfednet/4thcltr.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 22,
+      "openPrCount": 23,
       "lapsedBacklogCount": 0,
       "noPrCount": 13,
       "idlePrCount": 7,
@@ -30,10 +30,10 @@
       "slug": "gorfednet/gorfed.net",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 5,
+      "openPrCount": 0,
       "lapsedBacklogCount": 0,
       "noPrCount": 2,
-      "idlePrCount": 1,
+      "idlePrCount": 0,
       "duplicatePrCount": 0,
       "dependabotRedCount": 0,
       "kitVersion": "0.61.0"
@@ -152,39 +152,15 @@
           "author": "gorfednet"
         },
         {
-          "number": 149,
-          "title": "Drain: fleet-report.mjs edit",
-          "ageDays": 2,
-          "labels": [],
-          "draft": true,
-          "review": "not-run",
-          "headSha": "511d39962e199052309866f5829b83ec963cace7",
-          "ci": "none",
-          "next": "compare with main's fleet-report; merge or close",
-          "author": "gorfednet"
-        },
-        {
           "number": 139,
           "title": "Desk log and briefs, 13 November",
           "ageDays": 2,
           "labels": [],
           "draft": true,
           "review": "not-run",
-          "headSha": "5ba01b1d826838a55187f601f5e4f526df5f462a",
+          "headSha": "e67e4559e07b5af47e366b210f8b5cc413f72315",
           "ci": "none",
           "next": "Desk appends each pass's line until the 02:00 ET rotation (hold: the log is still being written)",
-          "author": "gorfednet"
-        },
-        {
-          "number": 137,
-          "title": ".github: check-sitemap-pages ships in the kit but the shared verification gate does not run it",
-          "ageDays": 2,
-          "labels": [],
-          "draft": true,
-          "review": "not-run",
-          "headSha": "a3afdcea7ac00779a5371c9bacec6b5dbd807524",
-          "ci": "green",
-          "next": "Push the branch, open the PR, then set the entry to `in-review` with its `pr`.",
           "author": "gorfednet"
         },
         {
@@ -193,8 +169,8 @@
           "ageDays": 2,
           "labels": [],
           "draft": true,
-          "review": "not-run",
-          "headSha": "b4a3f6630435969d2a9e500d6bec0ee6ca0738ab",
+          "review": "clean",
+          "headSha": "048529eb36af22d1700871c10646c9345d41db57",
           "ci": "green",
           "next": "Merge when checks are green (docs-only).",
           "author": "gorfednet"
@@ -205,34 +181,10 @@
           "ageDays": 4,
           "labels": [],
           "draft": true,
-          "review": "not-run",
-          "headSha": "1dce30bb95b8d4b8fad016875ccb31f0b2452c28",
+          "review": "findings",
+          "headSha": "e2a05068bbc3f8c3004f0292e10f12dd5f936a82",
           "ci": "green",
           "next": "Merge when checks are green (docs-only).",
-          "author": "gorfednet"
-        },
-        {
-          "number": 113,
-          "title": ".github: Mostly-static sites inherited product-site Playwright and Bugbot settings",
-          "ageDays": 5,
-          "labels": [],
-          "draft": true,
-          "review": "not-run",
-          "headSha": "0d992323a86f45a981d1567f7574ff28bc2108dd",
-          "ci": "green",
-          "next": "Main session: merge this branch's one-line backlog change via a PR",
-          "author": "gorfednet"
-        },
-        {
-          "number": 112,
-          "title": ".github: A script that names a location instead of deriving one runs on exactly one machine",
-          "ageDays": 5,
-          "labels": [],
-          "draft": true,
-          "review": "not-run",
-          "headSha": "bc9c3634cd4e167c47483af1f70a311ea91cda94",
-          "ci": "green",
-          "next": "Main session: open the PR, merge when the gates pass.",
           "author": "gorfednet"
         },
         {
@@ -241,22 +193,10 @@
           "ageDays": 5,
           "labels": [],
           "draft": true,
-          "review": "not-run",
-          "headSha": "61ce09c3b98a48cab3a74766490089c9fe82d898",
+          "review": "findings",
+          "headSha": "5056074d568b68b0dbe6366ec25d08478d9aba61",
           "ci": "green",
           "next": "Main session: run the gates and merge (docs-only).",
-          "author": "gorfednet"
-        },
-        {
-          "number": 102,
-          "title": "build-rewrites-tracked-files",
-          "ageDays": 5,
-          "labels": [],
-          "draft": true,
-          "review": "not-run",
-          "headSha": "d8a2c024352dbc78fb567521d3bc5c55afdbc2c3",
-          "ci": "green",
-          "next": "Review and merge the PR",
           "author": "gorfednet"
         }
       ],
@@ -349,12 +289,6 @@
           "title": "The fleet has page-view analytics only, from Cloudflare, and no way to count an enquiry; BinderCurve also runs Google Tag Manager",
           "status": "confirmed-bug",
           "reviewBy": "2026-11-30"
-        },
-        {
-          "id": "sitemap-pages-not-in-gate",
-          "title": "check-sitemap-pages ships in the kit but the shared verification gate does not run it",
-          "status": "confirmed-bug",
-          "reviewBy": "2026-12-01"
         },
         {
           "id": "papers-deploy-verify-fails-under-load",
@@ -513,39 +447,18 @@
           "reviewBy": "2026-11-28"
         }
       ],
-      "idlePrs": [
-        {
-          "number": 117,
-          "idleDays": 4
-        },
-        {
-          "number": 113,
-          "idleDays": 5
-        },
-        {
-          "number": 112,
-          "idleDays": 5
-        },
-        {
-          "number": 103,
-          "idleDays": 5
-        },
-        {
-          "number": 102,
-          "idleDays": 5
-        }
-      ],
+      "idlePrs": [],
       "duplicatePrs": [],
       "lastDeploy": null,
       "incidents7d": 0,
       "dependabotRed": 0,
-      "kitVersion": "0.62.0"
+      "kitVersion": "0.63.0"
     },
     {
       "slug": "gorfednet/MoonMan",
       "redacted": true,
-      "mainRed": true,
-      "openPrCount": 9,
+      "mainRed": false,
+      "openPrCount": 3,
       "lapsedBacklogCount": 2,
       "noPrCount": 41,
       "idlePrCount": 0,
@@ -609,10 +522,10 @@
       "slug": "gorfednet/papers.4thcltr.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 6,
+      "openPrCount": 1,
       "lapsedBacklogCount": 0,
       "noPrCount": 1,
-      "idlePrCount": 2,
+      "idlePrCount": 0,
       "duplicatePrCount": 0,
       "dependabotRedCount": 0,
       "kitVersion": "0.61.0"
@@ -661,17 +574,17 @@
   "branchesReadAt": "2026-11-15T02:31:55.477Z",
   "carried": true,
   "inventory": {
-    "measuredAt": "2026-11-15T18:32:11.835Z",
+    "measuredAt": "2026-11-15T20:31:58.538Z",
     "counts": {
       "pr": {
-        "total": 100,
-        "orphans": 58
+        "total": 80,
+        "orphans": 47
       },
       "session": null,
       "worktree": null,
       "job": null,
       "backlog": {
-        "total": 31,
+        "total": 30,
         "orphans": 1
       }
     },
@@ -719,32 +632,8 @@
       {
         "kind": "pr",
         "repo": "gorfednet/.github",
-        "ref": "#113",
-        "label": ".github: Mostly-static sites inherited product-site Playwright and Bugbot settings",
-        "private": false,
-        "lapsed": false
-      },
-      {
-        "kind": "pr",
-        "repo": "gorfednet/.github",
-        "ref": "#112",
-        "label": ".github: A script that names a location instead of deriving one runs on exactly one machine",
-        "private": false,
-        "lapsed": false
-      },
-      {
-        "kind": "pr",
-        "repo": "gorfednet/.github",
         "ref": "#103",
         "label": "Handoff: recovery of 38 failed Herdr jobs",
-        "private": false,
-        "lapsed": false
-      },
-      {
-        "kind": "pr",
-        "repo": "gorfednet/.github",
-        "ref": "#102",
-        "label": "build-rewrites-tracked-files",
         "private": false,
         "lapsed": false
       },
@@ -765,7 +654,7 @@
         "lapsed": true
       }
     ],
-    "hiddenPrivate": 48,
+    "hiddenPrivate": 40,
     "privateReposNotItemised": 18
   }
 }
