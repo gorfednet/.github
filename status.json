@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-11-15T06:35:52.224Z",
-  "renderedAt": "2026-11-15T06:35:52.224Z",
+  "generatedAt": "2026-11-15T08:31:46.269Z",
+  "renderedAt": "2026-11-15T08:31:46.269Z",
   "repos": [
     {
       "slug": "gorfednet/bindercurve.com",
@@ -140,6 +140,21 @@
       "mainRed": false,
       "openPrs": [
         {
+          "number": 204,
+          "title": "Local-LLM eval harness: --reasoning flag, wait for unload (1.19)",
+          "ageDays": 0,
+          "labels": [
+            "ready-to-merge",
+            "needs-fix"
+          ],
+          "draft": false,
+          "review": "findings",
+          "headSha": "5c078ea246693d929afda4ce4bd7cfea3f37c39f",
+          "ci": "green",
+          "next": "Merge (Desk labelled 5c078ea at 03:17 ET, 15 November 2026)",
+          "author": "gorfednet"
+        },
+        {
           "number": 189,
           "title": "Plan: move the fleet into one GitHub organization (assessment only)",
           "ageDays": 0,
@@ -170,7 +185,7 @@
           "labels": [],
           "draft": true,
           "review": "not-run",
-          "headSha": "8a2bbcd5cad1a6fa273a5a65a493f7f8524345cd",
+          "headSha": "3e0f6e758a483c824cf3aa00a3a157b91e9b724b",
           "ci": "none",
           "next": "Desk appends each pass's line until the 02:00 ET rotation (hold: the log is still being written)",
           "author": "gorfednet"
@@ -561,11 +576,11 @@
   "branchesReadAt": "2026-11-15T02:31:55.477Z",
   "carried": true,
   "inventory": {
-    "measuredAt": "2026-11-15T06:35:52.224Z",
+    "measuredAt": "2026-11-15T08:31:46.269Z",
     "counts": {
       "pr": {
-        "total": 104,
-        "orphans": 62
+        "total": 105,
+        "orphans": 63
       },
       "session": null,
       "worktree": null,
@@ -576,6 +591,14 @@
       }
     },
     "orphans": [
+      {
+        "kind": "pr",
+        "repo": "gorfednet/.github",
+        "ref": "#204",
+        "label": "Local-LLM eval harness: --reasoning flag, wait for unload (1.19)",
+        "private": false,
+        "lapsed": false
+      },
       {
         "kind": "pr",
         "repo": "gorfednet/.github",
