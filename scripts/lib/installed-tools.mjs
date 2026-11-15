@@ -164,10 +164,12 @@ function checkoutOf(target) {
 
 /** How many commits on origin/main touched `path` since the newest committed version whose blob is `blob`; null when none matches. */
 function behindForBlob(clone, path, blob) {
+  if (!blob) return { unread: true } // hash-object failed: an unreadable file is not measured, never "ahead" (and null must not match a deletion below)
   const log = tryGit(clone, 'log', '--format=%H', 'origin/main', '--', path)
   if (log === null) return { unread: true }
   for (const c of log.split('\n').filter(Boolean)) {
-    if (tryGit(clone, 'rev-parse', '--verify', '--quiet', `${c}:${path}`) === blob) {
+    const at = tryGit(clone, 'rev-parse', '--verify', '--quiet', `${c}:${path}`) // null where the commit deleted the path
+    if (at !== null && at === blob) {
       return { behind: Number(git(clone, 'rev-list', '--count', `${c}..origin/main`, '--', path)) }
     }
   }

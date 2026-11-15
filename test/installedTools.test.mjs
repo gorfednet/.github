@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync, rmSync } from 'node:fs'
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, it } from 'node:test'
@@ -367,5 +367,34 @@ describe('review fixes: code-only ship-bot copy, ahead is not behind, fail close
     assert.match(sent[0], /^installed tools behind main: /)
     assert.match(sent[1], /could not measure for 3 runs \(1 items unread\)/)
     for (const t of sent) assert.ok(!t.includes(f.home) && !t.includes(f.root) && !t.includes('/Users/'), t)
+  })
+
+  it('an installed file that cannot be read is unread, not ahead and not a made-up count, in the mirror and in a copied directory', () => {
+    const f = fixture()
+    // history with a deletion: the path was committed, deleted and committed again, so a null blob would match the deletion commit
+    commitFile(f, 'docs/claude-home/rules/shipping.md', 's1\n')
+    sh(f.clone, 'rm', '-q', 'docs/claude-home/rules/shipping.md')
+    sh(f.clone, 'commit', '-q', '-m', 'delete')
+    commitFile(f, 'docs/claude-home/rules/shipping.md', 's2\n')
+    commitFile(f, 'scripts/review-status.mjs', 'r1\n')
+    sh(f.clone, 'rm', '-q', 'scripts/review-status.mjs')
+    sh(f.clone, 'commit', '-q', '-m', 'delete')
+    commitFile(f, 'scripts/review-status.mjs', 'r2\n')
+    const rule = join(f.home, '.claude', 'rules', 'shipping.md')
+    const gate = join(f.home, '.ship-bot', 'app', 'gate-scripts', 'review-status.mjs')
+    put(rule, 's2\n')
+    put(gate, 'r2\n')
+    assert.deepEqual(run(f).behind.filter((b) => b.tool === '~/.claude mirror' || b.tool === 'ship-bot gate scripts'), [], 'readable and current: nothing')
+    chmodSync(rule, 0o000)
+    chmodSync(gate, 0o000)
+    try {
+      const r = run(f)
+      assert.deepEqual(r.behind.filter((b) => b.tool === '~/.claude mirror' || b.tool === 'ship-bot gate scripts'), [], 'no ahead item and no count')
+      assert.ok(r.unread.includes('~/.claude/rules/shipping.md'), r.unread.join(' '))
+      assert.ok(r.unread.includes('~/.ship-bot/app/gate-scripts/review-status.mjs'), r.unread.join(' '))
+    } finally {
+      chmodSync(rule, 0o644)
+      chmodSync(gate, 0o644)
+    }
   })
 })
