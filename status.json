@@ -1,12 +1,12 @@
 {
-  "generatedAt": "2026-11-15T14:32:06.080Z",
-  "renderedAt": "2026-11-15T14:32:06.080Z",
+  "generatedAt": "2026-11-15T16:32:15.463Z",
+  "renderedAt": "2026-11-15T16:32:15.463Z",
   "repos": [
     {
       "slug": "gorfednet/bindercurve.com",
       "redacted": true,
-      "mainRed": false,
-      "openPrCount": 5,
+      "mainRed": true,
+      "openPrCount": 3,
       "lapsedBacklogCount": 0,
       "noPrCount": 79,
       "idlePrCount": 0,
@@ -142,7 +142,7 @@
         {
           "number": 189,
           "title": "Plan: move the fleet into one GitHub organization (assessment only)",
-          "ageDays": 0,
+          "ageDays": 1,
           "labels": [],
           "draft": true,
           "review": "findings",
@@ -154,7 +154,7 @@
         {
           "number": 149,
           "title": "Drain: fleet-report.mjs edit",
-          "ageDays": 1,
+          "ageDays": 2,
           "labels": [],
           "draft": true,
           "review": "not-run",
@@ -170,7 +170,7 @@
           "labels": [],
           "draft": true,
           "review": "not-run",
-          "headSha": "6d006a3fd0ad909b6e53715527cd4dbe7e1b395f",
+          "headSha": "e4dd3e35c95081567fd7e9d12a7fae0549205f94",
           "ci": "none",
           "next": "Desk appends each pass's line until the 02:00 ET rotation (hold: the log is still being written)",
           "author": "gorfednet"
@@ -416,7 +416,7 @@
       "idlePrs": [
         {
           "number": 117,
-          "idleDays": 3
+          "idleDays": 4
         },
         {
           "number": 113,
@@ -461,7 +461,7 @@
         {
           "number": 8,
           "title": "Drain: Acid3 sample fixtures",
-          "ageDays": 1,
+          "ageDays": 2,
           "labels": [],
           "draft": true,
           "review": "not-run",
@@ -561,11 +561,11 @@
   "branchesReadAt": "2026-11-15T02:31:55.477Z",
   "carried": true,
   "inventory": {
-    "measuredAt": "2026-11-15T14:32:06.080Z",
+    "measuredAt": "2026-11-15T16:32:15.463Z",
     "counts": {
       "pr": {
-        "total": 102,
-        "orphans": 60
+        "total": 100,
+        "orphans": 58
       },
       "session": null,
       "worktree": null,
@@ -673,7 +673,7 @@
         "lapsed": true
       }
     ],
-    "hiddenPrivate": 49,
+    "hiddenPrivate": 47,
     "privateReposNotItemised": 18
   }
 }
