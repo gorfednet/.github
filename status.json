@@ -1,15 +1,15 @@
 {
-  "generatedAt": "2026-11-15T20:31:58.538Z",
-  "renderedAt": "2026-11-15T20:31:58.538Z",
+  "generatedAt": "2026-11-15T22:32:00.360Z",
+  "renderedAt": "2026-11-15T22:32:00.360Z",
   "repos": [
     {
       "slug": "gorfednet/bindercurve.com",
       "redacted": true,
       "mainRed": true,
-      "openPrCount": 3,
+      "openPrCount": 4,
       "lapsedBacklogCount": 0,
       "noPrCount": 79,
-      "idlePrCount": 0,
+      "idlePrCount": 1,
       "duplicatePrCount": 0,
       "dependabotRedCount": 0,
       "kitVersion": "0.61.0"
@@ -18,7 +18,7 @@
       "slug": "gorfednet/4thcltr.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 23,
+      "openPrCount": 22,
       "lapsedBacklogCount": 0,
       "noPrCount": 13,
       "idlePrCount": 7,
@@ -140,6 +140,32 @@
       "mainRed": false,
       "openPrs": [
         {
+          "number": 208,
+          "title": "ci-resourcing: pool variable set on 11 repos, hosted jobs decided (plan 3.2)",
+          "ageDays": 0,
+          "labels": [
+            "ready-to-merge"
+          ],
+          "draft": false,
+          "review": "clean",
+          "headSha": "4b6f1364617fe6d6432ef30dfcc73ac64903c82a",
+          "ci": "green",
+          "next": "Merge (docs only).",
+          "author": "gorfednet"
+        },
+        {
+          "number": 207,
+          "title": "Installed tools: compare gate scripts and ~/.claude mirror, ntfy once on drift (plan 1.18)",
+          "ageDays": 0,
+          "labels": [],
+          "draft": true,
+          "review": "clean",
+          "headSha": "bc3b7d1ae22ef44ed35fabe8820ee54a6d993873",
+          "ci": "green",
+          "next": "After merge, ship-bot advances `gates-main`. Then the owner installs, one at a time. This PR changes `scripts/lib`, so the installed ship-bot reads stale until step 1.",
+          "author": "gorfednet"
+        },
+        {
           "number": 189,
           "title": "Plan: move the fleet into one GitHub organization (assessment only)",
           "ageDays": 1,
@@ -158,29 +184,20 @@
           "labels": [],
           "draft": true,
           "review": "not-run",
-          "headSha": "e67e4559e07b5af47e366b210f8b5cc413f72315",
+          "headSha": "7f21b767fc1770a13991e67d665ba9fad0765783",
           "ci": "none",
           "next": "Desk appends each pass's line until the 02:00 ET rotation (hold: the log is still being written)",
-          "author": "gorfednet"
-        },
-        {
-          "number": 136,
-          "title": "Handoff: session audit 12 November",
-          "ageDays": 2,
-          "labels": [],
-          "draft": true,
-          "review": "clean",
-          "headSha": "048529eb36af22d1700871c10646c9345d41db57",
-          "ci": "green",
-          "next": "Merge when checks are green (docs-only).",
           "author": "gorfednet"
         },
         {
           "number": 117,
           "title": "Handoff: fleet close-out plan and 4-week assessment (11 Nov)",
           "ageDays": 4,
-          "labels": [],
-          "draft": true,
+          "labels": [
+            "ready-to-merge",
+            "needs-fix"
+          ],
+          "draft": false,
           "review": "findings",
           "headSha": "e2a05068bbc3f8c3004f0292e10f12dd5f936a82",
           "ci": "green",
@@ -190,11 +207,14 @@
         {
           "number": 103,
           "title": "Handoff: recovery of 38 failed Herdr jobs",
-          "ageDays": 5,
-          "labels": [],
-          "draft": true,
+          "ageDays": 6,
+          "labels": [
+            "ready-to-merge",
+            "needs-fix"
+          ],
+          "draft": false,
           "review": "findings",
-          "headSha": "5056074d568b68b0dbe6366ec25d08478d9aba61",
+          "headSha": "91108205bc649c9b985761b45c8c9290a84df676",
           "ci": "green",
           "next": "Main session: run the gates and merge (docs-only).",
           "author": "gorfednet"
@@ -457,7 +477,7 @@
     {
       "slug": "gorfednet/MoonMan",
       "redacted": true,
-      "mainRed": false,
+      "mainRed": true,
       "openPrCount": 3,
       "lapsedBacklogCount": 2,
       "noPrCount": 41,
@@ -509,7 +529,7 @@
     {
       "slug": "gorfednet/heuristics.4thcltr.com",
       "redacted": true,
-      "mainRed": false,
+      "mainRed": true,
       "openPrCount": 10,
       "lapsedBacklogCount": 12,
       "noPrCount": 5,
@@ -521,7 +541,7 @@
     {
       "slug": "gorfednet/papers.4thcltr.com",
       "redacted": true,
-      "mainRed": false,
+      "mainRed": true,
       "openPrCount": 1,
       "lapsedBacklogCount": 0,
       "noPrCount": 1,
@@ -574,10 +594,10 @@
   "branchesReadAt": "2026-11-15T02:31:55.477Z",
   "carried": true,
   "inventory": {
-    "measuredAt": "2026-11-15T20:31:58.538Z",
+    "measuredAt": "2026-11-15T22:32:00.360Z",
     "counts": {
       "pr": {
-        "total": 80,
+        "total": 81,
         "orphans": 47
       },
       "session": null,
@@ -592,6 +612,14 @@
       {
         "kind": "pr",
         "repo": "gorfednet/.github",
+        "ref": "#207",
+        "label": "Installed tools: compare gate scripts and ~/.claude mirror, ntfy once on drift (plan 1.18)",
+        "private": false,
+        "lapsed": false
+      },
+      {
+        "kind": "pr",
+        "repo": "gorfednet/.github",
         "ref": "#189",
         "label": "Plan: move the fleet into one GitHub organization (assessment only)",
         "private": false,
@@ -602,14 +630,6 @@
         "repo": "gorfednet/.github",
         "ref": "#139",
         "label": "Desk log and briefs, 13 November",
-        "private": false,
-        "lapsed": false
-      },
-      {
-        "kind": "pr",
-        "repo": "gorfednet/.github",
-        "ref": "#136",
-        "label": "Handoff: session audit 12 November",
         "private": false,
         "lapsed": false
       },
