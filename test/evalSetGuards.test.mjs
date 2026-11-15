@@ -260,6 +260,42 @@ describe('a run stops, aborts, unloads and frees the lock on SIGINT, and records
     assert.ok(seen.length > cs.length && seen[0][0] === 8, 'the warm-up request comes first with max_tokens 8')
     assert.ok(seen.every(([, o]) => o.chat_template_kwargs?.enable_thinking === false))
   })
+  it('--reasoning sends reasoning_effort on the warm-up and every case, merges with --no-thinking, and is recorded', async () => {
+    for (const [thinking, want] of [[true, { reasoning_effort: 'low' }], [false, { enable_thinking: false, reasoning_effort: 'low' }]]) {
+      const seen = []
+      const io = mk('s'); io.thinking = thinking; io.reasoning = 'low'; delete io.warm
+      io.chat = async (b, m, msgs, t, mt, sig, opts) => { seen.push(opts); return { text: '{"verdict":"valid"}', ms: 1 } }
+      const arm = await runModel(cs, 'm', 'http://stub', io)
+      assert.equal(arm._model.reasoning, 'low')
+      assert.ok(seen.length > cs.length && seen.every((o) => JSON.stringify(o.chat_template_kwargs) === JSON.stringify(want)))
+    }
+    const io = mk('s'); io.chat = async () => ({ text: '{"verdict":"valid"}', ms: 1 })
+    assert.equal('reasoning' in (await runModel(cs, 'm', 'http://stub', io))._model, false)
+  })
+  it('waits after the unload until the server reports the model unloaded', async () => {
+    const io = mk('s'); io.chat = async () => ({ text: '{"verdict":"valid"}', ms: 1 })
+    let after = 0; const base = io.listModels
+    io.unload = async () => { io.calls.push('unload'); after = 1 }
+    io.listModels = async () => { if (after && after++ <= 2) { io.calls.push('list-loaded'); return [{ id: 'm', status: 'loaded', sha: 's' }] } if (after) io.calls.push('list-unloaded'); return base() }
+    io.sleep = async () => { io.calls.push('sleep') }
+    await runModel(cs, 'm', 'http://stub', io)
+    assert.deepEqual(io.calls, ['unload', 'list-loaded', 'sleep', 'list-loaded', 'sleep', 'list-unloaded'])
+    assert.equal(fs.existsSync(io.lock), false)
+  })
+  it('gives up the unload wait with a warning and still returns the scored arm', async () => {
+    const io = mk('s'); io.chat = async () => ({ text: '{"verdict":"valid"}', ms: 1 })
+    let t = 0, polls = 0
+    io.listModels = async (b) => { if (t > 0 || polls++ > 0) return [{ id: 'm', status: 'loading', sha: 's' }]; return [{ id: 'm', status: 'unloaded', sha: 's' }] }
+    io.unload = async () => { t = 1 }
+    io.now = () => t; io.sleep = async (ms) => { t += ms }; io.unloadWaitMs = 6000; io.unloadPollMs = 2000
+    const err = []; const orig = process.stderr.write
+    process.stderr.write = (c) => { err.push(String(c)); return true }
+    let arm
+    try { arm = await runModel(cs, 'm', 'http://stub', io) } finally { process.stderr.write = orig }
+    assert.ok(arm['rev-01'].verdict)
+    assert.ok(err.some((l) => /warning: m still reported loaded/.test(l)))
+    assert.equal(fs.existsSync(io.lock), false)
+  })
   it('records a length-truncated empty reply as a truncated case result, while a real chat failure stays an error', async () => {
     const io = mk('s'); let n = 0
     io.chat = async () => { n++; if (n === 2) return { text: '', ms: 4, truncated: true }; if (n === 3) throw new Error('chat: no content'); return { text: '{"verdict":"valid"}', ms: 1 } }
@@ -360,6 +396,13 @@ describe('evalset-run CLI: fail closed on flags, harness errors exit non-zero, a
     const r = await cli(['--model', 'm', '--out', path.join(dir, 'o.json'), '--no-think'])
     assert.equal(r.status, 2)
     assert.match(r.stderr, /unknown flag --no-think/)
+  })
+  it('rejects a --reasoning value other than low, medium or high before any request', async () => {
+    for (const v of ['extreme', 'LOW', '--no-thinking']) {
+      const r = await cli(['--model', 'm', '--out', path.join(dir, 'o.json'), '--reasoning', v], { LOCAL_LLM_URL: 'http://127.0.0.1:1' })
+      assert.equal(r.status, 2)
+      assert.match(r.stderr, /--reasoning/)
+    }
   })
   it('rejects --warmup-min 0 and --warmup-min x before any request', async () => {
     for (const v of ['0', 'x']) {
