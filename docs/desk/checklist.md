@@ -189,3 +189,4 @@ Weekly 9% at 11:21 ET. Full speed, cost-aware. One line to the owner at about 90
 - [ ] 23rd Desk archive (refused while open on screen)
 - [ ] First gowyllop runner appears and passes at the next busy bc queue (6c sizes it)
 - [ ] bc production-monitor Playwright mismatch (1 red at 10:18 ET, next green): watch
+- [ ] .github 205: plan rows 3.11 (pool GitHub App) and 3.2 (11 skipped repos), then start 3.11
