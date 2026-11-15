@@ -244,27 +244,32 @@ export function run({ root, keep, idleMs, apply, now = Date.now(), fetch = true,
  *
  * A branch is deleted only when none of these keep it:
  *   - protected: the default branch, main, master, status, desk-log, gates-main, tools-main, janitor-main
- *   - an open pull request has it as its head (one `gh pr list` call for the repository, never a loop)
+ *   - an open pull request has it as its head or its base (one `gh pr list` call for the repository, never a loop)
  *   - a worktree of the clone has it checked out, or a live session's folder (the keep file) does
  *   - its tip is on the default branch's first-parent line: it has no commits of its own (a branch just cut)
- *   - its tip commit is under `minAgeMs` old (default 24 hours)
+ *   - its tip commit is under `minAgeMs` old (default 24 hours), or under 8 days for a `janitor/train-` branch:
+ *     janitor-train.mjs reads that branch on origin as the week's one-train lock, so a merged train stays that long
  * Ship-bot merges with merge commits only, so a branch whose pull request merged is reachable from the
  * default branch off that line. Fail closed: a failed fetch, a shallow clone, a failed or cut-off pull
  * request list, or a missing default branch ends the sweep with one `abort` row and no deletion.
  * Without `apply` nothing changes. Deletes run through `git push origin --delete`, in batches, and each
  * branch's tip is read from origin again just before its batch, so one that moved since the fetch stays.
+ * A push that lands between that read and the delete (about one round trip) still loses origin's copy of
+ * its commits; the pusher keeps them. No lease is used: the owner's settings deny force-push patterns.
  */
 const DAY_MS = 86400000
 export const REMOTE_PREFIX = 'refs/remotes/origin/'
 const PR_LIST_LIMIT = 1000
+const TRAIN_PREFIX = 'janitor/train-'
+const TRAIN_MIN_AGE_MS = 8 * DAY_MS
 
-/** Head branch names of the open pull requests in `slug`, from one call. Throws rather than return a cut-off list. */
+/** Head and base branch names of the open pull requests in `slug`, from one call. Throws rather than return a cut-off list. */
 export function openPullRequestBranches(slug) {
-  const out = execFileSync('gh', ['pr', 'list', '--repo', slug, '--state', 'open', '--limit', String(PR_LIST_LIMIT), '--json', 'headRefName'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+  const out = execFileSync('gh', ['pr', 'list', '--repo', slug, '--state', 'open', '--limit', String(PR_LIST_LIMIT), '--json', 'headRefName,baseRefName'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
   const rows = JSON.parse(out)
   if (!Array.isArray(rows)) throw new Error('gh pr list did not return an array')
   if (rows.length >= PR_LIST_LIMIT) throw new Error(`gh pr list returned ${rows.length} pull requests, the limit: the list may be cut`)
-  return rows.map((r) => r.headRefName)
+  return rows.flatMap((r) => [r.headRefName, r.baseRefName]).filter(Boolean)
 }
 
 /** Branches checked out in the clone's worktrees (main checkout included), and in the keep file's folders. */
@@ -273,7 +278,9 @@ function checkedOutBranches(clone, keep) {
   const note = (branch, why) => {
     if (branch && !checked.has(branch)) checked.set(branch, why)
   }
-  for (const wt of parseWorktrees(tryGit(clone, 'worktree', 'list', '--porcelain').out)) note(wt.branch, keep.has(canonical(wt.path)) ? 'live session' : 'checked out in a worktree')
+  const list = tryGit(clone, 'worktree', 'list', '--porcelain')
+  if (!list.ok) return null
+  for (const wt of parseWorktrees(list.out)) note(wt.branch, keep.has(canonical(wt.path)) ? 'live session' : 'checked out in a worktree')
   const slug = parseGitHubSlug(tryGit(clone, 'remote', 'get-url', 'origin').out)
   for (const path of keep) {
     if (!existsSync(path)) continue
@@ -309,8 +316,11 @@ export function remoteSweep({ clone, slug, keep = new Set(), minAgeMs = DAY_MS, 
   }
   const listed = tryGit(clone, 'for-each-ref', `--merged=${mainRef}`, '--format=%(refname)\t%(objectname)\t%(committerdate:unix)', REMOTE_PREFIX)
   if (!listed.ok) return abort(`for-each-ref failed: ${listed.out.split('\n')[0]}`)
-  const firstParent = new Set(tryGit(clone, 'rev-list', '--first-parent', mainRef).out.split('\n'))
+  const line = tryGit(clone, 'rev-list', '--first-parent', mainRef)
+  if (!line.ok) return abort(`rev-list failed: ${line.out.split('\n')[0]}`)
+  const firstParent = new Set(line.out.split('\n'))
   const checked = checkedOutBranches(clone, keep)
+  if (!checked) return abort('worktree list failed')
   const protectedNames = new Set([...PROTECTED_BRANCHES, base])
   const todo = []
   for (const line of listed.out.split('\n').filter(Boolean)) {
@@ -324,7 +334,7 @@ export function remoteSweep({ clone, slug, keep = new Set(), minAgeMs = DAY_MS, 
     else if (open.has(branch)) emit({ ...row, verdict: 'keep', reason: 'open pull request' })
     else if (checked.has(branch)) emit({ ...row, verdict: 'keep', reason: checked.get(branch) })
     else if (firstParent.has(sha)) emit({ ...row, verdict: 'keep', reason: 'no commits of its own (tip is on the default branch)' })
-    else if (!Number.isFinite(age) || age < minAgeMs) emit({ ...row, verdict: 'keep', reason: `tip is ${Number.isFinite(age) ? Math.round(age / 3600000) : '?'} h old` })
+    else if (!Number.isFinite(age) || age < (branch.startsWith(TRAIN_PREFIX) ? Math.max(minAgeMs, TRAIN_MIN_AGE_MS) : minAgeMs)) emit({ ...row, verdict: 'keep', reason: `tip is ${Number.isFinite(age) ? Math.round(age / 3600000) : '?'} h old` })
     else todo.push(row)
   }
   if (!apply) {
@@ -336,7 +346,7 @@ export function remoteSweep({ clone, slug, keep = new Set(), minAgeMs = DAY_MS, 
     // Read each tip from origin again: a branch pushed to since the fetch is no longer the merged one.
     const heads = tryGit(clone, 'ls-remote', '--heads', 'origin', ...batch.map((r) => `refs/heads/${r.branch}`))
     if (!heads.ok) {
-      for (const row of batch) emit({ ...row, verdict: 'keep', reason: `could not re-read origin: ${heads.out.split('\n')[0]}`, deleted: false })
+      for (const row of batch) emit({ ...row, verdict: 'delete', reason: 'merged into the default branch', deleted: false, error: `could not re-read origin: ${heads.out.split('\n')[0]}` })
       continue
     }
     const tips = new Map(heads.out.split('\n').filter(Boolean).map((l) => l.split('\t')).map(([sha, ref]) => [ref, sha]))
@@ -352,8 +362,14 @@ export function remoteSweep({ clone, slug, keep = new Set(), minAgeMs = DAY_MS, 
     if (push(sure).ok) {
       for (const row of sure) emit({ ...row, verdict: 'delete', reason: 'merged into the default branch', deleted: true })
     } else {
-      // One refused ref can fail the batch: find which by going one at a time.
+      // A refused ref fails the push, but git deletes the others. Read origin again: what is gone counts as deleted.
+      const after = tryGit(clone, 'ls-remote', '--heads', 'origin', ...sure.map((r) => `refs/heads/${r.branch}`))
+      const left = after.ok ? new Set(after.out.split('\n').filter(Boolean).map((l) => l.split('\t')[1])) : null
       for (const row of sure) {
+        if (left && !left.has(`refs/heads/${row.branch}`)) {
+          emit({ ...row, verdict: 'delete', reason: 'merged into the default branch', deleted: true })
+          continue
+        }
         const one = push([row])
         emit({ ...row, verdict: 'delete', reason: 'merged into the default branch', deleted: one.ok, ...(one.ok ? {} : { error: one.out.split('\n')[0] }) })
       }

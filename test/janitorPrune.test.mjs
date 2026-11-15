@@ -4,7 +4,7 @@
  */
 import { strict as assert } from 'node:assert'
 import { execFileSync, spawnSync } from 'node:child_process'
-import { existsSync, mkdtempSync, mkdirSync, realpathSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, it } from 'node:test'
@@ -181,7 +181,9 @@ describe('janitor-prune', () => {
  */
 function sweepFleet() {
   const top = realpathSync(mkdtempSync(join(tmpdir(), 'janitor-sweep-')))
-  const origin = join(top, 'origin.git')
+  // A path ending in github.com/<owner>/<name>.git reads as that repository's slug, so the keep-file slug filter and the CLI find it.
+  const origin = join(top, 'github.com', 'gorfednet', 'site.git')
+  mkdirSync(join(top, 'github.com', 'gorfednet'), { recursive: true })
   const clone = join(top, 'gorfednet', 'site')
   mkdirSync(join(top, 'gorfednet'))
   execFileSync('git', ['init', '--quiet', '--bare', '-b', 'main', origin])
@@ -206,7 +208,7 @@ function sweepFleet() {
     if (merge) git(clone, 'merge', '--quiet', '--no-ff', '-m', `merge ${name}`, name)
     git(clone, 'branch', '-D', name)
   }
-  for (const name of ['feat/old-merged-1', 'feat/old-merged-2', 'feat/old-merged-3', 'feat/open-pr', 'feat/checked-out', 'feat/live', 'status', 'desk-log', 'gates-main', 'tools-main', 'janitor-main', 'master']) branch(name)
+  for (const name of ['feat/old-merged-1', 'feat/old-merged-2', 'feat/old-merged-3', 'feat/open-pr', 'feat/base-of-pr', 'janitor/train-site-2026-W46', 'feat/checked-out', 'feat/live', 'feat/keep-file-only', 'status', 'desk-log', 'gates-main', 'tools-main', 'janitor-main', 'master']) branch(name)
   branch('feat/fresh-merged', { when: new Date().toISOString() })
   branch('feat/unmerged', { merge: false })
   git(clone, 'push', '--quiet', 'origin', 'main')
@@ -221,11 +223,14 @@ function sweepFleet() {
   }
   const checkedOut = wt('co', 'feat/checked-out')
   const live = wt('live', 'feat/live')
-  return { top, origin, clone, checkedOut, live }
+  // A second clone of the same origin, as another session's folder would be: not a worktree of `clone`.
+  const elsewhere = join(top, 'elsewhere')
+  execFileSync('git', ['clone', '--quiet', '--branch', 'feat/keep-file-only', origin, elsewhere], { stdio: 'ignore' })
+  return { top, origin, clone, checkedOut, live, elsewhere }
 }
 
 const remoteHeads = (f) => git(f.clone, 'ls-remote', '--heads', 'origin').split('\n').map((l) => l.split('\trefs/heads/')[1]).sort()
-const OPEN = () => ['feat/open-pr']
+const OPEN = () => ['feat/open-pr', 'main', 'feat/base-of-pr']
 
 describe('janitor-prune --remote-sweep', () => {
   const sweep = (f, over = {}) => remoteSweep({ clone: f.clone, slug: 'gorfednet/site', keep: new Set([f.live]), openBranches: OPEN, log: quiet, ...over })
@@ -234,34 +239,37 @@ describe('janitor-prune --remote-sweep', () => {
   it('without --apply lists what it would delete and changes nothing on origin', () => {
     const f = sweepFleet()
     const before = remoteHeads(f)
-    const r = sweep(f)
+    const r = sweep(f, { keep: new Set([f.live, f.elsewhere]) })
     const v = verdicts(r)
     for (const b of ['feat/old-merged-1', 'feat/old-merged-2', 'feat/old-merged-3']) assert.equal(v[b], 'delete:merged into the default branch', b)
     assert.equal(v['feat/open-pr'], 'keep:open pull request')
+    assert.equal(v['feat/base-of-pr'], 'keep:open pull request', 'the base of an open pull request stays')
+    assert.match(v['janitor/train-site-2026-W46'], /^keep:tip is \d+ h old/, 'a merged train branch is the week\'s lock for 8 days')
     assert.equal(v['feat/checked-out'], 'keep:checked out in a worktree')
     assert.equal(v['feat/live'], 'keep:live session')
+    assert.equal(v['feat/keep-file-only'], 'keep:live session', 'a branch held only by another clone in the keep file')
     assert.match(v['feat/fresh-merged'], /^keep:tip is 0 h old/)
     assert.match(v['feat/just-cut'], /^keep:no commits of its own/)
     assert.equal(v.main, 'keep:protected')
     assert.equal(v['feat/unmerged'], undefined, 'an unmerged branch is not even listed')
-    assert.deepEqual([r.summary.merged, r.summary.delete, r.summary.deleted, r.summary.applied], [r.rows.filter((x) => x.branch).length, 3, 0, false])
+    assert.deepEqual([r.summary.delete, r.summary.deleted, r.summary.applied], [3, 0, false])
     assert.deepEqual(remoteHeads(f), before)
   })
 
   it('never deletes a protected name, even merged and old', () => {
     const f = sweepFleet()
-    const v = verdicts(sweep(f, { apply: true }))
+    const v = verdicts(sweep(f, { apply: true, keep: new Set() }))
     for (const b of ['status', 'desk-log', 'gates-main', 'tools-main', 'janitor-main', 'master', 'main']) assert.equal(v[b], 'keep:protected', b)
     for (const b of ['status', 'desk-log', 'gates-main', 'tools-main', 'janitor-main', 'master', 'main']) assert.ok(remoteHeads(f).includes(b), `${b} is still on origin`)
   })
 
   it('with apply deletes exactly the merged, old, unprotected, unclaimed branches, in batches', () => {
     const f = sweepFleet()
-    const r = sweep(f, { apply: true, batchSize: 2 })
+    const r = sweep(f, { apply: true, batchSize: 2, keep: new Set([f.live, f.elsewhere]) })
     assert.deepEqual([r.summary.deleted, r.summary.failed], [3, 0])
     const left = remoteHeads(f)
     for (const b of ['feat/old-merged-1', 'feat/old-merged-2', 'feat/old-merged-3']) assert.ok(!left.includes(b), b)
-    for (const b of ['feat/open-pr', 'feat/checked-out', 'feat/live', 'feat/fresh-merged', 'feat/unmerged', 'feat/just-cut', 'main', 'status']) assert.ok(left.includes(b), `${b} survives`)
+    for (const b of ['feat/open-pr', 'feat/base-of-pr', 'janitor/train-site-2026-W46', 'feat/keep-file-only', 'feat/checked-out', 'feat/live', 'feat/fresh-merged', 'feat/unmerged', 'feat/just-cut', 'main', 'status']) assert.ok(left.includes(b), `${b} survives`)
   })
 
   it('fails closed: a failed open-pull-request list, a failed fetch or a shallow clone deletes nothing', () => {
@@ -299,7 +307,79 @@ describe('janitor-prune --remote-sweep', () => {
     assert.ok(!remoteHeads(f).includes('feat/old-merged-1'))
   })
 
-  it('exits 2 with the cause for a missing keep file or an unknown slug, and 0 on a dry run through the CLI', () => {
+  it('a refused ref in a batch does not hide the ones that went: they count as deleted, the refused one as failed', () => {
+    const f = sweepFleet()
+    const hook = join(f.origin, 'hooks', 'update')
+    writeFileSync(hook, '#!/bin/sh\n[ "$1" = refs/heads/feat/old-merged-2 ] && { echo refused >&2; exit 1; }\nexit 0\n')
+    chmodSync(hook, 0o755)
+    const r = sweep(f, { apply: true, batchSize: 20, keep: new Set([f.live, f.elsewhere]) })
+    assert.deepEqual([r.summary.deleted, r.summary.failed], [2, 1])
+    assert.equal(r.rows.find((x) => x.branch === 'feat/old-merged-2').deleted, false)
+    assert.equal(r.rows.find((x) => x.branch === 'feat/old-merged-1').deleted, true)
+    assert.ok(remoteHeads(f).includes('feat/old-merged-2'))
+    assert.ok(!remoteHeads(f).includes('feat/old-merged-1') && !remoteHeads(f).includes('feat/old-merged-3'))
+  })
+
+  it('aborts on a shallow clone', () => {
+    const f = sweepFleet()
+    const shallow = join(f.top, 'shallow')
+    execFileSync('git', ['clone', '--quiet', '--depth', '1', `file://${f.origin}`, shallow], { stdio: 'ignore' })
+    const r = remoteSweep({ clone: shallow, slug: 'gorfednet/site', openBranches: OPEN, fetch: false, apply: true, log: quiet })
+    assert.equal(r.aborted, true)
+    assert.match(r.rows[0].reason, /shallow clone/)
+  })
+
+  describe('through the CLI, with a fake gh on PATH', () => {
+    const script = new URL('../scripts/janitor-prune.mjs', import.meta.url).pathname
+    const cli = (f, ghBody, ...extra) => {
+      const bin = join(f.top, 'bin')
+      mkdirSync(bin, { recursive: true })
+      writeFileSync(join(bin, 'gh'), `#!/bin/sh\n${ghBody}\n`)
+      chmodSync(join(bin, 'gh'), 0o755)
+      const keepFile = join(f.top, 'keep.txt')
+      writeFileSync(keepFile, `${f.live}\n${f.elsewhere}\n`)
+      return spawnSync(process.execPath, [script, '--remote-sweep', 'gorfednet/site', '--root', join(f.top, 'gorfednet'), '--keep-file', keepFile, ...extra], { encoding: 'utf8', env: { ...process.env, PATH: `${bin}:${process.env.PATH}` } })
+    }
+    const lastLine = (out) => JSON.parse(out.stdout.trim().split('\n').at(-1))
+
+    it('exits 0 and prints the summary last on a dry run, and asks gh for heads and bases once', () => {
+      const f = sweepFleet()
+      const calls = join(f.top, 'gh-calls.txt')
+      const out = cli(f, `echo "$@" >> ${calls}\necho '[{"headRefName":"feat/open-pr","baseRefName":"main"},{"headRefName":"x","baseRefName":"feat/base-of-pr"}]'`)
+      assert.equal(out.status, 0, out.stderr)
+      assert.deepEqual([lastLine(out).summary.delete, lastLine(out).summary.applied], [3, false])
+      assert.equal(readFileSync(calls, 'utf8').trim().split('\n').length, 1, 'one gh call')
+      assert.match(readFileSync(calls, 'utf8'), /pr list --repo gorfednet\/site --state open .*--json headRefName,baseRefName/)
+    })
+
+    it('exits 3 and deletes nothing when gh fails or its list may be cut', () => {
+      const f = sweepFleet()
+      const before = remoteHeads(f)
+      const failed = cli(f, 'echo rate limited >&2; exit 1', '--apply')
+      assert.equal(failed.status, 3)
+      assert.match(failed.stdout, /open pull request list failed: rate limited/)
+      const cut = cli(f, `node -e 'console.log(JSON.stringify(Array.from({length: 1000}, (_, i) => ({headRefName: "b" + i, baseRefName: "main"}))))'`, '--apply')
+      assert.equal(cut.status, 3)
+      assert.match(cut.stdout, /the list may be cut/)
+      assert.deepEqual(remoteHeads(f), before)
+    })
+
+    it('exits 0 with --apply when every delete lands, and 1 when one fails', () => {
+      const f = sweepFleet()
+      const ok = cli(f, `echo '[]'`, '--apply')
+      assert.equal(ok.status, 0, ok.stderr)
+      assert.equal(lastLine(ok).summary.deleted, 5, 'with no open pull requests the open-pr and base-of-pr branches go too')
+      const g = sweepFleet()
+      const hook = join(g.origin, 'hooks', 'update')
+      writeFileSync(hook, '#!/bin/sh\n[ "$1" = refs/heads/feat/old-merged-1 ] && exit 1\nexit 0\n')
+      chmodSync(hook, 0o755)
+      const bad = cli(g, `echo '[]'`, '--apply')
+      assert.equal(bad.status, 1)
+      assert.equal(lastLine(bad).summary.failed, 1)
+    })
+  })
+
+  it('exits 2 with the cause for a missing keep file, a bad slug or an unknown clone', () => {
     const script = new URL('../scripts/janitor-prune.mjs', import.meta.url).pathname
     const f = sweepFleet()
     const root = join(f.top, 'gorfednet')

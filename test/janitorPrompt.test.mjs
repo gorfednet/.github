@@ -239,6 +239,9 @@ test("janitor step 5b sweeps merged origin branches through the script only, aft
   assert.match(step[0], /Exit 3 means it stopped before deleting anything/);
   assert.match(step[0], /never delete a branch any other way, and never put a branch name on a command line/);
   assert.match(prompt, /remote sweep's merged, deleted and kept counts \(step 5b\)/);
-  const without = step[0].replace(/adding `--apply` before the `>` in a live run/, "");
+  assert.match(step[0], /If step 4\.1 saw 100 sessions, leave `--apply` off/);
+  assert.match(step[0], /head or the base of an open pull request/);
+  assert.match(step[0], /8 days for `janitor\/train-\*`/);
+  const without = step[0].replace(/adding `--apply` before the `>` in a live run/, "").replace(/leave `--apply` off/, "");
   assert.doesNotMatch(without, /--apply/, "the only --apply in 5b is the live-run one");
 });
