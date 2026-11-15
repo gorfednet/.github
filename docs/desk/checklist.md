@@ -208,3 +208,8 @@ Weekly 9% at 11:21 ET. Full speed, cost-aware. One line to the owner at about 90
 - [ ] Releases tonight: heuristics, papers, gorfed.net (release-wk46); 4thcltr Mon 16 Nov
 - [ ] Cluster plan with Fable review (cluster-plan); owner decision on where release gates run
 - [ ] 3.2 hosted jobs to the pool (pool-hosted-3-2); 1.18 installed drift (installed-drift-1-18)
+
+## Added 15 Nov evening (29th Desk)
+- [x] bc 670 labelled (17:38 ET); [ ] merge, then the owner's fill spread line and reinstall
+- [x] 28th Desk retired and archived
+- [ ] Public .github upkeep (1.30): guard and README first, then move logs and plans to ops; held on the Time Machine backup
