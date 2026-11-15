@@ -1,12 +1,12 @@
 {
-  "generatedAt": "2026-11-14T22:32:18.289Z",
-  "renderedAt": "2026-11-14T22:32:18.289Z",
+  "generatedAt": "2026-11-15T00:48:01.684Z",
+  "renderedAt": "2026-11-15T00:48:01.684Z",
   "repos": [
     {
       "slug": "gorfednet/bindercurve.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 6,
+      "openPrCount": 8,
       "lapsedBacklogCount": 0,
       "noPrCount": 78,
       "idlePrCount": 0,
@@ -18,7 +18,7 @@
       "slug": "gorfednet/4thcltr.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 24,
+      "openPrCount": 23,
       "lapsedBacklogCount": 0,
       "noPrCount": 13,
       "idlePrCount": 7,
@@ -140,45 +140,6 @@
       "mainRed": false,
       "openPrs": [
         {
-          "number": 199,
-          "title": "Cost per PR follow-ups: link-taught window, janitor untrusted strings via files (191)",
-          "ageDays": 0,
-          "labels": [],
-          "draft": false,
-          "review": "findings",
-          "headSha": "ea2636681c75222dd316d2d5c0ffeae2686239e7",
-          "ci": "green",
-          "next": "Claude review clean and a Fable reviewer read (control plane), then Desk labels",
-          "author": "gorfednet"
-        },
-        {
-          "number": 198,
-          "title": "Eval set scoring v3 (plan 1.27b, part 1)",
-          "ageDays": 0,
-          "labels": [],
-          "draft": true,
-          "review": "findings",
-          "headSha": "f43c871c2ecd9bd3ebbaaa04da041e0d8e41e3e7",
-          "ci": "green",
-          "next": "Later: copy scoring refuses any quoted span (round 4, f43c871), which also rejects honest copy that quotes a phrase. Revisit with the copy grader: score only the text check-voice reads and require it to cover most of the answer",
-          "author": "gorfednet"
-        },
-        {
-          "number": 196,
-          "title": "Weekly lessons: model and skill currency (1.29)",
-          "ageDays": 0,
-          "labels": [
-            "ready-to-merge",
-            "needs-fix"
-          ],
-          "draft": false,
-          "review": "findings",
-          "headSha": "41b392755b70c67a5e84bc6f2d1437eb8ac89e6b",
-          "ci": "green",
-          "next": "Claude review clean",
-          "author": "gorfednet"
-        },
-        {
           "number": 189,
           "title": "Plan: move the fleet into one GitHub organization (assessment only)",
           "ageDays": 0,
@@ -209,7 +170,7 @@
           "labels": [],
           "draft": true,
           "review": "not-run",
-          "headSha": "2e8a5b13bea93a5844eef57f90d466d5551a1309",
+          "headSha": "408269629d3138c8d64899a78164b0bc1934f087",
           "ci": "none",
           "next": "Desk appends each pass's line until the 02:00 ET rotation (hold: the log is still being written)",
           "author": "gorfednet"
@@ -241,7 +202,7 @@
         {
           "number": 133,
           "title": "Assessment 12 Nov: output quality, hardening, orchestration (plan, backlog, week-one briefs)",
-          "ageDays": 1,
+          "ageDays": 2,
           "labels": [
             "ready-to-merge"
           ],
@@ -438,6 +399,18 @@
           "title": "Six active repositories are missing from fleet.json",
           "status": "confirmed-bug",
           "reviewBy": "2026-11-27"
+        },
+        {
+          "id": "janitor-prompt-199-lows",
+          "title": "Janitor PROMPT.md: two Low findings left from .github 199",
+          "status": "confirmed-bug",
+          "reviewBy": "2026-11-28"
+        },
+        {
+          "id": "eval-triage-dangerous-must-be-zero",
+          "title": "Eval judge lets a candidate match Haiku's dangerous triage misses instead of requiring none",
+          "status": "confirmed-bug",
+          "reviewBy": "2026-11-28"
         }
       ],
       "idlePrs": [
@@ -473,7 +446,7 @@
       "redacted": true,
       "mainRed": true,
       "openPrCount": 9,
-      "lapsedBacklogCount": 0,
+      "lapsedBacklogCount": 2,
       "noPrCount": 41,
       "idlePrCount": 0,
       "duplicatePrCount": 0,
@@ -561,7 +534,7 @@
       "redacted": true,
       "mainRed": false,
       "openPrCount": 2,
-      "lapsedBacklogCount": 5,
+      "lapsedBacklogCount": 6,
       "noPrCount": 3,
       "idlePrCount": 0,
       "duplicatePrCount": 0,
@@ -572,7 +545,7 @@
       "slug": "gorfednet/ops",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 4,
+      "openPrCount": 3,
       "lapsedBacklogCount": 0,
       "noPrCount": 0,
       "idlePrCount": 0,
@@ -588,45 +561,21 @@
   "branchesReadAt": "2026-11-14T02:32:09.796Z",
   "carried": true,
   "inventory": {
-    "measuredAt": "2026-11-14T22:32:18.289Z",
+    "measuredAt": "2026-11-15T00:48:01.684Z",
     "counts": {
       "pr": {
-        "total": 109,
-        "orphans": 64
+        "total": 106,
+        "orphans": 63
       },
       "session": null,
       "worktree": null,
       "job": null,
       "backlog": {
-        "total": 10,
+        "total": 12,
         "orphans": 1
       }
     },
     "orphans": [
-      {
-        "kind": "pr",
-        "repo": "gorfednet/.github",
-        "ref": "#199",
-        "label": "Cost per PR follow-ups: link-taught window, janitor untrusted strings via files (191)",
-        "private": false,
-        "lapsed": false
-      },
-      {
-        "kind": "pr",
-        "repo": "gorfednet/.github",
-        "ref": "#198",
-        "label": "Eval set scoring v3 (plan 1.27b, part 1)",
-        "private": false,
-        "lapsed": false
-      },
-      {
-        "kind": "pr",
-        "repo": "gorfednet/.github",
-        "ref": "#196",
-        "label": "Weekly lessons: model and skill currency (1.29)",
-        "private": false,
-        "lapsed": false
-      },
       {
         "kind": "pr",
         "repo": "gorfednet/.github",
@@ -724,7 +673,7 @@
         "lapsed": true
       }
     ],
-    "hiddenPrivate": 50,
+    "hiddenPrivate": 52,
     "privateReposNotItemised": 18
   }
 }
