@@ -193,4 +193,5 @@ Weekly 9% at 11:21 ET. Full speed, cost-aware. One line to the owner at about 90
 - [x] .github 205 closed (duplicate of live row 1.16); evidence in 1.16 and 3.2
 - [ ] 1.16 pool GitHub App: owner's App step next (ask at the Mac)
 - [ ] 4thcltr 274 in CI; [x] 257 clean and labelled (11:4x ET)
-- [ ] .github 206 (carries 133, 1.1 briefs dir): labelled; [x] plan row 2.9 reworded to the gate pin
+- [x] .github 206 merged (carries 133, 1.1 briefs dir); [x] plan row 2.9 reworded to the gate pin
+- [ ] Desk rotation at the owner's next Mac message (230k at 12:07 ET)
