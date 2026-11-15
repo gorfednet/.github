@@ -216,4 +216,5 @@ Weekly 9% at 11:21 ET. Full speed, cost-aware. One line to the owner at about 90
 
 ## Added 15 Nov evening (30th Desk)
 - [x] heuristics, papers, gorfed.net heavy CI hosted for the releases (18:20 ET); [ ] back to the pool once the 3 release PRs are green
-- [ ] 30th Desk: Time Machine pause decision (owner)
+- [x] Time Machine paused until 02:00 ET Mon 16 Nov (owner yes, 18:2x ET)
+- [x] .github 210 cluster plan labelled; [ ] plan rows for its items 1 to 10 after merge; [ ] .github 207 Fable read, then label
