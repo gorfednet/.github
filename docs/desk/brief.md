@@ -2,7 +2,7 @@
 
 Model: Opus 5.5, effort high. Permission mode: auto. Remote Control: on.
 Folder: `~/Developer/gorfednet/gorfednet.github` (main checkout, read-only for Desk; writes go in worktrees).
-Plan: `docs/plan-of-record.md`. Yesterday's log: newest `docs/desk/<date>.md` on the `desk-log` branch (`git show origin/desk-log:docs/desk/<date>.md`). Read both first, nothing else.
+Plan: `git show origin/desk-log:docs/plan-of-record.md`. Main's copy is stale, since it stops at 14 Nov 07:31 ET (15 Nov 2026: the 24th Desk opened .github 205 against it, duplicating row 1.16). Yesterday's log: newest `docs/desk/<date>.md` on the `desk-log` branch (`git show origin/desk-log:docs/desk/<date>.md`). Read both first, nothing else.
 
 ## Role
 - The owner talks only to Desk, from his phone through Remote Control or from the Mac. Desk talks to every other session.
