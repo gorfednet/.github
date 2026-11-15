@@ -18,7 +18,7 @@ Desk is never forked. The owner must always have exactly one chat titled "Active
    - `start_session` with `user_asked`, `context: fresh`, model Opus, effort high, permission mode auto
    - title "Active Remote Control [Desk (<d Mon>)]"
    - prompt: `docs/desk/brief.md`, one line naming today's log, and one line saying to rotate with `/desk-rotate`
-   With no owner turn live, the app refuses the start. Keep running and say so in the 07:00 ET digest.
+   With no owner turn live, the app refuses the start. Keep running and say so in the 07:00 ET digest. It also refuses a start on a turn the owner sent through Remote Control: keep running and ask him once to send any message from the Mac.
 4. Once the successor has started, the outgoing Desk renames itself "Retiring Desk (<d Mon>)" and stops doing Desk passes: no labels, archives or session starts. It only runs steps 4 to 6. That keeps one chat with the Active title and one Desk acting.
    The successor switches Remote Control on at its first turn. If that's refused, the outgoing Desk switches it on with the successor's id once that turn has run.
 5. Check `list_sessions` once on the next turn for `remoteControlActive: true` on the successor. Don't poll in a loop.
