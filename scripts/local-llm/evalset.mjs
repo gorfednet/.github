@@ -2,7 +2,7 @@
 // Fixed eval set (plan row 1.27): manifest schema, case verification and scorer.
 // This repository is public. The manifest holds only {id, task, label, sha256}; case bodies are private.
 // evalset.mjs --manifest m.json --baseline baseline.json --haiku h.json --nomodel n.json [--nomodel n2.json ...] --arm name=f.json [--tasks a,b] [--grades g.json] [--salt-file f] [--check-voice path]
-// arm file:    {caseId: {verdict | files | text, ms?, cause?, rule?}, _model?: {id, sha, warning?}, blind?: true, scoringVersion: 3}   ms only when the arm was timed; cause set by evalset-run from private truth; rule 'error-line' tags the triage rule arm; _model is the served model and snapshot of a --model run
+// arm file:    {caseId: {verdict | files | text, ms?, cause?, rule?} | {invalid:true, ms?, truncated?} | {invalid:true, error}, _model?: {id, sha, thinking, warmupSeconds, warning?}, blind?: true, scoringVersion: 3}   truncated: the token cap ended the reply (harness setting, not a wrong answer); error: the request threw (server fault, harness loss); _model.thinking is 'default' or 'off'; ms only when the arm was timed; cause set by evalset-run from private truth; rule 'error-line' tags the triage rule arm; _model is the served model and snapshot of a --model run
 // grades file: {armName: {gradeKey(caseId, answer text): 0..5}} from a tool-less Fable grader, integers only. Haiku must be graded too: its grades set the reference.
 // The reference files (--haiku and every --nomodel) must match the sha256 values frozen in baseline.json, and the baseline must name this manifest.
 // A no-model arm may cover only some tasks (the rule arm covers reviewer and triage): it is compared on the tasks it covers.
@@ -223,7 +223,11 @@ export function judge(manifest, arm, haiku, nomodel, { name = 'arm', haikuName =
     if (!cs.length) continue
     const s = score(cs, arm, { voice, salt }), h = score(cs, haiku, { voice, salt }), z = bestNoModel(cs, nomodels, { voice, salt }) // null: no floor, so noRef holds this task and nothing below reads z
     scores[t] = { arm: s, haiku: h, nomodel: z }
-    if (s.schema !== s.n) reasons.push(`${t}: schema valid ${s.schema}/${s.n}`)
+    if (s.schema !== s.n) {
+      // Harness loss (a request that threw) and cut-off replies are counted beside the schema count, so a reader can tell them from a model that answered badly. Scoring is unchanged.
+      const errs = cs.filter((c) => arm[c.id]?.error !== undefined).length, cut = cs.filter((c) => arm[c.id]?.truncated === true).length
+      reasons.push(`${t}: schema valid ${s.schema}/${s.n}${errs || cut ? ` (${errs} error, ${cut} truncated)` : ''}`)
+    }
     // Latency applies only to an arm that was timed. An ingested Claude arm has no timings: skip, never Infinity.
     if (s.timed > 0 && s.timed < s.schema) reasons.push(`${t}: timings on ${s.timed} of ${s.schema} answers`)
     else if (s.timed > 0 && !(s.medianMs <= MAX_MS)) reasons.push(`${t}: median latency ${s.medianMs} ms over ${MAX_MS}`)

@@ -4,7 +4,8 @@ import os from 'node:os'
 import path from 'node:path'
 import crypto from 'node:crypto'
 import { describe, it } from 'node:test'
-import { spawnSync } from 'node:child_process'
+import http from 'node:http'
+import { spawnSync, execFile } from 'node:child_process'
 import { EventEmitter } from 'node:events'
 import { warmUp } from '../scripts/local-llm/client.mjs'
 import { checkReferences, defaultVoice, keyOf, score, summary, referenceProblems, hidesFromVoice, judge, stamped } from '../scripts/local-llm/evalset.mjs'
@@ -333,5 +334,106 @@ describe('M4: the scorer refuses a triage arm file the runner did not stamp', ()
     assert.equal(withCause(c, { verdict: 'real', lines: [47] }).cause, true)
     assert.equal(withCause(c, { verdict: 'real', lines: [54] }).cause, false)
     assert.equal(withCause(c, { verdict: 'real', lines: [46] }).cause, false)
+  })
+})
+
+describe('evalset-run CLI: fail closed on flags, harness errors exit non-zero, a stale arm is removed', () => {
+  const script = new URL('../scripts/local-llm/evalset-run.mjs', import.meta.url).pathname
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'es-cli-'))
+  const bodies = {
+    'rev-01': { input: { path: 'p', line: 1, finding: 'F', region: 'R' } }, 'bld-01': { input: { title: 't', summary: 's', candidates: ['a.js'] } },
+    'tri-01': { input: {} }, 'cpy-01': { input: { instruction: 'i', text: 't' } },
+  }
+  const labels = [['rev-01', 'reviewer', 'valid'], ['bld-01', 'builder', 'files:' + 'ab'.repeat(32)], ['tri-01', 'triage', 'real'], ['cpy-01', 'copy', 'voice:3']]
+  for (const [id] of labels) fs.writeFileSync(path.join(dir, `${id}.json`), JSON.stringify(bodies[id]))
+  const man = path.join(dir, 'manifest.json')
+  fs.writeFileSync(man, JSON.stringify({ version: 2, cases: labels.map(([id, task, label]) => ({ id, task, label, sha256: sha(JSON.stringify(bodies[id])) })) }))
+  const cli = (args, env = {}) => new Promise((resolve) => execFile('node', [script, '--manifest', man, '--cases', dir, ...args], { encoding: 'utf8', env: { ...process.env, ...env }, timeout: 30000 }, (err, stdout, stderr) => resolve({ status: err ? err.code : 0, stderr })))
+  it('rejects an unknown flag such as --no-think instead of ignoring it', async () => {
+    const r = await cli(['--model', 'm', '--out', path.join(dir, 'o.json'), '--no-think'])
+    assert.equal(r.status, 2)
+    assert.match(r.stderr, /unknown flag --no-think/)
+  })
+  it('rejects --warmup-min 0 and --warmup-min x before any request', async () => {
+    for (const v of ['0', 'x']) {
+      const r = await cli(['--model', 'm', '--out', path.join(dir, 'o.json'), '--warmup-min', v], { LOCAL_LLM_URL: 'http://127.0.0.1:1' })
+      assert.equal(r.status, 2)
+      assert.match(r.stderr, /--warmup-min must be a positive number/)
+    }
+  })
+  it('removes an older --out file before the run, so a run that fails leaves no arm to be scored', async () => {
+    const out = path.join(dir, 'stale.json')
+    fs.writeFileSync(out, '{"stale":true}')
+    const r = await cli(['--model', 'm', '--out', out, '--tasks', 'reviewer'], { LOCAL_LLM_URL: 'http://127.0.0.1:1' })
+    assert.equal(r.status, 2)
+    assert.equal(fs.existsSync(out), false)
+  })
+  it('exits 1 with "N harness errors" when a case request throws, keeps the arm file, and deletes an older one first', async () => {
+    const srv = http.createServer((req, res) => {
+      let b = ''
+      req.on('data', (c) => (b += c))
+      req.on('end', () => {
+        if (req.url === '/v1/models') return res.end(JSON.stringify({ data: [{ id: 'm', status: { value: 'unloaded', args: ['--model', '/x/snapshots/abc/m.gguf'] } }] }))
+        if (req.url === '/v1/chat/completions' && JSON.parse(b).max_tokens === 8) return res.end(JSON.stringify({ choices: [{ message: { content: 'ok' }, finish_reason: 'stop' }] }))
+        res.statusCode = req.url === '/v1/chat/completions' ? 500 : 200
+        res.end('{}')
+      })
+    })
+    await new Promise((r) => srv.listen(0, '127.0.0.1', r))
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'es-home-'))
+    const out = path.join(dir, 'arm.json')
+    fs.writeFileSync(out, '{"stale":true}')
+    try {
+      const r = await cli(['--model', 'm', '--out', out, '--tasks', 'reviewer'], { LOCAL_LLM_URL: `http://127.0.0.1:${srv.address().port}`, HOME: home })
+      assert.equal(r.status, 1, r.stderr)
+      assert.match(r.stderr, /1 harness errors/)
+      const arm = JSON.parse(fs.readFileSync(out, 'utf8'))
+      assert.equal(arm.stale, undefined)
+      assert.match(arm['rev-01'].error, /HTTP 500/)
+    } finally { srv.close() }
+  })
+})
+
+describe('round 2 guards in runModel, warmUp and the judge', () => {
+  const cs = ['rev-01'].map((id) => ({ id, task: 'reviewer', label: 'valid', body: { input: { path: 'p', line: 1, finding: 'F', region: 'R' } } }))
+  const mk = (live = [{ id: 'm', status: 'unloaded', sha: 's' }]) => ({ warm: async () => 0, listModels: async () => live, unload: async () => {}, lock: path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'es-r2-')), 'lock') })
+  it('default thinking sends no chat_template_kwargs through runModel', async () => {
+    const seen = []
+    const io = mk(); delete io.warm
+    io.chat = async (b, m, msgs, t, mt, sig, opts) => { seen.push(opts); return { text: '{"verdict":"valid"}', ms: 1 } }
+    await runModel(cs, 'm', 'http://stub', io)
+    assert.ok(seen.length >= 2 && seen.every((o) => !('chat_template_kwargs' in o)))
+  })
+  it('refuses to start while another model is loading, not only loaded', async () => {
+    await assert.rejects(runModel(cs, 'm', 'http://stub', mk([{ id: 'm', status: 'unloaded' }, { id: 'o', status: 'loading' }])), /another model is loaded: o/)
+  })
+  it('records truncated when finish_reason is length and the text does not parse', async () => {
+    const io = mk(); io.chat = async () => ({ text: '{"verdict":"va', ms: 3, finish: 'length' })
+    assert.deepEqual((await runModel(cs, 'm', 'http://stub', io))['rev-01'], { invalid: true, truncated: true, ms: 3 })
+    io.chat = async () => ({ text: '{"verdict":"va', ms: 3, finish: 'stop' })
+    assert.deepEqual((await runModel(cs, 'm', 'http://stub', io))['rev-01'], { invalid: true, ms: 3 })
+  })
+  const clock = () => { let t = 0; return { now: () => t, sleep: async (ms) => { t += ms } } }
+  it('warmUp fails fast when the model is not served or the server reports a failed load, but retries a refused connection', async () => {
+    await assert.rejects(warmUp('b', 'm', { ...clock(), listModels: async () => [{ id: 'other', status: 'unloaded' }], chat: async () => {} }), /not served/)
+    await assert.rejects(warmUp('b', 'm', { ...clock(), listModels: async () => [{ id: 'm', status: 'unloaded', failed: true }], chat: async () => {} }), /failed to load/)
+    let n = 0
+    const secs = await warmUp('b', 'm', { ...clock(), pollMs: 1000, listModels: async () => { if (++n < 3) throw new Error('fetch failed'); return [{ id: 'm', status: 'unloaded' }] }, chat: async () => {} })
+    assert.equal(secs, 2)
+  })
+  it('warmUp caps a request at the time left, below requestMs', async () => {
+    const caps = []
+    await warmUp('b', 'm', { ...clock(), timeoutMs: 50000, requestMs: 120000, listModels: async () => [{ id: 'm', status: 'unloaded' }], chat: async (b, m, msgs, t) => { caps.push(t) } })
+    assert.deepEqual(caps, [50000])
+  })
+  it('the judge counts error and truncated cases beside schema valid, and says nothing extra when there are none', () => {
+    const tri = Array.from({ length: 4 }, (_, i) => ({ id: `tri-0${i + 1}`, task: 'triage', label: ['real', 'flake', 'real', 'flake'][i], sha256: 'a'.repeat(64) }))
+    const good = (extra = {}) => ({ blind: true, scoringVersion: 3, ...Object.fromEntries(tri.map((c) => [c.id, { verdict: c.label, lines: [1], cause: true, rule: 'error-line' }])), ...extra })
+    const man = { version: 2, cases: tri }
+    const nm = () => { const a = good(); for (const c of tri) a[c.id].verdict = 'real'; return a }
+    const arm = good({ 'tri-02': { invalid: true, truncated: true }, 'tri-03': { invalid: true, error: 'chat: HTTP 500' } })
+    assert.match(judge(man, arm, good(), [nm()], { tasks: ['triage'] }).reasons.join(), /triage: schema valid 2\/4 \(1 error, 1 truncated\)/)
+    const plain = good({ 'tri-02': { invalid: true } })
+    assert.match(judge(man, plain, good(), [nm()], { tasks: ['triage'] }).reasons.join(), /triage: schema valid 3\/4(?! \()/)
   })
 })

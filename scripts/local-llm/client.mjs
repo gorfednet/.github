@@ -13,6 +13,7 @@ export async function listModels(base = DEFAULT_BASE, timeoutMs = 2000) {
     return {
       id: m.id,
       status: m.status?.value ?? 'unknown',
+      failed: m.status?.failed === true || m.status?.value === 'failed',
       ctx: Number(flag(a, '--ctx-size')) || null,
       file: file ?? null,
       sha: file?.match(/\/snapshots\/([^/]+)\//)?.[1] ?? null,
@@ -40,7 +41,7 @@ export async function chat(base, model, messages, timeoutMs = 180000, maxTokens 
   const text = choice?.message?.content
   if (choice?.finish_reason === 'length' && (text === undefined || text === null || text === '')) return { text: '', ms: Date.now() - t0, truncated: true }
   if (typeof text !== 'string') throw new Error('chat: no content')
-  return { text, ms: Date.now() - t0 }
+  return { text, ms: Date.now() - t0, finish: choice?.finish_reason }
 }
 
 /**
@@ -56,14 +57,19 @@ export async function warmUp(base, model, { timeoutMs = 40 * 60000, requestMs = 
     if (abort?.aborted) throw new Error('warm-up: interrupted')
     const left = timeoutMs - (now() - t0)
     if (left <= 0) throw new Error(`warm-up: ${model} not ready after ${Math.round(timeoutMs / 1000)} s (${cause})`)
+    let fatal = null
     try {
-      const status = (await list(base, 5000)).find((m) => m.id === model)?.status
-      if (status === 'loading') cause = 'still loading'
+      const row = (await list(base, 5000)).find((m) => m.id === model)
+      const status = row?.status
+      if (!row) fatal = `warm-up: ${model} is not served at ${base}`
+      else if (row.failed) fatal = `warm-up: the server reports ${model} failed to load`
+      else if (status === 'loading') cause = 'still loading'
       else {
         await ask(base, model, [{ role: 'user', content: 'ok' }], Math.min(requestMs, left), 8, abort, opts)
         return Math.round((now() - t0) / 1000)
       }
     } catch (e) { cause = String(e?.cause?.code ?? e?.message ?? e).slice(0, 120) }
+    if (fatal) throw new Error(fatal) // not retried: a missing or failed model will not come up by waiting
     await sleep(Math.min(pollMs, Math.max(0, timeoutMs - (now() - t0))))
   }
 }
