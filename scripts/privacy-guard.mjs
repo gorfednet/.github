@@ -128,6 +128,7 @@ export function parsePrivateRepos(raw) {
 
 // The org spelled out, or the Actions expression for it, then a slash or %2F, then a name.
 export function privateRepoPattern(names) {
+  if (names.length === 0) return /(?!)/g // every private name is allowlisted: nothing to match
   const alt = names.map(escapeRegex).join('|')
   return new RegExp(
     `(?:gorfednet|repository_owner\\s*\\}\\})(?:/|%2F)(?:${alt})(?:\\.git)?(?![A-Za-z0-9_-]|\\.[A-Za-z0-9])`,
@@ -157,17 +158,21 @@ function globToRegex(glob) {
  * Allowlist lines (blank lines and `#` comments ignored):
  *   email <domain-or-address>       domain also covers its subdomains
  *   path <glob> <rule,rule | *>     the named rules are not applied to matching files
+ *   repo <name>                     a private repository whose name public files may use
  * A line that is neither is an error: a typo in an exemption must not read as no exemption.
  */
 export function parseAllowlist(text) {
   const emails = []
   const paths = []
+  const repos = []
   text.split('\n').forEach((raw, i) => {
     const line = raw.replace(/#.*$/, '').trim()
     if (!line) return
     const [kind, value, rules] = line.split(/\s+/)
     if (kind === 'email' && value && !rules) {
       emails.push(value.toLowerCase())
+    } else if (kind === 'repo' && value && !rules && /^[A-Za-z0-9._-]+$/.test(value)) {
+      repos.push(value.toLowerCase())
     } else if (kind === 'path' && value && rules) {
       const set = rules === '*' ? '*' : new Set(rules.split(','))
       if (set !== '*') {
@@ -177,10 +182,10 @@ export function parseAllowlist(text) {
       }
       paths.push({ re: globToRegex(value), rules: set })
     } else {
-      throw new Error(`allowlist line ${i + 1}: expected "email <domain-or-address>" or "path <glob> <rules|*>"`)
+      throw new Error(`allowlist line ${i + 1}: expected "email <domain-or-address>", "repo <name>" or "path <glob> <rules|*>"`)
     }
   })
-  return { emails, paths }
+  return { emails, paths, repos }
 }
 
 function emailAllowed(address, allow) {
@@ -436,7 +441,7 @@ export function run(argv, env = process.env, out = console) {
     return 2
   }
 
-  const ctx = { privateRepo: privateRepoPattern(names), allow }
+  const ctx = { privateRepo: privateRepoPattern(names.filter((n) => !allow.repos.includes(n))), allow }
   const files = parseNameStatus(nameStatus)
   const oldPath = new Map(files.map((f) => [f.path, f.from ?? f.path]))
   let added
@@ -466,19 +471,22 @@ export function run(argv, env = process.env, out = console) {
   }
 
   // Added lines, minus any value the same file already held at the merge base.
+  // The values the same rule finds in the file at the merge base, compared whole: a file
+  // that holds one value does not excuse a longer or shorter one that contains it.
   const baseCache = new Map()
-  const heldAtBase = (path, value) => {
+  const heldAtBase = (path, rule, value) => {
     const key = oldPath.get(path) ?? path
     if (!baseCache.has(key)) {
-      let text = ''
+      let held = new Set()
       try {
-        text = git(dir, ['show', `${mergeBase}:${key}`]).replace(/\0/g, '').toLowerCase()
+        const text = git(dir, ['show', `${mergeBase}:${key}`])
+        held = new Set(scanText(text, ctx).map((h) => `${h.rule}\0${h.value.toLowerCase()}`))
       } catch {
-        text = '' // a new file held nothing
+        // a new file held nothing
       }
-      baseCache.set(key, text)
+      baseCache.set(key, held)
     }
-    return baseCache.get(key).includes(value.toLowerCase())
+    return baseCache.get(key).has(`${rule}\0${value.toLowerCase()}`)
   }
   let linesRead = 0
   let filesRead = new Set()
@@ -488,7 +496,7 @@ export function run(argv, env = process.env, out = console) {
     filesRead.add(path)
     for (const hit of scanText(text, ctx)) {
       if (pathExempt(path, hit.rule, allow)) continue
-      if (heldAtBase(path, hit.value)) continue
+      if (heldAtBase(path, hit.rule, hit.value)) continue
       findings.push({ path, line, rule: hit.rule })
     }
   }

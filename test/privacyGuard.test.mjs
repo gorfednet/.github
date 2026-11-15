@@ -205,6 +205,27 @@ describe('privacy guard: what it must let through', () => {
     assert.equal(r.status, 0, r.out)
   })
 
+  it('does not let a held value excuse a longer or shorter one that contains it', () => {
+    const org = 'gorfednet' + '/'
+    const ip50 = ['10', '0', '0', '50'].join('.')
+    const ip5 = ['10', '0', '0', '5'].join('.')
+    const r = guard({
+      before: { 'old.md': `${org}secret-repo-two and ${ip50}\n` },
+      after: { 'old.md': `${org}secret-repo-two and ${ip50}\n${org}secret-repo\n${ip5}\n` },
+    })
+    assert.equal(r.status, 1, r.out)
+    assert.match(r.out, /old\.md:2: .*\[private-repo\]/)
+    assert.match(r.out, /old\.md:3: .*\[private-ip\]/)
+  })
+
+  it('lets public files name a private repository the allowlist lists (ops), and no other', () => {
+    const org = 'gorfednet' + '/'
+    const r = guard({ after: { 'a.md': `${org}ops and ${org}secret-repo\n` }, env: { PRIVATE_REPOS: 'ops,secret-repo' } })
+    assert.equal(r.status, 1, r.out)
+    assert.equal((r.out.match(/\[private-repo\]/g) ?? []).length, 1, 'only secret-repo is a finding')
+    assert.equal(guard({ after: { 'a.md': `${org}ops\n` }, env: { PRIVATE_REPOS: 'ops' } }).status, 0)
+  })
+
   it('does go red on a different value in a file that held another, and on the same value in another file', () => {
     const before = { 'old.md': `${PLANT['private-ip']}\n` }
     assert.equal(guard({ before, after: { 'old.md': `${PLANT['private-ip']}\n${PLANT['private-ip-192']}\n` } }).status, 1)
@@ -424,5 +445,7 @@ describe('privacy guard: the workflow', () => {
   it('diffs against the merge base with full history', () => {
     assert.match(wf, /fetch-depth: 0/)
     assert.match(wf, /--base "\$BASE_SHA" --head "\$HEAD_SHA"/)
+    assert.match(wf, /git show "\$BASE_SHA:scripts\/privacy-guard\.mjs"/)
+    assert.doesNotMatch(wf, /node scripts\/privacy-guard\.mjs/, 'the guard must run from the base, not the head')
   })
 })

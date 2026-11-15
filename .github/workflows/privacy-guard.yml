@@ -42,4 +42,16 @@ jobs:
           PRIVATE_REPOS: ${{ secrets.PRIVATE_REPOS }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: node scripts/privacy-guard.mjs --base "$BASE_SHA" --head "$HEAD_SHA"
+        run: |
+          set -euo pipefail
+          # The guard that runs is the base branch's copy, never the one this pull request
+          # carries: a change that edits the script could otherwise switch the check off.
+          # Until the base has a script (the pull request that adds it), use the head's.
+          guard="$RUNNER_TEMP/privacy-guard.mjs"
+          if git cat-file -e "$BASE_SHA:scripts/privacy-guard.mjs" 2>/dev/null; then
+            git show "$BASE_SHA:scripts/privacy-guard.mjs" > "$guard"
+          else
+            echo "::warning title=privacy-guard::The base has no scripts/privacy-guard.mjs, so this run uses the one in the pull request."
+            cp scripts/privacy-guard.mjs "$guard"
+          fi
+          node "$guard" --base "$BASE_SHA" --head "$HEAD_SHA"

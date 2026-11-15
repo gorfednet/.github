@@ -656,6 +656,22 @@
       "file": "scripts/privacy-guard.mjs",
       "find": "if (on('private-ip')) add('private-ip', all(PRIVATE_IP, text))",
       "replace": "if (false) add('private-ip', all(PRIVATE_IP, text))"
+    },
+    {
+      "id": "privacy-guard-runs-the-head-copy-of-itself",
+      "guards": "The workflow runs the guard from the base commit. Run from the head, a pull request that edits the script (for example to exit 0 at once) switches its own check off.",
+      "command": "node --test --test-name-pattern='merge base with full history' test/privacyGuard.test.mjs",
+      "file": ".github/workflows/privacy-guard.yml",
+      "find": "git show \"$BASE_SHA:scripts/privacy-guard.mjs\" > \"$guard\"",
+      "replace": "cp scripts/privacy-guard.mjs \"$guard\""
+    },
+    {
+      "id": "privacy-guard-held-at-base-is-a-substring",
+      "guards": "A value counts as already held only when the same rule finds the same whole value in the base file. As a substring test, a file holding a longer public name lets a shorter private one through.",
+      "command": "node --test --test-name-pattern='longer or shorter' test/privacyGuard.test.mjs",
+      "file": "scripts/privacy-guard.mjs",
+      "find": "return baseCache.get(key).has(`${rule}\\0${value.toLowerCase()}`)",
+      "replace": "return [...baseCache.get(key)].some((h) => h.includes(value.toLowerCase()))"
     }
   ]
 }
