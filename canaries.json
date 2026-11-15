@@ -672,6 +672,14 @@
       "file": "scripts/privacy-guard.mjs",
       "find": "return baseCache.get(key).has(`${rule}\\0${value.toLowerCase()}`)",
       "replace": "return [...baseCache.get(key)].some((h) => h.includes(value.toLowerCase()))"
+    },
+    {
+      "id": "privacy-guard-splits-commit-log-on-a-control-character",
+      "guards": "The commit log is split on NUL (git log -z). Split on a control character a message can hold, a message with that byte hides text from the scan and can print it as a sha.",
+      "command": "node --test --test-name-pattern='control characters' test/privacyGuard.test.mjs",
+      "file": "scripts/privacy-guard.mjs",
+      "find": "messages.split('\\0').filter((e) => e.trim() !== '')",
+      "replace": "messages.split(/[\\0\\x01]/).filter((e) => e.trim() !== '')"
     }
   ]
 }

@@ -283,6 +283,13 @@ describe('privacy guard: surfaces besides added lines', () => {
     assert.doesNotMatch(r.out, /0123abcd/)
   })
 
+  it('reads a commit message that holds control characters, and never prints it', () => {
+    const r = guard({ after: { 'ok.md': 'clean\n' }, message: `fix\u0001 and \u0002 see ${PLANT['session-id']}` })
+    assert.equal(r.status, 1, r.out)
+    assert.match(r.out, /commit [0-9a-f]{7,}: message line 1: .*\[session-id\]/)
+    assert.doesNotMatch(r.out, /0123abcd/)
+  })
+
   it('reads the message of a merge commit the branch wrote', () => {
     const r = guard({ after: { 'ok.md': 'clean\n' }, mergeMessage: `sync main, see ${PLANT['session-id']}` })
     assert.equal(r.status, 1, r.out)

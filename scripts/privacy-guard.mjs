@@ -412,7 +412,7 @@ export function run(argv, env = process.env, out = console) {
     diff = git(dir, ['diff', ...common, '--unified=0', range, '--'])
     numstat = git(dir, ['diff', ...common, '--numstat', '-z', range, '--'])
     nameStatus = git(dir, ['diff', ...common, '--name-status', '-z', range, '--'])
-    messages = git(dir, ['log', '--format=%x01%h%x02%B', `${mergeBase}..${args.head}`, '--'])
+    messages = git(dir, ['log', '-z', '--format=%h%n%B', `${mergeBase}..${args.head}`, '--'])
     if (args.allow) allowText = readFileSync(resolve(args.allow), 'utf8')
     else {
       try {
@@ -503,8 +503,12 @@ export function run(argv, env = process.env, out = console) {
 
   // Commit messages are public too. The finding is "commit <sha>", never the text.
   let commits = 0
-  for (const entry of messages.split('\x01').filter(Boolean)) {
-    const [sha, body = ''] = entry.split('\x02')
+  // -z separates commits with NUL, which a commit message cannot hold; a control character
+  // a message can hold (\x01, \x02) would otherwise split an entry and hide text.
+  for (const entry of messages.split('\0').filter((e) => e.trim() !== '')) {
+    const nl = entry.indexOf('\n')
+    const sha = entry.slice(0, nl).trim()
+    const body = entry.slice(nl + 1)
     commits += 1
     body.split('\n').forEach((text, i) => {
       for (const hit of scanText(text, ctx, COMMIT_RULES)) {
