@@ -127,9 +127,9 @@ Encapsulation: policy lives in hooks and settings, not in each session's memory.
 
 ## Verification
 
-- Phase A: open a draft PR with a deliberate finding, let the reviewer run, label it; confirm the gate hook denies `gh pr merge` with the finding as the reason; fix, re-review, confirm allow; confirm ship-bot merges it and the branch is deleted; confirm no session message says "ready for you to merge" for 48 hours (grep transcripts).
+- Phase A: open a draft PR with a deliberate finding, let the reviewer run, label it; confirm the label gate hook denies `gh pr edit --add-label ready-to-merge` with the finding as the reason; fix, re-review, confirm it allows the label; confirm ship-bot merges it and the branch is deleted; confirm no session message says "ready for you to merge" for 48 hours (grep transcripts).
 - Janitor: run 4's digest shows labels or prunes applied, and `~/.fleet-janitor/runs` has 4 lines.
-- Desk: a message from the phone through Telegram starts a session and the reply arrives in under 2 minutes; a permission prompt in any session produces an ntfy push.
+- Desk: a message sent through Remote Control from the Claude mobile app starts a session and the reply arrives in under 2 minutes; a permission prompt in any session produces an ntfy push.
 - Herdr: queued count falls below 56 within one reconcile cycle after the fix.
 - Cost: weekly usage growth per day, read from `get_usage`, after a week of Sonnet defaults; target under half the current rate.
 

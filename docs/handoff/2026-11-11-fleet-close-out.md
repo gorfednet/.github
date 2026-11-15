@@ -72,7 +72,7 @@ Tiers: **H** = Haiku `runner`/`scout`, **S** = Sonnet `builder` (own worktree), 
 
 ### Track 5: MoonMan
 
-5.1 291 (dev-dependency advisories, red draft): H rebases on main, S fixes what is red, label. Must be green on main by Fri 14 Nov for the Sun 15 Nov ship-bot stage 4 deploy.
+5.1 291 (dev-dependency advisories, red draft): H rebases on main, S fixes what is red, label. Must be green on main by Fri 13 Nov for the Sun 15 Nov ship-bot stage 4 deploy.
 
 ### Track 6: BinderCurve (lowest; waits when builders compete)
 
