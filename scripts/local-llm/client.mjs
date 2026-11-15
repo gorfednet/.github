@@ -63,8 +63,8 @@ export async function warmUp(base, model, { timeoutMs = 40 * 60000, requestMs = 
       const status = row?.status
       if (!row) fatal = `warm-up: ${model} is not served at ${base}`
       // A router can keep `failed` from an earlier load until the next attempt starts, so it is believed only after this warm-up has sent a request.
-      else if (row.failed && sent) fatal = `warm-up: the server reports ${model} failed to load`
       else if (status === 'loading') cause = 'still loading'
+      else if (row.failed && sent) fatal = `warm-up: the server reports ${model} failed to load`
       else {
         sent = true
         await ask(base, model, [{ role: 'user', content: 'ok' }], Math.min(requestMs, left), 8, abort, opts)

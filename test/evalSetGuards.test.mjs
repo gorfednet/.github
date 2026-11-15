@@ -171,6 +171,13 @@ describe('M4: triage cause needs precision, and the ##[error]-line rule arm is t
     const rule = ans(() => 'real'); for (const k of Object.keys(rule)) rule[k].rule = 'error-line'
     assert.doesNotMatch(String(referenceProblems(cs, haiku, [maj, rule]).get('triage')), /rule arm/)
   })
+  it('parses a constant-answer rejection with an error and truncated suffix to its task, without throwing', () => {
+    const cs = [{ id: 'tri-01', task: 'triage', label: 'real' }, { id: 'tri-02', task: 'triage', label: 'flake' }]
+    const trunc = Object.fromEntries(cs.map((x) => [x.id, { verdict: 'real', lines: [1], cause: true, truncated: true }]))
+    const maj = Object.fromEntries(cs.map((x) => [x.id, { verdict: 'real', lines: [1], cause: true }]))
+    assert.equal(rejections(cs, trunc, [maj])[0], 'rejected: constant answer on triage (0 error, 2 truncated)')
+    assert.equal(referenceProblems(cs, trunc, [maj]).get('triage'), 'rejected: constant answer on triage (0 error, 2 truncated) on the Haiku arm')
+  })
 })
 
 describe('the CLI summary survives a task with no no-model floor', () => {
@@ -460,6 +467,12 @@ describe('round 2 guards in runModel, warmUp and the judge', () => {
     sent = 0
     await assert.rejects(warmUp('b', 'm', { ...clock(), pollMs: 1000, listModels: async () => [{ id: 'm', status: 'unloaded', failed }], chat: async () => { sent++; throw new Error('HTTP 503') } }), /failed to load/)
     assert.equal(sent, 1)
+  })
+  it('a loading row keeps polling after a request was sent, even when failed is still set, then succeeds once loaded', async () => {
+    let sent = 0
+    const rows = [{ status: 'unloaded' }, { status: 'loading', failed: true }, { status: 'loading', failed: true }, { status: 'loaded' }]
+    const secs = await warmUp('b', 'm', { ...clock(), pollMs: 1000, listModels: async () => [{ id: 'm', ...(rows.shift() ?? { status: 'loaded' }) }], chat: async () => { if (++sent === 1) throw new Error('fetch failed') } })
+    assert.deepEqual([sent, typeof secs, rows.length], [2, 'number', 0])
   })
   it('an arm where every case was truncated or errored says so in the constant-answer rejection', () => {
     const cases = ['rev-01', 'rev-02', 'rev-03'].map((id) => ({ id, task: 'reviewer', label: 'valid' }))

@@ -184,7 +184,7 @@ const hasRuleArm = (cs, nomodels) => nomodels.some((n) => cs.every((c) => n[c.id
 export function referenceProblems(cases, haiku, nomodels, { voice, salt, grades, haikuName = 'haiku' } = {}) {
   const out = new Map()
   const note = (t, r) => { if (!out.has(t)) out.set(t, r) }
-  for (const r of rejections(cases, haiku, nomodels, { salt })) note(r.match(/ on (\w+)$| (\w+) answers equal/).slice(1).find(Boolean), `${r} on the Haiku arm`)
+  for (const r of rejections(cases, haiku, nomodels, { salt })) note(r.match(/ on (\w+)(?: \(|$)| (\w+) answers equal/).slice(1).find(Boolean), `${r} on the Haiku arm`)
   for (const t of TASKS) {
     const cs = cases.filter((c) => c.task === t)
     if (!cs.length) continue
