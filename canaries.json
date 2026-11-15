@@ -624,6 +624,38 @@
       "file": "scripts/check-rules-drift.mjs",
       "find": "const text = excuseRetirements ? line.replace(RETIREMENT_LINE.pattern, ' ') : line",
       "replace": "const text = excuseRetirements ? '' : line"
+    },
+    {
+      "id": "privacy-guard-trusts-git-binary-detection",
+      "guards": "The diff is read with --text. Without it a .gitattributes line in the change marks a file binary and the guard reads none of it, and the change switches its own check off (plan row 1.30a review).",
+      "command": "node --test --test-name-pattern='gitattributes|NUL' test/privacyGuard.test.mjs",
+      "file": "scripts/privacy-guard.mjs",
+      "find": "'--no-textconv', '--text', '-M'",
+      "replace": "'--no-textconv', '-M'"
+    },
+    {
+      "id": "privacy-guard-reads-allowlist-from-the-change",
+      "guards": "The allowlist comes from the merge base. Read from the head, a change that adds a path exemption for itself passes with private detail in it.",
+      "command": "node --test --test-name-pattern='widen its own exemptions' test/privacyGuard.test.mjs",
+      "file": "scripts/privacy-guard.mjs",
+      "find": "git(dir, ['show', `${mergeBase}:${ALLOWLIST_PATH}`])",
+      "replace": "git(dir, ['show', `${args.head}:${ALLOWLIST_PATH}`])"
+    },
+    {
+      "id": "privacy-guard-takes-added-line-for-a-header",
+      "guards": "An added line that begins with ++ shows up as +++ and is content. Taken for a file header it drops the next lines, and a planted value after it passes.",
+      "command": "node --test --test-name-pattern='starts with \\+\\+' test/privacyGuard.test.mjs",
+      "file": "scripts/privacy-guard.mjs",
+      "find": "} else if (!inHunk && row.startsWith('+++ ')) {",
+      "replace": "} else if (row.startsWith('+++ ')) {"
+    },
+    {
+      "id": "privacy-guard-stops-checking-private-ips",
+      "guards": "A plain private address added to a file must fail the guard.",
+      "command": "node --test --test-name-pattern='private-ip' test/privacyGuard.test.mjs",
+      "file": "scripts/privacy-guard.mjs",
+      "find": "if (on('private-ip')) add('private-ip', all(PRIVATE_IP, text))",
+      "replace": "if (false) add('private-ip', all(PRIVATE_IP, text))"
     }
   ]
 }

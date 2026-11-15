@@ -1,24 +1,16 @@
-# Exemptions for scripts/privacy-guard.mjs. A pull request that changes this file is
-# flagged in its log, and the file is control plane: read every line it adds.
+# Exemptions for scripts/privacy-guard.mjs. The guard reads this file from the merge base,
+# so a pull request that adds an exemption gets it only after that pull request has merged.
+# The guard flags a change to this file, its script or its workflow: read every line.
 #
 #   email <domain-or-address>     an address, or a domain and its subdomains
 #   path <glob> <rule,rule | *>   the named rules are not applied to matching files
 #
 # Rules: private-ip, session-id, tailnet-name, internal-host, private-repo, email,
-# owner-quote, new-file.
+# owner-quote, new-file. The reserved example domains need no line: they are built in.
 
-# Reserved example domains. Tests and docs use them.
-email example.com
-email example.org
-email example.net
-email example.test
-email example.invalid
-
-# Test fixtures hold planted bad values on purpose.
-path **/fixtures/** *
-
-# The guard's own host list. Those names are already public; the list is the rule.
-path scripts/privacy-guard.mjs internal-host
+# Test fixtures hold planted bad values on purpose. Only this directory, so a folder
+# named fixtures somewhere else is not a way round the guard.
+path test/fixtures/** *
 
 # docs/claude-home/ mirrors the owner's rules, and the rules carry dated owner quotes.
 # Plan row 1.30c moves the mirror to the private ops repository, and this line goes with it.

@@ -50,7 +50,7 @@ function sh(cwd, ...args) {
  * guard's exit status and output. `allow` copies the real allowlist in, so the shipped
  * exemptions are what is under test.
  */
-function guard({ before = { 'README.md': 'hello\n' }, after = {}, env = {}, allow = true } = {}) {
+function guard({ before = { 'README.md': 'hello\n' }, after = {}, env = {}, allow = true, message = 'pr' } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'privacy-guard-'))
   try {
     sh(dir, 'init', '-q', '-b', 'main')
@@ -71,7 +71,7 @@ function guard({ before = { 'README.md': 'hello\n' }, after = {}, env = {}, allo
     sh(dir, 'checkout', '-q', '-b', 'pr')
     put(after)
     sh(dir, 'add', '-A')
-    sh(dir, 'commit', '-q', '--allow-empty', '-m', 'pr')
+    sh(dir, 'commit', '-q', '--allow-empty', '-m', message)
     const r = spawnSync('node', [GUARD, '--base', 'main', '--head', 'pr', '--dir', dir], {
       encoding: 'utf8',
       env: { PATH: process.env.PATH, HOME: process.env.HOME, PRIVATE_REPOS: 'secret-repo,other-one', ...env },
@@ -142,8 +142,11 @@ describe('privacy guard: what it must let through', () => {
   })
 
   it('reads an added line that starts with ++ as content, not as a file header', () => {
-    const r = guard({ after: { 'x.txt': `++${PLANT['private-ip']}\n` } })
+    // The added line "++ /dev/null" shows in the diff as "+++ /dev/null". A parser that
+    // takes it for a header drops the planted line after it.
+    const r = guard({ after: { 'x.txt': `++ /dev/null\n${PLANT['private-ip']}\n` } })
     assert.equal(r.status, 1, r.out)
+    assert.match(r.out, /x\.txt:2: .*\[private-ip\]/)
   })
 
   it('allows noreply addresses, the bot addresses already on main and example domains', () => {
@@ -177,12 +180,148 @@ describe('privacy guard: what it must let through', () => {
     assert.equal(r.status, 1, 'the claude-home exemption covers quotes, not addresses')
   })
 
-  it('applies an exemption from the shipped allowlist only to its own rule', () => {
-    const r = guard({ after: { 'scripts/privacy-guard.mjs': `${PLANT['internal-host']}\n${PLANT['private-ip']}\n` } })
+  it('limits the fixtures exemption to test/fixtures, so another fixtures folder is no way round', () => {
+    const r = guard({ after: { 'docs/handoff/fixtures/x.md': 'plain\n', 'docs/x/fixtures/y.md': `${PLANT['private-ip']}\n` } })
     assert.equal(r.status, 1, r.out)
-    assert.match(r.out, /\[private-ip\]/)
-    assert.doesNotMatch(r.out, /\[internal-host\]/)
+    assert.match(r.out, /docs\/handoff\/fixtures\/x\.md:1: .*\[new-file\]/)
+    assert.match(r.out, /docs\/x\/fixtures\/y\.md:1: .*\[private-ip\]/)
   })
+
+  it('does not let a change widen its own exemptions: the allowlist is read from the merge base', () => {
+    const widened = 'path docs/** *\n'
+    const r = guard({ after: { '.github/privacy-guard-allow.txt': widened, 'docs/x.md': `${PLANT['private-ip']}\n` } })
+    assert.equal(r.status, 1, r.out)
+    assert.match(r.out, /docs\/x\.md:1: .*\[private-ip\]/)
+  })
+
+  it('treats no allowlist at the merge base as no exemptions', () => {
+    const r = guard({ allow: false, after: { 'test/fixtures/a.json': `${PLANT['private-ip']}\n` } })
+    assert.equal(r.status, 1, r.out)
+  })
+
+  it('does not go red on a value the same file already held: a reworded line, or a moved one', () => {
+    const before = { 'old.md': `see ${PLANT['internal-host']} and ${PLANT['private-ip']}\n` }
+    const r = guard({ before, after: { 'old.md': `reworded: ${PLANT['internal-host']} and ${PLANT['private-ip']} again\nmore\n` } })
+    assert.equal(r.status, 0, r.out)
+  })
+
+  it('does go red on a different value in a file that held another, and on the same value in another file', () => {
+    const before = { 'old.md': `${PLANT['private-ip']}\n` }
+    assert.equal(guard({ before, after: { 'old.md': `${PLANT['private-ip']}\n${PLANT['private-ip-192']}\n` } }).status, 1)
+    assert.equal(guard({ before, after: { 'copy.md': `${PLANT['private-ip']}\n` } }).status, 1)
+  })
+})
+
+describe('privacy guard: it cannot be switched off by the change it reads', () => {
+  it('reads a file that .gitattributes marks as not diffable', () => {
+    const r = guard({ after: { '.gitattributes': '* -diff\n', 'docs/x.md': `${PLANT['private-ip']}\n` } })
+    assert.equal(r.status, 1, r.out)
+    assert.match(r.out, /docs\/x\.md:1: .*\[private-ip\]/)
+  })
+
+  it('reads a file with a NUL byte, and a UTF-16 file', () => {
+    const nul = guard({ after: { 'a.bin': Buffer.concat([Buffer.from('head\0\0'), Buffer.from(`${PLANT['private-ip']}\n`)]) } })
+    assert.equal(nul.status, 1, nul.out)
+    const utf16 = guard({ after: { 'b.txt': Buffer.from(`\ufeff${PLANT['session-id']}\n`, 'utf16le') } })
+    assert.equal(utf16.status, 1, utf16.out)
+  })
+
+  it('skips an image by extension but still reads its path', () => {
+    const png = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47]), Buffer.from(`${PLANT['private-ip']}`)])
+    assert.equal(guard({ after: { 'logo.png': png } }).status, 0)
+    const named = guard({ after: { [`img/${PLANT['internal-host']}.png`]: png } })
+    assert.equal(named.status, 1, named.out)
+  })
+
+  it('reads CRLF files', () => {
+    const r = guard({ after: { 'win.txt': `a\r\n${PLANT['private-ip']}\r\n` } })
+    assert.equal(r.status, 1, r.out)
+    assert.match(r.out, /win\.txt:2:/)
+  })
+})
+
+describe('privacy guard: surfaces besides added lines', () => {
+  it('fails on a private value in an added file name, and says the file', () => {
+    const r = guard({ after: { [`notes/${PLANT['session-id'].slice(4)}.md`]: 'plain\n' } })
+    assert.equal(r.status, 1, r.out)
+    assert.match(r.out, /notes\/local_.*\.md:1: .*\[session-id\]/)
+  })
+
+  it('fails on a private value in a commit message, and names the commit, not the text', () => {
+    const r = guard({ after: { 'ok.md': 'clean\n' }, message: `Fix it\n\n${PLANT['session-id']}` })
+    assert.equal(r.status, 1, r.out)
+    assert.match(r.out, /commit [0-9a-f]{7,}: message line 3: .*\[session-id\]/)
+    assert.doesNotMatch(r.out, /0123abcd/)
+  })
+
+  it('allows a noreply trailer in a commit message', () => {
+    const r = guard({ after: { 'ok.md': 'clean\n' }, message: 'Fix it\n\nCo-Authored-By: Claude <noreply@anthropic.com>' })
+    assert.equal(r.status, 0, r.out)
+  })
+
+  it('treats the directory case-insensitively', () => {
+    assert.equal(guard({ after: { 'Docs/Handoff/x.md': 'plain\n' } }).status, 1)
+  })
+})
+
+describe('privacy guard: reports what it read, and annotates in Actions', () => {
+  it('says how many lines, files, paths and commits it read', () => {
+    const r = guard({ after: { 'a.md': 'one\ntwo\n', 'b.md': 'three\n' } })
+    assert.equal(r.status, 0, r.out)
+    assert.match(r.out, /read 3 added line\(s\) in 2 file\(s\), 2 path\(s\) and 1 commit message\(s\)/)
+  })
+
+  it('writes ::error annotations with file and line under GITHUB_ACTIONS, and warns on a change to the guard', () => {
+    const r = guard({
+      after: { 'docs/note.md': `first\n${PLANT['private-ip']}\n`, 'scripts/privacy-guard.mjs': '// edit\n' },
+      env: { GITHUB_ACTIONS: 'true' },
+    })
+    assert.equal(r.status, 1, r.out)
+    assert.match(r.out, /::error file=docs\/note\.md,line=2,title=privacy-guard::/)
+    assert.match(r.out, /::warning title=privacy-guard::/)
+  })
+})
+
+describe('privacy guard: near misses that must stay clean', () => {
+  const clean = [
+    '172.32.0.1',
+    '172.15.255.1',
+    '100.63.0.1',
+    '100.128.0.1',
+    '192.169.1.1',
+    '11.0.0.1',
+    '8.8.8.8',
+    'version 10.0.0 and 10.1.2',
+    'owner: "gorfednet"',
+    'gorfednet/.github and gorfednet/secret-repo-two',
+    'getty@tty1.service and hero@2x.png',
+    'plain host names like hostname.example.com',
+  ]
+  for (const line of clean) {
+    it(`passes: ${line}`, () => {
+      const r = guard({ after: { 'ok.md': `${line}\n` } })
+      assert.equal(r.status, 0, r.out)
+    })
+  }
+})
+
+describe('privacy guard: more shapes that must fail', () => {
+  const bad = {
+    'IPv6 unique-local': 'addr fd7a:115c:a1e0::1 here',
+    'IPv6 link-local': 'addr fe80::1 here',
+    'host after an underscore': `${'DAPYL' + 'LIL'}_HOST=x and runner_${'dapyl' + 'lil'}`,
+    'owner quote with a comma before the quote': `(${'owne' + 'r'}, 7 November 2026, "automate as much as you can")`,
+    'owner quote, colon form with a sentence': `(${'owne' + 'r'}: "stop asking me in all sessions")`,
+    'org given as an Actions expression': '${{ github.repository_owner }}/' + 'secret-repo',
+    'org slash encoded': `${'gorfednet' + '%2F'}secret-repo`,
+    'an address at a real top-level domain that looks like a file extension': `${'someone' + '@'}mail.md`,
+  }
+  for (const [name, line] of Object.entries(bad)) {
+    it(`fails: ${name}`, () => {
+      const r = guard({ after: { 'x.md': `${line}\n` } })
+      assert.equal(r.status, 1, r.out)
+    })
+  }
 })
 
 describe('privacy guard: it fails closed rather than pass having read nothing', () => {
