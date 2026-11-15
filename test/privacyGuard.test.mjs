@@ -50,7 +50,17 @@ function sh(cwd, ...args) {
  * guard's exit status and output. `allow` copies the real allowlist in, so the shipped
  * exemptions are what is under test.
  */
-function guard({ before = { 'README.md': 'hello\n' }, after = {}, env = {}, allow = true, message = 'pr', mergeMessage = null } = {}) {
+function guard({
+  before = { 'README.md': 'hello\n' },
+  after = {},
+  env = {},
+  allow = true,
+  message = 'pr',
+  mergeMessage = null,
+  mergeFiles = {},
+  steps = [],
+  head = 'pr',
+} = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'privacy-guard-'))
   try {
     sh(dir, 'init', '-q', '-b', 'main')
@@ -72,15 +82,25 @@ function guard({ before = { 'README.md': 'hello\n' }, after = {}, env = {}, allo
     put(after)
     sh(dir, 'add', '-A')
     sh(dir, 'commit', '-q', '--allow-empty', '-m', message)
+    // Further commits on the branch: { files, remove, message }. History is published whole.
+    for (const step of steps) {
+      put(step.files ?? {})
+      for (const rel of step.remove ?? []) rmSync(join(dir, rel))
+      sh(dir, 'add', '-A')
+      sh(dir, 'commit', '-q', '--allow-empty', '-m', step.message ?? 'step')
+    }
     if (mergeMessage) {
       sh(dir, 'checkout', '-q', '-b', 'side', 'main')
       writeFileSync(join(dir, 'side.md'), 'clean\n')
       sh(dir, 'add', '-A')
       sh(dir, 'commit', '-q', '-m', 'side')
       sh(dir, 'checkout', '-q', 'pr')
-      sh(dir, 'merge', '-q', '--no-ff', 'side', '-m', mergeMessage)
+      sh(dir, 'merge', '-q', '--no-ff', '--no-commit', 'side')
+      put(mergeFiles) // a hand edit inside the merge, the part a merge commit writes itself
+      sh(dir, 'add', '-A')
+      sh(dir, 'commit', '-q', '-m', mergeMessage)
     }
-    const r = spawnSync('node', [GUARD, '--base', 'main', '--head', 'pr', '--dir', dir], {
+    const r = spawnSync('node', [GUARD, '--base', 'main', '--head', head, '--dir', dir], {
       encoding: 'utf8',
       env: { PATH: process.env.PATH, HOME: process.env.HOME, PRIVATE_REPOS: 'secret-repo,other-one', ...env },
     })
@@ -112,8 +132,8 @@ describe('privacy guard: each rule fails once when its value is added', () => {
     })
   }
 
-  it('fails on a new file under docs/desk, docs/handoff and briefs, whatever it says', () => {
-    for (const dir of ['docs/desk', 'docs/handoff', 'briefs']) {
+  it('fails on a new file under docs/desk, docs/handoff, docs/plans and briefs, whatever it says', () => {
+    for (const dir of ['docs/desk', 'docs/handoff', 'docs/plans', 'briefs']) {
       const r = guard({ after: { [`${dir}/x.md`]: 'plain text\n' } })
       assert.equal(r.status, 1, `${dir}: ${r.out}`)
       assert.match(r.out, /\[new-file\]/)
@@ -383,10 +403,17 @@ describe('privacy guard: it fails closed rather than pass having read nothing', 
     assert.equal(r.status, 2, r.out)
   })
 
-  it('fails when the diff is empty, which a wrong base or head also produces', () => {
-    const r = guard({ after: {} })
-    assert.equal(r.status, 2, r.out)
-    assert.match(r.out, /changes no files/)
+  it('exits 3, its own code, when the range holds no commits: a wrong base or head, or nothing outgoing', () => {
+    const r = guard({ after: { 'ok.md': 'clean\n' }, head: 'main' })
+    assert.equal(r.status, 3, r.out)
+    assert.match(r.out, /nothing to read/)
+  })
+
+  it('reads the message of a commit that changes no files, and does not call it nothing to read', () => {
+    const bad = guard({ after: {}, message: `empty, see ${PLANT['session-id']}` })
+    assert.equal(bad.status, 1, bad.out)
+    assert.match(bad.out, /commit [0-9a-f]{7,}: message line 1: .*\[session-id\]/)
+    assert.equal(guard({ after: {}, message: 'empty and clean' }).status, 0)
   })
 
   it('fails when the base ref does not exist', () => {
@@ -468,5 +495,105 @@ describe('privacy guard: the workflow', () => {
     assert.match(wf, /--base "\$BASE_SHA" --head "\$HEAD_SHA"/)
     assert.match(wf, /git show "\$BASE_SHA:scripts\/privacy-guard\.mjs"/)
     assert.doesNotMatch(wf, /node scripts\/privacy-guard\.mjs/, 'the guard must run from the base, not the head')
+  })
+})
+
+describe('privacy guard: history is published whole, not just its net diff', () => {
+  it('fails on a value one commit adds and the next removes', () => {
+    const r = guard({
+      after: { 'a.md': `top\n${PLANT['private-ip']}\n` },
+      steps: [{ files: { 'a.md': 'top\n' }, message: 'remove it' }],
+    })
+    assert.equal(r.status, 1, r.out)
+    assert.match(r.out, /commit [0-9a-f]{7}: a\.md:2: .*\[private-ip\]/)
+    assert.doesNotMatch(r.out, /10\.0\.0/, 'the log must not repeat the value')
+  })
+
+  it('fails on a whole file one commit adds and the next deletes', () => {
+    const r = guard({
+      after: { 'docs/notes/x.md': `${PLANT['session-id']}\n` },
+      steps: [{ remove: ['docs/notes/x.md'], message: 'delete it' }],
+    })
+    assert.equal(r.status, 1, r.out)
+    assert.match(r.out, /\[session-id\]/)
+  })
+
+  it('fails on a forbidden new file that a later commit deletes', () => {
+    const r = guard({
+      after: { 'docs/handoff/x.md': 'plain\n' },
+      steps: [{ remove: ['docs/handoff/x.md'], message: 'delete it' }],
+    })
+    assert.equal(r.status, 1, r.out)
+    assert.match(r.out, /\[new-file\]/)
+  })
+
+  it('passes a branch whose commits are each clean', () => {
+    const r = guard({ after: { 'a.md': 'one\n' }, steps: [{ files: { 'b.md': 'two\n' } }, { files: { 'a.md': 'one\nmore\n' } }] })
+    assert.equal(r.status, 0, r.out)
+    assert.match(r.out, /each of 3 commit diff\(s\) on its own/)
+  })
+
+  it('reads the lines a merge commit wrote by hand, and not the lines it brought from the other side', () => {
+    const brought = guard({ after: { 'ok.md': 'clean\n' }, mergeMessage: 'sync main', mergeFiles: {} })
+    assert.equal(brought.status, 0, brought.out)
+    const evil = guard({ after: { 'ok.md': 'clean\n' }, mergeMessage: 'sync main', mergeFiles: { 'hand.md': `${PLANT['private-ip']}\n` } })
+    assert.equal(evil.status, 1, evil.out)
+  })
+
+  it('does not read what the branch merged in from the base branch', () => {
+    // main moves on with a bad line, and the branch merges it in: that line is public already.
+    const dir = mkdtempSync(join(tmpdir(), 'privacy-guard-'))
+    try {
+      sh(dir, 'init', '-q', '-b', 'main')
+      writeFileSync(join(dir, 'a.md'), 'base\n')
+      sh(dir, 'add', '-A')
+      sh(dir, 'commit', '-q', '-m', 'base')
+      sh(dir, 'checkout', '-q', '-b', 'pr')
+      writeFileSync(join(dir, 'mine.md'), 'clean\n')
+      sh(dir, 'add', '-A')
+      sh(dir, 'commit', '-q', '-m', 'mine')
+      sh(dir, 'checkout', '-q', 'main')
+      writeFileSync(join(dir, 'theirs.md'), `${PLANT['private-ip']}\n`)
+      sh(dir, 'add', '-A')
+      sh(dir, 'commit', '-q', '-m', 'main moves on')
+      sh(dir, 'checkout', '-q', 'pr')
+      sh(dir, 'merge', '-q', '--no-ff', 'main', '-m', 'sync main')
+      const r = spawnSync('node', [GUARD, '--base', 'main', '--head', 'pr', '--dir', dir], {
+        encoding: 'utf8',
+        env: { PATH: process.env.PATH, PRIVATE_REPOS: 'secret-repo' },
+      })
+      assert.equal(r.status, 0, r.stdout + r.stderr)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+})
+
+describe('privacy guard: a bare private repository name in a list-like file', () => {
+  const list = 'secret-repo\t2026-11-14\tprivate\nother-one\t2026-11-14\tprivate\n'
+  it('fails on a new TSV, CSV or text file listing bare names, the shape the first leak had', () => {
+    for (const name of ['docs/plans/baseline.tsv', 'notes/repos.csv', 'notes/repos.txt']) {
+      const r = guard({ after: { [name]: list } })
+      assert.equal(r.status, 1, `${name}: ${r.out}`)
+      assert.match(r.out, /\[private-repo\]/)
+      assert.doesNotMatch(r.out, /secret-repo|other-one/)
+    }
+  })
+
+  it('fails on a bare name added to a list-like file that already existed', () => {
+    const r = guard({ before: { 'repos.txt': 'public-thing\n' }, after: { 'repos.txt': 'public-thing\nsecret-repo\n' } })
+    assert.equal(r.status, 1, r.out)
+    assert.match(r.out, /repos\.txt:2: .*\[private-repo\]/)
+  })
+
+  it('leaves prose and longer names alone, and a name the allowlist lists', () => {
+    assert.equal(guard({ after: { 'a.md': 'the secret-repo is mentioned in prose\n' } }).status, 0, 'only list-like files read bare names')
+    assert.equal(guard({ after: { 'a.txt': 'secret-repo-two\nmy.secret-repo\nsecret-repos\n' } }).status, 0)
+    assert.equal(guard({ after: { 'a.tsv': 'ops\t1\n' }, env: { PRIVATE_REPOS: 'ops' } }).status, 0)
+  })
+
+  it('does not go red on a bare name the file already held', () => {
+    const r = guard({ before: { 'repos.txt': 'secret-repo\n' }, after: { 'repos.txt': 'secret-repo\nplain\n' } })
+    assert.equal(r.status, 0, r.out)
   })
 })

@@ -8,8 +8,11 @@
  * this script on the outgoing range before a push stops it reaching the branch.
  * Plan row 1.30 (a).
  *
- * It reads only what the range adds, diffed against the merge base, so a change never
- * goes red on content that is already public (verification-floor rule 5):
+ * It reads only what the range adds, so a change never goes red on content that is
+ * already public (verification-floor rule 5). Twice: the net diff against the merge base
+ * (what a merge would land) and each commit's own diff (what a push publishes, so a value
+ * one commit adds and the next removes still counts). A merge commit contributes only the
+ * lines it wrote itself, the ones in its diff against every parent.
  *   - the text of every added line, and the path of every added or renamed file
  *   - the message of every commit in merge-base..head, merge commits the branch wrote included
  * A finding is dropped when the same value is already in that file at the merge base.
@@ -22,7 +25,8 @@
  *   tailnet-name   a tailnet name (the Tailscale domain suffix)
  *   internal-host  a host name main already names in `.deploy-env.example`, workflows
  *                  and scripts (the list below; those names are already public)
- *   private-repo   `gorfednet/<name>` for a private repository. The list comes from the
+ *   private-repo   `gorfednet/<name>` for a private repository, and a bare name as a whole
+ *                  word in a list-like file (.tsv, .csv, .txt, .list, .lst). The list comes from the
  *                  PRIVATE_REPOS Actions secret (comma-separated, so the log masks it), never
  *                  from a committed file or a plain variable.
  *                  Unset or empty fails closed (verification-floor rule 2).
@@ -44,7 +48,9 @@
  *     [--dir <repo>]      the git repository to read (default: current directory)
  *     [--allow <file>]    read the allowlist from this file instead of the merge base
  *
- * Exit: 0 clean, 1 findings, 2 the guard could not run (nothing was checked).
+ * Exit: 0 clean, 1 findings, 2 the guard could not run (nothing was checked), 3 there were
+ * no commits in the range, so there was nothing to read. A caller that has its own proof
+ * that nothing is outgoing may treat 3 as a pass; the guard never does.
  */
 import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
@@ -68,7 +74,14 @@ export const INTERNAL_HOSTS = ['dapyl' + 'lil', 'gorfedna' + 's', 'gorfpa' + 'el
 
 // New files under these are refused: runbooks, plans, handoffs and briefs live in the
 // private ops repository (plan row 1.30).
-export const FORBIDDEN_NEW_DIRS = ['docs/desk/', 'docs/handoff/', 'briefs/']
+export const FORBIDDEN_NEW_DIRS = ['docs/desk/', 'docs/handoff/', 'docs/plans/', 'briefs/']
+
+/** Exit status for "no commits in the range": nothing was read, and that is not a pass. */
+export const EXIT_NOTHING_TO_READ = 3
+
+// Files that list things, where a private repository is named without the org prefix.
+const LIST_LIKE = /\.(?:tsv|csv|txt|list|lst)$/i
+export const isListLike = (path) => LIST_LIKE.test(path)
 
 export const ALLOWLIST_PATH = '.github/privacy-guard-allow.txt'
 
@@ -200,13 +213,20 @@ function emailAllowed(address, allow) {
   return RESERVED_DOMAINS.some(covers) || allow.emails.some(covers)
 }
 
+/** A bare private repository name as a whole word: not part of a longer name, path or word. */
+export function bareNamePattern(names) {
+  if (names.length === 0) return /(?!)/g
+  const alt = names.map(escapeRegex).join('|')
+  return new RegExp(`(?<![A-Za-z0-9_.-])(?:${alt})(?![A-Za-z0-9_-]|\\.[A-Za-z0-9])`, 'gi')
+}
+
 const all = (re, text) => [...text.matchAll(re)].map((m) => m[0])
 
 /**
  * What a piece of text breaks: [{ rule, value }]. `rules` limits which rules run (a path
  * or a commit message is not checked for emails).
  */
-export function scanText(raw, { privateRepo, allow }, rules = Object.keys(RULES)) {
+export function scanText(raw, { privateRepo, bare, allow }, rules = Object.keys(RULES), listLike = false) {
   const text = raw.replace(/\0/g, '') // a UTF-16 file read as bytes has a NUL between letters
   const on = (r) => rules.includes(r)
   const hits = []
@@ -216,6 +236,7 @@ export function scanText(raw, { privateRepo, allow }, rules = Object.keys(RULES)
   if (on('tailnet-name')) add('tailnet-name', all(TAILNET, text))
   if (on('internal-host')) add('internal-host', all(INTERNAL, text))
   if (on('private-repo')) add('private-repo', all(privateRepo, text))
+  if (on('private-repo') && listLike && bare) add('private-repo', all(bare, text))
   if (on('owner-quote')) add('owner-quote', all(OWNER_QUOTE, text))
   if (on('email')) {
     add(
@@ -371,6 +392,69 @@ const escapeProperty = (s) =>
 const PATH_RULES = ['private-ip', 'session-id', 'tailnet-name', 'internal-host', 'private-repo']
 const COMMIT_RULES = [...PATH_RULES, 'owner-quote']
 
+const EMPTY_TREE = '4b825dc642cb6eb9a060e54bf8d69288fbbc4904'
+const DIFF_FLAGS = ['--no-color', '--no-ext-diff', '--no-textconv', '--text', '-M']
+
+/** One diff between two revisions, read three ways and checked against git's own count. */
+function readDiff(dir, from, to) {
+  const pair = [from, to, '--']
+  const diff = git(dir, ['diff', ...DIFF_FLAGS, '--unified=0', ...pair])
+  const numstat = git(dir, ['diff', ...DIFF_FLAGS, '--numstat', '-z', ...pair])
+  const nameStatus = git(dir, ['diff', ...DIFF_FLAGS, '--name-status', '-z', ...pair])
+  const added = parseAddedLines(diff)
+  checkCounts(parseNumstat(numstat), added)
+  return { nameStatus, files: parseNameStatus(nameStatus), added }
+}
+
+/**
+ * Lines a merge commit adds that neither parent had: a line in the diff against every
+ * parent. Lines the merge only brought in from the other side are public already, so
+ * they are in the diff against one parent and not the other.
+ */
+function mergeAddedLines(dir, parents, sha) {
+  let keep = null
+  for (const p of parents) {
+    const rows = parseAddedLines(git(dir, ['diff', ...DIFF_FLAGS, '--unified=0', p, sha, '--']))
+    const keyed = new Map(rows.map((r) => [`${r.path}\0${r.text}`, r]))
+    keep = keep === null ? keyed : new Map([...keep].filter(([k]) => keyed.has(k)))
+  }
+  return [...(keep ?? new Map()).values()]
+}
+
+/**
+ * Findings for one diff: new files in forbidden directories, added and renamed paths, and
+ * added lines minus any value the same file already held at the merge base. `sha` is
+ * null for the net diff and the commit's short id for a single commit's own diff.
+ */
+function scanDiff({ files, nameStatus, added }, sha, ctx, heldAtBase, origin) {
+  const { allow } = ctx
+  const findings = []
+  const flag = (path, line, rule, value) => findings.push({ path, line, rule, value, sha })
+  for (const f of parseNewFiles(nameStatus)) {
+    if (inForbiddenDir(f.path) && !pathExempt(f.path, 'new-file', allow)) flag(f.path, 1, 'new-file', '')
+  }
+  for (const f of files) {
+    if (!['A', 'R', 'C'].includes(f.status)) continue
+    for (const hit of scanText(f.path, ctx, PATH_RULES)) {
+      if (!pathExempt(f.path, hit.rule, allow)) flag(f.path, 1, hit.rule, hit.value)
+    }
+  }
+  let linesRead = 0
+  const filesRead = new Set()
+  for (const { path, line, text } of added) {
+    if (SKIP_CONTENT.test(path)) continue
+    linesRead += 1
+    filesRead.add(path)
+    for (const hit of scanText(text, ctx, undefined, isListLike(path))) {
+      if (pathExempt(path, hit.rule, allow)) continue
+      if (heldAtBase(origin.get(path) ?? path, path, hit.rule, hit.value)) continue
+      flag(path, line, hit.rule, hit.value)
+    }
+  }
+  for (const f of files) if (f.from) origin.set(f.path, origin.get(f.from) ?? f.from)
+  return { findings, linesRead, filesRead }
+}
+
 export function run(argv, env = process.env, out = console) {
   let args
   try {
@@ -401,18 +485,23 @@ export function run(argv, env = process.env, out = console) {
   const dir = resolve(args.dir)
   const range = `${args.base}...${args.head}`
   let mergeBase
-  let diff
-  let numstat
-  let nameStatus
+  let net
+  let commits
   let messages
   let allowText
   try {
     mergeBase = git(dir, ['merge-base', args.base, args.head]).trim()
-    const common = ['--no-color', '--no-ext-diff', '--no-textconv', '--text', '-M']
-    diff = git(dir, ['diff', ...common, '--unified=0', range, '--'])
-    numstat = git(dir, ['diff', ...common, '--numstat', '-z', range, '--'])
-    nameStatus = git(dir, ['diff', ...common, '--name-status', '-z', range, '--'])
+    // Every commit the range publishes, oldest first, with its parents. History is
+    // disclosed whole, so a value one commit adds and a later one removes counts.
+    commits = git(dir, ['rev-list', '--reverse', '--parents', `${mergeBase}..${args.head}`, '--'])
+      .split('\n')
+      .filter(Boolean)
+      .map((row) => {
+        const [sha, ...parents] = row.split(' ')
+        return { sha, short: sha.slice(0, 7), parents }
+      })
     messages = git(dir, ['log', '-z', '--format=%h%n%B', `${mergeBase}..${args.head}`, '--'])
+    if (commits.length > 0) net = readDiff(dir, mergeBase, args.head)
     if (args.allow) allowText = readFileSync(resolve(args.allow), 'utf8')
     else {
       try {
@@ -426,6 +515,13 @@ export function run(argv, env = process.env, out = console) {
     return 2
   }
 
+  // Nothing to read is its own answer, not a pass and not a crash: a wrong base or head,
+  // or a push with nothing outgoing. A caller that wants to treat it as a pass says so.
+  if (commits.length === 0) {
+    out.error(`privacy-guard: ${range} holds no commits, so there was nothing to read. Check the base and head.`)
+    return EXIT_NOTHING_TO_READ
+  }
+
   let allow
   try {
     allow = parseAllowlist(allowText)
@@ -434,85 +530,77 @@ export function run(argv, env = process.env, out = console) {
     return 2
   }
 
-  // An empty diff is not "clean", it is "nothing to read": a wrong base or head gives the
-  // same output. A pull request always changes something.
-  if (nameStatus.replace(/\0/g, '') === '') {
-    out.error(`privacy-guard: ${range} changes no files, so nothing was checked. Check the base and head.`)
-    return 2
+  const open = names.filter((n) => !allow.repos.includes(n))
+  const ctx = { privateRepo: privateRepoPattern(open), bare: bareNamePattern(open), allow }
+
+  // The values the same rule finds in the file at the merge base, compared whole: a file
+  // that holds one value does not excuse a longer or shorter one that contains it.
+  const baseCache = new Map()
+  const heldAtBase = (key, path, rule, value) => {
+    const cacheKey = `${key}\0${isListLike(path)}`
+    if (!baseCache.has(cacheKey)) {
+      let held = new Set()
+      try {
+        const text = git(dir, ['show', `${mergeBase}:${key}`])
+        held = new Set(scanText(text, ctx, undefined, isListLike(path)).map((h) => `${h.rule}\0${h.value.toLowerCase()}`))
+      } catch {
+        // a new file held nothing
+      }
+      baseCache.set(cacheKey, held)
+    }
+    return baseCache.get(cacheKey).has(`${rule}\0${value.toLowerCase()}`)
   }
 
-  const ctx = { privateRepo: privateRepoPattern(names.filter((n) => !allow.repos.includes(n))), allow }
-  const files = parseNameStatus(nameStatus)
-  const oldPath = new Map(files.map((f) => [f.path, f.from ?? f.path]))
-  let added
+  const findings = []
+  const seen = new Set()
+  const take = (list) => {
+    for (const f of list) {
+      const key = `${f.path}\0${f.rule}\0${f.value.toLowerCase()}`
+      if (f.rule !== 'new-file' && seen.has(key)) continue // one value in one file, once
+      seen.add(key)
+      findings.push(f)
+    }
+  }
+
+  let linesRead = 0
+  let filesRead = new Set()
   try {
-    added = parseAddedLines(diff)
-    checkCounts(parseNumstat(numstat), added)
+    const first = scanDiff(net, null, ctx, heldAtBase, new Map(net.files.filter((f) => f.from).map((f) => [f.path, f.from])))
+    take(first.findings)
+    linesRead = first.linesRead
+    filesRead = first.filesRead
+
+    // Then each commit's own diff. The net diff above is what a merge would land; this is
+    // what the push publishes. A value added in one commit and removed in the next is in
+    // the second and not the first.
+    const origin = new Map()
+    for (const c of commits) {
+      if (c.parents.length > 1) {
+        // A merge: only the lines the merge itself wrote. Lines it brought from the other side are not new.
+        const lines = mergeAddedLines(dir, c.parents, c.sha)
+        take(scanDiff({ files: [], nameStatus: '', added: lines }, c.short, ctx, heldAtBase, origin).findings)
+      } else {
+        const d = readDiff(dir, c.parents[0] ?? EMPTY_TREE, c.sha)
+        take(scanDiff(d, c.short, ctx, heldAtBase, origin).findings)
+      }
+    }
   } catch (error) {
     out.error(`privacy-guard: cannot trust the diff, so nothing was checked: ${error.message}`)
     return 2
   }
 
-  const findings = []
-
-  // New files under the directories that belong in the private ops repository.
-  for (const f of parseNewFiles(nameStatus)) {
-    if (inForbiddenDir(f.path) && !pathExempt(f.path, 'new-file', allow)) {
-      findings.push({ path: f.path, line: 1, rule: 'new-file' })
-    }
-  }
-
-  // Added and renamed paths are public too.
-  for (const f of files) {
-    if (!['A', 'R', 'C'].includes(f.status)) continue
-    for (const hit of scanText(f.path, ctx, PATH_RULES)) {
-      if (!pathExempt(f.path, hit.rule, allow)) findings.push({ path: f.path, line: 1, rule: hit.rule })
-    }
-  }
-
-  // Added lines, minus any value the same file already held at the merge base.
-  // The values the same rule finds in the file at the merge base, compared whole: a file
-  // that holds one value does not excuse a longer or shorter one that contains it.
-  const baseCache = new Map()
-  const heldAtBase = (path, rule, value) => {
-    const key = oldPath.get(path) ?? path
-    if (!baseCache.has(key)) {
-      let held = new Set()
-      try {
-        const text = git(dir, ['show', `${mergeBase}:${key}`])
-        held = new Set(scanText(text, ctx).map((h) => `${h.rule}\0${h.value.toLowerCase()}`))
-      } catch {
-        // a new file held nothing
-      }
-      baseCache.set(key, held)
-    }
-    return baseCache.get(key).has(`${rule}\0${value.toLowerCase()}`)
-  }
-  let linesRead = 0
-  let filesRead = new Set()
-  for (const { path, line, text } of added) {
-    if (SKIP_CONTENT.test(path)) continue
-    linesRead += 1
-    filesRead.add(path)
-    for (const hit of scanText(text, ctx)) {
-      if (pathExempt(path, hit.rule, allow)) continue
-      if (heldAtBase(path, hit.rule, hit.value)) continue
-      findings.push({ path, line, rule: hit.rule })
-    }
-  }
-
   // Commit messages are public too. The finding is "commit <sha>", never the text.
-  let commits = 0
   // -z separates commits with NUL, which a commit message cannot hold; a control character
   // a message can hold (\x01, \x02) would otherwise split an entry and hide text.
+  let messageCount = 0
   for (const entry of messages.split('\0').filter((e) => e.trim() !== '')) {
     const nl = entry.indexOf('\n')
     const sha = entry.slice(0, nl).trim()
     const body = entry.slice(nl + 1)
-    commits += 1
+    messageCount += 1
     body.split('\n').forEach((text, i) => {
       for (const hit of scanText(text, ctx, COMMIT_RULES)) {
-        findings.push({ path: `commit ${sha}`, line: i + 1, rule: hit.rule, commit: true })
+        findings.push({ path: `commit ${sha}`, line: i + 1, rule: hit.rule, value: hit.value, sha, message: true })
       }
     })
   }
@@ -520,16 +608,20 @@ export function run(argv, env = process.env, out = console) {
   const actions = env.GITHUB_ACTIONS === 'true'
   const shown = findings.slice(0, 200)
   for (const f of shown) {
-    const message = `${RULES[f.rule]} [${f.rule}]`
-    if (f.commit) out.log(`${f.path}: message line ${f.line}: ${message}`)
-    else if (actions) out.log(`::error file=${escapeProperty(f.path)},line=${f.line},title=privacy-guard::${message}`)
-    else out.log(`${f.path}:${f.line}: ${message}`)
+    const what = `${RULES[f.rule]} [${f.rule}]`
+    if (f.message) out.log(`${f.path}: message line ${f.line}: ${what}`)
+    else if (f.sha) {
+      // Found in one commit's own diff: the line may be gone from the final tree, so no file annotation.
+      if (actions) out.log(`::error title=privacy-guard::commit ${f.sha}: ${escapeProperty(f.path)}:${f.line}: ${what}`)
+      else out.log(`commit ${f.sha}: ${f.path}:${f.line}: ${what}`)
+    } else if (actions) out.log(`::error file=${escapeProperty(f.path)},line=${f.line},title=privacy-guard::${what}`)
+    else out.log(`${f.path}:${f.line}: ${what}`)
   }
   if (findings.length > shown.length) out.log(`... and ${findings.length - shown.length} more`)
 
   // The allowlist, this script and the workflow decide what the guard lets through, so
   // say when a change touches them. They are control-plane files and need a human read.
-  const touched = files.filter((f) =>
+  const touched = net.files.filter((f) =>
     [ALLOWLIST_PATH, 'scripts/privacy-guard.mjs', '.github/workflows/privacy-guard.yml'].includes(f.path),
   )
   if (actions && touched.length > 0) {
@@ -540,12 +632,13 @@ export function run(argv, env = process.env, out = console) {
     out.log(
       `privacy-guard: ${findings.length} finding(s) on what ${range} adds. This repository is public; ` +
         'remove the value, or describe it without naming it. Runbooks, plans and handoffs belong in the private ops repository. ' +
-        'The finding names the rule and the place, never the value, so the log does not repeat it.',
+        'The finding names the rule and the place, never the value, so the log does not repeat it. ' +
+        'History is public too: a value that a later commit removes still counts, so rewrite the branch before it is pushed.',
     )
     return 1
   }
   out.log(
-    `privacy-guard: OK, read ${linesRead} added line(s) in ${filesRead.size} file(s), ${files.length} path(s) and ${commits} commit message(s) in ${range}`,
+    `privacy-guard: OK, read ${linesRead} added line(s) in ${filesRead.size} file(s), ${net.files.length} path(s) and ${messageCount} commit message(s) in ${range}, and each of ${commits.length} commit diff(s) on its own`,
   )
   return 0
 }
