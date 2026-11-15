@@ -255,10 +255,15 @@ describe('privacy guard: it cannot be switched off by the change it reads', () =
     assert.equal(utf16.status, 1, utf16.out)
   })
 
-  it('skips an image by extension but still reads its path', () => {
-    const png = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47]), Buffer.from(`${PLANT['private-ip']}`)])
-    assert.equal(guard({ after: { 'logo.png': png } }).status, 0)
-    const named = guard({ after: { [`img/${PLANT['internal-host']}.png`]: png } })
+  it('reads a text file with an image name, and lets real image bytes through', () => {
+    const real = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0xff, 0xd8, 0xfa, 0x10, 0x0a, 0x7f])
+    assert.equal(guard({ after: { 'logo.png': real } }).status, 0, 'a real image has nothing to match')
+    for (const name of ['notes.png', 'x.ico', 'f.woff2']) {
+      const r = guard({ after: { [name]: `see ${PLANT['private-ip']}\n` } })
+      assert.equal(r.status, 1, `${name}: ${r.out}`)
+      assert.match(r.out, new RegExp(`${name.replace('.', '\\.')}:1: .*\\[private-ip\\]`))
+    }
+    const named = guard({ after: { [`img/${PLANT['internal-host']}.png`]: real } })
     assert.equal(named.status, 1, named.out)
   })
 

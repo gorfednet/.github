@@ -32,8 +32,9 @@
  *   new-file       a new file under docs/desk/, docs/handoff/ or briefs/
  *
  * Files git treats as binary are read as text (`--text`), so a `.gitattributes` line in
- * the change cannot switch the guard off. Only image and font files are skipped, by
- * extension. The parsed added-line count is checked against `git diff --numstat`, and a
+ * the change cannot switch the guard off. No file is skipped by name or type: a text file
+ * called logo.png is read like any other, and real image bytes hold nothing the rules match.
+ * The parsed added-line count is checked against `git diff --numstat`, and a
  * mismatch is an error (rule 1: count what ran).
  *
  * The allowlist is read from the MERGE BASE, never from the change: an exemption takes
@@ -100,9 +101,6 @@ const FILE_EXTENSIONS = new Set([
   'png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'avif', 'ico', 'css', 'js', 'mjs', 'cjs',
   'json', 'yml', 'yaml', 'html', 'txt', 'map', 'woff', 'woff2', 'ttf', 'otf', 'service',
 ])
-
-// Image and font files are not read as text. Everything else is, whatever git thinks.
-const SKIP_CONTENT = /\.(?:png|jpe?g|gif|webp|avif|ico|woff2?|ttf|otf|eot)$/i
 
 // Bot and tool identities already on main, plus the address every git remote uses. The
 // reserved example domains can never be private, so they live here, not in the allowlist.
@@ -336,7 +334,7 @@ export function checkCounts(numstat, added) {
   for (const { path, added: n } of numstat) {
     const got = parsed.get(path) ?? 0
     if (n === null) {
-      if (got === 0 && !SKIP_CONTENT.test(path)) throw new Error(`a file git calls binary produced no readable lines: ${path}`)
+      if (got === 0) throw new Error(`a file git calls binary produced no readable lines: ${path}`)
     } else if (got !== n) {
       throw new Error(`read ${got} added line(s) of ${path} but git counts ${n}`)
     }
@@ -491,7 +489,6 @@ export function run(argv, env = process.env, out = console) {
   let linesRead = 0
   let filesRead = new Set()
   for (const { path, line, text } of added) {
-    if (SKIP_CONTENT.test(path)) continue
     linesRead += 1
     filesRead.add(path)
     for (const hit of scanText(text, ctx)) {

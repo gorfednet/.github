@@ -680,6 +680,14 @@
       "file": "scripts/privacy-guard.mjs",
       "find": "messages.split('\\0').filter((e) => e.trim() !== '')",
       "replace": "messages.split(/[\\0\\x01]/).filter((e) => e.trim() !== '')"
+    },
+    {
+      "id": "privacy-guard-skips-files-by-extension",
+      "guards": "No file is skipped by name. A text file called notes.png that holds a private address must still fail; skipping image names lets a change hide a value behind a file name it picks.",
+      "command": "node --test --test-name-pattern='image name' test/privacyGuard.test.mjs",
+      "file": "scripts/privacy-guard.mjs",
+      "find": "  for (const { path, line, text } of added) {\n",
+      "replace": "  for (const { path, line, text } of added) {\n    if (/\\.(?:png|ico|woff2?)$/i.test(path)) continue\n"
     }
   ]
 }
