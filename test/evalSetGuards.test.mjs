@@ -272,15 +272,36 @@ describe('a run stops, aborts, unloads and frees the lock on SIGINT, and records
     const io = mk('s'); io.chat = async () => ({ text: '{"verdict":"valid"}', ms: 1 })
     assert.equal('reasoning' in (await runModel(cs, 'm', 'http://stub', io))._model, false)
   })
-  it('waits after the unload until the server reports the model unloaded', async () => {
+  it('saves the arm before the unload wait, holds the lock through it, and frees it after', async () => {
     const io = mk('s'); io.chat = async () => ({ text: '{"verdict":"valid"}', ms: 1 })
     let after = 0; const base = io.listModels
+    const lockState = () => (fs.existsSync(io.lock) ? 'lock-held' : 'lock-free')
     io.unload = async () => { io.calls.push('unload'); after = 1 }
-    io.listModels = async () => { if (after && after++ <= 2) { io.calls.push('list-loaded'); return [{ id: 'm', status: 'loaded', sha: 's' }] } if (after) io.calls.push('list-unloaded'); return base() }
+    io.save = async () => { io.calls.push('save') }
+    io.listModels = async () => { if (after && after++ <= 2) { io.calls.push(`list-loaded:${lockState()}`); return [{ id: 'm', status: 'loaded', sha: 's' }] } if (after) io.calls.push(`list-unloaded:${lockState()}`); return base() }
     io.sleep = async () => { io.calls.push('sleep') }
     await runModel(cs, 'm', 'http://stub', io)
-    assert.deepEqual(io.calls, ['unload', 'list-loaded', 'sleep', 'list-loaded', 'sleep', 'list-unloaded'])
+    assert.deepEqual(io.calls, ['unload', 'save', 'list-loaded:lock-held', 'sleep', 'list-loaded:lock-held', 'sleep', 'list-unloaded:lock-held'])
     assert.equal(fs.existsSync(io.lock), false)
+  })
+  it('does not call save for a run that never finished (warm-up failed)', async () => {
+    const io = mk('s'); io.warm = async () => { throw new Error('warm-up: boom') }; io.save = async () => { io.calls.push('save') }
+    await assert.rejects(runModel(cs, 'm', 'http://stub', io), /boom/)
+    assert.equal(io.calls.includes('save'), false)
+  })
+  it('stops the unload wait at the first unreadable poll with its own warning, not "still reported loaded"', async () => {
+    const io = mk('s'); io.chat = async () => ({ text: '{"verdict":"valid"}', ms: 1 })
+    let after = false, polls = 0
+    io.unload = async () => { after = true }
+    io.listModels = async () => { if (!after) return [{ id: 'm', status: 'unloaded', sha: 's' }]; polls++; throw new Error('ECONNREFUSED') }
+    io.sleep = async () => {}
+    const err = []; const orig = process.stderr.write
+    process.stderr.write = (c) => { err.push(String(c)); return true }
+    try { await runModel(cs, 'm', 'http://stub', io) } finally { process.stderr.write = orig }
+    assert.equal(polls, 1)
+    assert.ok(err.some((l) => /warning: could not read the model list after unload: ECONNREFUSED/.test(l)))
+    assert.equal(err.some((l) => /still reported loaded/.test(l)), false)
+    assert.ok(err.some((l) => /waiting up to 120 s for m to unload/.test(l)))
   })
   it('gives up the unload wait with a warning and still returns the scored arm', async () => {
     const io = mk('s'); io.chat = async () => ({ text: '{"verdict":"valid"}', ms: 1 })
@@ -398,11 +419,14 @@ describe('evalset-run CLI: fail closed on flags, harness errors exit non-zero, a
     assert.match(r.stderr, /unknown flag --no-think/)
   })
   it('rejects a --reasoning value other than low, medium or high before any request', async () => {
-    for (const v of ['extreme', 'LOW', '--no-thinking']) {
+    for (const v of ['extreme', 'LOW']) {
       const r = await cli(['--model', 'm', '--out', path.join(dir, 'o.json'), '--reasoning', v], { LOCAL_LLM_URL: 'http://127.0.0.1:1' })
       assert.equal(r.status, 2)
-      assert.match(r.stderr, /--reasoning/)
+      assert.match(r.stderr, /--reasoning must be low, medium or high/)
     }
+    const r = await cli(['--model', 'm', '--out', path.join(dir, 'o.json'), '--reasoning', '--no-thinking'], { LOCAL_LLM_URL: 'http://127.0.0.1:1' })
+    assert.equal(r.status, 2)
+    assert.match(r.stderr, /--reasoning <value> is required/)
   })
   it('rejects --warmup-min 0 and --warmup-min x before any request', async () => {
     for (const v of ['0', 'x']) {
@@ -410,6 +434,27 @@ describe('evalset-run CLI: fail closed on flags, harness errors exit non-zero, a
       assert.equal(r.status, 2)
       assert.match(r.stderr, /--warmup-min must be a positive number/)
     }
+  })
+  it('--reasoning low reaches every request body through the CLI and is written to the arm', async () => {
+    const bodies = []
+    const srv = http.createServer((req, res) => {
+      let b = ''
+      req.on('data', (c) => (b += c))
+      req.on('end', () => {
+        if (req.url === '/v1/models') return res.end(JSON.stringify({ data: [{ id: 'm', status: { value: 'unloaded', args: ['--model', '/x/snapshots/abc/m.gguf'] } }] }))
+        if (req.url === '/v1/chat/completions') { bodies.push(JSON.parse(b)); return res.end(JSON.stringify({ choices: [{ message: { content: '{"verdict":"valid"}' }, finish_reason: 'stop' }] })) }
+        res.end('{}')
+      })
+    })
+    await new Promise((r) => srv.listen(0, '127.0.0.1', r))
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'es-home-r-'))
+    const out = path.join(dir, 'reasoning-arm.json')
+    try {
+      const r = await cli(['--model', 'm', '--out', out, '--tasks', 'reviewer', '--reasoning', 'low'], { LOCAL_LLM_URL: `http://127.0.0.1:${srv.address().port}`, HOME: home })
+      assert.equal(r.status, 0, r.stderr)
+      assert.ok(bodies.length >= 2 && bodies.every((b) => b.chat_template_kwargs?.reasoning_effort === 'low'))
+      assert.equal(JSON.parse(fs.readFileSync(out, 'utf8'))._model.reasoning, 'low')
+    } finally { srv.close() }
   })
   it('leaves an existing --out alone when the run is refused on the lock, and replaces it once the run holds the lock', async () => {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), 'es-lock-home-'))
