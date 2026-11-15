@@ -60,6 +60,7 @@ function guard({
   mergeFiles = {},
   steps = [],
   head = 'pr',
+  cli = null,
 } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'privacy-guard-'))
   try {
@@ -100,7 +101,7 @@ function guard({
       sh(dir, 'add', '-A')
       sh(dir, 'commit', '-q', '-m', mergeMessage)
     }
-    const r = spawnSync('node', [GUARD, '--base', 'main', '--head', head, '--dir', dir], {
+    const r = spawnSync('node', [GUARD, ...(cli ?? ['--base', 'main', '--head', head]), '--dir', dir], {
       encoding: 'utf8',
       env: { PATH: process.env.PATH, HOME: process.env.HOME, PRIVATE_REPOS: 'secret-repo,other-one', ...env },
     })
@@ -595,5 +596,56 @@ describe('privacy guard: a bare private repository name in a list-like file', ()
   it('does not go red on a bare name the file already held', () => {
     const r = guard({ before: { 'repos.txt': 'secret-repo\n' }, after: { 'repos.txt': 'secret-repo\nplain\n' } })
     assert.equal(r.status, 0, r.out)
+  })
+})
+
+describe('privacy guard: push mode, where the remote\'s own tips are the line (--not, --root)', () => {
+  const push = (opts, cli = ['--head', 'pr', '--not', 'main']) => guard({ ...opts, cli })
+
+  it('reads each outgoing commit on its own, so a value added and removed is found', () => {
+    const r = push({
+      after: { 'a.md': `top\n${PLANT['private-ip']}\n` },
+      steps: [{ files: { 'a.md': 'top\n' }, message: 'remove it' }],
+    })
+    assert.equal(r.status, 1, r.out)
+    assert.match(r.out, /commit [0-9a-f]{7}: a\.md:2: .*\[private-ip\]/)
+  })
+
+  it('passes a clean push and says what it read', () => {
+    const r = push({ after: { 'a.md': 'one\ntwo\n' } })
+    assert.equal(r.status, 0, r.out)
+    assert.match(r.out, /read 2 added line\(s\) in 1 file\(s\)/)
+  })
+
+  it('exits 3 when nothing is outgoing', () => {
+    const r = push({ after: { 'a.md': 'one\n' } }, ['--head', 'main', '--not', 'main'])
+    assert.equal(r.status, 3, r.out)
+  })
+
+  it('does not read commits a remote tip already holds, however many tips there are', () => {
+    // Tip "main" holds a bad line on its own commit; the branch was cut after it.
+    const r = push(
+      { before: { 'old.md': `${PLANT['private-ip']}\n` }, after: { 'a.md': 'clean\n' } },
+      ['--head', 'pr', '--not', 'main'],
+    )
+    assert.equal(r.status, 0, r.out)
+  })
+
+  it('reads the allowlist from the first --not tip, not from the change', () => {
+    const org = 'gorfednet' + '/'
+    const ok = push({ after: { 'a.md': `${org}ops\n` }, env: { PRIVATE_REPOS: 'ops' } })
+    assert.equal(ok.status, 0, ok.out)
+    const widened = push({ after: { '.github/privacy-guard-allow.txt': 'path docs/** *\n', 'docs/x.md': `${PLANT['private-ip']}\n` } })
+    assert.equal(widened.status, 1, widened.out)
+  })
+
+  it('--root reads every commit of the head, the first one too', () => {
+    const r = push({ before: { 'README.md': `${PLANT['private-ip']}\n` }, after: { 'a.md': 'clean\n' } }, ['--head', 'pr', '--root'])
+    assert.equal(r.status, 1, r.out)
+  })
+
+  it('refuses a call that names no line, or two', () => {
+    assert.equal(push({}, ['--head', 'pr']).status, 2)
+    assert.equal(push({}, ['--head', 'pr', '--base', 'main', '--not', 'main']).status, 2)
   })
 })

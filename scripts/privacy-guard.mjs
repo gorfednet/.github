@@ -47,6 +47,9 @@
  *   PRIVATE_REPOS=name-one,name-two node scripts/privacy-guard.mjs --base <ref> --head <ref>
  *     [--dir <repo>]      the git repository to read (default: current directory)
  *     [--allow <file>]    read the allowlist from this file instead of the merge base
+ *   For a push, instead of --base: --not <rev> (repeatable, the first is the default branch
+ *   and holds the allowlist) or --root, so the range is every commit of --head that none of
+ *   the remote's own tips already holds. Reads each commit on its own; there is no net diff.
  *
  * Exit: 0 clean, 1 findings, 2 the guard could not run (nothing was checked), 3 there were
  * no commits in the range, so there was nothing to read. A caller that has its own proof
@@ -373,16 +376,24 @@ function git(dir, args) {
 }
 
 function parseArgs(argv) {
-  const out = { dir: '.', base: null, head: null, allow: null }
-  for (let i = 0; i < argv.length; i += 2) {
+  const out = { dir: '.', base: null, head: null, allow: null, not: [], root: false }
+  for (let i = 0; i < argv.length; i += 1) {
     const key = argv[i]
+    if (key === '--root') {
+      out.root = true
+      continue
+    }
     const value = argv[i + 1]
-    if (!['--base', '--head', '--dir', '--allow'].includes(key) || value === undefined) {
+    i += 1
+    if (!['--base', '--head', '--dir', '--allow', '--not'].includes(key) || value === undefined) {
       throw new Error(`unknown or incomplete argument: ${key}`)
     }
-    out[key.slice(2)] = value
+    if (key === '--not') out.not.push(value)
+    else out[key.slice(2)] = value
   }
-  if (!out.base || !out.head) throw new Error('--base and --head are required')
+  if (!out.head) throw new Error('--head is required')
+  const modes = [out.base !== null, out.not.length > 0, out.root].filter(Boolean).length
+  if (modes !== 1) throw new Error('give exactly one of --base, --not (repeatable) or --root')
   return out
 }
 
@@ -392,11 +403,13 @@ const escapeProperty = (s) =>
 const PATH_RULES = ['private-ip', 'session-id', 'tailnet-name', 'internal-host', 'private-repo']
 const COMMIT_RULES = [...PATH_RULES, 'owner-quote']
 
-const EMPTY_TREE = '4b825dc642cb6eb9a060e54bf8d69288fbbc4904'
+const EMPTY_TREE = '4b825dc642cb6eb9a060e54bf8d69288fbee4904'
 const DIFF_FLAGS = ['--no-color', '--no-ext-diff', '--no-textconv', '--text', '-M']
 
 /** One diff between two revisions, read three ways and checked against git's own count. */
 function readDiff(dir, from, to) {
+  // A root commit diffs against the empty tree, which a repository need not hold yet.
+  if (from === EMPTY_TREE) git(dir, ['hash-object', '-t', 'tree', '-w', '--stdin'])
   const pair = [from, to, '--']
   const diff = git(dir, ['diff', ...DIFF_FLAGS, '--unified=0', ...pair])
   const numstat = git(dir, ['diff', ...DIFF_FLAGS, '--numstat', '-z', ...pair])
@@ -483,29 +496,36 @@ export function run(argv, env = process.env, out = console) {
   }
 
   const dir = resolve(args.dir)
-  const range = `${args.base}...${args.head}`
-  let mergeBase
-  let net
+  // Two ways to say what is already public. --base: a pull request, where the merge base is
+  // the line and the net diff is read too. --not (repeatable) or --root: a push, where the
+  // remote's own branch tips are the line (the hook passes them), the first one is the
+  // default branch and holds the allowlist, and there is no single base to diff.
+  const pushMode = args.base === null
+  const range = pushMode ? `${args.head} not ${args.root ? 'nothing' : `${args.not.length} remote tip(s)`}` : `${args.base}...${args.head}`
+  let baseRefs
+  let net = { files: [], nameStatus: '', added: [] }
   let commits
   let messages
   let allowText
   try {
-    mergeBase = git(dir, ['merge-base', args.base, args.head]).trim()
+    baseRefs = pushMode ? args.not : [git(dir, ['merge-base', args.base, args.head]).trim()]
+    const exclude = pushMode ? ['--not', ...baseRefs] : []
+    const spec = pushMode ? [args.head] : [`${baseRefs[0]}..${args.head}`]
     // Every commit the range publishes, oldest first, with its parents. History is
     // disclosed whole, so a value one commit adds and a later one removes counts.
-    commits = git(dir, ['rev-list', '--reverse', '--parents', `${mergeBase}..${args.head}`, '--'])
+    commits = git(dir, ['rev-list', '--reverse', '--parents', ...spec, ...exclude, '--'])
       .split('\n')
       .filter(Boolean)
       .map((row) => {
         const [sha, ...parents] = row.split(' ')
         return { sha, short: sha.slice(0, 7), parents }
       })
-    messages = git(dir, ['log', '-z', '--format=%h%n%B', `${mergeBase}..${args.head}`, '--'])
-    if (commits.length > 0) net = readDiff(dir, mergeBase, args.head)
+    messages = git(dir, ['log', '-z', '--format=%h%n%B', ...spec, ...exclude, '--'])
+    if (commits.length > 0 && !pushMode) net = readDiff(dir, baseRefs[0], args.head)
     if (args.allow) allowText = readFileSync(resolve(args.allow), 'utf8')
     else {
       try {
-        allowText = git(dir, ['show', `${mergeBase}:${ALLOWLIST_PATH}`])
+        allowText = baseRefs.length > 0 ? git(dir, ['show', `${baseRefs[0]}:${ALLOWLIST_PATH}`]) : ''
       } catch {
         allowText = '' // no allowlist at the merge base: no exemptions
       }
@@ -541,8 +561,16 @@ export function run(argv, env = process.env, out = console) {
     if (!baseCache.has(cacheKey)) {
       let held = new Set()
       try {
-        const text = git(dir, ['show', `${mergeBase}:${key}`])
-        held = new Set(scanText(text, ctx, undefined, isListLike(path)).map((h) => `${h.rule}\0${h.value.toLowerCase()}`))
+        // The file as the public side holds it: at the merge base, or at any remote tip.
+        for (const ref of baseRefs.slice(0, 40)) {
+          let text
+          try {
+            text = git(dir, ['show', `${ref}:${key}`])
+          } catch {
+            continue // not in that tip
+          }
+          for (const h of scanText(text, ctx, undefined, isListLike(path))) held.add(`${h.rule}\0${h.value.toLowerCase()}`)
+        }
       } catch {
         // a new file held nothing
       }
@@ -565,10 +593,12 @@ export function run(argv, env = process.env, out = console) {
   let linesRead = 0
   let filesRead = new Set()
   try {
-    const first = scanDiff(net, null, ctx, heldAtBase, new Map(net.files.filter((f) => f.from).map((f) => [f.path, f.from])))
-    take(first.findings)
-    linesRead = first.linesRead
-    filesRead = first.filesRead
+    if (!pushMode) {
+      const first = scanDiff(net, null, ctx, heldAtBase, new Map(net.files.filter((f) => f.from).map((f) => [f.path, f.from])))
+      take(first.findings)
+      linesRead = first.linesRead
+      filesRead = first.filesRead
+    }
 
     // Then each commit's own diff. The net diff above is what a merge would land; this is
     // what the push publishes. A value added in one commit and removed in the next is in
@@ -581,7 +611,12 @@ export function run(argv, env = process.env, out = console) {
         take(scanDiff({ files: [], nameStatus: '', added: lines }, c.short, ctx, heldAtBase, origin).findings)
       } else {
         const d = readDiff(dir, c.parents[0] ?? EMPTY_TREE, c.sha)
-        take(scanDiff(d, c.short, ctx, heldAtBase, origin).findings)
+        const own = scanDiff(d, c.short, ctx, heldAtBase, origin)
+        take(own.findings)
+        if (pushMode) {
+          linesRead += own.linesRead
+          own.filesRead.forEach((f) => filesRead.add(f))
+        }
       }
     }
   } catch (error) {
@@ -624,7 +659,7 @@ export function run(argv, env = process.env, out = console) {
   const touched = net.files.filter((f) =>
     [ALLOWLIST_PATH, 'scripts/privacy-guard.mjs', '.github/workflows/privacy-guard.yml'].includes(f.path),
   )
-  if (actions && touched.length > 0) {
+  if (actions && !pushMode && touched.length > 0) {
     out.log('::warning title=privacy-guard::This change edits the guard, its workflow or its allowlist. Read every line it adds.')
   }
 
