@@ -1,0 +1,1 @@
+cd ~/Developer/gorfednet; for p in gorfed.net:145 4thcltr.com:260 bindercurve.com:654; do r=${p%%:*}; n=${p##*:}; for i in $(seq 1 60); do s=$(cd $r; gh pr view $n --json state --jq .state); [ "$s" = MERGED ] && break; sleep 120; done; echo "$r#$n $s"; done

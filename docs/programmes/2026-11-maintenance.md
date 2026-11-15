@@ -34,7 +34,7 @@ An item not yet started has no status. The session that starts an item adds its 
 |---|---|---|---|---|---|---|---|
 | A1 | assess | Land `feat/live-verify-pass` as 2 or 3 PRs (verify stage, gate, eval scorer) | Opus builder, Fable reviewer, main merges | none | no |  |  |
 | A2 | assess | One rubric: findings carry no legal readings and no pitch; the pitch is in the cover letter only | Opus builder, Fable editor on prompt text | A1 | no |  |  |
-| A3 | assess | Editor pass (Opus, high, `content-guidelines.md`) and blind reviewer pass (`claude-fable-5-1`) in the paid pipeline | Opus builder, main reviews | A2 | no |  |  |
+| A3 | assess | Editor pass (Opus, high, `content-guidelines.md`) and blind reviewer pass (`claude-fable-5-2`) in the paid pipeline | Opus builder, main reviews | A2 | no |  |  |
 | A4 | assess | Verify as a tool-use loop with Playwright tools (navigate, click, DOM, axe): no form submission, no sign-in, allowlisted host | Opus builder, main reviews the boundary | A1 | no |  |  |
 | A5 | assess | Capture defects: `capture-exits-0-on-mostly-failed`, `blank-at-status-200`, `capture-check-misses-refused-data`, `capture-interaction-probes` | Sonnet builder | none | no |  |  |
 | A6 | assess | Parity eval on TD and 2 sites with deep studies, scored by `tools/verify-score.ts`. Done when paid precision is at least the deep study's and recall is at least 0.6. A report, never a PR gate | main | A3, A4, A5 | approved, US$75 |  |  |

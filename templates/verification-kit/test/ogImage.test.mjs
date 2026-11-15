@@ -160,4 +160,21 @@ describe('check-og-image', () => {
     const result = run(fixture)
     assert.equal(result.status, 0, result.stderr)
   })
+
+  it('with --content-addressed, fails a fixed-name card and passes a hashed one', () => {
+    const fixed = run(project({}), ['--content-addressed'])
+    assert.equal(fixed.status, 1)
+    assert.match(fixed.stderr, /fixed name/)
+    const hashed = run(
+      project({ file: 'og-card-0123456789ab.png', html: page({ image: `${SITE}/og-card-0123456789ab.png` }) }),
+      ['--content-addressed'],
+    )
+    assert.equal(hashed.status, 0, hashed.stderr)
+    // Near miss: a word that is not a hash does not count.
+    const word = run(
+      project({ file: 'og-default.png', html: page({ image: `${SITE}/og-default.png` }) }),
+      ['--content-addressed'],
+    )
+    assert.equal(word.status, 1)
+  })
 })

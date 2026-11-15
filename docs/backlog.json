@@ -15,13 +15,15 @@
     {
       "id": "quiet-sites-paid-product-monitor-rates",
       "title": "Mostly-static sites inherited product-site Playwright and Bugbot settings",
-      "status": "confirmed-bug",
+      "status": "landed",
+      "pr": 40,
       "assignee": "main-model",
       "userSymptom": "Credit and Actions usage went to weekly Playwright installs and incremental Bugbot on sites last touched by a kit bump.",
       "evidence": "4thcltr.com production-healthcheck.yml passed only site-url, so run-playwright defaulted true. FLEET.md claimed a required Bugbot verdict job that no consumer calls. fleet.json had no monitorClass, so nothing could fail when a quiet site inherited the product default.",
       "reviewBy": "2026-12-01",
       "created": "2026-09-25",
-      "updated": "2026-09-25"
+      "updated": "2026-11-09",
+      "note": "Landed in 62e9b54 (2026-09-25): every fleet.json project has a monitorClass, scripts/monitor-class.mjs makes check-fleet fail a caller of production-healthcheck that omits run-playwright: false outside active-product (test/monitorClass.test.mjs), and FLEET.md no longer mentions a Bugbot verdict job. Verified 2026-11-09; no code change needed."
     },
     {
       "id": "bugbot-credits-exhausted-unreviewed-prs",
@@ -50,26 +52,26 @@
     {
       "id": "towit-open-security-bump",
       "title": "towit.io has an open Dependabot PR bumping requests from 2.6.0 to 2.34.2",
-      "status": "confirmed-bug",
+      "status": "declined",
       "assignee": "human",
       "userSymptom": "The site runs a Python HTTP client that is roughly a decade of releases behind, including security releases, on a repo whose owner had no way to see the PR because the local checkout could not fetch.",
       "evidence": "gh pr list on gorfednet/TowIt: PR #3 'Bump requests from 2.6.0 to 2.34.2', OPEN since 2026-09-01. A second, #1 for oauthlib 0.7.2 to 3.3.1, was closed rather than merged.",
-      "reviewBy": "2026-10-15",
-      "note": "Needs a human decision: 2.6.0 to 2.34.2 is not a drop-in on a Flask app of that age. Sized, not guessed at.",
+      "note": "Needs a human decision: 2.6.0 to 2.34.2 is not a drop-in on a Flask app of that age. Sized, not guessed at. Triage 13 November 2026 (plan 4.3): declined: dormant. TowIt is stood down until 2027-03-14 (plan 4.7); decide the requests bump when it wakes.",
       "created": "2026-09-09",
-      "updated": "2026-09-09"
+      "updated": "2026-11-13"
     },
     {
       "id": "fleet-audit-needs-a-token",
       "title": "The online half of the fleet check cannot run until FLEET_READ_TOKEN exists",
-      "status": "confirmed-bug",
-      "assignee": "human",
+      "status": "landed",
+      "assignee": "main-model",
       "userSymptom": "Nothing is currently checking that a project claiming an adoption tier actually holds the files that tier requires, so the fleet table could drift back into fiction without any job going red.",
-      "evidence": "check-fleet.mjs run under CI credentials reports every private sibling as unreadable, because a workflow's default GITHUB_TOKEN is scoped to its own repository. fleet-audit.yml exists and fails closed on the missing secret; the pull-request job runs --offline and says so in its output.",
-      "reviewBy": "2026-10-15",
+      "evidence": "check-fleet.mjs run under CI credentials reports every private sibling as unreadable, because a workflow's default GITHUB_TOKEN is scoped to its own repository. fleet-audit.yml exists and fails closed on the missing secret; the pull-request job runs --offline and says so in its output. Resolved: `gh secret list --repo gorfednet/.github` shows FLEET_READ_TOKEN set 2026-11-09T20:38:53Z; fleet-status run 43380425357 (13 Nov) read 21 repos with 0 unavailable.",
+      "pr": 138,
+      "reviewBy": "2026-12-13",
       "note": "Wants a fine-grained PAT, read-only Contents + Metadata across gorfednet, stored as the repository secret FLEET_READ_TOKEN. Until then the weekly job is red on purpose: unverified is the true state, and a green job that checked nothing is worse. The cause of the original mis-report is now rule V39.",
       "created": "2026-09-09",
-      "updated": "2026-09-09"
+      "updated": "2026-11-13"
     },
     {
       "id": "fleet-adoption-outstanding",
@@ -78,11 +80,10 @@
       "assignee": "main-model",
       "userSymptom": "A bug shipped by any of those twelve projects has nothing checking that the CI which passed actually examined anything, which is how the sixteen findings in the BinderCurve teardown stayed green for months.",
       "evidence": "fleet.json: 12 projects at tier 0. Each already inherits a reusable pr-check workflow, so adoption is a one-line change plus the vendored kit.",
-      "reviewBy": "2026-11-01",
       "note": "Landed in #14 and the rollout around it; fleet.json now holds no project at tier 0. The entry claimed twelve at tier 0 for weeks after that stopped being true, which is the class --verify-prs catches for pull requests and nothing catches for a count. What remains is not adoption but five projects claiming a tier whose floor never ran — tracked separately as five-projects-run-tests-with-no-floor.",
       "pr": 14,
       "created": "2026-09-09",
-      "updated": "2026-09-11"
+      "updated": "2026-11-13"
     },
     {
       "id": "unbounded-jobs-in-shared-workflows",
@@ -117,11 +118,10 @@
       "assignee": "main-model",
       "userSymptom": "The backlog is meant to be the one place you can read to know what is actually open. Every entry marked in-review keeps reading as in flight after its pull request merges, so the list overstates what is outstanding and understates what shipped — which is the exact failure a committed registry exists to prevent.",
       "evidence": "check-backlog.mjs requires an in-review or landed entry to name a pull request, and never asks GitHub what became of it. Confirmed by grep: nothing in verification-kit/lib/backlogSchema.mjs touches gh or the API. Twelve adopted repositories now carry entries in that state, wychwoodresort.com's two from the moment PR #4 merged.",
-      "reviewBy": "2026-11-01",
       "note": "The check has to keep working offline and in a fresh clone, so this cannot be unconditional. An opt-in --verify-prs used by the CI gate, where gh and a token are present, fails closed when the API is reachable and disagrees, and skips with a counted, printed reason when it is not. Batch it with the venv entry below into one kit version rather than re-vendoring twelve repositories twice.",
       "pr": 18,
       "created": "2026-09-10",
-      "updated": "2026-09-11"
+      "updated": "2026-11-13"
     },
     {
       "id": "citation-scan-walks-untracked-third-party",
@@ -130,11 +130,10 @@
       "assignee": "main-model",
       "userSymptom": "A project can be told it cites a rule that does not exist, by a file it did not write and cannot edit. That reads as a broken check rather than a finding, and the response it invites is to switch the check off.",
       "evidence": "check-rule-citations.mjs skips .venv but not venv, which is the commoner name and is present unignored at towit.io's root — so the walk descends into a whole third-party site-packages tree. Separately, its citation pattern allows any whitespace including newlines between the word and the number, so a wrapped line in a minified bundle reads as a citation: towit.io's vendored AngularJS produced a citation of a rule numbered zero.",
-      "reviewBy": "2026-11-01",
       "note": "Adding vendored paths to the kit's skip list is the wrong fix, since it weakens the check everywhere for one repository's layout — PR #13 exposed rule-sources so a project can scope its own scan instead (V54). Still worth adding venv beside .venv, and worth deciding whether the whitespace class should exclude newlines; a citation genuinely wrapped across two lines of prose is plausible, so measure before tightening.",
       "pr": 18,
       "created": "2026-09-10",
-      "updated": "2026-09-11"
+      "updated": "2026-11-13"
     },
     {
       "id": "tier-2-evidence-proves-nothing",
@@ -143,11 +142,10 @@
       "assignee": "main-model",
       "userSymptom": "FLEET.md is the one place to read what each project is actually protected by. Tier 2 says an executed-count assertion is wired to a real test report, and the registry check will confirm that claim for any project that has merely vendored the kit — so the column can overstate protection while the check that guards it stays green.",
       "evidence": "TIER_EVIDENCE[2] in scripts/check-fleet.mjs asks for verification-kit/bin/assert-tests-executed.mjs, which ships in every copy of the kit and is therefore present in every tier-1 project. Six projects now claim tier 2; the online run confirmed all six against a file that proves nothing about wiring. Presence read as behaviour, which is the class V20 names.",
-      "reviewBy": "2026-11-01",
       "note": "Real evidence is in the caller: fetch .github/workflows/*.yml and require the pr-check job to pass a non-empty test-report together with a min-tests above the default of 1. The check already fetches file contents over the API, so this is a content assertion rather than new machinery. It has to keep its tri-state — an API failure must not read as absent. Note the honest awkwardness this exposes: TowIt has a real floor of 49 that no shared assertion can see, because pytest emits no JSON report either check could read, and it is recorded at tier 1 for that reason.",
       "pr": 18,
       "created": "2026-09-10",
-      "updated": "2026-09-11"
+      "updated": "2026-11-13"
     },
     {
       "id": "drift-gate-treats-behind-as-broken",
@@ -156,11 +154,10 @@
       "assignee": "human",
       "userSymptom": "Fixing one bug in the kit means opening, reviewing and merging thirteen mechanical pull requests, and until the last one lands every other project's CI is red for a reason that has nothing to do with its own code. Measured twice in one night: v0.25.0 and v0.26.0 each cost thirteen.",
       "evidence": "check-kit-drift.mjs fails when a vendored copy does not match the canonical manifest, without distinguishing the two ways that happens. A copy that is *behind* is intact and self-consistent; a copy that has been *edited locally* is a fork pretending to be the shared kit. Only the second is a defect, and the first is the ordinary state of a fleet between an upstream fix and its rollout. Both currently exit 1 with the same instruction.",
-      "reviewBy": "2026-10-15",
       "note": "The fix is a judgement call about how much staleness is tolerable, which is why it is assigned to a person rather than taken tonight. The shape that seems right: compare the vendored version against canonical and fail only on local modification or on being more than one minor version behind, warning in between, so a project can merge its own work the day an upstream fix lands and pick the refresh up on its own schedule. That must not become an excuse for a copy drifting for months — a dated ceiling, per the deferral rule, not an open-ended warning. Worth weighing against the alternative of not vendoring at all: a git submodule or an npm package would make the version a single edit, at the cost of the property that made vendoring attractive, which is that every check runs on plain node with nothing installed.",
       "pr": 18,
       "created": "2026-09-11",
-      "updated": "2026-09-11"
+      "updated": "2026-11-13"
     },
     {
       "id": "five-projects-run-tests-with-no-floor",
@@ -169,11 +166,10 @@
       "assignee": "main-model",
       "userSymptom": "A suite that silently stops running looks exactly like a suite that passes. On gorfed.net, denseware.com, gorfmusic.com, ssatcy.com and wychwoodresort.com a spec-selection mistake, a renamed directory or a crashed reporter would take the coverage away and leave the check green, because no step compares the number of tests that executed to anything.",
       "evidence": "Each of the five calls the shared pr-check workflow with a min-tests value and no test-report. verification-gate/action.yml runs the assertion under 'if: inputs.test-report != ''', so the floor they configured has never executed once. Found by the tier-2 content assertion added in this change, which reported all five; their FLEET.md tier is corrected to 1 in the same commit, because the registry must not claim a protection that is not running.",
-      "reviewBy": "2026-10-15",
       "note": "The fix per repo is to emit a JSON reporter alongside the existing run and pass it as test-report with a floor measured from a real green run, then raise the tier back to 2 in fleet.json and let the online audit confirm it. Doing that during the v0.27.0 roll keeps it to one PR per repository. wychwoodresort.com is out of scope for site work by the owner's instruction, so it stays at its true tier rather than being wired.",
       "pr": 18,
       "created": "2026-09-11",
-      "updated": "2026-09-11"
+      "updated": "2026-11-13"
     },
     {
       "id": "drift-read-its-authority-through-a-cdn",
@@ -270,9 +266,9 @@
       "userSymptom": "A social card fixed and deployed keeps showing the old image when a link is shared, with nothing in the repository left to fix.",
       "evidence": "The vhost serves \\.(png|svg|css|js|...)$ with expires 1y and Cache-Control: public, immutable - confirmed live, max-age=31536000. Any card at a fixed name inherits that, so replacing it in place reaches nobody for up to a year. ssatcy.com is fixed: scripts/generate-og-image.mjs writes og-card-<hash12>.png and rewrites index.html and _headers, so the URL changes exactly when the pixels do. 4thcltr.com/og-image.png is live under the same header and is the next one. The remaining sites are getting a first card, so their URL is new either way - the risk is the SECOND card.",
       "reviewBy": "2026-11-15",
-      "note": "check-live-og-image.mjs catches the symptom after a deploy by comparing the bytes the og:image URL serves against the dimensions the page declares, and notes an immutable Cache-Control so the next person is told why a replacement will not reach anyone. That is detection. Prevention is the content-addressed name, which needs doing per site; ssatcy.com is the pattern to copy.",
+      "note": "check-live-og-image.mjs catches the symptom after a deploy by comparing the bytes the og:image URL serves against the dimensions the page declares, and notes an immutable Cache-Control so the next person is told why a replacement will not reach anyone. That is detection. Prevention is the content-addressed name, which needs doing per site; ssatcy.com is the pattern to copy. 2026-11-08: prevention gate added. check-og-image.mjs --content-addressed (gate input og-content-addressed, default false) fails a card whose file name carries no hash; the test fails without it. Still open per site: set og-content-addressed once a site names its card og-card-<hash>.png (4thcltr.com/og-image.png is next). Move to landed when 4thcltr.com has switched.",
       "created": "2026-09-14",
-      "updated": "2026-09-14"
+      "updated": "2026-11-08"
     },
     {
       "id": "publish-the-server-never-saw",
@@ -293,7 +289,6 @@
       "assignee": "main-model",
       "userSymptom": "CI fails on a commit that passes on my machine, and the failure names a file I did not touch.",
       "evidence": "gorfmusic.com PR #24: `mutation-canary: 4/5 caught` in CI, 5/5 locally, same commit. Cause chain: `npm run build` ran the card generator, whose filename hashed the rendered PNG, so CI's libvips produced a different name; the generator rewrote src/app/seo/siteMeta.ts to match; the tree went dirty; the canary that guards that file refused to mutate it. Fixed in gorfmusic by hashing the SVG source plus render settings and moving the build onto a `--check` mode that fails instead of writing. Watched red on three mutations, green on restore, and `git status --porcelain` is empty after a full build. V72.",
-      "reviewBy": "2026-10-31",
       "note": "The generalisable gate is one step in the shared pr-check workflows: run the build, then `git diff --exit-code`. It is deliberately NOT added yet - six repos hashed rendered output (4thcltr, anal0g, blackpixelrecords, denseware, gorfmusic, ssatcy) and adding the gate first would red-line five of them at once, which is the inherited-failure mistake. Order: land the per-repo fixes, then add the shared step, then prove it by reverting one repo. Same sequencing as shared-healthcheck-strictness. UPDATE 2026-11-09: the shared step landed as an opt-in input, `fail-on-build-edits` (default \"false\"), in pr-check-static, pr-check-static-verify, pr-check-vite-spa and pr-check-fullstack: after the build it runs `git diff --exit-code` and fails with the diff. Opt-in, not default, because the per-repo fixes for the other five hashing repos are not confirmed here. test/buildEditsGuard.test.mjs runs the step script on a clean and a rewritten tree. STILL OPEN: each caller sets it to \"true\" once its build leaves the tree clean (gorfmusic first, then prove by reverting one).",
       "created": "2026-09-14",
       "updated": "2026-11-09",
@@ -302,14 +297,14 @@
     {
       "id": "paths-named-not-derived",
       "title": "A script that names a location instead of deriving one runs on exactly one machine",
-      "status": "confirmed-bug",
+      "status": "landed",
+      "pr": 33,
       "assignee": "main-model",
       "userSymptom": "A check passes on my laptop and fails in CI saying it cannot find sharp, and regenerating an asset fails with a path I do not recognise.",
       "evidence": "anal0g.org PR #13 CI: `Cannot find module '/home/runner/work/anal0g.org/ssatcy.com/node_modules/sharp'` — scripts/generate-og-image.mjs resolved its renderer from a sibling checkout. blackpixelrecords.com had the absolute form in two scripts (generate-og-image.mjs, generate-favicons.mjs) with an absolute path under a developer home directory committed, and it had never failed because check:og-card was defined in package.json and the Makefile and invoked by nothing CI runs — now in its verify-command. denseware.com/scripts/build-new-hero.py read from a .cursor/projects path whose workspace was renamed, so it could not run anywhere; it takes DENSEWARE_HERO_ASSETS now and says so. Closed by verification-kit/bin/check-machine-paths.mjs at kit 0.40.0: 13 tests, 8 mutations watched red. V73.",
-      "reviewBy": "2026-10-15",
       "note": "Two things the check had to get right, both proven by test. It scans the git index rather than the working tree, because build output is full of absolute paths nobody wrote. And it ignores comment lines, because the comments explaining this defect quote the paths that caused it (V69's split). Its first fleet run produced the V10 shape immediately: businesswire.com/news/home/20180227005360/ is a URL with a segment called home, and correct press links in gorfed.net and 4thcltr.com were flagged, so an absolute path must be anchored to the start of a path. RESOLVED 2026-10-03 by the right-sizing (docs/verification-rules.md): the gate now runs the checker from its own checkout, so there is no vendored copy to lack it, and the step warns instead of failing, so the dated grace window (MACHINE_PATHS_GRACE_UNTIL) was deleted.",
       "created": "2026-09-14",
-      "updated": "2026-10-03"
+      "updated": "2026-11-09"
     },
     {
       "id": "dormant-projects-kept-claiming-coverage",
@@ -469,11 +464,331 @@
       "status": "confirmed-bug",
       "assignee": "main-model",
       "userSymptom": "A papers.4thcltr.com deploy from ship-bot fails at make verify when the Mac is under load.",
-      "evidence": "ship-bot deploy log 2026-11-11T19-34-59-231Z-papers.4thcltr.com-pr33 and ~/.ship-bot/work/papers.4thcltr.com/test-results/.last-run.json (18 papers verify specs failed on 11 November 2026).",
-      "note": "The wordmark specs are load-sensitive above the core count. Fix direction: run deploy setup behind builder-ok/gate-run, or add a load check before the verify step.",
+      "evidence": "ship-bot deploy log 2026-11-11T19-34-59-231Z-papers.4thcltr.com-pr33 and ~/.ship-bot/work/papers.4thcltr.com/test-results/.last-run.json (18 papers verify specs failed on 11 November 2026). Cause confirmed 13 November 2026: the same wordmark and filter specs fail 27 of 87 under taskpolicy -b (background policy) and pass 87 of 87 at normal priority at a load of 7 on 10 cores, with default and 2 workers. The installed plist (written 12 November 22:10 ET) has no ProcessType. docs/handoff/2026-11-13-deploy-root-causes.md. 14 Nov 2026: default launchd class (no ProcessType) still throttles; launchd reproduction 10/24 fail default vs 24/24 Interactive; papers PR 40.",
+      "note": "Not load as such: the process class. PR 128 dropped Background but left the default, which still throttles. Fix (.github 188): ProcessType Interactive in install.sh, then rerun it.",
       "reviewBy": "2026-12-12",
       "created": "2026-11-12",
+      "updated": "2026-11-14"
+    },
+    {
+      "id": "ship-bot-default-rollback-cannot-pass-tip-guard",
+      "title": "Ship-bot's default rollback can never pass site-deploy's merged-tip guard",
+      "status": "confirmed-bug",
+      "assignee": "main-model",
+      "userSymptom": "A deploy that fails after publishing leaves the repo blocked with 'the rollback failed too', and the site stays on the failed release.",
+      "evidence": "A row with no rollback list redeploys the parent commit, and site-deploy.sh refuses it as behind origin/main: ssatcy 35 (deploy log 2026-11-13T03-25-47-166Z) and MoonMan 324 (2026-11-13T03-14-59-833Z). On MoonMan, the rollback re-ran deploy:infra from the parent first and put the parent's nginx conf back live. docs/handoff/2026-11-13-deploy-root-causes.md.",
+      "note": "Fix per row: split make deploy into build, publish and live-check steps, and give the row a make rollback step onlyAfterFailureOf the steps after the publish. Then retire the default, or refuse it for site rows.",
+      "reviewBy": "2026-12-13",
+      "created": "2026-11-13",
+      "updated": "2026-11-13"
+    },
+    {
+      "id": "healthchecks-alerts-email-only",
+      "title": "Dead-man alerts reach the owner by email only: healthchecks.io has no ntfy integration",
+      "status": "confirmed-bug",
+      "assignee": "main-model",
+      "userSymptom": "If the Mac's automation stops, the only alert is an email to the owner; there is no phone push, and the ntfy topics are not wired to healthchecks.io.",
+      "evidence": "docs/heartbeats.md, row 1.13 proofs, 14 November 2026: the capacity check's Notification Methods list shows one channel, email to the owner. All 8 checks in the project show the same single email integration.",
+      "note": "Add a healthchecks.io webhook integration that POSTs 'down' and 'up' to the off-box ntfy.sh topic (the topic is the secret: put it in the integration, never in the repository). Needs the owner's say-so: it is a standing integration holding the topic name.",
+      "reviewBy": "2026-12-14",
+      "created": "2026-11-14",
+      "updated": "2026-11-14"
+    },
+    {
+      "id": "heartbeat-deadman-deliberate-stop-unproven",
+      "title": "Row 1.13's deliberate dead-man proof (stop the job, see the alert) has not run",
+      "status": "confirmed-bug",
+      "assignee": "main-model",
+      "userSymptom": "Nothing proves a stopped capacity job produces an alert to the owner, only that healthchecks.io flips a check down 25 minutes after the last ping.",
+      "evidence": "14 November 2026: `launchctl bootout gui/501/net.gorfed.capacity` from a side session was denied by the sandbox classifier. healthchecks.io's event log shows the up to down flip at exactly period plus grace after a missed ping (10:40 ET ping, down at 11:05 ET), but its UI has no per-flip notification log, so email delivery was not read.",
+      "note": "Run it from a session where the stop is approved: bootout, wait 25 minutes, confirm the email arrived (or read it through a connector), bootstrap again. Record the times in docs/heartbeats.md.",
+      "reviewBy": "2026-11-28",
+      "created": "2026-11-14",
+      "updated": "2026-11-14"
+    },
+    {
+      "id": "ship-bot-unblock-lost-to-running-pass",
+      "title": "ship-bot --unblock can be undone by a pass that is already running",
+      "status": "landed",
+      "pr": 168,
+      "assignee": "main-model",
+      "userSymptom": "An unblock reports success, then the repo is blocked again with the same reason and the same since-time.",
+      "evidence": "13 November 2026: gorfed.net and blackpixelrecords.com were unblocked during a live pass. The next passes still reported 'blocked since 14:41/14:35' with the old reasons. Running --unblock again between passes held. --unblock writes state.json without the pass lock, and the running pass saved the state it had loaded earlier.",
+      "note": "Fixed on main by 2bdc7ef before this entry merged: --unblock takes the pass lock and, when a pass holds it, queues a request in stateDir/unblock/ that the next pass applies (ship-bot/README.md).",
+      "reviewBy": "2026-12-13",
+      "created": "2026-11-13",
+      "updated": "2026-11-13"
+    },
+    {
+      "id": "assess-1112-a1-kit-copied-not-distributed-drift-warns-only",
+      "title": "A1: Kit refresh: every active repo on one version; drift stays in the scheduled reports",
+      "status": "confirmed-bug",
+      "assignee": "main-model",
+      "userSymptom": "Repos pin an old gate ref while the kit on main moves on, and STATUS.md measures vendored copies the gate never runs",
+      "evidence": "Installed versions read from each repo's origin/main, 12 Nov 2026 audit; V77 reached main with .github PR 132 (kit 0.61.0, 12 Nov); main is at 0.62.0 on 14 Nov. Plan: docs/assessment-2026-11-12-output-quality.md. Who: runner, one refresh PR per repo.",
+      "reviewBy": "2026-12-01",
+      "created": "2026-11-12",
+      "updated": "2026-11-15",
+      "note": "A per-PR drift failure was retired on purpose (docs/verification-rules.md: nothing to drift, the gate runs this repository's kit at the ref the caller pins). Work is the pinned gate ref per repo, reported by fleet-audit.yml and STATUS.md. Not 15 vendored-copy refresh PRs."
+    },
+    {
+      "id": "assess-1112-a2-skills-and-agents-still-name-cursor",
+      "title": "A2: Rewrite the five files, move 4thcltr .cursor skills, add skill evals",
+      "status": "confirmed-bug",
+      "assignee": "main-model",
+      "userSymptom": "self-heal, verification-bootstrap, full-codebase-assessment, runner and builder still cite Cursor, Bugbot and V1 to V38",
+      "evidence": "12 Nov 2026 audit of ~/.claude and repo .cursor dirs. Plan: docs/assessment-2026-11-12-output-quality.md. Who: Sonnet builder drafts; main session reviews.",
+      "reviewBy": "2026-12-01",
+      "created": "2026-11-12",
       "updated": "2026-11-12"
+    },
+    {
+      "id": "assess-1112-a3-design-and-security-plugins-not-installed",
+      "title": "A3: Install seven official plugins, remove the dead MCP, run fewer-permission-prompts and consolidate-memory",
+      "status": "landed",
+      "assignee": "main-model",
+      "userSymptom": "The frontend-design skill and other official plugins are not installed, and figma-desktop fails in every session",
+      "evidence": "Plugin catalogue and ~/.claude/plugins, 12 Nov 2026; 11 Nov assessment (git show 6b8a1b3:docs/assessment-2026-11-11.md, .github PR 117) section 3. Plan: docs/assessment-2026-11-12-output-quality.md. Who: main session.",
+      "reviewBy": "2026-12-01",
+      "created": "2026-11-12",
+      "updated": "2026-11-14",
+      "pr": 135,
+      "note": "Landed by .github PR 135 (plugins installed, figma-desktop removed). .github 186 then switched pr-review-toolkit, session-report and code-simplifier off by design (docs/claude-home/plugins.md). The brief was dropped."
+    },
+    {
+      "id": "assess-1112-a4-must-rules-live-in-prose",
+      "title": "A4: hookify them into PreToolUse and Stop hooks, each shown failing once",
+      "status": "confirmed-bug",
+      "assignee": "main-model",
+      "userSymptom": "Rules that must always hold (label gate, review trigger line, no skip without id, builder brief) are prose a session can forget",
+      "evidence": "11 Nov assessment (git show 6b8a1b3:docs/assessment-2026-11-11.md, .github PR 117) Phase A item 2 not landed; incident pattern 8 (7 entries). Plan: docs/assessment-2026-11-12-output-quality.md. Who: main session; runner for tests.",
+      "reviewBy": "2026-12-01",
+      "created": "2026-11-12",
+      "updated": "2026-11-12"
+    },
+    {
+      "id": "assess-1112-b1-no-shared-design-system",
+      "title": "B1: Design package distributed by the kit refresh, seeded from BinderCurve tokens.css",
+      "status": "confirmed-bug",
+      "assignee": "main-model",
+      "userSymptom": "None of my sites look current because each copies fonts, tokens and footer by hand",
+      "evidence": "Design audit 12 Nov 2026: kit holds no styles; 4thcltr trio vendored by hand. Plan: docs/assessment-2026-11-12-output-quality.md. Who: main session designs; Sonnet builder builds; reviewer reads.",
+      "reviewBy": "2026-12-01",
+      "created": "2026-11-12",
+      "updated": "2026-11-12"
+    },
+    {
+      "id": "assess-1112-b2-no-design-direction-per-property",
+      "title": "B2: design-direction.md per property via frontend-design two-pass method; owner approves each",
+      "status": "confirmed-bug",
+      "assignee": "main-model",
+      "userSymptom": "Builders reach for defaults because only BinderCurve has a design direction document",
+      "evidence": "Design audit 12 Nov 2026. Plan: docs/assessment-2026-11-12-output-quality.md. Who: editor (Fable); owner approves.",
+      "reviewBy": "2026-12-01",
+      "created": "2026-11-12",
+      "updated": "2026-11-12"
+    },
+    {
+      "id": "assess-1112-b3-no-design-review-in-gate",
+      "title": "B3: design-reviewer agent plus check-design-tells lint, watched failing once",
+      "status": "confirmed-bug",
+      "assignee": "main-model",
+      "userSymptom": "Visual mediocrity passes every gate because reviewers read code and pixel diffs only catch change",
+      "evidence": "Reviewer reads code only; frontend-design calibration list names the tells. Plan: docs/assessment-2026-11-12-output-quality.md. Who: main session writes checklist; runner wires.",
+      "reviewBy": "2026-12-01",
+      "created": "2026-11-12",
+      "updated": "2026-11-12"
+    },
+    {
+      "id": "assess-1112-b4-heroes-are-text-on-flat-background",
+      "title": "B4: One property per session: 4thcltr, gorfed.net, MoonMan landing, BinderCurve, four Figma-scaffold sites, music sites",
+      "status": "confirmed-bug",
+      "assignee": "main-model",
+      "userSymptom": "I see full-screen imagery from Claude and none of my work looks like that",
+      "evidence": "Only subrythm, BinderCurve and MoonMan use real imagery; 2.8k renders, 5.5k captures unused as heroes. Plan: docs/assessment-2026-11-12-output-quality.md. Who: Sonnet builder per property with frontend-design; design-reviewer; editor for copy.",
+      "reviewBy": "2026-12-01",
+      "created": "2026-11-12",
+      "updated": "2026-11-12"
+    },
+    {
+      "id": "assess-1112-b5-og-and-image-pipelines-copied-nine-times",
+      "title": "B5: One pipeline in the design package, gated by check-og-image and check-live-og-image",
+      "status": "confirmed-bug",
+      "assignee": "main-model",
+      "userSymptom": "Nine near-identical OG generators and five image optimisers drift apart",
+      "evidence": "Design audit 12 Nov 2026; overlaps cards-at-overwritable-urls. Plan: docs/assessment-2026-11-12-output-quality.md. Who: Sonnet builder; runner migrates.",
+      "reviewBy": "2026-12-01",
+      "created": "2026-11-12",
+      "updated": "2026-11-12"
+    },
+    {
+      "id": "assess-1112-c1-moonman-main-red-and-repo-clutter",
+      "title": "C1: heal-drift root-cause fix, backlog sync, CLAUDE.md, gitignore, move renders, check the gate pin",
+      "status": "confirmed-bug",
+      "assignee": "main-model",
+      "userSymptom": "MoonMan main is red, backlog statuses are wrong, no CLAUDE.md, 6.4 GB untracked .claude and loose renders at the root",
+      "evidence": "MoonMan audit 12 Nov 2026. Plan: docs/assessment-2026-11-12-output-quality.md. Who: Sonnet builder; main session for CLAUDE.md and gitignore.",
+      "reviewBy": "2026-12-01",
+      "created": "2026-11-12",
+      "updated": "2026-11-12"
+    },
+    {
+      "id": "assess-1112-c2-wall-clock-in-tests",
+      "title": "C2: check-test-clock and check-fail-closed lints in the kit",
+      "status": "confirmed-bug",
+      "assignee": "main-model",
+      "userSymptom": "Tests that read the clock fail on a date, not a defect (MoonMan heal-drift, BinderCurve PR 652)",
+      "evidence": "Incident pattern 5, about 6 entries. Plan: docs/assessment-2026-11-12-output-quality.md. Who: runner; main session writes near-miss case.",
+      "reviewBy": "2026-12-01",
+      "created": "2026-11-12",
+      "updated": "2026-11-12"
+    },
+    {
+      "id": "assess-1112-c3-five-projects-no-executed-floor-and-no-device-proof",
+      "title": "C3: assert-tests-executed in five repos; required device artifact on MoonMan release PRs",
+      "status": "confirmed-bug",
+      "assignee": "main-model",
+      "userSymptom": "Five repos can run zero tests and pass, and MoonMan device faults were fixed on the simulator five times",
+      "evidence": "Existing backlog entry five-projects-run-tests-with-no-floor; incident pattern 3. Plan: docs/assessment-2026-11-12-output-quality.md. Who: runner; main session for release gate.",
+      "reviewBy": "2026-12-01",
+      "created": "2026-11-12",
+      "updated": "2026-11-12"
+    },
+    {
+      "id": "assess-1112-c4-runner-image-drifts-from-lockfiles",
+      "title": "C4: Derive the image from lockfiles, report queue depth, decide a second host from data",
+      "status": "confirmed-bug",
+      "assignee": "main-model",
+      "userSymptom": "The pool image is built by hand and drifts from each repo's pins, forcing hosted-runner flips",
+      "evidence": "Incident patterns 1 and 4, about 19 entries. Plan: docs/assessment-2026-11-12-output-quality.md. Who: Sonnet builder in ops; main session for the deploy.",
+      "reviewBy": "2026-12-01",
+      "created": "2026-11-12",
+      "updated": "2026-11-12"
+    },
+    {
+      "id": "assess-1112-c5-declared-facts-drift",
+      "title": "C5: Inventory and derive declared facts; sync checks only where drift reached users",
+      "status": "confirmed-bug",
+      "assignee": "main-model",
+      "userSymptom": "Two sources of the same fact drift apart and reach visitors",
+      "evidence": "Incident pattern 6, about 6 entries. Plan: docs/assessment-2026-11-12-output-quality.md. Who: scout inventories; runner converts; reviewer reads guards.",
+      "reviewBy": "2026-12-01",
+      "created": "2026-11-12",
+      "updated": "2026-11-12"
+    },
+    {
+      "id": "assess-1112-d1-security-headers-dropped-or-missing",
+      "title": "D1: check-security-headers in kit and healthcheck; deploy engine carries headers",
+      "status": "confirmed-bug",
+      "assignee": "main-model",
+      "userSymptom": "ssatcy drops every header it declares and anal0g serves none",
+      "evidence": "ssatcy PR 38, anal0g PR 32. Plan: docs/assessment-2026-11-12-output-quality.md. Who: main session specifies; Sonnet builder; reviewer reads.",
+      "reviewBy": "2026-12-01",
+      "created": "2026-11-12",
+      "updated": "2026-11-12"
+    },
+    {
+      "id": "assess-1112-d2-no-vuln-scan-on-money-and-server-repos",
+      "title": "D2: claude-security on those paths, security-guidance everywhere, actions pinned by SHA",
+      "status": "confirmed-bug",
+      "assignee": "main-model",
+      "userSymptom": "MoonMan server, BinderCurve api and worker and 4thcltr Stripe flow have no automated vulnerability scan",
+      "evidence": "12 Nov 2026 audit. Plan: docs/assessment-2026-11-12-output-quality.md. Who: main session; runner for pinning.",
+      "reviewBy": "2026-12-01",
+      "created": "2026-11-12",
+      "updated": "2026-11-12"
+    },
+    {
+      "id": "assess-1112-d3-dependabot-and-branch-protection-open",
+      "title": "D3: Group updates, ship-bot labels green bumps, protect-branches on six repos",
+      "status": "confirmed-bug",
+      "assignee": "main-model",
+      "userSymptom": "Dependabot takes 7 days to merge and six repos have no required checks on main",
+      "evidence": "11 Nov assessment (git show 6b8a1b3:docs/assessment-2026-11-11.md, .github PR 117) section 4. Plan: docs/assessment-2026-11-12-output-quality.md. Who: runner; main session reads the script first.",
+      "reviewBy": "2026-12-01",
+      "created": "2026-11-12",
+      "updated": "2026-11-12"
+    },
+    {
+      "id": "assess-1112-d4-settings-local-allowlists-uncommitted-and-stale",
+      "title": "D4: Committed .claude/settings.json per repo from fewer-permission-prompts",
+      "status": "confirmed-bug",
+      "assignee": "main-model",
+      "userSymptom": "A new session starts with a stale 145-entry allowlist or none",
+      "evidence": "11 Nov assessment (git show 6b8a1b3:docs/assessment-2026-11-11.md, .github PR 117) section 1. Plan: docs/assessment-2026-11-12-output-quality.md. Who: main session.",
+      "reviewBy": "2026-12-01",
+      "created": "2026-11-12",
+      "updated": "2026-11-12"
+    },
+    {
+      "id": "assess-1112-e1-eleven-nov-phases-b-and-c-open",
+      "title": "E1: Execute as tiered in the 11 Nov plan after A1 to A4",
+      "status": "confirmed-bug",
+      "assignee": "main-model",
+      "userSymptom": "ntfy hook, review re-runs, reviewer on pool, janitor and Herdr stall are still open",
+      "evidence": "STATUS.md 12 Nov 2026; .github PR 117, 118, 120. Plan: docs/assessment-2026-11-12-output-quality.md. Who: as tiered in the 11 Nov plan.",
+      "reviewBy": "2026-12-01",
+      "created": "2026-11-12",
+      "updated": "2026-11-12"
+    },
+    {
+      "id": "assess-1112-e2-loose-worktrees-and-scripts-beside-repos",
+      "title": "E2: List pass, then prune merged and clean worktrees a day later",
+      "status": "declined",
+      "assignee": "main-model",
+      "userSymptom": "115 directories and 63 GB beside the repos, 32 worktrees idle over 14 days",
+      "evidence": "12 Nov 2026 audit. Plan: docs/assessment-2026-11-12-output-quality.md. Who: runner.",
+      "reviewBy": "2026-12-01",
+      "created": "2026-11-12",
+      "updated": "2026-11-15",
+      "note": "Covered by plan of record rows 1.5 (janitor prunes merged worktrees), 1.9 (prune merged or PR-less worktrees, cap sessions) and 2.3 (drain dirty worktrees). The brief was dropped. The loose .log and .sh move into ops/scripts/local is not in a row; reopen as its own entry if wanted."
+    },
+    {
+      "id": "assess-1112-e3-session-cost-not-measured",
+      "title": "E3: Monthly session-report into docs/usage, act on the top item",
+      "status": "confirmed-bug",
+      "assignee": "main-model",
+      "userSymptom": "Cost awareness is a rule, not a number",
+      "evidence": "11 Nov assessment (git show 6b8a1b3:docs/assessment-2026-11-11.md, .github PR 117) section 3. Plan: docs/assessment-2026-11-12-output-quality.md. Who: runner runs; main session reads.",
+      "reviewBy": "2026-12-01",
+      "created": "2026-11-12",
+      "updated": "2026-11-12"
+    },
+    {
+      "id": "fleet-registry-missing-repos",
+      "title": "Six active repositories are missing from fleet.json",
+      "status": "confirmed-bug",
+      "assignee": "main-model",
+      "userSymptom": "STATUS.md and FLEET.md say nothing about assess, ask-collector, propose, intake, broadcast or ops.",
+      "evidence": "fleet.json on main lists 19 projects; assess, ask-collector, propose, intake, broadcast and ops are absent. assess, ask-collector and propose each logged a \"register me\" entry from verification-bootstrap step 5 (merged here on 13 November 2026).",
+      "note": "Add a row per repository with its real tier, monitorClass and backlog path (ops keeps docs/operating-backlog.json). check-fleet verifies the tier claims.",
+      "reviewBy": "2026-11-27",
+      "created": "2026-11-13",
+      "updated": "2026-11-13"
+    },
+    {
+      "id": "janitor-prompt-199-lows",
+      "title": "Janitor PROMPT.md: two Low findings left from .github 199",
+      "status": "confirmed-bug",
+      "assignee": "main-model",
+      "userSymptom": "The janitor's prompt describes session rows that never occur, and the digest's cost line fails for a second session on the same branch.",
+      "evidence": "Fable read of .github 199 (merged 14 November 2026): janitor/PROMPT.md:72 describes no-worktree merged and unmerged rows, but sessionState only gives missing and no-repo without a worktree. janitor/PROMPT.md:89 says other sessions on the same branch need no second call, which leaves their pr-<id8>.json missing, so pr-cost.mjs fails for them.",
+      "note": "Trim line 72 to the states sessionState produces. At line 89, write pr-<id8>.json for every session on the branch, or have pr-cost.mjs skip a missing one with a reason. janitor/ is control plane: Fable read and a clean review before the label.",
+      "reviewBy": "2026-11-28",
+      "created": "2026-11-14",
+      "updated": "2026-11-14"
+    },
+    {
+      "id": "eval-triage-dangerous-must-be-zero",
+      "title": "Eval judge lets a candidate match Haiku's dangerous triage misses instead of requiring none",
+      "status": "confirmed-bug",
+      "assignee": "main-model",
+      "userSymptom": "A local model could call a real CI failure a flake and still pass the triage eval, so a retry loop could burn runner time on a real defect.",
+      "evidence": "Frozen Haiku triage has dangerous=1 (tri-03, a real failure called flake) in docs/eval-set/baseline.json. The judge only fails an arm whose dangerous count is above Haiku's (scripts/local-llm/evalset.mjs, 'dangerous misses ... above haiku'), so a candidate may miss 1 of 5 real failures. Found in the Fable read of .github 202 and ops 100 on 14 November 2026.",
+      "note": "Triage dangerous must be 0 regardless of the reference, before triage counts for routing. Deferred: not changed in the refreeze pair (.github 202, ops 100). A guard needs a watched failure (verification-floor rule 4).",
+      "reviewBy": "2026-11-28",
+      "created": "2026-11-14",
+      "updated": "2026-11-14"
     }
   ]
 }

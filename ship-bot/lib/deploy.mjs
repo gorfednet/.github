@@ -116,13 +116,94 @@ async function syncCheckout(ctx, log, { path, cloneUrl, ref, preserve = [], expe
   }
 }
 
+// Programs that cannot run without the repository's node_modules.
+const NODE_TOOLS = new Set(['npm', 'npx', 'pnpm', 'yarn', 'vite'])
+const NODE_TOOL_IN_SHELL = /(^|[\s;&|(])(npm|npx|pnpm|yarn|vite)\s/
+
+/** The source clone's package.json declares packages, so a `make` target there is assumed to need them. */
+function declaresPackages(dir, fsx) {
+  const p = join(dir, 'package.json')
+  if (!fsx.exists(p)) return false
+  try {
+    const pkg = JSON.parse(fsx.read(p))
+    return ['dependencies', 'devDependencies', 'optionalDependencies'].some((k) => Object.keys(pkg[k] ?? {}).length > 0)
+  } catch {
+    return true // an unreadable package.json is not evidence that nothing is needed
+  }
+}
+
+function needsNodeModules(step, packages) {
+  const [program, ...args] = step.command
+  const name = program.split('/').at(-1)
+  if (NODE_TOOLS.has(name)) return true
+  if ((name === 'sh' || name === 'bash') && args[0] === '-c') return NODE_TOOL_IN_SHELL.test(` ${args[1] ?? ''} `)
+  return name === 'make' && packages
+}
+
+// A setup step that installs: npm ci and its kin, or a make target (papers' and
+// heuristics' `make verify` start with npm ci; the Makefile owns the install).
+const program = (step) => step.command[0].split('/').at(-1)
+const VALUE_FLAGS = new Set(['--prefix', '-C', '--dir', '--cwd'])
+// The subcommand after any flags (`npm --prefix app ci` is `ci`).
+function subcommand(args) {
+  for (let i = 0; i < args.length; i++) {
+    if (VALUE_FLAGS.has(args[i])) i++
+    else if (!args[i].startsWith('-')) return args[i]
+  }
+  return undefined
+}
+function installsCommand(name, args) {
+  if (name === 'make') return true
+  const sub = subcommand(args)
+  if (name === 'npm') return ['ci', 'clean-install', 'install', 'i'].includes(sub)
+  if (name === 'pnpm') return ['install', 'i'].includes(sub)
+  // A bare `yarn` installs; `yarn build` does not.
+  if (name === 'yarn') return sub === undefined || sub === 'install'
+  return false
+}
+const installs = (step) => {
+  const name = program(step)
+  const args = step.command.slice(1)
+  // `sh -c "npm ci && npm run build"`: any command in the string that installs.
+  if ((name === 'sh' || name === 'bash') && args[0] === '-c') {
+    return (args[1] ?? '').split(/&&|\|\||;|\n/).some((part) => {
+      const [p, ...a] = part.trim().split(/\s+/)
+      return p !== undefined && installsCommand(p.split('/').at(-1), a)
+    })
+  }
+  return installsCommand(name, args)
+}
+const preserves = (repo) => repo.preserve.some((p) => p.replace(/\/+$/, '') === 'node_modules')
+
 /** What must exist before merging, so a deploy cannot fail for a reason known in advance. */
 export function preflight(repo, fsx = realFs) {
   const problems = []
   for (const f of [...repo.envFiles, ...repo.copyFromSource]) {
     if (!fsx.exists(join(repo.sourceDir, f))) problems.push(`${join(repo.sourceDir, f)} does not exist`)
   }
+  // The workspace is cleaned of everything untracked before every deploy and
+  // every rollback, node_modules included, unless `preserve` keeps it. A row
+  // whose steps need packages and whose setup installs none fails after the
+  // merge, and its rollback fails the same way (gorfmusic.com 49, 12 November 2026).
+  // package.json is read from the owner's clone, which is usually but not
+  // always main: deployMerged checks the merge commit itself after setup.
+  const packages = declaresPackages(repo.sourceDir, fsx)
+  const steps = [...repo.setup, ...repo.deploy, ...(repo.rollback ?? [])]
+  const needing = steps.filter((s) => needsNodeModules(s, packages)).map((s) => s.name)
+  if (needing.length > 0 && !repo.setup.some(installs) && !preserves(repo)) {
+    problems.push(
+      `step${needing.length > 1 ? 's' : ''} ${needing.map((n) => `"${n}"`).join(', ')} need node_modules, which the workspace clean removes, and no setup step installs it: add a setup step running npm ci`,
+    )
+  }
   return problems
+}
+
+/** After setup, in the workspace at the merge commit: packages declared, steps that need them, and no node_modules. */
+function missingNodeModules(repo, steps, fsx) {
+  if (!declaresPackages(repo.workDir, fsx)) return null
+  const needing = steps.filter((s) => needsNodeModules(s, true)).map((s) => s.name)
+  if (needing.length === 0 || fsx.exists(join(repo.workDir, 'node_modules'))) return null
+  return `the merge commit's package.json declares packages, setup left no node_modules, and step${needing.length > 1 ? 's' : ''} ${needing.map((n) => `"${n}"`).join(', ')} need them: add a setup step running npm ci`
 }
 
 /** Values from the repo's env files, for the redactor. */
@@ -187,6 +268,10 @@ async function rollBack(ctx, log, repo, { parent, selected, failedStep }) {
       return { applied: true, method: 'rollback steps', ok: false, error: cause.message }
     }
   }
+  if (!parent) {
+    log.write('\n[ship-bot] no rollback steps configured and no deploy on record to redeploy; nothing was rolled back\n')
+    return { applied: false, method: 'no rollback', ok: false, error: 'no rollback steps are configured and the bot has no record of the commit that was live' }
+  }
   log.write(`\n[ship-bot] no rollback steps configured; redeploying the previous commit ${parent}\n`)
   try {
     await prepareWorkspace(ctx, log, repo, parent)
@@ -196,6 +281,12 @@ async function rollBack(ctx, log, repo, { parent, selected, failedStep }) {
   } catch (cause) {
     return { applied: true, method: `redeploying the previous commit ${parent.slice(0, 7)}`, ok: false, error: cause.message }
   }
+}
+
+/** `git merge-base --is-ancestor`: exit 0 yes, 1 no; anything else (an unknown commit) is no. */
+async function isAncestor(ctx, log, path, a, b) {
+  const r = await exec(ctx, log, { label: `is ${a.slice(0, 7)} an ancestor of ${b.slice(0, 7)}`, kind: 'workspace', cmd: 'git', args: ['-C', path, 'merge-base', '--is-ancestor', a, b], env: gitEnv(ctx), timeoutMs: 60_000 })
+  return succeeded(r)
 }
 
 /**
@@ -224,19 +315,32 @@ async function tagRelease(ctx, log, repo, mergeSha, release, onPushing = () => {
  * @returns {Promise<{status: 'deployed'|'paused'|'not-started'|'rolled-back'|'rollback-failed'|'failed-not-rolled-back',
  *   steps?: string[], paused?: string[], error?: string, rollback?: object}>}
  */
-export async function deployMerged(ctx, repo, { mergeSha, log, release = null }) {
+export async function deployMerged(ctx, repo, { mergeSha, log, release = null, since = null, expectParent = null }) {
   let parent
   let changed
+  let base
   try {
     await prepareWorkspace(ctx, log, repo, mergeSha)
     parent = (await git(ctx, log, repo.workDir, 'read the previous default-branch commit', ['rev-parse', `${mergeSha}^1`])).stdout.trim()
     if (!/^[0-9a-f]{40}$/.test(parent)) throw new StepFailed(`no first parent for ${mergeSha}`, { code: 1 })
-    const diff = await git(ctx, log, repo.workDir, 'list changed paths', ['diff', '--name-only', parent, mergeSha])
-    changed = diff.stdout.split('\n').map((l) => l.trim()).filter(Boolean)
+    // A hotfix was allowed because main was the last deploy when it was checked; a push since then would ride along.
+    if (expectParent && parent !== expectParent) throw new StepFailed(`main moved to ${parent.slice(0, 7)} between the hotfix check and the merge (expected the last deploy ${expectParent.slice(0, 7)}), so a deploy would ship merges no release covered`, { code: 1 })
+    // What is live is the commit last deployed, not the merge's first parent:
+    // merges between the two were never deployed (plan row 1.25), so the
+    // changed paths, pausedIfChanged and onlyIfChanged count from there.
+    base = since && /^[0-9a-f]{40}$/.test(since) && (await isAncestor(ctx, log, repo.workDir, since, mergeSha)) ? since : null
+    if (base) {
+      const diff = await git(ctx, log, repo.workDir, 'list changed paths', ['diff', '--name-only', base, mergeSha])
+      changed = diff.stdout.split('\n').map((l) => l.trim()).filter(Boolean)
+    } else {
+      // No known deployed commit: every tracked path counts as changed, so no pause and no conditional step is skipped by not knowing.
+      const all = await git(ctx, log, repo.workDir, 'list every tracked path', ['ls-tree', '-r', '--name-only', mergeSha])
+      changed = all.stdout.split('\n').map((l) => l.trim()).filter(Boolean)
+    }
   } catch (cause) {
     return { status: 'not-started', error: `preparing the workspace failed: ${cause.message}` }
   }
-  log.write(`\n[ship-bot] ${changed.length} path(s) changed since ${parent.slice(0, 7)}\n`)
+  log.write(base ? `\n[ship-bot] ${changed.length} path(s) changed since the last deploy ${base.slice(0, 7)}\n` : `\n[ship-bot] no known last deploy${since ? ` (${since.slice(0, 7)} is not an ancestor of ${mergeSha.slice(0, 7)})` : ''}: treating all ${changed.length} tracked path(s) as changed\n`)
 
   const paused = matchingFiles(changed, repo.pausedIfChanged)
   if (paused.length > 0) return { status: 'paused', paused }
@@ -263,12 +367,21 @@ export async function deployMerged(ctx, repo, { mergeSha, log, release = null })
   }
 
   const selected = selectSteps(repo.deploy, changed)
+  // Nothing has been deployed yet: refuse here rather than fail the first step and roll back.
+  const missing = missingNodeModules(repo, selected, ctx.fsx)
+  if (missing) {
+    log.write(`\n[ship-bot] not deploying: ${missing}\n`)
+    return { status: 'not-started', tagged, error: missing }
+  }
   const steps = []
   for (const step of selected) {
     try {
       steps.push(...(await runSteps(ctx, log, repo, [step], 'deploy')))
     } catch (cause) {
-      const rollback = await rollBack(ctx, log, repo, { parent, selected, failedStep: step.name })
+      // The default rollback redeploys what was live: the last deployed commit. With none known, the first parent
+      // may hold merges that were never live, so in release mode there is nothing safe to redeploy.
+      const previous = base ?? (repo.deployOn === 'merge' ? parent : null)
+      const rollback = await rollBack(ctx, log, repo, { parent: previous, selected, failedStep: step.name })
       const status = !rollback.applied ? 'failed-not-rolled-back' : rollback.ok ? 'rolled-back' : 'rollback-failed'
       return { status, tagged, steps, error: cause.message, failedStep: step.name, rollback }
     }

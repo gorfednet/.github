@@ -93,6 +93,12 @@ jobs:
         if: ${{ !cancelled() }}
         run: bash scripts/test-site-deploy-build-stamp.sh
 
+      # The gate wrappers on PATH: GITHUB_REPOSITORY and GH_TOKEN derived from the
+      # clone, and --repo passed to every gate so none of them can read another repo.
+      - name: Gate wrappers derive the repository and pass --repo
+        if: ${{ !cancelled() }}
+        run: bash scripts/gates/test/gate-env.test.sh
+
       # The backlog's shape, enforced. A `reviewBy` that has passed is printed as
       # a warning and does not fail this step: the calendar is not something a
       # pull request can change (2026-10 right-sizing). fleet-audit.yml lists
@@ -128,6 +134,15 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: node scripts/gates/check-closing-keywords.mjs
+
+      # Plan row 5.4. The rules, skills, agent briefs and memory indexes here are
+      # read by sessions as instructions, so a retired tool (Cursor, Bugbot,
+      # coordinator sessions) or a model outside the roster written into one is
+      # obeyed until someone notices. History passes only through the script's
+      # allowlist, each entry with its reason; an empty scope fails.
+      - name: No retired terms or off-roster models in rules, skills, agents or memory
+        if: ${{ !cancelled() }}
+        run: node scripts/check-rules-drift.mjs
 
       - name: FLEET.md matches the registry it is generated from
         if: ${{ !cancelled() }}

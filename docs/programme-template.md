@@ -40,6 +40,7 @@ Approved <date> by the owner. Source plan: <path>.
 - session: <link once started>
 - done-when: <checkable outcome>
 - verification: <how it is proven, including a guard seen failing>
+- plugins: <none, or the plugin the repo must switch on in its .claude/settings.json: docs/claude-home/plugins.md>
 - brief:
   <30 lines or fewer>
 ```

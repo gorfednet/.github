@@ -11,29 +11,11 @@ runs:
         sparse-checkout: |
           scripts
         sparse-checkout-cone-mode: false
-    - name: Install ripgrep when it can be
-      shell: bash
-      run: |
-        set -euo pipefail
-        # The self-hosted pool's containers have no sudo, no apt and no rg. There
-        # the guard script falls back to grep with the same verdict, so a missing
-        # sudo is not an error here; hosted runners keep installing ripgrep.
-        if ! command -v rg >/dev/null 2>&1 && command -v sudo >/dev/null 2>&1 && sudo -n true >/dev/null 2>&1; then
-          # `apt-get update` exits non-zero if *any* configured repository
-          # fails, and the runner image ships a Google Chrome source this build
-          # has no use for. A transient hash mismatch there took the static-site
-          # check red on two pull requests at once, while ripgrep sat in
-          # Ubuntu's own universe repo entirely unaffected.
-          #
-          # The install may fail too. On 11 November 2026 hosted runners could
-          # not resolve security.ubuntu.com for over 1.5 hours, and a hard
-          # install failure took every `check` job red before any build ran.
-          # ripgrep is a speed-up, not the guard: without it the guard script
-          # falls back to grep with the same verdict (commit 582d8ac), so a
-          # failed install says why and carries on.
-          sudo apt-get update -qq || echo "apt-get update reported errors; continuing to install"
-          sudo apt-get install -y -qq ripgrep || echo "ripgrep could not be installed; the guard falls back to grep"
-        fi
+    # No ripgrep install, on any runner (11 November 2026). A hosted runner's
+    # `apt-get install ripgrep` could not resolve security.ubuntu.com and took
+    # heuristics #85 `check` red for a reason the pull request cannot change. The
+    # guard uses rg when the runner has one and otherwise falls back to grep with
+    # the same verdict; test/noSmbGuard.test.mjs runs every case under both.
     - name: Run no-smb guard
       shell: bash
       run: bash .gorfednet-github/scripts/no-smb-guard.sh "${{ github.workspace }}"

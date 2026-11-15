@@ -18,15 +18,16 @@
  *     --site-url https://example.com
  *     --root dist                  where the site's URL paths resolve on disk
  *     --page dist/index.html [--page ...]
+ *     [--content-addressed]   the card's file name must carry a hash (og-card-<hash>.png)
  *     [--width 1200] [--height 630] [--max-bytes 300000] [--min-pages <n>]
  */
 import { readFileSync, statSync } from 'node:fs'
-import { extname, join } from 'node:path'
+import { basename, extname, join } from 'node:path'
 import { EXTENSION_FORMATS, FORMAT_MIME, imageMeta } from '../lib/imageMeta.mjs'
 import { headOf, metaValues } from '../lib/htmlHead.mjs'
 
 function parseArgs(argv) {
-  const args = { siteUrl: '', root: '.', pages: [], width: 1200, height: 630, maxBytes: 300_000, minPages: 1 }
+  const args = { siteUrl: '', root: '.', pages: [], width: 1200, height: 630, maxBytes: 300_000, minPages: 1, contentAddressed: false }
   for (let i = 0; i < argv.length; i += 1) {
     const next = () => {
       const value = argv[i + 1] ?? ''
@@ -39,12 +40,13 @@ function parseArgs(argv) {
     else if (argv[i] === '--width') args.width = Number.parseInt(next(), 10)
     else if (argv[i] === '--height') args.height = Number.parseInt(next(), 10)
     else if (argv[i] === '--max-bytes') args.maxBytes = Number.parseInt(next(), 10)
+    else if (argv[i] === '--content-addressed') args.contentAddressed = true
     else if (argv[i] === '--min-pages') args.minPages = Number.parseInt(next(), 10)
   }
   return args
 }
 
-const { siteUrl, root, pages, width, height, maxBytes, minPages } = parseArgs(process.argv.slice(2))
+const { siteUrl, root, pages, width, height, maxBytes, minPages, contentAddressed } = parseArgs(process.argv.slice(2))
 const problems = []
 const fail = (where, message) => problems.push(`${where}: ${message}`)
 
@@ -98,6 +100,17 @@ for (const { url, declared, pages: sources } of referencedBy.values()) {
     // there are no local bytes to open, which is the thing this check is for.
     fail(where, `og:image "${url}" is not under ${siteUrl}, so its bytes cannot be verified here`)
     continue
+  }
+
+  // The host serves images `Cache-Control: public, immutable` for a year, so a
+  // card replaced at a fixed name reaches nobody. A name that carries a hash
+  // changes when the card does (ssatcy.com's og-card-<hash12>.png is the pattern).
+  if (contentAddressed && !/[-_.][0-9a-f]{8,}\.[a-z]+$/i.test(basename(url.split(/[?#]/)[0]))) {
+    fail(
+      where,
+      `og:image "${url}" has a fixed name; the host caches images for a year as immutable, ` +
+        'so replacing it in place reaches nobody. Name it with a content hash, e.g. og-card-<hash12>.png',
+    )
   }
 
   const path = join(root, decodeURIComponent(url.slice(siteUrl.length).split(/[?#]/)[0]))

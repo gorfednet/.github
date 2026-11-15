@@ -1,5 +1,5 @@
 {
-  "version": "0.61.0",
+  "version": "0.62.0",
   "files": {
     "README.md": "438fbbec6b659718a70d57f4e85f9fcade1eb02aa0ae0b753dd3aa68d8d56623",
     "bin/assert-checks-started.mjs": "9b32370e3b8ab4dae94c9b54abd46c6d364f81fb00b6f81ccbaf0e4d21b077f0",
@@ -12,7 +12,7 @@
     "bin/check-links.mjs": "1ee7dd82bcc13724743ccf0aebfeabf04470e146af8590464e548908ac556e45",
     "bin/check-live-og-image.mjs": "779a4068957968a9a1b844ee9ec36216eda7af5fba967a7a188d16e32d7d49ff",
     "bin/check-machine-paths.mjs": "bf644aa8a33d16542388cfdea425d2cbcce295a4f54bdd5f1e3ce4e7cecdbc35",
-    "bin/check-og-image.mjs": "52bfa44361eebecaa6518b9960d3634ab8336a9bfd1a10b9ac6e50cc484176d1",
+    "bin/check-og-image.mjs": "6c9275a6e2d65f7dc4134ad55acda11bb60bd959eeaa6fd9d3cb0baef9e15223",
     "bin/check-page-metadata.mjs": "f876e3fdfa5d3cc03e993bac8e351d4c4b54aa180a662b2752309c7d84e65998",
     "bin/check-rule-citations.mjs": "be89e3cc348acd56f4f8a99e817393b91bd3d0c46ff6a2a58d0669776ed0493f",
     "bin/check-sitemap-pages.mjs": "942526d343418a2fec791491f44390f475c88ccc2b7225b988a15d122cd85d66",
@@ -43,7 +43,7 @@
     "test/liveOgImage.test.mjs": "995cd5d86a8fd1cc1d857ad925d3d3ab4073fa9fddff675733f4f06d6ecb9ed6",
     "test/machinePaths.test.mjs": "6c5b1ca73f9eef17064f569bf36dc9dd4c595ce0a15254cf18d560e4b3fe93cf",
     "test/mutationCanary.test.mjs": "eab9336a04ab9261a385cb6803c59b8bd5c412dc708560f05b752cbc6ea097ad",
-    "test/ogImage.test.mjs": "f4dc6f421b0cdc4b272371588ef5ba9f7b8d2cee02dba273f96d0dbcfb436c08",
+    "test/ogImage.test.mjs": "3df8526c99473bfb568d40d4c6d8079b6f9c80abd2cfda490d5176188796af1f",
     "test/outboundLinks.test.mjs": "7d0b1b2791f0a59520ec42f5c5c0d3bd5a6a1a25f6b0e8d960f8f575ef2a5688",
     "test/pageMetadata.test.mjs": "77a74d4b70019117dc88f782dd973cc4880e797954bfd33465871139dc0e7a32",
     "test/refreshKitHandoff.test.mjs": "58f2380adcc2829e66ddb9654d95441eb25de716af2574f1e2f741dbc5f34336",

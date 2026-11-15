@@ -16,7 +16,7 @@ embarrassing place to skip the gate.
 - **Tier 2** — Tier 1 plus an executed-count assertion wired to a real test report.
 - **Tier 3** — Tier 2 plus mutation canaries against its own gates.
 
-Currently 4 at tier 0, 8 at tier 1, 4 at tier 2, 3 at tier 3.
+Currently 4 at tier 0, 9 at tier 1, 4 at tier 2, 3 at tier 3.
 
 Adoption is opt-in per project. Every project already inherits one of the
 reusable `pr-check-*` workflows, so the gate defaults to **off**: a non-empty
@@ -43,6 +43,7 @@ gone stale, so someone re-checks the tier or lowers it.
 | [gorfednet/gorfed.net](https://github.com/gorfednet/gorfed.net) | static-make-python-esbuild | 1 | active-site | gorf | 2026-09-10 | Tier 2 pilot, adopted in #39. The awkward case: the build is Make plus Python plus esbuild and `npm test` is a placeholder that exits 1. Proves the kit works when the runner is not npm. Carries an open confirmed bug — its anti-spam submit floor fails intermittently after a prerender. |
 | [gorfednet/gorfmusic.com](https://github.com/gorfednet/gorfmusic.com) | vite-spa | 1 | static-marketing | gorf | 2026-09-10 | Its whole accessibility suite — axe scans, skip link, keyboard focus, contrast — had never run in CI, because browser-compat defaulted to naming one spec file. Carries an open confirmed bug: production answers on four URLs per page, with client-side redirects where server-side 301s are asserted. |
 | [gorfednet/rowanmcarthur.com](https://github.com/gorfednet/rowanmcarthur.com) | static-no-npm | 1 | static-marketing | gorf | 2026-09-10 | No test suite, so tier 1 is its ceiling. The one site already immune to the deny-list publishing defect, because it stages an allow-list into a clean directory and ships that. |
+| [gorfednet/scratch-bootstrap-5-6](https://github.com/gorfednet/scratch-bootstrap-5-6) | static-no-npm | 1 | tool | gorf | 2026-11-13 | Scratch repository for plan row 5.6, which proves one bootstrap run registers a repository everywhere. Registered by scripts/register-repo.mjs on 2026-11-13. |
 | [gorfednet/ssatcy.com](https://github.com/gorfednet/ssatcy.com) | vite-spa | 1 | static-marketing | gorf | 2026-09-10 | Sixteen cross-browser tests were failing and had been merged over. Cause was its own meta CSP, not a browser: `upgrade-insecure-requests` in a meta element broke the http preview server. Serves zero security headers in production — `_headers` is a Netlify convention and the site is on Cloudflare — and `frame-ancestors` is ignored in a meta element, so it is framable. Both open in its backlog. |
 | [gorfednet/subrythm.com](https://github.com/gorfednet/subrythm.com) | static-no-npm | 1 | static-marketing | gorf | 2026-09-10 | Tier 1 pilot, adopted in #3. No package.json, no tests, 49 files. Proves the floor: if the kit needs npm here, the design is wrong. Publish-set verification inverted to an extension allow-list. |
 | [gorfednet/ACID2REAPER](https://github.com/gorfednet/ACID2REAPER) | tool | 0 | tool | gorf | 2026-09-25 | Desktop converter with PR CI and tagged releases. No production site to healthcheck. |

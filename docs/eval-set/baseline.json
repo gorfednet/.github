@@ -1,0 +1,121 @@
+{
+  "frozen": "2026-11-14",
+  "manifestSha256": "60eaeee1dc1b0a6de6ac38350909ebcacf9100f5dd02a79222cfebabfe701e81",
+  "note": "Scoring v3 refreeze (14 Nov 2026, plan 1.27b). Haiku and Sonnet reference arms rerun blind with Claude subagents (opaque inputs, one case per context, no API); nomodel and nomodel-rule regenerated at scoringVersion 3 (rule arm has the triage error-line rows). Triage is scored for the Claude arms. Copy fact-kept grades are not in.",
+  "arms": [
+    {
+      "name": "haiku",
+      "armSha256": "7795ca87be4b0c842d09b492f061ca361c6b2d9d095c2c82f2153cb66c89f87e",
+      "scores": {
+        "reviewer": {
+          "n": 28,
+          "correct": 28,
+          "schema": 28,
+          "dangerous": 0
+        },
+        "builder": {
+          "n": 10,
+          "correct": 5,
+          "schema": 10,
+          "dangerous": 0
+        },
+        "triage": {
+          "n": 10,
+          "correct": 9,
+          "schema": 10,
+          "dangerous": 1
+        },
+        "copy": {
+          "n": 8,
+          "correct": 3,
+          "schema": 3,
+          "dangerous": 0,
+          "drop": 3,
+          "start": 8
+        }
+      }
+    },
+    {
+      "name": "nomodel-rule",
+      "armSha256": "d27ca88b3fac9febac3a4a805d1be52dc8c42548a270f22cde1eec0fafbff88e",
+      "scores": {
+        "reviewer": {
+          "n": 28,
+          "correct": 16,
+          "schema": 28,
+          "dangerous": 4
+        },
+        "triage": {
+          "n": 10,
+          "correct": 5,
+          "schema": 10,
+          "dangerous": 0
+        }
+      }
+    },
+    {
+      "name": "nomodel",
+      "armSha256": "d347c21335e6d8a5a301a56796872dd5374a44ea1cc53f6ca0b734cd12ba00b6",
+      "scores": {
+        "reviewer": {
+          "n": 28,
+          "correct": 14,
+          "schema": 28,
+          "dangerous": 0
+        },
+        "builder": {
+          "n": 10,
+          "correct": 2,
+          "schema": 10,
+          "dangerous": 0
+        },
+        "triage": {
+          "n": 10,
+          "correct": 5,
+          "schema": 10,
+          "dangerous": 0
+        },
+        "copy": {
+          "n": 8,
+          "correct": 0,
+          "schema": 3,
+          "dangerous": 0,
+          "drop": 0,
+          "start": 8
+        }
+      }
+    },
+    {
+      "name": "sonnet",
+      "armSha256": "0cfceb11b7cfc4d279e3374c7f8a8fe60b219ef206377f555ee9963cb12b11ac",
+      "scores": {
+        "reviewer": {
+          "n": 28,
+          "correct": 28,
+          "schema": 28,
+          "dangerous": 0
+        },
+        "builder": {
+          "n": 10,
+          "correct": 6,
+          "schema": 10,
+          "dangerous": 0
+        },
+        "triage": {
+          "n": 10,
+          "correct": 10,
+          "schema": 10,
+          "dangerous": 0
+        },
+        "copy": {
+          "n": 8,
+          "correct": 3,
+          "schema": 3,
+          "dangerous": 0,
+          "drop": 3,
+          "start": 8
+        }
+      }
+    }
+  ]
+}

@@ -160,5 +160,7 @@ A repository adopts it with a copy of [`templates/claude-review.yml`](templates/
 ## Fleet status
 
 [`STATUS.md`](https://github.com/gorfednet/.github/blob/status/STATUS.md) on the `status` branch is the one view of open pull requests, lapsed backlog items and red mains across the fleet.
-`.github/workflows/fleet-status.yml` rebuilds it daily at 06:30 UTC with `scripts/fleet-status.mjs` and `scripts/write-status-md.mjs`, and posts a digest to ntfy `ops-report`.
-On the Mac, `scripts/fleet-status-local.sh` (symlinked as `fleet-status`) prints it with dirty local clones added. The daily janitor's prompt is `janitor/PROMPT.md`.
+`.github/workflows/fleet-status.yml` rebuilds it every 2 hours (at :30) with `scripts/fleet-status.mjs` and `scripts/write-status-md.mjs`, and posts a digest to ntfy `ops-report` once a day, on the run that did the full branch read.
+On the Mac, `scripts/fleet-status-local.sh` (symlinked as `fleet-status`) prints it with the Mac hygiene rows added (dirty clones, clones behind origin, worktrees over 7 days, sessions idle over 24 h). It runs `git fetch origin` in every clone first, which is slow; pass `--no-fetch` to skip it, and the behind row then says not measured. The daily janitor's prompt is `janitor/PROMPT.md`.
+
+Cost per PR (plan row 1.26): `scripts/pr-cost.mjs` adds up the token usage of every session and subagent transcript that worked a pull request, by model (input, cache read, cache write, output). The janitor records one line per closed PR in `~/.desk/pr-cost.jsonl` (local and private) before it archives the session. The local `fleet-status` adds "Cost per PR, last 7 days": by repository and kind, the 5 dearest, fresh tokens per added line, and the share of tokens that match no PR. The hosted run has no transcripts, so the published `STATUS.md` never carries it. Fresh tokens are input, cache write and output; cache reads are about 90% of a session's volume and are listed apart.

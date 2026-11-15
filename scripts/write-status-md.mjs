@@ -10,6 +10,8 @@
 import { readFileSync, writeFileSync } from 'node:fs'
 
 import { isMain } from '../templates/verification-kit/lib/isMain.mjs'
+import { showInstalled } from './lib/installed-tools.mjs'
+import { renderInventory } from './lib/inventory.mjs'
 import { kitSummary } from './lib/kit-version.mjs'
 
 /** The canonical kit version: this repository's own manifest, which is what a refresh pulls. */
@@ -34,6 +36,41 @@ export const waitingOnOwner = (pr) => pr.labels.includes('needs-owner') || (pr.n
 
 const short = (slug) => slug.replace(/^gorfednet\//, '')
 
+/** 1234567 -> "1.2M", 45678 -> "46k", 900 -> "900". */
+export const compact = (n) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${Math.round(n / 1e3)}k` : String(n))
+
+/**
+ * "Cost per PR" (plan row 1.26), from `status.prCost`. Fresh tokens are input + cache write + output: what costs full
+ * price. Cache reads are listed apart because they are about 90% of every session and cost a tenth. Null prCost is
+ * "not measured", never zero. Repository names and PR numbers only.
+ */
+export function renderPrCost(c, unread) {
+  const out = [`## Cost per PR, last ${c?.days ?? 7} days`, '']
+  if (c === null || c === undefined) return [...out, unread ? `not measured: ${unread}` : 'not measured', '']
+  if (c.prs === 0) out.push('No closed PR has a recorded cost in this window.', '')
+  else {
+    const fresh = Object.values(c.byRepo).reduce((n, r) => n + r.fresh, 0)
+    out.push(`${c.prs} PRs closed, ${compact(fresh)} fresh tokens (input, cache write and output; cache reads not counted).`, '')
+    const kinds = ['feature', 'fix', 'docs', 'infra']
+    out.push(`| Repository | PRs | Fresh tokens | Per PR | ${kinds.join(' | ')} |`, `|---|---|---|---|${kinds.map(() => '---').join('|')}|`)
+    for (const [repo, v] of Object.entries(c.byRepo).sort((x, y) => y[1].fresh - x[1].fresh)) {
+      const cells = kinds.map((k) => {
+        const kv = c.byRepoKind[`${repo} ${k}`]
+        return kv ? `${compact(kv.fresh)} (${kv.prs})` : ''
+      })
+      out.push(`| ${short(repo)} | ${v.prs} | ${compact(v.fresh)} | ${compact(Math.round(v.fresh / v.prs))} | ${cells.join(' | ')} |`)
+    }
+    out.push('', `By kind: ${kinds.filter((k) => c.byKind[k]).map((k) => `${k} ${c.byKind[k].prs} PRs, ${compact(c.byKind[k].fresh)}`).join('; ')}.`)
+    out.push('', 'Dearest 5:', '')
+    for (const d of c.dearest) out.push(`- ${short(d.repo)} #${d.number} (${d.kind}): ${compact(d.fresh)} fresh tokens${d.freshPerAddedLine === null ? ', added lines unknown' : `, ${compact(d.freshPerAddedLine)} per added line over ${d.additions} lines`}`)
+    out.push('', '| Model | Input | Cache read | Cache write | Output |', '|---|---|---|---|---|')
+    for (const [m, t] of Object.entries(c.perModel).sort((a, b) => b[1].output - a[1].output)) out.push(`| ${m} | ${compact(t.input)} | ${compact(t.cacheRead)} | ${compact(t.cacheWrite)} | ${compact(t.output)} |`)
+    out.push('')
+  }
+  if (c.unattributed) out.push(`Tokens in these ${c.days} days that match no PR: ${compact(c.unattributed.tokens)} of ${compact(c.unattributed.of)} (${(c.unattributed.share * 100).toFixed(1)}%); fresh only, ${compact(c.unattributed.fresh)} of ${compact(c.unattributed.freshOf)} (${c.unattributed.freshOf > 0 ? ((c.unattributed.fresh / c.unattributed.freshOf) * 100).toFixed(1) : '0.0'}%).`, '')
+  return out
+}
+
 export function summarize(status) {
   const ok = status.repos.filter((r) => !r.unavailable)
   const full = ok.filter((r) => !r.redacted)
@@ -52,6 +89,36 @@ export function summarize(status) {
   }
 }
 
+/**
+ * The hygiene rows: what is forgotten. `count` is null when the row was not measured (a hosted run has no
+ * `local` object; an older snapshot lacks a field), and null renders "not measured", never 0.
+ */
+export function hygiene(status) {
+  const ok = status.repos.filter((r) => !r.unavailable)
+  const hosted = (full, redacted) => {
+    let n = 0
+    for (const r of ok) {
+      const v = r.redacted ? r[redacted] : full(r)
+      if (!Number.isInteger(v)) return null
+      n += v
+    }
+    return n
+  }
+  const len = (key) => (r) => (Array.isArray(r[key]) ? r[key].length : null)
+  const loc = (key) => (Array.isArray(status.local?.[key]) ? status.local[key].length : null)
+  return [
+    { row: 'Dirty clones', count: loc('dirtyClones') },
+    { row: 'Clones behind origin', count: loc('behindClones') },
+    { row: 'Installed tools behind main', count: loc('installedTools') },
+    { row: 'Branches with no PR', count: hosted(len('branchesAhead'), 'noPrCount') },
+    { row: 'Worktrees over 7 days', count: loc('oldWorktrees') },
+    { row: 'PRs idle over 3 days', count: hosted(len('idlePrs'), 'idlePrCount') },
+    { row: 'Sessions idle over 24 h', count: loc('idleSessions') },
+    { row: 'Backlog entries past reviewBy', count: hosted(len('lapsedBacklog'), 'lapsedBacklogCount') },
+    { row: 'Duplicate PRs per backlog id', count: hosted(len('duplicatePrs'), 'duplicatePrCount') },
+  ]
+}
+
 export function summaryLine(status) {
   const s = summarize(status)
   const oldest = s.oldest ? `oldest ${s.oldest.ageDays} days (${short(s.oldest.slug)} #${s.oldest.number})` : 'none open'
@@ -60,7 +127,12 @@ export function summaryLine(status) {
 }
 
 export function render(status) {
-  const out = ['<!-- Generated by scripts/write-status-md.mjs from status.json. Do not edit by hand. -->', '# Fleet status', '', `Data from ${etStamp(status.generatedAt)}, rendered ${etStamp(status.renderedAt ?? status.generatedAt)}.`, '', summaryLine(status), '', kitSummary(status.repos, canonicalKitVersion()), '']
+  const out = ['<!-- Generated by scripts/write-status-md.mjs from status.json. Do not edit by hand. -->', '# Fleet status', '', `Data from ${etStamp(status.generatedAt)}, rendered ${etStamp(status.renderedAt ?? status.generatedAt)}.${status.carried && status.branchesReadAt ? ` Branches with no PR are as of ${etStamp(status.branchesReadAt)}.` : ''}`, '', summaryLine(status), '', kitSummary(status.repos, canonicalKitVersion()), '']
+  if (status.dormant?.length) out.push(`Dormant, not tracked: ${status.dormant.map(short).join(', ')}.`, '')
+  out.push('## Hygiene', '', '| Row | Count |', '|---|---|')
+  for (const h of hygiene(status)) out.push(`| ${h.row} | ${h.count === null ? 'not measured' : h.count} |`)
+  const gone = status.repos.filter((r) => r.unavailable).length
+  out.push('', gone > 0 ? `Repository rows exclude ${gone} unreadable repositories.` : 'Repository rows cover the repositories listed below.', '')
   for (const r of [...status.repos].sort((a, b) => a.slug.localeCompare(b.slug))) {
     out.push(`## [${r.slug}](https://github.com/${r.slug})`, '')
     if (r.unavailable) {
@@ -87,8 +159,26 @@ export function render(status) {
       out.push('')
     } else out.push('No open pull requests.', '')
     if (r.branchesAhead.length > 0) out.push(`Branches ahead with no PR: ${r.branchesAhead.map((b) => `${cell(b.branch)} (${b.unrelated ? "no shared history" : "+" + b.ahead})`).join(', ')}`, '')
+    if ((r.idlePrs ?? []).length > 0) out.push(`Idle PRs: ${r.idlePrs.map((p) => `#${p.number} (${p.idleDays} d)`).join(', ')}`, '')
+    if ((r.duplicatePrs ?? []).length > 0) out.push(`Duplicate PRs per backlog id: ${r.duplicatePrs.map((d) => `${cell(d.id)} (${d.prs.map((n) => `#${n}`).join(', ')})`).join('; ')}`, '')
     if (r.lapsedBacklog.length > 0) out.push(`Lapsed backlog: ${r.lapsedBacklog.map((e) => `${cell(e.id)} (${e.reviewBy})`).join(', ')}`, '')
   }
+  if (status.local) {
+    const l = status.local
+    const rows = [
+      ['Clones behind origin', l.behindClones, (b) => `${b.dir} (${b.branch}, ${b.behind} behind)`],
+      ['Installed tools behind main', l.installedTools ?? null, showInstalled],
+      ['Worktrees over 7 days', l.oldWorktrees, (w) => `${w.clone}: ${w.path} (${w.ageDays === null ? 'missing' : `${w.ageDays} d`})`],
+      ['Sessions idle over 24 h', l.idleSessions, (x) => `${x.id} (${x.idleHours} h)`],
+    ]
+    out.push(`## Mac hygiene (measured ${etStamp(l.measuredAt)})`, '')
+    for (const [name, list, show] of rows) out.push(`${name}: ${list === null ? 'not measured' : list.length === 0 ? 'none' : list.map(show).map(cell).join('; ')}`, '')
+    if (l.unread.length > 0) out.push(`Unreadable clones (their rows are not measured): ${l.unread.join(', ')}`, '')
+    if ((l.installedToolsUnread ?? []).length > 0) out.push(`Installed tools not read (their row is not measured): ${l.installedToolsUnread.join(', ')}`, '')
+    if (l.behindFetchFailed.length > 0) out.push(`Fetch failed, so clones behind origin is not measured: ${l.behindFetchFailed.join(', ')}`, '')
+  }
+  if (status.prCost !== undefined) out.push(...renderPrCost(status.prCost, status.prCostUnread))
+  if (status.inventory) out.push(renderInventory(status.inventory, etStamp))
   if (status.dirtyLocal) {
     out.push('## Local clones with unsaved work', '')
     if (status.dirtyLocal.length === 0) out.push('None.', '')
@@ -105,6 +195,10 @@ export function render(status) {
 export function digest(status) {
   const s = summarize(status)
   const lines = [summaryLine(status)]
+  const rows = hygiene(status)
+  const counts = rows.filter((h) => h.count !== null && h.count > 0).map((h) => `${h.row} ${h.count}`)
+  const unmeasured = rows.filter((h) => h.count === null).length
+  if (counts.length > 0 || unmeasured > 0) lines.push(`Hygiene:${unmeasured > 0 ? ` ${unmeasured} rows not measured;` : ''} ${counts.join('; ') || 'nothing found'}`)
   for (const slug of s.redMains) lines.push(`Red main: ${short(slug)}`)
   for (const slug of s.unavailable) lines.push(`Unreadable: ${short(slug)}`)
   for (const p of s.prs.filter(waitingOnOwner).slice(0, 4)) lines.push(`Owner: ${short(p.slug)} #${p.number} ${p.title}`.slice(0, 120))
