@@ -71,6 +71,8 @@ Each row: owner agent and model; root cause to verify (hypothesis, not finding);
 
 ### Phase 1: control plane and hygiene (days 1 to 3)
 
+Infra state, 15 Nov 2026 13:09 ET (25th Desk, read from main of .github and ops): landed 1.13 heartbeats, 1.14 (needs-fix loop), 1.21 (disk-hygiene job), 1.22b (Hermes archive, credential delete pending), 1.23 (`docs/remote-access.md`), 1.24 (`docs/security.md`), 1.26 (`pr-cost`), 1.27b (scoring v3, .github 198 and 202), 1.28 (weekly lessons). Waiting on the owner: 1.15 (one sudo), 1.16 (pool App). 1.29 rides Friday's lessons task. No unblocked infra row is left to start. The rows carry no status column, so a Desk had to rediscover this: update this line when a row lands.
+
 | # | Item | Agent / model | Root cause to verify | Proof | Access |
 |---|---|---|---|---|---|
 | 1.1 | Land the briefs dir and release-loop handoff: answer the reviewer threads on 133, resolve 129's conflicts; close 118 and 120 as superseded by `docs/desk/brief.md` | `reviewer` Fable answers threads; `runner` Haiku rebases | threads are real findings or not; 129 conflicts with merged loop-3 text | 133 and 129 merged by ship-bot, 118 and 120 closed with a note; `briefs/` and `docs/desk/brief.md` on main | none |
