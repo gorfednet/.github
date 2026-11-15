@@ -188,7 +188,7 @@ Weekly 9% at 11:21 ET. Full speed, cost-aware. One line to the owner at about 90
 - [x] dapyllil bc pool 2 to 4 runners is the intended size
 - [ ] 23rd Desk archive (refused while open on screen)
 - [ ] First gowyllop runner appears and passes at the next busy bc queue (6c sizes it)
-- [ ] bc production-monitor Playwright mismatch (1 red at 10:18 ET, next green): watch
+- [x] bc production-monitor Playwright mismatch: one-off, 3 greens since
 - [ ] .github 205: plan rows 3.11 (pool GitHub App) and 3.2 (11 skipped repos), then start 3.11
 - [x] .github 205 closed (duplicate of live row 1.16); evidence in 1.16 and 3.2
 - [ ] 1.16 pool GitHub App: owner's App step next (ask at the Mac)
