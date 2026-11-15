@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-11-15T02:31:55.477Z",
-  "renderedAt": "2026-11-15T02:31:55.477Z",
+  "generatedAt": "2026-11-15T04:31:40.961Z",
+  "renderedAt": "2026-11-15T04:31:40.961Z",
   "repos": [
     {
       "slug": "gorfednet/bindercurve.com",
@@ -170,7 +170,7 @@
           "labels": [],
           "draft": true,
           "review": "not-run",
-          "headSha": "8654233da17c3495484205c9ac8090012e395ee2",
+          "headSha": "8eabbc4d88fb89a15c5c2d73c63313c20eead7d6",
           "ci": "none",
           "next": "Desk appends each pass's line until the 02:00 ET rotation (hold: the log is still being written)",
           "author": "gorfednet"
@@ -190,7 +190,7 @@
         {
           "number": 136,
           "title": "Handoff: session audit 12 November",
-          "ageDays": 1,
+          "ageDays": 2,
           "labels": [],
           "draft": true,
           "review": "not-run",
@@ -228,7 +228,7 @@
         {
           "number": 113,
           "title": ".github: Mostly-static sites inherited product-site Playwright and Bugbot settings",
-          "ageDays": 4,
+          "ageDays": 5,
           "labels": [],
           "draft": true,
           "review": "not-run",
@@ -240,7 +240,7 @@
         {
           "number": 112,
           "title": ".github: A script that names a location instead of deriving one runs on exactly one machine",
-          "ageDays": 4,
+          "ageDays": 5,
           "labels": [],
           "draft": true,
           "review": "not-run",
@@ -420,11 +420,11 @@
         },
         {
           "number": 113,
-          "idleDays": 4
+          "idleDays": 5
         },
         {
           "number": 112,
-          "idleDays": 4
+          "idleDays": 5
         },
         {
           "number": 103,
@@ -559,9 +559,9 @@
     "gorfednet/wychwood"
   ],
   "branchesReadAt": "2026-11-15T02:31:55.477Z",
-  "carried": false,
+  "carried": true,
   "inventory": {
-    "measuredAt": "2026-11-15T02:31:55.477Z",
+    "measuredAt": "2026-11-15T04:31:40.961Z",
     "counts": {
       "pr": {
         "total": 103,
