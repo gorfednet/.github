@@ -197,3 +197,14 @@ Weekly 9% at 11:21 ET. Full speed, cost-aware. One line to the owner at about 90
 - [x] Desk rotation started (12:48 ET)
 - [ ] 4thcltr 274 relabelled after the Fable read; first 4thcltr session checks plugins and hooks load
 - [ ] 4thcltr main e2e reds (header-fit, wordmark-fours) into the 4thcltr backlog (plugins-off)
+
+## Added 15 Nov evening (28th Desk)
+- [x] Chat cleanup: 9 archived (owner ask, 16:34 ET), incl. the 26th and 27th Desks
+- [x] Plan status page published for the owner (16:37 ET)
+- [x] gamingpc CI node passed, row added (16:47 ET); dapyllil rebooted on the pool App (16:58 ET), 0 no-token skips
+- [x] 3.7 warm reboot: 1 of 2 clean
+- [ ] bc 670 fill spread: reviews clean, label then merge, then the owner's fill spread line
+- [ ] Pool App: Actions read and write (owner, GitHub)
+- [ ] Releases tonight: heuristics, papers, gorfed.net (release-wk46); 4thcltr Mon 16 Nov
+- [ ] Cluster plan with Fable review (cluster-plan); owner decision on where release gates run
+- [ ] 3.2 hosted jobs to the pool (pool-hosted-3-2); 1.18 installed drift (installed-drift-1-18)
