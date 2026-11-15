@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // evalset-run.mjs --manifest m.json --cases dir <mode>
 //   --model <id> --out arm.json [--tasks a,b]   run one served local model on the set (named pair, takes the lock, unloads after)
-//     [--no-thinking] [--warmup-min 40]         --no-thinking sends chat_template_kwargs {enable_thinking:false}; the unscored warm-up waits up to --warmup-min minutes for a cold load
+//     [--no-thinking] [--reasoning low|medium|high] [--warmup-min 40]
+//                                               --no-thinking sends chat_template_kwargs {enable_thinking:false}; --reasoning sends {reasoning_effort:<v>} (gpt-oss ignores enable_thinking); both merge. The unscored warm-up waits up to --warmup-min minutes for a cold load. After the unload the run waits (up to 120 s) until the server reports the model unloaded
 //   --nomodel arm.json                          write the no-model arm (majority label computed from the cases, named files, unchanged text)
 //   --nomodel-rule arm.json                     write the rule arm: reviewer ("invalid when the region holds code from the finding's own Fix sentence") and triage (the log's own ##[error] lines)
 //   --emit-inputs dir --id-map map.json         write one input-only prompt file per case (triage too) under an opaque name, for Claude-tier arms; map.json (opaque name to case id) stays private and outside dir
@@ -188,8 +189,9 @@ export function unmapReplies(raw, map) {
 }
 
 export async function runModel(cases, id, base, io = {}) {
-  const { listModels: list = listModels, chat: ask = chat, unload: drop = unload, lock = path.join(os.homedir(), '.local-llm', 'lock'), proc = process, warm = (b, m, o) => warmUp(b, m, { ...o, listModels: list, chat: ask }), warmupMs = 40 * 60000, thinking = true, afterLock = () => {} } = io
-  const opts = thinking === false ? { chat_template_kwargs: { enable_thinking: false } } : {}
+  const { listModels: list = listModels, chat: ask = chat, unload: drop = unload, lock = path.join(os.homedir(), '.local-llm', 'lock'), proc = process, warm = (b, m, o) => warmUp(b, m, { ...o, listModels: list, chat: ask }), warmupMs = 40 * 60000, thinking = true, reasoning, afterLock = () => {}, save, unloadWaitMs = 120000, unloadPollMs = 2000, sleep = (ms) => new Promise((r) => setTimeout(r, ms)), now = Date.now } = io
+  const kwargs = { ...(thinking === false ? { enable_thinking: false } : {}), ...(reasoning ? { reasoning_effort: reasoning } : {}) }
+  const opts = Object.keys(kwargs).length ? { chat_template_kwargs: kwargs } : {}
   const built = prepare(cases) // before the lock and before any model call
   const live = await list(base)
   if (!live.some((m) => m.id === id)) throw new Error(`${id} is not served at ${base}`)
@@ -199,7 +201,7 @@ export async function runModel(cases, id, base, io = {}) {
   afterLock() // the earlier exits (not served, another model loaded, lock held) leave an existing --out alone
   // The arm file says which model and which snapshot answered: a later GGUF under the same id is a different arm.
   const sha = live.find((m) => m.id === id).sha
-  const arm = { scoringVersion: SCORING_VERSION, _model: { id, sha, thinking: thinking === false ? 'off' : 'default', ...(sha ? {} : { warning: 'no snapshot sha: the served file is not pinned' }) } }
+  const arm = { scoringVersion: SCORING_VERSION, _model: { id, sha, thinking: thinking === false ? 'off' : 'default', ...(reasoning ? { reasoning } : {}), ...(sha ? {} : { warning: 'no snapshot sha: the served file is not pinned' }) } }
   // Ctrl-C mid-run: stop the loop, abort the request in flight, unload, free the lock, exit 130. A second signal while unloading frees the lock and exits at once.
   let stopping = false, handled = null
   const ctrl = new AbortController()
@@ -212,6 +214,7 @@ export async function runModel(cases, id, base, io = {}) {
   }
   proc.on('SIGINT', onSignal)
   proc.on('SIGTERM', onSignal)
+  let finished = false
   try {
     // Unscored: a cold load can take 15 to 40 minutes and must not be paid for by the first case. A model that never loads fails the arm.
     const secs = await warm(base, id, { timeoutMs: warmupMs, abort: ctrl.signal, opts })
@@ -228,20 +231,37 @@ export async function runModel(cases, id, base, io = {}) {
       } catch (e) { arm[c.id] = { invalid: true, error: String(e.message).slice(0, 120) } }
       process.stderr.write('.')
     }
+    finished = !stopping
   } finally {
     // When stopping, the handler owns the unload: wait for it (it frees the lock and exits 130) before this run's error reaches main, which would exit 2.
     // The listeners stay until then, so a second Ctrl-C during the unload still reaches the handler.
     if (stopping) await handled
     proc.removeListener('SIGINT', onSignal)
     proc.removeListener('SIGTERM', onSignal)
-    if (!stopping) { await drop(base, id); releaseLock(lock, process.pid) } // when stopping, the handler owns the unload and the lock
+    if (!stopping) {
+      await drop(base, id)
+      // The arm is saved before the wait: a Ctrl-C during the wait must not lose a scored run. `save` is main's write of --out.
+      if (finished && save) await save(arm)
+      // unload returns before the server has freed the model: the next --model run would see "another model is loaded". The arm is already scored, so a model still loaded at the end is a warning.
+      process.stderr.write(`waiting up to ${Math.round(unloadWaitMs / 1000)} s for ${id} to unload\n`)
+      const t0 = now()
+      let still = true, unreadable = null
+      for (;;) {
+        try { const row = (await list(base, 5000)).find((m) => m.id === id); still = !!row && (row.status === 'loaded' || row.status === 'loading') } catch (e) { unreadable = String(e?.cause?.code ?? e?.message ?? e).slice(0, 120); break }
+        if (!still || now() - t0 >= unloadWaitMs) break
+        await sleep(Math.min(unloadPollMs, Math.max(0, unloadWaitMs - (now() - t0))))
+      }
+      if (unreadable) process.stderr.write(`warning: could not read the model list after unload: ${unreadable}\n`)
+      else if (still) process.stderr.write(`warning: ${id} still reported loaded ${Math.round(unloadWaitMs / 1000)} s after unload; the next --model run may be refused\n`)
+      releaseLock(lock, process.pid)
+    } // when stopping, the handler owns the unload and the lock
   }
   if (stopping) throw new Error('interrupted: no arm written')
   process.stderr.write('\n')
   return arm
 }
 
-const FLAGS = new Set(['--manifest', '--cases', '--model', '--out', '--tasks', '--nomodel', '--nomodel-rule', '--emit-inputs', '--id-map', '--ingest', '--no-thinking', '--warmup-min'])
+const FLAGS = new Set(['--manifest', '--cases', '--model', '--out', '--tasks', '--nomodel', '--nomodel-rule', '--emit-inputs', '--id-map', '--ingest', '--no-thinking', '--reasoning', '--warmup-min'])
 
 async function main(argv) {
   // Fail closed: a misspelled flag (--no-think) would otherwise be ignored and run the arm with thinking on.
@@ -256,6 +276,8 @@ async function main(argv) {
   }
   const mins = val('--warmup-min') === undefined ? 40 : Number(val('--warmup-min'))
   if (!(mins > 0)) throw new Error('--warmup-min must be a positive number of minutes')
+  const reasoning = val('--reasoning')
+  if (reasoning !== undefined && !['low', 'medium', 'high'].includes(reasoning)) throw new Error('--reasoning must be low, medium or high')
   // Check --out before a 56-case model run, not after it.
   if ((val('--ingest') || val('--model')) && (!val('--out') || val('--out').startsWith('--'))) throw new Error('--out <file> is required with --model and --ingest')
   if (val('--ingest') && !val('--id-map')) throw new Error('--id-map <file> is required with --ingest (inputs come from --emit-inputs --id-map)')
@@ -278,8 +300,8 @@ async function main(argv) {
     return 0
   }
   if (val('--model')) {
-    const arm = await runModel(cases, val('--model'), process.env.LOCAL_LLM_URL || DEFAULT_BASE, { warmupMs: mins * 60000, thinking: !argv.includes('--no-thinking'), afterLock: () => fs.rmSync(val('--out'), { force: true }) }) // once the run owns the lock, an older arm file must not survive a run that fails
-    fs.writeFileSync(val('--out'), `${JSON.stringify(arm, null, 2)}\n`)
+    const arm = await runModel(cases, val('--model'), process.env.LOCAL_LLM_URL || DEFAULT_BASE, { warmupMs: mins * 60000, thinking: !argv.includes('--no-thinking'), reasoning, afterLock: () => fs.rmSync(val('--out'), { force: true }), save: (a) => fs.writeFileSync(val('--out'), `${JSON.stringify(a, null, 2)}\n`) }) // once the run owns the lock, an older arm file must not survive a run that fails
+    // runModel has already written --out through `save`, before its unload wait.
     // A request that threw after the warm-up (server down, HTTP 5xx, timeout) is a harness loss, not a model answer: the arm is kept as evidence, the run is not clean.
     const errors = Object.values(arm).filter((v) => v && typeof v === 'object' && 'error' in v).length
     if (errors) { console.error(`${errors} harness errors`); return 1 }
