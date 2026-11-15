@@ -11,7 +11,7 @@
  * It reads only what the range adds, diffed against the merge base, so a change never
  * goes red on content that is already public (verification-floor rule 5):
  *   - the text of every added line, and the path of every added or renamed file
- *   - the message of every non-merge commit in base..head
+ *   - the message of every commit in merge-base..head, merge commits the branch wrote included
  * A finding is dropped when the same value is already in that file at the merge base.
  * Moving a line, or rewording a comment around an address that file already held,
  * discloses nothing new.
@@ -412,7 +412,7 @@ export function run(argv, env = process.env, out = console) {
     diff = git(dir, ['diff', ...common, '--unified=0', range, '--'])
     numstat = git(dir, ['diff', ...common, '--numstat', '-z', range, '--'])
     nameStatus = git(dir, ['diff', ...common, '--name-status', '-z', range, '--'])
-    messages = git(dir, ['log', '--no-merges', '--format=%x01%h%x02%B', `${mergeBase}..${args.head}`, '--'])
+    messages = git(dir, ['log', '--format=%x01%h%x02%B', `${mergeBase}..${args.head}`, '--'])
     if (args.allow) allowText = readFileSync(resolve(args.allow), 'utf8')
     else {
       try {

@@ -50,7 +50,7 @@ function sh(cwd, ...args) {
  * guard's exit status and output. `allow` copies the real allowlist in, so the shipped
  * exemptions are what is under test.
  */
-function guard({ before = { 'README.md': 'hello\n' }, after = {}, env = {}, allow = true, message = 'pr' } = {}) {
+function guard({ before = { 'README.md': 'hello\n' }, after = {}, env = {}, allow = true, message = 'pr', mergeMessage = null } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'privacy-guard-'))
   try {
     sh(dir, 'init', '-q', '-b', 'main')
@@ -72,6 +72,14 @@ function guard({ before = { 'README.md': 'hello\n' }, after = {}, env = {}, allo
     put(after)
     sh(dir, 'add', '-A')
     sh(dir, 'commit', '-q', '--allow-empty', '-m', message)
+    if (mergeMessage) {
+      sh(dir, 'checkout', '-q', '-b', 'side', 'main')
+      writeFileSync(join(dir, 'side.md'), 'clean\n')
+      sh(dir, 'add', '-A')
+      sh(dir, 'commit', '-q', '-m', 'side')
+      sh(dir, 'checkout', '-q', 'pr')
+      sh(dir, 'merge', '-q', '--no-ff', 'side', '-m', mergeMessage)
+    }
     const r = spawnSync('node', [GUARD, '--base', 'main', '--head', 'pr', '--dir', dir], {
       encoding: 'utf8',
       env: { PATH: process.env.PATH, HOME: process.env.HOME, PRIVATE_REPOS: 'secret-repo,other-one', ...env },
@@ -273,6 +281,12 @@ describe('privacy guard: surfaces besides added lines', () => {
     assert.equal(r.status, 1, r.out)
     assert.match(r.out, /commit [0-9a-f]{7,}: message line 3: .*\[session-id\]/)
     assert.doesNotMatch(r.out, /0123abcd/)
+  })
+
+  it('reads the message of a merge commit the branch wrote', () => {
+    const r = guard({ after: { 'ok.md': 'clean\n' }, mergeMessage: `sync main, see ${PLANT['session-id']}` })
+    assert.equal(r.status, 1, r.out)
+    assert.match(r.out, /commit [0-9a-f]{7,}: message line 1: .*\[session-id\]/)
   })
 
   it('allows a noreply trailer in a commit message', () => {

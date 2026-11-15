@@ -46,6 +46,9 @@ jobs:
           set -euo pipefail
           # The guard that runs is the base branch's copy, never the one this pull request
           # carries: a change that edits the script could otherwise switch the check off.
+          # GitHub runs the workflow file a pull request carries, so a change to this file can
+          # still turn the step off. Control-plane review catches that: read every line a pull
+          # request changes in this file.
           # Until the base has a script (the pull request that adds it), use the head's.
           guard="$RUNNER_TEMP/privacy-guard.mjs"
           if git cat-file -e "$BASE_SHA:scripts/privacy-guard.mjs" 2>/dev/null; then
