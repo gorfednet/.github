@@ -65,8 +65,8 @@ test("janitor rescues dirty work through a draft held from ship-bot before archi
   assert.match(rescue[0], /--untracked-files=all/);
   assert.match(rescue[0], /HEAD --not --remotes/);
   assert.match(rescue[0], /only once the push and the draft both succeeded/);
-  // Plan row 1.30: .github is public, so its rescue note stays on the Mac rather than in docs/handoff/.
-  assert.match(rescue[0], /In `gorfednet\/\.github`, which is public, write no handoff file there[^\n]*~\/\.fleet-janitor\/rescue\//);
+  // Plan row 1.30: .github is public, so a rescue there (git add -A, push) is propose-only.
+  assert.match(rescue[0], /Never rescue a `gorfednet\/\.github` worktree: that repository is public[^\n]*Propose it in the digest instead/);
   assert.doesNotMatch(rescue[0].split("## Next")[1] ?? "", /merge/i);
 });
 

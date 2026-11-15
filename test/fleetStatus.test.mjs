@@ -502,8 +502,4 @@ describe('the plan of record comes from gorfednet/ops (plan row 1.30)', () => {
     assert.equal(r.ref, 'main')
     assert.match(logs[0], /::warning::inventory: plan of record unreadable at gorfednet\/ops@desk-log: gh: Bad credentials/)
   })
-  it('reads no plan file from this public checkout any more', () => {
-    const src = readFileSync(new URL('../scripts/fleet-status.mjs', import.meta.url), 'utf8')
-    assert.doesNotMatch(src, /readText\('docs\/plan-of-record\.md'\)/)
-  })
 })

@@ -13,7 +13,6 @@
  *   exposedFiles    files on main with a line the privacy guard would refuse if a PR added it,
  *                   plus any file under a folder the guard keeps new files out of; null when
  *                   scripts/privacy-guard.mjs is not on main yet ("not measured", never 0)
- *   exposureByRule  rule id -> files
  *   rulesNotChecked rules this run could not apply (private-repo without PRIVATE_REPOS)
  *   readmeMissing   top-level folders README.md does not name; all of them when README is missing
  *
@@ -36,6 +35,8 @@ const git = (root, ...args) => execFileSync('git', ['-C', root, ...args], { enco
 
 /** { branches, merged } from the remote-tracking refs of a clone. */
 export function branchCounts(root, ref = 'origin/main') {
+  // A shallow clone holds only main's tip, so --merged would match nothing and publish 0 for "not measured".
+  if (git(root, 'rev-parse', '--is-shallow-repository').trim() !== 'false') throw new Error(`${root} is a shallow clone: fetch its full history first`)
   const names = (args) =>
     git(root, 'for-each-ref', '--format=%(refname)', ...args, 'refs/remotes/origin/')
       .split('\n')
@@ -99,13 +100,14 @@ export async function measure({ root = '.', ref = 'origin/main', env = process.e
   const readmePath = join(root, 'README.md')
   const missing = readmeMissing(existsSync(readmePath) ? readFileSync(readmePath, 'utf8') : null, folders)
   const gp = guardPath ?? join(root, 'scripts', 'privacy-guard.mjs')
-  let exposure = { exposedFiles: null, exposureByRule: {}, rulesNotChecked: ['all: scripts/privacy-guard.mjs is not on main'] }
+  let exposure = { exposedFiles: null, rulesNotChecked: ['all: scripts/privacy-guard.mjs is not on main'] }
   if (existsSync(gp)) {
     const guard = await import(pathToFileURL(gp).href)
     const allowFile = join(root, '.github', 'privacy-guard-allow.txt')
     exposure = countExposure(trackedText(root), guard, { privateRepos: env.PRIVATE_REPOS ?? '', allowText: existsSync(allowFile) ? readFileSync(allowFile, 'utf8') : '' })
   }
-  return { measuredAt: now.toISOString(), branches, merged, ...exposure, readmeMissing: missing }
+  // Only the total is published: a per-rule count for a public repository says more than it needs to.
+  return { measuredAt: now.toISOString(), branches, merged, exposedFiles: exposure.exposedFiles, rulesNotChecked: exposure.rulesNotChecked, readmeMissing: missing }
 }
 
 /** True on Monday in Toronto: the digest carries this line once a week. */
@@ -122,14 +124,13 @@ export function digestLine(d) {
 
 /** Markdown for STATUS.md. */
 export function renderDotgithub(d, etStamp = (iso) => iso) {
-  const rules = Object.entries(d.exposureByRule).map(([r, n]) => `${r} ${n}`).join(', ')
   return [
     `## gorfednet/.github upkeep (measured ${etStamp(d.measuredAt)})`,
     '',
     'This repository is public. Weekly in the digest, every run here (plan row 1.30).',
     '',
     `- Branches: ${d.branches}, of which ${d.merged} are merged and not deleted`,
-    `- Files on main the privacy guard would refuse: ${d.exposedFiles === null ? 'not measured (the guard is not on main)' : `${d.exposedFiles}${rules ? ` (${rules})` : ''}`}${d.rulesNotChecked.length && d.exposedFiles !== null ? `. Not checked: ${d.rulesNotChecked.join(', ')}` : ''}`,
+    `- Files on main the privacy guard would refuse: ${d.exposedFiles === null ? 'not measured (the guard is not on main)' : `${d.exposedFiles}`}${d.rulesNotChecked.length && d.exposedFiles !== null ? `. Not checked: ${d.rulesNotChecked.join(', ')}` : ''}`,
     `- README: ${d.readmeMissing.length === 0 ? 'names every top-level folder' : `does not name ${d.readmeMissing.map((f) => `\`${f}\``).join(', ')}`}`,
     '',
   ].join('\n')

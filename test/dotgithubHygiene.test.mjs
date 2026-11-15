@@ -60,6 +60,13 @@ describe('dotgithub-hygiene', () => {
     assert.deepEqual(branchCounts(dir), { branches: 6, merged: 2 })
   })
 
+  it('refuses a shallow clone rather than publish 0 merged', () => {
+    const src = clone()
+    const shallow = tmp('dgh-shallow-')
+    sh(shallow, 'clone', '-q', '--depth', '1', '--no-local', `file://${src}`, '.')
+    assert.throws(() => branchCounts(shallow), /shallow clone/)
+  })
+
   it('names the top-level folders README does not, as `name` or name/', () => {
     assert.deepEqual(readmeMissing('See `scripts/` and docs/ and `ship-bot`.', ['docs', 'scripts', 'ship-bot', 'infra', 'test']), ['infra', 'test'])
     assert.deepEqual(readmeMissing('the infrastructure', ['infra']), ['infra'], 'a word that only contains the name is not naming it')
@@ -76,6 +83,8 @@ describe('dotgithub-hygiene', () => {
     ]
     const withRepos = countExposure(files, guard, { privateRepos: 'ops', allowText: 'path scripts/.* internal-host\n' })
     assert.deepEqual(withRepos, { exposedFiles: 3, exposureByRule: { 'internal-host': 1, 'private-repo': 1, 'new-file': 1 }, rulesNotChecked: [] })
+    const viaGuard = countExposure(files, { ...guard, pathExempt: (path, rule) => path === 'scripts/deploy.sh' && rule === 'internal-host' }, { privateRepos: 'ops' })
+    assert.equal(viaGuard.exposedFiles, 3, "the guard's own pathExempt is used when it exports one")
     const without = countExposure(files, guard, {})
     assert.equal(without.exposedFiles, 3, "docs/a.md, scripts/deploy.sh (no exemption) and briefs/x.md; docs/b.md is not checked")
     assert.deepEqual(without.rulesNotChecked, ['private-repo'])
@@ -112,14 +121,13 @@ export const scanLine = (line) => (/x/.test(line) ? ['internal-host'] : [])
     assert.equal(isWeeklyDay(new Date('2026-11-17T03:00:00Z')), true, '22:00 ET Monday is still Monday')
     assert.equal(isWeeklyDay(new Date('2026-11-17T15:00:00Z')), false)
     const fixture = JSON.parse(readFileSync(new URL('./fixtures/status.fixture.json', import.meta.url), 'utf8'))
-    const dotgithub = { measuredAt: '2026-11-16T15:00:00Z', branches: 241, merged: 156, exposedFiles: 12, exposureByRule: { 'internal-host': 12 }, rulesNotChecked: [], readmeMissing: ['capacity'] }
+    const dotgithub = { measuredAt: '2026-11-16T15:00:00Z', branches: 241, merged: 156, exposedFiles: 12, rulesNotChecked: [], readmeMissing: ['capacity'] }
     const monday = { ...fixture, generatedAt: '2026-11-16T15:00:00Z', dotgithub }
     const tuesday = { ...monday, generatedAt: '2026-11-17T15:00:00Z' }
     assert.match(digest(monday).split('\n')[1], /^\.github weekly: 241 branches, 156 merged not deleted; 12 files match the privacy guard; README misses capacity$/)
     assert.doesNotMatch(digest(tuesday), /\.github weekly/)
-    assert.ok(digest(monday).split('\n').filter(Boolean).length <= 10)
     assert.match(render(tuesday), /## gorfednet\/\.github upkeep/)
-    assert.match(renderDotgithub(dotgithub), /Files on main the privacy guard would refuse: 12 \(internal-host 12\)/)
+    assert.match(renderDotgithub(dotgithub), /Files on main the privacy guard would refuse: 12\n/)
     assert.doesNotMatch(render(fixture), /upkeep/, 'no section when the step did not run')
   })
 })

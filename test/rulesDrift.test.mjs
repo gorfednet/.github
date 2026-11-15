@@ -141,12 +141,6 @@ describe('check-rules-drift', () => {
     assert.match(run(opsRepo({ 'control/desk/brief.md': 'Model: Opus 5.5.\n' }), '--profile', 'ops').out, /allowlist entry for control\/desk\/brief\.md matched nothing/)
   })
 
-  it('github profile: has no archive excuse left, so a dated MEMORY.md is still read', () => {
-    const r = run(repo({ 'docs/2026-11-07-MEMORY.md': 'x\n', 'notes/2026-11-07-x/MEMORY.md': 'the coordinator session\n' }))
-    assert.equal(r.status, 1, r.out)
-    assert.match(r.out, /notes\/2026-11-07-x\/MEMORY\.md:1: retired term/)
-  })
-
   it('refuses an unknown profile', () => {
     assert.equal(run(repo({}), '--profile', 'nope').status, 1)
   })

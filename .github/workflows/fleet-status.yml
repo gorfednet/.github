@@ -86,6 +86,8 @@ jobs:
           test -s status.json
           git fetch --quiet --unshallow origin '+refs/heads/*:refs/remotes/origin/*' 2>/dev/null \
             || git fetch --quiet origin '+refs/heads/*:refs/remotes/origin/*'
+          # A clone still shallow here would count no branch as merged; the script refuses one too.
+          test "$(git rev-parse --is-shallow-repository)" = false
           node scripts/dotgithub-hygiene.mjs --in status.json
 
       - name: Render STATUS.md
