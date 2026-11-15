@@ -34,8 +34,11 @@ Before it reads `.deploy-env` or uploads anything, `deploy` checks the site repo
 
 - `HEAD` isn't exactly the default branch of `origin` after a quiet fetch. The message gives both short SHAs and the fix: `git pull --ff-only`, or merge the pull request first. A failed fetch refuses too.
 - A tracked file has uncommitted changes. Untracked files are left to the publish-set checks.
+- The helper's own clone isn't the merged tip of its repository. The message gives the `git pull --ff-only` fix.
 - The directory being uploaded holds a `.claude` path or a `.git` file or directory at any depth. The paths are named. This refusal has no override.
 
-Emergency override of the first 2: `DEPLOY_ALLOW_UNMERGED=1 DEPLOY_REASON="why"`. The reason is required. The deploy prints a warning with the commit SHA and the reason, then goes on.
+Then it checks the build. The upload's `.build-sha` must match `HEAD` and must not end in `-dirty`. A site marked `"buildStamp": true` in `fleet.json` must also have one. A stale `dist/` is refused with the SHA it was built from. Rebuild and deploy again. No override reaches this check.
+
+Emergency override of the tip, uncommitted-change and helper-clone refusals: `DEPLOY_ALLOW_UNMERGED=1 DEPLOY_REASON="why"`. The reason is required. The deploy prints a warning with the commit SHA and the reason, then goes on.
 
 The live check compares the live site with the local build. It doesn't read `origin`, so a stale clone would pass it without this guard. Test it with `scripts/test-site-deploy-guard.sh`, which runs the guard against real temporary git repositories with a bare origin.
