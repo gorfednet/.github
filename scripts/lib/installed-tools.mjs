@@ -3,12 +3,13 @@
  *
  * Every tool this Mac runs must come from a detached worktree that ship-bot advances after each merge
  * (`.claude/worktrees/gates-main` in .github, `.claude/worktrees/tools-main` in ops), or be a copy of a
- * committed file. Three kinds are read:
+ * committed file. Four kinds are read:
  *
  *   - links: symlinks in ~/.local/bin and ~/.config/herdr-core that point under the clone root;
  *   - LaunchAgents: net.gorfed.*.plist program arguments under the clone root;
- *   - copies: the files `COPIES` names (hooks, the capacity app, ship-bot's install), matched by content
- *     against every committed version of their source on origin/main.
+ *   - copies: the files `COPIES` names (hooks, the capacity app, ship-bot's install and its gate scripts), matched by
+ *     content against every committed version of their source on origin/main;
+ *   - mirrors: every file of docs/claude-home/ that ~/.claude should hold (rules, agents, skills, CLAUDE.md, settings.json).
  *
  * A link or agent is flagged when it resolves into a working checkout instead of a tool worktree, or when
  * its worktree's HEAD is behind origin/main. A copy is flagged when it differs from origin/main: the
@@ -33,6 +34,12 @@ export const COPIES = [
   { tool: 'capacity heartbeat helper', copy: '.desk/capacity-app/lib/heartbeat.mjs', clone: 'gorfednet.github', source: 'ship-bot/lib/heartbeat.mjs' },
   { tool: 'capacity usage helper', copy: '.desk/capacity-app/lib/usageAlert.mjs', clone: 'gorfednet.github', source: 'scripts/lib/usageAlert.mjs' },
   { tool: 'ship-bot', copyDir: '.ship-bot/app', clone: 'gorfednet.github', sourceDir: 'ship-bot', skip: ['gate-scripts', 'node_modules'] },
+  // install.sh copies review-status, the two gates and scripts/lib into app/gate-scripts, laid out as scripts/ (its SOURCE file names the commit).
+  { tool: 'ship-bot gate scripts', copyDir: '.ship-bot/app/gate-scripts', clone: 'gorfednet.github', sourceDir: 'scripts', skip: ['SOURCE'] },
+  // ~/.claude is not a repository: its rules, agents, skills, CLAUDE.md and settings.json are mirrored in docs/claude-home/ and
+  // changed only through a pull request (CLAUDE.md, 13 November 2026). Every mirrored file is compared; files only in ~/.claude
+  // (no mirror yet) are not measured here.
+  { tool: '~/.claude mirror', mirrorDir: '.claude', clone: 'gorfednet.github', sourceDir: 'docs/claude-home', include: ['rules', 'agents', 'skills', 'CLAUDE.md', 'settings.json'] },
 ]
 
 const LINK_DIRS = ['.local/bin', '.config/herdr-core', '.config/herdr-core/templates']
@@ -266,6 +273,43 @@ export function installedTools({ home = homedir(), root, launchAgents } = {}) {
       const r = behindForBlob(clone, c.source, blob)
       if (r.unread) unread.push(`~/${c.copy}`)
       else behind.push({ tool: c.tool, source: `~/${c.copy}`, behind: r.behind, detail: r.behind === null ? `matches no committed version of ${c.clone}/${c.source}` : `copy of ${c.clone}/${c.source}` })
+      continue
+    }
+    if (c.mirrorDir) {
+      const dir = join(home, c.mirrorDir)
+      if (!existsSync(dir)) continue
+      checked++
+      const listing = tryGit(clone, 'ls-tree', '-r', '--name-only', 'origin/main', '--', c.sourceDir)
+      if (listing === null) {
+        unread.push(`~/${c.mirrorDir}`)
+        continue
+      }
+      let stale = 0
+      let unknown = 0
+      let missing = 0
+      let worst = 0
+      for (const src of listing.split('\n').filter(Boolean)) {
+        const rel = src.slice(c.sourceDir.length + 1)
+        if (!c.include.includes(rel.split('/')[0])) continue
+        const file = join(dir, ...rel.split('/'))
+        if (!existsSync(file)) {
+          missing++
+          continue
+        }
+        const blob = tryGit(clone, 'hash-object', '--', file)
+        const head = tryGit(clone, 'rev-parse', '--verify', '--quiet', `origin/main:${src}`)
+        if (blob && head && blob === head) continue
+        const r = behindForBlob(clone, src, blob)
+        if (r.behind === null || r.unread) unknown++
+        else {
+          stale++
+          worst = Math.max(worst, r.behind)
+        }
+      }
+      if (stale + unknown + missing > 0) {
+        const parts = [stale ? `${stale} files behind` : '', unknown ? `${unknown} files match no version on main` : '', missing ? `${missing} files not installed` : ''].filter(Boolean)
+        behind.push({ tool: c.tool, source: `~/${c.mirrorDir}`, behind: stale ? worst : null, detail: `mirror of ${c.clone}/${c.sourceDir}: ${parts.join(', ')}` })
+      }
       continue
     }
     const dir = join(home, c.copyDir)

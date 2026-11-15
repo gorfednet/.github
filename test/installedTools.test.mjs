@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, it } from 'node:test'
 
 import { collectLocal } from '../scripts/lib/hygiene.mjs'
 import { installedTools } from '../scripts/lib/installed-tools.mjs'
+import { checkInstalledDrift, newlyBehind } from '../scripts/lib/installedDrift.mjs'
 
 const sh = (cwd, ...a) => {
   const r = spawnSync('git', ['-c', 'user.email=a@b.c', '-c', 'user.name=t', ...a], { cwd, encoding: 'utf8' })
@@ -176,5 +177,95 @@ describe('LaunchAgents on another tool\'s Node', () => {
     const hit = r.behind.filter((b) => b.tool === 'LaunchAgent net.gorfed.ship-bot')
     assert.equal(hit.length, 1)
     assert.match(hit[0].detail, /which does not exist/)
+  })
+})
+
+describe('gate scripts and the ~/.claude mirror (plan row 1.18)', () => {
+  const commitFile = (f, rel, body) => {
+    put(join(f.clone, rel), body)
+    sh(f.clone, 'add', '-A')
+    sh(f.clone, 'commit', '-q', '-m', rel)
+    sh(f.clone, 'push', '-q', 'origin', 'main')
+  }
+  const named = (f, tool) => run(f).behind.filter((b) => b.tool === tool)
+
+  it('the installed gate scripts are compared with scripts/ on main, and SOURCE is ignored', () => {
+    const f = fixture()
+    commitFile(f, 'scripts/review-status.mjs', '// r1\n')
+    commitFile(f, 'scripts/review-status.mjs', '// r2\n')
+    const gs = join(f.home, '.ship-bot', 'app', 'gate-scripts')
+    put(join(gs, 'SOURCE'), `${'a'.repeat(40)}\n`)
+    put(join(gs, 'review-status.mjs'), '// r1\n')
+    const [b] = named(f, 'ship-bot gate scripts')
+    assert.equal(b.behind, 1)
+    assert.match(b.detail, /1 files behind/)
+    put(join(gs, 'review-status.mjs'), '// r2\n')
+    assert.deepEqual(named(f, 'ship-bot gate scripts'), [])
+  })
+
+  it('a stale or hand-edited rule, a missing skill and an unmirrored file are told apart', () => {
+    const f = fixture()
+    commitFile(f, 'docs/claude-home/rules/shipping.md', 'v1\n')
+    commitFile(f, 'docs/claude-home/rules/shipping.md', 'v2\n')
+    commitFile(f, 'docs/claude-home/skills/copy/SKILL.md', 'skill\n')
+    commitFile(f, 'docs/claude-home/README.md', 'docs only\n')
+    put(join(f.home, '.claude', 'rules', 'shipping.md'), 'v1\n')
+    put(join(f.home, '.claude', 'rules', 'only-here.md'), 'no mirror\n')
+    const [b] = named(f, '~/.claude mirror')
+    assert.equal(b.behind, 1)
+    assert.match(b.detail, /1 files behind, 1 files not installed/, 'README.md is not in the include list')
+    put(join(f.home, '.claude', 'rules', 'shipping.md'), 'edited by hand\n')
+    assert.match(named(f, '~/.claude mirror')[0].detail, /1 files match no version on main/)
+    put(join(f.home, '.claude', 'rules', 'shipping.md'), 'v2\n')
+    put(join(f.home, '.claude', 'skills', 'copy', 'SKILL.md'), 'skill\n')
+    assert.deepEqual(named(f, '~/.claude mirror'), [])
+  })
+})
+
+describe('installed-drift notification (plan row 1.18)', () => {
+  const memoOf = (f) => join(f.home, '.desk', 'installed-drift.json')
+  const drift = (f, push, extra = {}) => checkInstalledDrift({ home: f.home, root: f.root, launchAgents: f.agents, push, fetchOrigin: () => true, ...extra })
+
+  it('goes red once on a stale copy, stays quiet on later runs, then green and re-arms', async () => {
+    const f = fixture()
+    f.commit('v3') // the gates worktree and the capacity copy are now one behind
+    const sent = []
+    const push = async (t) => (sent.push(t), true)
+    assert.equal((await drift(f, push)).action, 'pushed')
+    assert.equal(sent.length, 1)
+    assert.match(sent[0], /installed tools behind main: .*~\/\.local\/bin\/tool.*capacity check/)
+    assert.equal((await drift(f, push)).action, 'none')
+    f.commit('v4')
+    assert.equal((await drift(f, push)).action, 'none', 'further behind is not news')
+    assert.equal(sent.length, 1)
+    sh(f.gates, 'checkout', '-q', '--detach', 'origin/main')
+    put(join(f.home, '.desk', 'capacity-app', 'capacity.mjs'), '// v4\n')
+    const green = await drift(f, push)
+    assert.deepEqual([green.action, green.behind], ['none', 0])
+    assert.deepEqual(JSON.parse(readFileSync(memoOf(f), 'utf8')).told, [])
+    f.commit('v5')
+    assert.equal((await drift(f, push)).action, 'pushed', 'a second lapse tells again')
+    assert.equal(sent.length, 2)
+  })
+
+  it('a push nobody received is retried on the next run', async () => {
+    const f = fixture()
+    f.commit('v3')
+    assert.equal((await drift(f, async () => false)).action, 'push-failed')
+    assert.equal((await drift(f, async () => true)).action, 'pushed')
+  })
+
+  it('a failed fetch or an unreadable tool is unmeasured and never a green', async () => {
+    const f = fixture()
+    f.commit('v3')
+    const push = async () => assert.fail('no push without a measurement')
+    assert.equal((await drift(f, push, { fetchOrigin: () => false })).action, 'unmeasured')
+    const bare = mkdtempSync(join(tmpdir(), 'no-clones-'))
+    assert.equal((await drift(f, push, { root: bare })).action, 'unmeasured')
+  })
+
+  it('newlyBehind names each tool once however many files are behind', () => {
+    const r = newlyBehind([{ tool: 'a' }, { tool: 'a' }, { tool: 'b' }], ['b', 'gone'])
+    assert.deepEqual(r, { fresh: ['a'], still: ['b'], names: ['a', 'b'] })
   })
 })
