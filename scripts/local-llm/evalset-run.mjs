@@ -188,7 +188,7 @@ export function unmapReplies(raw, map) {
 }
 
 export async function runModel(cases, id, base, io = {}) {
-  const { listModels: list = listModels, chat: ask = chat, unload: drop = unload, lock = path.join(os.homedir(), '.local-llm', 'lock'), proc = process, warm = (b, m, o) => warmUp(b, m, { ...o, listModels: list, chat: ask }), warmupMs = 40 * 60000, thinking = true } = io
+  const { listModels: list = listModels, chat: ask = chat, unload: drop = unload, lock = path.join(os.homedir(), '.local-llm', 'lock'), proc = process, warm = (b, m, o) => warmUp(b, m, { ...o, listModels: list, chat: ask }), warmupMs = 40 * 60000, thinking = true, afterLock = () => {} } = io
   const opts = thinking === false ? { chat_template_kwargs: { enable_thinking: false } } : {}
   const built = prepare(cases) // before the lock and before any model call
   const live = await list(base)
@@ -196,6 +196,7 @@ export async function runModel(cases, id, base, io = {}) {
   const other = live.find((m) => m.id !== id && (m.status === 'loaded' || m.status === 'loading'))
   if (other) throw new Error(`another model is loaded: ${other.id}`)
   if (!takeLock(lock, process.pid)) { console.error('local-llm: lock held by another run'); process.exit(75) }
+  afterLock() // the earlier exits (not served, another model loaded, lock held) leave an existing --out alone
   // The arm file says which model and which snapshot answered: a later GGUF under the same id is a different arm.
   const sha = live.find((m) => m.id === id).sha
   const arm = { scoringVersion: SCORING_VERSION, _model: { id, sha, thinking: thinking === false ? 'off' : 'default', ...(sha ? {} : { warning: 'no snapshot sha: the served file is not pinned' }) } }
@@ -277,8 +278,7 @@ async function main(argv) {
     return 0
   }
   if (val('--model')) {
-    fs.rmSync(val('--out'), { force: true }) // a run that fails must not leave an older arm file to be scored
-    const arm = await runModel(cases, val('--model'), process.env.LOCAL_LLM_URL || DEFAULT_BASE, { warmupMs: mins * 60000, thinking: !argv.includes('--no-thinking') })
+    const arm = await runModel(cases, val('--model'), process.env.LOCAL_LLM_URL || DEFAULT_BASE, { warmupMs: mins * 60000, thinking: !argv.includes('--no-thinking'), afterLock: () => fs.rmSync(val('--out'), { force: true }) }) // once the run owns the lock, an older arm file must not survive a run that fails
     fs.writeFileSync(val('--out'), `${JSON.stringify(arm, null, 2)}\n`)
     // A request that threw after the warm-up (server down, HTTP 5xx, timeout) is a harness loss, not a model answer: the arm is kept as evidence, the run is not clean.
     const errors = Object.values(arm).filter((v) => v && typeof v === 'object' && 'error' in v).length

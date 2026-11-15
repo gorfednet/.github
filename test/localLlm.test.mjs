@@ -57,6 +57,7 @@ describe('pick fails closed, one link at a time', () => {
   refused('memory unreadable', 'memory', null, { freeGb: () => { throw new Error('vm_stat output not understood') } })
   refused('input over ctx - 1024', 'context', null, { inputBytes: (4096 - 1024) * 3 + 1 })
   refused('other model loaded', 'other model loaded', () => { live = [entry('m1'), { ...entry('big'), status: { value: 'loaded', args: [] } }] })
+  refused('other model loading', 'other model loaded', () => { live = [entry('m1'), { ...entry('big'), status: { value: 'loading', args: [] } }] })
   it('accepts input exactly at ctx - 1024, then 75 while the lock is held by a live pid', async () => {
     live = [entry('m1')]
     const home = join(tmp, 'homeHeld')

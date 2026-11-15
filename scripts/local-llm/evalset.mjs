@@ -148,7 +148,11 @@ export function rejections(cases, arm, nomodel, { salt } = {}) {
     if (!cs.length) continue
     // Compare the answers themselves: the salted builder key differs per case, so identical file lists would not look constant.
     const k = (a, c) => (t === 'builder' ? (keyOf(t, a[c.id], { salt, id: c.id }) === null ? null : [...new Set(a[c.id].files)].sort().join('\n')) : keyOf(t, a[c.id], { salt, id: c.id }))
-    if (new Set(cs.map((c) => k(arm, c))).size === 1) reasons.push(`rejected: constant answer on ${t}`)
+    if (new Set(cs.map((c) => k(arm, c))).size === 1) {
+      // Harness loss and cut-off replies are counted here too: an arm where every case was truncated or errored is not a model that always gave one answer.
+      const errs = cs.filter((c) => arm[c.id]?.error !== undefined).length, cut = cs.filter((c) => arm[c.id]?.truncated === true).length
+      reasons.push(`rejected: constant answer on ${t}${errs || cut ? ` (${errs} error, ${cut} truncated)` : ''}`)
+    }
     for (const n of nomodels) {
       if (!cs.every((c) => n[c.id] !== undefined)) continue // an arm that skipped this task has nothing to equal
       if (cs.every((c) => JSON.stringify(k(arm, c)) === JSON.stringify(k(n, c)))) { reasons.push(`rejected: ${t} answers equal the no-model arm`); break }

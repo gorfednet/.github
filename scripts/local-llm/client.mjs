@@ -52,7 +52,7 @@ export async function chat(base, model, messages, timeoutMs = 180000, maxTokens 
  */
 export async function warmUp(base, model, { timeoutMs = 40 * 60000, requestMs = 120000, pollMs = 5000, opts, abort, listModels: list = listModels, chat: ask = chat, sleep = (ms) => new Promise((r) => setTimeout(r, ms)), now = Date.now } = {}) {
   const t0 = now()
-  let cause = 'no attempt made'
+  let cause = 'no attempt made', sent = false
   for (;;) {
     if (abort?.aborted) throw new Error('warm-up: interrupted')
     const left = timeoutMs - (now() - t0)
@@ -62,9 +62,11 @@ export async function warmUp(base, model, { timeoutMs = 40 * 60000, requestMs = 
       const row = (await list(base, 5000)).find((m) => m.id === model)
       const status = row?.status
       if (!row) fatal = `warm-up: ${model} is not served at ${base}`
-      else if (row.failed) fatal = `warm-up: the server reports ${model} failed to load`
+      // A router can keep `failed` from an earlier load until the next attempt starts, so it is believed only after this warm-up has sent a request.
+      else if (row.failed && sent) fatal = `warm-up: the server reports ${model} failed to load`
       else if (status === 'loading') cause = 'still loading'
       else {
+        sent = true
         await ask(base, model, [{ role: 'user', content: 'ok' }], Math.min(requestMs, left), 8, abort, opts)
         return Math.round((now() - t0) / 1000)
       }
