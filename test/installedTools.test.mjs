@@ -221,7 +221,7 @@ describe('installed-drift notification (plan row 1.18)', () => {
     assert.match(sent[0], /installed tools behind main: .*~\/\.local\/bin\/tool.*capacity check/)
     assert.equal((await drift(f, push)).action, 'pending', 'told already; still behind')
     f.commit('v4')
-    await drift(f, push)
+    await drift(f, push); await drift(f, push)
     assert.equal(sent.length, 1, 'further behind is not news')
     sh(f.gates, 'checkout', '-q', '--detach', 'origin/main')
     put(join(f.home, '.desk', 'capacity-app', 'capacity.mjs'), '// v4\n')

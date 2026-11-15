@@ -18,7 +18,7 @@ Files, one line each: `~/.heartbeats/<name>.url` (an `https://` ping URL, health
 
 Weekly usage: `node scripts/heartbeat.mjs --usage` (logic in `scripts/lib/usageAlert.mjs`) reads `usage.pct` from `~/.herdr-jobs/state.json` and pushes once at 70% and once at 90%, remembering what reached someone in `~/.desk/usage-alerts.json`. Falling below 70% (a new week) clears the memory.
 
-Capacity's 15-minute job runs the same check after each good run (`afterRun` in `capacity/capacity.mjs`). It also checks the installed tools against `origin/main` (plan row 1.18, `scripts/lib/installedDrift.mjs`) and pushes once per newly stale tool; `install.sh` copies the check and `installed-tools.mjs` into `~/.desk/capacity-app/lib/`. It pushes through ntfy `ops-report` and the off-box `ntfy.sh` topic, and either delivering counts.
+Capacity's 15-minute job runs the same check after each good run (`afterRun` in `capacity/capacity.mjs`). It also checks the installed tools against `origin/main` (plan row 1.18, `scripts/lib/installedDrift.mjs`) and pushes the first time each finding (a tool, or one file under the `~/.claude` mirror or the gate scripts) has been seen on two runs in a row; `install.sh` copies the check and `installed-tools.mjs` into `~/.desk/capacity-app/lib/`. It pushes through ntfy `ops-report` and the off-box `ntfy.sh` topic, and either delivering counts.
 
 ## Proofs (14 November 2026, ET)
 
