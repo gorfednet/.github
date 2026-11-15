@@ -22,15 +22,17 @@ Not batched: the four promptboi.com branches all edit `docs/backlog.json`, so a 
 
 ## Done, not failed (the job ended with an honest no-change hand-back)
 - papers `numbers-derived-from-spec`: already `landed` on main (PR 27).
-- papers `spec-drift-schedule`, `papers-site-indexing`: no change needed.
+- papers `spec-drift-schedule`: no change needed.
 - .github `fleet-analytics-one-service`, `sitemap-rule-text-deferred-by-drift`, `towit-open-security-bump` (the fix is TowIt PR 3, outside this repo): no change made.
 - gorfed.net `finish-four-wip-case-studies`: no change.
 
 ## Stopped, cause not established (open, not done)
 - .github `publish-the-server-never-saw` (still `confirmed-bug`).
-- 4thcltr.com `assessment-demand-under-stage-a`; `cascade-legal-entity-on-incorporation` (no code fix possible).
+- 4thcltr.com `assessment-demand-under-stage-a`; `cascade-legal-entity-on-incorporation`: dirty worktrees, no commits, and no code fix possible.
+- papers `papers-site-indexing`: no out log or branch found, and no evidence it needed no change.
 - gorfmusic.com `url-contract-never-verified`: blocked on ops.
 
 ## Next
 - [ ] Main session: read and merge the draft PRs above, one at a time, per the gates.
-- [ ] Clear the dirty promptboi.com and gorfmusic.com worktrees, then open their PRs.
+- [ ] Clear the dirty promptboi.com, gorfmusic.com and 4thcltr.com worktrees (`assessment-demand-under-stage-a`, `cascade-legal-entity-on-incorporation`), then open their PRs.
+- [ ] Find papers `papers-site-indexing`: no out log or branch was found.
