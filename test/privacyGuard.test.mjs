@@ -307,8 +307,8 @@ describe('privacy guard: near misses that must stay clean', () => {
 
 describe('privacy guard: more shapes that must fail', () => {
   const bad = {
-    'IPv6 unique-local': 'addr fd7a:115c:a1e0::1 here',
-    'IPv6 link-local': 'addr fe80::1 here',
+    'IPv6 unique-local': `addr ${['fd7a', '115c', 'a1e0', '', '1'].join(':')} here`,
+    'IPv6 link-local': `addr ${['fe80', '', '1'].join(':')} here`,
     'host after an underscore': `${'DAPYL' + 'LIL'}_HOST=x and runner_${'dapyl' + 'lil'}`,
     'owner quote with a comma before the quote': `(${'owne' + 'r'}, 7 November 2026, "automate as much as you can")`,
     'owner quote, colon form with a sentence': `(${'owne' + 'r'}: "stop asking me in all sessions")`,
