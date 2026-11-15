@@ -1,12 +1,12 @@
 {
-  "generatedAt": "2026-11-15T08:31:46.269Z",
-  "renderedAt": "2026-11-15T08:31:46.269Z",
+  "generatedAt": "2026-11-15T10:31:55.661Z",
+  "renderedAt": "2026-11-15T10:31:55.661Z",
   "repos": [
     {
       "slug": "gorfednet/bindercurve.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 7,
+      "openPrCount": 6,
       "lapsedBacklogCount": 0,
       "noPrCount": 79,
       "idlePrCount": 0,
@@ -17,7 +17,7 @@
     {
       "slug": "gorfednet/4thcltr.com",
       "redacted": true,
-      "mainRed": false,
+      "mainRed": true,
       "openPrCount": 22,
       "lapsedBacklogCount": 0,
       "noPrCount": 13,
@@ -140,21 +140,6 @@
       "mainRed": false,
       "openPrs": [
         {
-          "number": 204,
-          "title": "Local-LLM eval harness: --reasoning flag, wait for unload (1.19)",
-          "ageDays": 0,
-          "labels": [
-            "ready-to-merge",
-            "needs-fix"
-          ],
-          "draft": false,
-          "review": "findings",
-          "headSha": "5c078ea246693d929afda4ce4bd7cfea3f37c39f",
-          "ci": "green",
-          "next": "Merge (Desk labelled 5c078ea at 03:17 ET, 15 November 2026)",
-          "author": "gorfednet"
-        },
-        {
           "number": 189,
           "title": "Plan: move the fleet into one GitHub organization (assessment only)",
           "ageDays": 0,
@@ -185,7 +170,7 @@
           "labels": [],
           "draft": true,
           "review": "not-run",
-          "headSha": "3e0f6e758a483c824cf3aa00a3a157b91e9b724b",
+          "headSha": "fb32e5613cf0856f16fff243ac715bc8d6402498",
           "ci": "none",
           "next": "Desk appends each pass's line until the 02:00 ET rotation (hold: the log is still being written)",
           "author": "gorfednet"
@@ -576,11 +561,11 @@
   "branchesReadAt": "2026-11-15T02:31:55.477Z",
   "carried": true,
   "inventory": {
-    "measuredAt": "2026-11-15T08:31:46.269Z",
+    "measuredAt": "2026-11-15T10:31:55.661Z",
     "counts": {
       "pr": {
-        "total": 105,
-        "orphans": 63
+        "total": 103,
+        "orphans": 61
       },
       "session": null,
       "worktree": null,
@@ -591,14 +576,6 @@
       }
     },
     "orphans": [
-      {
-        "kind": "pr",
-        "repo": "gorfednet/.github",
-        "ref": "#204",
-        "label": "Local-LLM eval harness: --reasoning flag, wait for unload (1.19)",
-        "private": false,
-        "lapsed": false
-      },
       {
         "kind": "pr",
         "repo": "gorfednet/.github",
@@ -696,7 +673,7 @@
         "lapsed": true
       }
     ],
-    "hiddenPrivate": 51,
+    "hiddenPrivate": 50,
     "privateReposNotItemised": 18
   }
 }
