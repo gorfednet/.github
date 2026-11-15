@@ -1,7 +1,7 @@
 // Installed tools behind main, noticed without anyone running fleet-status (plan row 1.18).
 // The hosted STATUS.md cannot read this Mac, so the 15-minute capacity job measures it and tells the owner
-// once per newly stale finding. A finding is keyed by tool and detail (an aggregate such as the ~/.claude mirror
-// changes its detail when another file goes stale, so that is news). It must be seen on two runs in a row before
+// once per newly stale finding. A finding is keyed by tool and file (or tool and detail when the tool is
+// one link), so another file going stale under the ~/.claude mirror is news and one coming right is not. It must be seen on two runs in a row before
 // anyone is told: a merge, then ship-bot's advance of gates-main, takes a minute or two, and a fetch landing in
 // between reads as drift. The memo records a finding only after a push reached someone, so a failed push retries;
 // a finding that goes away leaves the memo, so a second lapse tells again. A check that cannot measure (fetch
@@ -26,11 +26,12 @@ const realFetch = (dir) => {
   }
 }
 
-const keyOf = (b) => `${b.tool}|${b.detail}`
+// One key per file for an aggregate (items), so a falling count is not news and another file going stale is; otherwise tool and detail.
+const keysOf = (b) => (b.items?.length ? b.items.map((i) => `${b.tool}|${i}`) : [`${b.tool}|${b.detail}`])
 
 /** What the memo says to do with this run's findings. `seen` counts consecutive runs; `told` holds keys someone was told about. */
 export function plan(behind, memo) {
-  const keys = [...new Set(behind.map(keyOf))]
+  const keys = [...new Set(behind.flatMap(keysOf))]
   const seen = Object.fromEntries(keys.map((k) => [k, (memo.seen?.[k] ?? 0) + 1]))
   const told = (memo.told ?? []).filter((k) => keys.includes(k))
   const fresh = keys.filter((k) => !told.includes(k) && seen[k] >= CONFIRM_RUNS)

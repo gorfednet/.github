@@ -245,10 +245,13 @@ describe('installed-drift notification (plan row 1.18)', () => {
     rule('a.md', 'a2\n')
     await drift(f, push); await drift(f, push)
     assert.equal(sent.length, 1)
-    rule('b.md', 'b2\n') // same tool, new detail (2 files behind)
+    rule('b.md', 'b2\n') // same tool, another file (2 files behind)
     await drift(f, push)
     assert.equal((await drift(f, push)).action, 'pushed')
     assert.equal(sent.length, 2)
+    put(join(f.home, '.claude', 'rules', 'b.md'), 'b2\n') // one comes right: fewer files, nothing new
+    await drift(f, push); await drift(f, push)
+    assert.equal(sent.length, 2, 'a falling count is not news')
   })
 
   it('a push nobody received is retried on the next run', async () => {
@@ -277,17 +280,22 @@ describe('installed-drift notification (plan row 1.18)', () => {
     await drift(f, push); assert.equal(JSON.parse(readFileSync(memoOf(f), 'utf8')).unmeasuredRuns, undefined, 'a measurement resets the streak')
   })
 
-  it('a clone the tools come from but the list does not name is fetched too', async () => {
+  it('a clone the tools come from but the list does not name is fetched too, and unmeasured when that fetch fails', async () => {
     const f = fixture()
+    const third = join(f.root, 'third')
+    sh(f.root, 'clone', '-q', join(f.top, 'origin.git'), 'third')
+    symlinkSync(join(third, 'bin', 'tool'), join(f.home, '.local', 'bin', 'tool5')) // a working checkout outside DRIFT_REPOS
     const seen = []
     await drift(f, async () => true, { fetchOrigin: (d) => (seen.push(d), true) })
-    assert.ok(seen.some((d) => d.endsWith('gorfednet.github')) && seen.some((d) => d.endsWith('/ops')))
+    assert.ok(seen.some((d) => d.endsWith('/third')), `third clone fetched: ${seen.join(' ')}`)
+    const r = await drift(f, async () => true, { fetchOrigin: (d) => !d.endsWith('/third') })
+    assert.deepEqual([r.action, r.reason.startsWith('fetch of')], ['unmeasured', true])
   })
 
-  it('plan keys findings by tool and detail', () => {
-    const r = plan([{ tool: 'a', detail: 'x' }, { tool: 'a', detail: 'y' }, { tool: 'b', detail: 'z' }], { told: ['b|z', 'gone|q'], seen: { 'a|x': 1 } })
+  it('plan keys a finding by tool and file, or tool and detail without files', () => {
+    const r = plan([{ tool: 'a', detail: 'x' }, { tool: 'a', detail: '2 files', items: ['f1', 'f2'] }, { tool: 'b', detail: 'z' }], { told: ['b|z', 'gone|q', 'a|f2'], seen: { 'a|x': 1 } })
     assert.deepEqual(r.fresh, ['a|x'])
-    assert.deepEqual(r.told, ['b|z'])
+    assert.deepEqual(r.told, ['b|z', 'a|f2'])
     assert.deepEqual(r.tools, ['a', 'b'])
   })
 })

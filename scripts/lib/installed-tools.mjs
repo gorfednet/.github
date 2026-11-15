@@ -288,18 +288,21 @@ export function installedTools({ home = homedir(), root, launchAgents } = {}) {
       let unknown = 0
       let missing = 0
       let worst = 0
+      const items = [] // which files, so a count that falls is not news to the drift notifier
       for (const src of listing.split('\n').filter(Boolean)) {
         const rel = src.slice(c.sourceDir.length + 1)
         if (!c.include.includes(rel.split('/')[0]) || (c.exclude ?? []).includes(rel)) continue
         const file = join(dir, ...rel.split('/'))
         if (!existsSync(file)) {
           missing++
+          items.push(rel)
           continue
         }
         const blob = tryGit(clone, 'hash-object', '--', file)
         const head = tryGit(clone, 'rev-parse', '--verify', '--quiet', `origin/main:${src}`)
         if (blob && head && blob === head) continue
         const r = behindForBlob(clone, src, blob)
+        items.push(rel)
         if (r.behind === null || r.unread) unknown++
         else {
           stale++
@@ -308,7 +311,7 @@ export function installedTools({ home = homedir(), root, launchAgents } = {}) {
       }
       if (stale + unknown + missing > 0) {
         const parts = [stale ? `${stale} files behind` : '', unknown ? `${unknown} files match no version on main` : '', missing ? `${missing} files not installed` : ''].filter(Boolean)
-        behind.push({ tool: c.tool, source: `~/${c.mirrorDir}`, behind: stale ? worst : null, detail: `mirror of ${c.clone}/${c.sourceDir}: ${parts.join(', ')}` })
+        behind.push({ tool: c.tool, source: `~/${c.mirrorDir}`, behind: stale ? worst : null, detail: `mirror of ${c.clone}/${c.sourceDir}: ${parts.join(', ')}`, items })
       }
       continue
     }
@@ -318,11 +321,13 @@ export function installedTools({ home = homedir(), root, launchAgents } = {}) {
     let stale = 0
     let unknown = 0
     let worst = 0
+    const items = []
     for (const rel of filesUnder(dir, c.skip)) {
       const src = `${c.sourceDir}/${rel.split(sep).join('/')}`
       const blob = tryGit(clone, 'hash-object', '--', join(dir, rel))
       const head = tryGit(clone, 'rev-parse', '--verify', '--quiet', `origin/main:${src}`)
       if (blob && head && blob === head) continue
+      items.push(rel)
       if (!head) {
         unknown++ // removed from main, or never committed
         continue
@@ -336,7 +341,7 @@ export function installedTools({ home = homedir(), root, launchAgents } = {}) {
     }
     if (stale + unknown > 0) {
       const parts = [stale ? `${stale} files behind` : '', unknown ? `${unknown} files match no version on main` : ''].filter(Boolean)
-      behind.push({ tool: c.tool, source: `~/${c.copyDir}`, behind: stale ? worst : null, detail: `copy of ${c.clone}/${c.sourceDir}: ${parts.join(', ')}` })
+      behind.push({ tool: c.tool, source: `~/${c.copyDir}`, behind: stale ? worst : null, detail: `copy of ${c.clone}/${c.sourceDir}: ${parts.join(', ')}`, items })
     }
   }
   return { behind, checked, unread, repos: [...repos] }
