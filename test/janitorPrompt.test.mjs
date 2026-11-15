@@ -28,7 +28,7 @@ test("janitor step 4 sweeps sessions and guards live ones and owner questions", 
 });
 
 test("janitor reports last, after the sessions, worktrees and retire tags", () => {
-  const order = ["\n4. Sessions.", "\n5. Worktrees.", "\n6. Retire tags.", "\n8. Report, last."].map((s) => prompt.indexOf(s));
+  const order = ["\n4. Sessions.", "\n5. Worktrees.", "\n5b. Remote branches", "\n6. Retire tags.", "\n8. Report, last."].map((s) => prompt.indexOf(s));
   assert.ok(order.every((i) => i > 0), "every step exists");
   assert.deepEqual([...order].sort((a, b) => a - b), order);
   assert.doesNotMatch(prompt, /Archive sessions whose pull request merged/);
@@ -226,4 +226,19 @@ test("the quoted file form runs nothing a hostile title or branch holds", () => 
     assert.equal(r.stdout, hostile, "the argument arrives as the same text");
     assert.equal(existsSync(pwn), false, `ran: ${hostile}`);
   }
+});
+
+test("janitor step 5b sweeps merged origin branches through the script only, after the worktree prune", () => {
+  const step = prompt.match(/\n5b\. Remote branches[\s\S]*?(?=\n6\. Retire tags)/);
+  assert.ok(step, "step 5b exists between 5 and 6");
+  assert.match(step[0], /janitor-prune\.mjs --remote-sweep gorfednet\/\.github --keep-file \$R\/keep\.txt > \$R\/remote-sweep\.jsonl/);
+  assert.match(step[0], /adding `--apply` before the `>` in a live run/);
+  for (const kept of ["main", "master", "status", "desk-log", "gates-main", "tools-main", "janitor-main"]) assert.match(step[0], new RegExp("`" + kept + "`"));
+  assert.match(step[0], /open pull request/);
+  assert.match(step[0], /under 24 hours old/);
+  assert.match(step[0], /Exit 3 means it stopped before deleting anything/);
+  assert.match(step[0], /never delete a branch any other way, and never put a branch name on a command line/);
+  assert.match(prompt, /remote sweep's merged, deleted and kept counts \(step 5b\)/);
+  const without = step[0].replace(/adding `--apply` before the `>` in a live run/, "");
+  assert.doesNotMatch(without, /--apply/, "the only --apply in 5b is the live-run one");
 });

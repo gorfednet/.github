@@ -4,6 +4,10 @@
  *
  *   node scripts/janitor-prune.mjs [--root ~/Developer/gorfednet] [--keep-file <paths.txt>] [--idle-hours 24] [--apply]
  *   node scripts/janitor-prune.mjs sessions <sessions.json>
+ *   node scripts/janitor-prune.mjs --remote-sweep <owner/name> --keep-file <paths.txt> [--root ...] [--min-age-hours 24] [--apply]
+ *
+ * The `--remote-sweep` form is a separate mode (plan row 1.30 e): it deletes origin branches that are
+ * already merged into the default branch and that no worktree ever pruned. See `remoteSweep` below.
  *
  * The `sessions` form reads the array `list_sessions` returns (sessionId, cwd, branch) and prints,
  * for each, the state of its folder: `merged` (its tip reached the default branch through a merge
@@ -39,7 +43,7 @@ import { parseGitHubSlug } from './lib/githubSlug.mjs'
 import { isMain } from './lib/isMain.mjs'
 
 export const PROTECTED_NAMES = new Set(['gates-main', 'tools-main', 'desk-log', 'janitor-main'])
-const PROTECTED_BRANCHES = new Set(['main', 'master', 'status', 'desk-log'])
+const PROTECTED_BRANCHES = new Set(['main', 'master', 'status', 'desk-log', 'gates-main', 'tools-main', 'janitor-main'])
 /** Ignored paths a worktree may hold that are safe to delete with it. Anything else ignored keeps the worktree. */
 const DISPOSABLE = new Set(['node_modules', '.DS_Store'])
 
@@ -233,6 +237,153 @@ export function run({ root, keep, idleMs, apply, now = Date.now(), fetch = true,
   return results
 }
 
+/**
+ * Origin branches merged into the default branch that no worktree prune will ever reach (plan row 1.30 e).
+ * `run` deletes an origin branch only when it prunes that branch's local worktree, so a branch whose
+ * worktree is long gone stays on origin for good. This lists them from the clone after a full fetch.
+ *
+ * A branch is deleted only when none of these keep it:
+ *   - protected: the default branch, main, master, status, desk-log, gates-main, tools-main, janitor-main
+ *   - an open pull request has it as its head (one `gh pr list` call for the repository, never a loop)
+ *   - a worktree of the clone has it checked out, or a live session's folder (the keep file) does
+ *   - its tip is on the default branch's first-parent line: it has no commits of its own (a branch just cut)
+ *   - its tip commit is under `minAgeMs` old (default 24 hours)
+ * Ship-bot merges with merge commits only, so a branch whose pull request merged is reachable from the
+ * default branch off that line. Fail closed: a failed fetch, a shallow clone, a failed or cut-off pull
+ * request list, or a missing default branch ends the sweep with one `abort` row and no deletion.
+ * Without `apply` nothing changes. Deletes run through `git push origin --delete`, in batches, and each
+ * branch's tip is read from origin again just before its batch, so one that moved since the fetch stays.
+ */
+const DAY_MS = 86400000
+export const REMOTE_PREFIX = 'refs/remotes/origin/'
+const PR_LIST_LIMIT = 1000
+
+/** Head branch names of the open pull requests in `slug`, from one call. Throws rather than return a cut-off list. */
+export function openPullRequestBranches(slug) {
+  const out = execFileSync('gh', ['pr', 'list', '--repo', slug, '--state', 'open', '--limit', String(PR_LIST_LIMIT), '--json', 'headRefName'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+  const rows = JSON.parse(out)
+  if (!Array.isArray(rows)) throw new Error('gh pr list did not return an array')
+  if (rows.length >= PR_LIST_LIMIT) throw new Error(`gh pr list returned ${rows.length} pull requests, the limit: the list may be cut`)
+  return rows.map((r) => r.headRefName)
+}
+
+/** Branches checked out in the clone's worktrees (main checkout included), and in the keep file's folders. */
+function checkedOutBranches(clone, keep) {
+  const checked = new Map()
+  const note = (branch, why) => {
+    if (branch && !checked.has(branch)) checked.set(branch, why)
+  }
+  for (const wt of parseWorktrees(tryGit(clone, 'worktree', 'list', '--porcelain').out)) note(wt.branch, keep.has(canonical(wt.path)) ? 'live session' : 'checked out in a worktree')
+  const slug = parseGitHubSlug(tryGit(clone, 'remote', 'get-url', 'origin').out)
+  for (const path of keep) {
+    if (!existsSync(path)) continue
+    if (parseGitHubSlug(tryGit(path, 'remote', 'get-url', 'origin').out) !== slug) continue
+    note(tryGit(path, 'branch', '--show-current').out || null, 'live session')
+  }
+  return checked
+}
+
+export function remoteSweep({ clone, slug, keep = new Set(), minAgeMs = DAY_MS, apply = false, now = Date.now(), fetch = true, openBranches = openPullRequestBranches, batchSize = 20, log = (o) => console.log(JSON.stringify(o)) }) {
+  const rows = []
+  const emit = (row) => {
+    rows.push(row)
+    log(row)
+  }
+  const abort = (reason) => {
+    emit({ remoteSweep: slug, verdict: 'abort', reason })
+    return { rows, aborted: true, summary: summarize(rows, slug, apply) }
+  }
+  if (fetch) {
+    const f = tryGit(clone, 'fetch', '--quiet', '--prune', 'origin')
+    if (!f.ok) return abort(`fetch failed: ${f.out.split('\n')[0]}`)
+  }
+  if (tryGit(clone, 'rev-parse', '--is-shallow-repository').out === 'true') return abort('shallow clone: merged cannot be judged')
+  const base = defaultBranch(clone)
+  const mainRef = `refs/remotes/origin/${base}`
+  if (!tryGit(clone, 'rev-parse', '--verify', '--quiet', mainRef).ok) return abort(`no ${mainRef}`)
+  let open
+  try {
+    open = new Set(openBranches(slug))
+  } catch (error) {
+    return abort(`open pull request list failed: ${String(error.stderr ?? error.message).trim().split('\n')[0]}`)
+  }
+  const listed = tryGit(clone, 'for-each-ref', `--merged=${mainRef}`, '--format=%(refname)\t%(objectname)\t%(committerdate:unix)', REMOTE_PREFIX)
+  if (!listed.ok) return abort(`for-each-ref failed: ${listed.out.split('\n')[0]}`)
+  const firstParent = new Set(tryGit(clone, 'rev-list', '--first-parent', mainRef).out.split('\n'))
+  const checked = checkedOutBranches(clone, keep)
+  const protectedNames = new Set([...PROTECTED_BRANCHES, base])
+  const todo = []
+  for (const line of listed.out.split('\n').filter(Boolean)) {
+    const [ref, sha, stamp] = line.split('\t')
+    if (!ref.startsWith(REMOTE_PREFIX)) continue
+    const branch = ref.slice(REMOTE_PREFIX.length)
+    if (branch === 'HEAD') continue
+    const row = { remoteSweep: slug, branch, sha }
+    const age = now - Number(stamp) * 1000
+    if (protectedNames.has(branch)) emit({ ...row, verdict: 'keep', reason: 'protected' })
+    else if (open.has(branch)) emit({ ...row, verdict: 'keep', reason: 'open pull request' })
+    else if (checked.has(branch)) emit({ ...row, verdict: 'keep', reason: checked.get(branch) })
+    else if (firstParent.has(sha)) emit({ ...row, verdict: 'keep', reason: 'no commits of its own (tip is on the default branch)' })
+    else if (!Number.isFinite(age) || age < minAgeMs) emit({ ...row, verdict: 'keep', reason: `tip is ${Number.isFinite(age) ? Math.round(age / 3600000) : '?'} h old` })
+    else todo.push(row)
+  }
+  if (!apply) {
+    for (const row of todo) emit({ ...row, verdict: 'delete', reason: 'merged into the default branch' })
+    return { rows, aborted: false, summary: summarize(rows, slug, apply) }
+  }
+  for (let i = 0; i < todo.length; i += batchSize) {
+    const batch = todo.slice(i, i + batchSize)
+    // Read each tip from origin again: a branch pushed to since the fetch is no longer the merged one.
+    const heads = tryGit(clone, 'ls-remote', '--heads', 'origin', ...batch.map((r) => `refs/heads/${r.branch}`))
+    if (!heads.ok) {
+      for (const row of batch) emit({ ...row, verdict: 'keep', reason: `could not re-read origin: ${heads.out.split('\n')[0]}`, deleted: false })
+      continue
+    }
+    const tips = new Map(heads.out.split('\n').filter(Boolean).map((l) => l.split('\t')).map(([sha, ref]) => [ref, sha]))
+    const sure = []
+    for (const row of batch) {
+      const tip = tips.get(`refs/heads/${row.branch}`)
+      if (tip === undefined) emit({ ...row, verdict: 'keep', reason: 'already gone from origin', deleted: false })
+      else if (tip !== row.sha) emit({ ...row, verdict: 'keep', reason: 'pushed to since the fetch', deleted: false })
+      else sure.push(row)
+    }
+    if (sure.length === 0) continue
+    const push = (rowsToDelete) => tryGit(clone, 'push', '--quiet', 'origin', '--delete', ...rowsToDelete.map((r) => `refs/heads/${r.branch}`))
+    if (push(sure).ok) {
+      for (const row of sure) emit({ ...row, verdict: 'delete', reason: 'merged into the default branch', deleted: true })
+    } else {
+      // One refused ref can fail the batch: find which by going one at a time.
+      for (const row of sure) {
+        const one = push([row])
+        emit({ ...row, verdict: 'delete', reason: 'merged into the default branch', deleted: one.ok, ...(one.ok ? {} : { error: one.out.split('\n')[0] }) })
+      }
+    }
+  }
+  tryGit(clone, 'fetch', '--quiet', '--prune', 'origin')
+  return { rows, aborted: false, summary: summarize(rows, slug, apply) }
+}
+
+function summarize(rows, slug, apply) {
+  const count = (fn) => rows.filter(fn).length
+  const reasons = {}
+  for (const r of rows) {
+    if (r.verdict !== 'keep') continue
+    const why = r.reason.replace(/\d+ h old/, 'N h old')
+    reasons[why] = (reasons[why] ?? 0) + 1
+  }
+  return {
+    remoteSweep: slug,
+    merged: count((r) => r.branch !== undefined),
+    delete: count((r) => r.verdict === 'delete'),
+    deleted: count((r) => r.deleted === true),
+    failed: count((r) => r.verdict === 'delete' && r.deleted === false),
+    keep: count((r) => r.verdict === 'keep'),
+    kept: reasons,
+    aborted: rows.some((r) => r.verdict === 'abort'),
+    applied: apply,
+  }
+}
+
 function arg(name) {
   const at = process.argv.indexOf(name)
   return at !== -1 ? process.argv[at + 1] : null
@@ -244,7 +395,29 @@ function badArgument(message) {
   process.exit(2)
 }
 
-if (isMain(import.meta.url) && process.argv[2] === 'sessions') {
+if (isMain(import.meta.url) && process.argv.includes('--remote-sweep')) {
+  const slug = arg('--remote-sweep')
+  if (!slug || !/^[\w.-]+\/[\w.-]+$/.test(slug)) badArgument('--remote-sweep needs owner/name, for example gorfednet/.github')
+  const root = arg('--root') ?? join(homedir(), 'Developer', 'gorfednet')
+  const keepFile = arg('--keep-file')
+  if (!keepFile) badArgument('--remote-sweep needs --keep-file with the working folders of live sessions (an empty file if there are none)')
+  let keep
+  try {
+    keep = new Set(readFileSync(keepFile, 'utf8').split('\n').map((l) => l.trim()).filter(Boolean).map(canonical))
+  } catch (error) {
+    badArgument(`cannot read the keep file ${keepFile}: ${error.message}`)
+  }
+  if (!existsSync(root) || !statSync(root).isDirectory()) badArgument(`root ${root} is not a folder`)
+  const hours = Number(arg('--min-age-hours') ?? 24)
+  if (!Number.isFinite(hours) || hours < 1) badArgument('--min-age-hours must be at least 1')
+  const clone = clones(root).find((c) => parseGitHubSlug(tryGit(c, 'remote', 'get-url', 'origin').out) === slug)
+  if (!clone) badArgument(`no clone of ${slug} under ${root}`)
+  const { summary, aborted } = remoteSweep({ clone, slug, keep, minAgeMs: hours * 3600000, apply: process.argv.includes('--apply') })
+  console.log(JSON.stringify({ summary }))
+  // 3: the sweep stopped before deleting anything (fetch, shallow clone or pull request list). 1: a delete failed.
+  if (aborted) process.exit(3)
+  if (summary.failed > 0) process.exit(1)
+} else if (isMain(import.meta.url) && process.argv[2] === 'sessions') {
   let sessions
   try {
     sessions = JSON.parse(readFileSync(process.argv[3], 'utf8'))
