@@ -34,6 +34,6 @@ Not batched: the four promptboi.com branches all edit `docs/backlog.json`, so a 
 
 ## Next
 - [ ] Main session: read and merge the draft PRs above, one at a time, per the gates.
-- [ ] Clear the dirty promptboi.com and gorfmusic.com worktrees, then open their PRs.
-- [ ] Triage the two dirty 4thcltr.com worktrees (`assessment-demand-under-stage-a`, `cascade-legal-entity-on-incorporation`). Read the uncommitted changes first. Keep them as a draft PR, or drop them with a written reason. Never clear a worktree before that decision.
+- [ ] promptboi.com: its branches are pushed, so commit what's left in each worktree, then open their PRs.
+- [ ] Triage the three dirty worktrees: 4thcltr.com (`assessment-demand-under-stage-a`, `cascade-legal-entity-on-incorporation`) and gorfmusic.com (`no-unit-tests-under-57-e2e`). Read the uncommitted changes first. Keep them as a draft PR, or drop them with a written reason. Never clear a worktree before that decision.
 - [ ] Find papers `papers-site-indexing`: no out log or branch was found.
