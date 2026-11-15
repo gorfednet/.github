@@ -194,6 +194,6 @@ Weekly 9% at 11:21 ET. Full speed, cost-aware. One line to the owner at about 90
 - [ ] 1.16 pool GitHub App: owner's App step next (ask at the Mac)
 - [ ] 4thcltr 274 in CI; [x] 257 clean and labelled (11:4x ET)
 - [x] .github 206 merged (carries 133, 1.1 briefs dir); [x] plan row 2.9 reworded to the gate pin
-- [ ] Desk rotation at the owner's next Mac message (230k at 12:07 ET)
+- [x] Desk rotation started (12:48 ET)
 - [ ] 4thcltr 274 relabelled after the Fable read; first 4thcltr session checks plugins and hooks load
 - [ ] 4thcltr main e2e reds (header-fit, wordmark-fours) into the 4thcltr backlog (plugins-off)
