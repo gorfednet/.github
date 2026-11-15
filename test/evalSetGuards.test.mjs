@@ -6,6 +6,7 @@ import crypto from 'node:crypto'
 import { describe, it } from 'node:test'
 import { spawnSync } from 'node:child_process'
 import { EventEmitter } from 'node:events'
+import { warmUp } from '../scripts/local-llm/client.mjs'
 import { checkReferences, defaultVoice, keyOf, score, summary, referenceProblems, hidesFromVoice, judge, stamped } from '../scripts/local-llm/evalset.mjs'
 import { withCause, ruleArm, triageRule, emitInputs, unmapReplies, runModel, shuffled, nomodelArm } from '../scripts/local-llm/evalset-run.mjs'
 
@@ -185,7 +186,7 @@ describe('a run stops, aborts, unloads and frees the lock on SIGINT, and records
     const lock = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'es-sig-')), 'lock')
     const proc = Object.assign(new EventEmitter(), { exits: [], exit(c) { calls.push(`exit:${fs.existsSync(lock) ? 'lock-held' : 'lock-free'}`); this.exits.push(c) } })
     return { calls, lock, proc,
-      listModels: async () => [{ id: 'm', status: 'unloaded', sha }],
+      warm: async () => 0, listModels: async () => [{ id: 'm', status: 'unloaded', sha }],
       unload: async () => { calls.push('unload'); await new Promise((r) => setTimeout(r, 30)) } }
   }
   it('sends no request after the signal, aborts the one in flight, and the handler itself unloads and frees the lock before it exits', async () => {
@@ -226,6 +227,61 @@ describe('a run stops, aborts, unloads and frees the lock on SIGINT, and records
       const arm = await runModel(cs, 'm', 'http://stub', io)
       assert.deepEqual([arm._model.id, arm._model.sha, 'warning' in arm._model, arm.scoringVersion], ['m', sha, warns, 3])
     }
+  })
+  it('warms up before the first case, unscored, and records the seconds and the thinking setting in _model', async () => {
+    const io = mk('s'); io.warm = async () => { io.calls.push('warm'); return 7 }
+    io.chat = async () => { io.calls.push('chat'); return { text: '{"verdict":"valid"}', ms: 1 } }
+    const arm = await runModel(cs, 'm', 'http://stub', io)
+    assert.equal(io.calls.indexOf('warm'), 0)
+    assert.deepEqual([arm._model.warmupSeconds, arm._model.thinking], [7, 'default'])
+  })
+  it('a warm-up that never succeeds fails the arm with its cause, scores no case, and still unloads and frees the lock', async () => {
+    const io = mk('s'); io.warmupMs = 50
+    io.chat = async () => { io.calls.push('case-chat'); throw new Error('chat: HTTP 503') } // every request, warm-up's included, is refused
+    io.warm = (b, m, o) => warmUp(b, m, { ...o, listModels: io.listModels, chat: io.chat, pollMs: 5 })
+    await assert.rejects(runModel(cs, 'm', 'http://stub', io), /warm-up: m not ready after .*HTTP 503/)
+    assert.equal(io.calls.includes('unload'), true)
+    assert.equal(fs.existsSync(io.lock), false)
+  })
+  it('passes the thinking setting to every request, warm-up included, and records it', async () => {
+    const seen = []
+    const io = mk('s'); io.thinking = false; delete io.warm
+    io.chat = async (b, m, msgs, t, mt, sig, opts) => { seen.push([mt, opts]); return { text: '{"verdict":"valid"}', ms: 1 } }
+    const arm = await runModel(cs, 'm', 'http://stub', io)
+    assert.equal(arm._model.thinking, 'off')
+    assert.ok(seen.length > cs.length && seen[0][0] === 8, 'the warm-up request comes first with max_tokens 8')
+    assert.ok(seen.every(([, o]) => o.chat_template_kwargs?.enable_thinking === false))
+  })
+  it('records a length-truncated empty reply as a truncated case result, while a real chat failure stays an error', async () => {
+    const io = mk('s'); let n = 0
+    io.chat = async () => { n++; if (n === 2) return { text: '', ms: 4, truncated: true }; if (n === 3) throw new Error('chat: no content'); return { text: '{"verdict":"valid"}', ms: 1 } }
+    const three = [cs[0], cs[0], cs[0]].map((c, i) => ({ ...c, id: `${c.id}-${i}` }))
+    const arm = await runModel(three, 'm', 'http://stub', { ...io, warm: async () => 0 })
+    const [a, b, c] = three.map((x) => arm[x.id])
+    assert.deepEqual([a.verdict, b, c], ['valid', { invalid: true, truncated: true, ms: 4 }, { invalid: true, error: 'chat: no content' }])
+  })
+})
+
+describe('warmUp: short requests, so undici\'s 300 s headers timeout is never hit', () => {
+  const clock = () => { let t = 0; return { now: () => t, sleep: async (ms) => { t += ms } } }
+  it('retries until a tiny chat succeeds and returns the seconds waited; no single request exceeds the cap', async () => {
+    const k = clock(); const caps = []; let tries = 0
+    const secs = await warmUp('b', 'm', {
+      ...k, pollMs: 10000, requestMs: 120000,
+      listModels: async () => [{ id: 'm', status: 'unloaded' }],
+      chat: async (b, m, msgs, t, mt) => { caps.push([t, mt]); if (++tries < 4) throw new Error('fetch failed') },
+    })
+    assert.equal(secs, 30)
+    assert.ok(caps.every(([t, mt]) => t <= 120000 && mt === 8))
+  })
+  it('does not send a request while the server says the model is loading, and gives up with that cause at the timeout', async () => {
+    const k = clock(); let sent = 0
+    await assert.rejects(warmUp('b', 'm', { ...k, timeoutMs: 60000, pollMs: 10000, listModels: async () => [{ id: 'm', status: 'loading' }], chat: async () => { sent++ } }), /not ready after 60 s \(still loading\)/)
+    assert.equal(sent, 0)
+  })
+  it('stops at once when aborted', async () => {
+    const ac = new AbortController(); ac.abort()
+    await assert.rejects(warmUp('b', 'm', { abort: ac.signal, listModels: async () => [], chat: async () => {} }), /interrupted/)
   })
 })
 

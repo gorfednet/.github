@@ -462,7 +462,7 @@ describe('triage answers are held to the lines the model saw; the run builds eve
     return { dir, log, c }
   }
   const io = (reply, calls) => ({
-    listModels: async () => { calls.push('list'); return [{ id: 'm', status: 'unloaded' }] },
+    warm: async () => 0, listModels: async () => { calls.push('list'); return [{ id: 'm', status: 'unloaded' }] },
     chat: async () => { calls.push('chat'); return { text: reply, ms: 1 } },
     unload: async () => { calls.push('unload') },
     lock: path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'es-lock-')), 'lock'),

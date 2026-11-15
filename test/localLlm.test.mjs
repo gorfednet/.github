@@ -283,3 +283,33 @@ describe('docs/models.md', () => {
       assert.doesNotMatch(readFileSync(f, 'utf8'), /local-llm/, f)
   })
 })
+
+describe('chat: template kwargs and truncation', () => {
+  let srv, url, sent, reply
+  before(async () => {
+    srv = http.createServer((req, res) => {
+      let b = ''
+      req.on('data', (c) => (b += c))
+      req.on('end', () => { sent = JSON.parse(b); res.end(JSON.stringify(reply)) })
+    })
+    await new Promise((r) => srv.listen(0, '127.0.0.1', r))
+    url = `http://127.0.0.1:${srv.address().port}`
+  })
+  after(() => srv.close())
+  const msgs = [{ role: 'user', content: 'hi' }]
+  it('passes chat_template_kwargs into the request body, and an old caller sends none', async () => {
+    reply = { choices: [{ message: { content: 'ok' }, finish_reason: 'stop' }] }
+    await chat(url, 'm', msgs, 5000, 8, undefined, { chat_template_kwargs: { enable_thinking: false } })
+    assert.deepEqual(sent.chat_template_kwargs, { enable_thinking: false })
+    await chat(url, 'm', msgs, 5000, 8)
+    assert.equal('chat_template_kwargs' in sent, false)
+  })
+  it('returns truncated for empty content with finish_reason length, but still throws for a real empty reply', async () => {
+    reply = { choices: [{ message: { content: '', reasoning_content: 'thinking...' }, finish_reason: 'length' }] }
+    assert.deepEqual({ ...(await chat(url, 'm', msgs)), ms: 0 }, { text: '', ms: 0, truncated: true })
+    reply = { choices: [{ message: { content: null }, finish_reason: 'stop' }] }
+    await assert.rejects(chat(url, 'm', msgs), /no content/)
+    reply = { choices: [{ message: { content: 'partial' }, finish_reason: 'length' }] } // text present: an ordinary reply
+    assert.equal((await chat(url, 'm', msgs)).text, 'partial')
+  })
+})

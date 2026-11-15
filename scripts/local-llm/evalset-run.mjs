@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // evalset-run.mjs --manifest m.json --cases dir <mode>
 //   --model <id> --out arm.json [--tasks a,b]   run one served local model on the set (named pair, takes the lock, unloads after)
+//     [--no-thinking] [--warmup-min 40]         --no-thinking sends chat_template_kwargs {enable_thinking:false}; the unscored warm-up waits up to --warmup-min minutes for a cold load
 //   --nomodel arm.json                          write the no-model arm (majority label computed from the cases, named files, unchanged text)
 //   --nomodel-rule arm.json                     write the rule arm: reviewer ("invalid when the region holds code from the finding's own Fix sentence") and triage (the log's own ##[error] lines)
 //   --emit-inputs dir --id-map map.json         write one input-only prompt file per case (triage too) under an opaque name, for Claude-tier arms; map.json (opaque name to case id) stays private and outside dir
@@ -12,7 +13,7 @@ import os from 'node:os'
 import path from 'node:path'
 import crypto from 'node:crypto'
 import { fileURLToPath } from 'node:url'
-import { DEFAULT_BASE, listModels, chat, unload } from './client.mjs'
+import { DEFAULT_BASE, listModels, chat, unload, warmUp } from './client.mjs'
 import { takeLock, releaseLock } from './route.mjs'
 import { prefilter, messages as triageMessages, parse as parseTriage } from './tasks/ci-triage.mjs'
 import { validateManifest, verifyCases, TASKS, LABELS, RULE_ARM, SCORING_VERSION } from './evalset.mjs'
@@ -187,7 +188,8 @@ export function unmapReplies(raw, map) {
 }
 
 export async function runModel(cases, id, base, io = {}) {
-  const { listModels: list = listModels, chat: ask = chat, unload: drop = unload, lock = path.join(os.homedir(), '.local-llm', 'lock'), proc = process } = io
+  const { listModels: list = listModels, chat: ask = chat, unload: drop = unload, lock = path.join(os.homedir(), '.local-llm', 'lock'), proc = process, warm = (b, m, o) => warmUp(b, m, { ...o, listModels: list, chat: ask }), warmupMs = 40 * 60000, thinking = true } = io
+  const opts = thinking === false ? { chat_template_kwargs: { enable_thinking: false } } : {}
   const built = prepare(cases) // before the lock and before any model call
   const live = await list(base)
   if (!live.some((m) => m.id === id)) throw new Error(`${id} is not served at ${base}`)
@@ -196,7 +198,7 @@ export async function runModel(cases, id, base, io = {}) {
   if (!takeLock(lock, process.pid)) { console.error('local-llm: lock held by another run'); process.exit(75) }
   // The arm file says which model and which snapshot answered: a later GGUF under the same id is a different arm.
   const sha = live.find((m) => m.id === id).sha
-  const arm = { scoringVersion: SCORING_VERSION, _model: { id, sha, ...(sha ? {} : { warning: 'no snapshot sha: the served file is not pinned' }) } }
+  const arm = { scoringVersion: SCORING_VERSION, _model: { id, sha, thinking: thinking === false ? 'off' : 'default', ...(sha ? {} : { warning: 'no snapshot sha: the served file is not pinned' }) } }
   // Ctrl-C mid-run: stop the loop, abort the request in flight, unload, free the lock, exit 130. A second signal while unloading frees the lock and exits at once.
   let stopping = false, handled = null
   const ctrl = new AbortController()
@@ -210,10 +212,15 @@ export async function runModel(cases, id, base, io = {}) {
   proc.on('SIGINT', onSignal)
   proc.on('SIGTERM', onSignal)
   try {
+    // Unscored: a cold load can take 15 to 40 minutes and must not be paid for by the first case. A model that never loads fails the arm.
+    const secs = await warm(base, id, { timeoutMs: warmupMs, abort: ctrl.signal, opts })
+    arm._model.warmupSeconds = secs
+    process.stderr.write(`warm-up ${secs} s\n`)
     for (const c of cases) {
       if (stopping) break
       try {
-        const r = await ask(base, id, built.get(c.id).messages, 180000, MAX_TOKENS[c.task], ctrl.signal)
+        const r = await ask(base, id, built.get(c.id).messages, 180000, MAX_TOKENS[c.task], ctrl.signal, opts)
+        if (r.truncated) { arm[c.id] = { invalid: true, truncated: true, ms: r.ms }; process.stderr.write('.'); continue } // the cap was spent before any answer
         const a = withCause(c, parseAnswer(c.task, r.text, built.get(c.id).allowed))
         arm[c.id] = a ? { ...a, ms: r.ms } : { invalid: true, ms: r.ms }
       } catch (e) { arm[c.id] = { invalid: true, error: String(e.message).slice(0, 120) } }
@@ -262,7 +269,9 @@ async function main(argv) {
     return 0
   }
   if (val('--model')) {
-    const arm = await runModel(cases, val('--model'), process.env.LOCAL_LLM_URL || DEFAULT_BASE)
+    const mins = val('--warmup-min') === undefined ? 40 : Number(val('--warmup-min'))
+    if (!(mins > 0)) throw new Error('--warmup-min must be a positive number of minutes')
+    const arm = await runModel(cases, val('--model'), process.env.LOCAL_LLM_URL || DEFAULT_BASE, { warmupMs: mins * 60000, thinking: !argv.includes('--no-thinking') })
     fs.writeFileSync(val('--out'), `${JSON.stringify(arm, null, 2)}\n`)
     return 0
   }
