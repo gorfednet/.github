@@ -30,6 +30,8 @@ Check the live state first (`gh secret list`, settings, a recent run), never a d
 
 ops has only the review workflow (14 Nov 2026, 22nd Desk), so `assert-checks-started` reads 0 runs on an ops head. There, a clean `review-status` from the comment-triggered review plus `mergeStateStatus: CLEAN` is the CI gate. Check for a new workflow on ops main before relying on this.
 
+In BinderCurve, adding `ready-to-merge` cancels the PR's running deploy-check and reruns it at full tier (`rerun-full-browser-gates`). `gh pr checks` then lists attempt 1's cancelled jobs as `fail` (14 Nov 2026, 22nd Desk: 11 "fails" on bc 666, none real). Read the attempt number and the job conclusions (`cancelled` is not `failure`) before calling it red. Never pull the label over cancels: that makes `e2e-success` fail on "no ready-to-merge label".
+
 Run the gate scripts from PATH (`review-status`, `assert-checks-started`, `check-closing-keywords` in `~/.local/bin`), never `node scripts/review-status.mjs` from the main checkout. It can sit on an old branch: on 14 Nov 2026 its stale verdict regex read every new `blocking=` marker as not-run.
 
 Give a background `gh run watch` its own stdin (`</dev/null`) and find run ids only after the runs exist (an `issue_comment` review run sits on `main`, not the PR's commit). On 14 Nov 2026, 2 background watches without it exited 1 within a minute while the runs were still going, and the same watch with it passed. That points to stdin but doesn't prove it.
