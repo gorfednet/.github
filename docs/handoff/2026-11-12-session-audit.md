@@ -62,7 +62,7 @@ Refused by the app as still busy, to archive when idle: WebKit 1.64 rAF (done, n
 
 ## Not sessions, but open in STATUS.md
 
-.github 98 to 113 are 14 backlog-stamp drafts from the 10 November sweep with no session. Half are red on the same hosted apt DNS failure. They need one train or the janitor once 121 lands.
+STATUS.md listed backlog-stamp drafts from the 9 and 10 November sweeps with no session. They are .github 98 to 102 (9 November) and 110 to 113 (10 November), 9 in all. The rest of 98 to 113 is other work: 103 is a handoff, and 104 to 109 are workflow and docs changes. As read on 15 November 2026, 98 is merged, 99 to 102 and 110 to 113 are closed, and 103 is the only one still open. Half were red on the same hosted apt DNS failure when the audit was written.
 
 ## Next
 
