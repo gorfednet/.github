@@ -1,12 +1,12 @@
 {
-  "generatedAt": "2026-11-15T04:31:40.961Z",
-  "renderedAt": "2026-11-15T04:31:40.961Z",
+  "generatedAt": "2026-11-15T06:35:52.224Z",
+  "renderedAt": "2026-11-15T06:35:52.224Z",
   "repos": [
     {
       "slug": "gorfednet/bindercurve.com",
       "redacted": true,
-      "mainRed": true,
-      "openPrCount": 6,
+      "mainRed": false,
+      "openPrCount": 7,
       "lapsedBacklogCount": 0,
       "noPrCount": 79,
       "idlePrCount": 0,
@@ -170,7 +170,7 @@
           "labels": [],
           "draft": true,
           "review": "not-run",
-          "headSha": "8eabbc4d88fb89a15c5c2d73c63313c20eead7d6",
+          "headSha": "8a2bbcd5cad1a6fa273a5a65a493f7f8524345cd",
           "ci": "none",
           "next": "Desk appends each pass's line until the 02:00 ET rotation (hold: the log is still being written)",
           "author": "gorfednet"
@@ -561,11 +561,11 @@
   "branchesReadAt": "2026-11-15T02:31:55.477Z",
   "carried": true,
   "inventory": {
-    "measuredAt": "2026-11-15T04:31:40.961Z",
+    "measuredAt": "2026-11-15T06:35:52.224Z",
     "counts": {
       "pr": {
-        "total": 103,
-        "orphans": 61
+        "total": 104,
+        "orphans": 62
       },
       "session": null,
       "worktree": null,
@@ -673,7 +673,7 @@
         "lapsed": true
       }
     ],
-    "hiddenPrivate": 50,
+    "hiddenPrivate": 51,
     "privateReposNotItemised": 18
   }
 }
