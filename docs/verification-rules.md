@@ -1062,8 +1062,10 @@ canonicalized to the home page. anal0g's `/legal/` was a meta-refresh stub.
    need not. The checks read canonical, robots, refresh, length and body identity.
 
 Checked offline by `check-sitemap-pages.mjs` against the build output, in the
-pull request checks of each site that runs it (the shared verification gate does
-not call it yet: backlog `sitemap-pages-not-in-gate`), and live on a schedule by `production-healthcheck.yml` (the sitemap
+pull request checks of each site that runs it (the shared verification gate runs
+it against `publish-root` when the caller sets `sitemap-origin`, at warning level
+like its neighbours; empty skips it, so turn it on per site once the site is
+clean: backlog `sitemap-pages-not-in-gate`), and live on a schedule by `production-healthcheck.yml` (the sitemap
 step, plus the opt-in `expect-www-redirect` and `expect-error-pages-hidden`
 steps). The live half is never a pull request gate: a pull request check fails
 only on what the pull request can change (the 2026-10 right-sizing), and a live

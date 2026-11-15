@@ -279,6 +279,10 @@ runs:
       if: ${{ !cancelled() && inputs.sitemap-origin != '' }}
       shell: bash
       run: |
+        if [ -z "${{ inputs.publish-root }}" ]; then
+          echo "::warning title=Sitemap check inputs agree::sitemap-origin is set but publish-root is empty, so there is no built site for the sitemap check to read. Set publish-root."
+          exit 0
+        fi
         if ! node "$VERIFICATION_GATE_KIT/bin/check-sitemap-pages.mjs" \
           --root "${{ inputs.publish-root }}" \
           --origin "${{ inputs.sitemap-origin }}"; then

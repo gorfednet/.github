@@ -285,6 +285,17 @@ describe('verification-gate composite action', () => {
       assert.match(output, /--root\|dist\|--origin\|https:\/\/example\.test/)
     })
 
+    it('says the wiring is wrong, not the pages, when sitemap-origin is set and publish-root is not', () => {
+      const { code, output } = runWith(
+        'Sitemap lists only pages worth indexing',
+        'console.log("CHECKER RAN"); process.exit(1)\n',
+        { 'inputs.publish-root': '' },
+      )
+      assert.equal(code, 0, output)
+      assert.match(output, /sitemap-origin is set but publish-root is empty/)
+      assert.doesNotMatch(output, /CHECKER RAN|worth indexing \(canonical/)
+    })
+
     it('skips the sitemap step unless a site opts in with sitemap-origin', () => {
       assert.match(
         text,
