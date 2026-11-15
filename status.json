@@ -1,12 +1,12 @@
 {
-  "generatedAt": "2026-11-15T10:31:55.661Z",
-  "renderedAt": "2026-11-15T10:31:55.661Z",
+  "generatedAt": "2026-11-15T12:32:25.844Z",
+  "renderedAt": "2026-11-15T12:32:25.844Z",
   "repos": [
     {
       "slug": "gorfednet/bindercurve.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 6,
+      "openPrCount": 5,
       "lapsedBacklogCount": 0,
       "noPrCount": 79,
       "idlePrCount": 0,
@@ -170,7 +170,7 @@
           "labels": [],
           "draft": true,
           "review": "not-run",
-          "headSha": "fb32e5613cf0856f16fff243ac715bc8d6402498",
+          "headSha": "5ff5755c515d7eeb75a21db6efd459bf2c98fc50",
           "ci": "none",
           "next": "Desk appends each pass's line until the 02:00 ET rotation (hold: the log is still being written)",
           "author": "gorfednet"
@@ -178,7 +178,7 @@
         {
           "number": 137,
           "title": ".github: check-sitemap-pages ships in the kit but the shared verification gate does not run it",
-          "ageDays": 1,
+          "ageDays": 2,
           "labels": [],
           "draft": true,
           "review": "not-run",
@@ -561,11 +561,11 @@
   "branchesReadAt": "2026-11-15T02:31:55.477Z",
   "carried": true,
   "inventory": {
-    "measuredAt": "2026-11-15T10:31:55.661Z",
+    "measuredAt": "2026-11-15T12:32:25.844Z",
     "counts": {
       "pr": {
-        "total": 103,
-        "orphans": 61
+        "total": 102,
+        "orphans": 60
       },
       "session": null,
       "worktree": null,
@@ -673,7 +673,7 @@
         "lapsed": true
       }
     ],
-    "hiddenPrivate": 50,
+    "hiddenPrivate": 49,
     "privateReposNotItemised": 18
   }
 }
