@@ -25,7 +25,7 @@ Coordinator sessions were retired on 2026-11-11 (owner, after the four-week asse
 - Desk replaces them: one long-lived Opus session in `gorfednet.github` with Remote Control on, briefed by `docs/desk/brief.md`. The owner talks only to Desk.
 - Desk owns no code work. It reads `status.json`, ship-bot's state and `list_sessions`. It labels pull requests whose `## Next` says merge and whose gates pass, archives finished sessions, and starts one session per brief in `briefs/`.
 - Results come back through artefacts only: the pull request's `## Next`, `status.json`, ship-bot's ntfy. No session relays another's notes.
-- Desk rotates past 150k tokens with `/desk-rotate`, and writes its log at 02:00 ET. It's never forked.
+- Desk rotates past 400k tokens with `/desk-rotate` (owner yes, 15 Nov 2026), and writes its log at 02:00 ET. It's never forked.
 - Status comes from STATUS.md, merges from ship-bot, housekeeping from the janitor, new work from briefs in the repository.
 
 Spawn by role where one fits: `runner` for gate runs, `builder`, `reviewer` and `editor` (`~/.claude/agents/`).
@@ -69,7 +69,7 @@ Assess every ask before starting it: is this a new task of its own? A long sessi
 On 2026-10-30 the week reached 36% in about 12.5 hours, with chats of up to 6,290 messages being woken over and over.
 
 - Do not wake a long chat when a short one will do. Start new work as a separate chat from a brief, and send results to the pull request or a repository file instead of back to a parent. A chat with side sessions gets woken each time one finishes a turn, so a long chat starts none.
-- Cap a chat at about 200,000 tokens (`get_usage` reports it). Auto-compact only starts at 97% of a 1M window, so it will not do this for you. At the cap, write a handoff into the repository and continue in a new chat.
+- Cap a chat at about 200,000 tokens (`get_usage` reports it). Desk is the exception: it runs to about 400,000, because each rotation puts approval cards in front of the owner (owner yes, 15 Nov 2026, 18:54 ET, after 31 Desks in 3 days). Auto-compact only starts at 97% of a 1M window, so it will not do this for you. At the cap, write a handoff into the repository and continue in a new chat.
 - Never wake a chat to check CI or to say CI is green. Let merges wait and do them together in one sitting, or leave them for that chat's next run.
 - Run Chrome form work in a fresh chat per 4 or 5 forms, and read pages as text, not screenshots.
 - On 6 November 2026, a MoonMan planning chat started 5 side sessions and became their relay. Every note and every owner question went through a chat of over 200,000 tokens. Once the briefs are out, detach the side sessions (`detach_session`). Their questions go in the pull request's `## Next`, where Desk reads them. Then end the parent. Never start more than 3 at once: 5 sessions and their builders pushed this Mac to a load of 78 on 10 cores.

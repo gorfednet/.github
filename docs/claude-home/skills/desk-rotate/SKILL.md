@@ -1,13 +1,13 @@
 ---
 name: desk-rotate
-description: Hand Desk over to a fresh session. Writes the day's desk log, starts the successor from docs/desk/brief.md with Remote Control on, then retires and archives the outgoing Desk. Use when Desk passes 150k tokens.
+description: Hand Desk over to a fresh session. Writes the day's desk log, starts the successor from docs/desk/brief.md with Remote Control on, then retires and archives the outgoing Desk. Use when Desk passes 400k tokens, or at the first Mac turn past 360k.
 ---
 
 # /desk-rotate
 
 Desk is never forked. The owner must always have exactly one chat titled "Active Remote Control [Desk (<d Mon>)]".
 
-1. Check the size with `get_usage`. Rotate past 150k tokens. At 02:00 ET Desk only writes the log (step 2).
+1. Check the size with `get_usage`. Rotate past 400k tokens, or at the first turn the owner sends from the Mac past 360k (owner yes, 15 Nov 2026). At 02:00 ET Desk only writes the log (step 2).
 2. In the `desk-log` worktree (`~/Developer/gorfednet/gorfednet.github/.claude/worktrees/desk-log`, branch `desk-log`), write or update `docs/desk/<today>.md`:
    - decisions taken since the last log
    - open threads, each with the session or pull request that holds it
