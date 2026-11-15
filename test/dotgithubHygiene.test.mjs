@@ -26,9 +26,9 @@ const sh = (cwd, ...a) => execFileSync('git', a, { cwd, encoding: 'utf8', stdio:
 const guard = {
   FORBIDDEN_NEW_DIRS: ['docs/desk/', 'briefs/'],
   parsePrivateRepos: (raw) => String(raw ?? '').split(',').filter(Boolean),
-  privateRepoPattern: (names) => new RegExp(`gorfednet/(?:${names.join('|')})\\b`),
+  privateRepoPattern: (names) => new RegExp(`gorfednet/(?:${names.join('|')})\\b`, 'g'),
   parseAllowlist: (text) => ({ emails: [], paths: text.split('\n').filter(Boolean).map((l) => ({ re: new RegExp(`^${l.split(' ')[1]}$`), rules: new Set(l.split(' ')[2].split(',')) })) }),
-  scanLine: (line, { privateRepo }) => [...(/SECRET-HOST/.test(line) ? ['internal-host'] : []), ...(privateRepo.test(line) ? ['private-repo'] : [])],
+  scanLine: (line, { privateRepo }) => [...(/SECRET-HOST/.test(line) ? ['internal-host'] : []), ...([...line.matchAll(privateRepo)].length ? ['private-repo'] : [])], // matchAll, as the real guard uses: it throws on a pattern without the g flag,
 }
 
 /** A clone with an origin holding main, a merged branch, an unmerged one, status and desk-log. */
