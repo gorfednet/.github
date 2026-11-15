@@ -74,3 +74,7 @@ Status, what's outstanding, next milestone with ET time, done. A few lines. Comm
 Checklist (owner, 13 Nov 2026: "can you give me a checklist and surface it every deploy?"): keep `docs/desk/checklist.md` on `desk-log` current and phone-short. Post it in chat on every pass and every time ship-bot deploys a repo: tick what landed, add a line for each new item.
 
 `list_sessions` gives a `prNumber` with no repository, and a runner's gate report is a lead. Before sending a PR back to a session, check the PR's repository and that it is OPEN (14 Nov 2026, 08:22 ET: Desk sent .github 90, merged 8 Nov, to the session whose PR 90 is in heuristics).
+
+The Linux CI host on the Mac Pro is `gowyllop-ci` (100.122.77.87). Plain `gowyllop` is its macOS side, often offline, so a check against it times out and proves nothing (15 Nov 2026, 26th Desk).
+
+Herdr's live job files are untracked, in `ops/.claude/worktrees/tools-main/hosts/gorfpael/herdr/jobs/`, so no PR can change them. Owner `herdr` means the reconciler starts the job unattended. Never hand a heuristics deep-study or capture job to `herdr`: it would run past the monthly API spend check. A landed or declined backlog entry retires its job on the hourly sweep (15 Nov 2026, 26th Desk: 23 jobs held by the retired fleet-coordinator-5 were left held).
