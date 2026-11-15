@@ -18,7 +18,8 @@
  *   internal-host  a host name main already names in `.deploy-env.example`, workflows
  *                  and scripts (the list below; those names are already public)
  *   private-repo   `gorfednet/<name>` for a private repository. The list comes from the
- *                  PRIVATE_REPOS variable (comma-separated), never from a committed file.
+ *                  PRIVATE_REPOS Actions secret (comma-separated, so the log masks it), never
+ *                  from a committed file or a plain variable.
  *                  Unset or empty fails closed (verification-floor rule 2).
  *   email          an address that is not a noreply, a bot identity already on main or an
  *                  allowlisted domain
@@ -292,8 +293,8 @@ export function run(argv, env = process.env, out = console) {
   if (names.length === 0) {
     out.error(
       'privacy-guard: PRIVATE_REPOS is unset or empty, so the private-repo rule cannot run and nothing was checked. ' +
-        'A repository admin sets it as an Actions variable (Settings, Secrets and variables, Actions, Variables): ' +
-        'a comma-separated list of private repository names, for example name-one,name-two.',
+        'A repository admin sets it as an Actions secret (Settings, Secrets and variables, Actions, Secrets), holding a comma-separated list of private repository names such as name-one,name-two. ' +
+        'A pull request from a fork gets no secrets, so it fails here too.',
     )
     return 2
   }

@@ -274,10 +274,11 @@ describe('privacy guard: parsers', () => {
 describe('privacy guard: the workflow', () => {
   const wf = readFileSync(join(ROOT, '.github', 'workflows', 'privacy-guard.yml'), 'utf8')
 
-  it('runs on pull requests only, reads PRIVATE_REPOS from the variable and keeps if: !cancelled() on the assertion', () => {
+  it('runs on pull requests only, reads PRIVATE_REPOS from the secret, never a variable, and keeps if: !cancelled() on the assertion', () => {
     assert.match(wf, /^on:\n {2}pull_request:/m)
     assert.doesNotMatch(wf, /^ {2}push:/m)
-    assert.match(wf, /PRIVATE_REPOS: \$\{\{ vars\.PRIVATE_REPOS \}\}/)
+    assert.match(wf, /PRIVATE_REPOS: \$\{\{ secrets\.PRIVATE_REPOS \}\}/)
+    assert.doesNotMatch(wf, /vars\.PRIVATE_REPOS/)
     assert.match(wf, /if: \$\{\{ !cancelled\(\) \}\}\n\s+env:|if: \$\{\{ !cancelled\(\) \}\}\n\s+run:/)
   })
 

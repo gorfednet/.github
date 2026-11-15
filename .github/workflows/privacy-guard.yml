@@ -9,8 +9,10 @@ name: privacy-guard
 # It reads only the lines the pull request adds (scripts/privacy-guard.mjs), so it
 # cannot go red on old content (verification-floor rule 5).
 #
-# Set once by a repository admin: the Actions variable PRIVATE_REPOS, a comma-separated
-# list of private repository names. Unset, the guard fails closed with a message.
+# Set once by a repository admin: the Actions secret PRIVATE_REPOS, a comma-separated
+# list of private repository names. A secret, not a variable, so the log masks it.
+# Unset or empty, the guard fails closed with a message. A pull request from a fork
+# gets no secrets, so it fails closed too.
 on:
   pull_request:
 
@@ -40,7 +42,7 @@ jobs:
       - name: No private detail on the lines this pull request adds
         if: ${{ !cancelled() }}
         env:
-          PRIVATE_REPOS: ${{ vars.PRIVATE_REPOS }}
+          PRIVATE_REPOS: ${{ secrets.PRIVATE_REPOS }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: node scripts/privacy-guard.mjs --base "$BASE_SHA" --head "$HEAD_SHA"
