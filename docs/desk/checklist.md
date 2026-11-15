@@ -177,6 +177,13 @@ Weekly 9% at 11:21 ET. Full speed, cost-aware. One line to the owner at about 90
 
 ## Added 15 Nov overnight (23rd Desk)
 - [x] gowyllop 6a passed (owner, 00:30 ET)
-- [x] bc 662 merged 05:11 ET; [ ] owner step 6b (given 05:1x ET)
+- [x] bc 662 merged 05:11 ET; [ ] owner step 6b (given 05:14 ET; now also installs bc 667)
 - [x] bc 661 (3.10) merged 06:41 ET
 - [x] 1.19 first eval scored: Qwen3.6 PASS 4/10 (below Haiku, not adopted), Gemma 4 FAIL 3/10; [x] gpt-oss fair rerun FAIL 3/10; private data to Trash
+
+## Added 15 Nov morning (24th Desk)
+- [x] bc 667 runner isolation merged 09:55 ET; [ ] its dapyllil install rides owner step 6b, pool idle first
+- [ ] bc 668 seed refresh: labelled, full gate finishing
+- [x] 1.19: no model adopted (Qwen3.6 4/10, below Haiku)
+- [x] dapyllil bc pool 2 to 4 runners is the intended size
+- [ ] 23rd Desk archive (refused while open on screen)
