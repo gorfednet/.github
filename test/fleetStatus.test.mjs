@@ -10,7 +10,7 @@ import { join } from 'node:path'
 import { describe, it } from 'node:test'
 
 import { behindClones, collectLocal, dirtyClones, duplicatePrs, idlePrs, idleSessions, oldWorktrees } from '../scripts/lib/hygiene.mjs'
-import { aheadCounts, carryMap, ciState, collectRepo, mapLimit, dependabotRed, isPrivateRepo, latestDeploy, nextItem, recentLines, redactRepo, repoList } from '../scripts/fleet-status.mjs'
+import { aheadCounts, carryMap, ciState, collectRepo, mapLimit, dependabotRed, isPrivateRepo, latestDeploy, nextItem, recentLines, redactRepo, repoList, dormantRepos } from '../scripts/fleet-status.mjs'
 import { workflowTriggers } from '../scripts/lib/workflowTriggers.mjs'
 import { digest, etStamp, hygiene, lowerMeridiem, render, summaryLine } from '../scripts/write-status-md.mjs'
 
@@ -137,6 +137,16 @@ describe('helpers', () => {
   it('repoList adds ship-bot repos that fleet.json lacks, once', () => {
     const list = repoList({ projects: [{ slug: 'a/x' }] }, { repos: [{ slug: 'a/x' }, { slug: 'a/y' }] })
     assert.deepEqual(list, ['a/x', 'a/y'])
+  })
+  it('repoList leaves dormant projects out, even when ship-bot still has a row for them', () => {
+    const fleet = { projects: [{ slug: 'a/x' }, { slug: 'a/z', monitorClass: 'dormant' }] }
+    assert.deepEqual(repoList(fleet, { repos: [{ slug: 'a/z' }, { slug: 'a/y' }] }), ['a/x', 'a/y'])
+    assert.deepEqual(dormantRepos(fleet), ['a/z'])
+  })
+  it('render names the dormant repositories once, and only when there are some', () => {
+    const md = render({ ...fixture, dormant: ['gorfednet/TowIt', 'gorfednet/wychwood'] })
+    assert.match(md, /^Dormant, not tracked: TowIt, wychwood\.$/m)
+    assert.doesNotMatch(render(fixture), /Dormant/)
   })
 })
 

@@ -3,6 +3,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, it } from 'node:test'
+import { getDefaultAutoSelectFamilyAttemptTimeout } from 'node:net'
 import { heartbeatUrl, ping, pushOffbox } from '../ship-bot/lib/heartbeat.mjs'
 import { checkUsage } from '../scripts/lib/usageAlert.mjs'
 
@@ -10,6 +11,9 @@ const tmp = () => mkdtempSync(join(tmpdir(), 'hb-'))
 const enrol = (home, file, text) => { mkdirSync(join(home, '.heartbeats'), { recursive: true }); writeFileSync(join(home, '.heartbeats', file), text) }
 
 describe('heartbeat', () => {
+  it('gives each address 2 s to connect, not Node\'s 250 ms (hc-ping.com IPv6 failed 10 of 15 pings)', () => {
+    assert.ok(getDefaultAutoSelectFamilyAttemptTimeout() >= 2000)
+  })
   it('is a no-op when unenrolled', async () => {
     const r = await ping('janitor', { home: tmp(), fetchImpl: () => assert.fail('must not fetch') })
     assert.deepEqual(r, { sent: false, reason: 'unconfigured' })

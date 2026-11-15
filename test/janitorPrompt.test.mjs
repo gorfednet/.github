@@ -1,6 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const prompt = readFileSync(new URL("../janitor/PROMPT.md", import.meta.url), "utf8");
 
@@ -17,7 +21,7 @@ test("janitor does not rely on gh pr diff --name-only for the allowlist", () => 
 test("janitor step 4 sweeps sessions and guards live ones and owner questions", () => {
   const step = prompt.match(/\n4\. Sessions\.[\s\S]*?(?=\n5\. Worktrees)/);
   assert.ok(step, "step 4 exists");
-  assert.match(step[0], /`merged`: its pull request merged\. Archive it/);
+  assert.match(step[0], /`merged`: its pull request merged\. Record its cost \(step 4\.7\), then archive it/);
   assert.match(step[0], /isRunning/);
   assert.match(step[0], /question or a decision for the owner/);
   assert.match(step[0], /idle over 48 hours/);
@@ -54,7 +58,7 @@ test("janitor never prunes the tools or desk worktrees, and prunes only through 
 });
 
 test("janitor rescues dirty work through a draft held from ship-bot before archiving", () => {
-  const rescue = prompt.match(/\n   6\. Rescue,[\s\S]*?(?=\n5\. Worktrees)/);
+  const rescue = prompt.match(/\n   6\. Rescue,[\s\S]*?(?=\n   7\. Cost|\n5\. Worktrees)/);
   assert.ok(rescue, "rescue procedure exists");
   assert.match(rescue[0], /--draft[^\n]*--label hold/);
   assert.match(rescue[0], /looks secret/);
@@ -71,7 +75,7 @@ test("janitor sets up its own checkout, so the scheduled task's older starter te
 
 test("janitor never rescues a session whose branch has an open pull request, and rescues commits pushed after a merge", () => {
   assert.match(prompt, /`dirty`:[^\n]*first make the `gh pr list` call[^\n]*On `OPEN` or `CLOSED`, propose only/);
-  assert.match(prompt, /`MERGED`: run `git rev-list --count <headRefOid>\.\.HEAD`[^\n]*squash-merged[^\n]*Archive it\. More than 0[^\n]*Treat it like the no-PR case/);
+  assert.match(prompt, /`MERGED`: run `git -C "\$\(cat \$R\/worktree-<id8>\.txt\)" rev-list --count <headRefOid>\.\.HEAD`[^\n]*squash-merged[^\n]*Archive it\. More than 0[^\n]*Treat it like the no-PR case/);
 });
 
 test("janitor never archives a session whose folder holds ignored local state", () => {
@@ -91,4 +95,135 @@ test("janitor step 3b builds housekeeping trains through the script and never la
   assert.match(step[0], /Any other kind stays out/);
   assert.match(step[0], /never labels or merges/);
   assert.match(step[0], /check-closing-keywords/);
+});
+
+test("janitor never labels a path ship-bot calls control plane, docs/claude-home/ included", () => {
+  const step = prompt.match(/\n3\. Labels\.[\s\S]*?(?=\n4\. Sessions)/);
+  assert.ok(step, "step 3 exists");
+  assert.match(step[0], /`touchesControlPlane\(path, slug\)`[^\n]*is never labelled, even under `docs\/`/);
+  assert.match(step[0], /ship-bot\/lib\/drafts\.mjs/);
+  assert.match(step[0], /Never put a changed file's name on the command line/);
+  assert.match(step[0], /exact `owner\/name` used in the `gh api` call/);
+  assert.match(step[0], /in `gorfednet\/\.github` everything under `docs\/claude-home\/`/);
+  assert.match(step[0], /Any other exit code, or a check that can't run, means no label/);
+});
+
+// The command is run as written, so a prompt edit that breaks it fails here and not on the Mac overnight.
+const controlPlaneCheck = (files, slug, { raw } = {}) => {
+  const line = prompt.split("\n").find((l) => l.includes("node -e '") && l.includes("controlPlaneFiles"));
+  assert.ok(line, "the control-plane command is in the prompt");
+  const command = line.match(/`(node -e '[^`]*)`/)?.[1];
+  assert.ok(command, "the command sits in one code span");
+  assert.ok(command.includes("<repo>-<n>") && command.endsWith(" <owner>/<repo>"), command);
+  const dir = mkdtempSync(join(tmpdir(), "janitor-cp-"));
+  writeFileSync(join(dir, "files-x-1.json"), raw ?? JSON.stringify(files));
+  const run = spawnSync("bash", ["-c", command.replace("<repo>-<n>", "x-1").replace(/ <owner>\/<repo>$/, slug ? ` ${slug}` : "")], {
+    cwd: dir,
+    env: { ...process.env, J: fileURLToPath(new URL("..", import.meta.url)), R: dir },
+    encoding: "utf8",
+  });
+  return { status: run.status, dir };
+};
+
+test("janitor control-plane command: exit 1 on a hit, 0 on plain docs, non-zero on anything it cannot judge", () => {
+  const DOT = "gorfednet/.github";
+  assert.equal(controlPlaneCheck([[{ filename: "docs/claude-home/settings.json", status: "modified" }]], DOT).status, 1);
+  assert.equal(controlPlaneCheck([[{ filename: "docs/x.md", status: "modified" }]], DOT).status, 0);
+  assert.equal(controlPlaneCheck([{ filename: "docs/x.md", status: "modified" }], DOT).status, 0, "one unslurped page reads the same");
+  assert.equal(controlPlaneCheck([[{ filename: "docs/x.md" }], [{ filename: "docs/claude-home/rules/a.md" }]], DOT).status, 1, "a hit on a later page");
+  assert.equal(controlPlaneCheck([[{ filename: "docs/x.md", previous_filename: "docs/claude-home/rules/a.md", status: "renamed" }]], DOT).status, 1);
+  assert.equal(controlPlaneCheck([[{ filename: "docs/claude-home/settings.json" }]], "gorfednet/site").status, 0, "ordinary docs in another repository");
+  for (const slug of ["", ".github", "gorfednet/.github/x", "gorfednet/.github;x"]) {
+    const { status } = controlPlaneCheck([[{ filename: "docs/x.md" }]], slug && `'${slug}'`);
+    assert.ok(status !== 0 && status !== null, `slug ${JSON.stringify(slug)} exits ${status}`);
+  }
+  for (const raw of ["not json", "{}", "[]", "[[]]", '"docs/x.md"']) {
+    const { status } = controlPlaneCheck(null, DOT, { raw });
+    assert.ok(status !== 0 && status !== null, `${raw} exits ${status}`);
+  }
+});
+
+test("janitor control-plane command never runs a changed file's name", () => {
+  const { status, dir } = controlPlaneCheck([[{ filename: "docs/$(touch PWNED).md" }, { filename: "docs/`touch PWNED2`.md" }, { filename: "docs/'; touch PWNED3; '.md" }]], "gorfednet/.github");
+  assert.equal(status, 0, "odd names under docs/ are still plain docs");
+  assert.deepEqual(readdirSync(dir), ["files-x-1.json"]);
+  assert.equal(existsSync(join(dir, "PWNED")), false);
+});
+
+test("janitor puts no branch, title or worktree on a command line: each goes through a file", () => {
+  const spans = [...prompt.matchAll(/`([^`\n]+)`/g)].map((m) => m[1]).filter((c) => /^(gh|git|node) /.test(c));
+  assert.ok(spans.length > 10, "found the prompt's commands");
+  for (const c of spans) assert.doesNotMatch(c, /<(branch|title|worktree|the branch you pushed)>/, `untrusted text pasted into: ${c}`);
+  assert.match(prompt, /Untrusted text never reaches a command line/);
+  assert.ok(quotedFileFlags(spans) >= 9);
+  assert.match(prompt, /`test -s`/);
+  assert.match(prompt, /skip that session/);
+});
+
+/** Every untrusted-valued flag takes `"$(cat $R/<name>-<id8>.txt)"` with its double quotes; `-C` may also take the owner's `$J` or `$G`. Returns how many it checked. */
+function quotedFileFlags(spans) {
+  let seen = 0;
+  for (const c of spans) {
+    for (const m of c.matchAll(/(?:^| )(-C|--head|--branch|--worktree|--title) (\S+)/g)) {
+      if (m[1] === "-C" && /^\$[JG]$/.test(m[2])) continue;
+      seen += 1;
+      assert.match(c.slice(m.index + m[0].indexOf(m[1]) + m[1].length + 1), /^"\$\(cat \$R\/[a-z]+-<id8>\.txt\)"/, `${m[1]} must read a quoted file: ${c}`);
+    }
+  }
+  return seen;
+}
+
+test("the quoted-form check rejects an unquoted or pasted value", () => {
+  assert.throws(() => quotedFileFlags(["gh pr create --title $(cat $R/title-<id8>.txt) --x"]));
+  assert.throws(() => quotedFileFlags(["git -C <worktree> status"]));
+  assert.throws(() => quotedFileFlags(['gh pr list --head "<branch>" --state all']));
+  assert.equal(quotedFileFlags(['git -C "$(cat $R/worktree-<id8>.txt)" status']), 1);
+});
+
+/** Index of the first read and the first write of `$R/<name>-<id8>.txt` in a prompt text (-1 when none). */
+function firstReadWrite(text, name) {
+  const file = `\\$R/${name}-<id8>\\.txt`;
+  const read = text.search(new RegExp(`\\$\\(cat ${file}\\)`));
+  const write = text.search(new RegExp(`(?:[Ww]rite|> )[^\\n]*?${file}(?!\\))`));
+  return { read, write };
+}
+
+test("every value file is written before the first command that reads it", () => {
+  for (const name of ["branch", "worktree", "title", "head"]) {
+    const { read, write } = firstReadWrite(prompt, name);
+    assert.ok(read > 0, `${name} is read`);
+    assert.ok(write > 0 && write < read, `${name}-<id8>.txt must be written (at ${write}) before its first read (at ${read})`);
+  }
+  const bad = 'run `gh pr list --head "$(cat $R/branch-<id8>.txt)"`. Then write `$R/branch-<id8>.txt`.';
+  const { read, write } = firstReadWrite(bad, "branch");
+  assert.ok(!(write < read), "the checker sees a read that comes first");
+});
+
+test("a session with no worktree is archived without it, and what needs one is propose-only", () => {
+  assert.match(prompt, /A session with no `worktree` has no worktree file: it is still handled by its `state` below\. A `merged` one is archived\. An `unmerged` one with an `OPEN` or `CLOSED` pull request is left or proposed as below, never archived\./);
+  assert.doesNotMatch(prompt, /can still be archived as `unmerged`/, "OPEN and CLOSED unmerged sessions are never archived");
+  assert.match(prompt, /the `MERGED` `rev-list` check, a rescue\) is propose-only/);
+  assert.match(prompt, /with no `--worktree` argument/);
+});
+
+test("a dirty session with no branch (detached HEAD) still reaches the rescue", () => {
+  const rescue = prompt.match(/\n   6\. Rescue,[^\n]*/)[0];
+  assert.match(rescue, /run `test -s` on it/, "the rescue checks the worktree file");
+  assert.doesNotMatch(rescue, /branch-<id8>\.txt/, "the rescue never needs the branch file, which a detached HEAD lacks");
+  assert.match(rescue, /detached HEAD has no branch/);
+  const dirty = prompt.match(/- `dirty`:[^\n]*/)[0];
+  assert.match(dirty, /if it has a `branch`, first make the `gh pr list` call[^\n]*Otherwise rescue it/, "a branchless one skips the PR call and goes to the rescue");
+  const call = prompt.match(/1\. Read the pull request into a file[^\n]*/)[0];
+  assert.match(call, /after `test -s \$R\/branch-<id8>\.txt`/, "the branch file is checked where it is used");
+});
+
+test("the quoted file form runs nothing a hostile title or branch holds", () => {
+  const dir = mkdtempSync(join(tmpdir(), "janitor-title-"));
+  const pwn = join(dir, "pwn");
+  for (const hostile of [`x"; touch ${pwn}; echo "`, "$(touch " + pwn + ")", "`touch " + pwn + "`"]) {
+    writeFileSync(join(dir, "title.txt"), hostile);
+    const r = spawnSync("bash", ["-c", `printf '%s' "$(cat ${join(dir, "title.txt")})"`], { encoding: "utf8" });
+    assert.equal(r.stdout, hostile, "the argument arrives as the same text");
+    assert.equal(existsSync(pwn), false, `ran: ${hostile}`);
+  }
 });

@@ -1,0 +1,342 @@
+{
+  "version": 2,
+  "collected": "2026-11-14",
+  "cases": [
+    {
+      "id": "bld-01",
+      "task": "builder",
+      "label": "files:004eea2387a17a08b739ec226252cc11033c29be421e392ef8255603073d0f73",
+      "sha256": "26bd747e18060c2bf5324ede5ee19b9b4dbc7c2d62446ce5a960ebece9747901"
+    },
+    {
+      "id": "bld-02",
+      "task": "builder",
+      "label": "files:fe2b7e3ba4e3752a43dfe0f771b40138340d9bd69538d0657e20392d7a231391",
+      "sha256": "503f203d7767fe546774ca7e4d4a5fb691a8fc0cf802ae6898a88de76ebd3be7"
+    },
+    {
+      "id": "bld-03",
+      "task": "builder",
+      "label": "files:846871582d5a5bea8ff88c2e36d8e04ed647313b33e00722ce746394dea20daf",
+      "sha256": "b1000fa37b7209db36abcf22658b6fd796fdc48db08263c2085aa2f8b3ef7373"
+    },
+    {
+      "id": "bld-04",
+      "task": "builder",
+      "label": "files:52e3393f6bd9dd6a7ce15022a138577ac7d1456a2765e81de07d4df405576982",
+      "sha256": "fdd1a5a58e72dbd05af910b3ee8f29bd70d2fe6875591b533eed610766254d39"
+    },
+    {
+      "id": "bld-05",
+      "task": "builder",
+      "label": "files:e24145b132af0dd1e32d0ad87bd2d9b272c9010ca09eb8fdb4055535ab2a7957",
+      "sha256": "011a346bae70d69f9a4bce0ecc1bca70d4c8620486ed408ba051c33be9c8f033"
+    },
+    {
+      "id": "bld-06",
+      "task": "builder",
+      "label": "files:5a0ed5a957f2ec7aafd461950053c4669b07e9fd353f63629fe808f570f8cb32",
+      "sha256": "c32852956068e85ce8a4f54a782a7a3341f4baa1c5df383b7dcb7b4e0ccb78be"
+    },
+    {
+      "id": "bld-07",
+      "task": "builder",
+      "label": "files:a7d303df6eda6b6bc4301ee21d7512b8f13cda0af2e86b71e6a944f60f039320",
+      "sha256": "71731a3bada143d9e114a7379aba5f1cb727f6f1357860b4d7213796e59e2839"
+    },
+    {
+      "id": "bld-08",
+      "task": "builder",
+      "label": "files:43d99e3e1357b210078c665e864ea494f7e4fd25f1add1badbb5cea5d638c90a",
+      "sha256": "4e6d2ea166eb6101a4072e7f3c53258208376440c7c1ccf40f19ee0a70c8d7d5"
+    },
+    {
+      "id": "bld-09",
+      "task": "builder",
+      "label": "files:911fad768727ec703b1c80816349cbcbfac3f11d68dc82602e3f79073c82d9b3",
+      "sha256": "598eb40952f75835cbac00dc6de3e6e2930d6cbe78ba36a3b14df9aa11a65c31"
+    },
+    {
+      "id": "bld-10",
+      "task": "builder",
+      "label": "files:dfdc0d337069b6ba23410dda8ead548b5c0833ca86ffcf14a3885efb68fd442b",
+      "sha256": "3e7f405a5ba0b7546f2fc0a2317d5f7609309999233905546cb7374fe0d409c0"
+    },
+    {
+      "id": "cpy-01",
+      "task": "copy",
+      "label": "voice:1",
+      "sha256": "8b89854590a7eb75aeb170ad813d78037b271cd15af03355420683f7ef97d97d"
+    },
+    {
+      "id": "cpy-02",
+      "task": "copy",
+      "label": "voice:1",
+      "sha256": "124439adb2c32038d4c0b93d39025971b32bd2417fc0c84966c9e611282fa822"
+    },
+    {
+      "id": "cpy-04",
+      "task": "copy",
+      "label": "voice:1",
+      "sha256": "cc75a8b9a4cd7c17f15752f7d650028c8ee98dbb021a282b36ef2b8b3ce1c701"
+    },
+    {
+      "id": "cpy-05",
+      "task": "copy",
+      "label": "voice:1",
+      "sha256": "0b41642dc6f9998de2c399b4f773ad0953fadedc70f405cf0d0a156517771e24"
+    },
+    {
+      "id": "cpy-06",
+      "task": "copy",
+      "label": "voice:1",
+      "sha256": "71f28180557cbb082cf87e489f720f658fe33b523ac2e5d49d315da8634b940a"
+    },
+    {
+      "id": "cpy-07",
+      "task": "copy",
+      "label": "voice:1",
+      "sha256": "f175ff5e065f5574f82b7980df717f0ea389c5d38912b561050b214f6b252116"
+    },
+    {
+      "id": "cpy-09",
+      "task": "copy",
+      "label": "voice:1",
+      "sha256": "d2ed49d694828bb26e269e325c83b409bdff2b17118cd4e17bbed50950c29539"
+    },
+    {
+      "id": "cpy-10",
+      "task": "copy",
+      "label": "voice:1",
+      "sha256": "7be67abc7350e881a89f91dc86a07782a8e9e33e97f9ae90699220a2d6869395"
+    },
+    {
+      "id": "rev-01",
+      "task": "reviewer",
+      "label": "invalid",
+      "sha256": "b86312772f714d7ab6109e296b51117c35cfd91bfe7b33c480383b0c4092da39"
+    },
+    {
+      "id": "rev-02",
+      "task": "reviewer",
+      "label": "valid",
+      "sha256": "6f6f399cf35c5c955f4faeb14f74d2a05daaf0a3aca6b2c15f3f9eb77408cae3"
+    },
+    {
+      "id": "rev-03",
+      "task": "reviewer",
+      "label": "valid",
+      "sha256": "4e3918942eb5282bfb95baa9c00b63218d5d590f5af958ee8d1fecb168309df9"
+    },
+    {
+      "id": "rev-04",
+      "task": "reviewer",
+      "label": "valid",
+      "sha256": "c3d265e2cc6271a92fed2e1471e00b151941dd9e85dd750f2ec0e1ac151f60fb"
+    },
+    {
+      "id": "rev-05",
+      "task": "reviewer",
+      "label": "invalid",
+      "sha256": "6693e0c5b8b4d251b4cb6bdb3d5b9790e270a694b562d2e96fe42ef3ec2f9224"
+    },
+    {
+      "id": "rev-06",
+      "task": "reviewer",
+      "label": "valid",
+      "sha256": "21e79485eed2f4d634687d3663072671b3699dbd37535530c3ef6ce4fd2ce683"
+    },
+    {
+      "id": "rev-07",
+      "task": "reviewer",
+      "label": "invalid",
+      "sha256": "0d078bb8e6edc86160358e5d435fe95a35c1fa5521bd21877ae0f6ffaa0c2527"
+    },
+    {
+      "id": "rev-08",
+      "task": "reviewer",
+      "label": "valid",
+      "sha256": "ea739645bb7cb8554f58ecd174faa13ff97fcec24b7f16ae4cc2c5869f09b3bf"
+    },
+    {
+      "id": "rev-09",
+      "task": "reviewer",
+      "label": "valid",
+      "sha256": "37e386ce408d74fb317c71f87a4a1b59edddd6d16035535286fde3468e4457c9"
+    },
+    {
+      "id": "rev-10",
+      "task": "reviewer",
+      "label": "invalid",
+      "sha256": "64232c7e9813f114b5e7317398ae7783ca0eafd037e16bb3dbd284cd623065d0"
+    },
+    {
+      "id": "rev-11",
+      "task": "reviewer",
+      "label": "valid",
+      "sha256": "2d97f0c7e6c7275a71e9c48b853cd59b749d86503823b776c357a75db42e3b4f"
+    },
+    {
+      "id": "rev-12",
+      "task": "reviewer",
+      "label": "invalid",
+      "sha256": "5160c574d8c0251c986653a2780b10866142ceb32ce9cae125e4250ef4e7693b"
+    },
+    {
+      "id": "rev-13",
+      "task": "reviewer",
+      "label": "valid",
+      "sha256": "93c9770782f0f24058e11a3c43a18b2bc9f461f9e2aba982412b527b199d89f2"
+    },
+    {
+      "id": "rev-14",
+      "task": "reviewer",
+      "label": "invalid",
+      "sha256": "027fbafadcfe578c1e5c3c42639f256d3a59de2c0eef551384d6efd01272c103"
+    },
+    {
+      "id": "rev-15",
+      "task": "reviewer",
+      "label": "valid",
+      "sha256": "a0d2282bafeed7bdfcb17884bd9512629a7a54cf884a7f03ec1418c8c35cb2b0"
+    },
+    {
+      "id": "rev-16",
+      "task": "reviewer",
+      "label": "valid",
+      "sha256": "fba17ed2d24615d0ca2cec282358773ec6b3966c691c024fb996000ea1d42234"
+    },
+    {
+      "id": "rev-17",
+      "task": "reviewer",
+      "label": "invalid",
+      "sha256": "5c1bfc8234d47d1f3b5366d527f7c1294f9bc8a1182d1feb4ea85a7d14a0f6fd"
+    },
+    {
+      "id": "rev-18",
+      "task": "reviewer",
+      "label": "invalid",
+      "sha256": "ee9abbcc2da0d3959e9b0337bf96a85bd9ce10826ffe9a928a7fa44582e9e94c"
+    },
+    {
+      "id": "rev-19",
+      "task": "reviewer",
+      "label": "invalid",
+      "sha256": "8e4eacfc7f35fde55c214d11f257c625944b3f379ecc07121206e63eb7069424"
+    },
+    {
+      "id": "rev-20",
+      "task": "reviewer",
+      "label": "invalid",
+      "sha256": "ab732ff7dca04dcf9cab922fdbfc45f1615cf267130b1c4cc1fb63a5dcb35169"
+    },
+    {
+      "id": "rev-22",
+      "task": "reviewer",
+      "label": "invalid",
+      "sha256": "6f1b722a03fb174da005ecbdf69739fd83c6303557143484578a1293ddb5cfba"
+    },
+    {
+      "id": "rev-23",
+      "task": "reviewer",
+      "label": "invalid",
+      "sha256": "50044a40b8728f1ddd2166bccbc2bdafc95d03987d32e11d27c8c2aaa970ae8f"
+    },
+    {
+      "id": "rev-24",
+      "task": "reviewer",
+      "label": "valid",
+      "sha256": "aa32e77d037f30b8e845922232ce24ccf0686d875e0af522a23782a9ae74b76b"
+    },
+    {
+      "id": "rev-25",
+      "task": "reviewer",
+      "label": "invalid",
+      "sha256": "bcec4c1fe8a98838437be2c53bb59c6ebbdb78a2255407dd2dc43beb36f947ce"
+    },
+    {
+      "id": "rev-26",
+      "task": "reviewer",
+      "label": "valid",
+      "sha256": "df726f815a41d6078ce4caaa4f1ac3b9139350e77115dd166d67d75af9423368"
+    },
+    {
+      "id": "rev-27",
+      "task": "reviewer",
+      "label": "valid",
+      "sha256": "ba1791b2d55bb86cc01e96feafef1a7028d92487f1219308f75cd08b170f6075"
+    },
+    {
+      "id": "rev-29",
+      "task": "reviewer",
+      "label": "invalid",
+      "sha256": "e019f1e73caab1ac8c00b881bf6bd53623c35c8fa32d793ded908aabd7c7fcf5"
+    },
+    {
+      "id": "rev-30",
+      "task": "reviewer",
+      "label": "valid",
+      "sha256": "27145634c7dba5b7fe5adbb583b5782af772a6dc32950296a5960a951592004c"
+    },
+    {
+      "id": "tri-01",
+      "task": "triage",
+      "label": "flake",
+      "sha256": "d6d2fd5723605fabf49cd725f10f564025d7e98b8e9de357adbb9ea6e78d36c9"
+    },
+    {
+      "id": "tri-02",
+      "task": "triage",
+      "label": "flake",
+      "sha256": "01f038479b04bb10104f9768aafe7044007f042c47862c9e44949a7e9a7aa4d1"
+    },
+    {
+      "id": "tri-03",
+      "task": "triage",
+      "label": "real",
+      "sha256": "16211f6af20afe89aca743b80f57da85e3c1bd4d0afde6f3ade0b004141dddd0"
+    },
+    {
+      "id": "tri-05",
+      "task": "triage",
+      "label": "real",
+      "sha256": "7fa48087b3d06ee60ad28df35874205f98f3a05063696359a11d291f9a8f3383"
+    },
+    {
+      "id": "tri-06",
+      "task": "triage",
+      "label": "flake",
+      "sha256": "10b452457b29a25a9d2af3d338963a4b59328c20861ec8c7a925454acbdde2c4"
+    },
+    {
+      "id": "tri-10",
+      "task": "triage",
+      "label": "real",
+      "sha256": "80b557b873a7994a21d5e4c5c2f398e15666b07e39001a2b1cd1605ee27c33ba"
+    },
+    {
+      "id": "tri-11",
+      "task": "triage",
+      "label": "real",
+      "sha256": "e93b9ab962dacfc9e451b992dbe2b8710ff1b86c16e39e42af30c4fc62054fef"
+    },
+    {
+      "id": "tri-12",
+      "task": "triage",
+      "label": "real",
+      "sha256": "3c80884b6f55942d2657da4020b54202c3e8b9db3af56b1de067909d95a6b6e7"
+    },
+    {
+      "id": "tri-13",
+      "task": "triage",
+      "label": "flake",
+      "sha256": "a56c1d8890c2523c517e4cf36473ea107aefec89e0f921356057d624f9eea8fd"
+    },
+    {
+      "id": "tri-14",
+      "task": "triage",
+      "label": "flake",
+      "sha256": "379ac014109cf3d2b47bf7ea7b299246c3c9f5cedb7d238144ba94fb3f369845"
+    }
+  ]
+}

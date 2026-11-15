@@ -22,3 +22,13 @@ The refusal tells the session to start one `gh run watch <id> --interval 60 --ex
 - Not covered: a script written with the Write tool and run by name, a shell function that wraps `gh`, zsh `repeat`, and `curl` to api.github.com.
 
 Install it as a copy of this file at origin/main, never from a working checkout: `git -C <.github clone>/.claude/worktrees/gates-main show HEAD:docs/claude-home/hooks/gh-poll-guard.py > ~/.claude/hooks/gh-poll-guard.py`. The entry goes in `~/.claude/settings.json`. fleet-status's "Installed tools behind main" row compares the installed copy with every committed version and reports how far behind it is.
+
+## always-pr-remind.py
+
+A `PostToolUse` hook on Bash. After a commit or push on a feature branch it reminds the session to open a PR when the branch has none.
+
+- It reads the PR with `gh pr view --json url,state`. Only the "no pull requests found" message from gh means no PR. Any other gh failure says it could not check.
+- Fixed 14 November 2026: the call was `--json url state`, gh took `state` as the PR selector, and open PRs were reported as missing.
+- Tests: `test/alwaysPrRemind.test.mjs`, with a stub `gh` on PATH.
+- It fails open.
+- Install it the same way as gh-poll-guard.py: a copy of this file at origin/main.

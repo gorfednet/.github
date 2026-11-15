@@ -75,7 +75,7 @@ export async function pick(task, { base = DEFAULT_BASE, models = MODELS_JSON, in
   if (need > free) return refuse('memory', `needs ${need.toFixed(1)} GB, ${free.toFixed(1)} free`)
   const tokens = Math.ceil(inputBytes / 3)
   if (!m.ctx || tokens > m.ctx - PROMPT_ROOM) return refuse('context', `about ${tokens} tokens, ctx ${m.ctx}`)
-  const other = live.find((x) => x.id !== row.id && x.status === 'loaded')
+  const other = live.find((x) => x.id !== row.id && (x.status === 'loaded' || x.status === 'loading'))
   if (other) return refuse('other model loaded', other.id)
   if (!takeLock(path.join(home, 'lock'), pid)) return { code: EXIT.locked, message: 'local-llm: lock held by another run' }
   return { code: EXIT.ok, message: row.id }

@@ -198,6 +198,8 @@ Each flip needs all of this, read from the log and `--validate`, not remembered:
 4. `ship-bot/preflight-launchd.sh` passes every step, including `site deploy host` (`ssh sitedeploy@dapyllil true`, the login the engine uploads as), from launchd's context.
 5. For the first site only (papers): the rollback rehearsal below.
 6. For each later site: the earlier site has deployed live at least once through the bot with no rollback.
+7. Before the row's first live deploy, rehearse it once by hand in the bot's own workspace. Prepare it as the bot does: `git clean -ffdx`, then only the row's `env`, `envFiles`, `siblings`, `copyFromSource`, `preserve` and setup. Run the setup steps, then the deploy steps up to the upload. Don't deploy live by hand outside a release (`shipping.md`, "Releases"). No ship-bot flag does this without a merge. `--dry-run` only prints `would deploy from ... setup [...]`. A fresh clone isn't enough because it hides a stale sibling. On 12 and 13 November 2026, 4 deploys failed on what the owner's clone had and the workspace lacked. Each rollback failed too. gorfmusic.com 49 had no `node_modules` (12 November, 16:04 ET). MoonMan 324 ran a stale helper sibling (22:14 ET that day). blackpixelrecords.com 29 had no `envFiles` and gorfed.net 140 had no `WORK_CONTENT_DIR` (13 November). Source: `docs/handoff/2026-11-13-deploy-root-causes.md`.
+8. Check the row's rollback. The default redeploys the last deployed commit, and the shared engine refuses any HEAD behind `origin/main`. With no deploy on record it rolls nothing back. A row on the shared engine names its own `rollback` list, as papers and heuristics do (below).
 
 **Rollback rehearsal (papers, before its first live deploy).** It proves the engine's rollback over the real key, with no code change and about 10 seconds on a static site. From the papers clone, after `make releases` shows at least two releases:
 
@@ -256,7 +258,8 @@ bot now takes a draft itself when **all** of these hold:
   `.claude/`, `ship-bot/`, `scripts/gates/`, `scripts/lib/`, `janitor/` or
   `capacity/` or `verification-kit/`, `scripts/review-status.mjs`, any
   `REVIEW.md`, `CLAUDE.md`, `AGENTS.md`, `SKILL.md` or `canaries.json`, and in
-  `gorfednet/.github` all of `scripts/` and `templates/` and `fleet.json`.
+  `gorfednet/.github` all of `scripts/`, `templates/` and `docs/claude-home/`
+  (Desk copies it into `~/.claude` after merge) and `fleet.json`.
   Matching ignores case, and a rename counts by its old name too. Such a draft
   changes what merges unattended, so the bot comments once per commit naming
   the paths and leaves it to the owning session (plan row 1.12);
@@ -315,6 +318,25 @@ on its row in `~/.ship-bot/config.json`.
    "tokenFile": "~/.ship-bot/ntfy.token" }`) the same message goes to your
    phone through ntfy as well; a failed send is one line in the log, never a
    stopped pass.
+
+Every pull request that changes `ship-bot/` or the gate scripts
+(`scripts/review-status.mjs`, `scripts/gates/`, `scripts/lib/`) carries this
+line under `## Next`: `- [ ] After merge: reinstall from origin/main`. Until
+the reinstall, the installed bot is behind `origin/main`. It says so every
+pass and merges no pull request that changes control-plane paths. It comments
+once on each one it holds. It does the same when it can't read how fresh its
+install is: GitHub's `main` can't be read, the clone's `origin/main` differs
+from it after a fetch, or `gates-main` was not advanced. Other pull requests
+still merge (INCIDENTS.md, 14 November 2026, ops 94).
+
+This hold is in the bot's own code, so it starts with the first reinstall that
+includes it. A bot installed from an older commit still merges control-plane
+pull requests while it is behind.
+
+If `install.sh` refuses `origin/main` (`check.sh` or the import check fails),
+the fix is itself a `ship-bot/` pull request and the installed bot holds it.
+The owner merges that fix on GitHub, then reinstalls. `install.sh` installs
+only from `origin/main`, so there is no other route.
 
 To stop it: add the **`hold`** label to a pull request, or run
 `node ~/.ship-bot/app/ship-bot.mjs --set-live false` to stop everything, or run
