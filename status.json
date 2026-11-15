@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-11-15T12:32:25.844Z",
-  "renderedAt": "2026-11-15T12:32:25.844Z",
+  "generatedAt": "2026-11-15T14:32:06.080Z",
+  "renderedAt": "2026-11-15T14:32:06.080Z",
   "repos": [
     {
       "slug": "gorfednet/bindercurve.com",
@@ -166,11 +166,11 @@
         {
           "number": 139,
           "title": "Desk log and briefs, 13 November",
-          "ageDays": 1,
+          "ageDays": 2,
           "labels": [],
           "draft": true,
           "review": "not-run",
-          "headSha": "5ff5755c515d7eeb75a21db6efd459bf2c98fc50",
+          "headSha": "6d006a3fd0ad909b6e53715527cd4dbe7e1b395f",
           "ci": "none",
           "next": "Desk appends each pass's line until the 02:00 ET rotation (hold: the log is still being written)",
           "author": "gorfednet"
@@ -216,7 +216,7 @@
         {
           "number": 117,
           "title": "Handoff: fleet close-out plan and 4-week assessment (11 Nov)",
-          "ageDays": 3,
+          "ageDays": 4,
           "labels": [],
           "draft": true,
           "review": "not-run",
@@ -561,7 +561,7 @@
   "branchesReadAt": "2026-11-15T02:31:55.477Z",
   "carried": true,
   "inventory": {
-    "measuredAt": "2026-11-15T12:32:25.844Z",
+    "measuredAt": "2026-11-15T14:32:06.080Z",
     "counts": {
       "pr": {
         "total": 102,
