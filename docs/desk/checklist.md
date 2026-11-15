@@ -174,3 +174,9 @@ Weekly 9% at 11:21 ET. Full speed, cost-aware. One line to the owner at about 90
 - [x] 4thcltr 276 merged (wordmark 3.3)
 - [ ] 1.27b refreeze: .github 202 + ops 100, Fable read then label both
 - [ ] bc 655 red on mutation-canary-success: cause being found
+
+## Added 15 Nov overnight (23rd Desk)
+- [ ] gowyllop 6a (owner's ssh check under the sandbox): result pending
+- [ ] bc 662: merge of main pushing, ship-bot merges on green; then owner step 6b
+- [ ] bc 661 (3.10): merge of main pushing; then ready and label
+- [ ] 1.19: gemma FAIL 3/10, gpt-oss FAIL 2/10; Qwen rerun crashed (fetch 300 s header timeout). Harness fix PR, then rerun all 3
