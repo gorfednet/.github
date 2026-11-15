@@ -9,7 +9,7 @@
  *   - LaunchAgents: net.gorfed.*.plist program arguments under the clone root;
  *   - copies: the files `COPIES` names (hooks, the capacity app, ship-bot's install and its gate scripts), matched by
  *     content against every committed version of their source on origin/main;
- *   - mirrors: every file of docs/claude-home/ that ~/.claude should hold (rules, agents, skills, CLAUDE.md, settings.json).
+ *   - mirrors: every file of docs/claude-home/ that ~/.claude should hold (rules, agents, skills, hooks, CLAUDE.md, settings.json).
  *
  * A link or agent is flagged when it resolves into a working checkout instead of a tool worktree, or when
  * its worktree's HEAD is behind origin/main. A copy is flagged when it differs from origin/main: the
@@ -28,10 +28,10 @@ export const TOOL_WORKTREE_NAMES = ['gates-main', 'tools-main']
 
 /** Installed copies of committed files: where the copy lives (under home) and its source (clone dir, path). */
 export const COPIES = [
-  { tool: 'gh-poll-guard hook', copy: '.claude/hooks/gh-poll-guard.py', clone: 'gorfednet.github', source: 'docs/claude-home/hooks/gh-poll-guard.py' },
-  { tool: 'always-pr-remind hook', copy: '.claude/hooks/always-pr-remind.py', clone: 'gorfednet.github', source: 'docs/claude-home/hooks/always-pr-remind.py' },
   { tool: 'capacity check', copy: '.desk/capacity-app/capacity.mjs', clone: 'gorfednet.github', source: 'capacity/capacity.mjs' },
   { tool: 'capacity heartbeat helper', copy: '.desk/capacity-app/lib/heartbeat.mjs', clone: 'gorfednet.github', source: 'ship-bot/lib/heartbeat.mjs' },
+  { tool: 'capacity drift check', copy: '.desk/capacity-app/lib/installedDrift.mjs', clone: 'gorfednet.github', source: 'scripts/lib/installedDrift.mjs' },
+  { tool: 'capacity installed-tools helper', copy: '.desk/capacity-app/lib/installed-tools.mjs', clone: 'gorfednet.github', source: 'scripts/lib/installed-tools.mjs' },
   { tool: 'capacity usage helper', copy: '.desk/capacity-app/lib/usageAlert.mjs', clone: 'gorfednet.github', source: 'scripts/lib/usageAlert.mjs' },
   { tool: 'ship-bot', copyDir: '.ship-bot/app', clone: 'gorfednet.github', sourceDir: 'ship-bot', skip: ['gate-scripts', 'node_modules'] },
   // install.sh copies review-status, the two gates and scripts/lib into app/gate-scripts, laid out as scripts/ (its SOURCE file names the commit).
@@ -39,7 +39,7 @@ export const COPIES = [
   // ~/.claude is not a repository: its rules, agents, skills, CLAUDE.md and settings.json are mirrored in docs/claude-home/ and
   // changed only through a pull request (CLAUDE.md, 13 November 2026). Every mirrored file is compared; files only in ~/.claude
   // (no mirror yet) are not measured here.
-  { tool: '~/.claude mirror', mirrorDir: '.claude', clone: 'gorfednet.github', sourceDir: 'docs/claude-home', include: ['rules', 'agents', 'skills', 'CLAUDE.md', 'settings.json'] },
+  { tool: '~/.claude mirror', mirrorDir: '.claude', clone: 'gorfednet.github', sourceDir: 'docs/claude-home', include: ['rules', 'agents', 'skills', 'hooks', 'CLAUDE.md', 'settings.json'], exclude: ['hooks/README.md', 'hooks/gh-poll-guard.settings.json'] },
 ]
 
 const LINK_DIRS = ['.local/bin', '.config/herdr-core', '.config/herdr-core/templates']
@@ -290,7 +290,7 @@ export function installedTools({ home = homedir(), root, launchAgents } = {}) {
       let worst = 0
       for (const src of listing.split('\n').filter(Boolean)) {
         const rel = src.slice(c.sourceDir.length + 1)
-        if (!c.include.includes(rel.split('/')[0])) continue
+        if (!c.include.includes(rel.split('/')[0]) || (c.exclude ?? []).includes(rel)) continue
         const file = join(dir, ...rel.split('/'))
         if (!existsSync(file)) {
           missing++

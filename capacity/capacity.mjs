@@ -109,7 +109,7 @@ export async function loadHelpers(here = path.dirname(fileURLToPath(import.meta.
   return { heartbeat: await pick('lib/heartbeat.mjs', '../ship-bot/lib/heartbeat.mjs'), usage: await pick('lib/usageAlert.mjs', '../scripts/lib/usageAlert.mjs'), drift: await pick('lib/installedDrift.mjs', '../scripts/lib/installedDrift.mjs') }
 }
 
-/** After a good run: the weekly-usage pushes and the installed-tools check (both ntfy paths; either delivering counts), then the ping. */
+/** After a good run: the weekly-usage pushes, the ping, then the installed-tools check (ntfy on both paths; either delivering counts). */
 export async function afterRun({ helpers, home, pushOps, log = console.log, root = path.join(home, 'Developer', 'gorfednet'), driftOpts = {} }) {
   const done = { usage: null, drift: null, ping: null }
   const push = async (text) => {
@@ -124,12 +124,12 @@ export async function afterRun({ helpers, home, pushOps, log = console.log, root
       push,
     })
   } else log('capacity: usage helper not installed; no 70% or 90% push this run')
-  // Plan row 1.18: tell the owner once when an installed tool falls behind main. A failed check never stops the ping.
-  if (helpers.drift) {
-    try { done.drift = await helpers.drift.checkInstalledDrift({ home, root, push, ...driftOpts }) } catch (cause) { done.drift = { action: 'error', reason: String(cause.message).split('\n')[0] } }
-  } else log('capacity: installed-drift helper not installed; no installed-tools check this run')
   if (helpers.heartbeat) done.ping = await helpers.heartbeat.ping('capacity', { home })
   else log('capacity: heartbeat helper not installed; no ping this run')
+  // Plan row 1.18, after the ping so a slow or failing check never delays the dead-man signal: tell the owner when an installed tool falls behind main.
+  if (helpers.drift) {
+    try { done.drift = await helpers.drift.checkInstalledDrift({ home, root, push, ...driftOpts }) } catch (cause) { done.drift = { action: 'error', reason: String(cause?.message ?? cause).split('\n')[0] } }
+  } else log('capacity: installed-drift helper not installed; no installed-tools check this run')
   return done
 }
 

@@ -7,7 +7,7 @@ import { describe, it } from 'node:test'
 
 import { collectLocal } from '../scripts/lib/hygiene.mjs'
 import { installedTools } from '../scripts/lib/installed-tools.mjs'
-import { checkInstalledDrift, newlyBehind } from '../scripts/lib/installedDrift.mjs'
+import { checkInstalledDrift, plan } from '../scripts/lib/installedDrift.mjs'
 
 const sh = (cwd, ...a) => {
   const r = spawnSync('git', ['-c', 'user.email=a@b.c', '-c', 'user.name=t', ...a], { cwd, encoding: 'utf8' })
@@ -71,24 +71,6 @@ describe('installed tools behind main', () => {
         ['capacity check', '~/.desk/capacity-app/capacity.mjs', 1],
       ],
     )
-  })
-
-  it('an always-pr-remind hook copy left behind a committed fix is flagged', () => {
-    const f = fixture()
-    const src = join(f.clone, 'docs', 'claude-home', 'hooks', 'always-pr-remind.py')
-    put(src, '# old\n')
-    sh(f.clone, 'add', '-A')
-    sh(f.clone, 'commit', '-q', '-m', 'hook v1')
-    put(src, '# fixed\n')
-    sh(f.clone, 'add', '-A')
-    sh(f.clone, 'commit', '-q', '-m', 'hook v2')
-    sh(f.clone, 'push', '-q', 'origin', 'main')
-    put(join(f.home, '.claude', 'hooks', 'always-pr-remind.py'), '# old\n')
-    const r = run(f)
-    const hook = (x) => x.behind.filter((b) => b.tool === 'always-pr-remind hook')
-    assert.deepEqual(hook(r).map((b) => b.behind), [1])
-    put(join(f.home, '.claude', 'hooks', 'always-pr-remind.py'), '# fixed\n')
-    assert.deepEqual(hook(run(f)), [])
   })
 
   it('a link into a working checkout is flagged even when that checkout is current', () => {
@@ -209,6 +191,7 @@ describe('gate scripts and the ~/.claude mirror (plan row 1.18)', () => {
     commitFile(f, 'docs/claude-home/rules/shipping.md', 'v2\n')
     commitFile(f, 'docs/claude-home/skills/copy/SKILL.md', 'skill\n')
     commitFile(f, 'docs/claude-home/README.md', 'docs only\n')
+    commitFile(f, 'docs/claude-home/hooks/README.md', 'docs only\n') // excluded: never installed
     put(join(f.home, '.claude', 'rules', 'shipping.md'), 'v1\n')
     put(join(f.home, '.claude', 'rules', 'only-here.md'), 'no mirror\n')
     const [b] = named(f, '~/.claude mirror')
@@ -226,46 +209,85 @@ describe('installed-drift notification (plan row 1.18)', () => {
   const memoOf = (f) => join(f.home, '.desk', 'installed-drift.json')
   const drift = (f, push, extra = {}) => checkInstalledDrift({ home: f.home, root: f.root, launchAgents: f.agents, push, fetchOrigin: () => true, ...extra })
 
-  it('goes red once on a stale copy, stays quiet on later runs, then green and re-arms', async () => {
+  it('goes red once, only after two runs in a row, stays quiet, then green and re-arms', async () => {
     const f = fixture()
     f.commit('v3') // the gates worktree and the capacity copy are now one behind
     const sent = []
     const push = async (t) => (sent.push(t), true)
+    assert.equal((await drift(f, push)).action, 'pending', 'one sighting could be the gap before ship-bot advances gates-main')
+    assert.equal(sent.length, 0)
     assert.equal((await drift(f, push)).action, 'pushed')
     assert.equal(sent.length, 1)
     assert.match(sent[0], /installed tools behind main: .*~\/\.local\/bin\/tool.*capacity check/)
-    assert.equal((await drift(f, push)).action, 'none')
+    assert.equal((await drift(f, push)).action, 'pending', 'told already; still behind')
     f.commit('v4')
-    assert.equal((await drift(f, push)).action, 'none', 'further behind is not news')
-    assert.equal(sent.length, 1)
+    await drift(f, push)
+    assert.equal(sent.length, 1, 'further behind is not news')
     sh(f.gates, 'checkout', '-q', '--detach', 'origin/main')
     put(join(f.home, '.desk', 'capacity-app', 'capacity.mjs'), '// v4\n')
     const green = await drift(f, push)
     assert.deepEqual([green.action, green.behind], ['none', 0])
     assert.deepEqual(JSON.parse(readFileSync(memoOf(f), 'utf8')).told, [])
     f.commit('v5')
+    await drift(f, push)
     assert.equal((await drift(f, push)).action, 'pushed', 'a second lapse tells again')
+    assert.equal(sent.length, 2)
+  })
+
+  it('another file going stale under an aggregate tool is news; a one-run blip is not', async () => {
+    const f = fixture()
+    const sent = []
+    const push = async (t) => (sent.push(t), true)
+    const rule = (n, body) => { put(join(f.clone, 'docs/claude-home/rules', n), body); sh(f.clone, 'add', '-A'); sh(f.clone, 'commit', '-q', '-m', n); sh(f.clone, 'push', '-q', 'origin', 'main'); sh(f.gates, 'checkout', '-q', '--detach', 'origin/main') }
+    rule('a.md', 'a1\n'); rule('b.md', 'b1\n')
+    put(join(f.home, '.claude', 'rules', 'a.md'), 'a1\n'); put(join(f.home, '.claude', 'rules', 'b.md'), 'b1\n')
+    assert.equal((await drift(f, push)).action, 'none')
+    rule('a.md', 'a2\n')
+    await drift(f, push); await drift(f, push)
+    assert.equal(sent.length, 1)
+    rule('b.md', 'b2\n') // same tool, new detail (2 files behind)
+    await drift(f, push)
+    assert.equal((await drift(f, push)).action, 'pushed')
     assert.equal(sent.length, 2)
   })
 
   it('a push nobody received is retried on the next run', async () => {
     const f = fixture()
     f.commit('v3')
+    await drift(f, async () => false)
     assert.equal((await drift(f, async () => false)).action, 'push-failed')
     assert.equal((await drift(f, async () => true)).action, 'pushed')
   })
 
-  it('a failed fetch or an unreadable tool is unmeasured and never a green', async () => {
+  it('a check that cannot measure is never green: silent twice, one push on the third run, none after', async () => {
     const f = fixture()
     f.commit('v3')
-    const push = async () => assert.fail('no push without a measurement')
-    assert.equal((await drift(f, push, { fetchOrigin: () => false })).action, 'unmeasured')
+    const sent = []
+    const push = async (t) => (sent.push(t), true)
+    const broken = { fetchOrigin: () => false }
+    for (let i = 0; i < 2; i++) assert.equal((await drift(f, push, broken)).action, 'unmeasured')
+    assert.equal(sent.length, 0)
+    assert.equal((await drift(f, push, broken)).action, 'unmeasured')
+    assert.equal(sent.length, 1)
+    assert.match(sent[0], /could not measure for 3 runs: fetch of .* failed/)
+    await drift(f, push, broken)
+    assert.equal(sent.length, 1)
     const bare = mkdtempSync(join(tmpdir(), 'no-clones-'))
     assert.equal((await drift(f, push, { root: bare })).action, 'unmeasured')
+    await drift(f, push); assert.equal(JSON.parse(readFileSync(memoOf(f), 'utf8')).unmeasuredRuns, undefined, 'a measurement resets the streak')
   })
 
-  it('newlyBehind names each tool once however many files are behind', () => {
-    const r = newlyBehind([{ tool: 'a' }, { tool: 'a' }, { tool: 'b' }], ['b', 'gone'])
-    assert.deepEqual(r, { fresh: ['a'], still: ['b'], names: ['a', 'b'] })
+  it('a clone the tools come from but the list does not name is fetched too', async () => {
+    const f = fixture()
+    const seen = []
+    await drift(f, async () => true, { fetchOrigin: (d) => (seen.push(d), true) })
+    assert.ok(seen.some((d) => d.endsWith('gorfednet.github')) && seen.some((d) => d.endsWith('/ops')))
+  })
+
+  it('plan keys findings by tool and detail', () => {
+    const r = plan([{ tool: 'a', detail: 'x' }, { tool: 'a', detail: 'y' }, { tool: 'b', detail: 'z' }], { told: ['b|z', 'gone|q'], seen: { 'a|x': 1 } })
+    assert.deepEqual(r.fresh, ['a|x'])
+    assert.deepEqual(r.told, ['b|z'])
+    assert.deepEqual(r.tools, ['a', 'b'])
   })
 })
