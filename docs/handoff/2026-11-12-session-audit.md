@@ -2,7 +2,7 @@
 
 Owner ask (12 November 2026): "assess all open chats and ensure all is accounted for, merged, progressing, or otherwise continuing in some way or closed." Audited at about 10:00 pm ET from `STATUS.md` (data 1:41 am ET), the session list, each session's last turn, and the gates on every bound pull request.
 
-31 open sessions were read. 6 archived, 8 messaged with a concrete blocker, 7 pull requests labelled for ship-bot, 5 runs rerun, 5 progressing on their own, 5 wait on the owner.
+The lists below hold 30 sessions: 9 progressing on their own, 8 messaged with a concrete blocker, 8 closed out (5 archived, 3 the app refused as still busy) and 5 waiting on the owner. Two lists count pull requests, not sessions: 7 pull requests labelled for ship-bot and 5 pull requests with a run rerun.
 
 ## Labelled for ship-bot (gates read: checks started, review, closing keywords)
 
