@@ -192,5 +192,5 @@ Weekly 9% at 11:21 ET. Full speed, cost-aware. One line to the owner at about 90
 - [ ] .github 205: plan rows 3.11 (pool GitHub App) and 3.2 (11 skipped repos), then start 3.11
 - [x] .github 205 closed (duplicate of live row 1.16); evidence in 1.16 and 3.2
 - [ ] 1.16 pool GitHub App: owner's App step next (ask at the Mac)
-- [ ] 4thcltr 274 e2e reds and 257 conflict: sessions nudged
+- [ ] 4thcltr 274 in CI; [x] 257 clean and labelled (11:4x ET)
 - [ ] .github 133 (1.1 briefs dir): builder merging main and fixing the Medium thread

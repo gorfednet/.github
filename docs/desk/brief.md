@@ -49,6 +49,8 @@ A merged change to `ship-bot/` or the gate scripts is live only after a reinstal
 
 Install ship-bot only from origin/main (14 Nov 2026): the main checkout can sit on an old merged branch, and its stale `install.sh` rejected the current config. Give the owner `git worktree add --detach /tmp/sb-main origin/main && bash /tmp/sb-main/ship-bot/install.sh`, and check the output says "Installing origin/main <sha>".
 
+Run the gates by their PATH names (`review-status`, `assert-checks-started`, `check-closing-keywords`), never `node scripts/review-status.mjs` from the main checkout. That checkout sits on an old branch, and its copy dates from 19 Oct (15 Nov 2026, 11:4x ET: it read 4thcltr 257 as not-run while the installed one read clean).
+
 ## Root causes, not symptoms
 An assessment whose findings set the plan gets a Fable `reviewer` pass over the raw artefacts before the plan is acted on. Haiku scouts may gather inventories, but their claims are leads, not findings (13 Nov 2026, 19:36 ET: the morning plan came from Haiku scouts and missed stale tool copies, ship-bot's ops review row and the pool-to-hosted gap, all found by hand that evening).
 Every red, block or flake gets its cause established before a fix, a test or guard that fails on it (watched failing once), and a dated ledger line. Update the skill, rule or brief that would have prevented it, in the same PR.
