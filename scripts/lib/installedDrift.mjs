@@ -5,10 +5,11 @@
 // anyone is told: a merge, then ship-bot's advance of gates-main, takes a minute or two, and a fetch landing in
 // between reads as drift. The memo records a finding only after a push reached someone, so a failed push retries;
 // a finding that goes away leaves the memo, so a second lapse tells again. A check that cannot measure (fetch
-// failed, a tool unread) tells the owner after UNMEASURED_RUNS runs in a row, once, so it never reads as green.
+// failed, a tool unread) tells the owner after UNMEASURED_RUNS runs in a row, once, so it never reads as green; the
+// push says only that, with no path, user or repository name (the off-box topic is public).
 import { execFileSync } from 'node:child_process'
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 
 import { installedTools } from './installed-tools.mjs'
 
@@ -51,12 +52,13 @@ export async function checkInstalledDrift({ home, root, memoPath = join(home, '.
     writeFileSync(`${memoPath}.tmp`, JSON.stringify(m) + '\n')
     renameSync(`${memoPath}.tmp`, memoPath)
   }
-  const unmeasured = async (reason) => {
+  // The text that leaves the Mac (ntfy.sh is public) names no path, user or repository; `reason` goes to capacity.log only.
+  const scrub = (t) => String(t).replace(home, '~').replace(root, '<root>').replace(/\/Users\/[^\s'":,]+/g, '<path>')
+  const unmeasuredFor = async (reason, outside) => {
     const runs = (memo.unmeasuredRuns ?? 0) + 1
     let reported = memo.unmeasuredReported ?? false
-    if (runs >= UNMEASURED_RUNS && !reported) reported = (await push(`installed-tools check could not measure for ${runs} runs: ${reason}`)) === true
-    save({ ...memo, unmeasuredRuns: runs, unmeasuredReported: reported })
-    return { action: 'unmeasured', reason }
+    if (runs >= UNMEASURED_RUNS && !reported) reported = (await push(`installed-tools check could not measure for ${runs} runs (${outside}); capacity.log has the reason`)) === true
+    return { runs, reported, reason: scrub(reason) }
   }
   const fetched = new Set()
   const fetchAll = (dirs) => {
@@ -67,19 +69,31 @@ export async function checkInstalledDrift({ home, root, memoPath = join(home, '.
     }
     return null
   }
-  const bad = fetchAll(DRIFT_REPOS.map((r) => join(root, r))) // stale refs would read as current
-  if (bad) return unmeasured(`fetch of ${bad} failed`)
+  const known = DRIFT_REPOS.map((r) => join(root, r))
+  const bad = fetchAll(known) // stale refs would read as current
+  if (bad) {
+    const u = await unmeasuredFor(`fetch of ${basename(bad)} failed`, 'a fetch failed')
+    save({ ...memo, unmeasuredRuns: u.runs, unmeasuredReported: u.reported })
+    return { action: 'unmeasured', reason: u.reason }
+  }
   let res
   try {
     res = installedTools({ home, root, launchAgents })
     const extra = fetchAll(res.repos)
-    if (extra) return unmeasured(`fetch of ${extra} failed`)
-    if (res.repos.some((r) => !DRIFT_REPOS.map((d) => join(root, d)).includes(r))) res = installedTools({ home, root, launchAgents })
+    if (extra) {
+      const u = await unmeasuredFor(`fetch of ${basename(extra)} failed`, 'a fetch failed')
+      save({ ...memo, unmeasuredRuns: u.runs, unmeasuredReported: u.reported })
+      return { action: 'unmeasured', reason: u.reason }
+    }
+    if (res.repos.some((r) => !known.includes(r))) res = installedTools({ home, root, launchAgents })
   } catch (cause) {
-    return unmeasured(String(cause?.message ?? cause).split('\n')[0])
+    const u = await unmeasuredFor(String(cause?.message ?? cause).split('\n')[0], 'the check threw')
+    save({ ...memo, unmeasuredRuns: u.runs, unmeasuredReported: u.reported })
+    return { action: 'unmeasured', reason: u.reason }
   }
-  if (res.unread.length > 0) return unmeasured(`unread: ${res.unread.join(', ')}`)
-  const p = plan(res.behind, memo)
+  // Findings are judged whatever else could not be read: one unreadable item never hides the rest. Items that are
+  // ahead of main (a rule edited before its mirror pull request) are not behind and are never notified.
+  const p = plan(res.behind.filter((b) => !b.ahead), memo)
   let told = p.told
   let action = p.tools.length === 0 ? 'none' : 'pending'
   if (p.fresh.length > 0) {
@@ -88,6 +102,11 @@ export async function checkInstalledDrift({ home, root, memoPath = join(home, '.
       action = 'pushed'
     } else action = 'push-failed'
   }
-  save({ told, seen: p.seen })
-  return { action, behind: p.tools.length }
+  let unreadMemo = {} // a clean measurement resets the streak
+  if (res.unread.length > 0) {
+    const u = await unmeasuredFor(`unread: ${res.unread.join(', ')}`, `${res.unread.length} items unread`)
+    unreadMemo = { unmeasuredRuns: u.runs, unmeasuredReported: u.reported }
+  }
+  save({ told, seen: p.seen, ...unreadMemo })
+  return { action, behind: p.tools.length, ...(res.unread.length > 0 ? { unread: res.unread.map(scrub) } : {}) }
 }

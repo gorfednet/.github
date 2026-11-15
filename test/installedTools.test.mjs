@@ -198,7 +198,9 @@ describe('gate scripts and the ~/.claude mirror (plan row 1.18)', () => {
     assert.equal(b.behind, 1)
     assert.match(b.detail, /1 files behind, 1 files not installed/, 'README.md is not in the include list')
     put(join(f.home, '.claude', 'rules', 'shipping.md'), 'edited by hand\n')
-    assert.match(named(f, '~/.claude mirror')[0].detail, /1 files match no version on main/)
+    const ahead = named(f, '~/.claude mirror').find((b) => b.ahead)
+    assert.match(ahead.detail, /1 files ahead of main or unmirrored \(not behind\)/)
+    assert.equal(ahead.behind, null)
     put(join(f.home, '.claude', 'rules', 'shipping.md'), 'v2\n')
     put(join(f.home, '.claude', 'skills', 'copy', 'SKILL.md'), 'skill\n')
     assert.deepEqual(named(f, '~/.claude mirror'), [])
@@ -272,11 +274,13 @@ describe('installed-drift notification (plan row 1.18)', () => {
     assert.equal(sent.length, 0)
     assert.equal((await drift(f, push, broken)).action, 'unmeasured')
     assert.equal(sent.length, 1)
-    assert.match(sent[0], /could not measure for 3 runs: fetch of .* failed/)
+    assert.match(sent[0], /could not measure for 3 runs \(a fetch failed\); capacity.log has the reason/)
+    assert.ok(!sent[0].includes(f.root) && !sent[0].includes(f.home), 'no path leaves the Mac')
     await drift(f, push, broken)
     assert.equal(sent.length, 1)
     const bare = mkdtempSync(join(tmpdir(), 'no-clones-'))
-    assert.equal((await drift(f, push, { root: bare })).action, 'unmeasured')
+    const nothing = await drift(f, push, { root: bare })
+    assert.deepEqual([nothing.action, nothing.unread.length > 0], ['none', true], 'no clones: nothing found, and said to be unread rather than green')
     await drift(f, push); assert.equal(JSON.parse(readFileSync(memoOf(f), 'utf8')).unmeasuredRuns, undefined, 'a measurement resets the streak')
   })
 
@@ -297,5 +301,71 @@ describe('installed-drift notification (plan row 1.18)', () => {
     assert.deepEqual(r.fresh, ['a|x'])
     assert.deepEqual(r.told, ['b|z', 'a|f2'])
     assert.deepEqual(r.tools, ['a', 'b'])
+  })
+})
+
+describe('review fixes: code-only ship-bot copy, ahead is not behind, fail closed (plan row 1.18)', () => {
+  const commitFile = (f, rel, body) => {
+    put(join(f.clone, rel), body)
+    sh(f.clone, 'add', '-A')
+    sh(f.clone, 'commit', '-q', '-m', rel)
+    sh(f.clone, 'push', '-q', 'origin', 'main')
+    sh(f.gates, 'checkout', '-q', '--detach', 'origin/main')
+  }
+  const drift = (f, push, extra = {}) => checkInstalledDrift({ home: f.home, root: f.root, launchAgents: f.agents, push, fetchOrigin: () => true, ...extra })
+
+  it('a README or example-config merge does not make the ship-bot copy stale, a code merge does', () => {
+    const f = fixture()
+    const app = join(f.home, '.ship-bot', 'app')
+    commitFile(f, 'ship-bot/README.md', 'r1\n')
+    commitFile(f, 'ship-bot/config.example.json', '{}\n')
+    commitFile(f, 'ship-bot/ship-bot.mjs', '// s1\n')
+    put(join(app, 'README.md'), 'old readme\n')
+    put(join(app, 'config.example.json'), '{"old":1}\n')
+    put(join(app, 'ship-bot.mjs'), '// s1\n')
+    assert.deepEqual(run(f).behind.filter((b) => b.tool === 'ship-bot'), [])
+    commitFile(f, 'ship-bot/ship-bot.mjs', '// s2\n')
+    assert.equal(run(f).behind.filter((b) => b.tool === 'ship-bot')[0].behind, 1)
+  })
+
+  it('a copy ahead of main is shown as ahead, never notified, and does not hide a real stale tool', async () => {
+    const f = fixture()
+    commitFile(f, 'docs/claude-home/rules/shipping.md', 's1\n')
+    put(join(f.home, '.claude', 'rules', 'shipping.md'), 's1 plus an edit not yet in a pull request\n')
+    const [b] = run(f).behind
+    assert.deepEqual([b.ahead, b.behind], [true, null])
+    const sent = []
+    const push = async (t) => (sent.push(t), true)
+    await drift(f, push); await drift(f, push)
+    assert.equal(sent.length, 0, 'ahead is not behind')
+    f.commit('v3')
+    await drift(f, push)
+    assert.equal((await drift(f, push)).action, 'pushed')
+    assert.ok(!sent[0].includes('~/.claude mirror'))
+  })
+
+  it('an empty listing compares nothing and is unread, not a clean mirror', () => {
+    const f = fixture()
+    put(join(f.home, '.claude', 'rules', 'shipping.md'), 'x\n') // ~/.claude exists but main holds no docs/claude-home
+    const r = run(f)
+    assert.ok(r.unread.includes('~/.claude'))
+    assert.deepEqual(r.behind.filter((b) => b.tool === '~/.claude mirror'), [])
+  })
+
+  it('one unreadable item does not discard the findings, and the unread streak is told once without a path', async () => {
+    const f = fixture()
+    f.commit('v3') // stale link and copy
+    put(join(f.home, '.claude', 'rules', 'shipping.md'), 'x\n') // ~/.claude exists, main has no docs/claude-home: unread
+    const sent = []
+    const push = async (t) => (sent.push(t), true)
+    const r1 = await drift(f, push)
+    assert.deepEqual([r1.action, r1.behind, r1.unread.length], ['pending', 2, 1])
+    const r2 = await drift(f, push)
+    assert.equal(r2.action, 'pushed')
+    await drift(f, push)
+    assert.equal(sent.length, 2)
+    assert.match(sent[0], /^installed tools behind main: /)
+    assert.match(sent[1], /could not measure for 3 runs \(1 items unread\)/)
+    for (const t of sent) assert.ok(!t.includes(f.home) && !t.includes(f.root) && !t.includes('/Users/'), t)
   })
 })

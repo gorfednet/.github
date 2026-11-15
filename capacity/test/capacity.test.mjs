@@ -204,6 +204,17 @@ test('afterRun: a stale installed tool pushes once on both paths, a throwing che
   assert.deepEqual(calls2.map((c) => c[0]), ['ping'], 'the dead-man ping is not held back by the check')
 })
 
+test('loadHelpers: a drift helper that fails to import is null and the run still pings', async () => {
+  const importer = async (p) => { if (p.includes('installedDrift')) throw new SyntaxError('broken helper\nat line 2'); return {} }
+  const h = await loadHelpers(path.join(import.meta.dirname, '..'), importer)
+  assert.equal(h.drift, null)
+  assert.ok(h.heartbeat && h.usage, 'the other helpers still load')
+  const calls = []
+  const r = await afterRun({ helpers: { ...(await fakeHelpers(calls)), drift: h.drift }, home: homeWith(27), pushOps: async () => {}, log: () => {} })
+  assert.equal(r.drift, null)
+  assert.deepEqual(calls.map((c) => c[0]), ['ping'])
+})
+
 test('loadHelpers: the installed lib/ copy first, the repository path otherwise, null when neither', async () => {
   const seen = []
   const importer = async (p) => (seen.push(p), {})

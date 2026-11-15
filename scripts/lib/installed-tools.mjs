@@ -13,7 +13,8 @@
  *
  * A link or agent is flagged when it resolves into a working checkout instead of a tool worktree, or when
  * its worktree's HEAD is behind origin/main. A copy is flagged when it differs from origin/main: the
- * entry says how many commits to its source it is behind, or that it matches no committed version.
+ * entry says how many commits to its source it is behind, or that it matches no committed version. That second
+ * kind (`ahead: true`) is ahead of main or unmirrored, not behind: shown in the row, never notified.
  *
  * Refs come from the fetch the clones-behind row already ran. `fetched: false` (no fetch, or a failed
  * one in a repository a tool comes from) means the result is not a measurement, and the row is null.
@@ -33,7 +34,7 @@ export const COPIES = [
   { tool: 'capacity drift check', copy: '.desk/capacity-app/lib/installedDrift.mjs', clone: 'gorfednet.github', source: 'scripts/lib/installedDrift.mjs' },
   { tool: 'capacity installed-tools helper', copy: '.desk/capacity-app/lib/installed-tools.mjs', clone: 'gorfednet.github', source: 'scripts/lib/installed-tools.mjs' },
   { tool: 'capacity usage helper', copy: '.desk/capacity-app/lib/usageAlert.mjs', clone: 'gorfednet.github', source: 'scripts/lib/usageAlert.mjs' },
-  { tool: 'ship-bot', copyDir: '.ship-bot/app', clone: 'gorfednet.github', sourceDir: 'ship-bot', skip: ['gate-scripts', 'node_modules'] },
+  { tool: 'ship-bot', copyDir: '.ship-bot/app', clone: 'gorfednet.github', sourceDir: 'ship-bot', skip: ['gate-scripts', 'node_modules', 'README.md', 'config.example.json'] }, // code only: install.sh copies the README and the example config too, and a doc merge is not a stale bot (OWN_INSTALL_PATHS leaves them out too)
   // install.sh copies review-status, the two gates and scripts/lib into app/gate-scripts, laid out as scripts/ (its SOURCE file names the commit).
   { tool: 'ship-bot gate scripts', copyDir: '.ship-bot/app/gate-scripts', clone: 'gorfednet.github', sourceDir: 'scripts', skip: ['SOURCE'] },
   // ~/.claude is not a repository: its rules, agents, skills, CLAUDE.md and settings.json are mirrored in docs/claude-home/ and
@@ -272,7 +273,8 @@ export function installedTools({ home = homedir(), root, launchAgents } = {}) {
       if (blob === head) continue
       const r = behindForBlob(clone, c.source, blob)
       if (r.unread) unread.push(`~/${c.copy}`)
-      else behind.push({ tool: c.tool, source: `~/${c.copy}`, behind: r.behind, detail: r.behind === null ? `matches no committed version of ${c.clone}/${c.source}` : `copy of ${c.clone}/${c.source}` })
+      else if (r.behind === null) behind.push({ tool: c.tool, source: `~/${c.copy}`, behind: null, ahead: true, detail: `matches no committed version of ${c.clone}/${c.source} (ahead of main, hand-edited or unmirrored)` })
+      else behind.push({ tool: c.tool, source: `~/${c.copy}`, behind: r.behind, detail: `copy of ${c.clone}/${c.source}` })
       continue
     }
     if (c.mirrorDir) {
@@ -285,13 +287,15 @@ export function installedTools({ home = homedir(), root, launchAgents } = {}) {
         continue
       }
       let stale = 0
-      let unknown = 0
       let missing = 0
       let worst = 0
+      let compared = 0
       const items = [] // which files, so a count that falls is not news to the drift notifier
+      const aheadItems = []
       for (const src of listing.split('\n').filter(Boolean)) {
         const rel = src.slice(c.sourceDir.length + 1)
         if (!c.include.includes(rel.split('/')[0]) || (c.exclude ?? []).includes(rel)) continue
+        compared++
         const file = join(dir, ...rel.split('/'))
         if (!existsSync(file)) {
           missing++
@@ -302,47 +306,58 @@ export function installedTools({ home = homedir(), root, launchAgents } = {}) {
         const head = tryGit(clone, 'rev-parse', '--verify', '--quiet', `origin/main:${src}`)
         if (blob && head && blob === head) continue
         const r = behindForBlob(clone, src, blob)
-        items.push(rel)
-        if (r.behind === null || r.unread) unknown++
+        if (r.unread) {
+          unread.push(`~/${c.mirrorDir}/${rel}`)
+          continue
+        }
+        if (r.behind === null) aheadItems.push(rel)
         else {
           stale++
           worst = Math.max(worst, r.behind)
+          items.push(rel)
         }
       }
-      if (stale + unknown + missing > 0) {
-        const parts = [stale ? `${stale} files behind` : '', unknown ? `${unknown} files match no version on main` : '', missing ? `${missing} files not installed` : ''].filter(Boolean)
+      if (compared === 0) {
+        unread.push(`~/${c.mirrorDir}`) // an empty listing compares nothing: not a clean Mac
+        continue
+      }
+      if (stale + missing > 0) {
+        const parts = [stale ? `${stale} files behind` : '', missing ? `${missing} files not installed` : ''].filter(Boolean)
         behind.push({ tool: c.tool, source: `~/${c.mirrorDir}`, behind: stale ? worst : null, detail: `mirror of ${c.clone}/${c.sourceDir}: ${parts.join(', ')}`, items })
       }
+      if (aheadItems.length > 0) behind.push({ tool: c.tool, source: `~/${c.mirrorDir}`, behind: null, ahead: true, detail: `mirror of ${c.clone}/${c.sourceDir}: ${aheadItems.length} files ahead of main or unmirrored (not behind)`, items: aheadItems })
       continue
     }
     const dir = join(home, c.copyDir)
     if (!existsSync(dir)) continue
     checked++
     let stale = 0
-    let unknown = 0
     let worst = 0
     const items = []
+    const aheadItems = []
     for (const rel of filesUnder(dir, c.skip)) {
       const src = `${c.sourceDir}/${rel.split(sep).join('/')}`
       const blob = tryGit(clone, 'hash-object', '--', join(dir, rel))
       const head = tryGit(clone, 'rev-parse', '--verify', '--quiet', `origin/main:${src}`)
       if (blob && head && blob === head) continue
-      items.push(rel)
       if (!head) {
-        unknown++ // removed from main, or never committed
+        aheadItems.push(rel) // removed from main, or never committed
         continue
       }
       const r = behindForBlob(clone, src, blob)
-      if (r.behind === null || r.unread) unknown++
+      if (r.unread) {
+        unread.push(`~/${c.copyDir}/${rel}`)
+        continue
+      }
+      if (r.behind === null) aheadItems.push(rel)
       else {
         stale++
         worst = Math.max(worst, r.behind)
+        items.push(rel)
       }
     }
-    if (stale + unknown > 0) {
-      const parts = [stale ? `${stale} files behind` : '', unknown ? `${unknown} files match no version on main` : ''].filter(Boolean)
-      behind.push({ tool: c.tool, source: `~/${c.copyDir}`, behind: stale ? worst : null, detail: `copy of ${c.clone}/${c.sourceDir}: ${parts.join(', ')}`, items })
-    }
+    if (stale > 0) behind.push({ tool: c.tool, source: `~/${c.copyDir}`, behind: worst, detail: `copy of ${c.clone}/${c.sourceDir}: ${stale} files behind`, items })
+    if (aheadItems.length > 0) behind.push({ tool: c.tool, source: `~/${c.copyDir}`, behind: null, ahead: true, detail: `copy of ${c.clone}/${c.sourceDir}: ${aheadItems.length} files ahead of main or unmirrored (not behind)`, items: aheadItems })
   }
   return { behind, checked, unread, repos: [...repos] }
 }

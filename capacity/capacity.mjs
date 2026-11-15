@@ -106,7 +106,12 @@ export async function loadHelpers(here = path.dirname(fileURLToPath(import.meta.
     }
     return null
   }
-  return { heartbeat: await pick('lib/heartbeat.mjs', '../ship-bot/lib/heartbeat.mjs'), usage: await pick('lib/usageAlert.mjs', '../scripts/lib/usageAlert.mjs'), drift: await pick('lib/installedDrift.mjs', '../scripts/lib/installedDrift.mjs') }
+  // The installed-tools check is the one helper that may fail to load: a broken import of it must never cost the dead-man ping,
+  // so it is isolated and logged, and the run goes on without it (plan row 1.18).
+  const safe = async (installed, repo) => {
+    try { return await pick(installed, repo) } catch (cause) { console.error(`capacity: ${installed} failed to load: ${String(cause?.message ?? cause).split('\n')[0]}`); return null }
+  }
+  return { heartbeat: await pick('lib/heartbeat.mjs', '../ship-bot/lib/heartbeat.mjs'), usage: await pick('lib/usageAlert.mjs', '../scripts/lib/usageAlert.mjs'), drift: await safe('lib/installedDrift.mjs', '../scripts/lib/installedDrift.mjs') }
 }
 
 /** After a good run: the weekly-usage pushes, the ping, then the installed-tools check (ntfy on both paths; either delivering counts). */
