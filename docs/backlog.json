@@ -523,12 +523,12 @@
       "title": "A1: Kit refresh: every active repo on one version; drift stays in the scheduled reports",
       "status": "confirmed-bug",
       "assignee": "main-model",
-      "userSymptom": "Seven repos run kit 0.49 and three have no kit while main is 0.59",
+      "userSymptom": "Repos pin an old gate ref while the kit on main moves on, and STATUS.md measures vendored copies the gate never runs",
       "evidence": "Installed versions read from each repo's origin/main, 12 Nov 2026 audit; V77 reached main with .github PR 132 (kit 0.61.0, 12 Nov); main is at 0.62.0 on 14 Nov. Plan: docs/assessment-2026-11-12-output-quality.md. Who: runner, one refresh PR per repo.",
       "reviewBy": "2026-12-01",
       "created": "2026-11-12",
-      "updated": "2026-11-14",
-      "note": "A per-PR drift failure was retired on purpose (docs/verification-rules.md): another repository cannot fail a pull request."
+      "updated": "2026-11-15",
+      "note": "A per-PR drift failure was retired on purpose (docs/verification-rules.md: nothing to drift, the gate runs this repository's kit at the ref the caller pins). Work is the pinned gate ref per repo, reported by fleet-audit.yml and STATUS.md. Not 15 vendored-copy refresh PRs."
     },
     {
       "id": "assess-1112-a2-skills-and-agents-still-name-cursor",
@@ -733,13 +733,14 @@
     {
       "id": "assess-1112-e2-loose-worktrees-and-scripts-beside-repos",
       "title": "E2: List pass, then prune merged and clean worktrees a day later",
-      "status": "confirmed-bug",
+      "status": "declined",
       "assignee": "main-model",
       "userSymptom": "115 directories and 63 GB beside the repos, 32 worktrees idle over 14 days",
       "evidence": "12 Nov 2026 audit. Plan: docs/assessment-2026-11-12-output-quality.md. Who: runner.",
       "reviewBy": "2026-12-01",
       "created": "2026-11-12",
-      "updated": "2026-11-12"
+      "updated": "2026-11-15",
+      "note": "Covered by plan of record rows 1.5 (janitor prunes merged worktrees), 1.9 (prune merged or PR-less worktrees, cap sessions) and 2.3 (drain dirty worktrees). The brief was dropped. The loose .log and .sh move into ops/scripts/local is not in a row; reopen as its own entry if wanted."
     },
     {
       "id": "assess-1112-e3-session-cost-not-measured",

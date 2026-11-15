@@ -9,7 +9,7 @@ Read lane C1 and MoonMan docs/backlog.json.
 - Correct backlog statuses for PRs 296 and 319 against GitHub.
 - CLAUDE.md under 200 lines (claude-md-management audit); REVIEW.md gains ship-bot and Herdr.
 - Gitignore .claude/* except settings.json and launch.json; move icon-review/ and the two marketing PNGs to assets/brand/marketing/ or out of the repo; delete October evidence folders only after listing them.
-- Install the kit (depends on A1).
+- Kit: MoonMan has no vendored copy and needs none; the gate runs the kit at the pinned ref (A1). Check the pin, do not install a copy.
 
 ## Done
 Main green, backlog matches GitHub, repo root clean.
