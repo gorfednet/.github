@@ -28,6 +28,8 @@ Never idle with budget left (owner, 13 Nov 2026, 14:55 ET: "we should never not 
 When `hc machine ls` shows dapyllil and gorfednas unreachable with "Could not resolve hostname" and 100.100.100.100 does not answer ping, Tailscale on the Mac is down. Ask the owner in one line to reconnect it from the menu bar (14 Nov 2026: after an 11:46 ET network drop it stayed down until he reconnected at 11:56 ET). Retry downloads and probes only after it answers.
 Check the live state first (`gh secret list`, settings, a recent run), never a doc's claim. When ship-bot's log says it is waiting for a Tailscale approval, tell the owner in one line to run `ssh dapyllil true` and approve (the check period is 7 days).
 
+ops has only the review workflow (14 Nov 2026, 22nd Desk), so `assert-checks-started` reads 0 runs on an ops head. There, a clean `review-status` from the comment-triggered review plus `mergeStateStatus: CLEAN` is the CI gate. Check for a new workflow on ops main before relying on this.
+
 Run the gate scripts from PATH (`review-status`, `assert-checks-started`, `check-closing-keywords` in `~/.local/bin`), never `node scripts/review-status.mjs` from the main checkout. It can sit on an old branch: on 14 Nov 2026 its stale verdict regex read every new `blocking=` marker as not-run.
 
 Give a background `gh run watch` its own stdin (`</dev/null`) and find run ids only after the runs exist (an `issue_comment` review run sits on `main`, not the PR's commit). On 14 Nov 2026, 2 background watches without it exited 1 within a minute while the runs were still going, and the same watch with it passed. That points to stdin but doesn't prove it.
