@@ -212,4 +212,4 @@ Weekly 9% at 11:21 ET. Full speed, cost-aware. One line to the owner at about 90
 ## Added 15 Nov evening (29th Desk)
 - [x] bc 670 labelled (17:38 ET); [ ] merge, then the owner's fill spread line and reinstall
 - [x] 28th Desk retired and archived
-- [ ] Public .github upkeep (1.30): guard and README (public-guard-1-30), move to ops (move-to-ops-1-30), both running; [x] auto-delete merged branches on
+- [ ] Public .github upkeep (1.30): README 209 labelled; guard 211 in review; hook+rule next; move to ops running; [x] auto-delete merged branches on
