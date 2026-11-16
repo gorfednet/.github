@@ -128,6 +128,7 @@ esac
       PATH: `${bin}:${process.env.PATH}`,
       HOME: process.env.HOME,
       TMPDIR: cache,
+      GITHUB_ACTIONS: '', // the guard prints ::error annotations under Actions; a session never sees them, so the tests must not either
       ...(serve ? {} : { PUBLIC_PUSH_GUARD_TEST: '1', PUBLIC_PUSH_GUARD_SCRIPT: GUARD, PUBLIC_PUSH_GUARD_ALLOW: ALLOW }),
       ...env,
     },
