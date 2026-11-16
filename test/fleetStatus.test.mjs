@@ -10,7 +10,7 @@ import { join } from 'node:path'
 import { describe, it } from 'node:test'
 
 import { behindClones, collectLocal, dirtyClones, duplicatePrs, idlePrs, idleSessions, oldWorktrees } from '../scripts/lib/hygiene.mjs'
-import { aheadCounts, carryMap, ciState, collectRepo, mapLimit, dependabotRed, isPrivateRepo, latestDeploy, nextItem, recentLines, redactRepo, repoList, dormantRepos } from '../scripts/fleet-status.mjs'
+import { aheadCounts, carryMap, ciState, collectRepo, mapLimit, dependabotRed, isPrivateRepo, latestDeploy, nextItem, PLAN_SOURCE, readPlanOfRecord, recentLines, redactRepo, repoList, dormantRepos } from '../scripts/fleet-status.mjs'
 import { workflowTriggers } from '../scripts/lib/workflowTriggers.mjs'
 import { digest, etStamp, hygiene, lowerMeridiem, render, summaryLine } from '../scripts/write-status-md.mjs'
 
@@ -482,5 +482,34 @@ describe('the 2-hourly light run (plan row 1.14)', () => {
     })
     assert.deepEqual(out, [50, 10, 40, 20, 30, 0])
     assert.equal(peak, 2)
+  })
+})
+
+describe('the plan of record comes from gorfednet/ops (plan row 1.30)', () => {
+  const b64 = (t) => ({ encoding: 'base64', content: Buffer.from(t).toString('base64') })
+  const notFound = () => Object.assign(new Error('gh: Not Found (HTTP 404)'), { stderr: 'gh: Not Found (HTTP 404)' })
+  const reader = (answers, calls = []) => (args) => {
+    calls.push(args[1])
+    const a = answers[args[1]]
+    if (a instanceof Error) throw a
+    if (a === undefined) throw notFound()
+    return b64(a)
+  }
+  const url = (ref) => `repos/${PLAN_SOURCE.slug}/contents/${PLAN_SOURCE.path}?ref=${ref}`
+
+  it('reads desk-log first, where Desk edits it', () => {
+    const calls = []
+    assert.deepEqual(readPlanOfRecord(reader({ [url('desk-log')]: '| 1.30 | x |', [url('main')]: 'stale' }, calls), () => {}), { text: '| 1.30 | x |', ref: 'desk-log' })
+    assert.deepEqual(calls, [url('desk-log')])
+  })
+  it('falls back to main when desk-log has no copy, and to null when neither does', () => {
+    assert.deepEqual(readPlanOfRecord(reader({ [url('main')]: 'main copy' }), () => {}), { text: 'main copy', ref: 'main' })
+    assert.equal(readPlanOfRecord(reader({}), () => {}), null)
+  })
+  it('warns on an error that is not a 404 and still tries the next ref', () => {
+    const logs = []
+    const r = readPlanOfRecord(reader({ [url('desk-log')]: new Error('gh: Bad credentials (HTTP 401)'), [url('main')]: 'main copy' }), (l) => logs.push(l))
+    assert.equal(r.ref, 'main')
+    assert.match(logs[0], /::warning::inventory: plan of record unreadable at gorfednet\/ops@desk-log: gh: Bad credentials/)
   })
 })

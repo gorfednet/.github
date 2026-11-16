@@ -17,7 +17,7 @@ import { SESSIONS_DIR, idsNamedIn, primaryClones } from './hygiene.mjs'
 export const GRAPHQL_RESERVE = 1500
 export const PR_CACHE_MINUTES = 30
 
-/** Plan row ids (`1.17`) from the `| 1.17 |` table rows of docs/plan-of-record.md. */
+/** Plan row ids (`1.17`) from the `| 1.17 |` table rows of the plan of record (gorfednet/ops control/plan-of-record.md). */
 export function planRows(text) {
   return [...String(text ?? '').matchAll(/^\|\s*(\d{1,2}\.\d{1,2})\s*\|/gm)].map((m) => m[1])
 }
@@ -189,6 +189,7 @@ export function renderInventory(inv, etStamp = (iso) => iso) {
     out.push('')
   }
   if (inv.hiddenPrivate > 0) out.push(`${inv.hiddenPrivate} orphans in private repositories are counted, not listed.`, '')
+  if (inv.planRead === false) out.push('The plan of record could not be read this run, so no item matched a plan row: the orphan counts are high.', '')
   if (inv.privateReposNotItemised > 0) out.push(`Backlog entries of ${inv.privateReposNotItemised} private repositories are not itemised in this run.`, '')
   return out.join('\n')
 }

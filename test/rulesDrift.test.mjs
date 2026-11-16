@@ -31,8 +31,7 @@ function repo(files) {
     'REVIEW.md': 'clean\n',
     'templates/CLAUDE.snippet.md': 'clean\n',
     'templates/handoff.md': 'clean\n',
-    'docs/desk/brief.md': 'Model: Opus 5.5, effort high.\n',
-    'docs/handoff/2026-11-01-x.md': 'clean\n',
+    'templates/agents/x.md': 'Model: Opus 5.5, effort high.\n',
   }
   for (const [path, body] of Object.entries({ ...base, ...files })) {
     if (body === null) continue
@@ -44,8 +43,20 @@ function repo(files) {
   return dir
 }
 
-function run(dir) {
-  const r = spawnSync(process.execPath, [SCRIPT, '--root', dir], { encoding: 'utf8' })
+/** gorfednet/ops `control/` as the ops profile needs it, clean, plus any overrides. */
+function opsRepo(files) {
+  return repo({
+    ...Object.fromEntries(['docs/verification-rules.md', 'docs/content-guidelines.md', 'docs/programme-template.md', 'REVIEW.md', 'templates/CLAUDE.snippet.md', 'templates/handoff.md', 'templates/agents/x.md'].map((f) => [f, null])),
+    'control/claude-home/CLAUDE.md': 'clean\n',
+    'control/claude-home/rules/shipping.md': 'Cursor and Bugbot were retired on 2026-10-16.\n',
+    'control/desk/brief.md': 'Model: Opus 5.5. 23 jobs held by the retired fleet-coordinator-5 were left held.\n',
+    'control/handoff/2026-11-01-x.md': 'clean\n',
+    ...files,
+  })
+}
+
+function run(dir, ...extra) {
+  const r = spawnSync(process.execPath, [SCRIPT, '--root', dir, ...extra], { encoding: 'utf8' })
   return { status: r.status, out: r.stdout + r.stderr }
 }
 
@@ -53,7 +64,7 @@ describe('check-rules-drift', () => {
   it('passes a clean tree and lists what it read', () => {
     const r = run(repo({}))
     assert.equal(r.status, 0, r.out)
-    assert.match(r.out, /scanned 8 file\(s\)/)
+    assert.match(r.out, /scanned 7 file\(s\) \(profile github\)/)
   })
 
   for (const [what, line] of [
@@ -116,9 +127,22 @@ describe('check-rules-drift', () => {
     assert.equal(run(repo({ 'REVIEW.md': '.cursor/ was retired on 2026-10-16.\n' })).status, 0)
   })
 
-  it('excuses a dated archive file, and not an undated one beside it', () => {
-    assert.equal(run(repo({ 'docs/handoff/2026-11-07-x.md': 'the coordinator session\n' })).status, 0)
-    assert.equal(run(repo({ 'docs/handoff/notes.md': 'the coordinator session\n' })).status, 1)
+  it('ops profile: excuses a dated handoff, and not an undated one beside it', () => {
+    assert.equal(run(opsRepo({}), '--profile', 'ops').status, 0)
+    assert.equal(run(opsRepo({ 'control/handoff/2026-11-07-x.md': 'the coordinator session\n' }), '--profile', 'ops').status, 0)
+    assert.equal(run(opsRepo({ 'control/handoff/notes.md': 'the coordinator session\n' }), '--profile', 'ops').status, 1)
+  })
+
+  it('ops profile: reads the ~/.claude copy and Desk\'s brief, and fails closed without the brief', () => {
+    const r = run(opsRepo({ 'control/claude-home/agents/desk.md': 'model: Sonnet 4.5\n' }), '--profile', 'ops')
+    assert.equal(r.status, 1, r.out)
+    assert.match(r.out, /control\/claude-home\/agents\/desk\.md:1: model Sonnet 4\.5/)
+    assert.match(run(opsRepo({ 'control/desk/brief.md': null }), '--profile', 'ops').out, /control\/desk\/brief\.md is named in scope but is not a tracked file/)
+    assert.match(run(opsRepo({ 'control/desk/brief.md': 'Model: Opus 5.5.\n' }), '--profile', 'ops').out, /allowlist entry for control\/desk\/brief\.md matched nothing/)
+  })
+
+  it('refuses an unknown profile', () => {
+    assert.equal(run(repo({}), '--profile', 'nope').status, 1)
   })
 
   it('excuses a named line only in its named file', () => {
@@ -159,7 +183,7 @@ describe('check-rules-drift', () => {
   })
 
   it('fails when an archive pattern matches no file in scope', () => {
-    const r = run(repo({ 'docs/handoff/2026-11-01-x.md': null }))
+    const r = run(opsRepo({ 'control/handoff/2026-11-01-x.md': null }), '--profile', 'ops')
     assert.equal(r.status, 1)
     assert.match(r.out, /archive allowlist pattern .* matched no file in scope/)
   })
