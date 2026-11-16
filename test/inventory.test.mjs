@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, it } from 'node:test'
 
-import { buildInventory, fetchOpenPrs, planRows, renderInventory, rowRefs, summarizeInventory } from '../scripts/lib/inventory.mjs'
+import { buildInventory, collectHerdrJobs, fetchOpenPrs, planRows, prunable, renderInventory, rowRefs, summarizeInventory } from '../scripts/lib/inventory.mjs'
 import { openBacklog } from '../scripts/fleet-status.mjs'
 
 const ROWS = ['1.13', '1.17', '3.6', '4.1']
@@ -68,6 +68,61 @@ describe('buildInventory', () => {
       }),
     )
     assert.deepEqual(inv.orphans.filter((o) => o.kind === 'worktree').map((o) => o.ref), ['/w/4'])
+  })
+
+  it('a clean worktree with nothing beyond the default branch is the janitor\'s; anything else, or unread, is an orphan', () => {
+    const w = (path, over) => ({ clone: 'c', repo: 'gorfednet/.github', path, branch: `b-${path}`, ahead: 0, clean: true, ...over })
+    const inv = buildInventory(
+      base({
+        worktrees: [
+          w('/w/merged'),
+          w('/w/ahead', { ahead: 2 }),
+          w('/w/dirty', { clean: false }),
+          w('/w/unread-ahead', { ahead: null }),
+          w('/w/unread-clean', { clean: null }),
+          w('/w/detached', { branch: null }),
+        ],
+      }),
+    )
+    assert.deepEqual(inv.orphans.map((o) => o.ref).sort(), ['/w/ahead', '/w/dirty', '/w/detached', '/w/unread-ahead', '/w/unread-clean'].sort())
+    assert.deepEqual(inv.items.find((i) => i.ref === '/w/merged').via, ['janitor prune'])
+  })
+
+  it('prunable reads ahead and clean from git, and leaves null what it cannot read', () => {
+    const run = (dir, ...args) => {
+      if (args[0] === 'rev-list') {
+        if (args[2].startsWith('origin/main..')) throw new Error('no origin/main')
+        return '0\n'
+      }
+      if (dir === '/w/dirty') return ' M a.txt\n'
+      if (dir === '/w/gone') throw new Error('not a worktree')
+      return ''
+    }
+    assert.deepEqual(prunable('/c', '/w/ok', 'b', run), { ahead: 0, clean: true }) // falls back to origin/master
+    assert.deepEqual(prunable('/c', '/w/dirty', 'b', run), { ahead: 0, clean: false })
+    assert.deepEqual(prunable('/c', '/w/gone', 'b', run), { ahead: 0, clean: null })
+    assert.deepEqual(prunable('/c', '/w/ok', null, run), { ahead: null, clean: true })
+    const none = () => {
+      throw new Error('boom')
+    }
+    assert.deepEqual(prunable('/c', '/w/ok', 'b', none), { ahead: null, clean: null })
+  })
+
+  it('a retired Herdr job is finished and is not in flight', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'herdr-'))
+    try {
+      const file = join(dir, 'state.json')
+      writeFileSync(file, JSON.stringify({ jobs: {
+        'bl-a-aaaaaa': { cwd: null, lastResult: 'retired', retired: 'landed', done: false },
+        'bl-b-bbbbbb': { cwd: null, lastResult: 'retired', done: false },
+        'bl-c-cccccc': { cwd: null, done: true },
+        'bl-d-dddddd': { cwd: null, lastResult: 'ok', done: false },
+        'bl-e-eeeeee': { cwd: null, running: true, done: false },
+      } }))
+      assert.deepEqual(collectHerdrJobs(file, dir).map((j) => j.id), ['bl-d-dddddd', 'bl-e-eeeeee'])
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 
   it('a pr- Herdr job maps to its PR only while the PR is open', () => {

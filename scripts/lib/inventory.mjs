@@ -101,6 +101,9 @@ export function buildInventory(input) {
     if (pr) via.push(`PR ${pr.repo}#${pr.number}`)
     if (sessionPaths.has(w.path)) via.push('live session')
     if (jobWts.has(w.path)) via.push('Herdr job')
+    // Nothing to decide: every commit is already on the default branch and the tree is clean, so the
+    // janitor's daily prune owns it. Only a positive read counts; null (unreadable) stays an orphan.
+    if (w.branch && w.ahead === 0 && w.clean === true) via.push('janitor prune')
     const a = attach(`${basename(w.path)}\n${w.branch ?? ''}`, ctx, { via })
     note(a.ids, 'worktree')
     items.push({ kind: 'worktree', repo: w.repo, ref: w.path, label: w.branch || '(detached)', private: false, ...a })
@@ -263,6 +266,35 @@ export function collectSessions(dir = SESSIONS_DIR) {
   return read === 0 || bad > 0 ? null : out
 }
 
+/**
+ * Whether a worktree holds anything not already on the clone's default branch: `ahead` is the count of
+ * commits on its branch that origin/main lacks, `clean` whether its tree has no change. Either is null
+ * when it could not be read (never guessed), so an unreadable worktree stays an orphan.
+ */
+export function prunable(clone, path, branch, run = git) {
+  let ahead = null
+  let clean = null
+  if (branch) {
+    for (const base of ['origin/main', 'origin/master']) {
+      try {
+        const n = Number(run(clone, 'rev-list', '--count', `${base}..refs/heads/${branch}`).trim())
+        if (Number.isInteger(n)) {
+          ahead = n
+          break
+        }
+      } catch {
+        // try the next default-branch name
+      }
+    }
+  }
+  try {
+    clean = run(path, 'status', '--porcelain').trim() === ''
+  } catch {
+    clean = null
+  }
+  return { ahead, clean }
+}
+
 /** Linked worktrees of every primary clone under root. Null when any clone could not be read. */
 export function collectWorktrees(root) {
   const clones = primaryClones(root)
@@ -276,7 +308,7 @@ export function collectWorktrees(root) {
       for (const b of blocks) {
         const path = /^worktree (.+)$/m.exec(b)?.[1]
         const branch = /^branch refs\/heads\/(.+)$/m.exec(b)?.[1] ?? null
-        if (path) out.push({ clone: name, repo, path, branch })
+        if (path) out.push({ clone: name, repo, path, branch, ...prunable(dir, path, branch) })
       }
     } catch {
       return null
@@ -305,7 +337,8 @@ export function collectHerdrJobs(file = join(homedir(), '.herdr-jobs', 'state.js
       }
     }
     return Object.entries(state.jobs ?? {})
-      .filter(([, j]) => !j.done)
+      // A retired job is finished ("nothing left to do"), so it is not in flight, even though its done flag stays false.
+      .filter(([, j]) => !j.done && !j.retired && j.lastResult !== 'retired')
       .map(([id, j]) => ({
         id,
         title: def(id).title ?? null,
