@@ -181,11 +181,11 @@ describe('privacy guard: what it must let through', () => {
     assert.match(r.out, /\[private-repo\]/)
   })
 
-  it('exempts a test fixture, and the owner-quote rule inside docs/claude-home only', () => {
+  it('exempts a test fixture; docs/claude-home has no exemption left since its copy moved to ops (plan row 1.30)', () => {
     assert.equal(guard({ after: { 'test/fixtures/a.json': `${PLANT['private-ip']}\n` } }).status, 0)
-    assert.equal(guard({ after: { 'docs/claude-home/rules/a.md': `${PLANT['owner-quote']}\n` } }).status, 0)
-    const r = guard({ after: { 'docs/claude-home/rules/a.md': `${PLANT['private-ip']}\n` } })
-    assert.equal(r.status, 1, 'the claude-home exemption covers quotes, not addresses')
+    const r = guard({ after: { 'docs/claude-home/rules/a.md': `${PLANT['owner-quote']}\n` } })
+    assert.equal(r.status, 1, 'an owner quote put back under docs/claude-home is refused like anywhere else')
+    assert.match(r.out, /\[owner-quote\]/)
   })
 
   it('limits the fixtures exemption to test/fixtures, so another fixtures folder is no way round', () => {

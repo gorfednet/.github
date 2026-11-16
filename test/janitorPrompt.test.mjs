@@ -65,6 +65,8 @@ test("janitor rescues dirty work through a draft held from ship-bot before archi
   assert.match(rescue[0], /--untracked-files=all/);
   assert.match(rescue[0], /HEAD --not --remotes/);
   assert.match(rescue[0], /only once the push and the draft both succeeded/);
+  // Plan row 1.30: .github is public, so a rescue there (git add -A, push) is propose-only.
+  assert.match(rescue[0], /Never rescue a `gorfednet\/\.github` worktree: that repository is public[^\n]*Propose it in the digest instead/);
   assert.doesNotMatch(rescue[0].split("## Next")[1] ?? "", /merge/i);
 });
 
@@ -97,14 +99,15 @@ test("janitor step 3b builds housekeeping trains through the script and never la
   assert.match(step[0], /check-closing-keywords/);
 });
 
-test("janitor never labels a path ship-bot calls control plane, docs/claude-home/ included", () => {
+test("janitor never labels a path ship-bot calls control plane, ops control/claude-home/ included", () => {
   const step = prompt.match(/\n3\. Labels\.[\s\S]*?(?=\n4\. Sessions)/);
   assert.ok(step, "step 3 exists");
   assert.match(step[0], /`touchesControlPlane\(path, slug\)`[^\n]*is never labelled, even under `docs\/`/);
   assert.match(step[0], /ship-bot\/lib\/drafts\.mjs/);
   assert.match(step[0], /Never put a changed file's name on the command line/);
   assert.match(step[0], /exact `owner\/name` used in the `gh api` call/);
-  assert.match(step[0], /in `gorfednet\/\.github` everything under `docs\/claude-home\/`/);
+  assert.match(step[0], /in `gorfednet\/ops` everything under `control\/claude-home\/`/);
+  assert.match(step[0], /in `gorfednet\/\.github` all of `scripts\/`/);
   assert.match(step[0], /Any other exit code, or a check that can't run, means no label/);
 });
 
@@ -133,6 +136,8 @@ test("janitor control-plane command: exit 1 on a hit, 0 on plain docs, non-zero 
   assert.equal(controlPlaneCheck([[{ filename: "docs/x.md" }], [{ filename: "docs/claude-home/rules/a.md" }]], DOT).status, 1, "a hit on a later page");
   assert.equal(controlPlaneCheck([[{ filename: "docs/x.md", previous_filename: "docs/claude-home/rules/a.md", status: "renamed" }]], DOT).status, 1);
   assert.equal(controlPlaneCheck([[{ filename: "docs/claude-home/settings.json" }]], "gorfednet/site").status, 0, "ordinary docs in another repository");
+  assert.equal(controlPlaneCheck([[{ filename: "control/claude-home/rules/shipping.md" }]], "gorfednet/ops").status, 1, "the ~/.claude copy in ops (plan row 1.30)");
+  assert.equal(controlPlaneCheck([[{ filename: "control/handoff/2026-11-16-x.md" }]], "gorfednet/ops").status, 0, "an ops handoff is ordinary docs");
   for (const slug of ["", ".github", "gorfednet/.github/x", "gorfednet/.github;x"]) {
     const { status } = controlPlaneCheck([[{ filename: "docs/x.md" }]], slug && `'${slug}'`);
     assert.ok(status !== 0 && status !== null, `slug ${JSON.stringify(slug)} exits ${status}`);

@@ -20,7 +20,7 @@ test('a drop of SPIKE or more in one window carries the callers; a quiet minute 
 
 test('the guard logs a command that calls GitHub with its session, and nothing else', () => {
   const log = join(mkdtempSync(join(tmpdir(), 'ghlog-')), 'calls.log')
-  const hook = new URL('../docs/claude-home/hooks/gh-poll-guard.py', import.meta.url).pathname
+  const hook = new URL('../scripts/claude-hooks/gh-poll-guard.py', import.meta.url).pathname
   const run = (command) => spawnSync('python3', ['-I', hook], { input: JSON.stringify({ tool_name: 'Bash', session_id: 'S1', cwd: '/x', tool_input: { command } }), encoding: 'utf8', env: { ...process.env, GH_GUARD_LOG: log } })
   assert.equal(run('ls -la').status, 0)
   assert.equal(run('gh pr view 5 --repo a/b').status, 0)
@@ -32,7 +32,7 @@ test('the guard logs a command that calls GitHub with its session, and nothing e
 
 test('the call log redacts tokens and --body values, is owner-only, and marks a refused command as denied', () => {
   const log = join(mkdtempSync(join(tmpdir(), 'ghlog-')), 'calls.log')
-  const hook = new URL('../docs/claude-home/hooks/gh-poll-guard.py', import.meta.url).pathname
+  const hook = new URL('../scripts/claude-hooks/gh-poll-guard.py', import.meta.url).pathname
   const run = (command) => spawnSync('python3', ['-I', hook], { input: JSON.stringify({ tool_name: 'Bash', session_id: 'S2', cwd: '/x', tool_input: { command } }), encoding: 'utf8', env: { ...process.env, GH_GUARD_LOG: log } })
   run('GH_TOKEN=ghp_abc123 gh api user')
   run("gh secret set X --body 'hunter2hunter2'")

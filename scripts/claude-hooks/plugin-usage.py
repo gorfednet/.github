@@ -1,5 +1,5 @@
 # Per-repo count of skills, agents and MCP servers a session really called, from ~/.claude/projects transcripts.
-# Run: python3 -I docs/claude-home/plugin-usage.py
+# Run: python3 -I scripts/claude-hooks/plugin-usage.py
 # Also counts slash commands the owner typed (<command-name> tags), which are not tool calls.
 # Parses every JSONL line (top-level and subagent transcripts), counts Skill, Agent and the older Task tool.
 import os, re, json, collections

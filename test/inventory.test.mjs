@@ -108,6 +108,13 @@ describe('buildInventory', () => {
     assert.deepEqual(inv.notMeasured.sort(), ['backlog', 'job', 'pr', 'session', 'worktree'])
     assert.match(renderInventory(summarizeInventory(inv)), /Pull requests \| not measured \| not measured/)
   })
+
+  it('says so when the plan of record was not read, since every orphan count is then high', () => {
+    const inv = summarizeInventory(buildInventory({ rows: [], prs: null, backlog: null, sessions: null, worktrees: null, jobs: null }))
+    assert.match(renderInventory({ ...inv, planRead: false }), /plan of record could not be read this run/)
+    assert.doesNotMatch(renderInventory({ ...inv, planRead: true }), /plan of record/)
+    assert.doesNotMatch(renderInventory(inv), /plan of record/, 'an older status.json without the field')
+  })
 })
 
 describe('publication', () => {

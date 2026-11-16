@@ -2,11 +2,11 @@
 """Refuse shell commands that poll GitHub in a loop (plan row 5.10).
 
 Claude Code user-level PreToolUse hook on Bash and Monitor. Live copy:
-~/.claude/hooks/gh-poll-guard.py. Record copy: docs/claude-home/hooks/ in
-gorfednet/.github.
+~/.claude/hooks/gh-poll-guard.py. Record copy: scripts/claude-hooks/ in
+gorfednet/.github (docs/claude-home/hooks/ until plan row 1.30).
 
 Why: on 13 November 2026 the owner's 5,000-an-hour GitHub quota hit 0 twice,
-and the dapyllil pool started no runners. Default-interval watchers (`gh run
+and the CI pool started no runners. Default-interval watchers (`gh run
 watch` polls every 3 s, `gh pr checks --watch` every 10 s) and three session
 sleep loops drained it. One busy-wait spun a core for 3.5 hours. The rules
 already banned all of these. This makes it a refusal instead of a reminder.

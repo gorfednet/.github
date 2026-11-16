@@ -17,7 +17,3 @@ repo ops
 # Test fixtures hold planted bad values on purpose. Only this directory, so a folder
 # named fixtures somewhere else is not a way round the guard.
 path test/fixtures/** *
-
-# docs/claude-home/ mirrors the owner's rules, and the rules carry dated owner quotes.
-# Plan row 1.30c moves the mirror to the private ops repository, and this line goes with it.
-path docs/claude-home/** owner-quote
