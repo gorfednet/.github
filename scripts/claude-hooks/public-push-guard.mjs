@@ -215,8 +215,10 @@ function readShell(source, state) {
       while (source[j] === ' ') j += 1
       const m = /^(['"]?)([A-Za-z0-9_.-]+)\1/.exec(source.slice(j))
       if (m) {
-        pendingHeredocs.push(m[2])
+        pendingHeredocs.push({ delim: m[2], quoted: m[1] !== '' })
         i = j + m[0].length
+        // a delimiter quoted only in part (E"O"F), or glued to something, is not read
+        if (/[A-Za-z0-9_.\-'"\\$`]/.test(source[i] ?? '')) out.uncertain = true
       } else {
         out.uncertain = true
         i += 2
@@ -259,9 +261,13 @@ function readShell(source, state) {
         endStatement()
         i += op.length
         if (op === '\n' && pendingHeredocs.length > 0) {
-          for (const delim of pendingHeredocs) {
+          for (const { delim, quoted } of pendingHeredocs) {
             const re = new RegExp(`(^|\\n)[\\t ]*${delim.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[\\t ]*(\\n|$)`)
             const m = re.exec(source.slice(i))
+            // With an unquoted delimiter the shell expands $(...), backticks and $VAR in the body, so the
+            // command text no longer holds what is posted or run. A body that could hold git is not read either.
+            const bodyText = m ? source.slice(i, i + m.index) : source.slice(i)
+            if (!m || (!quoted && /[$`]|\bgit\b/.test(bodyText))) out.uncertain = true
             i = m ? i + m.index + m[0].length : source.length
           }
           pendingHeredocs = []
@@ -843,6 +849,17 @@ function readBodyFile(word, base, heredoc) {
   }
 }
 
+// Subcommands that take no command to run: a commit message or tag message that says "push" is routine.
+const SAFE_GIT = new Set(['add', 'commit', 'log', 'status', 'diff', 'show', 'branch', 'checkout', 'switch', 'restore', 'reset', 'tag', 'merge', 'stash', 'rev-parse', 'rev-list', 'ls-files', 'remote', 'worktree', 'config', 'mv', 'rm', 'revert', 'cherry-pick', 'describe', 'blame', 'init'])
+
+/** True when a git command carries -c or --config-env before its subcommand: it can set an alias or a pager. */
+function gitConfigPairs(words) {
+  for (let k = 1; k < words.length && words[k].text.startsWith('-'); k += GIT_ARG_OPTS.has(words[k].text) ? 2 : 1) {
+    if (words[k].text === '-c' || words[k].text.startsWith('--config-env')) return true
+  }
+  return false
+}
+
 /** The literal subcommand word of a git command, or null when an option or the word itself holds an expansion. */
 function gitSubcommand(words) {
   let k = 1
@@ -873,7 +890,7 @@ function plain(parsed) {
   // the command, a substitution included, mentions git or gh.
   const top = parsed.statements.filter((x) => !x.nested)
   const gitish = (x) => x.words.some((w) => ['git', 'gh'].includes(basename(w.text)))
-  if (!parsed.uncertain && top.length === 1 && basename(top[0].words[0].text) === 'git' && gitSubcommand(top[0].words) !== null && gitSubcommand(top[0].words) !== 'push' && parsed.statements.every((x) => x === top[0] || !gitish(x))) return false
+  if (!parsed.uncertain && top.length === 1 && basename(top[0].words[0].text) === 'git' && SAFE_GIT.has(gitSubcommand(top[0].words)) && !gitConfigPairs(top[0].words) && parsed.statements.every((x) => x === top[0] || !gitish(x))) return false
   const refuse = (why) => deny(`public-push-guard: this command could push or write to GitHub, and the hook checks only one plain command it can read in full (${why}). Run the push or gh write as one plain command from the target directory, with a literal --body-file.`)
   const sts = parsed.statements
   if (parsed.uncertain) refuse('it holds something the hook can\'t read')
@@ -883,6 +900,15 @@ function plain(parsed) {
   if (sts.length !== 1) refuse('it has more than one command, a pipe, a loop or a wrapper')
   if (!['git', 'gh'].includes(basename(sts[0].words[0].text))) refuse('git or gh sits behind a wrapper')
   if (Object.keys(sts[0].env).some((k) => !['GIT_DIR', 'GH_REPO'].includes(k))) refuse('it sets an environment variable')
+  // A git subcommand that is not a push can still run one: rebase -x, bisect run, submodule foreach, -c alias.x=push.
+  // Any word that could hold a push, a gh call, or git behind an expansion, in a command that isn't itself a push, is refused.
+  if (basename(sts[0].words[0].text) === 'git' && gitSubcommand(sts[0].words) !== 'push') {
+    const hides = sts[0].words.slice(1).some((w) => {
+      const t = w.text.replace(/[\\'"]/g, '')
+      return /push|\bgh\b/.test(t) || (/\bgit\b/.test(t) && /[$`]/.test(t))
+    })
+    if (hides) refuse('a git subcommand that is not a push mentions push, gh or git behind an expansion in its arguments, and could run one')
+  }
   return true
 }
 

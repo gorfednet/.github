@@ -1012,6 +1012,47 @@ describe('public-push-guard: fields attached to a flag, and ordinary commits', (
   })
 })
 
+describe('public-push-guard: a push hidden in another subcommand, and an unquoted here-document', () => {
+  const plainMsg = /one plain command/
+  it('refuses a push that another git subcommand runs for the session', () => {
+    const r = repo({ outgoing: { 'x.md': `${IP}\n` } })
+    for (const c of [
+      "git rebase -x 'git push origin feature' main",
+      "git rebase --exec 'git p\"\"ush origin feature' main",
+      "git bisect run git push origin feature",
+      "git submodule foreach 'git push origin feature'",
+      'git -c alias.p=push p origin feature',
+      "git rebase -x 'gh pr comment 3 --body x' main",
+      "git rebase -x 'g$X push origin feature' main",
+    ]) {
+      const x = hook(c, { r })
+      assert.ok(denied(x), c)
+      assert.match(reason(x), plainMsg, c)
+    }
+  })
+  it('lets ordinary git commands through, including ones that only mention push', () => {
+    const r = repo()
+    for (const c of ['git rebase main', "git rebase -x 'npm test' main", 'git commit -m "fix the push hook"', 'git stash push -m wip', 'git log --oneline', 'git tag -m "push notes" v1']) assert.equal(hook(c, { r }).out, '', c)
+  })
+  it('refuses an unquoted here-document whose body the shell expands', () => {
+    const r = repo()
+    sh(r.dir, r.w, 'push', '-q', 'origin', 'feature')
+    writeFileSync(join(r.dir, 'notes.txt'), `${IP}\n`)
+    for (const c of ['gh pr comment 3 --body-file - <<EOF\n$(cat notes.txt)\nEOF', 'gh pr comment 3 --body-file - <<EOF\n`cat notes.txt`\nEOF', 'gh pr comment 3 --body-file - <<EOF\nsee $NOTES_UNSET\nEOF', 'gh pr comment 3 --body-file - <<EOF\nrun git log\nEOF']) {
+      const x = hook(c, { r })
+      assert.ok(denied(x), c)
+      assert.match(reason(x), plainMsg, c)
+    }
+  })
+  it('near miss: an unquoted here-document with plain text, and a quoted one with expansions, are read as text', () => {
+    const r = repo()
+    sh(r.dir, r.w, 'push', '-q', 'origin', 'feature')
+    assert.equal(hook('gh pr comment 3 --body-file - <<EOF\nclean words\nEOF', { r }).out, '')
+    assert.equal(hook("gh pr comment 3 --body-file - <<'EOF'\n$(cat notes.txt) is literal\nEOF", { r }).out, '')
+    assert.ok(denied(hook(`gh pr comment 3 --body-file - <<EOF\nsee ${IP}\nEOF`, { r })), 'a plain body is still scanned')
+  })
+})
+
 describe('public-push-guard: wiring', () => {
   it('has a settings entry that runs the hook as a PreToolUse hook on Bash, with room for its own budget', () => {
     const own = JSON.parse(readFileSync(join(ROOT, 'scripts', 'claude-hooks', 'public-push-guard.settings.json'), 'utf8'))
