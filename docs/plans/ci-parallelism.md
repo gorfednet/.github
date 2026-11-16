@@ -87,7 +87,7 @@ Left alone: `retries` settings, and unit "hang" bounds with wide margins. Neithe
 ## Verification
 
 - **Kit (1.2):** `node --test templates/verification-kit/test/`. The check's canary shows it failing on a config with no `workers` line, and on the near miss (an imported helper that isn't used). The PR says so.
-- **Each repository:** typecheck, lint, the unit suite, and the changed e2e specs on their own project. The pool run's log must print the worker count from `assert-tests-executed`, and it must equal the kit's answer for a 2-cpu slot: 1.
+- **Each repository:** typecheck, lint, the unit suite, and the changed e2e specs on their own project. The pool run's log must print the worker count from `assert-tests-executed`, and it must equal `playwrightWorkers()` for the slot's usable cpus: 1 on a 2-cpu slot, 2 on a 4-cpu remote slot.
 - **heuristics (2.7):** `pool-flip` leaves it on the pool only after a green pool run on `main`.
 - **Fleet:** `fleet-audit` lists 0 unconverted pool repositories before 2.6 merges.
 - **Wave 3:** the spec passes under CPU throttle with the product unchanged, and fails under both conditions with the pace broken.
@@ -95,6 +95,6 @@ Left alone: `retries` settings, and unit "hang" bounds with wide margins. Neithe
 ## Cost
 
 - The week is at 80% of all models and 66% of Fable. It resets Friday 20 November 2026 at 05:00 ET.
-- Fable work before the reset: 1.1 (small, here), 1.2 (one session), 2.5 and 2.6 (small). Everything else before the reset is Sonnet or Haiku.
+- Fable work before the reset: 1.2 (one session) and 2.5 (small). 2.6 (small) runs before it only if waves 1 and 2 finish in time. Everything else before the reset is Sonnet, Haiku or this Opus PR.
 - Wave 3's design waits for the reset. Nothing in waves 1 and 2 depends on it.
 - About 24 small sessions in all, each ending when its pull request merges: 4 Fable, 1 Haiku, 1 Opus (item 1.1) and 18 Sonnet. 2.10 rides inside the 2.2 sessions. Before the reset: 2 Fable (1.2, then 2.5), 12 Sonnet (1.3, 2.1, 2.2, 2.3, 2.4, 2.8, 2.9) and 1 Haiku. 2.6 runs only once those land.
