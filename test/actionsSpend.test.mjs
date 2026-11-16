@@ -489,7 +489,7 @@ describe('fleet-status workflow', () => {
     assert.equal(curlCommands(two).filter((c) => /ntfy/i.test(c) && /\s-o \/dev\/null\b/.test(c)).length, 0)
   })
   it('records the memo into this run\'s own commit, so no commit time says when a threshold was crossed (review round 4)', () => {
-    assert.match(workflow, /echo "committed=yes" >> "\$GITHUB_OUTPUT"/)
+    assert.match(workflow, /echo "committed=yes" >> "\$\{GITHUB_OUTPUT:-\/dev\/null\}"/)
     assert.match(workflow, /COMMITTED: \$\{\{ steps\.publish\.outputs\.committed \}\}/)
     assert.match(workflow, /elif \[ "\$\{COMMITTED:-\}" = "yes" \]; then\n\s+git commit --amend --no-edit --quiet/)
     assert.doesNotMatch(workflow, /spend memo \$\(date/)

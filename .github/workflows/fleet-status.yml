@@ -171,7 +171,7 @@ jobs:
             echo "status unchanged"
           else
             git commit -m "fleet-status $(date -u +%Y-%m-%dT%H:%MZ)"
-            echo "committed=yes" >> "$GITHUB_OUTPUT"
+            echo "committed=yes" >> "${GITHUB_OUTPUT:-/dev/null}"
           fi
           git push --force-with-lease origin status
 
