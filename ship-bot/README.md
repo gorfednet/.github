@@ -160,6 +160,24 @@ A pass merges at most `maxMergesPerPass` pull requests (default 2) across all
 repositories; the rest are logged `SKIP ... pass limit` and looked at again two
 minutes later.
 
+## Adding a repository to a live config
+
+`install.sh` never overwrites `~/.ship-bot/config.json`, and sessions never read it. A new
+repository reaches it as a row patch that `patch-config.mjs` applies:
+
+```bash
+node ~/.ship-bot/app/patch-config.mjs <patch.json>
+```
+
+It backs the config up, refuses a slug the config already has, validates the result and prints
+slugs and key names only. A patch's row should set `live: false`; `--set-repo-live` turns it on.
+
+A public repository's patch lives in `patches/` beside an identical row in `config.example.json`
+(a test fails when the two differ). A row for a private repository outside the privacy guard's
+allowlist never goes in this public repository: the guard fails the pull request.
+Its patch lives in the private ops repository (`control/ship-bot-patches/`) and the same
+command takes it from there.
+
 ## Rollout schedule
 
 Owner-compressed schedule (9 November 2026), extended 11 November 2026 ("deploy automation for all"):
