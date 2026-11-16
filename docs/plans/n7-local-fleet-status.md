@@ -1,48 +1,33 @@
-# N7: the local half of fleet-status (design, no code yet)
+# N7: the local half of fleet-status (design, revised after the Fable read)
 
-Replan row N7 (merges 1.6, 1.17, 2.3, 2.4). Control-plane paths touched: `janitor/`, `scripts/janitor-prune.mjs`. Fable reads this design, then the final head.
+Replan row N7 (merges 1.6, 1.17, 2.3, 2.4). Control-plane paths: `janitor/`, `scripts/janitor-prune.mjs` (the sweep adds a read-only `--propose` mode; delete rules are unchanged). Fable reads the final head too.
 
 ## What reads "not measured", and why
 
-The hosted run (ubuntu runner, token only) has no `status.local` and no local inventory sources. The code to measure them already exists: `collectLocal` (`scripts/lib/hygiene.mjs`) and `collectSessions`, `collectWorktrees`, `collectHerdrJobs` (`scripts/lib/inventory.mjs`), run by `fleet-status.mjs --local --inventory`. It only runs for the janitor's private view (`fleet-status-local.sh`), and nothing it measures leaves the Mac.
-
-- Hygiene rows: dirty clones, clones behind origin, installed tools behind main, worktrees over 7 days, sessions idle over 24 h (5 of 9).
-- Inventory kinds: sessions, worktrees, Herdr jobs (3 of 5).
-- Branches with no PR and duplicate PRs are measured hosted. The sweep acts on them.
+Hosted has a token and no Mac. The collectors exist (`collectLocal`, `collectSessions`, `collectWorktrees`, `collectHerdrJobs`, run by `fleet-status.mjs --local --inventory`) but only feed the janitor's private view. Unmeasured: 5 of 9 hygiene rows (dirty clones, clones behind, installed tools, worktrees over 7 days, idle sessions) and 3 of 5 inventory kinds (sessions, worktrees, Herdr jobs).
 
 ## Design
 
-1. **Collector.** A new janitor step, run after step 1. It reuses `$R/status.json`, which the janitor already builds with `--local --include-private --inventory`. No new LaunchAgent: the janitor already runs daily on the Mac with the permissions. A 2-hourly light run is a later option, not part of N7. New `scripts/local-status-publish.mjs --in $R/status.json` reduces `status.local` and `status.inventory` to a public-safe file and a private detail file.
-2. **Publish.** Two files, written to private ops by the janitor's existing ops-worktree route (`control/fleet-local/`, no push to this public repo):
-   - `local-counts.json` (public-safe): `measuredAt`, per-row `{ count | null, unread: <n> }`, per-kind inventory `{ total, orphans } | null`. Slugs only from the allowlist (`.github/privacy-guard-allow.txt` at the merge base). Every other repo is counted in `otherRepos`.
-   - `local-detail.json` (private): the full lists (clone dirs, worktree paths, session ids and titles). Hosted never reads it.
-3. **Hosted read.** `fleet-status.mjs` reads `local-counts.json` through the same token-and-API route as the plan of record (`PLAN_SOURCE` pattern: ops, `desk-log` then `main`). It fills `status.local` with counts only (the schema gets a counts form: arrays become integers) and the three local inventory kinds. `write-status-md.mjs` renders count plus measured date per row. No local list is rendered on the status branch.
-4. **Fail closed.** A row is `null` ("not measured") when the file is missing, unparseable, fails the schema, or is older than 26 h (the row prints "last measured <date>"). It is also `null` when the collector marked the row unread (any clone, session file or tool it could not read; `collectLocal` already does this per row) or a fetch failed (clones behind). A partial read never yields a smaller number. The publisher refuses to write a count it did not fully measure and exits 1, so the janitor names it in its digest.
-5. **Privacy.** The publisher whitelists fields by schema (additionalProperties false), not by scrubbing. A test feeds it a status with a private repo name, a `local_<uuid>` id, an RFC1918 address, a tailnet name and a host name, and asserts none appears in the output. `node scripts/privacy-guard.mjs` runs on the diff, plus one deliberate break (a session id in a fixture) to see it fail.
+1. **Collector.** Daily, in the janitor's existing step 1 output (`status.json` built with `--local --include-private --inventory`). New `scripts/local-status-publish.mjs` reduces it to two files. No new LaunchAgent. Cadence is daily; every row prints its measured date; a row is stale at about 30 h.
+2. **Publish right (finding 1).** The janitor has no ops write route today and an LLM-run task must not gain a general one. The script alone pushes, to a dedicated ops data branch (`fleet-local`), never `desk-log` (it would race Desk). It writes `local-counts.json` and `local-detail.json` with `--force-with-lease`. The prompt gains one line: run the script; it is the only new write. The prompt's write exceptions are not widened.
+   - **Dry mode** (the janitor's no-commit-no-push mode): the script writes both files under `$R` and prints what it would push. It makes no commit and no push. A prompt test asserts the dry command line carries the dry flag.
+3. **Hosted read.** `fleet-status.mjs` fetches `local-counts.json` from ops with `?ref=fleet-local` and FLEET_READ_TOKEN (the published `status.json` shows `inventory.planRead` true, so the token reads ops Contents). No `desk-log`-then-`main` fallback. A hosted test covers it.
+4. **One shape (finding 4).** The published file has its own key, `status.localCounts`, so `status.local` keeps its list form for the Mac view. `hygiene()`, `render()` and `digest()` read a counts-or-list helper. Each inventory kind carries its own `measuredAt`. `renderInventory` never prints "No orphans." when any local count is above 0 or null.
+5. **Reader is the privacy gate (finding 3).** The hosted reader validates strictly before anything is public: integers only (no negatives or fractions), fixed keys only (a key shaped like a slug or path is rejected), no strings except `measuredAt`, `measuredAt` not in the future. Any failure gives null rows and logs only the rule id, never a key or value. The slug list comes from the fleet's repo registry in `status.json`, not from `privacy-guard-allow.txt` (no merge base at run time); other repos are counted in `otherRepos`. Session, worktree and job items are private by nature: only totals are published, never refs.
+6. **Orphans (finding 5).** `orphans` is null, keeping `total`, whenever the PR read hit the reserve, the backlog is null or the plan is unread. A high count from a missing source is never published.
+7. **Partial read (finding 6).** One unreadable source: write the file with that row null and the others filled, then exit 1 (as `fleet-status.mjs` does). The janitor prompt says any exit continues to step 2, so the digest names the failed row and the run goes on.
 
-## The sweeps
+## The 190 no-PR branches and 8 duplicates (finding 2)
 
-- **190 no-PR branches, 8 duplicates.** A `runner` lists them from `status.json` (`branchesAhead`, `duplicatePrs`) into a private ops file, one proposed action each: delete (merged), keep, open PR, or close the older duplicate. No deletion by hand.
-- Deletion goes through rules the janitor already has. `janitor-prune.mjs` deletes an origin branch only when it is an ancestor of `origin/<default>`. Plan row 1.30 e (PR 213, in flight) sweeps merged origin branches, so N7 waits for it. Unmerged branches with commits ahead (for example `desk-log`, `kit/v0.2x.0`) are kept or get a draft PR via `/fleet-drain`, never deleted. Duplicates: Desk closes the older PR through the normal path.
+`branchesAhead` keeps only branches ahead of main or unrelated to it, so `janitor-prune.mjs` and PR 213's remote sweep, which delete only ancestors of main, delete none of them. Merged branches are already caught; these are not. The real path, with no loosened rule:
+- A `runner` runs `janitor-prune.mjs --propose`, which reads `status.json` and writes a private file, one action per branch: **draft PR** (commits worth keeping, via `/fleet-drain`, which rescues to a handoff and a draft PR), **keep** (recorded in a keep list in private ops with a reason and a review date), or **close duplicate** (Desk closes the older PR through the normal path).
+- Only a branch that becomes an ancestor of main (its draft PR merges) is deleted, by the existing janitor rules. An unrelated branch and a private-repo branch are never proposed for deletion.
+- The count falls as drafts merge or keeps are recorded; a recorded keep leaves the row but stays counted in a "kept" figure.
 
 ## Tests
 
-- `local-status-publish`: full read to counts; each unreadable source to `null`; stale file to `null`; non-allowlisted slug to `otherRepos`; the privacy fixture above.
-- `write-status-md`: counts form renders count plus date; null renders "not measured"; no list rendered.
-- `fleet-status`: a missing, corrupt or stale ops file leaves rows null and the run exits as today; a fresh file fills rows.
-- Janitor prune: sweep fixture with a merged branch, an unmerged branch and a protected name; only the merged one is proposed for deletion.
-- Schema check on both files; `typecheck:test`, lint, then one gate through `gate-run`.
+Publisher: full read to counts; each unreadable source to null with others filled and exit 1; non-registry slug to `otherRepos`; orphans null when `planRead` false or PRs null. Hosted reader: rejects an extra key, a string, a negative or fractional count, a slug-shaped key and a future `measuredAt`, giving null and stderr without the planted values; stale file gives null. Published `status.json` is asserted by a positive shape plus planted absolute path, session title, branch name and clone folder, none present. Counts through `hygiene()`, `render()` and `digest()` with one null row. Orphans above 0 never print "No orphans." Sweep fixture with a merged branch, an unmerged one, an unrelated one and a private-repo one. Dry-mode prompt test. Keep the planted-value fixtures outside `test/fixtures/**` (that path is allowlisted, so a break there would pass the guard), and show the guard fail once on a deliberate break. `typecheck:test`, lint, one gate via `gate-run`. The guard does not read the status-branch push, so the reader tests above stand in for it.
 
 ## For Fable to check
 
-- A null never renders or sums as 0 (publisher, merge into `status.local`, `hygiene()`, digest line).
-- Nothing private reaches the status branch or this repo: field whitelist, `otherRepos` counting, and the test fixture is real.
-- `measuredAt` is set by the collector at read time, so a fresh stamp cannot sit over old data.
-- A publish failure never blocks the janitor's merge or prune steps, and the sweep never runs on a failed publish.
-- Janitor deletion rules are unchanged: the sweep proposes, `janitor-prune.mjs` deletes.
-- The hosted token can read ops `control/fleet-local/` (Contents read should cover it; confirm).
-
-## Open questions
-
-- Is a daily local publish enough? Rows would be up to 26 h old. "Every row measured, with a date" may need the 2-hourly run.
-- Is `control/fleet-local/` on ops `desk-log` the right home, or a path ship-bot already mirrors?
+Null never becomes 0 anywhere. The reader, not the publisher, is what stops private detail. Dry mode pushes nothing. The janitor keeps no wider write right than the one script. Delete rules in `janitor-prune.mjs` are byte-identical outside `--propose`.
