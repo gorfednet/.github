@@ -366,7 +366,9 @@ pause, or `main` moving during the install. A deferral is quiet and is tried
 again. One that came after `check.sh` started waits before the next try. The
 waits are 1, 2, 4 and 8 passes. After that it's 15 passes, which is 30 minutes. A new commit
 starts again with no wait. After 30 passes of waiting on one commit the bot
-sends one message.
+sends one message. An error from the lock, the marker or the version
+directory is a deferral too. The pass warns and carries on to the
+repositories.
 
 Some skips aren't a normal wait. The link names a version other than the one
 running. Or the marker says a version is on probation and the link doesn't
@@ -381,7 +383,16 @@ repository error on one probation pass is undecided too. On a second
 probation pass it's unhealthy. After 30 undecided passes in a row the bot
 rolls the version back. That takes about an hour. That rollback doesn't
 refuse the commit. The bot sends one message and tries it again 30 minutes
-later. A second such rollback of the same commit refuses it.
+later. A second such rollback of the same commit refuses it. The 30 counts
+every probation pass that started, including one that died.
+
+A pass that can't read GitHub is undecided, even with new repository errors.
+That covers no token and a freshness the bot can't read.
+
+A pass can die before its health check. A crash or a kill does that. The bot
+records each probation pass as it starts. After 3 starts in a row with no
+health check, the next pass rolls the version back first and refuses the
+commit. That pass then ends without touching a repository.
 
 A version on probation can read as behind `origin/main` for two reasons. If
 the commit it's behind is the one it was installed for, it's unhealthy. If

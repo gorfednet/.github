@@ -12,7 +12,7 @@ import { main, parseArgs } from '../ship-bot.mjs'
 import { normalizeConfig } from '../lib/config.mjs'
 import { GATES_REPO } from '../lib/gates-worktree.mjs'
 import { RateLimitError } from '../lib/github.mjs'
-import { PROBATION_LIMIT, buildVersion, commitVersion, currentVersion, installLockPath, readMarker, swapLink, versionPath, writeMarker } from '../lib/install.mjs'
+import { PROBATION_LIMIT, UNSETTLED_START_LIMIT, buildVersion, commitVersion, currentVersion, installLockPath, readMarker, swapLink, versionPath, writeMarker } from '../lib/install.mjs'
 import { acquireLock } from '../lib/state.mjs'
 import { FakeGitHub, PARENT, TOKEN, makeRunner, repoEntry } from './fakes.mjs'
 
@@ -362,6 +362,81 @@ describe('health: the first live passes of a self-installed version', () => {
     assert.equal(h.marker().phase, 'probation')
     assert.equal(said(h, /not rolled back: an install holds install\.lock/).length, 1, h.out.join('\n'))
     held.release()
+  })
+
+  it(`a version that dies mid-pass, before the health check, is rolled back at the start of pass ${UNSETTLED_START_LIMIT + 1}`, async () => {
+    const h = harness({ marker: probation() })
+    const tick = () => new Promise((resolve) => setImmediate(resolve))
+    // The pass hangs at its first command and is never heard from again: no catch, no finally.
+    const realRun = h.runner.run
+    h.runner.run = () => new Promise(() => {})
+    for (let i = 1; i <= UNSETTLED_START_LIMIT; i += 1) {
+      void h.live()
+      await tick()
+      assert.equal(h.marker().unsettled, i, 'the start is on disk before the pass does any work')
+      assert.equal(h.marker().starts, i)
+      assert.equal(h.marker().undecided, 0, 'nothing settled it')
+      assert.equal(currentVersion(h.home), NEW)
+      // The dead process's run.lock: a real pass takes it over from the dead pid.
+      rmSync(join(h.config.stateDir, 'run.lock'), { force: true })
+    }
+    h.runner.run = realRun
+    assert.equal(await h.live(), 1)
+    assert.equal(currentVersion(h.home), FROM)
+    const m = h.marker()
+    assert.equal(m.phase, 'rolled-back')
+    assert.match(m.refused[LATEST].reason, /3 probation passes in a row started and never reached their health check/)
+    assert.equal(m.notify.length, 1, 'the same rollback notice')
+    assert.equal(said(h, /error self-install bbbbbbb: unhealthy: 3 probation passes in a row started and never reached their health check .*; rolled back before this pass did anything, and the next pass runs aaaaaaa/).length, 1, h.out.join('\n'))
+    assert.equal(h.runner.calls.length, 0, 'the rolled-back version did no work: not even a token read')
+    assert.equal(h.github.calls.length, 0)
+    assert.ok(!existsSync(join(h.config.stateDir, 'run.lock')), 'run.lock is released')
+    assert.ok(!existsSync(installLockPath(h.home)), 'install.lock is released')
+  })
+
+  it('near-miss: passes that reach the health check are counted as starts, never as unsettled', async () => {
+    const h = harness({ marker: probation(), box: { token: false } })
+    for (let i = 1; i <= UNSETTLED_START_LIMIT + 2; i += 1) {
+      await h.live()
+      assert.equal(h.marker().unsettled, 0, `pass ${i}`)
+      assert.equal(h.marker().starts, i)
+      assert.equal(h.marker().undecided, i)
+    }
+    assert.equal(currentVersion(h.home), NEW)
+    // Two dead passes and then a healthy one: healthy, and the counters go with the probation.
+    const two = harness({ marker: probation({ starts: 2, unsettled: UNSETTLED_START_LIMIT - 1 }) })
+    assert.equal(await two.live(), 0)
+    assert.equal(two.marker().phase, 'healthy')
+    assert.equal(two.marker().starts, undefined)
+    assert.equal(two.marker().unsettled, undefined)
+  })
+
+  it(`the ${PROBATION_LIMIT}-pass bound counts starts: an undecided pass at start ${PROBATION_LIMIT} rolls back with fewer undecided ones`, async () => {
+    const h = harness({ marker: probation({ undecided: 4, starts: PROBATION_LIMIT - 2 }), box: { token: false } })
+    await h.live()
+    assert.equal(currentVersion(h.home), NEW, 'start 29')
+    await h.live()
+    assert.equal(currentVersion(h.home), FROM, 'start 30')
+    assert.equal(h.marker().refused, undefined)
+    assert.match(h.marker().notify[0].text, /30 passes in a row could not decide its health/)
+  })
+
+  it('a hand install that swapped during an unhealthy probation pass keeps the link and the marker', async () => {
+    const hand = { phase: 'hand', sha: FROM, from: NEW, at: '2026-10-09T12:00:00Z' }
+    // Stale against its own commit: unhealthy. The hand install lands while the pass runs.
+    const h = harness({ marker: probation(), box: { current: false } })
+    h.deps.makeReadCache = () => {
+      swapLink({ home: h.home, sha: FROM })
+      writeMarker(h.home, hand)
+      return null
+    }
+    await h.live()
+    assert.equal(currentVersion(h.home), FROM, 'not moved back to the version the hand install replaced')
+    // The pass's own stale skip (the link names another version) counted one deferral; the health check changed nothing.
+    const { deferred, ...rest } = h.marker()
+    assert.deepEqual(rest, hand)
+    assert.equal(said(h, /info {2}self-install bbbbbbb: the marker no longer says bbbbbbb is on probation \(it says hand aaaaaaa\); nothing done/).length, 1, h.out.join('\n'))
+    assert.equal(said(h, /error self-install/).length, 0)
   })
 
   it('a bot with no version link (a checkout) reads no marker at all', async () => {

@@ -1037,11 +1037,55 @@ async function flushSelfInstallNotices(ctx) {
  * them, and only then moves the link. The new version gets no live authority
  * before that. It never writes the plist and never calls launchctl.
  *
+ * An error from the lock, the marker or the version directory (a filesystem
+ * that fails) is a deferral, not a failed pass: one warn line, counted toward
+ * the long-deferral message, and the pass carries on to the repos as the stale
+ * bot it still is (the stale hold applies). Thrown on, it would fail every
+ * live pass before any repo for as long as the error lasts. A RateLimitError
+ * still propagates: the pass ends on it as on any quota pause.
+ *
  * @returns {Promise<boolean>} true when the link now names a new version, so the pass must end
  */
 async function selfInstall(ctx, installedSha) {
   const own = ctx.ownInstall
   if (own.state !== 'stale') return false
+  const latest = own.latest
+  try {
+    const swapped = await selfInstallStep(ctx, installedSha)
+    if (ctx.state.data.ownInstall?.stepFailed) delete ctx.state.data.ownInstall.stepFailed
+    return swapped
+  } catch (cause) {
+    if (cause instanceof RateLimitError) throw cause
+    const why = ctx.redactor.apply(String(cause.message).split('\n')[0].slice(0, 300))
+    const what = `origin/main (${short(latest)})`
+    const last = `on an unexpected error: ${why}`
+    ctx.say('warn', `self-install of ${short(latest)} deferred ${last}; the installed ${short(installedSha)} keeps running`)
+    const memo = (ctx.state.data.ownInstall ??= {})
+    try {
+      const { home, fs } = ctx.selfInstall
+      const marker = readMarker(home, fs)
+      countDeferral(ctx, marker, latest, { what, last, installedSha })
+      writeMarker(home, marker, fs)
+      delete memo.stepFailed
+    } catch {
+      // The marker cannot be read or written either: counted and queued in the state file, like a held lock.
+      const failed = memo.stepFailed?.latest === latest ? memo.stepFailed : { latest, count: 0 }
+      failed.count += 1
+      memo.stepFailed = failed
+      if (failed.count >= DEFER_NOTIFY_AT && !failed.notified) {
+        failed.notified = true
+        ;(memo.notify ??= []).push({ text: `ship-bot self-install of ${what} has been deferred ${failed.count} passes in a row (last ${last}). The installed ${short(installedSha)} keeps running.`, at: ctx.clock.now().toISOString() })
+        ctx.noticesQueued = true
+      }
+      ctx.state.save()
+    }
+    return false
+  }
+}
+
+/** selfInstall's work. It may throw: selfInstall turns that into a deferral. */
+async function selfInstallStep(ctx, installedSha) {
+  const own = ctx.ownInstall
   const latest = own.latest
   const skip = (why, level = 'info') => {
     ctx.say(level, `self-install of ${short(latest)} skipped: ${why}`)
@@ -1072,6 +1116,8 @@ async function selfInstall(ctx, installedSha) {
   const attempt = { sha: null }
   try {
     if (block?.kind === 'finish') {
+      // Read again under the lock: a hand install that ran since owns the link and the marker now.
+      if (selfInstallBlock(ctx, latest, installedSha)?.kind !== 'finish') return skip('the marker changed before install.lock was taken; nothing finished')
       const done = finishRollBack({ home, now: ctx.clock.now(), fs })
       ctx.noticesQueued = true
       ctx.say('warn', `self-install: ${block.why}; its record is finished${done.refused?.[done.latest] ? `, and ${short(done.latest)} is refused` : ''}`)
@@ -1118,8 +1164,14 @@ async function selfInstall(ctx, installedSha) {
     writeMarker(home, m, fs)
     return false
   } finally {
-    fs.rmSync(stage, { recursive: true, force: true })
-    lock.release()
+    try {
+      // Best effort: the next validation clears the stage before it fills it, and a swap that is done stays done.
+      fs.rmSync(stage, { recursive: true, force: true })
+    } catch (cause) {
+      ctx.say('warn', `self-install: could not remove ${stage}: ${cause.message}`)
+    } finally {
+      lock.release()
+    }
   }
 }
 

@@ -44,7 +44,7 @@ import { Redactor } from './lib/redact.mjs'
 import { realRunner, succeeded } from './lib/runner.mjs'
 import { rotateLog } from './lib/logs.mjs'
 import { STATE_VERSION, StateStore, acquireLock, lockPath } from './lib/state.mjs'
-import { currentVersion, findBotHome, judgeHealth, recoverSwapping, settleProbation } from './lib/install.mjs'
+import { beginProbationPass, currentVersion, findBotHome, judgeHealth, recoverSwapping, settleProbation } from './lib/install.mjs'
 import { isMain } from './lib/isMain.mjs'
 import { formatValidation, validateExpectedChecks } from './lib/validate.mjs'
 
@@ -236,19 +236,48 @@ async function selfTest(configPath, deps) {
 }
 
 /**
- * The marker of a version on probation that is this copy, or null. Called by
- * a live pass holding run.lock, so a `swapping` marker is a kill, never a swap
- * in progress: it is settled from where the link points (lib/install.mjs).
+ * `{marker}`: the marker of a version on probation that is this copy, or null.
+ * Called by a live pass holding run.lock, so a `swapping` marker is a kill,
+ * never a swap in progress: it is settled from where the link points
+ * (lib/install.mjs).
+ *
+ * With `count` (a pass that will be judged) the start of this probation pass
+ * is recorded before the pass does any work, so a pass that dies before its
+ * health check is still counted (beginProbationPass). That is also where a
+ * version whose passes keep dying is rolled back: `{marker: null, ended: true}`
+ * says the link is back at the version before it, and this pass must end.
  */
-function readProbation(home, print) {
+function readProbation(home, print, deps, { count = true } = {}) {
+  let marker
   try {
-    const { marker, recovered } = recoverSwapping({ home })
-    if (recovered === 'probation') print('warn', `self-install ${short(marker.sha)}: the swap was interrupted after the link moved; on probation now`)
-    if (recovered === 'cleared') print('warn', 'self-install: an interrupted swap never moved the link; cleared')
-    return marker.phase === 'probation' && marker.sha === currentVersion(home) ? marker : null
+    const read = recoverSwapping({ home })
+    marker = read.marker
+    if (read.recovered === 'probation') print('warn', `self-install ${short(marker.sha)}: the swap was interrupted after the link moved; on probation now`)
+    if (read.recovered === 'cleared') print('warn', 'self-install: an interrupted swap never moved the link; cleared')
+    if (!(marker.phase === 'probation' && marker.sha === currentVersion(home))) return { marker: null }
   } catch (cause) {
     print('warn', `self-install: ${cause.message}`)
-    return null
+    return { marker: null }
+  }
+  if (!count) return { marker }
+  const who = `self-install ${short(marker.sha)}`
+  try {
+    const r = beginProbationPass({ home, sha: marker.sha, now: deps.clock.now() })
+    if (r.outcome === 'started') return { marker: r.marker }
+    if (r.outcome === 'rolled-back') {
+      print('error', `${who}: ${r.refused === false ? '' : 'unhealthy: '}${r.reason}; rolled back${r.refused === false ? ' without refusing it' : ''} before this pass did anything, and the next pass runs ${short(marker.from)}`)
+      return { marker: null, ended: true }
+    }
+    if (r.outcome === 'rollback-failed') {
+      print('error', `${who}: unhealthy (${r.reason})`)
+      return { marker: r.marker }
+    }
+    print('info', `${who}: ${r.reason}`)
+    return { marker: null }
+  } catch (cause) {
+    // The start could not be recorded: the pass is still this version's, and is still judged.
+    print('warn', `${who}: could not record the start of this probation pass: ${cause.message}`)
+    return { marker }
   }
 }
 
@@ -257,9 +286,10 @@ function settleHealth(home, marker, pass, deps, print) {
   const who = `self-install ${short(marker.sha)}`
   try {
     const { verdict, reason, newErrors } = judgeHealth(marker, pass)
-    const r = settleProbation({ home, verdict, reason, newErrors, now: deps.clock.now() })
+    const r = settleProbation({ home, sha: marker.sha, verdict, reason, newErrors, now: deps.clock.now() })
     if (r.outcome === 'healthy') print('info', `${who}: health OK`)
     else if (r.outcome === 'undecided') print('info', `${who}: health undecided: ${r.reason}`)
+    else if (r.outcome === 'superseded') print('info', `${who}: ${r.reason}`)
     else if (r.outcome === 'rolled-back' && r.refused === false) print('error', `${who}: ${r.reason}; rolled back without refusing it, and the next pass runs ${short(marker.from)}`)
     else if (r.outcome === 'rolled-back') print('error', `${who}: unhealthy (${r.reason}); rolled back, and the next pass runs ${short(marker.from)}`)
     else print('error', `${who}: unhealthy (${r.reason})`)
@@ -285,7 +315,7 @@ async function onePass(loaded, args, deps, print) {
       if (lock.ok) {
         try {
           const home = deps.botHome(loaded)
-          const probation = home ? readProbation(home, print) : null
+          const probation = home ? readProbation(home, print, deps).marker : null
           if (probation) settleHealth(home, probation, { refusedGates: true }, deps, print)
         } finally {
           lock.release()
@@ -306,7 +336,16 @@ async function onePass(loaded, args, deps, print) {
   }
   // Only a live pass reads or writes the self-install marker, and only one that runs through a version link.
   const home = live ? deps.botHome(config) : null
-  const probation = home ? readProbation(home, print) : null
+  // A pass over named repos only is no evidence about the rest, so it settles nothing and counts no start.
+  const judged = args.repos.length === 0
+  const { marker: probation, ended } = home ? readProbation(home, print, deps, { count: judged }) : { marker: null }
+  if (ended) {
+    // The version was rolled back before this pass began: it does no work as the version just judged.
+    print('error', 'pass ended: this version was rolled back; nothing is checked, readied or merged by it')
+    summarize({ passOk: false, authOk: null, repoErrors: [], undecided: null })
+    lock.release()
+    return 1
+  }
   /** What the pass came to: runOnce fills `summary`; the rest is set here. */
   const pass = { code: 1, authOk: undefined, threw: undefined, summary: {} }
   try {
@@ -361,8 +400,7 @@ async function onePass(loaded, args, deps, print) {
     return 1
   } finally {
     const { summary } = pass
-    // A pass over named repos only is no evidence about the rest, so it settles nothing.
-    if (probation && args.repos.length === 0) {
+    if (probation && judged) {
       settleHealth(home, probation, { code: pass.code, authOk: pass.authOk, threw: pass.threw, quota: summary.quota, freshness: summary.freshness, latest: summary.latest, repoErrors: summary.repoErrors }, deps, print)
     }
     // `undecided`: the pass stopped short of every repo (a quota pause) or could not read GitHub's main.
