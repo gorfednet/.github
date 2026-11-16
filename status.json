@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-11-16T20:32:12.030Z",
-  "renderedAt": "2026-11-16T20:32:12.030Z",
+  "generatedAt": "2026-11-16T22:32:04.158Z",
+  "renderedAt": "2026-11-16T22:32:04.158Z",
   "repos": [
     {
       "slug": "gorfednet/bindercurve.com",
@@ -164,27 +164,15 @@
           "author": "gorfednet"
         },
         {
-          "number": 220,
-          "title": "Privacy guard: merge commits, hidden paths, commit exemption, bare names (plan row 1.30 f)",
-          "ageDays": 0,
-          "labels": [],
-          "draft": false,
-          "review": "clean",
-          "headSha": "270341796ab6375ab5cac53d96fe8a801dbcf187",
-          "ci": "green",
-          "next": "merge once Desk's Fable read and the review on 2703417 are clean",
-          "author": "gorfednet"
-        },
-        {
           "number": 216,
           "title": "Public push guard: check a push or gh text before it reaches a public repository (plan row 1.30 f)",
           "ageDays": 0,
           "labels": [],
           "draft": false,
-          "review": "findings",
-          "headSha": "c37fe752a7e0bad7ae61cddf7f40c8e2c2b0833d",
-          "ci": "red",
-          "next": "Review rounds are over (Desk, 16 November 2026). Known gap, deferred: a push spelled in pieces inside inline code (`python3 -c` with `'pu'+'sh'`). Backlog entry `public-push-guard-spelled-in-pieces`; any later finding outside the README's covered list is triaged the same way. Say here when the review of the new head is clean.",
+          "review": "clean",
+          "headSha": "d71c0094dd11fa8461dde66dfcea6739533ff8be",
+          "ci": "pending",
+          "next": "merge: Desk labels it once the review of the new head is clean. Known gap, deferred: a push spelled in pieces inside inline code. Backlog entry `public-push-guard-spelled-in-pieces`.",
           "author": "gorfednet"
         },
         {
@@ -217,7 +205,7 @@
         {
           "number": 103,
           "title": "Handoff: recovery of 38 failed Herdr jobs",
-          "ageDays": 6,
+          "ageDays": 7,
           "labels": [
             "ready-to-merge",
             "needs-fix"
@@ -540,7 +528,7 @@
       "idlePrs": [],
       "duplicatePrs": [],
       "lastDeploy": null,
-      "incidents7d": 1,
+      "incidents7d": 2,
       "dependabotRed": 0,
       "kitVersion": "0.63.0"
     },
@@ -608,7 +596,7 @@
       "openPrCount": 11,
       "lapsedBacklogCount": 15,
       "noPrCount": 6,
-      "idlePrCount": 7,
+      "idlePrCount": 8,
       "duplicatePrCount": 4,
       "dependabotRedCount": 0,
       "kitVersion": "0.61.0"
@@ -671,24 +659,24 @@
   "localCounts": {
     "rows": {
       "dirtyClones": {
-        "count": 1,
-        "measuredAt": "2026-11-15T15:00:00.000Z"
+        "count": null,
+        "measuredAt": null
       },
       "behindClones": {
-        "count": 2,
-        "measuredAt": "2026-11-15T15:00:00.000Z"
+        "count": null,
+        "measuredAt": null
       },
       "oldWorktrees": {
-        "count": 1,
-        "measuredAt": "2026-11-15T15:00:00.000Z"
+        "count": null,
+        "measuredAt": null
       },
       "idleSessions": {
-        "count": 1,
-        "measuredAt": "2026-11-15T15:00:00.000Z"
+        "count": null,
+        "measuredAt": null
       },
       "installedTools": {
-        "count": 1,
-        "measuredAt": "2026-11-15T15:00:00.000Z"
+        "count": null,
+        "measuredAt": null
       },
       "keptBranches": {
         "count": null,
@@ -697,28 +685,28 @@
     },
     "inventory": {
       "session": {
-        "total": 7,
-        "orphans": 2,
-        "measuredAt": "2026-11-15T15:00:00.000Z"
+        "total": null,
+        "orphans": null,
+        "measuredAt": null
       },
       "worktree": {
-        "total": 4,
-        "orphans": 0,
-        "measuredAt": "2026-11-15T15:00:00.000Z"
+        "total": null,
+        "orphans": null,
+        "measuredAt": null
       },
       "job": {
-        "total": 1,
-        "orphans": 1,
-        "measuredAt": "2026-11-15T15:00:00.000Z"
+        "total": null,
+        "orphans": null,
+        "measuredAt": null
       }
     }
   },
   "inventory": {
-    "measuredAt": "2026-11-16T20:32:12.030Z",
+    "measuredAt": "2026-11-16T22:32:04.158Z",
     "counts": {
       "pr": {
-        "total": 98,
-        "orphans": 45
+        "total": 97,
+        "orphans": 46
       },
       "session": null,
       "worktree": null,
@@ -778,19 +766,18 @@
         "lapsed": true
       }
     ],
-    "hiddenPrivate": 41,
+    "hiddenPrivate": 42,
     "privateReposNotItemised": 18,
     "planRead": true
   },
   "dotgithub": {
-    "measuredAt": "2026-11-16T20:32:53.648Z",
-    "branches": 36,
+    "measuredAt": "2026-11-16T22:32:35.879Z",
+    "branches": 35,
     "merged": 2,
-    "exposedFiles": 76,
+    "exposedFiles": 61,
     "rulesNotChecked": [],
     "readmeMissing": [
       ".claude",
-      "briefs",
       "capacity",
       "infra",
       "test"
