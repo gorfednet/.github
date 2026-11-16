@@ -795,7 +795,7 @@
     {
       "id": "public-push-guard-spelled-in-pieces",
       "title": "public-push-guard: a push spelled in pieces inside inline code is not read",
-      "status": "confirmed-bug",
+      "status": "in-review",
       "assignee": "main-model",
       "userSymptom": "A session that runs python3 -c with the word push built from parts (for example 'pu'+'sh') publishes to a public repository with no check.",
       "evidence": "Claude review of .github 216 at 592f83d (16 November 2026): the hook's own filter looks for the literal word push after quotes are stripped, so 'pu'+'sh' never reaches the inline-interpreter rule, though the wrapper's looser filter passes it on. One way to close it: send any command that runs inline code and holds git or gh through the plain-command check, whatever the text says.",
@@ -804,6 +804,18 @@
       "pr": 216,
       "created": "2026-11-16",
       "updated": "2026-11-16"
+    },
+    {
+      "id": "ci-parallelism-host-cpus",
+      "title": "CI tools size their parallelism from the host's 12 cpus inside the pool's 2-cpu containers",
+      "status": "confirmed-bug",
+      "assignee": "main-model",
+      "userSymptom": "papers.4thcltr.com's main and its weekly release went red on the wordmark specs with no code change, the night the owner wanted the release live.",
+      "evidence": "Same commit passed on a hosted runner with 1 Playwright worker and failed on the pool with 6 (papers run 43755371742, attempts 1 and 2). Inside a pool container os.cpus() is 12, availableParallelism() 2, cpu.max 200000 100000 (probed 15 November 2026). 4thcltr.com hit the same cause on 4 October 2026 (91259c9). Plan and briefs: docs/plans/ci-parallelism.md, briefs/ci-par-*.md.",
+      "note": "Fixed for papers alone by papers PR 43. The fleet fix is the plan's waves 1 to 3.",
+      "reviewBy": "2026-11-27",
+      "created": "2026-11-15",
+      "updated": "2026-11-15"
     }
   ]
 }

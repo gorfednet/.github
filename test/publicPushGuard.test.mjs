@@ -1122,6 +1122,16 @@ describe('public-push-guard: a body or field read from standard input', () => {
       assert.ok(denied(x), c)
     }
   })
+  it('refuses a device or process path on its own, with no input redirect to catch it first', () => {
+    const r = repo()
+    sh(r.dir, r.w, 'push', '-q', 'origin', 'feature')
+    for (const c of [
+      "gh pr comment 3 --body-file /dev/stdin <<'EOF'\nclean words\nEOF",
+      'gh pr comment 3 --body-file /dev/fd/3',
+      'gh pr comment 3 --notes-file /proc/self/fd/0',
+      'gh api -X POST repos/gorfednet/testrepo/issues -F body=@/dev/fd/3',
+    ]) assert.ok(denied(hook(c, { r })), c)
+  })
   it('near miss: a literal file, and a quoted here-document, are still read and pass when clean', () => {
     const r = repo()
     sh(r.dir, r.w, 'push', '-q', 'origin', 'feature')

@@ -11,8 +11,11 @@
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-NODE_BIN="${NODE_BIN:-$(node -p 'process.execPath')}"
-MIN_TESTS=388
+# The Node the installer would pick (scripts/lib/resolve-node.sh), not whatever `node` is first on PATH.
+# shellcheck source=../scripts/lib/resolve-node.sh
+source "${HERE}/../scripts/lib/resolve-node.sh"
+NODE_BIN="$(resolve_node)" || { echo "check.sh: no usable Node." >&2; exit 1; }
+MIN_TESTS=574
 
 tests=("${HERE}"/test/*.test.mjs)
 if [[ ! -f "${tests[0]}" ]]; then

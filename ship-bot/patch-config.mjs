@@ -19,8 +19,8 @@
 import { copyFileSync, existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { validateConfig } from './lib/config.mjs'
+import { isMain } from './lib/isMain.mjs'
 
 export function applyPatch(raw, patch) {
   const changed = []
@@ -86,4 +86,6 @@ function main(argv) {
   return 0
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) process.exitCode = main(process.argv.slice(2))
+// isMain compares resolved paths: the installed copy runs through the `app` symlink, where a plain string
+// comparison is false and the CLI would do nothing and exit 0.
+if (isMain(import.meta.url)) process.exitCode = main(process.argv.slice(2))
