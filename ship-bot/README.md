@@ -374,6 +374,15 @@ refusal sends one loud message. Each of these needs a hand install
   one handles. The dry pass gets one retry first too.
 - A new version that a health check found unhealthy and rolled back.
 
+## Node
+
+The agents run the user-owned Node 24 at `~/.local/share/node/24/bin/node`, a stable link that
+`scripts/node-update.sh 24` moves to each new patch (no sudo; plan row 3.20k). The installers record that
+link, not a versioned directory, so a patch needs no reinstall and no LaunchAgent reload: ship-bot starts a
+fresh process every 2 minutes and picks the new binary up on its next start. `node scripts/node-update.sh 24 --check`
+reads the installed and the latest patch without changing anything. A patch inside the recorded major isn't
+drift in fleet-status; a new major still is. `/usr/local/bin/node` stays a fallback until the owner removes it.
+
 "Handles" is read from the last 3 complete live passes. A repository counts
 as already broken only when it stopped on an error in each of them.
 

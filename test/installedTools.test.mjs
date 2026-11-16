@@ -157,6 +157,18 @@ describe('LaunchAgents on another tool\'s Node', () => {
     assert.equal(hit[0].tool, 'LaunchAgent net.gorfed.ship-bot')
     assert.match(hit[0].detail, /\.hermes\/node\/bin\/node, inside another tool's private folder/)
   })
+  it('does not flag a Node under ~/.local/share/node (the user-owned installs, plan row 3.20k), but still flags other ~/.local/share paths', () => {
+    const f = fixture()
+    const ours = join(f.home, '.local', 'share', 'node', 'v24.22.3', 'bin', 'node')
+    put(ours, '#!/bin/sh\n', 0o755)
+    symlinkSync(join(f.home, '.local', 'share', 'node', 'v24.22.3'), join(f.home, '.local', 'share', 'node', '24'))
+    agent(f, 'net.gorfed.ship-bot', join(f.home, '.local', 'share', 'node', '24', 'bin', 'node'))
+    const other = join(f.home, '.local', 'share', 'othertool', 'bin', 'node')
+    put(other, '#!/bin/sh\n', 0o755)
+    agent(f, 'net.gorfed.capacity', other)
+    const hit = run(f).behind.filter((b) => b.tool.startsWith('LaunchAgent'))
+    assert.deepEqual(hit.map((h) => h.tool), ['LaunchAgent net.gorfed.capacity'])
+  })
   it('reports a LaunchAgent whose program no longer exists as behind, not unread', () => {
     const f = fixture()
     const real = join(f.home, '.hermes', 'node', 'bin', 'node')
@@ -185,6 +197,13 @@ describe('a Node that is not the one check.sh passed on (plan row 1.22a)', () =>
   const nodeRows = (f) => run(f).behind.filter((b) => b.tool.startsWith('Node version'))
   it('is quiet when the agent\'s Node reports the recorded version', () => {
     assert.deepEqual(nodeRows(setup('v22.23.1', 'v22.23.1')), [])
+  })
+  it('is quiet after a patch or minor release in the recorded major line (plan row 3.20k: node-update.sh swaps the link)', () => {
+    assert.deepEqual(nodeRows(setup('v24.22.4', 'v24.22.1')), [])
+    assert.deepEqual(nodeRows(setup('v24.23.0', 'v24.22.1')), [])
+  })
+  it('still flags a different major, even one newer', () => {
+    assert.equal(nodeRows(setup('v26.0.0', 'v24.22.1')).length, 1)
   })
   it('flags a changed version, naming both', () => {
     const hit = nodeRows(setup('v24.1.0', 'v22.23.1'))

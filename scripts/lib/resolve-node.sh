@@ -7,8 +7,10 @@
 # Hermes Agent's installer made to its private Node under ~/.hermes. Archiving Hermes would have
 # silently stopped the only merger. So:
 #   - NODE_BIN=<path> overrides everything (still must be Node 22 or newer);
-#   - otherwise the first of /usr/local/bin/node, /opt/homebrew/bin/node and the PATH's node whose
-#     realpath is NOT inside another tool's private folder ($HOME/.<name>/...) and is Node 22+;
+#   - otherwise the first of $HOME/.local/share/node/24/bin/node (the user-owned install, plan row 3.20k;
+#     scripts/node-update.sh patches it without sudo), /usr/local/bin/node (the old .pkg, until the owner
+#     removes it), /opt/homebrew/bin/node and the PATH's node whose realpath is NOT inside another tool's
+#     private folder ($HOME/.<name>/...) and is Node 22+;
 #   - no such binary: a message on stderr and a non-zero exit. Never a silent fallback.
 # Prints the candidate's own path (not its realpath) on stdout, so launchd follows a stable symlink. HOME and the candidate list are read at call time (tests set them).
 
@@ -21,11 +23,13 @@ _rn_realpath() {
 
 # True when $1 lies under a dot-folder of $HOME (another tool's private area). $1 is a realpath, so
 # $HOME is compared both as given and with its symlinks resolved (`pwd -P`): a symlinked home would
-# otherwise never match.
+# otherwise never match. $HOME/.local/share/node/ is the one dot-folder path that is ours: the Node
+# installs scripts/node-update.sh makes (plan row 3.20k), owned by no other tool.
 _rn_private() {
   local home_phys
   home_phys="$(cd "${HOME}" 2>/dev/null && pwd -P)" || home_phys="${HOME}"
   case "$1" in
+    "${HOME}"/.local/share/node/* | "${home_phys}"/.local/share/node/*) return 1 ;;
     "${HOME}"/.*/* | "${home_phys}"/.*/*) return 0 ;;
     *) return 1 ;;
   esac
@@ -49,7 +53,7 @@ resolve_node() {
   fi
   # RESOLVE_NODE_CANDIDATES (space-separated) replaces the two fixed paths; for tests.
   local candidates
-  read -r -a candidates <<<"${RESOLVE_NODE_CANDIDATES:-/usr/local/bin/node /opt/homebrew/bin/node}"
+  read -r -a candidates <<<"${RESOLVE_NODE_CANDIDATES:-${HOME}/.local/share/node/24/bin/node /usr/local/bin/node /opt/homebrew/bin/node}"
   if cand="$(command -v node 2>/dev/null)" && [[ -n "${cand}" ]]; then candidates+=("${cand}"); fi
   for cand in "${candidates[@]}"; do
     [[ -e "${cand}" ]] || continue
@@ -65,9 +69,9 @@ resolve_node() {
     return 0
   done
   if [[ -n "${seen_private}" ]]; then
-    echo "resolve-node: refusing ${seen_private}: it lives in another tool's private folder, and archiving that tool would stop this agent. Install Node ${NODE_MIN_MAJOR}+ outside \$HOME/.*/ (for example /usr/local/bin/node), or set NODE_BIN=<path> to choose one on purpose." >&2
+    echo "resolve-node: refusing ${seen_private}: it lives in another tool's private folder, and archiving that tool would stop this agent. Install Node ${NODE_MIN_MAJOR}+ outside \$HOME/.*/ (run scripts/node-update.sh 24), or set NODE_BIN=<path> to choose one on purpose." >&2
   else
-    echo "resolve-node: no Node ${NODE_MIN_MAJOR}+ found in /usr/local/bin, /opt/homebrew/bin or PATH. Set NODE_BIN=<path>." >&2
+    echo "resolve-node: no Node ${NODE_MIN_MAJOR}+ found in ~/.local/share/node/24, /usr/local/bin, /opt/homebrew/bin or PATH. Run scripts/node-update.sh 24, or set NODE_BIN=<path>." >&2
   fi
   return 1
 }

@@ -143,8 +143,10 @@ export function privateInterpreters(home, launchAgents) {
       out.push({ agent, program, real: program, missing: true }) // a dangling program: the agent can't start
       continue
     }
-    const rel = relative(homeReal, real)
-    if (!rel.startsWith('..') && !rel.startsWith(sep) && /^\.[^/]+\//.test(rel.split(sep).join('/'))) out.push({ agent, program, real })
+    const rel = relative(homeReal, real).split(sep).join('/')
+    // ~/.local/share/node/ is ours: the installs scripts/node-update.sh makes (plan row 3.20k), owned by no other tool.
+    if (rel.startsWith('.local/share/node/')) continue
+    if (!rel.startsWith('..') && !rel.startsWith('/') && /^\.[^/]+\//.test(rel)) out.push({ agent, program, real })
   }
   return out
 }
@@ -168,6 +170,9 @@ function nodeVersion(program) {
   }
 }
 
+/** The major of a `vMAJOR.MINOR.PATCH` version, or null when it isn't one. */
+const nodeMajor = (v) => (/^v(\d+)\.\d+\.\d+$/.exec(v ?? '') ?? [])[1] ?? null
+
 /**
  * Installed agents whose Node reports a version other than the recorded one; recorded is null when there is no record.
  * `now` is null when the program exists but its --version fails or times out: that agent is unread, and still gets a row.
@@ -188,7 +193,11 @@ export function nodeVersionDrift(home, launchAgents) {
     const recorded = existsSync(file) ? readFileSync(file, 'utf8').trim() : null
     const now = nodeVersion(program)
     if (now === null && !existsSync(program)) continue // a missing program is already reported by privateInterpreters
-    if (now === null || recorded !== now) out.push({ agent, program, recorded, now })
+    // A patch inside the recorded major line is not drift: scripts/node-update.sh swaps the stable link under a
+    // running agent without sudo (plan row 3.20k), and check.sh never needs to pass again for a patch release.
+    // A different major, an unreadable version or no record still is.
+    const sameLine = now !== null && recorded !== null && nodeMajor(now) !== null && nodeMajor(now) === nodeMajor(recorded)
+    if (now === null || (recorded !== now && !sameLine)) out.push({ agent, program, recorded, now })
   }
   return out
 }

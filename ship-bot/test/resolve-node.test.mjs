@@ -83,6 +83,31 @@ describe('resolve_node', () => {
     assert.notEqual(r.status, 0)
   })
 
+  it('takes the user-owned ~/.local/share/node/24 install first, and prints the stable link, not the versioned directory (plan row 3.20k)', () => {
+    const home = mac()
+    const keg = join(home, '.local', 'share', 'node', 'v24.22.3', 'bin', 'node')
+    fake(keg, '24')
+    symlinkSync(join(home, '.local', 'share', 'node', 'v24.22.3'), join(home, '.local', 'share', 'node', '24'))
+    const stable = join(home, '.local', 'share', 'node', '24', 'bin', 'node')
+    const old = join(home, 'usr', 'local', 'bin', 'node')
+    fake(old, '24')
+    const r = resolve(home, { RESOLVE_NODE_CANDIDATES: `${stable} ${old}` })
+    assert.equal(r.status, 0, r.stderr)
+    assert.equal(r.stdout.trim(), stable)
+    // The default list starts with that same path under $HOME.
+    const d = resolve(home, {})
+    assert.equal(d.stdout.trim(), stable, d.stderr)
+  })
+
+  it('still refuses other dot-folders under ~/.local/share and under ~/.local/bin links into them', () => {
+    const home = mac()
+    const other = join(home, '.local', 'share', 'nodeish', 'bin', 'node')
+    fake(other, '24')
+    const r = resolve(home, { RESOLVE_NODE_CANDIDATES: other })
+    assert.notEqual(r.status, 0)
+    assert.match(r.stderr, /another tool's private folder/)
+  })
+
   it('NODE_BIN overrides the private-folder refusal, but not the version floor or a missing file', () => {
     const home = mac()
     const priv = join(home, '.hermes', 'node', 'bin', 'node')
