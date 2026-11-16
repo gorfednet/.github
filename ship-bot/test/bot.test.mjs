@@ -821,6 +821,47 @@ describe('redaction', () => {
   })
 })
 
+describe('redaction of the Cloudflare Pages token', () => {
+  // Assembled at run time, like every other fixture secret here.
+  const PAGES_TOKEN = ['cf', 'pages', 'FAKEtoken0123456789abcdefghijklmnop'].join('-')
+  const failingDeploy = () =>
+    makeRunner({ handle: (cmd) => (cmd.kind === 'deploy' ? { code: 1, stdout: `wrangler: bad token ${PAGES_TOKEN}\nproxying to https://stats.example.test and stats.example.test\n` } : undefined) })
+
+  it('masks the token and the config values a deploy prints, in the comment and the deploy log', async () => {
+    const s = scenario({ runner: failingDeploy() })
+    mkdirSync(s.config.stateDir, { recursive: true })
+    writeFileSync(join(s.config.stateDir, 'cloudflare-pages.token'), `${PAGES_TOKEN}\n`, { mode: 0o600 })
+    writeFileSync(join(s.config.stateDir, 'cloudflare-pages.env'), 'PLAUSIBLE_ORIGIN=https://stats.example.test\n')
+    await s.run()
+    const logDir = join(s.config.stateDir, 'logs', 'deploys')
+    const log = readFileSync(join(logDir, readdirSync(logDir)[0]), 'utf8')
+    const everything = [bodies(s.github).join('\n'), log, s.logs.join('\n')].join('\n')
+    assert.ok(!everything.includes(PAGES_TOKEN), 'the Pages token must not be printed anywhere')
+    assert.ok(!everything.includes('stats.example.test'), 'the analytics host must not be printed anywhere')
+    assert.match(log, /wrangler: bad token \[REDACTED\]/)
+    assert.match(bodies(s.github).join('\n'), /\[REDACTED\]/)
+  })
+
+  it('reads the files from the paths a caller names (deps.pagesFiles)', async () => {
+    const s = scenario({ runner: failingDeploy() })
+    const token = join(s.home, 'elsewhere.token')
+    writeFileSync(token, PAGES_TOKEN)
+    await s.run('live', { pagesFiles: { token } })
+    const logDir = join(s.config.stateDir, 'logs', 'deploys')
+    const log = readFileSync(join(logDir, readdirSync(logDir)[0]), 'utf8')
+    assert.ok(!log.includes(PAGES_TOKEN))
+    assert.match(log, /wrangler: bad token \[REDACTED\]/)
+  })
+
+  it('near miss: with no token file the same output is not masked, so the file is what does it', async () => {
+    const s = scenario({ runner: failingDeploy() })
+    await s.run()
+    const logDir = join(s.config.stateDir, 'logs', 'deploys')
+    const log = readFileSync(join(logDir, readdirSync(logDir)[0]), 'utf8')
+    assert.ok(log.includes(PAGES_TOKEN))
+  })
+})
+
 describe('safety rails', () => {
   it('dry run: zero GitHub writes, only read-only gate commands, no state written', async () => {
     const gh = new FakeGitHub({ pulls: [makePr({ number: 7 }), makePr({ number: 9, labels: [{ name: 'ready-to-merge' }] })] })

@@ -1,0 +1,9 @@
+{
+  "name": "site-deploy-pages",
+  "private": true,
+  "type": "module",
+  "description": "Pinned wrangler for scripts/site-deploy.sh (Cloudflare Pages backend). Installed with npm ci --ignore-scripts; never npx.",
+  "dependencies": {
+    "wrangler": "4.156.1"
+  }
+}

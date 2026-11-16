@@ -540,6 +540,54 @@ describe('buildStamp', () => {
   })
 })
 
+/*
+ * pages: site-deploy.sh reads this key to choose the nginx host, Cloudflare Pages or both,
+ * and refuses a malformed one at deploy time. The registry check applies the same
+ * rules, so a bad row fails its pull request and never a release.
+ */
+describe('pages', () => {
+  const SITE = REGISTRY.projects.findIndex((p) => p.archetype === 'static-no-npm')
+  const GOOD = { project: 'example-site', targets: ['nginx', 'pages'], allow: ['/*/spec.json', '/.well-known/security.txt'] }
+
+  it('no real row carries the key in this change, and the registry passes without it', () => {
+    assert.notEqual(SITE, -1)
+    assert.deepEqual(REGISTRY.projects.filter((p) => p.pages !== undefined).map((p) => p.slug), [])
+  })
+
+  it('accepts a well-formed key: either target, both, and no allow list', () => {
+    for (const pages of [GOOD, { project: 'ab', targets: ['pages'] }, { project: 'a'.repeat(58), targets: ['nginx'] }]) {
+      const result = run(withProject(SITE, { pages }))
+      assert.equal(result.status, 0, `${JSON.stringify(pages)}\n${result.stderr}`)
+    }
+  })
+
+  it('fails on a malformed key, naming the rule', () => {
+    const cases = [
+      [['pages'], /pages: must be an object/],
+      [null, /pages: must be an object/],
+      [{ ...GOOD, branch: 'main' }, /pages: unknown key branch/],
+      [{ targets: ['pages'] }, /pages: project must match/],
+      [{ ...GOOD, project: 'Example_Site' }, /pages: project must match/],
+      [{ ...GOOD, project: 'example-' }, /pages: project must match/],
+      [{ ...GOOD, project: 'a'.repeat(59) }, /pages: project must match/],
+      [{ project: 'example-site' }, /pages: targets must be a non-empty list/],
+      [{ ...GOOD, targets: [] }, /pages: targets must be a non-empty list/],
+      [{ ...GOOD, targets: 'pages' }, /pages: targets must be a non-empty list/],
+      [{ ...GOOD, targets: ['nginx', 's3'] }, /pages: targets may only name/],
+      [{ ...GOOD, targets: ['pages', 'pages'] }, /pages: targets names a backend twice/],
+      [{ ...GOOD, allow: '/x.json' }, /pages: allow must be a list of globs/],
+      [{ ...GOOD, allow: ['x/spec.json'] }, /pages: allow glob "x\/spec.json"/],
+      [{ ...GOOD, allow: ['/../x.json'] }, /pages: allow glob/],
+      [{ ...GOOD, allow: [7] }, /pages: allow glob 7/],
+    ]
+    for (const [pages, message] of cases) {
+      const result = run(withProject(SITE, { pages }))
+      assert.equal(result.status, 1, JSON.stringify(pages))
+      assert.match(result.stderr, message)
+    }
+  })
+})
+
 describe('a project stood down', () => {
   const DORMANT = REGISTRY.projects.findIndex((p) => p.dormantUntil !== undefined)
   const LIVE = REGISTRY.projects.findIndex((p) => p.tier === 1 && p.dormantUntil === undefined)
