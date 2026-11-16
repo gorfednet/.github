@@ -54,6 +54,16 @@ describe('status.json schema', () => {
   })
 })
 
+describe('status.json schema: installed tools', () => {
+  const withTools = (list) => ({ ...structuredClone(fixture), local: { ...structuredClone(fixture).local, installedTools: list } })
+  it('accepts an aggregate finding with items and an ahead finding (plan row 1.18)', () => {
+    const behind = { tool: '~/.claude mirror', source: '~/.claude', behind: 1, detail: 'mirror of gorfednet.github/docs/claude-home: 1 files behind', items: ['rules/shipping.md'] }
+    const ahead = { tool: '~/.claude mirror', source: '~/.claude', behind: null, ahead: true, detail: 'mirror of gorfednet.github/docs/claude-home: 1 files ahead of main or unmirrored (not behind)', items: ['rules/new.md'] }
+    assert.deepEqual(validate(withTools([behind, ahead]), schema), [])
+    assert.equal(validate(withTools([{ ...behind, surprise: 1 }]), schema).length, 1, 'an unknown field is still refused')
+  })
+})
+
 describe('helpers', () => {
   it('nextItem reads the first unchecked line under ## Next only', () => {
     const body = '- [ ] not this\n## Done\n- [ ] nor this\n## Next\n- [x] done\n- [ ] the one\n- [ ] later\n## After\n- [ ] no'

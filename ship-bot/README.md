@@ -505,9 +505,18 @@ Install rule (13 November 2026): every tool on this Mac installs from one of
 these ship-bot-advanced worktrees, never a working checkout. `install-gates.sh`,
 `capacity/install.sh` and ops' Herdr `install.sh` refuse anything else.
 fleet-status's "Installed tools behind main" row flags a link into a working
-checkout, a worktree behind origin/main, and an installed copy (this bot, the
-capacity app, the gh-poll-guard hook) that differs from main
-(`scripts/lib/installed-tools.mjs`). Each wrapper also prints one warning line on stderr when its
+checkout, a worktree behind origin/main, and an installed copy that differs from
+main (this bot and its gate-scripts copy, the capacity app, the hooks, and the
+rules, agents, skills, `CLAUDE.md` and `settings.json` mirrored in
+`docs/claude-home/`; `scripts/lib/installed-tools.mjs`). The published STATUS.md
+runs on GitHub and cannot read this Mac, so that row reads "not measured" there.
+The capacity job (every 15 minutes, `scripts/lib/installedDrift.mjs`) fetches the
+two clones, runs the same check and sends one ntfy the first time each finding has been seen on two runs in a row
+(memo `~/.desk/installed-drift.json`; a push nobody received retries, a finding that
+goes away re-arms, and a check that cannot measure for 3 runs says so once, with no path or
+repository name in the text). A copy that matches no committed version (a rule edited before its
+mirror pull request) is shown as ahead or unmirrored and never notified. The ship-bot copy is compared as
+code only: a README or example-config merge is not a stale bot. Each wrapper also prints one warning line on stderr when its
 checkout is not at the last fetched `origin/main`. The fetch also moves
 `origin/main` for the whole .github clone, so a bot run from a checkout with no
 installed gate-scripts copy (the fallback above) would see its clone's HEAD

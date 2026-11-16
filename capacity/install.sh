@@ -44,6 +44,9 @@ cp "${HERE}/capacity.mjs" "${APP_DIR}/capacity.mjs"
 mkdir -p "${APP_DIR}/lib"
 cp "${HERE}/../ship-bot/lib/heartbeat.mjs" "${APP_DIR}/lib/heartbeat.mjs"
 cp "${HERE}/../scripts/lib/usageAlert.mjs" "${APP_DIR}/lib/usageAlert.mjs"
+# The installed-tools check (plan row 1.18): it imports installed-tools.mjs from its own folder.
+cp "${HERE}/../scripts/lib/installedDrift.mjs" "${APP_DIR}/lib/installedDrift.mjs"
+cp "${HERE}/../scripts/lib/installed-tools.mjs" "${APP_DIR}/lib/installed-tools.mjs"
 xml() { sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g' <<<"$1"; }
 cat >"${PLIST}.tmp" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
