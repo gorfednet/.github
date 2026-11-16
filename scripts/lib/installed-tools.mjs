@@ -26,9 +26,13 @@ import { dirname, join, relative, resolve, sep } from 'node:path'
 export const TOOL_WORKTREE_NAMES = ['gates-main', 'tools-main']
 
 /** Installed copies of committed files: where the copy lives (under home) and its source (clone dir, path). */
+// `required`: a missing copy is reported, not skipped (once main holds it). The public-push-guard
+// hook is what stops a push to a public repository.
 export const COPIES = [
   { tool: 'gh-poll-guard hook', copy: '.claude/hooks/gh-poll-guard.py', clone: 'gorfednet.github', source: 'docs/claude-home/hooks/gh-poll-guard.py' },
   { tool: 'always-pr-remind hook', copy: '.claude/hooks/always-pr-remind.py', clone: 'gorfednet.github', source: 'docs/claude-home/hooks/always-pr-remind.py' },
+  { tool: 'public-push-guard hook (wrapper)', copy: '.claude/hooks/public-push-guard.sh', clone: 'gorfednet.github', source: 'docs/claude-home/hooks/public-push-guard.sh', required: true },
+  { tool: 'public-push-guard hook', copy: '.claude/hooks/public-push-guard.mjs', clone: 'gorfednet.github', source: 'docs/claude-home/hooks/public-push-guard.mjs', required: true },
   { tool: 'capacity check', copy: '.desk/capacity-app/capacity.mjs', clone: 'gorfednet.github', source: 'capacity/capacity.mjs' },
   { tool: 'capacity heartbeat helper', copy: '.desk/capacity-app/lib/heartbeat.mjs', clone: 'gorfednet.github', source: 'ship-bot/lib/heartbeat.mjs' },
   { tool: 'capacity usage helper', copy: '.desk/capacity-app/lib/usageAlert.mjs', clone: 'gorfednet.github', source: 'scripts/lib/usageAlert.mjs' },
@@ -254,7 +258,14 @@ export function installedTools({ home = homedir(), root, launchAgents } = {}) {
     repos.add(clone)
     if (c.copy) {
       const file = join(home, c.copy)
-      if (!existsSync(file)) continue // not installed on this Mac
+      if (!existsSync(file)) {
+        // Not installed on this Mac: fine for most tools, a gap for one marked required once main has it.
+        if (c.required && tryGit(clone, 'rev-parse', '--verify', '--quiet', `origin/main:${c.source}`)) {
+          checked++
+          behind.push({ tool: c.tool, source: `~/${c.copy}`, behind: null, detail: `not installed; copy ${c.clone}/${c.source}` })
+        }
+        continue
+      }
       checked++
       const blob = tryGit(clone, 'hash-object', '--', file)
       const head = tryGit(clone, 'rev-parse', '--verify', '--quiet', `origin/main:${c.source}`)

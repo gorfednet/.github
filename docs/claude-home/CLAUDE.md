@@ -16,12 +16,13 @@ Priority order (owner, 9 November 2026: "infra first, then 4thcltr, then gorfed,
 
 Fleet status and handoffs (owner, 7 November 2026): `STATUS.md` on the `status` branch of `gorfednet/.github` is the one view of open pull requests, lapsed backlog items and red mains. Read it (or run `fleet-status`) before coordinating anything, and report to the owner from it. Context that must outlive a session goes in the repository: `docs/handoff/<date>-<topic>.md` (`/handoff` writes it) and a `## Next` section on the open pull request, never only in a chat.
 
-Four rule files in `~/.claude/rules/` load in every session:
+Five rule files in `~/.claude/rules/` load in every session:
 
 - `shipping.md`: pull requests, merge gates, auto-close after merge, red CI, learning from incidents.
 - `agents-and-cost.md`: the model roster and tier rule, Desk, who does what, worktrees for writers.
 - `verification-floor.md`: the five verification rules and the plan of record.
 - `content-voice.md`: who speaks on each site and how copy reads (pointer to the full content guidelines).
+- `public-repos.md`: three repositories are public; know a repository's visibility before writing to it, and keep private detail out of the public ones.
 
 The first three replaced the old rule files on 2026-10-03 (originals in `~/.claude/rules-archive-2026-10-03/`). `~/.claude` is the home. Cursor and Bugbot were retired on 2026-10-16, with no further spend. The Claude reviewer (`claude-review.yml`, `REVIEW.md`, `review-status.mjs`) reviews pull requests.
 

@@ -294,6 +294,16 @@
             "timeout": 5
           }
         ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/public-push-guard.sh",
+            "timeout": 200
+          }
+        ]
       }
     ]
   },

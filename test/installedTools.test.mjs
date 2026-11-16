@@ -178,3 +178,19 @@ describe('LaunchAgents on another tool\'s Node', () => {
     assert.match(hit[0].detail, /which does not exist/)
   })
 })
+
+describe('a required copy that is absent', () => {
+  it('is reported once main has it, and not before', () => {
+    const f = fixture()
+    assert.deepEqual(run(f).behind, [], 'main does not hold the hook yet')
+    put(join(f.clone, 'docs', 'claude-home', 'hooks', 'public-push-guard.mjs'), '// hook\n')
+    sh(f.clone, 'add', '-A')
+    sh(f.clone, 'commit', '-q', '-m', 'hook')
+    sh(f.clone, 'push', '-q', 'origin', 'main')
+    const hook = (r) => r.behind.filter((b) => b.tool === 'public-push-guard hook')
+    assert.equal(hook(run(f)).length, 1)
+    assert.match(hook(run(f))[0].detail, /not installed/)
+    put(join(f.home, '.claude', 'hooks', 'public-push-guard.mjs'), '// hook\n')
+    assert.deepEqual(hook(run(f)), [], 'an installed current copy is fine')
+  })
+})
