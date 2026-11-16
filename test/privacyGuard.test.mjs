@@ -379,6 +379,9 @@ describe('privacy guard: near misses that must stay clean', () => {
     `  ${'owne' + 'r'}: "the org",`,
     `x, ${'owne' + 'r'}: "a b"`,
     `readMeter({ ${'owne' + 'r'}, now = new Date(), cap, json })`,
+    // A key first on its line, in an object literal: the value ends the line with a comma or a brace.
+    `  ${'owne' + 'r'}: "the org" }`,
+    `${'owne' + 'r'}: "the org",`,
     'needs v10.1.2 and 10.1.2',
     'gorfednet/.github and gorfednet/secret-repo-two',
     'getty@tty1.service and hero@2x.png',
@@ -403,6 +406,12 @@ describe('privacy guard: more shapes that must fail', () => {
     'owner quote with the month first': `(${'owne' + 'r'}, Nov 7, 2026: "do it")`,
     'owner quote with a time after the date': `(${'owne' + 'r'}, 16 Nov 2026, 07:23 ET: "do it")`,
     'owner quote, colon form after a dash': `- ${'owne' + 'r'}: "stop asking me"`,
+    'owner quote with an ordinal date': `(${'owne' + 'r'}, 7th November 2026: "do it")`,
+    'owner quote with a weekday first': `(${'owne' + 'r'}, Saturday 14 November 2026: "do it")`,
+    'owner quote with on before the date': `(${'owne' + 'r'}, on 14 November 2026: "do it")`,
+    'owner quote with a slashed date': `(${'owne' + 'r'}, 11/14/2026: "do it")`,
+    'owner quote, colon form first on its line': `${'owne' + 'r'}: "stop asking me now"`,
+    'owner quote, colon form first on an indented line': `  ${'owne' + 'r'}: "stop asking me now"`,
     'a v stuck to a four-part address': `see v${['10', '0', '0', '5'].join('.')} now`,
     'org given as an Actions expression': '${{ github.repository_owner }}/' + 'secret-repo',
     'org slash encoded': `${'gorfednet' + '%2F'}secret-repo`,
@@ -1041,6 +1050,11 @@ describe('privacy guard: bare names, in more shapes and places', () => {
     'an HTML cell': ['docs/t.html', '<td>secret-repo</td>\n'],
     'a bold bullet': ['docs/b.md', '* **secret-repo**\n1. secret-repo\n- secret-repo (private)\n'],
     'a sentence': ['docs/p.md', 'the secret-repo is mentioned in prose\n'],
+    'a wiki remote': ['docs/w.md', 'clone secret-repo.wiki.git for the notes\n'],
+    'a wiki name': ['docs/w2.md', 'the secret-repo.wiki has the notes\n'],
+    'a file name in prose': ['docs/f.md', 'see secret-repo.md for the notes\n'],
+    'a name before an underscore': ['docs/u.md', 'the secret-repo_notes folder\n'],
+    'a name after an underscore': ['data/u.env.example', 'OLD_secret-repo=1\n'],
   }
   for (const [what, [path, body]] of Object.entries(shapes)) {
     it(`fails on a bare name in ${what}`, () => {
@@ -1111,6 +1125,44 @@ describe('privacy guard: bare names, in more shapes and places', () => {
       })
       assert.equal(r.status, 1, `${says.trim()}: ${r.out}`)
     }
+  })
+
+  it('reads a name the merge base already says on a line that says it is private', () => {
+    const says = { 'README.md': 'we also keep secret-repo around\n' }
+    for (const body of ['secret-repo\t2026-11-14\tprivate\n', '- secret-repo (private)\n', 'secret-repo, visibility: internal\n']) {
+      const r = scenario((a) => {
+        a.commit('base', says)
+        a.branch('pr')
+        a.commit('work', { 'data/r.tsv': body })
+      })
+      assert.equal(r.status, 1, `${body.trim()}: ${r.out}`)
+      assert.match(r.out, /\[private-repo\]/)
+      assert.doesNotMatch(r.out, /secret-repo/)
+    }
+    const message = scenario((a) => {
+      a.commit('base', says)
+      a.branch('pr')
+      a.commit('make secret-repo private', { 'a.md': 'clean\n' })
+    })
+    assert.equal(message.status, 1, message.out)
+  })
+
+  it('leaves a said name alone on a line that says private only as part of a word', () => {
+    const r = scenario((a) => {
+      a.commit('base', { 'README.md': 'we also keep secret-repo around\n' })
+      a.branch('pr')
+      a.commit('work', { 'docs/a.md': 'secret-repo is run privately\nsecret-repo uses a_private_key\n' })
+    })
+    assert.equal(r.status, 0, r.out)
+  })
+
+  it('leaves a name inside a host or before a second extension alone', () => {
+    const r = scenario((a) => {
+      a.commit('base', { 'README.md': 'hello\n' })
+      a.branch('pr')
+      a.commit('work', { 'docs/a.md': 'secret-repo.example.com and secret-repo.md.example.com\n' })
+    })
+    assert.equal(r.status, 0, r.out)
   })
 
   it('stops watching a name the merge base already says, and still reads the org-prefixed form', () => {

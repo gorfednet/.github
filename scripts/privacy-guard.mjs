@@ -25,12 +25,14 @@
  *   tailnet-name   a tailnet name (the Tailscale domain suffix)
  *   internal-host  a host name main already names in `.deploy-env.example`, workflows
  *                  and scripts (the list below; those names are already public)
- *   private-repo   `gorfednet/<name>` for a private repository, always. And a bare name, but
- *                  only a name the merge base has never said (as a whole word, in any text
- *                  file): most private repositories are named for a public site and are said
- *                  everywhere, so watching them would be red for good. A bare name is read as
- *                  a whole word on any added line, as a path part (a directory, or the name
- *                  with one extension) and in a commit message. The list comes from the
+ *   private-repo   `gorfednet/<name>` for a private repository, always. And a bare name:
+ *                  one the merge base has never said (as a whole word, in any text file) on
+ *                  any line, and one it has said only on a line that also says private or
+ *                  visibility. Most private repositories are named for a public site and are
+ *                  said everywhere, so watching every mention would be red for good, but the
+ *                  base never says which of them are private. A bare name is read as a whole
+ *                  word on any added line, as a path part (a directory, or the name with one
+ *                  extension) and in a commit message. The list comes from the
  *                  PRIVATE_REPOS Actions secret, one name per line (comma-separated is read
  *                  too): Actions masks each line of a multi-line secret on its own, a
  *                  comma-separated one only whole. Never from a committed file or a plain variable.
@@ -108,12 +110,7 @@ export const FORBIDDEN_NEW_DIRS = ['docs/desk/', 'docs/handoff/', 'briefs/']
 /** Exit status for "no commits in the range": nothing was read, and that is not a pass. */
 export const EXIT_NOTHING_TO_READ = 3
 
-// Files that list things, where a private repository is named without the org prefix.
-// A bare name is read in two ways: as a whole word anywhere on a line ('word', for files
-// that are lists). Elsewhere it is read the same way: only names the repository has never
-// said are watched, and every mention of one is a disclosure.
-const LIST_LIKE = /\.(?:tsv|csv|tab|txt|list|lst)$/i
-export const isListLike = (path) => LIST_LIKE.test(path)
+// How a bare name is read in a file's text: as a whole word on any line, in every file.
 export const bareScope = () => 'word'
 
 export const ALLOWLIST_PATH = '.github/privacy-guard-allow.txt'
@@ -138,16 +135,17 @@ const TAILNET = /(?<![A-Za-z0-9.-])(?:[A-Za-z0-9-]+\.)+ts\.net(?![A-Za-z0-9-])|\
 // Not next to a letter or digit; an underscore or hyphen is a boundary (DAPY_HOST, bc-x-host).
 const INTERNAL = new RegExp(`(?<![A-Za-z0-9])(?:${INTERNAL_HOSTS.join('|')})(?![A-Za-z0-9])`, 'gi')
 const EMAIL = /(?<![A-Za-z0-9._%+-])[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/g
-// Two shapes. The word owner, a comma, then a date right after it (a year, an ISO date, a
-// day and a month name, or a month name and a day), then a colon or comma and an opening
-// quote. A code object that destructures owner and later holds a number and a string is
-// not one. Or the word owner, a colon, and a quote that holds a space, unless owner is a key
-// (first on its line, or after a brace or a comma), so a GraphQL owner: "org" argument
-// and an object literal are not quotes.
-const MONTH = '(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\\.?'
+// Two shapes. The word owner, a comma, then at most 30 letters, spaces, dots or commas (a
+// weekday, "on", "the"), a digit (a date in any form: 7th November, 11/14, 2026-10-19), then
+// within 60 characters a colon or comma and an opening quote. Code punctuation (a colon, an
+// equals sign, a bracket) before the digit means it is code: a destructured owner beside
+// n: 2 is not a quote. Or the word owner, a colon, and a quote that holds a space. Owner as a
+// key is skipped: after a brace or a comma on the same line, or first on its line when the
+// quoted value then ends the line with a comma or a closing brace (an object literal).
 const OWNER_QUOTE = new RegExp(
-  `\\bowner,\\s+(?:(?:19|20)\\d\\d|\\d{1,2}\\s+${MONTH}|${MONTH}\\s+\\d)[^"“\\n]{0,60}?[:,]\\s*["“][^"”\\n]{0,200}["”]?` +
-    '|(?<!(?:^|[{,\\n])[ \\t]*)\\bowner:\\s*["“][^"”\\s]+\\s[^"”\\n]{0,200}["”]?',
+  '\\bowner,\\s+[A-Za-z .,]{0,30}?\\d[^"“\\n]{0,60}?[:,]\\s*["“][^"”\\n]{0,200}["”]?' +
+    '|(?<!(?:^|[{,\\n])[ \\t]*)\\bowner:\\s*["“][^"”\\s]+\\s[^"”\\n]{0,200}["”]?' +
+    '|(?<=(?:^|\\n)[ \\t]*)\\bowner:\\s*["“](?![^"”\\n]*["”][ \\t]*[,}][ \\t]*(?:\\n|$))[^"”\\s]+\\s[^"”\\n]{0,200}["”]?',
   'gi',
 )
 
@@ -261,19 +259,30 @@ function emailAllowed(address, allow) {
 }
 
 /**
- * A bare private repository name, in two shapes (case-insensitive, `.git` allowed):
- *   word  a whole word anywhere on the line: not part of a longer name, path or word
+ * A bare private repository name, in two shapes (case-insensitive, `.wiki` and `.git` allowed):
+ *   word  a whole word anywhere on the line: not part of a longer name, host or path. An
+ *         underscore is a boundary (`name_notes`, `OLD_name`), and so is one file extension
+ *         (`name.md`, `name.tsv`): a host (`name.example.com`) is not the name.
  *   path  a whole path part, or a part that is the name plus one extension (`name/`, `name.md`)
- * Only names the merge base has never said are watched, so the loose shape costs nothing.
+ * Unsaid names are read in every line; said names only on a line that says private.
  */
+const NAME_EXT = '(?:\\.(?:md|markdown|txt|json|jsonl|ya?ml|toml|tsv|csv|tab|html?|mjs|cjs|js|ts|sh|py|log|list))'
 export function bareNamePatterns(names) {
   if (names.length === 0) return { word: /(?!)/g, path: /(?!)/g }
   const alt = names.map(escapeRegex).join('|')
   return {
-    word: new RegExp(`(?<![A-Za-z0-9_.-])(?:${alt})(?:\\.git)?(?![A-Za-z0-9_-]|\\.[A-Za-z0-9])`, 'gi'),
-    path: new RegExp(`(?<=^|/)(?:${alt})(?:\\.git|\\.[A-Za-z0-9]{1,8})?(?=/|$)`, 'gi'),
+    word: new RegExp(
+      `(?<![A-Za-z0-9.-])(?:${alt})(?:\\.wiki)?(?:\\.git)?${NAME_EXT}?(?![A-Za-z0-9-]|\\.[A-Za-z0-9])`,
+      'gi',
+    ),
+    path: new RegExp(`(?<=^|/)(?:${alt})(?:\\.wiki)?(?:\\.git|\\.[A-Za-z0-9]{1,8})?(?=/|$)`, 'gi'),
   }
 }
+
+// A line that says a repository is private. A name the base already says is public as a
+// name, but a line that pairs it with private discloses what the base never did: which of
+// those names are private repositories (the 14 November inventory listed name, date, private).
+const SAYS_PRIVATE = /\b(?:private|visibility)\b/i
 export const bareNamePattern = (names) => bareNamePatterns(names).word
 
 const all = (re, text) => [...text.matchAll(re)].map((m) => m[0])
@@ -296,7 +305,7 @@ const versionLikeDomain = (address) => /^\d+\.\d/.test(address.slice(address.las
  * or a commit message is not checked for emails). `bare` is how a bare private repository
  * name is read in this text: 'word', 'path', or null for not at all. `svg` drops drawing data.
  */
-export function scanText(raw, { privateRepo, bareNames, allow }, rules = Object.keys(RULES), bare = null, svg = false) {
+export function scanText(raw, { privateRepo, bareNames, saidNames, allow }, rules = Object.keys(RULES), bare = null, svg = false) {
   const text = raw.replace(/\0/g, '') // a UTF-16 file read as bytes has a NUL between letters
   const on = (r) => rules.includes(r)
   const hits = []
@@ -309,8 +318,18 @@ export function scanText(raw, { privateRepo, bareNames, allow }, rules = Object.
   if (on('private-repo') && bare && bareNames) {
     // A bare match inside an org-prefixed one is the same mention, not a second finding.
     const spans = [...text.matchAll(privateRepo)].map((m) => [m.index, m.index + m[0].length])
+    const inPrefixed = (i) => spans.some(([from, to]) => i >= from && i < to)
     for (const m of text.matchAll(bareNames[bare])) {
-      if (!spans.some(([from, to]) => m.index >= from && m.index < to)) add('private-repo', [m[0]])
+      if (!inPrefixed(m.index)) add('private-repo', [m[0]])
+    }
+    if (bare === 'word' && saidNames) {
+      let at = 0
+      for (const line of text.split('\n')) {
+        if (SAYS_PRIVATE.test(line)) {
+          for (const m of line.matchAll(saidNames)) if (!inPrefixed(at + m.index)) add('private-repo', [m[0]])
+        }
+        at += line.length + 1
+      }
     }
   }
   if (on('owner-quote')) add('owner-quote', all(OWNER_QUOTE, text))
@@ -702,8 +721,15 @@ export function run(argv, env = process.env, out = console) {
   // repositories are named for a site that is public, and the merge base already says
   // their names in dozens of files: flagging them again discloses nothing new, and the
   // only way out of a false red would be a rewrite. The org-prefixed form is always read.
+  // A said name is still read on a line that says private: that pairing is new.
   const unsaid = open.filter((n) => !namedAtBase(dir, mergeBase, n))
-  const ctx = { privateRepo: privateRepoPattern(open), bareNames: bareNamePatterns(unsaid), allow }
+  const said = open.filter((n) => !unsaid.includes(n))
+  const ctx = {
+    privateRepo: privateRepoPattern(open),
+    bareNames: bareNamePatterns(unsaid),
+    saidNames: bareNamePatterns(said).word,
+    allow,
+  }
 
   // What the merge base holds: whether a path exists there, the values the same rule finds
   // in a path, and in a file's text, compared whole. A file that holds one value does not
