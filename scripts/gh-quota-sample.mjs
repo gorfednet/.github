@@ -11,7 +11,7 @@ import { isMain } from '../templates/verification-kit/lib/isMain.mjs'
 
 export const SPIKE = 100
 
-// Same patterns as docs/claude-home/hooks/gh-poll-guard.py: a process's argv can carry a token
+// Same patterns as scripts/claude-hooks/gh-poll-guard.py: a process's argv can carry a token
 // (`curl -H "Authorization: token ghp_…"`), and samples.jsonl must not keep one.
 const VALUE = String.raw`(?:'[^']*'|"[^"]*"|\S+)`
 const SECRETS = new RegExp(
