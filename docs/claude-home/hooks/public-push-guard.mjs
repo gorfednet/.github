@@ -809,11 +809,11 @@ async function checkText(text, slug, cache, target) {
   }
 }
 
-const GH_TEXT_ACTIONS = new Set(['pr create', 'pr new', 'pr edit', 'pr comment', 'pr review', 'pr close', 'issue create', 'issue new', 'issue edit', 'issue comment', 'issue close', 'release create', 'release edit'])
+const GH_TEXT_ACTIONS = new Set(['pr create', 'pr new', 'pr edit', 'pr comment', 'pr review', 'pr close', 'issue create', 'issue new', 'issue edit', 'issue comment', 'issue close', 'release create', 'release edit', 'pr merge', 'repo edit', 'label create', 'label edit'])
 // Commands that change what a repository holds, or which repository it is. The hook sees the
 // repository as it is BEFORE the command runs, so a push that follows one of these in the same
 // command can't be read.
-const MOVERS = new Set(['commit', 'merge', 'rebase', 'cherry-pick', 'pull', 'am', 'reset', 'revert', 'checkout', 'switch', 'tag', 'branch', 'clone', 'init', 'apply', 'restore', 'stash', 'update-ref', 'filter-branch', 'fast-import', 'commit-tree', 'subtree', 'worktree', 'symbolic-ref', 'remote', 'config'])
+const MOVERS = new Set(['commit', 'merge', 'rebase', 'cherry-pick', 'pull', 'am', 'reset', 'revert', 'checkout', 'switch', 'tag', 'branch', 'clone', 'init', 'apply', 'restore', 'stash', 'fetch', 'update-ref', 'filter-branch', 'fast-import', 'commit-tree', 'subtree', 'worktree', 'symbolic-ref', 'remote', 'config'])
 // These move things only when they are given something to write; with a reading flag they don't.
 const READ_ARGS = {
   branch: /^(?:--show-current|--list|-l|-a|-r|-v|-vv|--contains|--merged|--no-merged)$/,
@@ -827,6 +827,7 @@ const isMover = (c) => {
   if (c.kind === 'npm') return true
   if (c.kind !== 'git' || !MOVERS.has(c.sub)) return false
   const reads = READ_ARGS[c.sub]
+  if (c.sub === 'fetch') return c.rest.some((a) => a.includes(':') && !a.includes('://') && !a.includes('@')) // a refspec with a destination rewrites a local ref
   if (!reads) return true
   if (c.rest.length === 0) return !['branch', 'tag', 'remote', 'stash', 'worktree'].includes(c.sub) // a bare listing
   return !c.rest.some((a) => reads.test(a))
@@ -920,7 +921,8 @@ async function main() {
       flags.configured = cfgPush.ok ? cfgPush.stdout.split('\n').filter(Boolean) : []
       const pd = git(target, ['config', '--get', 'push.default'])
       flags.matching = pd.ok && pd.stdout.trim() === 'matching'
-      if (pd.ok && pd.stdout.trim() === 'nothing' && refspecs.length === 0) continue
+      // push.default only applies when nothing else names the refs: --all, --mirror, --tags and a configured push still send.
+      if (pd.ok && pd.stdout.trim() === 'nothing' && refspecs.length === 0 && !flags.all && !flags.mirror && !flags.tags && flags.configured.length === 0) continue
       for (const slug of slugs) {
         if (visibilityOf(slug, cache) === 'PRIVATE') continue
         if (moved) deny(`public-push-guard: this command changes the repository and then pushes to ${slug}, which is public. The hook can only read the repository as it is before the command runs, so the new commits can't be checked. Commit in one call, then push in the next.`)
@@ -958,7 +960,8 @@ async function main() {
       }
     }
     if (isVisibility || /"visibility"\s*:\s*"public"|"private"\s*:\s*false/.test(inputText ?? '')) deny('public-push-guard: this would make a repository public. The rule is that no repository goes from private to public. The owner does that by hand, never a session.')
-    const writesText = GH_TEXT_ACTIONS.has(action) || writesApi
+    const isGraphqlRead = isApi && c.args.some((w) => w.text === 'graphql') && !/mutation/.test(apiFieldText)
+    const writesText = GH_TEXT_ACTIONS.has(action) || (writesApi && !isGraphqlRead)
     const creates = action === 'pr create' || action === 'pr new'
     if (!writesText && !creates) continue
     const target = { dir: c.dir ?? cwd }
@@ -974,16 +977,22 @@ async function main() {
     const envRepo = c.env?.GH_REPO ?? process.env.GH_REPO
     if (envRepo && !repoFlag) slugSet.add(clean(envRepo))
     if (isApi) {
-      const endpoint = c.args.find((w) => /^\/?repos\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+/.test(w.text))
-      const m = endpoint && /^\/?repos\/([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)/.exec(endpoint.text)
+      const endpoint = c.args.find((w) => /^(?:https:\/\/api\.github\.com)?\/?repos\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+/.test(w.text))
+      const m = endpoint && /repos\/([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)/.exec(endpoint.text)
       if (m) slugSet.add(`${m[1]}/${m[2]}`)
     } else {
       const at = c.args.findIndex((w) => w.text === b)
       const selector = at >= 0 ? c.args[at + 1] : undefined
-      if (selector && !selector.text.startsWith('-')) for (const m of selector.text.matchAll(SLUG_RE)) slugSet.add(`${m[1]}/${m[2]}`)
+      if (selector && !selector.text.startsWith('-')) {
+        for (const m of selector.text.matchAll(SLUG_RE)) slugSet.add(`${m[1]}/${m[2]}`)
+        if (a === 'repo' && /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(selector.text)) slugSet.add(selector.text)
+      }
     }
     if (c.unresolvedDir && slugSet.size === 0) deny('public-push-guard: this gh call runs in a directory the hook can\'t work out. Write the path out, or cd to it first, then try again.')
     let slugs = [...slugSet]
+    // A gh api write whose endpoint isn't repos/<owner>/<name> (graphql, a URL, orgs/...) names no
+    // repository: a mutation can comment on any public pull request by node id. Read as if public.
+    if (slugs.length === 0 && writesApi && !isGraphqlRead) slugs = ['(unattributed gh api write)']
     if (slugs.length === 0) {
       if (!git(target, ['rev-parse', '--git-dir']).ok) continue
       for (const name of must(target, ['remote'], 'list the remotes').split('\n').filter(Boolean)) {
@@ -992,7 +1001,7 @@ async function main() {
       slugs = [...new Set(slugs)]
     }
     for (const slug of slugs) {
-      if (visibilityOf(slug, cache) === 'PRIVATE') continue
+      if (!slug.startsWith('(') && visibilityOf(slug, cache) === 'PRIVATE') continue
       if (writesText) {
         await checkText(command, slug, cache, target)
         if (inputWord && inputText === null) deny(`public-push-guard: this gh api call reads its body from ${inputWord.text === '-' ? 'standard input' : `${inputWord.text}, which the hook can't read here`}, and ${slug} is public, so it is refused. Write the body to a file first, in an earlier call.`)

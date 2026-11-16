@@ -787,6 +787,46 @@ describe('public-push-guard: the second review', () => {
   })
 })
 
+describe('public-push-guard: the third review', () => {
+  function two() {
+    const r = repo()
+    sh(r.dir, r.w, 'checkout', '-q', '-b', 'feature-b', 'main')
+    commit(r.dir, r.w, { 'b.md': `${IP}\n` })
+    sh(r.dir, r.w, 'checkout', '-q', 'feature')
+    return r
+  }
+  it('still reads --all, --tags, --mirror and a configured push when push.default is nothing', () => {
+    const r = two()
+    sh(r.dir, r.w, 'config', 'push.default', 'nothing')
+    sh(r.dir, r.w, 'tag', 'v1', 'feature-b')
+    for (const c of ['git push --all origin', 'git push --tags origin', 'git push --mirror origin']) assert.ok(denied(hook(c, { r })), c)
+    sh(r.dir, r.w, 'config', 'remote.origin.push', 'refs/heads/feature-b:refs/heads/feature-b')
+    assert.ok(denied(hook('git push origin', { r })), 'a configured remote.<name>.push')
+    sh(r.dir, r.w, 'config', '--unset-all', 'remote.origin.push')
+    assert.equal(hook('git push origin', { r }).out, '', 'push.default nothing with nothing named sends nothing')
+  })
+  it('reads a gh api write whose endpoint names no repository (graphql, a URL, orgs) as if it were public', () => {
+    const nowhere = tmp('nowhere')
+    for (const c of [
+      `gh api graphql -f query='mutation{addComment(input:{subjectId:"x",body:"${IP}"}){clientMutationId}}'`,
+      `gh api -X POST orgs/${ORG}/something -f body="${IP}"`,
+      `gh api -X POST https://api.github.com/repos/${ORG}/testrepo/issues -f body="${IP}"`,
+    ]) assert.ok(denied(hook(c, { cwd: nowhere })), c)
+    assert.equal(hook("gh api graphql -f query='query{viewer{login}}'", { cwd: nowhere }).out, '', 'a graphql read is not a write')
+  })
+  it('reads the text of gh pr merge, gh repo edit and gh label create', () => {
+    const r = repo()
+    for (const c of [`gh pr merge 1 -R ${ORG}/testrepo --squash --body "${IP}"`, `gh pr merge 1 --squash --subject "${IP}"`, `gh repo edit ${ORG}/testrepo --description "${IP}"`, `gh label create x --description "${IP}"`]) {
+      assert.ok(denied(hook(c, { r })), c)
+    }
+  })
+  it('counts a fetch with a destination refspec as changing the repository', () => {
+    const r = repo()
+    for (const c of ['git fetch origin main:main && git push origin feature', 'git fetch . feature:main; git push origin feature']) assert.match(reason(hook(c, { r })), /Commit in one call/, c)
+    assert.equal(hook('git fetch origin && git push origin feature', { r }).out, '', 'a plain fetch moves no local ref')
+  })
+})
+
 describe('public-push-guard: wiring', () => {
   it('is registered as a PreToolUse hook on Bash in the settings mirror and its own settings file', () => {
     const mirror = JSON.parse(readFileSync(join(ROOT, 'docs', 'claude-home', 'settings.json'), 'utf8'))
