@@ -69,7 +69,7 @@ describe('step order', () => {
 
   it('the digest is written before publishing and the ntfy step sends that file', () => {
     const render = steps[at('Render STATUS.md')]
-    assert.match(render, /--digest( --spend "\$\{RUNNER_TEMP\}\/spend\.json")? > "\$\{RUNNER_TEMP\}\/out\/digest\.txt"/)
+    assert.match(render, /--digest > "\$\{RUNNER_TEMP\}\/out\/digest\.txt"/)
     assert.ok(at('Render STATUS.md') < at('Publish to the status branch'))
     assert.match(steps[at('Post the digest to ntfy')], /--data-binary @"\$\{digest\}"/)
   })

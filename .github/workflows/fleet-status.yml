@@ -20,13 +20,6 @@ on:
   workflow_dispatch:
 # Not on pull_request: a pull request cannot be given the token.
 
-# One run at a time, and a queued one waits instead of cancelling the one in flight: the published status.json is
-# the memo of which Actions spend lines (70%, 90%) already went to ntfy, so two overlapping runs would both read
-# the same memo and both push the same line.
-concurrency:
-  group: fleet-status
-  cancel-in-progress: false
-
 permissions:
   contents: write
 
@@ -60,11 +53,6 @@ jobs:
         id: read
         env:
           FLEET_READ_TOKEN: ${{ secrets.FLEET_READ_TOKEN }}
-          # Optional. The billing read needs the Plan permission (read); when this secret is set it is used for
-          # that one call, else FLEET_READ_TOKEN is. Unset and unpermitted: the spend reads "unknown", not zero.
-          BILLING_READ_TOKEN: ${{ secrets.BILLING_READ_TOKEN }}
-          # Signs the memo of which spend lines were pushed, so the public status.json holds no threshold.
-          SPEND_MEMO_KEY: ${{ secrets.NTFY_TOKEN }}
           EVENT: ${{ github.event_name }}
         run: |
           set +e
@@ -73,30 +61,12 @@ jobs:
           # the one-request-per-branch compare calls that make up most of a full read. The owner's
           # 5,000-an-hour quota is shared. A manual run is always full.
           carry=()
-          memo=()
-          # The last published status.json is the spend alerts' memo (which thresholds already went to ntfy this
-          # month), so it is read on every run, a manual one too. A branch that does not exist yet is a first run:
-          # nothing was fired. A branch that exists but cannot be read, or reads as damaged, is not "nothing
-          # fired": it would push every due line again, so the run publishes nothing and fails (see Publish).
-          prior=absent
-          rc=0
-          git ls-remote --exit-code --heads origin status >/dev/null 2>&1 || rc=$?
-          if [ "${rc}" = "0" ]; then
-            if git fetch --quiet --depth 1 origin status \
-               && git show origin/status:status.json > "${RUNNER_TEMP}/prior.json" \
-               && node -e 'JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"))' "${RUNNER_TEMP}/prior.json"; then
-              prior=ok
-              memo=(--spend-memo "${RUNNER_TEMP}/prior.json")
-              if [ "${EVENT}" = "schedule" ]; then carry=(--carry-branches "${RUNNER_TEMP}/prior.json"); fi
-            else
-              prior=failed
-            fi
-          elif [ "${rc}" != "2" ]; then
-            prior=failed
+          if [ "${EVENT}" = "schedule" ] \
+             && git fetch --quiet --depth 1 origin status \
+             && git show origin/status:status.json > "${RUNNER_TEMP}/prior.json"; then
+            carry=(--carry-branches "${RUNNER_TEMP}/prior.json")
           fi
-          echo "prior=${prior}" >> "$GITHUB_OUTPUT"
-          # The full spend reading is written beside the run, never into status.json (a public file).
-          node scripts/fleet-status.mjs --inventory --out status.json --spend-out "${RUNNER_TEMP}/spend.json" "${memo[@]}" "${carry[@]}"
+          node scripts/fleet-status.mjs --inventory --out status.json "${carry[@]}"
           echo "code=$?" >> "$GITHUB_OUTPUT"
           # The ntfy digest goes out once a day, on the run that did the full read.
           echo "digest=$(node -p "require('./status.json').carried ? 'no' : 'yes'" 2>/dev/null || echo yes)" >> "$GITHUB_OUTPUT"
@@ -128,12 +98,7 @@ jobs:
           # The digest is made here, while the scripts exist: the publish step
           # checks out the `status` branch, which holds only the two output files.
           mkdir -p "${RUNNER_TEMP}/out"
-          # The digest goes to ntfy only, so it carries the private spend figures that STATUS.md leaves out.
-          node scripts/write-status-md.mjs --in status.json --digest --spend "${RUNNER_TEMP}/spend.json" > "${RUNNER_TEMP}/out/digest.txt"
-          # Publish checks out the `status` branch, which holds no scripts: keep the spend alert's copy here.
-          mkdir -p "${RUNNER_TEMP}/tools/templates/verification-kit/lib"
-          cp -R scripts "${RUNNER_TEMP}/tools/scripts"
-          cp templates/verification-kit/lib/isMain.mjs "${RUNNER_TEMP}/tools/templates/verification-kit/lib/"
+          node scripts/write-status-md.mjs --in status.json --digest > "${RUNNER_TEMP}/out/digest.txt"
 
       # Scheduled, never per pull request: a pull request cannot change what the kit
       # released. Fails the run (and so the ops alert) when a repository is more than
@@ -142,11 +107,8 @@ jobs:
         if: ${{ !cancelled() }}
         run: node scripts/fleet-kit-versions.mjs --in status.json
 
-      # Skipped, and the run fails, when the last published status.json could not be read: it is the spend
-      # alerts' memo, and publishing without it would let the next run push every due line again.
       - name: Publish to the status branch
-        id: publish
-        if: ${{ !cancelled() && steps.read.outputs.prior != 'failed' }}
+        if: ${{ !cancelled() }}
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
@@ -171,43 +133,8 @@ jobs:
             echo "status unchanged"
           else
             git commit -m "fleet-status $(date -u +%Y-%m-%dT%H:%MZ)"
-            echo "committed=yes" >> "${GITHUB_OUTPUT:-/dev/null}"
           fi
           git push --force-with-lease origin status
-
-      # Hosted Actions spend (replan row N6): one ntfy line at 70%, 90% and 100% of the month's cap, with the
-      # figures (ntfy is private; the public files carry a state only). It runs after Publish and only when Publish
-      # succeeded, so a failed Publish can never repeat a line every 2 hours. A failed push warns and retries on
-      # the next run; it never fails the job.
-      - name: Post the Actions spend thresholds to ntfy
-        id: spend
-        if: ${{ !cancelled() && steps.publish.outcome == 'success' }}
-        env:
-          NTFY_URL: https://ntfy.gorfed.net/ops-report
-          NTFY_TOKEN: ${{ secrets.NTFY_TOKEN }}
-          SPEND_MEMO_KEY: ${{ secrets.NTFY_TOKEN }}
-        run: node "${RUNNER_TEMP}/tools/scripts/actions-spend-alert.mjs" --in status.json --spend "${RUNNER_TEMP}/spend.json"
-
-      # The line it pushed is recorded in status.json (`actions.memo`, opaque) on the status branch, so the next run
-      # starts from it. It amends this run's Publish commit (or makes the run's only commit when Publish found
-      # nothing to commit), so the branch history holds one commit per run and no commit time says when a
-      # threshold was crossed. If this push fails the next run pushes the line once more: noise, never a lost alert.
-      - name: Record the pushed spend lines on the status branch
-        if: ${{ !cancelled() && steps.publish.outcome == 'success' }}
-        env:
-          COMMITTED: ${{ steps.publish.outputs.committed }}
-        run: |
-          set -euo pipefail
-          git add status.json
-          if git diff --cached --quiet; then
-            echo "spend memo unchanged"
-          elif [ "${COMMITTED:-}" = "yes" ]; then
-            git commit --amend --no-edit --quiet
-            git push --force-with-lease origin status
-          else
-            git commit -m "fleet-status $(date -u +%Y-%m-%dT%H:%MZ)"
-            git push --force-with-lease origin status
-          fi
 
       - name: Post the digest to ntfy
         if: ${{ !cancelled() && steps.read.outputs.digest != 'no' }}
@@ -223,9 +150,7 @@ jobs:
             echo "::warning::NTFY_TOKEN missing, digest not posted"
             exit 0
           fi
-          # ntfy answers a publish with the message as JSON, and this log is public: the body goes nowhere and only
-          # the status code is printed. The digest carries the private spend figures.
-          curl -sS --fail --max-time 15 -o /dev/null -w 'ntfy digest: HTTP %{http_code}\n' \
+          curl -sS --fail --max-time 15 \
             -H "User-Agent: gorfednet-fleet-status (+https://github.com/gorfednet/.github)" \
             -H "Title: Fleet status" -H "Priority: default" -H "Tags: bar_chart" \
             -H "Authorization: Bearer ${NTFY_TOKEN}" \
@@ -236,12 +161,7 @@ jobs:
         if: ${{ !cancelled() }}
         env:
           CODE: ${{ steps.read.outputs.code }}
-          PRIOR: ${{ steps.read.outputs.prior }}
         run: |
-          if [ "${PRIOR:-failed}" = "failed" ]; then
-            echo "::error::the last published status.json could not be read, so nothing was published this run (it is the spend alerts' memo)"
-            exit 1
-          fi
           if [ "${CODE:-1}" != "0" ]; then
             echo "::error::fleet-status could not read every repository (exit ${CODE:-unset}); see the unavailable rows in STATUS.md"
             exit 1

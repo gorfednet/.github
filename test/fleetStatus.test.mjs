@@ -295,8 +295,7 @@ describe('fleet-status.yml', () => {
     assert.ok(steps.length >= 7, names.join(', '))
     // checkout, setup-node, the token check and the read itself run only when everything before them passed.
     // The ntfy digest adds one condition: it goes out only on the run that did the full read.
-    // The spend steps (replan row N6) add the same kind of condition: Publish is skipped when the memo could not be read, and the alert and its record run only after Publish succeeded.
-    for (const step of steps.slice(4)) assert.match(step, /if: \$\{\{ !cancelled\(\)( && steps\.read\.outputs\.digest != 'no'| && steps\.read\.outputs\.prior != 'failed'| && steps\.publish\.outcome == 'success')? \}\}/, step.split('\n')[0])
+    for (const step of steps.slice(4)) assert.match(step, /if: \$\{\{ !cancelled\(\)( && steps\.read\.outputs\.digest != 'no')? \}\}/, step.split('\n')[0])
   })
 })
 

@@ -17,14 +17,6 @@
  * because the workflow publishes status.json on a public branch. `--include-private`
  * keeps the full row (the local wrapper passes it; nothing it prints is published).
  *
- * Hosted Actions spend (replan row N6): a run over all repositories also reads the month's billing usage report
- * into `actions` (`lib/actionsSpend.mjs`). `--spend-memo <earlier status.json>` carries the thresholds already
- * pushed this month. The published `actions` holds a state (ok, alert, unknown) and an opaque memo (an HMAC under
- * SPEND_MEMO_KEY, so no threshold is readable), never a figure: the
- * figures go to `--spend-out <file>` (kept on the runner, for the private ntfy lines) and, with `--include-private`,
- * into the block of a local run. A reading that fails is `actions.unknown` with its reason, never zero, and only warns:
- * the run stays green because STATUS.md and the digest say unknown. `--from` keeps the earlier file's `actions`.
- *
  * Fails closed: a repository that cannot be read becomes a row with `unavailable`
  * set to the reason, and the process exits 1 after writing the file. Token:
  * FLEET_READ_TOKEN or GH_TOKEN.
@@ -43,7 +35,6 @@ import { LOCAL_COUNTS_SOURCE, readLocalCounts } from './lib/localCounts.mjs'
 import { collectPrCost } from './lib/prCost.mjs'
 import { backlogFromStatus, buildInventory, collectHerdrJobs, collectSessions, collectWorktrees, fetchOpenPrs, planRows, summarizeInventory } from './lib/inventory.mjs'
 import { claudeReviewVerdict } from './lib/reviewVerdict.mjs'
-import { publicBlock, readMeter, withMemo } from './lib/actionsSpend.mjs'
 
 const DAY = 86_400_000
 const FAILED = new Set(['FAILURE', 'TIMED_OUT', 'CANCELLED', 'ACTION_REQUIRED', 'STARTUP_FAILURE', 'ERROR', 'STALE'])
@@ -417,34 +408,6 @@ export function collectInventory(status, { includePrivate = false, local = false
   return { ...summarizeInventory(inv, { includePrivate, now, privateReposNotItemised: (status.repos ?? []).filter((r) => r.redacted).length }), planRead: plan !== null }
 }
 
-/** BILLING_READ_TOKEN, when set, stands in for the fleet token on the billing call alone. */
-export const billingEnv = (env) => (env.BILLING_READ_TOKEN ? { ...env, GH_TOKEN: env.BILLING_READ_TOKEN } : env)
-
-/** The figures of a full meter: kept off the public file, shown in a private or local run. */
-export const spendFigures = (m) => ({ capUsd: m.capUsd, minutes: m.minutes, spendUsd: m.spendUsd, projectedUsd: m.projectedUsd, usedPct: m.usedPct, projectedPct: m.projectedPct })
-
-/**
- * Hosted Actions spend: `{ meter, block }`. `meter` is the full private reading (null when none was taken here) and
- * `block` is what goes into status.json, which a hosted run publishes: the state and the memo only. A private run
- * (`includePrivate`) adds the figures to its block.
- *
- * - `fromEarlier` (a `--from` run) reads nothing and keeps the earlier file's block, or has none.
- * - `carryPublished` (a local run, whose own login may lack the billing permission) falls back to the earlier
- *   published block when its own read is unknown and that block is a known reading of this month under a day
- *   old. A hosted run never does: its unknown stays unknown.
- */
-export function collectActions({ fleet, now, earlier, fromEarlier, includePrivate = false, carryPublished = false, env = process.env, json } = {}) {
-  if (fromEarlier) return { meter: null, block: earlier?.actions }
-  // 64 MiB like the gh helper above: the report has a row per day, repository and SKU and grows through the month, so the default 1 MiB would fail on exactly the days the thresholds matter.
-  const run = json ?? ((args) => JSON.parse(execFileSync('gh', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], env: billingEnv(env), maxBuffer: 64 * 1024 * 1024 })))
-  // The memo key signs the thresholds already pushed, so the public file holds no band. Without it the memo is unreadable.
-  const key = env.SPEND_MEMO_KEY || undefined
-  const meter = withMemo(readMeter({ owner: fleet.projects[0].slug.split('/')[0], now, json: run }), earlier, key)
-  const published = earlier?.actions
-  if (meter.unknown !== undefined && carryPublished && published && published.month === meter.month && published.state !== 'unknown' && now - Date.parse(published.readAt) < 24 * 3600 * 1000) return { meter: null, block: published }
-  return { meter, block: includePrivate && meter.unknown === undefined ? { ...publicBlock(meter, key), ...spendFigures(meter) } : publicBlock(meter, key) }
-}
-
 function arg(name) {
   const at = process.argv.indexOf(name)
   return at !== -1 ? process.argv[at + 1] : null
@@ -498,17 +461,6 @@ if (isMain(import.meta.url)) {
   // With --from the repository data is the earlier snapshot's, so its generatedAt is kept.
   const prior = arg('--from') ? JSON.parse(readFileSync(arg('--from'), 'utf8')).generatedAt : null
   const status = { generatedAt: prior ?? now.toISOString(), renderedAt: now.toISOString(), repos, dormant: dormantRepos(fleet), branchesReadAt: carriedFrom ?? now.toISOString(), carried: carriedFrom !== null }
-  if (!arg('--only')) {
-    // One read per run, never in a per-repository child. `--from` reads nothing: it keeps the earlier file's reading.
-    const earlierFile = arg('--from') ?? arg('--spend-memo')
-    let earlier = null
-    try { earlier = earlierFile ? JSON.parse(readFileSync(earlierFile, 'utf8')) : null } catch { /* no usable memo: the run reads it as none */ }
-    const { meter, block } = collectActions({ fleet, now, earlier, fromEarlier: Boolean(arg('--from')), includePrivate: process.argv.includes('--include-private'), carryPublished: process.argv.includes('--local') })
-    if (block) status.actions = block
-    if (block?.unknown !== undefined) console.error(`::${meter?.early ? 'notice' : 'warning'}::Hosted Actions spend is unknown: ${block.unknown}`)
-    // The full reading, for the ntfy lines only. Never published: the workflow keeps it on the runner.
-    if (arg('--spend-out') && meter) writeFileSync(arg('--spend-out'), `${JSON.stringify(meter)}\n`)
-  }
   if (process.argv.includes('--local')) {
     // The `local` object exists only when this run looked at the Mac; its absence means "not measured".
     status.local = collectLocal(join(homedir(), 'Developer', 'gorfednet'), { fetch: !process.argv.includes('--no-fetch') })

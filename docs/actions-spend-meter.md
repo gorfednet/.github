@@ -1,51 +1,43 @@
 # Hosted Actions spend meter
 
-Replan row N6. Owner rule: hosted Actions minutes have a hard cap of US$100 a month (`shipping.md`, "Runners"). A budget stop would halt the hosted Claude reviewer, and so every merge. Until this meter nothing measured the spend.
+Replan row N6. Hosted Actions minutes have a monthly cap set by the owner. A budget stop would halt the hosted Claude reviewer, and so every merge. Until this meter nothing measured the spend.
 
-## What it does
+## Where it runs, and why not here
 
-`fleet-status` (every 2 hours, hosted, one run at a time through a `concurrency` group so two runs cannot push the same line) reads the month's billing usage report and builds a private reading: hosted minutes, net dollars (after the included minutes, which is what a budget stop counts), whole percent of the cap, and a projection to month end.
+This repository is public. Its `status.json`, `STATUS.md`, workflow logs, run annotations, branch history and Activity page are all world-readable, and each of them leaks something about a spend meter that runs in a public workflow: a figure, a band, or the time a threshold was crossed. Review rounds 3 to 6 on the first version (which published a state and an opaque memo from `fleet-status`) found a new leak after each fix, so the meter was taken out of every public output. `scripts/lib/actionsSpend.mjs` is a library with tests, wired to nothing public. A test pins that: it fails if the status report, its renderers, its schema or its workflow mention the meter.
+
+The wiring is its own change, run from the Mac's private job (the capacity job's pattern: a LaunchAgent, its log on the Mac, ntfy `ops-report` through `~/.ship-bot/ntfy.token`):
+
+- reads the month's billing usage report with `readMeter` and `ghJson`;
+- takes the cap from a private file (`loadCap`), never from this repository;
+- keeps the memo in a private file (`readMemo`, `withMemo`, and the memo `applyAlert` returns);
+- pushes one ntfy line at 70%, 90% and 100% of the cap (`applyAlert`, `alertText`).
+
+## What the library does
+
+`meterFromReport` turns one billing usage report into hosted minutes, net dollars (after the included minutes, which is what a budget stop counts), whole percent of the cap, and a projection to month end.
 
 The projection is "about", not exact. It runs on gross dollars, because net reads 0 for as long as the included minutes cover usage, so an early overflow would not move it. The rate for the days left is the larger of the month's average and the last 7 days', so a late spike counts. The discount applied so far is subtracted, and it is at most the whole allowance, so the figure leans high. The first day counts as a whole day.
 
-**Nothing with a figure is published.** The public `status` branch gets a state only: `ok` under 70% of the cap, `alert` from there, `unknown` when unread, plus `memo`, an opaque HMAC of the thresholds already pushed this month (under a key kept in the repository's secrets), so the public file holds no band. The run's own `readAt` is part of what is signed, so the memo changes on every run, crossing or not, and the branch history carries no signal of when a threshold fired. The one thing the public file does show is the state, which reads `alert` from 70% of the cap. The figures go to two private places:
-
-- ntfy `ops-report`, which is authenticated: one line at 70%, 90% and 100% of the cap (a jump past several pushes the highest, and records them all), and the daily digest's second line.
-- a local run of `fleet-status` (`--include-private`), in its own view, when that Mac's login can read billing. When it cannot, the local run falls back to the published state, if that is a known reading of this month under a day old. A hosted run never falls back: its unknown stays unknown.
-
-The full reading is written to a file on the runner (`--spend-out`) and never into `status.json`. `scripts/actions-spend-alert.mjs` reads it, posts the lines and records them in `actions.memo`. It prints only "alert sent" or "no alert": this repository's Actions log is public, so neither the log nor the ntfy publish's response (which echoes the message) may name a band or a figure. Every workflow `curl` to ntfy discards the response body (`-o /dev/null`), and a test fails when one does not.
-
-Order matters. The alert runs after Publish, and only when Publish succeeded, so a failed Publish cannot repeat a line every 2 hours. It then records what it pushed by amending this run's own commit on the `status` branch, so the history holds one commit per run and no commit time says when a threshold was crossed. If that push fails the next run pushes the line once more (noise, not a lost alert). A push that fails records nothing and retries on the next run. A new calendar month starts with nothing fired, and a reading that falls back under a threshold re-arms it. A memo that cannot be read (no key, a damaged file) is not "nothing fired": the thresholds the reading has already passed are taken as sent, which can lose a line and never repeats one.
-
-The last published `status.json` is the memo. A `status` branch that does not exist yet is a first run. One that exists but cannot be fetched, or reads as damaged, is not "nothing fired": the run publishes nothing, skips the alerts and fails.
-
-No per-repository figure is kept anywhere, because the report lists a repository on every row and a private repository's name must not leave it.
+Thresholds fire once each a month. A jump past several pushes only the highest and records them all. A push that fails records nothing and retries on the next run. A new calendar month starts with nothing fired, and a reading that falls back under a threshold re-arms it. A memo that cannot be read is not "nothing fired": the thresholds the reading has already passed are taken as sent, which can lose a line and never repeats one.
 
 ## Unknown is not zero
 
-If the report cannot be read, or looks wrong (no `usageItems`, no Actions row, a non-numeric amount), the block carries `unknown` with a fixed reason and no numbers. STATUS.md says "unknown, and not zero". The reason is never the call's own text, since a JSON error can quote part of the report: it names a status code (401 token not accepted, 403 permission or rate limit, 404 which GitHub also answers to a token without the permission), an over-large report, or a body that was not JSON. An unknown reading pushes nothing and leaves `fired` as it was, so a bad read neither fires an alert nor re-arms one. It warns in the log and does not turn the job red.
+If the report cannot be read, or looks wrong (no `usageItems`, no Actions row, a non-numeric amount), the reading is `unknown` with a fixed reason and no numbers. The reason is never the call's own text, since a JSON error can quote part of the report: it names a status code (401 token not accepted, 403 permission or rate limit, 404 which GitHub also answers to a token without the permission), an over-large report, or a body that was not JSON. An empty report in the first day of a month is "not reported yet" (the report lags by hours), still unknown and never 0. An unknown reading pushes nothing and leaves the memo as it was.
 
-A `--from` run keeps the earlier file's block and reads no billing.
+No per-repository figure is kept anywhere, because the report lists a repository on every row.
 
 ## The token
 
-The read is `GET /users/<owner>/settings/billing/usage` (the account is a user; the organization path is the fallback). It needs the fine-grained permission **Plan: Read** (account permissions), or a classic token with the `user` scope. GitHub answers 404 to a token without it, so a 404 reads as "unknown, and not zero: the billing read found nothing (404): GitHub answers this to a token without the Plan permission (read)". A 403 names the permission or the rate limit, and a 401 says the token is not accepted.
-
-The workflow uses `BILLING_READ_TOKEN` for that one call when the secret exists, and `FLEET_READ_TOKEN` otherwise. Adding Plan: Read to `FLEET_READ_TOKEN` is enough.
-
-## The cap
-
-`scripts/lib/actions-cap.json` holds the monthly cap. The 70%, 90% and 100% lines and the percentages are against it. November 2026 may reach US$150 by the owner's allowance; the aim, and the meter's base, stays US$100.
+The read is `GET /users/<owner>/settings/billing/usage` (the account is a user; the organization path is the fallback). It needs the classic scope `user`, or the fine-grained account permission "Plan: Read-only". GitHub answers 404 to a token without it. `BILLING_READ_TOKEN`, when set, is used for that one call in place of the usual token. The `gh` login on the Mac does not have the scope today.
 
 ## Overflow counts against the meter
 
 Overflow (`shipping.md`, "Runners": pool heartbeat stale, or the oldest queued job over 15 minutes) sends priority 1 to 5 work to a hosted runner. A hosted runner bills the same minutes whatever sent the job there, so overflow is inside the meter's minutes and dollars from the moment the billing report shows them. There is no separate overflow counter.
 
-What this means in practice:
-
-- A pool outage shows as a higher projection in the private digest on the next daily run, and as a 70%, 90% or 100% line if it is large enough. That is the signal to put a repository back on the pool or hold BinderCurve, not a bill to read afterwards.
-- The meter is month to date, so the pool setting coming back after the queue clears is visible as the projection flattening.
+- A pool outage shows as a higher projection and, if it is large enough, as a 70%, 90% or 100% line. That is the signal to put a repository back on the pool or hold BinderCurve, not a bill to read afterwards.
+- The meter is month to date, so the pool setting coming back after the queue clears shows as the projection flattening.
 - The billing report lags by hours, so the first minutes of an overflow show on a later run.
-- To see how much of a month was overflow, compare the month's minutes in the private digest with the steady-state estimate in the CI resourcing plan (private ops). A per-repository split is kept nowhere by design; read it from the billing page.
+- To see how much of a month was overflow, compare the month's minutes with the steady-state estimate in the CI resourcing plan (private ops). No per-repository split is kept; read it from the billing page.
 
 Changing the overflow switch itself (`HEAVY_RUNS_ON` and the heartbeat threshold) is a separate pull request.
