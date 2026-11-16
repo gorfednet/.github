@@ -1,0 +1,60 @@
+name: privacy-guard
+
+# This repository is public: every branch is world-readable, force push and branch
+# delete are denied, and git history counts as disclosed. A value that lands here
+# stays. So a pull request that adds a private IP, a session id, a tailnet name, an
+# internal host name, a private repository name or a personal email address, or a new
+# file under docs/desk, docs/handoff or briefs, fails here. Plan row 1.30 (a).
+#
+# It reads only the lines the pull request adds (scripts/privacy-guard.mjs), so it
+# cannot go red on old content (verification-floor rule 5).
+#
+# Set once by a repository admin: the Actions secret PRIVATE_REPOS, a comma-separated
+# list of private repository names. A secret, not a variable, so the log masks it.
+# Unset or empty, the guard fails closed with a message. A pull request from a fork
+# gets no secrets, so it fails closed too.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+
+permissions:
+  contents: read
+
+jobs:
+  guard:
+    # Hosted, like verification-kit.yml: this repository is public, and the
+    # self-hosted pool refuses public repositories by design (a fork's pull request would run its
+    # code on that host). Hosted minutes are not billed for a public repository.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          # The head commit, not the merge commit GitHub builds, and all history, so
+          # `base...head` finds the merge base and a merge of main adds nothing.
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: No private detail on the lines this pull request adds
+        if: ${{ !cancelled() }}
+        env:
+          PRIVATE_REPOS: ${{ secrets.PRIVATE_REPOS }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          # The guard that runs is the base branch's copy, never the one this pull request
+          # carries: a change that edits the script could otherwise switch the check off.
+          # GitHub runs the workflow file a pull request carries, so a change to this file can
+          # still turn the step off. Control-plane review catches that: read every line a pull
+          # request changes in this file.
+          # Until the base has a script (the pull request that adds it), use the head's.
+          guard="$RUNNER_TEMP/privacy-guard.mjs"
+          if git cat-file -e "$BASE_SHA:scripts/privacy-guard.mjs" 2>/dev/null; then
+            git show "$BASE_SHA:scripts/privacy-guard.mjs" > "$guard"
+          else
+            echo "::warning title=privacy-guard::The base has no scripts/privacy-guard.mjs, so this run uses the one in the pull request."
+            cp scripts/privacy-guard.mjs "$guard"
+          fi
+          node "$guard" --base "$BASE_SHA" --head "$HEAD_SHA"
