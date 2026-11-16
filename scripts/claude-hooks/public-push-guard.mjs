@@ -2,7 +2,7 @@
 /**
  * Refuse a push or a pull request text that would publish private detail to a PUBLIC
  * repository (plan row 1.30 f). Claude Code user-level PreToolUse hook on Bash, started by
- * public-push-guard.sh. Live copy: ~/.claude/hooks/. Record copy: docs/claude-home/hooks/.
+ * public-push-guard.sh. Live copy: ~/.claude/hooks/. Record copy: scripts/claude-hooks/.
  *
  * Why: a branch pushed to a public repository is world-readable at once, force push and
  * branch delete are denied, and history counts as disclosed. The pull request check runs

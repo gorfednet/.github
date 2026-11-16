@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const HOOK = join(here, '..', 'docs', 'claude-home', 'hooks', 'always-pr-remind.py');
+const HOOK = join(here, '..', 'scripts', 'claude-hooks', 'always-pr-remind.py');
 
 function repoOnFeatureBranch() {
   const dir = mkdtempSync(join(tmpdir(), 'alwayspr-repo-'));

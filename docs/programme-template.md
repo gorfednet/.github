@@ -1,6 +1,6 @@
 # Programme template
 
-A programme is how a big ask becomes work that agents can run in sequence. It lives in this repository under `docs/programmes/`, never only in a chat. Copy the skeleton below.
+A programme is how a big ask becomes work that agents can run in sequence. It lives in its repository under `docs/programmes/`, never only in a chat. The fleet's own programmes live in private `gorfednet/ops` under `control/programmes/` (plan row 1.30 moved them out of this public repository). Copy the skeleton below.
 
 ## Rules
 
@@ -40,7 +40,7 @@ Approved <date> by the owner. Source plan: <path>.
 - session: <link once started>
 - done-when: <checkable outcome>
 - verification: <how it is proven, including a guard seen failing>
-- plugins: <none, or the plugin the repo must switch on in its .claude/settings.json: docs/claude-home/plugins.md>
+- plugins: <none, or the plugin the repo must switch on in its .claude/settings.json: control/claude-home/plugins.md in gorfednet/ops>
 - brief:
   <30 lines or fewer>
 ```

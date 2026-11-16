@@ -338,7 +338,25 @@ export async function mapLimit(items, limit, fn) {
  * above; sessions, worktrees and Herdr jobs only on a run that looked at the Mac. Anything that could not
  * be read is null ("not measured").
  */
-export function collectInventory(status, { includePrivate = false, local = false, now = new Date() } = {}) {
+/**
+ * The plan of record lives in private gorfednet/ops since plan row 1.30: Desk edits it on ops' `desk-log`
+ * branch, and ops main trails it. Read through the API with the run's token, desk-log first. Only row ids and
+ * substring matches come out of it; no plan text reaches STATUS.md. Null when neither ref can be read.
+ */
+export const PLAN_SOURCE = { slug: 'gorfednet/ops', path: 'control/plan-of-record.md', refs: ['desk-log', 'main'] }
+export function readPlanOfRecord(json = ghJson, log = console.error) {
+  for (const ref of PLAN_SOURCE.refs) {
+    try {
+      const text = fileText(PLAN_SOURCE.slug, `${PLAN_SOURCE.path}?ref=${ref}`, json)
+      if (text !== null) return { text, ref }
+    } catch (cause) {
+      log(`::warning::inventory: plan of record unreadable at ${PLAN_SOURCE.slug}@${ref}: ${String(cause.message).split('\n')[0]}`)
+    }
+  }
+  return null
+}
+
+export function collectInventory(status, { includePrivate = false, local = false, now = new Date(), json = ghJson } = {}) {
   const readText = (rel) => {
     try {
       return readFileSync(new URL(`../${rel}`, import.meta.url), 'utf8')
@@ -346,7 +364,9 @@ export function collectInventory(status, { includePrivate = false, local = false
       return null
     }
   }
-  const planText = readText('docs/plan-of-record.md') ?? ''
+  const plan = readPlanOfRecord(json)
+  if (plan === null) console.error('::warning::inventory: no plan of record read, so no item matches a plan row this run')
+  const planText = plan?.text ?? ''
   const ranking = readText('docs/plan-ranking.json')
   let prs = null
   try {
@@ -367,7 +387,7 @@ export function collectInventory(status, { includePrivate = false, local = false
     jobs: local ? collectHerdrJobs() : null,
     rankedRepos: ranking ? JSON.parse(ranking).tiers.flatMap((t) => t.repos.map((r) => r.slug)) : [],
   })
-  return summarizeInventory(inv, { includePrivate, now, privateReposNotItemised: (status.repos ?? []).filter((r) => r.redacted).length })
+  return { ...summarizeInventory(inv, { includePrivate, now, privateReposNotItemised: (status.repos ?? []).filter((r) => r.redacted).length }), planRead: plan !== null }
 }
 
 function arg(name) {

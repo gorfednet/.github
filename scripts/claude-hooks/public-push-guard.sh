@@ -1,7 +1,7 @@
 #!/bin/bash
 # Claude Code PreToolUse hook on Bash: refuse a push or pull request text that would publish
 # private detail to a PUBLIC repository (plan row 1.30 f). The work is in public-push-guard.mjs
-# beside this file; see its header. Live copies: ~/.claude/hooks/. Record: docs/claude-home/hooks/.
+# beside this file; see its header. Live copies: ~/.claude/hooks/. Record: scripts/claude-hooks/.
 #
 # This wrapper does two things. It skips commands that can't be a push or a gh call without
 # starting node. And it fails closed: Claude Code lets a call through when a hook exits 1,

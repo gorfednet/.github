@@ -4,6 +4,14 @@ A check taken out on purpose is a recorded decision, not a weakening
 (`~/.claude/rules/shipping.md`, "When CI is red"). Each entry says what the
 check caught, why it went, and what still catches that class. Newest first.
 
+## 2026-11-15: per-PR rules drift on the `~/.claude` copy, Desk's brief and handoffs
+
+**Moved, not dropped:** plan row 1.30 moved `docs/claude-home/` (rules, agents, skills), `docs/desk/brief.md` and `docs/handoff/` to the private ops repository, under `control/`. This repository's CI ran `check-rules-drift.mjs` on them per PR. It can't now: the files are gone, and ops has no CI beyond its reviewer.
+
+**What it caught:** a retired tool or an off-roster model written into a rule, skill, agent brief or handoff.
+
+**What still catches it:** `check-rules-drift.mjs --profile ops --root <ops clone>`. It's the same guard with an ops scope, and it fails closed on a missing brief or CLAUDE.md. The weekly lessons run executes it every Friday, ops REVIEW.md asks each `control/claude-home/` PR to show it exiting 0, and the ops reviewer reads every rule change. The CI step here still covers everything this repository carries.
+
 ## 2026-10-20: the nginx vhost record and `check-vhost-capture.mjs`
 
 **Removed:** `infra/nginx/vhosts/` and `infra/nginx/CAPTURE.json` (a hashed copy

@@ -9,7 +9,8 @@
  *   - LaunchAgents: net.gorfed.*.plist program arguments under the clone root;
  *   - copies: the files `COPIES` names (hooks, the capacity app, ship-bot's install and its gate scripts), matched by
  *     content against every committed version of their source on origin/main;
- *   - mirrors: every file of docs/claude-home/ that ~/.claude should hold (rules, agents, skills, hooks, CLAUDE.md, settings.json).
+ *   - mirrors: every file of ops control/claude-home/ that ~/.claude should hold (rules, agents, skills, CLAUDE.md, settings.json),
+ *     and the hooks from this repository's scripts/claude-hooks/ (plan row 1.30 moved the rest of the copy to private ops).
  *
  * A link or agent is flagged when it resolves into a working checkout instead of a tool worktree, or when
  * its worktree's HEAD is behind origin/main. A copy is flagged when it differs from origin/main: the
@@ -37,10 +38,12 @@ export const COPIES = [
   { tool: 'ship-bot', copyDir: '.ship-bot/app', clone: 'gorfednet.github', sourceDir: 'ship-bot', skip: ['gate-scripts', 'node_modules', 'README.md', 'config.example.json'] }, // code only: install.sh copies the README and the example config too, and a doc merge is not a stale bot (OWN_INSTALL_PATHS leaves them out too)
   // install.sh copies review-status, the two gates and scripts/lib into app/gate-scripts, laid out as scripts/ (its SOURCE file names the commit).
   { tool: 'ship-bot gate scripts', copyDir: '.ship-bot/app/gate-scripts', clone: 'gorfednet.github', sourceDir: 'scripts', skip: ['SOURCE'] },
-  // ~/.claude is not a repository: its rules, agents, skills, CLAUDE.md and settings.json are mirrored in docs/claude-home/ and
-  // changed only through a pull request (CLAUDE.md, 13 November 2026). Every mirrored file is compared; files only in ~/.claude
-  // (no mirror yet) are not measured here.
-  { tool: '~/.claude mirror', mirrorDir: '.claude', clone: 'gorfednet.github', sourceDir: 'docs/claude-home', include: ['rules', 'agents', 'skills', 'hooks', 'CLAUDE.md', 'settings.json'], exclude: ['hooks/README.md', 'hooks/gh-poll-guard.settings.json', 'hooks/public-push-guard.settings.json'] },
+  // ~/.claude is not a repository: its rules, agents, skills, CLAUDE.md and settings.json are mirrored in ops control/claude-home/
+  // (moved from public .github docs/claude-home/ by plan row 1.30) and changed only through a pull request (CLAUDE.md,
+  // 13 November 2026). The hooks are code with tests, so they stayed here in scripts/claude-hooks/. Every mirrored file is
+  // compared; files only in ~/.claude (no mirror yet) are not measured here.
+  { tool: '~/.claude mirror', mirrorDir: '.claude', clone: 'ops', sourceDir: 'control/claude-home', include: ['rules', 'agents', 'skills', 'CLAUDE.md', 'settings.json'] },
+  { tool: '~/.claude hooks', mirrorDir: '.claude/hooks', clone: 'gorfednet.github', sourceDir: 'scripts/claude-hooks', include: ['gh-poll-guard.py', 'always-pr-remind.py', 'public-push-guard.sh', 'public-push-guard.mjs'] },
 ]
 
 const LINK_DIRS = ['.local/bin', '.config/herdr-core', '.config/herdr-core/templates']

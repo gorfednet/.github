@@ -61,12 +61,18 @@ export const CONTROL_PLANE_BASENAMES = ['REVIEW.md', 'CLAUDE.md', 'AGENTS.md', '
  * check it out at main and run its deploy scripts with their secrets, reading
  * their per-site safety settings from fleet.json. templates/ holds the
  * canonical verification kit every project's refresh-kit pulls from main.
- * docs/claude-home/ is the reviewed copy of `~/.claude` (rules, agents, skills,
- * settings): Desk copies merged files listed in the PR's `## Next` into the
- * live `~/.claude`, so a change there changes the rules every session runs on
- * (.github PR 192, weekly lessons).
+ * The reviewed copy of `~/.claude` (rules, agents, skills, settings) is
+ * `control/claude-home/` in gorfednet/ops since plan row 1.30 moved it out of
+ * public .github's `docs/claude-home/`: Desk copies merged files listed in the
+ * PR's `## Next` into the live `~/.claude`, so a change there changes the rules
+ * every session runs on (.github PR 192, weekly lessons). The old .github path
+ * stays listed, so a file put back there still needs Desk's label. The hooks
+ * stayed in .github under `scripts/claude-hooks/`, which `scripts/` covers.
  */
-const REPO_EXTRA = { 'gorfednet/.github': ['scripts/', 'fleet.json', 'templates/', 'docs/claude-home/'] }
+const REPO_EXTRA = {
+  'gorfednet/.github': ['scripts/', 'fleet.json', 'templates/', 'docs/claude-home/'],
+  'gorfednet/ops': ['control/claude-home/'],
+}
 
 export function touchesControlPlane(path, slug = '') {
   const p = path.replace(/^\.?\//, '').toLowerCase()

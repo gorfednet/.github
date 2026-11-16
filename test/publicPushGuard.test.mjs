@@ -18,7 +18,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
-const HOOK = join(ROOT, 'docs', 'claude-home', 'hooks', 'public-push-guard.sh')
+const HOOK = join(ROOT, 'scripts', 'claude-hooks', 'public-push-guard.sh')
 const GUARD = join(ROOT, 'scripts', 'privacy-guard.mjs')
 const ALLOW = join(ROOT, '.github', 'privacy-guard-allow.txt')
 
@@ -837,23 +837,11 @@ describe('public-push-guard: the third review', () => {
 })
 
 describe('public-push-guard: wiring', () => {
-  it('is registered as a PreToolUse hook on Bash in the settings mirror and its own settings file', () => {
-    const mirror = JSON.parse(readFileSync(join(ROOT, 'docs', 'claude-home', 'settings.json'), 'utf8'))
-    const entry = mirror.hooks.PreToolUse.find((g) => g.hooks.some((h) => h.command.includes('public-push-guard.sh')))
-    assert.ok(entry, 'settings.json has no public-push-guard entry')
+  it('has a settings entry that runs the hook as a PreToolUse hook on Bash, with room for its own budget', () => {
+    const own = JSON.parse(readFileSync(join(ROOT, 'scripts', 'claude-hooks', 'public-push-guard.settings.json'), 'utf8'))
+    const entry = own.hooks.PreToolUse[0]
     assert.equal(entry.matcher, 'Bash')
-    const own = JSON.parse(readFileSync(join(ROOT, 'docs', 'claude-home', 'hooks', 'public-push-guard.settings.json'), 'utf8'))
-    assert.deepEqual(own.hooks.PreToolUse[0], entry)
+    assert.match(entry.hooks[0].command, /hooks\/public-push-guard\.sh$/)
     assert.ok(entry.hooks[0].timeout >= 200, 'the hook budget (150 s) must fit inside the timeout')
-  })
-
-  it('has its rule file loaded by CLAUDE.md', () => {
-    assert.ok(existsSync(join(ROOT, 'docs', 'claude-home', 'rules', 'public-repos.md')))
-    assert.match(readFileSync(join(ROOT, 'docs', 'claude-home', 'CLAUDE.md'), 'utf8'), /`public-repos\.md`/)
-  })
-
-  it('keeps no value, host or id in the rule file or README section', () => {
-    const text = readFileSync(join(ROOT, 'docs', 'claude-home', 'rules', 'public-repos.md'), 'utf8')
-    assert.doesNotMatch(text, /\b[0-9a-f]{7}\b.*commit|commit [0-9a-f]{7}/i, 'no commit sha')
   })
 })
