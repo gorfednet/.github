@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-11-16T12:42:25.833Z",
-  "renderedAt": "2026-11-16T12:42:25.833Z",
+  "generatedAt": "2026-11-16T14:45:33.538Z",
+  "renderedAt": "2026-11-16T14:45:33.538Z",
   "repos": [
     {
       "slug": "gorfednet/bindercurve.com",
@@ -93,7 +93,7 @@
       "openPrCount": 2,
       "lapsedBacklogCount": 2,
       "noPrCount": 2,
-      "idlePrCount": 0,
+      "idlePrCount": 1,
       "duplicatePrCount": 0,
       "dependabotRedCount": 0,
       "kitVersion": "0.61.0"
@@ -129,7 +129,7 @@
       "openPrCount": 7,
       "lapsedBacklogCount": 2,
       "noPrCount": 1,
-      "idlePrCount": 0,
+      "idlePrCount": 1,
       "duplicatePrCount": 3,
       "dependabotRedCount": 0,
       "kitVersion": "0.61.0"
@@ -140,29 +140,15 @@
       "mainRed": false,
       "openPrs": [
         {
-          "number": 224,
-          "title": "1.22a: record the Node each agent passed on, resolver in check.sh",
-          "ageDays": 0,
-          "labels": [
-            "ready-to-merge"
-          ],
-          "draft": false,
-          "review": "clean",
-          "headSha": "1b94d113cd03bee5c0b7beac70c961b51e7db7e9",
-          "ci": "green",
-          "next": "Merge once verification-kit is green on 1b94d11 (Desk labels `ready-to-merge`)",
-          "author": "gorfednet"
-        },
-        {
           "number": 221,
           "title": "Hosted Actions spend meter as a library, off every public output (replan row N6)",
           "ageDays": 0,
           "labels": [],
           "draft": false,
-          "review": "not-run",
-          "headSha": "93cdcd01bf1034cb153c2b3677e734c4aba8aeeb",
-          "ci": "pending",
-          "next": "Desk: Fable read of the diff, check `claude review` is clean on the newest head, then label `ready-to-merge`. Three files change; nothing public is touched.",
+          "review": "clean",
+          "headSha": "6ad4913861abbac39b0ffcc7b9f17ad34b1f9723",
+          "ci": "green",
+          "next": "Merge: Desk labels `ready-to-merge` once 0 threads are open and its Fable read is clean; ship-bot merges. Round 11 on 6ad4913 left one Low, answered in its thread as a follow-up below. Five files change (the library, its tests, the doc, `docs/incidents.md`, `test/ghPollGuard.test.mjs`); nothing public is wired.",
           "author": "gorfednet"
         },
         {
@@ -184,7 +170,7 @@
           "labels": [],
           "draft": false,
           "review": "findings",
-          "headSha": "65b6804ffd911fdb21762bc331005c663008507e",
+          "headSha": "d66f2208a16689638a7e5d07cda718dd5fc4cde3",
           "ci": "red",
           "next": "Merge once the Claude review is clean.",
           "author": "gorfednet"
@@ -228,7 +214,7 @@
         {
           "number": 117,
           "title": "Handoff: fleet close-out plan and 4-week assessment (11 Nov)",
-          "ageDays": 4,
+          "ageDays": 5,
           "labels": [
             "ready-to-merge",
             "needs-fix"
@@ -611,7 +597,7 @@
       "openPrCount": 10,
       "lapsedBacklogCount": 15,
       "noPrCount": 5,
-      "idlePrCount": 0,
+      "idlePrCount": 1,
       "duplicatePrCount": 4,
       "dependabotRedCount": 0,
       "kitVersion": "0.61.0"
@@ -623,7 +609,7 @@
       "openPrCount": 1,
       "lapsedBacklogCount": 0,
       "noPrCount": 4,
-      "idlePrCount": 0,
+      "idlePrCount": 1,
       "duplicatePrCount": 0,
       "dependabotRedCount": 0,
       "kitVersion": "0.61.0"
@@ -656,7 +642,7 @@
       "slug": "gorfednet/ops",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 9,
+      "openPrCount": 10,
       "lapsedBacklogCount": 0,
       "noPrCount": 0,
       "idlePrCount": 0,
@@ -717,11 +703,11 @@
     }
   },
   "inventory": {
-    "measuredAt": "2026-11-16T12:42:25.833Z",
+    "measuredAt": "2026-11-16T14:45:33.538Z",
     "counts": {
       "pr": {
         "total": 91,
-        "orphans": 49
+        "orphans": 48
       },
       "session": null,
       "worktree": null,
@@ -797,12 +783,12 @@
         "lapsed": true
       }
     ],
-    "hiddenPrivate": 43,
+    "hiddenPrivate": 42,
     "privateReposNotItemised": 18,
     "planRead": true
   },
   "dotgithub": {
-    "measuredAt": "2026-11-16T12:43:07.560Z",
+    "measuredAt": "2026-11-16T14:46:10.564Z",
     "branches": 37,
     "merged": 2,
     "exposedFiles": 61,
