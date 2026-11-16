@@ -20,9 +20,10 @@ const fixture = (name) => readFileSync(join(here, 'fixtures', 'gh-poll-guard', n
 // A hook that never returns must fail the test, not hold the machine's one gate lock for as long as it likes
 // (16 November 2026, docs/incidents.md): every spawn has a ceiling, and a kill is an error.
 const HOOK_TIMEOUT_MS = 20_000;
-function spawnHook(input) {
-  const r = spawnSync('python3', ['-I', HOOK], { input, encoding: 'utf8', env: ENV, timeout: HOOK_TIMEOUT_MS, killSignal: 'SIGKILL' });
-  assert.ok(!r.error, `the hook did not finish within ${HOOK_TIMEOUT_MS} ms or could not start: ${r.error?.message}`);
+// `args` and `ceilingMs` default to the real hook and the real ceiling; the canary below passes a sleeper and a short one.
+function spawnHook(input, { args = ['-I', HOOK], ceilingMs = HOOK_TIMEOUT_MS } = {}) {
+  const r = spawnSync('python3', args, { input, encoding: 'utf8', env: ENV, timeout: ceilingMs, killSignal: 'SIGKILL' });
+  assert.ok(!r.error, `the hook did not finish within ${ceilingMs} ms or could not start: ${r.error?.message}`);
   return r;
 }
 
@@ -168,8 +169,8 @@ test('fails open on input it cannot read', () => {
 });
 
 test('a hook that never returns fails the test instead of hanging it', () => {
-  // The near-miss: the same spawn ceiling, pointed at a process that sleeps past it.
-  const r = spawnSync('python3', ['-I', '-c', 'import time; time.sleep(30)'], { encoding: 'utf8', timeout: 500, killSignal: 'SIGKILL' });
-  assert.equal(r.error?.code, 'ETIMEDOUT');
-  assert.throws(() => assert.ok(!r.error, 'the hook did not finish'), /did not finish/);
+  // Through the same helper every other test uses: a process that sleeps past a short ceiling must throw from spawnHook itself.
+  const started = Date.now();
+  assert.throws(() => spawnHook('{}', { args: ['-I', '-c', 'import time; time.sleep(30)'], ceilingMs: 500 }), /did not finish within 500 ms/);
+  assert.ok(Date.now() - started < 10_000, 'the kill came at the ceiling, not after the sleep');
 });
