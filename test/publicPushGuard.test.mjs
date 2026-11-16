@@ -988,6 +988,16 @@ describe('public-push-guard: fields attached to a flag, and ordinary commits', (
     }
     assert.equal(hook(`gh api repos/${ORG}/testrepo/issues -fbody=clean`, { r }).out, '', 'near miss: a clean field')
   })
+  it('uses the last occurrence of a flag, as gh does, and checks every --repo given', () => {
+    const r = repo({ slug: 'privaterepo' })
+    const v = { [`${ORG}/privaterepo`]: 'PRIVATE', [`${ORG}/testrepo`]: 'PUBLIC' }
+    for (const c of [`gh pr comment 3 --repo ${ORG}/privaterepo --repo ${ORG}/testrepo --body "${IP}"`, `gh pr comment 3 -R ${ORG}/testrepo -R ${ORG}/privaterepo --body "${IP}"`]) assert.ok(denied(hook(c, { r, vis: v })), c)
+    assert.equal(hook(`gh pr comment 3 --repo ${ORG}/privaterepo --body "clean words"`, { r, vis: v }).out, '', 'near miss: one private repository, clean text')
+  })
+  it('refuses a push spelled with a variable that splits the word', () => {
+    const r = repo({ outgoing: { 'x.md': `${IP}\n` } })
+    assert.ok(denied(hook('X=u; git p${X}sh origin feature', { r })))
+  })
   it('refuses git p${X}sh, whatever letters the expansion hides', () => {
     const r = repo({ outgoing: { 'x.md': `${IP}\n` } })
     for (const c of ['git p${NOPE_UNSET}sh origin feature', 'git pu${NOPE_UNSET}sh origin feature']) assert.ok(denied(hook(c, { r })), c)

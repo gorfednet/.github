@@ -409,16 +409,19 @@ function ghAction(args) {
   return pos
 }
 
+// A repeated flag is refused: gh uses the last value of a string flag, and the hook must read the one gh acts on.
 const flagValue = (args, names) => {
+  const found = []
   for (let k = 0; k < args.length; k += 1) {
     const t = args[k].text
     for (const n of names) {
-      if (/^-[A-Za-z]$/.test(n) && t.length > 2 && t.startsWith(n) && !t.startsWith('--')) return { text: t.slice(2), open: args[k].open }
-      if (t === n) return args[k + 1]
-      if (n.startsWith('--') && t.startsWith(`${n}=`)) return { text: t.slice(n.length + 1), open: args[k].open }
+      if (/^-[A-Za-z]$/.test(n) && t.length > 2 && t.startsWith(n) && !t.startsWith('--')) found.push({ text: t.slice(2), open: args[k].open })
+      else if (t === n) found.push(args[k + 1])
+      else if (n.startsWith('--') && t.startsWith(`${n}=`)) found.push({ text: t.slice(n.length + 1), open: args[k].open })
     }
   }
-  return undefined
+  if (found.length > 1) deny(`public-push-guard: this command repeats the flag ${names[0]}, and gh uses the last value, so the hook can't tell which is read. Give it once.`)
+  return found[0]
 }
 
 // ---------------------------------------------------------------- GitHub remotes
