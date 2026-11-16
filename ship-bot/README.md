@@ -537,6 +537,24 @@ and its last lines say that dapyllil has the new release and Pages doesn't.
 Pages has no automatic rollback: the message says how to roll back in the
 Cloudflare dashboard.
 
+The row's `live` says which of the two serves the domain now: `nginx` until the
+domain points at Pages, `pages` from the change that moves it. Only the one that
+serves the domain is checked there. While `live` is `pages`, the upload to
+dapyllil is switched but not checked, and the deploy says so.
+
+`rollback` (a site's `make rollback`, and the bot's default rollback) switches
+dapyllil only. Once `live` is `pages`, that changes nothing a visitor sees. To
+take visitors back then:
+
+- roll back on Pages: in the Cloudflare dashboard, the previous production
+  deployment, or
+- point the domain's CNAME back at the tunnel, after rolling dapyllil to the
+  release you want if it isn't on it already. Then set `live` back to `nginx`.
+
+The engine installs its pinned wrangler under `~/.cache/gorfednet-site-deploy/`,
+outside every clone, the first time a Pages deploy runs. That one install needs
+`npm` on the bot's `PATH`.
+
 ## After a failed deploy
 
 The bot comments on the pull request, notifies you, and stops merging in that

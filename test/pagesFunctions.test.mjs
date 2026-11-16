@@ -9,7 +9,7 @@ import { afterEach, describe, it } from 'node:test'
 
 import { onRequest as eventRoute } from '../scripts/pages/functions/api/event.js'
 import { onRequest as scriptRoute } from '../scripts/pages/functions/js/[file].js'
-import { MAX_EVENT_BYTES, upstreamOrigin } from '../scripts/pages/shared/plausible.js'
+import { MAX_EVENT_BYTES, SECURITY_HEADERS, upstreamOrigin } from '../scripts/pages/shared/plausible.js'
 
 const ORIGIN = 'https://stats.example.test'
 const realFetch = globalThis.fetch
@@ -25,6 +25,19 @@ function stubFetch(respond = () => new Response('upstream body', { status: 200 }
     return respond(url, init)
   }
   return calls
+}
+
+/** Pages applies no _headers file to a Function's answer, so each one must carry these itself. */
+function assertPolicy(res, what) {
+  const want = {
+    'x-content-type-options': 'nosniff',
+    'referrer-policy': 'strict-origin-when-cross-origin',
+    'x-frame-options': 'DENY',
+    'permissions-policy': 'camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()',
+    'strict-transport-security': 'max-age=31536000',
+  }
+  assert.deepEqual(SECURITY_HEADERS, want)
+  for (const [name, value] of Object.entries(want)) assert.equal(res.headers.get(name), value, `${what}: ${name}`)
 }
 
 function context(url, { method = 'GET', headers = {}, body, env = { PLAUSIBLE_ORIGIN: ORIGIN } } = {}) {
@@ -77,18 +90,20 @@ describe('/js/<file>', () => {
     const res = await scriptRoute(context('https://site.example.test/js/script.js', { method: 'POST', body: 'x' }))
     assert.equal(res.status, 405)
     assert.equal(res.headers.get('allow'), 'GET, HEAD')
+    assertPolicy(res, 'a 405')
     assert.equal(calls.length, 0)
   })
 
-  it('strips Set-Cookie and the four policy headers from the upstream answer, and keeps the rest', async () => {
+  it('strips Set-Cookie, replaces the upstream policy headers with ours, and keeps the rest', async () => {
     stubFetch(() => {
       const headers = new Headers({
         'content-type': 'application/javascript',
         'cache-control': 'public, max-age=86400',
-        'x-content-type-options': 'nosniff',
+        'x-content-type-options': 'upstream-value',
         'referrer-policy': 'no-referrer',
-        'x-frame-options': 'DENY',
+        'x-frame-options': 'SAMEORIGIN',
         'permissions-policy': 'interest-cohort=()',
+        'strict-transport-security': 'max-age=1',
       })
       headers.append('set-cookie', 'a=1')
       headers.append('set-cookie', 'b=2')
@@ -96,17 +111,29 @@ describe('/js/<file>', () => {
     })
     const res = await scriptRoute(context('https://site.example.test/js/script.js'))
     assert.deepEqual(res.headers.getSetCookie(), [])
-    for (const name of ['x-content-type-options', 'referrer-policy', 'x-frame-options', 'permissions-policy']) {
-      assert.equal(res.headers.get(name), null, name)
-    }
+    assertPolicy(res, 'a proxied script')
     assert.equal(res.headers.get('content-type'), 'application/javascript')
     assert.equal(res.headers.get('cache-control'), 'public, max-age=86400')
+  })
+
+  it('fills in the policy headers a site file lacks, and leaves the ones it has', async () => {
+    stubFetch()
+    const bare = await scriptRoute(context('https://site.example.test/js/app.js'))
+    assertPolicy(bare, 'a site file with no headers')
+    assert.equal(await bare.text(), "the site's own file")
+    const ctx = context('https://site.example.test/js/app.js')
+    ctx.next = async () => new Response('framed', { status: 404, headers: { ...SECURITY_HEADERS, 'x-frame-options': 'SAMEORIGIN' } })
+    const own = await scriptRoute(ctx)
+    assert.equal(own.status, 404)
+    assert.equal(own.headers.get('x-frame-options'), 'SAMEORIGIN', "the site's own value wins")
+    assert.equal(own.headers.get('referrer-policy'), 'strict-origin-when-cross-origin')
   })
 
   it('answers 502 to an upstream redirect or a failed fetch, never following it', async () => {
     stubFetch(() => new Response(null, { status: 302, headers: { location: 'https://elsewhere.example.test/x.js' } }))
     const redirected = await scriptRoute(context('https://site.example.test/js/script.js'))
     assert.equal(redirected.status, 502)
+    assertPolicy(redirected, 'a 502')
     assert.equal(redirected.headers.get('location'), null)
     globalThis.fetch = async () => {
       throw new Error('connect failed')
@@ -134,6 +161,7 @@ describe('/api/event', () => {
     )
     assert.equal(res.status, 202)
     assert.deepEqual(res.headers.getSetCookie(), [])
+    assertPolicy(res, 'a proxied event')
     assert.equal(calls.length, 1)
     const [call] = calls
     assert.equal(call.url, `${ORIGIN}/api/event`)
@@ -170,6 +198,7 @@ describe('/api/event', () => {
     const declared = stubFetch()
     const big = await eventRoute(context('https://site.example.test/api/event', { method: 'POST', body: 'x', headers: { 'content-length': String(MAX_EVENT_BYTES + 1) } }))
     assert.equal(big.status, 413)
+    assertPolicy(big, 'a 413')
     assert.equal(declared.length, 0)
 
     // A streamed body carries no Content-Length, so only counting the bytes catches it.
@@ -194,6 +223,7 @@ describe('the origin', () => {
       const script = await scriptRoute({ ...context('https://site.example.test/js/script.js'), env })
       const event = await eventRoute({ ...context('https://site.example.test/api/event', { method: 'POST', body: '{}' }), env })
       assert.equal(script.status, 503)
+      assertPolicy(script, 'a 503')
       assert.equal(event.status, 503)
       assert.equal(calls.length, 0)
     }

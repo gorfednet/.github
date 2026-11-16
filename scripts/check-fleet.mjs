@@ -62,7 +62,7 @@ const TIER_EVIDENCE = {
 function pagesRowProblems(row) {
   if (row === null || typeof row !== 'object' || Array.isArray(row)) return ['must be an object']
   const out = []
-  const unknown = Object.keys(row).filter((key) => !['project', 'targets', 'allow'].includes(key))
+  const unknown = Object.keys(row).filter((key) => !['project', 'targets', 'live', 'allow'].includes(key))
   if (unknown.length > 0) out.push(`unknown key ${unknown.sort().join(', ')}`)
   if (typeof row.project !== 'string' || !/^[a-z0-9][a-z0-9-]{0,56}[a-z0-9]$/.test(row.project)) {
     out.push('project must match ^[a-z0-9][a-z0-9-]{0,56}[a-z0-9]$')
@@ -73,6 +73,9 @@ function pagesRowProblems(row) {
     out.push('targets may only name "nginx" and "pages"')
   } else if (new Set(row.targets).size !== row.targets.length) {
     out.push('targets names a backend twice')
+  } else if (row.live !== undefined && (!['nginx', 'pages'].includes(row.live) || !row.targets.includes(row.live))) {
+    // Which target serves the domain now. Absent: nginx while it is a target.
+    out.push('live must be "nginx" or "pages", and one of the targets')
   }
   if (row.allow !== undefined) {
     if (!Array.isArray(row.allow)) {
@@ -81,6 +84,10 @@ function pagesRowProblems(row) {
       for (const glob of row.allow) {
         if (typeof glob !== 'string' || !/^(\/[A-Za-z0-9._*-]+)+$/.test(glob) || glob.split('/').includes('..')) {
           out.push(`allow glob ${JSON.stringify(glob)} must be /segment/segment of letters, digits and ._-*`)
+        } else if (/[*]/.test(glob.split('/').pop()) || glob.split('/').pop().startsWith('.')) {
+          // An entry lifts the upload guard for what it matches, so it must name a file:
+          // "/*" or "/x/*.json" would lift it for everything there, and no dotfile is ever liftable.
+          out.push(`allow glob ${JSON.stringify(glob)} must end in a full file name: no * in it, and never a dotfile`)
         }
       }
     }

@@ -547,7 +547,7 @@ describe('buildStamp', () => {
  */
 describe('pages', () => {
   const SITE = REGISTRY.projects.findIndex((p) => p.archetype === 'static-no-npm')
-  const GOOD = { project: 'example-site', targets: ['nginx', 'pages'], allow: ['/*/spec.json', '/.well-known/security.txt'] }
+  const GOOD = { project: 'example-site', targets: ['nginx', 'pages'], live: 'pages', allow: ['/*/spec.json', '/.well-known/security.txt'] }
 
   it('no real row carries the key in this change, and the registry passes without it', () => {
     assert.notEqual(SITE, -1)
@@ -555,7 +555,7 @@ describe('pages', () => {
   })
 
   it('accepts a well-formed key: either target, both, and no allow list', () => {
-    for (const pages of [GOOD, { project: 'ab', targets: ['pages'] }, { project: 'a'.repeat(58), targets: ['nginx'] }]) {
+    for (const pages of [GOOD, { ...GOOD, live: 'nginx' }, { project: 'ab', targets: ['pages'] }, { project: 'ab', targets: ['pages'], live: 'pages' }, { project: 'a'.repeat(58), targets: ['nginx'] }]) {
       const result = run(withProject(SITE, { pages }))
       assert.equal(result.status, 0, `${JSON.stringify(pages)}\n${result.stderr}`)
     }
@@ -579,6 +579,17 @@ describe('pages', () => {
       [{ ...GOOD, allow: ['x/spec.json'] }, /pages: allow glob "x\/spec.json"/],
       [{ ...GOOD, allow: ['/../x.json'] }, /pages: allow glob/],
       [{ ...GOOD, allow: [7] }, /pages: allow glob 7/],
+      // An allow entry lifts the upload guard, so none may lift it wholesale or for a dotfile.
+      [{ ...GOOD, allow: ['/*'] }, /pages: allow glob "\/\*" must end in a full file name/],
+      [{ ...GOOD, allow: ['/.*'] }, /pages: allow glob "\/\.\*" must end in a full file name/],
+      [{ ...GOOD, allow: ['/x/*.json'] }, /must end in a full file name/],
+      [{ ...GOOD, allow: ['/x/spec*'] }, /must end in a full file name/],
+      [{ ...GOOD, allow: ['/.env'] }, /must end in a full file name/],
+      [{ ...GOOD, allow: ['/x/.htaccess'] }, /must end in a full file name/],
+      [{ ...GOOD, live: 'cloudflare' }, /pages: live must be "nginx" or "pages"/],
+      [{ ...GOOD, live: true }, /pages: live must be/],
+      [{ project: 'example-site', targets: ['pages'], live: 'nginx' }, /pages: live must be .* one of the targets/],
+      [{ project: 'example-site', targets: ['nginx'], live: 'pages' }, /pages: live must be .* one of the targets/],
     ]
     for (const [pages, message] of cases) {
       const result = run(withProject(SITE, { pages }))

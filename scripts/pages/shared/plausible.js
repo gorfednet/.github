@@ -15,6 +15,12 @@
  *   - nginx forwarded every request header, cookies included. Here a short list goes
  *     upstream, so a site cookie never reaches the analytics host.
  *   - an upstream redirect is answered 502, not followed to another host.
+ *
+ * Pages does not apply a site's _headers file to what a Function answers, so every
+ * response built here carries the policy headers itself (SECURITY_HEADERS), in
+ * place of whatever the upstream sent. A request handed on to the site's own files
+ * (context.next()) keeps the headers it comes back with and gains only the ones it
+ * lacks.
  */
 import { ORIGIN } from './origin.js'
 
@@ -22,14 +28,28 @@ export const SCRIPT_PATH = /^\/js\/(?:pa-[A-Za-z0-9_-]+|script)\.js$/
 export const MAX_EVENT_BYTES = 64 * 1024
 
 const BARE_HTTPS_ORIGIN = /^https:\/\/[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$/i
-// Set-Cookie never leaves the proxy. The four policy headers are the site's to set
-// (its _headers file), so the upstream's copies are dropped and each goes out once.
-const DROPPED_RESPONSE_HEADERS = ['set-cookie', 'x-content-type-options', 'referrer-policy', 'x-frame-options', 'permissions-policy']
+export const SECURITY_HEADERS = {
+  'x-content-type-options': 'nosniff',
+  'referrer-policy': 'strict-origin-when-cross-origin',
+  'x-frame-options': 'DENY',
+  'permissions-policy': 'camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()',
+  'strict-transport-security': 'max-age=31536000',
+}
 const SCRIPT_REQUEST_HEADERS = ['accept', 'user-agent', 'if-none-match', 'if-modified-since']
 const EVENT_REQUEST_HEADERS = ['accept', 'accept-language', 'content-type', 'referer', 'user-agent']
 
 const plain = (status, text, headers = {}) =>
-  new Response(`${text}\n`, { status, headers: { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store', ...headers } })
+  new Response(`${text}\n`, { status, headers: { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store', ...headers, ...SECURITY_HEADERS } })
+
+/** The site's own answer, with any policy header it lacks filled in. Its own values win. */
+async function fromSite(context) {
+  const response = await context.next()
+  const missing = Object.entries(SECURITY_HEADERS).filter(([name]) => !response.headers.has(name))
+  if (missing.length === 0) return response
+  const headers = new Headers(response.headers)
+  for (const [name, value] of missing) headers.set(name, value)
+  return new Response(response.body, { status: response.status, statusText: response.statusText, headers })
+}
 
 /** The upstream origin, or null when none is configured or it is not a bare https origin. */
 export function upstreamOrigin(env) {
@@ -56,8 +76,10 @@ async function forward(target, init) {
   if (upstream.status >= 300 && upstream.status < 400 && upstream.status !== 304) {
     return plain(502, 'analytics upstream redirected')
   }
+  // Set-Cookie never leaves the proxy, and the policy headers are ours, once each.
   const headers = new Headers(upstream.headers)
-  for (const name of DROPPED_RESPONSE_HEADERS) headers.delete(name)
+  headers.delete('set-cookie')
+  for (const [name, value] of Object.entries(SECURITY_HEADERS)) headers.set(name, value)
   return new Response(upstream.body, { status: upstream.status, statusText: upstream.statusText, headers })
 }
 
@@ -89,7 +111,7 @@ async function readCapped(request, limit) {
 export async function proxyScript(context) {
   const { request, env } = context
   const url = new URL(request.url)
-  if (!SCRIPT_PATH.test(url.pathname)) return context.next()
+  if (!SCRIPT_PATH.test(url.pathname)) return fromSite(context)
   if (request.method !== 'GET' && request.method !== 'HEAD') return plain(405, 'method not allowed', { allow: 'GET, HEAD' })
   const origin = upstreamOrigin(env)
   if (!origin) return plain(503, 'analytics is not configured')

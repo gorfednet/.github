@@ -3,6 +3,3 @@
 # The mutation canary writes this before breaking a file and reverts from it on
 # the next start. It only exists mid-run, or after a run that was killed.
 .mutation-canary-dirty.json
-
-# The pinned wrangler for the Pages backend of scripts/site-deploy.sh (npm ci installs it on demand).
-scripts/pages/node_modules/

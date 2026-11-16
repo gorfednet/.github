@@ -37,7 +37,7 @@
 #
 # Cloudflare Pages backend. A site's fleet.json row chooses where a deploy goes:
 #   "pages": { "project": "<pages-project>", "targets": ["nginx", "pages"],
-#              "allow": ["/*/spec.json"] }
+#              "live": "nginx", "allow": ["/*/spec.json"] }
 # "nginx" is the release directory on dapyllil that nginx serves (everything this
 # script did before); "pages" is Cloudflare Pages. The target is named for what
 # serves it because fleet.json is public and names no host. No "pages" key means
@@ -46,8 +46,19 @@
 # succeeded; if Pages then fails the deploy exits non-zero and says dapyllil is live
 # and Pages is not. Everything Pages needs (the row, the upload guard, the token
 # file, the origin, wrangler) is checked before anything is uploaded anywhere.
-# rollback, list and prune act on dapyllil only; a Pages rollback is done in the
-# dashboard (the previous production deployment), and a failed Pages live check says so.
+# "live" names the target that serves the site's domain now: "nginx" (the default
+# while nginx is a target) or "pages". The serving target gets the domain live check
+# (SITE_LIVE_URL, default https://$SITE/), and nginx its rollback when that fails.
+# The other one is checked on its own: Pages on its pages.dev name; nginx, when Pages
+# serves the domain, not at all, which the deploy says loudly, and with no rollback.
+# Set "live": "pages" in the same change that points the domain at Pages: left at
+# "nginx" after that, every deploy would compare nginx's new release with what
+# Pages serves, fail, roll back and never reach Pages.
+#
+# rollback, list and prune act on dapyllil only (a site's `make rollback` too). Once
+# "live" is "pages", switching nginx changes nothing a visitor sees. The rollback is
+# then on Pages (the dashboard: the previous production deployment), or the domain's
+# CNAME back to the tunnel, after rolling nginx to the release you want if needed.
 #   - The upload is staged in a temp directory without the engine's files and passes
 #     the upload guard (pages_guard: what nginx denies and Pages cannot, plus the
 #     free plan's limits). "allow" exempts paths from it; * is one path segment.
@@ -55,11 +66,19 @@
 #     site, routed by a _routes.json the engine writes. A site must not ship its own
 #     _routes.json, _worker.js or functions/.
 #   - wrangler is pinned to 4.156.1 by scripts/pages/package-lock.json and installed
-#     with `npm ci --ignore-scripts` when missing or another version. Never npx.
+#     with `npm ci --ignore-scripts` into ${XDG_CACHE_HOME:-~/.cache}/gorfednet-site-deploy/,
+#     outside every clone, when missing or another version. Never npx. npm must be
+#     on PATH for that one install.
+#   - Before anything is uploaded, `wrangler pages project list` must answer and
+#     name the project (else: pages-init). Its listing gives the pages.dev name.
 #   - pages-preview uploads a preview deployment (branch preview-<branch>, never
 #     production) and prints its URL. pages-init creates the project if it is missing.
-#   - The live check compares https://<project>.pages.dev/ with the stage's
+#   - The Pages live check compares the project's pages.dev name with the stage's
 #     index.html; SITE_PAGES_LIVE_URL overrides the URL (.deploy-env or environment).
+#     It tries 10 times, 6 seconds apart (SITE_PAGES_LIVE_RETRIES, SITE_PAGES_LIVE_DELAY),
+#     because the production alias can lag the upload.
+#   - A Pages site needs a top-level 404.html: without one Pages answers every
+#     unknown URL 200 with index.html.
 # Two files on the deploying machine, neither in any repository:
 #   ~/.ship-bot/cloudflare-pages.token   the API token, alone. A regular file of mode
 #       600; a symlink, another mode or an empty file is refused. ONLY THIS ENGINE
@@ -596,8 +615,10 @@ PAGES_WRANGLER_VERSION="4.156.1"
 PAGES_TMP=""
 PAGES_PROJECT=""
 PAGES_TARGETS="nginx"
+PAGES_LIVE="nginx"
 PAGES_ALLOW=()
 PAGES_WRANGLER=""
+PAGES_DEV_HOST=""
 
 pages_cleanup() {
   [[ -z "${PAGES_TMP}" ]] || rm -rf "${PAGES_TMP}"
@@ -605,7 +626,8 @@ pages_cleanup() {
 
 # SITE's "pages" key in fleet.json. Prints nothing when the row has none (or the
 # registry file is absent, as for a site outside the fleet): dapyllil only, as before.
-# Otherwise line 1 is the project, line 2 the targets, then one allow glob a line.
+# Otherwise line 1 is the project, line 2 the targets, line 3 the target that serves
+# the domain ("live"), then one allow glob a line.
 # A registry that cannot be parsed, or a malformed key, is a refusal, never a default.
 # Usage: pages_row <fleet-file> <site>
 pages_row() {
@@ -630,7 +652,7 @@ if not match or "pages" not in match[0]:
 row = match[0]["pages"]
 if not isinstance(row, dict):
     bad("it must be an object")
-unknown = sorted(set(row) - {"project", "targets", "allow"})
+unknown = sorted(set(row) - {"project", "targets", "live", "allow"})
 if unknown:
     bad("unknown key %s" % ", ".join(unknown))
 project = row.get("project")
@@ -643,14 +665,21 @@ if any(t not in ("nginx", "pages") for t in targets):
     bad('targets may only name "nginx" and "pages"')
 if len(set(targets)) != len(targets):
     bad("targets names a backend twice")
+live = row.get("live", "nginx" if "nginx" in targets else "pages")
+if live not in ("nginx", "pages") or live not in targets:
+    bad('live must be "nginx" or "pages", and one of the targets')
 allow = row.get("allow", [])
 if not isinstance(allow, list):
     bad("allow must be a list of globs")
 for glob in allow:
     if not isinstance(glob, str) or not re.fullmatch(r"(/[A-Za-z0-9._*-]+)+", glob) or ".." in glob.split("/"):
         bad("allow glob %s must be /segment/segment of letters, digits and ._-*" % json.dumps(glob))
+    last = glob.rsplit("/", 1)[1]
+    if "*" in last or last.startswith("."):
+        bad("allow glob %s must end in a full file name: no * in it, and never a dotfile" % json.dumps(glob))
 print(project)
 print(" ".join(targets))
+print(live)
 for glob in allow:
     print(glob)
 PY
@@ -661,6 +690,7 @@ pages_load_row() {
   out="$(pages_row "${SITE_FLEET_FILE:-${SCRIPT_DIR}/../fleet.json}" "${SITE}")" || exit 1
   PAGES_PROJECT=""
   PAGES_TARGETS="nginx"
+  PAGES_LIVE="nginx"
   PAGES_ALLOW=()
   [[ -n "${out}" ]] || return 0
   while IFS= read -r line; do
@@ -668,6 +698,7 @@ pages_load_row() {
     case "${n}" in
       1) PAGES_PROJECT="${line}" ;;
       2) PAGES_TARGETS="${line}" ;;
+      3) PAGES_LIVE="${line}" ;;
       *) PAGES_ALLOW+=("${line}") ;;
     esac
   done <<<"${out}"
@@ -678,8 +709,10 @@ has_target() {
 }
 
 # One value from the non-secret Pages config. The environment wins over the file,
-# as in load_config. The file is parsed, never sourced.
+# as in load_config. The file is parsed, never sourced. Always called in a command
+# substitution, with tracing off: reading any one key walks past the origin's line.
 pages_config() {
+  { set +x; } 2>/dev/null
   local key="$1" file="${SITE_PAGES_ENV_FILE:-${HOME}/.ship-bot/cloudflare-pages.env}" line value=""
   if [[ -n "${!key:-}" ]]; then
     printf '%s' "${!key}"
@@ -715,8 +748,10 @@ pages_check_token() {
 }
 
 # The analytics origin the shared Function proxies to. Required for a Pages deploy,
-# and never printed: this repository is public and the host is not.
+# and never printed: this repository is public and the host is not. Runs in a
+# command substitution, with tracing off so `bash -x` does not print it either.
 pages_origin() {
+  { set +x; } 2>/dev/null
   local origin account
   origin="$(pages_config PLAUSIBLE_ORIGIN)"
   [[ -n "${origin}" ]] || die "PLAUSIBLE_ORIGIN is not set (in ${SITE_PAGES_ENV_FILE:-~/.ship-bot/cloudflare-pages.env} or the environment); a Pages deploy needs it for the analytics Function"
@@ -733,19 +768,27 @@ pages_wrangler_is_pinned() {
   grep -Fxq "${PAGES_WRANGLER_VERSION}" <<<"${version}"
 }
 
-# The pinned wrangler from scripts/pages (package.json and its lockfile). Installed
-# with npm ci when the binary is missing or is another version. Never npx.
+# The pinned wrangler, installed from scripts/pages (package.json and its lockfile)
+# with `npm ci --ignore-scripts`. Never npx. It lives in the user's cache directory,
+# outside every clone: ship-bot syncs this repository with `git clean -ffdx`, which
+# would remove a node_modules here on every pass. Reinstalled when the binary is
+# missing, is another version, or the lockfile it was installed from has changed.
 pages_wrangler() {
   if [[ -n "${SITE_WRANGLER:-}" ]]; then
     PAGES_WRANGLER="${SITE_WRANGLER}"
     return 0
   fi
-  local dir="${SCRIPT_DIR}/pages"
-  local bin="${dir}/node_modules/.bin/wrangler"
-  if [[ ! -x "${bin}" ]] || ! pages_wrangler_is_pinned "${bin}"; then
-    command -v npm >/dev/null 2>&1 || die "npm is required to install the pinned wrangler ${PAGES_WRANGLER_VERSION}"
-    echo "Installing wrangler ${PAGES_WRANGLER_VERSION} from its lockfile (npm ci --ignore-scripts)."
-    npm ci --prefix "${dir}" --ignore-scripts >&2 || die "npm ci failed in ${dir}; nothing was uploaded to Pages"
+  local src="${SCRIPT_DIR}/pages"
+  local cache="${XDG_CACHE_HOME:-${HOME}/.cache}/gorfednet-site-deploy/wrangler-${PAGES_WRANGLER_VERSION}"
+  local bin="${cache}/node_modules/.bin/wrangler"
+  if [[ ! -x "${bin}" ]] || ! cmp -s "${src}/package-lock.json" "${cache}/package-lock.json" ||
+    ! cmp -s "${src}/package.json" "${cache}/package.json" || ! pages_wrangler_is_pinned "${bin}"; then
+    command -v npm >/dev/null 2>&1 ||
+      die "npm is not on PATH. It is needed once, to install the pinned wrangler ${PAGES_WRANGLER_VERSION} into ${cache}. Nothing was uploaded."
+    mkdir -p "${cache}" || die "could not create ${cache}; nothing was uploaded"
+    cp "${src}/package.json" "${src}/package-lock.json" "${cache}/" || die "could not copy the wrangler lockfile into ${cache}; nothing was uploaded"
+    echo "Installing wrangler ${PAGES_WRANGLER_VERSION} from its lockfile into ${cache} (npm ci --ignore-scripts)."
+    npm ci --prefix "${cache}" --ignore-scripts >&2 || die "npm ci failed in ${cache}; nothing was uploaded"
     pages_wrangler_is_pinned "${bin}" || die "${bin} is not wrangler ${PAGES_WRANGLER_VERSION} after npm ci; refusing"
   fi
   PAGES_WRANGLER="${bin}"
@@ -769,10 +812,17 @@ pages_workdir() {
 # these on dapyllil and Pages cannot, so they must never be uploaded:
 #   - any path segment starting with a dot;
 #   - the extensions env log sql md json lock key pem config ini bak backup old tmp;
-# unless the path matches one of the row's pages.allow globs (* is one segment).
-# Also refused: a symlink (Pages would upload its target), the site's own
+# unless the path matches one of the row's pages.allow globs. There * is one path
+# segment and never matches a leading dot, and a glob ends in a full file name, so
+# no entry can lift a dotfile or a whole directory: a dot directory is reached only
+# by naming it (/.well-known/security.txt).
+# Also refused: a symlink (Pages would upload its target), a name holding a control
+# character (a trailing newline would hide an extension), any node_modules segment
+# (wrangler skips those silently, so the pages would 404), the site's own
 # _routes.json, _worker.js or functions/, a file at a path the analytics Function
-# owns, a missing index.html (unless SITE_NO_INDEX=1), and anything over the free
+# owns, a missing index.html or 404.html (unless SITE_NO_INDEX=1; without a
+# top-level 404.html Pages treats the site as a single-page app and answers every
+# unknown URL 200 with index.html, a soft 404), and anything over the free
 # plan's limits: 20,000 files, 25 MiB a file, 100 _headers rules (counted as its
 # unindented lines), 2,000 static and 100 dynamic _redirects (counted as its lines;
 # dynamic when the source holds * or a :placeholder), and 100 _routes.json rules of
@@ -791,7 +841,10 @@ stage, no_index, allow = sys.argv[1], sys.argv[2] == "1", sys.argv[3:]
 DENIED = set("env log sql md json lock key pem config ini bak backup old tmp".split())
 MAX_FILES, MAX_BYTES, MAX_RULES, MAX_RULE_CHARS = 20000, 25 * 1024 * 1024, 100, 100
 OWNED = re.compile(r"^(js/(pa-[A-Za-z0-9_-]+|script)\.js|api/event(\.html|/.*)?)$")
-allowed = [re.compile("^" + "/".join(re.escape(s).replace("\\*", "[^/]*") for s in g.split("/")) + "$") for g in allow]
+# * is one segment and never a leading dot; \Z, because $ also matches before a final newline.
+def segment(s):
+    return ("(?![.])" if s.startswith("*") else "") + re.escape(s).replace("\\*", "[^/]*")
+allowed = [re.compile("^" + "/".join(segment(s) for s in g.split("/")) + r"\Z") for g in allow]
 problems, files = [], []
 
 def lines_of(name):
@@ -823,9 +876,13 @@ try:
     for rel in files:
         ok = any(a.match("/" + rel) for a in allowed)
         base = rel.rsplit("/", 1)[-1]
-        if OWNED.match(rel):
+        if any(ord(c) < 32 or ord(c) == 127 for c in rel):
+            problems.append(("control character in the name", repr(rel)))
+        elif OWNED.match(rel):
             problems.append(("the analytics Function owns this path", rel))
-        elif any(seg.startswith(".") for seg in rel.split("/")) and not ok:
+        elif "node_modules" in rel.split("/"):
+            problems.append(("node_modules: wrangler would skip it and Pages would answer 404", rel))
+        elif base.startswith(".") or (any(seg.startswith(".") for seg in rel.split("/")) and not ok):
             problems.append(("dotfile", rel))
         elif "." in base and base.rsplit(".", 1)[1].lower() in DENIED and not ok:
             problems.append(("denied extension", rel))
@@ -835,6 +892,8 @@ try:
         problems.append(("the upload is empty", "."))
     elif not no_index and "index.html" not in files:
         problems.append(("no index.html at the root (SITE_NO_INDEX=1 for a site without one)", "."))
+    elif not no_index and "404.html" not in files:
+        problems.append(("no 404.html at the root: without one Pages answers every unknown URL 200 with index.html, a soft 404 (SITE_NO_INDEX=1 for a site that means that)", "."))
     if len(files) + 1 > MAX_FILES:
         problems.append(("%d files; Pages allows %d" % (len(files) + 1, MAX_FILES), "."))
     header_rules = [l for l in lines_of("_headers") if not l[0].isspace()]
@@ -893,21 +952,41 @@ pages_stage() {
 }
 
 # Everything a Pages upload needs besides the stage: the token file, the origin
-# (baked into the staged copy of the Function, never the repository's) and wrangler.
+# (baked into the staged copy of the Function, never the repository's), wrangler,
+# and an account that answers and holds the project. It runs before anything is
+# uploaded anywhere.
 pages_preflight() {
-  local origin
+  local origin traced=0
   pages_check_token
-  origin="$(pages_origin)" || exit 1
   pages_workdir
+  # The origin is never printed, not even by `bash -x`: tracing is off while it is in hand.
+  [[ $- != *x* ]] || traced=1
+  { set +x; } 2>/dev/null
+  origin="$(pages_origin)" || exit 1
   printf 'export const ORIGIN = "%s"\n' "${origin}" >"${PAGES_TMP}/work/shared/origin.js"
+  origin=""
+  ((traced == 0)) || set -x
   pages_wrangler
+  pages_lookup_project ||
+    die "the Pages project ${PAGES_PROJECT} is not in this account's project list; run: site-deploy.sh pages-init. Nothing was uploaded."
+}
+
+# stdin to stdout with the token replaced, should anything ever echo it.
+pages_mask() {
+  python3 -c '
+import sys
+token = "".join(open(sys.argv[1]).read().split())
+for line in sys.stdin:
+    sys.stdout.write(line.replace(token, "[REDACTED]") if token else line)
+    sys.stdout.flush()
+' "$(pages_token_file)"
 }
 
 # Run wrangler in the work directory. Only this function touches the token: it is
 # read inside a subshell with tracing off, straight into the environment of the
 # wrangler process. Never an argument, never a shell variable of the engine, never
-# printed; the filter masks it should wrangler itself ever echo it. wrangler's
-# logs, config and metrics stay in the temp directory.
+# printed; the mask covers wrangler itself echoing it. wrangler's logs, config and
+# metrics stay in the temp directory.
 pages_run_wrangler() {
   local token_file account
   token_file="$(pages_token_file)"
@@ -919,13 +998,65 @@ pages_run_wrangler() {
     export WRANGLER_LOG_PATH="${PAGES_TMP}/logs" XDG_CONFIG_HOME="${PAGES_TMP}/xdg"
     [[ -z "${account}" ]] || export CLOUDFLARE_ACCOUNT_ID="${account}"
     CLOUDFLARE_API_TOKEN="$(tr -d '[:space:]' <"${token_file}")" exec "${PAGES_WRANGLER}" "$@"
-  ) 2>&1 | python3 -c '
-import sys
-token = "".join(open(sys.argv[1]).read().split())
-for line in sys.stdin:
-    sys.stdout.write(line.replace(token, "[REDACTED]") if token else line)
-    sys.stdout.flush()
-' "${token_file}" | tee "${PAGES_TMP}/wrangler.out"
+  ) 2>&1 | pages_mask | tee "${PAGES_TMP}/wrangler.out"
+}
+
+# After a failed wrangler run: the end of what it printed and of the log files it
+# wrote, through the mask, before the temp directory that holds them is removed.
+pages_wrangler_failed() {
+  local log
+  {
+    echo "[site-deploy] wrangler's last output:"
+    tail -n 40 "${PAGES_TMP}/wrangler.out" 2>/dev/null | sed 's/^/    /'
+    while IFS= read -r log; do
+      echo "[site-deploy] the end of wrangler's log ${log##*/}:"
+      tail -n 40 "${log}" | pages_mask | sed 's/^/    /'
+    done < <(find "${PAGES_TMP}/logs" -type f 2>/dev/null | sort)
+  } >&2
+}
+
+# Ask the account for its Pages projects. This is the first call that uses the
+# token, so it is also the API preflight: a bad token, the wrong account or no
+# network stops here, with wrangler's own words. Returns 1 when PAGES_PROJECT is
+# not listed. Sets PAGES_DEV_HOST to the project's pages.dev name, which is
+# <project>-<suffix>.pages.dev when the plain name was taken.
+pages_lookup_project() {
+  local status=0 host=""
+  pages_run_wrangler pages project list --json >/dev/null || status=$?
+  if ((status != 0)); then
+    pages_wrangler_failed
+    die "wrangler could not list the account's Pages projects (exit ${status}): check the token, the account id and the network. Nothing was uploaded."
+  fi
+  host="$(
+    python3 - "${PAGES_TMP}/wrangler.out" "${PAGES_PROJECT}" <<'PY'
+import json, re, sys
+text = open(sys.argv[1]).read()
+try:
+    rows = json.loads(text[text.index("["):text.rindex("]") + 1])
+except ValueError:
+    sys.exit(2)
+match = [r for r in rows if isinstance(r, dict) and r.get("Project Name") == sys.argv[2]]
+if not match:
+    sys.exit(1)
+for domain in str(match[0].get("Project Domains", "")).split(","):
+    if re.fullmatch(r"[a-z0-9-]+\.pages\.dev", domain.strip()):
+        print(domain.strip())
+        break
+PY
+  )" || status=$?
+  case "${status}" in
+    0) ;;
+    1) return 1 ;;
+    *)
+      pages_wrangler_failed
+      die "could not read wrangler's project list; nothing was uploaded"
+      ;;
+  esac
+  if [[ -z "${host}" ]]; then
+    host="${PAGES_PROJECT}.pages.dev"
+    echo "Note: the project list names no pages.dev domain for ${PAGES_PROJECT}; assuming ${host}."
+  fi
+  PAGES_DEV_HOST="${host}"
 }
 
 pages_commit_args() {
@@ -934,20 +1065,45 @@ pages_commit_args() {
   printf '%s\n' "--commit-hash=$(git rev-parse HEAD)" "--commit-message=$(git log -1 --format=%s)" "--commit-dirty=${dirty}"
 }
 
+# verify_live with the Pages budget: the production alias can lag the upload.
+pages_verify() {
+  SITE_LIVE_RETRIES="${SITE_PAGES_LIVE_RETRIES:-10}" SITE_LIVE_DELAY="${SITE_PAGES_LIVE_DELAY:-6}" verify_live "$@"
+}
+
 # Upload the stage as the project's production deployment, then compare the served
-# index.html with the stage's. There is no automatic rollback on Pages.
+# index.html with the stage's: on the project's pages.dev name always, and on the
+# site's own domain too when Pages is what serves it ("live": "pages", or a
+# Pages-only site). There is no automatic rollback on Pages.
 publish_pages() {
-  local status=0 also="" args=() arg url artefact=""
-  ! has_target nginx || also=" dapyllil is live with the new release and Pages is NOT."
+  local status=0 also="" args=() arg url artefact="" failed=""
+  if has_target nginx; then
+    if [[ "${PAGES_LIVE}" == nginx ]]; then
+      also=" dapyllil is live with the new release and Pages is NOT."
+    else
+      also=" dapyllil holds the new release, but the domain is served by Pages, so visitors still see the previous one."
+    fi
+  fi
   while IFS= read -r arg; do args+=("${arg}"); done < <(pages_commit_args)
   echo "Deploying ${PAGES_TMP}/stage to Cloudflare Pages project ${PAGES_PROJECT} (production)"
   pages_run_wrangler pages deploy "${PAGES_TMP}/stage" "--project-name=${PAGES_PROJECT}" --branch=main "${args[@]}" || status=$?
-  ((status == 0)) || die "wrangler exited ${status}; Pages was not updated.${also}"
-  url="${SITE_PAGES_LIVE_URL:-https://${PAGES_PROJECT}.pages.dev/}"
+  if ((status != 0)); then
+    pages_wrangler_failed
+    die "wrangler exited ${status}; Pages was not updated.${also}"
+  fi
   [[ "${SITE_NO_INDEX}" == 1 ]] || artefact="${PAGES_TMP}/stage/index.html"
-  if verify_live "${url}" "${artefact}"; then return 0; fi
+  url="${SITE_PAGES_LIVE_URL:-https://${PAGES_DEV_HOST}/}"
+  pages_verify "${url}" "${artefact}" || failed="${url}"
+  if [[ -z "${failed}" && "${PAGES_LIVE}" == pages ]]; then
+    url="$(live_url)"
+    if [[ -z "${url}" ]]; then
+      echo "Live check of the domain skipped: no SITE_LIVE_URL and ${SITE} is not a fleet.json slug."
+    else
+      pages_verify "${url}" "${artefact}" || failed="${url}"
+    fi
+  fi
+  [[ -n "${failed}" ]] || return 0
   {
-    echo "[site-deploy] Pages took the upload but ${url} is not serving it. Nothing was rolled back on Pages.${also}"
+    echo "[site-deploy] Pages took the upload but ${failed} is not serving it. Nothing was rolled back on Pages.${also}"
     echo "[site-deploy] To roll back: in the Cloudflare dashboard open Workers & Pages, ${PAGES_PROJECT}, Deployments, and choose \"Rollback to this deployment\" on the previous production deployment (or POST .../pages/projects/${PAGES_PROJECT}/deployments/<id>/rollback through the API)."
   } >&2
   exit 1
@@ -996,7 +1152,9 @@ cmd_deploy() {
     pages_stage "${src}"
     ((dry)) || pages_preflight
   fi
-  if has_target nginx; then publish_dapyllil "${dry}" "${src}"; fi
+  local serving=1
+  [[ "${PAGES_LIVE}" == nginx ]] || serving=0
+  if has_target nginx; then publish_dapyllil "${dry}" "${src}" "${serving}"; fi
   if has_target pages; then
     if ((dry)); then
       echo "Dry run: the Pages stage passed the upload guard; nothing was uploaded to Pages."
@@ -1008,8 +1166,11 @@ cmd_deploy() {
 
 # The dapyllil backend: upload a release, switch `current`, check the live site,
 # roll back on a mismatch. Exits non-zero on any failure, so nothing runs after it.
+# <serving> is 0 when the domain is served by Pages ("live": "pages"): the domain
+# then shows Pages' release, so there is nothing to compare nginx with, and nothing
+# to roll back on. The release is switched and that is said, loudly.
 publish_dapyllil() {
-  local dry="$1" src="$2"
+  local dry="$1" src="$2" serving="${3:-1}"
   command -v rsync >/dev/null 2>&1 || die "rsync is required"
   local sha stamp id
   if sha="$(git rev-parse --short HEAD 2>/dev/null)" && [[ -n "${sha}" ]]; then :; else sha="nogit"; fi
@@ -1068,6 +1229,11 @@ publish_dapyllil() {
   remote_promote "${id}"
   remote_switch "${id}"
   echo "current -> releases/${id}"
+  if ((serving == 0)); then
+    echo "dapyllil NOT CHECKED: the domain is served by Pages (\"live\": \"pages\"), so no request can show what nginx serves. No live check, no rollback."
+    remote_prune
+    return 0
+  fi
 
   # Prune only once the release is known good. Pruning before the live check could
   # delete the release a failed check must roll back to: after a rollback to an old
@@ -1114,7 +1280,10 @@ cmd_pages_preview() {
   while IFS= read -r arg; do args+=("${arg}"); done < <(pages_commit_args)
   echo "Deploying ${PAGES_TMP}/stage to Cloudflare Pages project ${PAGES_PROJECT} as a preview (branch ${branch})"
   pages_run_wrangler pages deploy "${PAGES_TMP}/stage" "--project-name=${PAGES_PROJECT}" "--branch=${branch}" "${args[@]}" || status=$?
-  ((status == 0)) || die "wrangler exited ${status}; no preview was deployed"
+  if ((status != 0)); then
+    pages_wrangler_failed
+    die "wrangler exited ${status}; no preview was deployed"
+  fi
   url="$(grep -Eo 'https://[A-Za-z0-9.-]+\.pages\.dev' "${PAGES_TMP}/wrangler.out" | tail -1)" || url=""
   [[ -n "${url}" ]] || die "wrangler reported success but printed no pages.dev URL; read its output above"
   echo "Preview: ${url}"
@@ -1128,29 +1297,23 @@ cmd_pages_init() {
   pages_check_token
   pages_workdir
   pages_wrangler
-  pages_run_wrangler pages project list --json >/dev/null || die "could not list the account's Pages projects; nothing was created"
-  local found=0
-  python3 - "${PAGES_TMP}/wrangler.out" "${PAGES_PROJECT}" <<'PY' || found=$?
-import json, sys
-text = open(sys.argv[1]).read()
-try:
-    rows = json.loads(text[text.index("["):text.rindex("]") + 1])
-except ValueError:
-    sys.exit(2)
-sys.exit(0 if any(isinstance(r, dict) and r.get("Project Name") == sys.argv[2] for r in rows) else 1)
-PY
-  case "${found}" in
-    0) echo "Pages project ${PAGES_PROJECT} already exists; nothing to do." ;;
-    1)
-      # --force: run from an agent session, this wrangler would otherwise create a new
-      # static project on Workers, not on Pages (its "delegation"). It is a hidden flag
-      # of 4.156.1; read `pages project create` in its source before moving the pin.
-      pages_run_wrangler pages project create "${PAGES_PROJECT}" --production-branch=main --force ||
-        die "wrangler could not create the Pages project ${PAGES_PROJECT}"
-      echo "Created Pages project ${PAGES_PROJECT} (production branch main)."
-      ;;
-    *) die "could not read wrangler's project list; nothing was created" ;;
-  esac
+  if pages_lookup_project; then
+    echo "Pages project ${PAGES_PROJECT} already exists (https://${PAGES_DEV_HOST}/); nothing to do."
+    return 0
+  fi
+  # --force: run from an agent session, this wrangler would otherwise create a new
+  # static project on Workers, not on Pages (its "delegation"). It is a hidden flag
+  # of 4.156.1; read `pages project create` in its source before moving the pin.
+  local status=0
+  pages_run_wrangler pages project create "${PAGES_PROJECT}" --production-branch=main --force || status=$?
+  if ((status != 0)); then
+    pages_wrangler_failed
+    die "wrangler could not create the Pages project ${PAGES_PROJECT} (exit ${status})"
+  fi
+  # Its exit code is not proof: list again and see the project there.
+  pages_lookup_project ||
+    die "wrangler reported success, but ${PAGES_PROJECT} is still not in the account's Pages project list. Read its output above: it may have created something else."
+  echo "Created Pages project ${PAGES_PROJECT} (production branch main, https://${PAGES_DEV_HOST}/)."
 }
 
 cmd_list() {
@@ -1192,6 +1355,15 @@ cmd_rollback() {
   [[ "${target}" != "${cur}" ]] || die "${target} is already current"
   remote_switch "${target}"
   echo "current -> releases/${target} (was ${cur})"
+  # When Pages serves the domain, switching nginx changes nothing a visitor sees and
+  # the domain cannot show what nginx serves. A registry that cannot be read here
+  # must not stop a rollback, so anything but a clear "pages" takes the usual check.
+  local live=""
+  live="$(pages_row "${SITE_FLEET_FILE:-${SCRIPT_DIR}/../fleet.json}" "${SITE}" 2>/dev/null | sed -n 3p)" || live=""
+  if [[ "${live}" == pages ]]; then
+    echo "dapyllil NOT CHECKED: the domain is served by Pages (\"live\": \"pages\"). This switched nginx only. To take visitors back, roll back the deployment on Pages, or point the domain's CNAME back at the tunnel."
+    return 0
+  fi
   check_current_live
 }
 
