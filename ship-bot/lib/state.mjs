@@ -10,7 +10,10 @@
 import { existsSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, writeFileSync, closeSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 
-const EMPTY = () => ({ version: 1, prs: {}, repos: {} })
+/** The state file's version. A self-install refuses a new version that reads another: after a rollback this code could not load its file. */
+export const STATE_VERSION = 1
+
+const EMPTY = () => ({ version: STATE_VERSION, prs: {}, repos: {} })
 
 export class StateStore {
   /**
@@ -29,7 +32,7 @@ export class StateStore {
       return this
     }
     const raw = JSON.parse(readFileSync(this.path, 'utf8'))
-    if (raw?.version !== 1 || typeof raw.prs !== 'object' || typeof raw.repos !== 'object') {
+    if (raw?.version !== STATE_VERSION || typeof raw.prs !== 'object' || typeof raw.repos !== 'object') {
       // Unreadable memory is not an empty memory: an empty one would forget a
       // blocked repo. Refuse to run instead.
       throw new Error(`${this.path} is not a ship-bot state file this version understands`)
@@ -76,7 +79,7 @@ export class StateStore {
   }
 }
 
-function pidAlive(pid) {
+export function pidAlive(pid) {
   if (!Number.isInteger(pid) || pid <= 0) return false
   try {
     process.kill(pid, 0)
