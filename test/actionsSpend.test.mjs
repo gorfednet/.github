@@ -5,7 +5,7 @@
  */
 import { strict as assert } from 'node:assert'
 import { spawn } from 'node:child_process'
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { chmodSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -270,6 +270,22 @@ describe('fleet-status workflow', () => {
   it('posts the spend lines before it publishes, so the memo is what gets committed', () => {
     assert.ok(workflow.indexOf('actions-spend-alert.mjs') > 0)
     assert.ok(workflow.indexOf('actions-spend-alert.mjs') < workflow.indexOf('name: Publish to the status branch'))
+  })
+})
+
+describe('the real gh call', () => {
+  it('reads a billing report larger than the default 1 MiB buffer (review: maxBuffer)', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'fake-gh-'))
+    const rows = Array.from({ length: 6000 }, (_, i) => ({ date: '2026-11-05', product: 'Actions', sku: 'Actions Linux', quantity: 1, unitType: 'minutes', pricePerUnit: 0.008, grossAmount: 0.01, discountAmount: 0, netAmount: 0.01, repositoryName: `acct/repo-${i}-${'x'.repeat(150)}` }))
+    const body = join(dir, 'report.json')
+    writeFileSync(body, JSON.stringify({ usageItems: rows }))
+    assert.ok(readFileSync(body).length > 1024 * 1024, 'the fake report must exceed 1 MiB')
+    const gh = join(dir, 'gh')
+    writeFileSync(gh, `#!/bin/sh\ncat "${body}"\n`)
+    chmodSync(gh, 0o755)
+    const a = collectActions({ fleet: { projects: [{ slug: 'acct/one' }] }, now: NOW, earlier: null, env: { ...process.env, PATH: `${dir}:${process.env.PATH}` } })
+    assert.equal(a.unknown, undefined, a.unknown)
+    assert.equal(a.minutes, 6000)
   })
 })
 

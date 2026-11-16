@@ -92,6 +92,39 @@ export function summarize(status) {
 }
 
 /**
+ * One Mac row as a count, from whichever form the run has: the list form when the run looked at the Mac
+ * (`status.local`, authoritative even when its row is null), else the counts the janitor published
+ * (`status.localCounts`, replan row N7). Anything missing is null, never 0.
+ */
+export function localRow(status, key) {
+  if (status.local) {
+    const list = status.local[key]
+    return { count: Array.isArray(list) ? list.length : null, measuredAt: Array.isArray(list) ? status.local.measuredAt ?? null : null }
+  }
+  const c = status.localCounts?.rows?.[key]
+  return Number.isInteger(c?.count) ? { count: c.count, measuredAt: c.measuredAt ?? null } : { count: null, measuredAt: null }
+}
+
+/**
+ * The inventory with its Mac kinds (sessions, worktrees, Herdr jobs) filled from the published counts when
+ * this run did not look at the Mac. `stamps` names each such kind's own measured time. Returns the same object
+ * when there is nothing to add.
+ */
+export function inventoryWithCounts(status) {
+  const inv = status.inventory
+  if (!inv || status.local || !status.localCounts) return inv
+  const counts = { ...inv.counts }
+  const stamps = {}
+  for (const kind of ['session', 'worktree', 'job']) {
+    const c = status.localCounts.inventory?.[kind]
+    if (!Number.isInteger(c?.total)) continue
+    counts[kind] = { total: c.total, orphans: Number.isInteger(c.orphans) ? c.orphans : null }
+    stamps[kind] = c.measuredAt ?? null
+  }
+  return { ...inv, counts, stamps }
+}
+
+/**
  * The hygiene rows: what is forgotten. `count` is null when the row was not measured (a hosted run has no
  * `local` object; an older snapshot lacks a field), and null renders "not measured", never 0.
  */
@@ -107,7 +140,7 @@ export function hygiene(status) {
     return n
   }
   const len = (key) => (r) => (Array.isArray(r[key]) ? r[key].length : null)
-  const loc = (key) => (Array.isArray(status.local?.[key]) ? status.local[key].length : null)
+  const loc = (key) => localRow(status, key).count
   return [
     { row: 'Dirty clones', count: loc('dirtyClones') },
     { row: 'Clones behind origin', count: loc('behindClones') },
@@ -180,8 +213,17 @@ export function render(status) {
     if ((l.installedToolsUnread ?? []).length > 0) out.push(`Installed tools not read (their row is not measured): ${l.installedToolsUnread.join(', ')}`, '')
     if (l.behindFetchFailed.length > 0) out.push(`Fetch failed, so clones behind origin is not measured: ${l.behindFetchFailed.join(', ')}`, '')
   }
+  if (!status.local && status.localCounts) {
+    // Counts only: the lists stay on the Mac. Each row carries its own measured time; a null row says so.
+    out.push('## Mac hygiene (counts from the janitor)', '')
+    const names = { dirtyClones: 'Dirty clones', behindClones: 'Clones behind origin', installedTools: 'Installed tools behind main', oldWorktrees: 'Worktrees over 7 days', idleSessions: 'Sessions idle over 24 h', keptBranches: 'Branches with no PR kept on purpose' }
+    for (const [key, name] of Object.entries(names)) {
+      const r = localRow(status, key)
+      out.push(`${name}: ${r.count === null ? 'not measured' : `${r.count}${r.measuredAt ? ` (measured ${etStamp(r.measuredAt)})` : ''}`}`, '')
+    }
+  }
   if (status.prCost !== undefined) out.push(...renderPrCost(status.prCost, status.prCostUnread))
-  if (status.inventory) out.push(renderInventory(status.inventory, etStamp))
+  if (status.inventory) out.push(renderInventory(inventoryWithCounts(status), etStamp))
   if (status.dotgithub) out.push(renderDotgithub(status.dotgithub, etStamp))
   if (status.dirtyLocal) {
     out.push('## Local clones with unsaved work', '')
