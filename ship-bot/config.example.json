@@ -657,8 +657,10 @@
       "claudeReview": true,
       "live": false,
       "expectedChecks": [
-        "kit"
-      ]
+        "kit",
+        "guard"
+      ],
+      "note": "guard is the privacy-guard.yml job (plan row 1.30). A pull request whose workflow never starts shows no check run at all, so it has to be expected by name."
     },
     {
       "slug": "gorfednet/assess",
