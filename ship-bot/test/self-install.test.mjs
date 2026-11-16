@@ -9,7 +9,8 @@ import { describe, it } from 'node:test'
 import { HAND_INSTALL_PATHS } from '../lib/bot.mjs'
 import { GATES_REPO, OWN_INSTALL_PATHS } from '../lib/gates-worktree.mjs'
 import * as nodeFs from 'node:fs'
-import { BACKOFF_MAX, DEFER_NOTIFY_AT, buildVersion, commitVersion, currentVersion, installLockPath, readMarker, swapLink, versionPath, writeMarker } from '../lib/install.mjs'
+import { BACKOFF_MAX, DEFER_NOTIFY_AT, acquireInstallLock, buildVersion, commitVersion, currentVersion, installLockPath, readMarker, swapLink, versionPath, writeMarker } from '../lib/install.mjs'
+import { RateLimitError } from '../lib/github.mjs'
 import { guardCommands } from '../lib/runner.mjs'
 import { acquireLock } from '../lib/state.mjs'
 import { FakeGitHub, PARENT, makeRunner, repoEntry, scenario } from './fakes.mjs'
@@ -388,6 +389,20 @@ describe('self-install: skips, each said once a pass, each with its near-miss', 
     assert.match(skipped(await t.pass())[0], /refused at health/)
   })
 
+  it('near-miss: a hand install that ran before install.lock was taken is not finished as a rollback', async () => {
+    const t = setup({ marker: { phase: 'probation', sha: OTHER, from: INSTALLED, latest: LATEST, rollback: { reason: 'its pass failed (boom)', step: 'health', refuse: true } } })
+    const hand = { phase: 'hand', sha: INSTALLED, at: '2026-11-15T12:00:00.000Z' }
+    const lock = (path) => {
+      writeMarker(t.home, hand)
+      return acquireInstallLock(path)
+    }
+    const lines = await t.pass('live', { selfInstall: { home: t.home, configPath: CONFIG, lock } })
+    assert.match(skipped(lines)[0], /the marker changed before install\.lock was taken; nothing finished/)
+    assert.deepEqual(t.marker(), hand)
+    assert.equal(t.macNotes().filter((n) => /rolled back/.test(n)).length, 0)
+    assert.ok(!existsSync(installLockPath(t.home)))
+  })
+
   it('probation whose link is back at `from`, the record saying "not refused": finished, and the commit is tried again after the backoff', async () => {
     const t = setup({ marker: { phase: 'probation', sha: OTHER, from: INSTALLED, latest: LATEST, rollback: { reason: '30 passes in a row could not decide its health', step: 'health', refuse: false } } })
     await t.pass()
@@ -724,6 +739,80 @@ describe('self-install: the judgement', () => {
     const left = readdirSync(join(t.home, 'versions'))
     assert.equal(left.length, 3, left.join(' '))
     assert.ok(left.includes(M) && left.includes(INSTALLED))
+  })
+})
+
+describe('self-install: an error from the lock, the marker or the version directory is a deferral', () => {
+  /** node:fs with `method` throwing when `when(...args)` says so. */
+  const failingFs = (method, when = () => true) => ({
+    ...nodeFs,
+    [method]: (...args) => {
+      if (when(...args)) throw new Error(`EIO: i/o error, ${method}`)
+      return nodeFs[method](...args)
+    },
+  })
+  const withFs = (t, fs, more = {}) => ({ selfInstall: { home: t.home, configPath: CONFIG, fs, ...more } })
+
+  it('a filesystem that fails after the lock is taken: one warn line, counted, the lock released, and the pass still reaches the repos', async () => {
+    const t = setup()
+    // The stage cannot be cleared: stageValidateSwap defers, and the marker write that records it fails too.
+    const fs = failingFs('renameSync', (from) => String(from).includes('self-install.json'))
+    const lines = await t.pass('live', withFs(t, fs))
+    assert.equal(lines.filter((l) => /^warn self-install of bbbbbbb deferred on an unexpected error: EIO: i\/o error, renameSync; the installed aaaaaaa keeps running$/.test(l)).length, 1, lines.join('\n'))
+    assert.equal(t.visitedRepos(), 1, 'the repos are still processed')
+    assert.ok(lines.some(behind), 'as the stale bot it still is')
+    assert.equal(currentVersion(t.home), INSTALLED)
+    assert.ok(!existsSync(installLockPath(t.home)), 'install.lock is released')
+    // The marker cannot be written, so the count is in the state file.
+    assert.deepEqual(t.s.state().data.ownInstall.stepFailed, { latest: LATEST, count: 1 })
+    await t.pass('live', withFs(t, fs))
+    assert.equal(t.s.state().data.ownInstall.stepFailed.count, 2)
+    // The error ends: the count goes, and the install happens.
+    await t.pass()
+    assert.equal(t.s.state().data.ownInstall?.stepFailed, undefined)
+    assert.equal(currentVersion(t.home), M)
+  })
+
+  it('a lock that throws, with the marker still writable, counts in the marker toward the long-deferral message', async () => {
+    const t = setup({ marker: { deferred: { latest: LATEST, count: DEFER_NOTIFY_AT - 1 } } })
+    const lock = () => {
+      throw new Error('EACCES: permission denied, open install.lock')
+    }
+    const lines = await t.pass('live', withFs(t, nodeFs, { lock }))
+    assert.ok(lines.some((l) => /^warn self-install of bbbbbbb deferred on an unexpected error: EACCES/.test(l)), lines.join('\n'))
+    assert.equal(t.visitedRepos(), 1)
+    assert.equal(t.fetches.length >= 1, true, 'deferral 30 sends the one message')
+    assert.match(t.fetches.map((f) => f.body).join('\n'), /has been deferred 30 passes in a row \(last on an unexpected error: EACCES/)
+    assert.equal(t.marker().deferred.notified, true)
+    assert.equal(t.s.state().data.ownInstall?.stepFailed, undefined, 'counted once, in the marker')
+  })
+
+  it('the stage that cannot be removed after a swap does not undo the swap: the pass still ends before any repo', async () => {
+    const t = setup()
+    let swapped = false
+    const fs = failingFs('rmSync', (p) => swapped && String(p).endsWith(join('bot', 'stage')))
+    const real = fs.symlinkSync
+    fs.symlinkSync = (...args) => {
+      swapped = true
+      return real(...args)
+    }
+    const lines = await t.pass('live', withFs(t, fs))
+    assert.equal(currentVersion(t.home), M)
+    assert.equal(t.summary.swapped, true)
+    assert.equal(t.visitedRepos(), 0)
+    assert.ok(lines.some((l) => /^warn self-install: could not remove .*stage: EIO/.test(l)), lines.join('\n'))
+    assert.ok(!existsSync(installLockPath(t.home)), 'install.lock is released')
+  })
+
+  it('near-miss: a RateLimitError still ends the pass as a quota pause', async () => {
+    const t = setup()
+    const lock = () => {
+      throw new RateLimitError({ remaining: 3, resetAt: '2026-11-15T13:00:00Z', resource: 'core' })
+    }
+    const lines = await t.pass('live', withFs(t, nodeFs, { lock }))
+    assert.equal(t.summary.quota, true)
+    assert.equal(t.visitedRepos(), 0)
+    assert.equal(lines.filter((l) => /deferred on an unexpected error/.test(l)).length, 0)
   })
 })
 

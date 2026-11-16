@@ -14,9 +14,11 @@ import {
   LOCK_UNREADABLE_AFTER_MS,
   PROBATION_LIMIT,
   UNDECIDED_ROLLBACK_LIMIT,
+  UNSETTLED_START_LIMIT,
   acquireInstallLock,
   backoffPasses,
   baselineOf,
+  beginProbationPass,
   finishRollBack,
   pidStartedAt,
   buildVersion,
@@ -204,7 +206,7 @@ describe('install: the marker', () => {
     const marker = swapForProbation({ home, sha: B, from: A, latest: C, baselineErrors: ['x/y'], now: NOW })
     assert.equal(currentVersion(home), B)
     assert.deepEqual(readMarker(home), marker)
-    assert.deepEqual(marker, { phase: 'probation', sha: B, from: A, latest: C, at: NOW.toISOString(), baselineErrors: ['x/y'], undecided: 0, refused: { [D]: { step: 'config' } }, notify: [{ text: 'kept' }] })
+    assert.deepEqual(marker, { phase: 'probation', sha: B, from: A, latest: C, at: NOW.toISOString(), baselineErrors: ['x/y'], undecided: 0, starts: 0, unsettled: 0, refused: { [D]: { step: 'config' } }, notify: [{ text: 'kept' }] })
   })
 
   it('kill point 1, after the swapping marker and before the rename: the link is at `from`, so the swap is cleared', () => {
@@ -680,6 +682,176 @@ describe('install: the health verdict of a version on probation', () => {
     assert.equal(settleProbation({ home, verdict: 'undecided', reason: 'no GitHub token', now: NOW }).outcome, 'undecided')
     assert.equal(readMarker(home).notify, undefined)
     held.release()
+  })
+
+  it('an outage decides nothing: freshness unreadable, or no token, wins over new repo errors on any number of passes', () => {
+    const errors = { ...ok, repoErrors: ['x/new'] }
+    for (const pass of [{ ...errors, freshness: 'unknown' }, { ...errors, freshness: undefined }, { ...errors, authOk: false }]) {
+      const first = judgeHealth({ baselineErrors: [] }, pass)
+      assert.equal(first.verdict, 'undecided', JSON.stringify(pass))
+      assert.equal(first.newErrors, undefined, 'no strike is recorded from a pass that could not read GitHub')
+      assert.equal(judgeHealth({ baselineErrors: [], newErrors: ['x/new'] }, pass).verdict, 'undecided', 'nor is a second such pass unhealthy')
+    }
+    assert.match(judgeHealth({ baselineErrors: [] }, { ...errors, freshness: 'unknown' }).reason, /freshness could not be read/)
+    assert.match(judgeHealth({ baselineErrors: [] }, { ...errors, freshness: undefined, quota: true }).reason, /quota pause/)
+    // Two outage passes in a row leave the version live and its commit unrefused.
+    const home = probation()
+    for (let i = 0; i < 2; i += 1) settleProbation({ home, ...judgeHealth(readMarker(home), { ...errors, freshness: 'unknown' }), now: NOW })
+    assert.equal(currentVersion(home), B)
+    assert.equal(readMarker(home).refused, undefined)
+    // Near-miss: freshness reads current, and new repo errors on 2 passes are still unhealthy.
+    const near = probation()
+    assert.equal(settleProbation({ home: near, ...judgeHealth(readMarker(near), errors), now: NOW }).outcome, 'undecided')
+    assert.equal(settleProbation({ home: near, ...judgeHealth(readMarker(near), errors), now: NOW }).outcome, 'rolled-back')
+    assert.equal(currentVersion(near), A)
+    assert.match(readMarker(near).refused[C].reason, /on a second probation pass/)
+  })
+
+  it(`a version whose passes start and never reach the health check is rolled back and refused at start ${UNSETTLED_START_LIMIT + 1}`, () => {
+    const home = probation()
+    for (let i = 1; i <= UNSETTLED_START_LIMIT; i += 1) {
+      // The pass records its start, then dies: settleProbation is never called.
+      const r = beginProbationPass({ home, sha: B, now: NOW })
+      assert.equal(r.outcome, 'started', `start ${i}`)
+      assert.equal(readMarker(home).unsettled, i, 'persisted before the pass does anything')
+      assert.equal(readMarker(home).starts, i)
+      assert.equal(currentVersion(home), B)
+    }
+    const r = beginProbationPass({ home, sha: B, now: NOW })
+    assert.equal(r.outcome, 'rolled-back')
+    assert.equal(r.refused, true)
+    assert.equal(currentVersion(home), A)
+    const m = readMarker(home)
+    assert.equal(m.phase, 'rolled-back')
+    assert.match(m.refused[C].reason, /3 probation passes in a row started and never reached their health check/)
+    assert.equal(m.notify.length, 1)
+    assert.match(m.notify[0].text, /rolled back to aaaaaaa: 3 probation passes in a row started and never reached their health check.*It needs a hand install/)
+    assert.equal(m.starts, undefined)
+    assert.equal(m.unsettled, undefined)
+    assert.ok(!existsSync(installLockPath(home)), 'install.lock is released')
+  })
+
+  it('near-miss: starts that settled do not count as unsettled, and a settled pass ends a run of unsettled ones', () => {
+    const home = probation()
+    for (let i = 1; i <= 10; i += 1) {
+      assert.equal(beginProbationPass({ home, sha: B, now: NOW }).outcome, 'started', `start ${i}`)
+      assert.equal(settleProbation({ home, sha: B, verdict: 'undecided', reason: 'no GitHub token', now: NOW }).outcome, 'undecided')
+      assert.equal(readMarker(home).unsettled, 0)
+    }
+    assert.equal(readMarker(home).starts, 10)
+    // Two that died, one that settled, two more that died: never 3 in a row.
+    for (const settles of [false, false, true, false, false]) {
+      assert.equal(beginProbationPass({ home, sha: B, now: NOW }).outcome, 'started')
+      if (settles) settleProbation({ home, sha: B, verdict: 'undecided', reason: 'x', now: NOW })
+    }
+    assert.equal(readMarker(home).unsettled, 2)
+    assert.equal(currentVersion(home), B)
+    assert.equal(readMarker(home).refused, undefined)
+    // An unhealthy verdict that cannot roll back (the lock is held) still settled its pass.
+    const held = acquireLock(installLockPath(home))
+    beginProbationPass({ home, sha: B, now: NOW })
+    assert.equal(settleProbation({ home, sha: B, verdict: 'unhealthy', reason: 'boom', now: NOW }).outcome, 'rollback-failed')
+    assert.equal(readMarker(home).unsettled, 0)
+    held.release()
+  })
+
+  it(`the ${PROBATION_LIMIT}-pass bound counts starts: passes that died count with the undecided ones`, () => {
+    // Two passes die, the third settles undecided, over and over: never 3 unsettled in a row, and only 1 in 3 is counted as undecided.
+    const home = probation()
+    let last
+    for (let start = 1; start <= PROBATION_LIMIT; start += 1) {
+      assert.equal(beginProbationPass({ home, sha: B, now: NOW }).outcome, 'started', `start ${start}`)
+      if (start % 3 === 0) last = settleProbation({ home, sha: B, verdict: 'undecided', reason: 'no GitHub token', now: NOW })
+      if (start === PROBATION_LIMIT - 3) {
+        assert.equal(last.outcome, 'undecided')
+        assert.match(last.reason, /\(27 of 30\)/)
+        assert.equal(readMarker(home).undecided, 9)
+      }
+      if (start < PROBATION_LIMIT) assert.equal(currentVersion(home), B, `still live after start ${start}`)
+    }
+    assert.equal(last.outcome, 'rolled-back')
+    assert.equal(last.refused, false, 'undecided, so the commit is not refused')
+    assert.equal(currentVersion(home), A)
+    // The same bound when start 30 itself died: the next start rolls back, without refusing.
+    const died = probation()
+    writeMarker(died, { ...readMarker(died), starts: PROBATION_LIMIT, unsettled: 1 })
+    const r = beginProbationPass({ home: died, sha: B, now: NOW })
+    assert.equal(r.outcome, 'rolled-back')
+    assert.equal(r.refused, false)
+    assert.match(r.reason, /30 probation passes started and none decided its health/)
+    assert.equal(currentVersion(died), A)
+    // Near-miss: 29 starts, the last one dead, is one more pass.
+    const near = probation()
+    writeMarker(near, { ...readMarker(near), starts: PROBATION_LIMIT - 1, unsettled: 1 })
+    assert.equal(beginProbationPass({ home: near, sha: B, now: NOW }).outcome, 'started')
+    assert.equal(currentVersion(near), B)
+  })
+
+  it('the start-of-pass rollback under a held install.lock: not rolled back, said once, the pass still runs and is counted', () => {
+    const home = probation()
+    writeMarker(home, { ...readMarker(home), starts: 3, unsettled: UNSETTLED_START_LIMIT })
+    const held = acquireLock(installLockPath(home))
+    const r = beginProbationPass({ home, sha: B, now: NOW })
+    assert.equal(r.outcome, 'rollback-failed')
+    assert.equal(r.marker.phase, 'probation', 'the pass gets the marker: it is still judged')
+    assert.equal(currentVersion(home), B)
+    assert.equal(readMarker(home).unsettled, UNSETTLED_START_LIMIT + 1)
+    assert.equal(readMarker(home).notify.length, 1)
+    assert.match(readMarker(home).notify[0].text, /could NOT be rolled back to aaaaaaa: an install holds install\.lock/)
+    held.release()
+    assert.equal(beginProbationPass({ home, sha: B, now: NOW }).outcome, 'rolled-back')
+    assert.equal(currentVersion(home), A)
+  })
+
+  /** A hand install of D that swaps while the probation of B is being judged: the link and the marker are its own now. */
+  const handInstalls = (home) => {
+    install(home, D, 'd')
+    swapLink({ home, sha: D })
+    writeMarker(home, { phase: 'hand', sha: D, from: B, at: NOW.toISOString() })
+  }
+
+  it('a hand install that swapped mid-pass and released its lock: an unhealthy verdict does not move the link back', () => {
+    for (const judge of [(home, lock) => settleProbation({ home, sha: B, verdict: 'unhealthy', reason: 'boom', now: NOW, lock }), (home, lock) => beginProbationPass({ home, sha: B, now: NOW, lock })]) {
+      const home = probation()
+      writeMarker(home, { ...readMarker(home), starts: 3, unsettled: UNSETTLED_START_LIMIT })
+      // The swap lands after the verdict's own read of the marker and before the lock is taken.
+      const lock = (path) => {
+        handInstalls(home)
+        return acquireLock(path)
+      }
+      const r = judge(home, lock)
+      assert.equal(r.outcome, 'superseded')
+      assert.match(r.reason, /the marker no longer says bbbbbbb is on probation \(it says hand ddddddd\); nothing done/)
+      assert.equal(currentVersion(home), D, 'the hand version stays')
+      assert.deepEqual(readMarker(home), { phase: 'hand', sha: D, from: B, at: NOW.toISOString() })
+      assert.ok(!existsSync(installLockPath(home)), 'install.lock is released')
+    }
+    // Already swapped before the verdict: the first read sees it, and no lock is taken.
+    const home = probation()
+    handInstalls(home)
+    const noLock = () => assert.fail('no lock is needed to do nothing')
+    assert.equal(settleProbation({ home, sha: B, verdict: 'unhealthy', reason: 'boom', now: NOW, lock: noLock }).outcome, 'superseded')
+    assert.equal(settleProbation({ home, sha: B, verdict: 'undecided', reason: 'x', now: NOW, lock: noLock }).outcome, 'superseded')
+    assert.equal(beginProbationPass({ home, sha: B, now: NOW, lock: noLock }).outcome, 'superseded')
+    assert.deepEqual(readMarker(home), { phase: 'hand', sha: D, from: B, at: NOW.toISOString() })
+  })
+
+  it('a hand install that swapped mid-pass and still holds its lock: no false "could not roll back" message', () => {
+    const home = probation()
+    const lock = () => {
+      handInstalls(home)
+      return { ok: false, holder: 'pid 1 since 2026-11-15T11:59:00.000Z' }
+    }
+    const r = settleProbation({ home, sha: B, verdict: 'unhealthy', reason: 'boom', now: NOW, lock })
+    assert.equal(r.outcome, 'superseded')
+    assert.equal(readMarker(home).notify, undefined)
+    assert.equal(readMarker(home).rollbackHeld, undefined)
+    assert.equal(currentVersion(home), D)
+    // Near-miss: the same held lock while the marker is still this probation queues the message.
+    const near = probation()
+    const r2 = settleProbation({ home: near, sha: B, verdict: 'unhealthy', reason: 'boom', now: NOW, lock: () => ({ ok: false, holder: 'pid 1 since 2026-11-15T11:59:00.000Z' }) })
+    assert.equal(r2.outcome, 'rollback-failed')
+    assert.equal(readMarker(near).notify.length, 1)
   })
 })
 

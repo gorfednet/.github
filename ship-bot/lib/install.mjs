@@ -23,8 +23,11 @@
  * A rollback writes `rollback` (its reason, and whether it refuses the commit)
  * before the link moves, so a kill after the move can be finished from the record.
  * `undecidedRollbacks` ({latest, count}) counts the rollbacks of one commit that
- * did not refuse it. No swap and no rollback clears it: a healthy probation, a
- * refusal of that commit or a hand install does.
+ * did not refuse it. No swap clears it. A healthy probation, a rollback that
+ * refuses that commit (finishRollBack) or a hand install does. A refusal at
+ * validation leaves it: the refusal already stops the commit.
+ * `starts` counts the probation passes that began; `unsettled` counts the ones
+ * in a row that began and never reached their health check (beginProbationPass).
  *   hand         a person ran install.sh (which also clears `refused`)
  *
  * Every effect (the filesystem, the lock) arrives as a parameter, so the tests
@@ -50,6 +53,14 @@ export const OFF_FILE = 'self-install.off'
 export const INSTALL_LOCK = 'install.lock'
 /** Probation passes that may end undecided (no token, a quota pause, freshness unknown) before the version is rolled back: about an hour. */
 export const PROBATION_LIMIT = 30
+/**
+ * Probation passes in a row that may start and never reach their health check
+ * (a crash, a process.exit, an OOM or a kill mid-pass) before the version is
+ * rolled back as unhealthy. 3: one or two can be a reboot, a sleep or launchd
+ * stopping the job, and three running is the version dying at the same spot.
+ * It is small because nothing merges while it loops: 3 passes is about 6 minutes.
+ */
+export const UNSETTLED_START_LIMIT = 3
 /** Passes one commit has waited (deferred, backing off, or skipped for a reason that is not a normal wait) before the owner hears about it, once. */
 export const DEFER_NOTIFY_AT = 30
 /** The most passes a deferred validation waits before it is run again: 30 minutes. */
@@ -375,7 +386,7 @@ export function refuse(marker, latest, { step, reason, sha }, now) {
 }
 
 const clearSwap = (marker) => {
-  for (const k of ['phase', 'sha', 'from', 'latest', 'at', 'baselineErrors', 'undecided', 'newErrors', 'rollback', 'rollbackFailed', 'rollbackHeld']) delete marker[k]
+  for (const k of ['phase', 'sha', 'from', 'latest', 'at', 'baselineErrors', 'undecided', 'starts', 'unsettled', 'newErrors', 'rollback', 'rollbackFailed', 'rollbackHeld']) delete marker[k]
 }
 
 /**
@@ -392,6 +403,8 @@ export function recoverSwapping({ home, fs = nodeFs }) {
   if (now === marker.sha) {
     marker.phase = 'probation'
     marker.undecided = 0
+    marker.starts = 0
+    marker.unsettled = 0
     writeMarker(home, marker, fs)
     return { marker, recovered: 'probation' }
   }
@@ -406,7 +419,7 @@ export function recoverSwapping({ home, fs = nodeFs }) {
  */
 export function swapForProbation({ home, sha, from, latest, baselineErrors, now, fs = nodeFs }) {
   const marker = readMarker(home, fs)
-  Object.assign(marker, { phase: 'swapping', sha, from, latest, at: new Date(now).toISOString(), baselineErrors: [...baselineErrors], undecided: 0 })
+  Object.assign(marker, { phase: 'swapping', sha, from, latest, at: new Date(now).toISOString(), baselineErrors: [...baselineErrors], undecided: 0, starts: 0, unsettled: 0 })
   // `undecidedRollbacks` stays: it is what remembers this commit's earlier probations.
   for (const k of ['deferred', 'retry', 'newErrors', 'rollback', 'rollbackFailed', 'rollbackHeld']) delete marker[k]
   writeMarker(home, marker, fs)
@@ -465,7 +478,7 @@ export function finishRollBack({ home, now, fs = nodeFs }) {
   const { step } = record
   let { reason, refuse: refuseLatest } = record
   marker.phase = 'rolled-back'
-  for (const k of ['undecided', 'newErrors', 'rollback', 'rollbackFailed', 'rollbackHeld']) delete marker[k]
+  for (const k of ['undecided', 'starts', 'unsettled', 'newErrors', 'rollback', 'rollbackFailed', 'rollbackHeld']) delete marker[k]
   if (!refuseLatest && marker.latest) {
     const count = (marker.undecidedRollbacks?.latest === marker.latest ? marker.undecidedRollbacks.count : 0) + 1
     marker.undecidedRollbacks = { latest: marker.latest, count }
@@ -502,6 +515,11 @@ export function finishRollBack({ home, now, fs = nodeFs }) {
  * ship-bot pull request). That is no fault of this version: the other signals
  * settle it, and the newer commit is installed by a later pass.
  *
+ * A pass that could not read GitHub decides nothing, whatever else it saw: no
+ * token, or freshness that is neither `current` nor `stale`. That is judged
+ * before the repo errors, since an outage stops repos on errors too, and the
+ * dry pass defers the same condition.
+ *
  * New repo errors on one probation pass are undecided (one repo can stop on a
  * transient error); the verdict then carries `newErrors`, which
  * settleProbation records. New repo errors on a second probation pass are unhealthy.
@@ -518,6 +536,7 @@ export function judgeHealth(marker, pass) {
   const stale = pass.freshness === 'stale'
   const newer = stale && Boolean(pass.latest) && Boolean(marker.latest) && pass.latest !== marker.latest
   if (stale && !newer) return { verdict: 'unhealthy', reason: 'it still reads as behind origin/main' }
+  if (!stale && pass.freshness !== 'current') return { verdict: 'undecided', reason: pass.quota ? 'a GitHub quota pause' : 'its freshness could not be read' }
   if (fresh.length > 0) {
     const what = `repos stopped on an error they did not stop on before: ${fresh.join(', ')}`
     if (Array.isArray(marker.newErrors)) return { verdict: 'unhealthy', reason: `on a second probation pass, ${what} (the first time: ${marker.newErrors.join(', ')})` }
@@ -525,43 +544,28 @@ export function judgeHealth(marker, pass) {
   }
   if (pass.quota) return { verdict: 'undecided', reason: 'a GitHub quota pause' }
   if (newer) return { verdict: 'healthy', reason: `pass OK, no new repo errors; origin/main has since moved to ${short(pass.latest)}, which a later pass installs` }
-  if (pass.freshness !== 'current') return { verdict: 'undecided', reason: 'its freshness could not be read' }
   return { verdict: 'healthy', reason: 'pass OK, install current, no new repo errors' }
 }
 
+const sameProbation = (marker, sha) => marker.phase === 'probation' && marker.sha === sha
+const superseded = (marker, sha) => ({ outcome: 'superseded', reason: `the marker no longer says ${short(sha)} is on probation (it says ${marker.phase ?? 'no phase'}${marker.sha ? ` ${short(marker.sha)}` : ''}); nothing done` })
+
 /**
- * Apply a probation pass's verdict. Healthy: phase `healthy`. Undecided: count
- * it (and record `newErrors` when that is why). At PROBATION_LIMIT the version
- * is rolled back without refusing its commit: nothing showed it broken, so it
- * is tried again after a backoff, once (finishRollBack refuses the commit on
- * its second such rollback). Unhealthy: roll back and refuse. Both rollbacks
- * run under install.lock, taken over from a dead or stale holder by the one
- * takeover rule. A lock held by a live install or a failed rollback leaves the
- * marker in probation, and queues one loud message per swap.
- *
- * @returns {{outcome: 'healthy' | 'undecided' | 'rolled-back' | 'rollback-failed', reason: string, refused?: boolean, marker?: object}}
+ * Roll the probation of `sha` back, under install.lock, taken over from a dead
+ * or stale holder by the one takeover rule. The marker is read again once the
+ * lock is settled, and nothing is done unless it still says `sha` is on
+ * probation: a hand install that swapped mid-pass owns the link and the marker
+ * now, whether it has released the lock or still holds it. A lock held by a
+ * live install or a failed rollback leaves the marker in probation, and queues
+ * one loud message per swap.
+ * @returns {{outcome: 'rolled-back' | 'rollback-failed' | 'superseded', reason: string, refused?: boolean, marker?: object}}
  */
-export function settleProbation({ home, verdict, reason, newErrors, now, fs = nodeFs, lock = acquireInstallLock, limit = PROBATION_LIMIT }) {
-  const marker = readMarker(home, fs)
-  if (verdict === 'healthy') {
-    marker.phase = 'healthy'
-    for (const k of ['undecided', 'newErrors', 'rollbackFailed', 'rollbackHeld', 'undecidedRollbacks']) delete marker[k]
-    writeMarker(home, marker, fs)
-    return { outcome: 'healthy', reason, marker }
-  }
-  let why = reason
-  const refuseLatest = verdict !== 'undecided'
-  if (verdict === 'undecided') {
-    marker.undecided = (marker.undecided ?? 0) + 1
-    if (Array.isArray(newErrors) && newErrors.length > 0) marker.newErrors = [...newErrors]
-    writeMarker(home, marker, fs)
-    if (marker.undecided < limit) return { outcome: 'undecided', reason: `${reason} (${marker.undecided} of ${limit})`, marker }
-    why = `${limit} passes in a row could not decide its health (last: ${reason})`
-  }
+function rollBackProbation({ home, sha, why, refuseLatest, now, fs, lock }) {
   const held = lock(installLockPath(home))
   if (!held.ok) {
     // The holder is a live install, which owns the marker: only the message is added, once per swap.
     const current = readMarker(home, fs)
+    if (!sameProbation(current, sha)) return superseded(current, sha)
     if (!current.rollbackHeld) {
       current.rollbackHeld = true
       queueNotice(current, `ship-bot self-install ${short(current.sha)} could NOT be rolled back to ${short(current.from)}: an install holds ${INSTALL_LOCK} (${held.holder}). It was to be rolled back because: ${why}. It keeps running, and the rollback is tried again every pass until that install ends.`, now)
@@ -570,6 +574,8 @@ export function settleProbation({ home, verdict, reason, newErrors, now, fs = no
     return { outcome: 'rollback-failed', reason: `${why}; not rolled back: an install holds ${INSTALL_LOCK} (${held.holder})` }
   }
   try {
+    const current = readMarker(home, fs)
+    if (!sameProbation(current, sha)) return superseded(current, sha)
     const r = rollBack({ home, reason: why, refuseLatest, now, fs })
     if (!r.ok) return { outcome: 'rollback-failed', reason: `${why}; not rolled back: ${r.reason}` }
     const done = r.marker.refused?.[r.marker.latest]
@@ -577,6 +583,89 @@ export function settleProbation({ home, verdict, reason, newErrors, now, fs = no
   } finally {
     held.release()
   }
+}
+
+/**
+ * Record that a probation pass of `sha` is starting, before it does any work.
+ * The health check runs at the end of a pass (settleProbation), so a version
+ * that dies before it (a floating rejection, process.exit, an OOM, a kill)
+ * would never be judged: every tick would die at the same spot. So each start
+ * is counted here and persisted first, and settleProbation clears `unsettled`
+ * when the pass reaches it.
+ *
+ * Before counting, two bounds are checked on the starts already recorded:
+ *   - UNSETTLED_START_LIMIT starts in a row never settled: unhealthy, rolled
+ *     back and refused;
+ *   - PROBATION_LIMIT starts with no healthy pass (the last one never settled,
+ *     or settleProbation would have acted): rolled back without refusing, the
+ *     same as PROBATION_LIMIT undecided passes.
+ * A rollback that fails (the lock is held) leaves the version live, so the
+ * pass still runs, counted.
+ *
+ * @returns {{outcome: 'started' | 'rolled-back' | 'rollback-failed' | 'superseded', reason?: string, refused?: boolean, marker?: object}}
+ *   `marker` is the probation's marker on `started` and `rollback-failed`: the pass runs and is judged.
+ */
+export function beginProbationPass({ home, sha, now, fs = nodeFs, lock = acquireInstallLock, limit = PROBATION_LIMIT, unsettledLimit = UNSETTLED_START_LIMIT }) {
+  const marker = readMarker(home, fs)
+  if (!sameProbation(marker, sha)) return superseded(marker, sha)
+  const starts = marker.starts ?? 0
+  const unsettled = marker.unsettled ?? 0
+  const count = (m) => {
+    m.starts = starts + 1
+    m.unsettled = unsettled + 1
+    writeMarker(home, m, fs)
+    return m
+  }
+  let why = null
+  if (unsettled >= unsettledLimit) why = `${unsettled} probation passes in a row started and never reached their health check (a crash, an exit or a kill mid-pass)`
+  else if (starts >= limit) why = `${starts} probation passes started and none decided its health`
+  if (why === null) return { outcome: 'started', marker: count(marker) }
+  const r = rollBackProbation({ home, sha, why, refuseLatest: unsettled >= unsettledLimit, now, fs, lock })
+  if (r.outcome !== 'rollback-failed') return r
+  const current = readMarker(home, fs)
+  if (!sameProbation(current, sha)) return superseded(current, sha)
+  return { ...r, marker: count(current) }
+}
+
+/**
+ * Apply a probation pass's verdict. Healthy: phase `healthy`. Undecided: count
+ * it (and record `newErrors` when that is why). At PROBATION_LIMIT the version
+ * is rolled back without refusing its commit: nothing showed it broken, so it
+ * is tried again after a backoff, once (finishRollBack refuses the commit on
+ * its second such rollback). The bound counts the passes that started
+ * (`starts`), so one that died before this call counts too. Unhealthy: roll
+ * back and refuse. Both rollbacks go through rollBackProbation.
+ *
+ * `sha` is the probation being judged (default: the one the marker names). A
+ * marker that no longer says it is on probation is left alone (`superseded`).
+ * Reaching this call settles the pass: `unsettled` is cleared.
+ *
+ * @returns {{outcome: 'healthy' | 'undecided' | 'rolled-back' | 'rollback-failed' | 'superseded', reason: string, refused?: boolean, marker?: object}}
+ */
+export function settleProbation({ home, sha, verdict, reason, newErrors, now, fs = nodeFs, lock = acquireInstallLock, limit = PROBATION_LIMIT }) {
+  const marker = readMarker(home, fs)
+  if (sha !== undefined && !sameProbation(marker, sha)) return superseded(marker, sha)
+  const judged = sha ?? marker.sha
+  if (verdict === 'healthy') {
+    marker.phase = 'healthy'
+    for (const k of ['undecided', 'starts', 'unsettled', 'newErrors', 'rollbackFailed', 'rollbackHeld', 'undecidedRollbacks']) delete marker[k]
+    writeMarker(home, marker, fs)
+    return { outcome: 'healthy', reason, marker }
+  }
+  let why = reason
+  const wasUnsettled = Boolean(marker.unsettled)
+  marker.unsettled = 0
+  if (verdict === 'undecided') {
+    marker.undecided = (marker.undecided ?? 0) + 1
+    if (Array.isArray(newErrors) && newErrors.length > 0) marker.newErrors = [...newErrors]
+    writeMarker(home, marker, fs)
+    const passes = Math.max(marker.undecided, marker.starts ?? 0)
+    if (passes < limit) return { outcome: 'undecided', reason: `${reason} (${passes} of ${limit})`, marker }
+    why = `${limit} passes in a row could not decide its health (last: ${reason})`
+  } else if (wasUnsettled) {
+    writeMarker(home, marker, fs)
+  }
+  return rollBackProbation({ home, sha: judged, why, refuseLatest: verdict !== 'undecided', now, fs, lock })
 }
 
 /**
