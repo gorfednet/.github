@@ -2,7 +2,7 @@
 /**
  * Render STATUS.md from status.json (written by fleet-status.mjs).
  *
- *   node scripts/write-status-md.mjs [--in status.json] [--out STATUS.md] [--digest]
+ *   node scripts/write-status-md.mjs [--in status.json] [--out STATUS.md] [--digest [--spend spend.json]]
  *
  * --digest prints the short ntfy text (at most 10 lines) instead of writing the file.
  * Times are Toronto local time, labelled ET.
@@ -238,9 +238,9 @@ export function render(status) {
 }
 
 /** At most 10 lines for ntfy. */
-export function digest(status) {
+export function digest(status, spend = null) {
   const s = summarize(status)
-  const lines = [summaryLine(status), spendDigestLine(status.actions)]
+  const lines = [summaryLine(status), spendDigestLine(status.actions, spend)]
   const rows = hygiene(status)
   const counts = rows.filter((h) => h.count !== null && h.count > 0).map((h) => `${h.row} ${h.count}`)
   const unmeasured = rows.filter((h) => h.count === null).length
@@ -261,7 +261,12 @@ function arg(name) {
 
 if (isMain(import.meta.url)) {
   const status = JSON.parse(readFileSync(arg('--in') ?? 'status.json', 'utf8'))
-  if (process.argv.includes('--digest')) process.stdout.write(digest(status))
+  if (process.argv.includes('--digest')) {
+    // The digest goes to ntfy only, so it may carry the private spend figures the public file leaves out.
+    let spend = null
+    try { spend = arg('--spend') ? JSON.parse(readFileSync(arg('--spend'), 'utf8')) : null } catch { /* the line then shows the state */ }
+    process.stdout.write(digest(status, spend))
+  }
   else {
     writeFileSync(arg('--out') ?? 'STATUS.md', render(status))
     console.log(`write-status-md: ${status.repos.length} repositories`)

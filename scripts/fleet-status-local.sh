@@ -20,17 +20,21 @@ work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 cd "$repo"
 from=()
+memo=()
 if git fetch --quiet origin status 2>/dev/null; then
   age=$(( $(date +%s) - $(git log -1 --format=%ct origin/status) ))
+  # The published block is the fallback for the spend meter when this Mac's own gh login cannot read billing
+  # (it lacks the permission): so the file is kept whether or not the repository rows can be reused.
+  if git show origin/status:status.json > "$work/prior.json" 2>/dev/null; then memo=(--spend-memo "$work/prior.json"); fi
   # Reuse the published file only when it is whole: no private repository redacted to counts (the local
   # view stays full) and no unavailable row (one bad CI read would otherwise exit 1 here all day).
-  if [ "$age" -lt 86400 ] && git show origin/status:status.json > "$work/prior.json" 2>/dev/null \
+  if [ "$age" -lt 86400 ] && [ -s "$work/prior.json" ] \
     && node -e 'const s = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")); process.exit(s.repos.some((r) => r.redacted || r.unavailable) ? 1 : 0)' "$work/prior.json"; then
     from=(--from "$work/prior.json")
   fi
 fi
 code=0
-node scripts/fleet-status.mjs --local --include-private --inventory --out "$work/status.json" ${from[@]+"${from[@]}"} "$@" || code=$?
+node scripts/fleet-status.mjs --local --include-private --inventory --out "$work/status.json" ${from[@]+"${from[@]}"} ${memo[@]+"${memo[@]}"} "$@" || code=$?
 # Exit 1 means some repo was unreadable; the file is still written with an unavailable row, so show it.
 if [ -s "$work/status.json" ]; then
   node scripts/write-status-md.mjs --in "$work/status.json" --out "$work/STATUS.md"

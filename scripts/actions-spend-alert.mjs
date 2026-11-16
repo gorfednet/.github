@@ -2,11 +2,12 @@
 /**
  * Push the hosted Actions spend lines (70% and 90% of the monthly cap) to ntfy, once each.
  *
- *   node scripts/actions-spend-alert.mjs [--in status.json]
+ *   node scripts/actions-spend-alert.mjs [--in status.json] --spend spend.json
  *
- * Reads `actions` from status.json (written by fleet-status.mjs), pushes at most one line for the highest
- * threshold newly crossed, and records it in `actions.fired` in the same file, which the workflow then
- * publishes: the status branch is the memo between runs. A push that fails records nothing, so the next
+ * Reads the published `actions` block from status.json (the state and `fired`, no figure) and the full reading
+ * from spend.json (written by fleet-status.mjs --spend-out, kept on the runner), pushes at most one line for
+ * the highest threshold newly crossed (70, 90 or 100% of the cap), and records it in `actions.fired` in
+ * status.json, which the workflow then publishes: the status branch is the memo between runs. A push that fails records nothing, so the next
  * run (2 hours later) tries again. Needs NTFY_TOKEN and NTFY_URL; without them it warns and records
  * nothing. An unknown reading pushes nothing and leaves the memo alone.
  */
@@ -46,13 +47,15 @@ function arg(name) {
 if (isMain(import.meta.url)) {
   const path = arg('--in') ?? 'status.json'
   const status = JSON.parse(readFileSync(path, 'utf8'))
+  let meter = null
+  try { meter = JSON.parse(readFileSync(arg('--spend') ?? 'spend.json', 'utf8')) } catch { /* no reading: nothing to push */ }
   const url = process.env.NTFY_URL
   const token = process.env.NTFY_TOKEN
   const push = url && token ? ntfyPush({ url, token }) : async () => {
     console.error('::warning::NTFY_URL or NTFY_TOKEN missing, spend alert not posted')
     return false
   }
-  const { status: next, action, due } = await applyAlert(status, push)
+  const { status: next, action, due } = await applyAlert(status, meter, push)
   if (next !== status) {
     writeFileSync(`${path}.tmp`, `${JSON.stringify(next, null, 2)}\n`)
     renameSync(`${path}.tmp`, path)
