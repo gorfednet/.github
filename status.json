@@ -1,12 +1,12 @@
 {
-  "generatedAt": "2026-11-16T04:39:26.064Z",
-  "renderedAt": "2026-11-16T04:39:26.064Z",
+  "generatedAt": "2026-11-16T06:53:21.645Z",
+  "renderedAt": "2026-11-16T06:53:21.645Z",
   "repos": [
     {
       "slug": "gorfednet/bindercurve.com",
       "redacted": true,
       "mainRed": true,
-      "openPrCount": 4,
+      "openPrCount": 5,
       "lapsedBacklogCount": 16,
       "noPrCount": 79,
       "idlePrCount": 1,
@@ -145,10 +145,10 @@
           "ageDays": 0,
           "labels": [],
           "draft": false,
-          "review": "clean",
-          "headSha": "9f11472f03274ecb849fcb20626aa3eaced8c6b9",
+          "review": "findings",
+          "headSha": "e55e436970a597d6b97b86d839b799fad963f516",
           "ci": "green",
-          "next": "Desk: Fable read of the diff, check `claude review` is clean on the newest head (rounds 1 and 2: three Low findings, all fixed and answered in their threads), then label `ready-to-merge`.",
+          "next": "Desk: Fable read of the diff, check `claude review` is clean on the newest head, then label `ready-to-merge`.",
           "author": "gorfednet"
         },
         {
@@ -169,10 +169,10 @@
           "ageDays": 0,
           "labels": [],
           "draft": false,
-          "review": "not-run",
-          "headSha": "d72e3ed4f9e63425c01c179b2d2c210999e7fa25",
+          "review": "clean",
+          "headSha": "598d9b90475be8d6133500ddff8e82c3f25a5be3",
           "ci": "green",
-          "next": "Desk: mark ready and label `ready-to-merge` once CI is green on c00890e",
+          "next": "Desk: a short Fable read of c00890e..598d9b9, then ready and `ready-to-merge`",
           "author": "gorfednet"
         },
         {
@@ -182,7 +182,7 @@
           "labels": [],
           "draft": false,
           "review": "findings",
-          "headSha": "6bb0ebf86b2aa8322ba3daebb869b1056c08c4f6",
+          "headSha": "607e41719348b1668c113ee295f0f56231000c31",
           "ci": "red",
           "next": "Merge once the Claude review is clean.",
           "author": "gorfednet"
@@ -594,7 +594,7 @@
       "slug": "gorfednet/career-portfolio",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 2,
+      "openPrCount": 3,
       "lapsedBacklogCount": 1,
       "noPrCount": 1,
       "idlePrCount": 1,
@@ -654,7 +654,7 @@
       "slug": "gorfednet/ops",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 8,
+      "openPrCount": 7,
       "lapsedBacklogCount": 0,
       "noPrCount": 0,
       "idlePrCount": 0,
@@ -715,11 +715,11 @@
     }
   },
   "inventory": {
-    "measuredAt": "2026-11-16T04:39:26.064Z",
+    "measuredAt": "2026-11-16T06:53:21.645Z",
     "counts": {
       "pr": {
-        "total": 88,
-        "orphans": 47
+        "total": 89,
+        "orphans": 49
       },
       "session": null,
       "worktree": null,
@@ -803,12 +803,12 @@
         "lapsed": true
       }
     ],
-    "hiddenPrivate": 40,
+    "hiddenPrivate": 42,
     "privateReposNotItemised": 18,
     "planRead": true
   },
   "dotgithub": {
-    "measuredAt": "2026-11-16T04:39:52.143Z",
+    "measuredAt": "2026-11-16T06:53:54.096Z",
     "branches": 36,
     "merged": 2,
     "exposedFiles": 61,
