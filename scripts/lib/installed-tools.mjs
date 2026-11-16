@@ -149,6 +149,50 @@ export function privateInterpreters(home, launchAgents) {
   return out
 }
 
+/**
+ * The Node each installer recorded after its check.sh passed (16 November 2026, plan row 1.22a): a file beside the
+ * installed app, written by install.sh. A Node upgrade changes the merger's runtime without its tests rerunning, so an
+ * agent whose Node now reports another version is flagged until the installer is rerun.
+ */
+export const NODE_RECORDS = [
+  { agent: 'net.gorfed.ship-bot', record: '.ship-bot/app.node-version' },
+  { agent: 'net.gorfed.capacity', record: '.desk/capacity-app.node-version' },
+]
+
+/** `<program> --version`, trimmed; null when it will not run. */
+function nodeVersion(program) {
+  try {
+    return execFileSync(program, ['--version'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 10000 }).trim()
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Installed agents whose Node reports a version other than the recorded one; recorded is null when there is no record.
+ * `now` is null when the program exists but its --version fails or times out: that agent is unread, and still gets a row.
+ */
+export function nodeVersionDrift(home, launchAgents) {
+  const out = []
+  for (const { agent, record } of NODE_RECORDS) {
+    const plist = join(launchAgents, `${agent}.plist`)
+    if (!existsSync(plist)) continue
+    let program
+    try {
+      program = firstProgramArgument(plist)
+    } catch {
+      continue
+    }
+    if (!program.startsWith('/')) continue
+    const file = join(home, record)
+    const recorded = existsSync(file) ? readFileSync(file, 'utf8').trim() : null
+    const now = nodeVersion(program)
+    if (now === null && !existsSync(program)) continue // a missing program is already reported by privateInterpreters
+    if (now === null || recorded !== now) out.push({ agent, program, recorded, now })
+  }
+  return out
+}
+
 /** The checkout a path lives in, and whether it is a ship-bot-advanced tool worktree. */
 function checkoutOf(target) {
   let dir = target
@@ -255,6 +299,17 @@ export function installedTools({ home = homedir(), root, launchAgents } = {}) {
     checked++
     if (p.missing) behind.push({ tool: `LaunchAgent ${p.agent}`, source: p.program, behind: null, detail: `runs ${p.program}, which does not exist` })
     else behind.push({ tool: `LaunchAgent ${p.agent}`, source: p.program, behind: null, detail: `runs ${p.real}, inside another tool's private folder` })
+  }
+
+  // A Node that is not the one the installer's check.sh passed on.
+  for (const d of nodeVersionDrift(home, launchAgents ?? join(home, 'Library', 'LaunchAgents'))) {
+    checked++
+    if (d.now === null) {
+      behind.push({ tool: `Node version ${d.agent}`, source: d.program, behind: null, detail: `unread: ${d.program} --version failed or timed out, so its Node version is unknown` })
+      continue
+    }
+    const why = d.recorded === null ? 'and no check.sh pass is recorded for it' : `but check.sh passed on ${d.recorded}`
+    behind.push({ tool: `Node version ${d.agent}`, source: d.program, behind: null, detail: `runs Node ${d.now}, ${why}: rerun the installer from origin/main` })
   }
 
   // Copies of committed files.

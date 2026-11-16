@@ -34,6 +34,16 @@ describe('resolve_node', () => {
     assert.match(r.stderr, /refusing .*\.hermes\/node\/bin\/node: it lives in another tool's private folder/)
   })
 
+  it('refuses a private node when HOME is a symlink to the real home', () => {
+    const home = mac()
+    const link = `${home}-link`
+    symlinkSync(home, link)
+    const r = resolve(link, { RESOLVE_NODE_CANDIDATES: join(home, '.local', 'bin', 'node') })
+    assert.notEqual(r.status, 0)
+    assert.equal(r.stdout, '')
+    assert.match(r.stderr, /another tool's private folder/)
+  })
+
   it('prefers a system node over a private one earlier on PATH, and prints its path', () => {
     const home = mac()
     const sys = join(home, 'usr', 'bin', 'node')
@@ -83,6 +93,27 @@ describe('resolve_node', () => {
     fake(old, '18')
     assert.match(resolve(home, { NODE_BIN: old }).stderr, /needs Node 22 or newer/)
     assert.notEqual(resolve(home, { NODE_BIN: join(home, 'missing') }).status, 0)
+  })
+
+  it('check.sh picks its Node with the resolver and refuses, before running any test, when only a private one exists', () => {
+    const s = readFileSync(new URL('../check.sh', import.meta.url), 'utf8')
+    assert.ok(!s.includes("node -p 'process.execPath'"), 'check.sh still takes whatever node is first on PATH')
+    const home = mac()
+    const r = spawnSync(new URL('../check.sh', import.meta.url).pathname, [], {
+      encoding: 'utf8',
+      env: { PATH: `${home}/.local/bin:/usr/bin:/bin`, HOME: home, RESOLVE_NODE_CANDIDATES: join(home, 'no-such-node') },
+    })
+    assert.equal(r.status, 1)
+    assert.match(r.stderr, /refusing .*\.hermes\/node\/bin\/node/)
+    assert.match(r.stderr, /no usable Node/)
+  })
+
+  it('install.sh records the Node check.sh passed on beside the app, after the swap', () => {
+    const s = readFileSync(new URL('../install.sh', import.meta.url), 'utf8')
+    assert.match(s, /"\$\{NODE_BIN\}" --version >"\$\{APP_DIR\}\.node-version"/)
+    const swap = s.indexOf('"${INSTALLER}" swap')
+    assert.ok(swap >= 0, 'install.sh no longer swaps through the installer')
+    assert.ok(swap < s.indexOf('.node-version'), 'record must follow the swap')
   })
 
   // Only ship-bot's own installer here: install.sh runs these tests from a `git archive` of

@@ -19,10 +19,14 @@ _rn_realpath() {
   python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$1" 2>/dev/null || true
 }
 
-# True when $1 lies under a dot-folder of $HOME (another tool's private area).
+# True when $1 lies under a dot-folder of $HOME (another tool's private area). $1 is a realpath, so
+# $HOME is compared both as given and with its symlinks resolved (`pwd -P`): a symlinked home would
+# otherwise never match.
 _rn_private() {
+  local home_phys
+  home_phys="$(cd "${HOME}" 2>/dev/null && pwd -P)" || home_phys="${HOME}"
   case "$1" in
-    "${HOME}"/.*/*) return 0 ;;
+    "${HOME}"/.*/* | "${home_phys}"/.*/*) return 0 ;;
     *) return 1 ;;
   esac
 }

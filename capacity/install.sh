@@ -47,6 +47,8 @@ cp "${HERE}/../scripts/lib/usageAlert.mjs" "${APP_DIR}/lib/usageAlert.mjs"
 # The installed-tools check (plan row 1.18): it imports installed-tools.mjs from its own folder.
 cp "${HERE}/../scripts/lib/installedDrift.mjs" "${APP_DIR}/lib/installedDrift.mjs"
 cp "${HERE}/../scripts/lib/installed-tools.mjs" "${APP_DIR}/lib/installed-tools.mjs"
+# The Node check.sh passed on, beside the app (plan row 1.22a); the installed-tools row flags a different one.
+"${NODE_BIN}" --version >"${APP_DIR}.node-version"
 xml() { sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g' <<<"$1"; }
 cat >"${PLIST}.tmp" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
