@@ -108,9 +108,11 @@ export async function advanceGatesWorktree({ path, git }) {
 
 /** Paths whose change on main means the installed bot (its code or its gate-scripts copy) is out of date. */
 export const OWN_INSTALL_PATHS = [
-  // What install.sh copies into ~/.ship-bot/app, and nothing else: a test or a doc change is not a stale bot.
+  // What an install copies into a version (lib/install.mjs), and nothing else: a test or a doc change is not a stale bot.
   'ship-bot/ship-bot.mjs', 'ship-bot/patch-config.mjs', 'ship-bot/patches', 'ship-bot/lib', 'ship-bot/github-app',
   'scripts/review-status.mjs', 'scripts/gates/assert-checks-started.mjs', 'scripts/gates/check-closing-keywords.mjs', 'scripts/lib',
+  // The LaunchAgent and the install itself: a change here reads stale too, and self-install refuses it as a hand install.
+  'ship-bot/install.sh', 'ship-bot/launchd-load.sh',
 ]
 
 /**
