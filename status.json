@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-11-16T10:32:19.584Z",
-  "renderedAt": "2026-11-16T10:32:19.584Z",
+  "generatedAt": "2026-11-16T12:42:25.833Z",
+  "renderedAt": "2026-11-16T12:42:25.833Z",
   "repos": [
     {
       "slug": "gorfednet/bindercurve.com",
@@ -17,7 +17,7 @@
     {
       "slug": "gorfednet/4thcltr.com",
       "redacted": true,
-      "mainRed": false,
+      "mainRed": true,
       "openPrCount": 22,
       "lapsedBacklogCount": 20,
       "noPrCount": 13,
@@ -140,15 +140,29 @@
       "mainRed": false,
       "openPrs": [
         {
+          "number": 224,
+          "title": "1.22a: record the Node each agent passed on, resolver in check.sh",
+          "ageDays": 0,
+          "labels": [
+            "ready-to-merge"
+          ],
+          "draft": false,
+          "review": "clean",
+          "headSha": "1b94d113cd03bee5c0b7beac70c961b51e7db7e9",
+          "ci": "green",
+          "next": "Merge once verification-kit is green on 1b94d11 (Desk labels `ready-to-merge`)",
+          "author": "gorfednet"
+        },
+        {
           "number": 221,
-          "title": "Hosted Actions spend meter with 70% and 90% lines (replan row N6)",
+          "title": "Hosted Actions spend meter as a library, off every public output (replan row N6)",
           "ageDays": 0,
           "labels": [],
           "draft": false,
-          "review": "findings",
-          "headSha": "e55e436970a597d6b97b86d839b799fad963f516",
-          "ci": "green",
-          "next": "Desk: Fable read of the diff, check `claude review` is clean on the newest head, then label `ready-to-merge`.",
+          "review": "not-run",
+          "headSha": "93cdcd01bf1034cb153c2b3677e734c4aba8aeeb",
+          "ci": "pending",
+          "next": "Desk: Fable read of the diff, check `claude review` is clean on the newest head, then label `ready-to-merge`. Three files change; nothing public is touched.",
           "author": "gorfednet"
         },
         {
@@ -164,25 +178,13 @@
           "author": "gorfednet"
         },
         {
-          "number": 218,
-          "title": "ship-bot: install merged main itself, with validate-before-swap and rollback (replan N2)",
-          "ageDays": 0,
-          "labels": [],
-          "draft": false,
-          "review": "clean",
-          "headSha": "598d9b90475be8d6133500ddff8e82c3f25a5be3",
-          "ci": "green",
-          "next": "Desk: a short Fable read of c00890e..598d9b9, then ready and `ready-to-merge`",
-          "author": "gorfednet"
-        },
-        {
           "number": 216,
           "title": "Public push guard: check a push or gh text before it reaches a public repository (plan row 1.30 f)",
           "ageDays": 0,
           "labels": [],
           "draft": false,
           "review": "findings",
-          "headSha": "607e41719348b1668c113ee295f0f56231000c31",
+          "headSha": "65b6804ffd911fdb21762bc331005c663008507e",
           "ci": "red",
           "next": "Merge once the Claude review is clean.",
           "author": "gorfednet"
@@ -654,7 +656,7 @@
       "slug": "gorfednet/ops",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 7,
+      "openPrCount": 9,
       "lapsedBacklogCount": 0,
       "noPrCount": 0,
       "idlePrCount": 0,
@@ -715,10 +717,10 @@
     }
   },
   "inventory": {
-    "measuredAt": "2026-11-16T10:32:19.584Z",
+    "measuredAt": "2026-11-16T12:42:25.833Z",
     "counts": {
       "pr": {
-        "total": 89,
+        "total": 91,
         "orphans": 49
       },
       "session": null,
@@ -734,15 +736,7 @@
         "kind": "pr",
         "repo": "gorfednet/.github",
         "ref": "#221",
-        "label": "Hosted Actions spend meter with 70% and 90% lines (replan row N6)",
-        "private": false,
-        "lapsed": false
-      },
-      {
-        "kind": "pr",
-        "repo": "gorfednet/.github",
-        "ref": "#218",
-        "label": "ship-bot: install merged main itself, with validate-before-swap and rollback (replan N2)",
+        "label": "Hosted Actions spend meter as a library, off every public output (replan row N6)",
         "private": false,
         "lapsed": false
       },
@@ -803,13 +797,13 @@
         "lapsed": true
       }
     ],
-    "hiddenPrivate": 42,
+    "hiddenPrivate": 43,
     "privateReposNotItemised": 18,
     "planRead": true
   },
   "dotgithub": {
-    "measuredAt": "2026-11-16T10:33:01.253Z",
-    "branches": 36,
+    "measuredAt": "2026-11-16T12:43:07.560Z",
+    "branches": 37,
     "merged": 2,
     "exposedFiles": 61,
     "rulesNotChecked": [],
