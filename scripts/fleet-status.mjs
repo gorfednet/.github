@@ -473,7 +473,8 @@ if (isMain(import.meta.url)) {
     status.prCost = cost.error ? null : cost
     if (cost.error) status.prCostUnread = cost.error
   }
-  if (!process.argv.includes('--local')) {
+  if (!process.argv.includes('--local') && !arg('--only')) {
+    // (Not in a per-repository child: the parent reads the file once.)
     // A hosted run has no Mac: the janitor's daily counts stand in for the local rows (absent means "not measured").
     const counts = fetchLocalCounts(ghJson, { now: now.getTime() })
     if (counts) status.localCounts = counts

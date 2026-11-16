@@ -81,6 +81,17 @@ describe('propose', () => {
     assert.ok(out.proposals.every((p) => !p.repo.includes('private') && !p.repo.includes('down')))
   })
 
+  it('ignores backlog ids under 8 characters or with no hyphen, and says a close-duplicate leaves the branch', () => {
+    const st = status()
+    st.repos[0].backlogOpen.push({ id: 'abc-d', title: 't', status: 'open', reviewBy: null }, { id: 'nohyphenid', title: 't', status: 'open', reviewBy: null })
+    st.repos[0].openPrs.push({ number: 77, title: 'abc-d and nohyphenid', next: null })
+    st.repos[0].branchesAhead.push({ branch: 'planted/abc-d', ahead: 1 }, { branch: 'planted/nohyphenid', ahead: 1 })
+    const r = propose(st, keep)
+    assert.equal(r.proposals.find((p) => p.branch === 'planted/abc-d').action, 'draft-pr')
+    assert.equal(r.proposals.find((p) => p.branch === 'planted/nohyphenid').action, 'draft-pr')
+    assert.match(r.proposals.find((p) => p.branch === 'planted/plan-row-alpha-item').reason, /the branch stays until Desk decides/)
+  })
+
   it('reports the older of two PRs for one backlog id for Desk to close', () => {
     assert.deepEqual(out.duplicatePrs, [{ repo: 'plantedorg/public-one', id: 'twice-named-entry', close: 30, keep: 35, action: 'close-duplicate-pr' }])
   })

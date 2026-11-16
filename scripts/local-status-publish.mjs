@@ -10,9 +10,11 @@
  *
  * Dry is the default: without `--apply` it writes the file and prints what it would push, and pushes nothing.
  * With `--apply` it makes one plain push of that file to the `fleet-local` branch of the ops repository,
- * from its own shallow, single-branch temporary clone. The target is fixed in this file. There is no
- * argument or variable that changes it, and `assertTarget` refuses any other remote or branch. A push the
- * remote refuses, a non-fast-forward included, exits 1: it never forces.
+ * from its own shallow, single-branch temporary clone. The target is fixed in this file and no argument
+ * changes it: `assertTarget` refuses any other remote or branch. Git's own configuration (a `url.*.insteadOf`
+ * rule, GIT_CONFIG_* variables) can still rewrite a URL, so after adding the remote the script asks git where
+ * `origin` pushes and refuses unless that is the ops repository on github.com. It sets GIT_TERMINAL_PROMPT=0.
+ * A push the remote refuses, a non-fast-forward included, exits 1: it never forces.
  *
  * `--keep-list` is the branch keep list in ops (control/branch-keep.json); without it the kept count is
  * not measured.
@@ -38,18 +40,25 @@ export function assertTarget(remote, branch) {
   if (remote !== OPS_REMOTE || branch !== OPS_BRANCH) throw new Error('refusing to push: the target is fixed to the ops data branch')
 }
 
-const git = (dir, ...args) => execFileSync('git', ['-C', dir, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 120_000 })
+const git = (dir, ...args) => execFileSync('git', ['-C', dir, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 120_000, env: { ...process.env, GIT_TERMINAL_PROMPT: '0' } })
+
+/** True for the ops repository on github.com, over https, with or without `.git`. */
+export const isOpsUrl = (url) => /^https:\/\/github\.com\/gorfednet\/ops(\.git)?$/.test(String(url).trim())
+
+/** Where git would push `origin` in `dir`, after every rewrite rule in its configuration. */
+const resolvePushUrl = (dir) => git(dir, 'remote', 'get-url', '--push', 'origin').trim()
 
 /**
  * One plain push of `counts` (the file text) to the ops data branch, built in a fresh temporary clone.
  * Creates the branch on the first run. Throws when the remote refuses; a non-fast-forward is that case.
  */
-export function pushCounts(text, { remote = OPS_REMOTE, branch = OPS_BRANCH, stamp = new Date().toISOString() } = {}) {
+export function pushCounts(text, { remote = OPS_REMOTE, branch = OPS_BRANCH, stamp = new Date().toISOString(), resolveUrl = resolvePushUrl } = {}) {
   assertTarget(remote, branch)
   const work = mkdtempSync(join(tmpdir(), 'local-status-'))
   try {
     git(work, 'init', '--quiet')
     git(work, 'remote', 'add', 'origin', remote)
+    if (!isOpsUrl(resolveUrl(work))) throw new Error('refusing to push: origin does not resolve to the ops repository')
     const exists = git(work, 'ls-remote', '--heads', 'origin', branch).trim() !== ''
     if (exists) {
       git(work, 'fetch', '--quiet', '--depth', '1', '--no-tags', 'origin', `+refs/heads/${branch}:refs/remotes/origin/${branch}`)

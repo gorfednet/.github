@@ -81,6 +81,8 @@ export function keptCount(status, keepList) {
   if (keepList === null || keepList === undefined) return null
   const entries = Array.isArray(keepList) ? keepList : keepList.entries
   if (!Array.isArray(entries)) return null
+  // A repository row that was not read may hold kept branches we cannot see: the count would run short.
+  if ((status?.repos ?? []).some((r) => r.unavailable)) return null
   const live = new Set()
   for (const r of status?.repos ?? []) for (const b of Array.isArray(r.branchesAhead) ? r.branchesAhead : []) live.add(`${r.slug}\u0000${b.branch}`)
   const seen = new Set()

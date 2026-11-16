@@ -60,7 +60,8 @@ export function propose(status, keepList = null) {
       redacted += 1
       continue
     }
-    const ids = (repo.backlogOpen ?? []).map((e) => e.id)
+    // Only ids of 8+ characters with a hyphen count, as duplicatePrs does: shorter ones match unrelated words.
+    const ids = (repo.backlogOpen ?? []).map((e) => e.id).filter((id) => typeof id === 'string' && id.length >= 8 && id.includes('-'))
     const batch = []
     for (const b of repo.branchesAhead) {
       const entry = keep?.get(`${repo.slug}\u0000${b.branch}`)
@@ -75,7 +76,7 @@ export function propose(status, keepList = null) {
       const named = idsNamedIn(b.branch, ids)
       const twin = named.length > 0 ? (repo.openPrs ?? []).find((p) => idsNamedIn(`${p.title}\n${p.next ?? ''}`, named).length > 0) : null
       if (twin) {
-        proposals.push({ repo: repo.slug, branch: b.branch, action: 'close-duplicate', reason: `open PR #${twin.number} names the same backlog id`, of: twin.number })
+        proposals.push({ repo: repo.slug, branch: b.branch, action: 'close-duplicate', reason: `open PR #${twin.number} names the same backlog id; nothing is closed or deleted here, the branch stays until Desk decides`, of: twin.number })
         continue
       }
       proposals.push({ repo: repo.slug, branch: b.branch, action: 'draft-pr', reason: `${b.ahead} commits ahead of the default branch with no pull request` })

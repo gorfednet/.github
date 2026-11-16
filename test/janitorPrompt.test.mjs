@@ -165,12 +165,12 @@ test("janitor puts no branch, title or worktree on a command line: each goes thr
   assert.match(prompt, /skip that session/);
 });
 
-/** Every untrusted-valued flag takes `"$(cat $R/<name>-<id8>.txt)"` with its double quotes; `-C` may also take the owner's `$J` or `$G`. Returns how many it checked. */
+/** Every untrusted-valued flag takes `"$(cat $R/<name>-<id8>.txt)"` with its double quotes; `-C` may also take the owner's `$J`, `$G` or `$O`. Returns how many it checked. */
 function quotedFileFlags(spans) {
   let seen = 0;
   for (const c of spans) {
     for (const m of c.matchAll(/(?:^| )(-C|--head|--branch|--worktree|--title) (\S+)/g)) {
-      if (m[1] === "-C" && /^\$[JG]$/.test(m[2])) continue;
+      if (m[1] === "-C" && /^\$[JGO]$/.test(m[2])) continue;
       seen += 1;
       assert.match(c.slice(m.index + m[0].indexOf(m[1]) + m[1].length + 1), /^"\$\(cat \$R\/[a-z]+-<id8>\.txt\)"/, `${m[1]} must read a quoted file: ${c}`);
     }
@@ -252,4 +252,22 @@ test("janitor step 1b publishes local counts: the command line has no --apply, a
 test("janitor lists the one local-counts push among its GitHub calls and bars it from a dry run", () => {
   assert.match(prompt, /Your only GitHub calls are step 1b's one push of `local-counts\.json` to the ops data branch \(live runs only\)/);
   assert.match(prompt, /push \(step 1b's `--apply` included\)/);
+});
+
+test("janitor 1b reads the keep list from ops origin/main into $R and gives the same copy to both scripts", () => {
+  const step = prompt.match(/\n1b\. [\s\S]*?(?=\n2\. Read)/)[0];
+  assert.match(step, /git -C \$O fetch --quiet origin main/);
+  assert.match(step, /git -C \$O show origin\/main:control\/branch-keep\.json > \$R\/branch-keep\.json/);
+  assert.match(step, /never from its working tree/);
+  for (const name of ["local-status-publish", "branch-sweep-propose"]) {
+    const span = [...step.matchAll(new RegExp("`([^`]*" + name + "\\.mjs[^`]*)`", "g"))].map((m) => m[1]);
+    assert.equal(span.length, 1, name);
+    assert.match(span[0], /--keep-list \$R\/branch-keep\.json/, name);
+  }
+  assert.doesNotMatch(step, /--keep-list \$G/, "no keep list is read from the working tree");
+});
+
+test("janitor step 1 goes on to 1b when repositories are unreadable, and 1b admits its one push", () => {
+  assert.match(prompt, /go on to step 1b, then step 2/);
+  assert.match(prompt, /write only under `\$R`, apart from the one push below/);
 });

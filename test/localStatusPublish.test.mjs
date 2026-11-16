@@ -12,7 +12,7 @@ import { join } from 'node:path'
 import { afterEach, describe, it } from 'node:test'
 import { fileURLToPath } from 'node:url'
 
-import { OPS_BRANCH, OPS_REMOTE, assertTarget, parseArgs, pushCounts } from '../scripts/local-status-publish.mjs'
+import { OPS_BRANCH, OPS_REMOTE, assertTarget, isOpsUrl, parseArgs, pushCounts } from '../scripts/local-status-publish.mjs'
 import { keptCount, reduceStatus } from '../scripts/lib/localCounts.mjs'
 import { PLANTED, fullStatus, keepList } from './fixtures/local-status.mjs'
 
@@ -137,6 +137,11 @@ describe('the counts file', () => {
     assert.equal(keptCount(fullStatus(), { entries: [] }), 0)
     assert.equal(keptCount(fullStatus(), keepList()), 1)
     assert.equal(keptCount(fullStatus(), { nope: 1 }), null)
+    // A repository row that was not read could hold kept branches: the count would run short.
+    const down = fullStatus()
+    down.repos.push({ slug: 'plantedorg/unread-one', unavailable: 'x' })
+    assert.equal(keptCount(down, keepList()), null)
+    assert.equal(reduceStatus(down, { kept: keptCount(down, keepList()) }).counts.rows.keptBranches.count, null)
     // A corrupt keep list file is unread, not empty.
     writeFileSync(join(root, 'bad.json'), '{')
     assert.equal(run(root, fullStatus(), ['--keep-list', join(root, 'bad.json')]).counts.rows.keptBranches.count, null)
@@ -179,6 +184,11 @@ describe('arguments', () => {
     assert.throws(() => parseArgs(['--in', 'x', '--apply', '--apply']), /repeated/)
   })
 
+  it('accepts only the ops repository on github.com as a resolved push URL', () => {
+    for (const ok of [OPS_REMOTE, 'https://github.com/gorfednet/ops']) assert.equal(isOpsUrl(ok), true)
+    for (const bad of ['https://github.com/gorfednet/other.git', 'https://github.com/gorfednet/ops.git.evil', 'git@github.com:gorfednet/ops.git', 'file:///tmp/ops.git', 'https://example.com/gorfednet/ops.git', '/var/ops.git']) assert.equal(isOpsUrl(bad), false, bad)
+  })
+
   it('refuses any target but the fixed ops data branch', () => {
     assert.doesNotThrow(() => assertTarget(OPS_REMOTE, OPS_BRANCH))
     assert.throws(() => assertTarget('https://github.com/gorfednet/other.git', OPS_BRANCH), /refusing to push/)
@@ -194,6 +204,23 @@ describe('arguments', () => {
 })
 
 describe('the push', () => {
+  /**
+   * An in-process push to the bare stand-in. The environment redirects the fixed ops URL to the bare
+   * repository, as a git configuration rule would, and `resolveUrl` reports the ops URL so the script's own
+   * check passes: this is the only way the test can reach a local directory. The refusal tests below leave
+   * `resolveUrl` out.
+   */
+  function push(text, env, options = {}) {
+    const saved = {}
+    for (const [k, v] of Object.entries(env)) if (k.startsWith('GIT_')) { saved[k] = process.env[k]; process.env[k] = v }
+    try {
+      return pushCounts(text, { resolveUrl: () => OPS_REMOTE, ...options })
+    } finally {
+      for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v }
+    }
+  }
+  const counts = (n) => `${JSON.stringify({ rows: { n }, inventory: {} })}\n`
+
   it('pushes nothing without --apply, and says what it would push', () => {
     const root = scratch()
     const { bare, env } = fakeOps(root)
@@ -204,55 +231,59 @@ describe('the push', () => {
     assert.equal(git(root, '--git-dir', bare, 'for-each-ref').trim(), '')
   })
 
-  it('with --apply creates the branch on the first run, with the one file, and again with no change', () => {
+  it('with --apply creates the branch on the first run, with the one file, then reports unchanged, then fast-forwards', () => {
     const root = scratch()
     const { bare, env } = fakeOps(root)
-    const first = run(root, fullStatus(), ['--keep-list', keepFile(root), '--apply'], env)
-    assert.equal(first.status, 0, first.stderr)
-    assert.match(first.stdout, /pushed/)
+    assert.equal(push(counts(1), env), 'pushed')
     assert.equal(git(root, '--git-dir', bare, 'ls-tree', '--name-only', OPS_BRANCH).trim(), 'local-counts.json')
-    assert.deepEqual(JSON.parse(git(root, '--git-dir', bare, 'show', `${OPS_BRANCH}:local-counts.json`)), first.counts)
-    const again = run(root, fullStatus(), ['--keep-list', keepFile(root), '--apply'], env)
-    assert.equal(again.status, 0, again.stderr)
-    assert.match(again.stdout, /unchanged/)
+    assert.equal(git(root, '--git-dir', bare, 'show', `${OPS_BRANCH}:local-counts.json`), counts(1))
+    assert.equal(push(counts(1), env), 'unchanged')
     assert.equal(git(root, '--git-dir', bare, 'rev-list', '--count', OPS_BRANCH).trim(), '1')
-    // A changed file is a second commit on top of the first (a fast-forward).
-    const status = fullStatus()
-    status.local.dirtyClones = []
-    assert.equal(run(root, status, ['--keep-list', keepFile(root), '--apply'], env).status, 0)
+    assert.equal(push(counts(2), env), 'pushed')
     assert.equal(git(root, '--git-dir', bare, 'rev-list', '--count', OPS_BRANCH).trim(), '2')
   })
 
-  it('exits 1, and does not force, when the remote refuses the push (as a non-fast-forward does)', () => {
+  it('throws, and does not force, when the remote refuses the push (as a non-fast-forward does)', () => {
     const root = scratch()
     const { bare, env } = fakeOps(root)
-    assert.equal(run(root, fullStatus(), ['--keep-list', keepFile(root), '--apply'], env).status, 0)
+    push(counts(1), env)
     const tip = git(root, '--git-dir', bare, 'rev-parse', OPS_BRANCH).trim()
     writeFileSync(join(bare, 'hooks', 'update'), '#!/bin/sh\necho "! [rejected] (non-fast-forward)" >&2\nexit 1\n')
     chmodSync(join(bare, 'hooks', 'update'), 0o755)
-    const status = fullStatus()
-    status.local.dirtyClones = []
-    const r = run(root, status, ['--keep-list', keepFile(root), '--apply'], env)
-    assert.equal(r.status, 1)
-    assert.match(r.stderr, /push failed/)
+    assert.throws(() => push(counts(2), env))
     assert.equal(git(root, '--git-dir', bare, 'rev-parse', OPS_BRANCH).trim(), tip)
   })
 
   it('clones shallow and single-branch into its own temporary folder, and pushes plainly, never with force', () => {
     const root = scratch()
     const { env } = fakeOps(root)
-    assert.equal(run(root, fullStatus(), ['--keep-list', keepFile(root), '--apply'], env).status, 0)
+    push(counts(1), env)
     const trace = join(root, 'trace.txt')
-    const status = fullStatus()
-    status.local.dirtyClones = []
-    const r = run(root, status, ['--keep-list', keepFile(root), '--apply'], { ...env, GIT_TRACE: trace })
-    assert.equal(r.status, 0, r.stderr)
+    push(counts(2), { ...env, GIT_TRACE: trace })
     const log = readFileSync(trace, 'utf8')
     assert.match(log, /fetch --quiet --depth 1 --no-tags origin \+refs\/heads\/fleet-local:refs\/remotes\/origin\/fleet-local/)
     assert.match(log, /push --quiet origin HEAD:refs\/heads\/fleet-local/)
     assert.doesNotMatch(log, /--force|--force-with-lease|\+HEAD|push [^\n]*\+refs/)
-    // It starts its own repository (a fresh init), so no existing checkout is touched.
     assert.match(log, /built-in: git init --quiet/)
     assert.equal(readdirSync(tmpdir()).filter((n) => n.startsWith('local-status-')).length, 0, 'the temporary clone is removed')
+  })
+
+  it('refuses when git configuration redirects origin away from the ops repository, and pushes nothing', () => {
+    const root = scratch()
+    const { bare, env } = fakeOps(root)
+    // In process, with no override: the insteadOf rule makes origin resolve to a local directory.
+    const saved = {}
+    for (const [k, v] of Object.entries(env)) if (k.startsWith('GIT_')) { saved[k] = process.env[k]; process.env[k] = v }
+    try {
+      assert.throws(() => pushCounts(counts(1)), /does not resolve to the ops repository/)
+    } finally {
+      for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v }
+    }
+    assert.equal(git(root, '--git-dir', bare, 'for-each-ref').trim(), '')
+    // And through the command line, the way the janitor runs it: exit 1, nothing pushed.
+    const r = run(root, fullStatus(), ['--keep-list', keepFile(root), '--apply'], env)
+    assert.equal(r.status, 1)
+    assert.match(r.stderr, /push failed: refusing to push/)
+    assert.equal(git(root, '--git-dir', bare, 'for-each-ref').trim(), '')
   })
 })
