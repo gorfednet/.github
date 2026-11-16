@@ -20,13 +20,18 @@
  *   node ship-bot.mjs --config <path>      default ~/.ship-bot/config.json
  *   node ship-bot.mjs --verbose            also print why each PR was ignored
  *   node ship-bot.mjs --rotate-log <path>  first move <path> to <path>.1 if it is over 5 MB
+ *   node ship-bot.mjs --self-test          read-only: import every module, resolve the gate scripts, load the state
+ *                                          file; print one JSON line {ok, stateVersion, source}; exit 1 unless ok
+ *   node ship-bot.mjs --dry-run --once --summary-json
+ *                                          end the dry pass with one JSON line {passOk, authOk, repoErrors, undecided}
+ *                                          (a self-install judges a new version by these two, lib/install.mjs)
  *
  * Without --once it keeps running, one pass every two minutes. The LaunchAgent
  * runs it with --once and lets launchd do the scheduling.
  */
 import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { runOnce, selectRepos } from './lib/bot.mjs'
 import { ping as heartbeat } from './lib/heartbeat.mjs'
@@ -38,13 +43,14 @@ import { createGitHubClient, guardWrites } from './lib/github.mjs'
 import { Redactor } from './lib/redact.mjs'
 import { realRunner, succeeded } from './lib/runner.mjs'
 import { rotateLog } from './lib/logs.mjs'
-import { StateStore, acquireLock, lockPath } from './lib/state.mjs'
+import { STATE_VERSION, StateStore, acquireLock, lockPath } from './lib/state.mjs'
+import { currentVersion, findBotHome, judgeHealth, recoverSwapping, settleProbation } from './lib/install.mjs'
 import { isMain } from './lib/isMain.mjs'
 import { formatValidation, validateExpectedChecks } from './lib/validate.mjs'
 
 const USAGE =
-  'usage: ship-bot.mjs [--dry-run | --live] [--once] [--repo <name>]... [--config <path>] [--verbose] [--unblock <name> [--deployed <sha>]] [--rotate-log <path>]\n' +
-  '       ship-bot.mjs --set-live true|false | --set-repo-live <slug> true|false | --validate [--repo <name>]... | --check-preflight'
+  'usage: ship-bot.mjs [--dry-run | --live] [--once] [--repo <name>]... [--config <path>] [--verbose] [--unblock <name> [--deployed <sha>]] [--rotate-log <path>] [--summary-json]\n' +
+  '       ship-bot.mjs --set-live true|false | --set-repo-live <slug> true|false | --validate [--repo <name>]... | --check-preflight | --self-test'
 
 const parseBool = (flag, v) => {
   if (v !== 'true' && v !== 'false') throw new Error(`${flag} takes true or false`)
@@ -65,6 +71,8 @@ export function parseArgs(argv) {
     setRepoLive: undefined,
     validate: false,
     checkPreflight: false,
+    selfTest: false,
+    summaryJson: false,
   }
   for (let i = 0; i < argv.length; i += 1) {
     const flag = argv[i]
@@ -91,9 +99,13 @@ export function parseArgs(argv) {
       args.setRepoLive = { slug, live: parseBool(flag, value()) }
     } else if (flag === '--validate') args.validate = true
     else if (flag === '--check-preflight') args.checkPreflight = true
+    else if (flag === '--self-test') args.selfTest = true
+    else if (flag === '--summary-json') args.summaryJson = true
     else if (flag === '--help' || flag === '-h') args.help = true
     else throw new Error(`unknown argument ${flag}`)
   }
+  // The summary is what a self-install judges a new version by, and that version must not act: dry passes only.
+  if (args.summaryJson && args.mode === 'live') throw new Error('--summary-json is for a dry pass; it cannot be used with --live')
   args.mode ??= 'dry-run'
   return args
 }
@@ -111,6 +123,10 @@ const defaultDeps = () => ({
   loadConfig,
   /** Which gate scripts this pass runs (lib/gate-source.mjs): the installed copy, or a clone at origin/main. */
   gateScripts: (config) => resolveGateScripts(config, { appDir: APP_DIR }),
+  /** Where this copy's code lives: versions/<sha> when installed (Node resolves the `app` link), the checkout otherwise. */
+  appDir: APP_DIR,
+  /** The bot home whose `app` link names this copy, or null when run from a checkout (lib/install.mjs). */
+  botHome: (config) => findBotHome({ appDir: APP_DIR, stateDir: config.stateDir }),
   makeGithub: (token, { cache } = {}) => createGitHubClient({ token, cache }),
   makeReadCache: (path, clock) => new ReadCache(path, { now: () => clock.now() }).load(),
   appToken: readAppToken,
@@ -155,6 +171,7 @@ export async function main(argv, overrides = {}) {
     }
   }
 
+  if (args.selfTest) return selfTest(expandHome(args.config), deps)
   if (args.setLive !== undefined) return setLive(expandHome(args.config), args.setLive, deps)
   if (args.setRepoLive) return setRepoLive(expandHome(args.config), args.setRepoLive, deps)
 
@@ -182,20 +199,99 @@ export async function main(argv, overrides = {}) {
       return 2
     }
 
-    const code = await onePass(config, { ...args, mode }, deps, print)
+    const code = await onePass(config, { ...args, mode, configPath: expandHome(args.config) }, deps, print)
     if (args.once || code !== 0) return code
     await deps.sleep(deps.intervalMs)
   }
 }
 
+const short = (sha) => String(sha ?? '').slice(0, 7)
+
+/**
+ * `--self-test`: can this copy start? Read-only. It imports every module
+ * beside it, resolves the gate scripts and loads the state file without
+ * writing it, then prints one JSON line `{ok, stateVersion, source}` (plus
+ * `problem` when not ok). A self-install runs the new version's self-test
+ * before the swap and again through the `app` link after it.
+ */
+async function selfTest(configPath, deps) {
+  const result = { ok: false, stateVersion: STATE_VERSION, source: null }
+  try {
+    for (const dir of ['lib', 'github-app']) {
+      for (const f of readdirSync(join(deps.appDir, dir)).filter((n) => n.endsWith('.mjs')).sort()) await import(pathToFileURL(join(deps.appDir, dir, f)).href)
+    }
+    await import(pathToFileURL(join(deps.appDir, 'patch-config.mjs')).href)
+    const config = deps.loadConfig(configPath)
+    const gates = deps.gateScripts(config)
+    if (gates.problems) throw new Error(`gate scripts refused: ${gates.problems.join('; ')}`)
+    result.source = gates.installedSha ?? null
+    const state = new StateStore(join(config.stateDir, 'state.json'), { persist: false }).load()
+    result.stateVersion = state.data.version
+    result.ok = true
+  } catch (cause) {
+    result.problem = String(cause.message).split('\n')[0].slice(0, 300)
+  }
+  deps.out(JSON.stringify(result))
+  return result.ok ? 0 : 1
+}
+
+/**
+ * The marker of a version on probation that is this copy, or null. Called by
+ * a live pass holding run.lock, so a `swapping` marker is a kill, never a swap
+ * in progress: it is settled from where the link points (lib/install.mjs).
+ */
+function readProbation(home, print) {
+  try {
+    const { marker, recovered } = recoverSwapping({ home })
+    if (recovered === 'probation') print('warn', `self-install ${short(marker.sha)}: the swap was interrupted after the link moved; on probation now`)
+    if (recovered === 'cleared') print('warn', 'self-install: an interrupted swap never moved the link; cleared')
+    return marker.phase === 'probation' && marker.sha === currentVersion(home) ? marker : null
+  } catch (cause) {
+    print('warn', `self-install: ${cause.message}`)
+    return null
+  }
+}
+
+/** The health check of a version on probation: this pass is the evidence, and an unhealthy one puts the link back. */
+function settleHealth(home, marker, pass, deps, print) {
+  const who = `self-install ${short(marker.sha)}`
+  try {
+    const { verdict, reason } = judgeHealth(marker, pass)
+    const r = settleProbation({ home, verdict, reason, now: deps.clock.now() })
+    if (r.outcome === 'healthy') print('info', `${who}: health OK`)
+    else if (r.outcome === 'undecided') print('info', `${who}: health undecided: ${r.reason}`)
+    else if (r.outcome === 'rolled-back') print('error', `${who}: unhealthy (${r.reason}); rolled back, and the next pass runs ${short(marker.from)}`)
+    else print('error', `${who}: unhealthy (${r.reason})`)
+  } catch (cause) {
+    print('error', `${who}: health check failed: ${cause.message}`)
+  }
+}
+
 async function onePass(loaded, args, deps, print) {
   const live = args.mode === 'live'
+  const summarize = (s) => {
+    if (args.summaryJson) deps.out(JSON.stringify(s))
+  }
   // Fail closed on a gate script that could be an unmerged branch's: no gate
   // runs this pass, so nothing is readied or merged (plan row 1.12).
   const gates = deps.gateScripts(loaded)
   if (gates.problems) {
     for (const p of gates.problems) print('error', `gate scripts refused: ${p}`)
     print('error', 'pass refused: nothing is checked, readied or merged until the gate scripts are at origin/main (re-run ship-bot/install.sh from an origin/main checkout)')
+    if (live) {
+      // A version on probation whose gate scripts are refused is unhealthy: back to the one before it.
+      const lock = acquireLock(lockPath(loaded.stateDir))
+      if (lock.ok) {
+        try {
+          const home = deps.botHome(loaded)
+          const probation = home ? readProbation(home, print) : null
+          if (probation) settleHealth(home, probation, { refusedGates: true }, deps, print)
+        } finally {
+          lock.release()
+        }
+      }
+    }
+    summarize({ passOk: false, authOk: null, repoErrors: [], undecided: null })
     return 1
   }
   const config = { ...loaded, scripts: gates.scripts }
@@ -207,8 +303,14 @@ async function onePass(loaded, args, deps, print) {
       return 0
     }
   }
+  // Only a live pass reads or writes the self-install marker, and only one that runs through a version link.
+  const home = live ? deps.botHome(config) : null
+  const probation = home ? readProbation(home, print) : null
+  /** What the pass came to: runOnce fills `summary`; the rest is set here. */
+  const pass = { code: 1, authOk: undefined, threw: undefined, summary: {} }
   try {
     const auth = await readAuth(config, deps, print)
+    pass.authOk = Boolean(auth)
     if (!auth) {
       if (args.mode !== 'dry-run') await deps.heartbeat('ship-bot', { ok: false })
       return 1
@@ -236,6 +338,8 @@ async function onePass(loaded, args, deps, print) {
       repoNames: args.repos,
       baseEnv: deps.baseEnv,
       installedSha: gates.installedSha,
+      selfInstall: home ? { home, configPath: args.configPath } : undefined,
+      summary: pass.summary,
       log: (level, text) => {
         if (observe) print(level === 'error' || level === 'warn' ? level : 'info', `OBSERVE ${text}`)
         else if (level !== 'debug' || args.verbose) print(level, text)
@@ -247,12 +351,22 @@ async function onePass(loaded, args, deps, print) {
       print('warn', `could not save the read cache: ${cause.message}`)
     }
     if (args.mode !== 'dry-run') await deps.heartbeat('ship-bot')
+    pass.code = 0
     return 0
   } catch (cause) {
+    pass.threw = String(cause.message).split('\n')[0].slice(0, 300)
     print('error', `pass failed: ${cause.message}`)
     if (args.mode !== 'dry-run') await deps.heartbeat('ship-bot', { ok: false })
     return 1
   } finally {
+    const { summary } = pass
+    // A pass over named repos only is no evidence about the rest, so it settles nothing.
+    if (probation && args.repos.length === 0) {
+      settleHealth(home, probation, { code: pass.code, authOk: pass.authOk, threw: pass.threw, quota: summary.quota, freshness: summary.freshness, repoErrors: summary.repoErrors }, deps, print)
+    }
+    // `undecided`: the pass stopped short of every repo (a quota pause) or could not read GitHub's main.
+    const undecided = summary.quota ? 'a GitHub quota pause' : pass.code === 0 && summary.freshness === 'unknown' ? "the install's freshness could not be read" : null
+    summarize({ passOk: pass.code === 0, authOk: pass.authOk ?? null, repoErrors: summary.repoErrors ?? [], undecided })
     lock.release()
   }
 }

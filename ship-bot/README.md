@@ -319,24 +319,68 @@ on its row in `~/.ship-bot/config.json`.
    phone through ntfy as well; a failed send is one line in the log, never a
    stopped pass.
 
-Every pull request that changes `ship-bot/` or the gate scripts
-(`scripts/review-status.mjs`, `scripts/gates/`, `scripts/lib/`) carries this
-line under `## Next`: `- [ ] After merge: reinstall from origin/main`. Until
-the reinstall, the installed bot is behind `origin/main`. It says so every
-pass and merges no pull request that changes control-plane paths. It comments
-once on each one it holds. It does the same when it can't read how fresh its
-install is: GitHub's `main` can't be read, the clone's `origin/main` differs
-from it after a fetch, or `gates-main` was not advanced. Other pull requests
-still merge (INCIDENTS.md, 14 November 2026, ops 94).
+### A change to the bot itself
 
-This hold is in the bot's own code, so it starts with the first reinstall that
+The bot installs merged `main` itself (replan row N2). A hand reinstall is no
+longer the usual step.
+
+- Each live pass checks whether `main` changed what an install copies. That
+  means the code in `ship-bot/`, the gate scripts (`scripts/review-status.mjs`,
+  `scripts/gates/`, `scripts/lib/`), `ship-bot/install.sh` and
+  `ship-bot/launchd-load.sh`.
+- When it did, the installed bot fetches `origin/main`. It builds that commit
+  as `~/.ship-bot/versions/<sha>/`.
+- The installed bot checks the new version before anything running changes.
+  It runs the new `check.sh`, the gate import check and the live config
+  through the new `loadConfig`. Then it runs the new `--self-test` and one
+  full dry pass over every repository.
+- If all of that passes, it renames the link `~/.ship-bot/app` onto the new
+  version. That one rename is the whole swap. The pass ends there, before any
+  repository.
+- The next pass runs the new version on probation. A healthy pass ends the
+  probation. An unhealthy one puts the link back on the version before it.
+- The log says `validate OK, swap OK`. The next pass says `health OK`.
+
+The new version never merges or deploys before it passes those checks. The
+bot never writes the LaunchAgent plist and never calls `launchctl`.
+
+Some commits are refused. A refused commit is never tried again, and the
+refusal sends one loud message. Each of these needs a hand install
+(`ship-bot/install.sh`, from any clone):
+
+- A change to `ship-bot/install.sh` or `ship-bot/launchd-load.sh`. The
+  LaunchAgent or the install itself changes.
+- A new version that fails a check. A failed `check.sh` gets one retry first.
+- A new version whose dry pass stops on a repository the installed one handles.
+- A new version that a health check rolled back.
+
+A hand install clears every refusal.
+
+The bot defers when it can't decide. Examples are no GitHub token, a quota
+pause, or `main` moving during the install. A deferral is quiet and is tried
+again on the next pass. After 30 deferrals of one commit it sends one message.
+
+A pass on probation can also end undecided, for the same reasons. After 30
+undecided passes in a row the bot rolls the version back. That takes about
+an hour.
+
+Until the new version is installed, the bot is behind `origin/main`. It says
+so every pass and merges no pull request that changes control-plane paths. It
+comments once on each one it holds. It does the same when it can't read how
+fresh its install is: GitHub's `main` can't be read, the clone's `origin/main`
+differs from it after a fetch, or `gates-main` was not advanced. Other pull
+requests still merge (INCIDENTS.md, 14 November 2026, ops 94). The loud
+"behind origin/main" message is sent only when self-install is off or has
+refused that commit.
+
+This hold is in the bot's own code, so it starts with the first install that
 includes it. A bot installed from an older commit still merges control-plane
 pull requests while it is behind.
 
-If `install.sh` refuses `origin/main` (`check.sh` or the import check fails),
-the fix is itself a `ship-bot/` pull request and the installed bot holds it.
-The owner merges that fix on GitHub, then reinstalls. `install.sh` installs
-only from `origin/main`, so there is no other route.
+If a new `origin/main` can't be installed at all (`check.sh` or the import
+check fails), the fix is itself a `ship-bot/` pull request and the installed
+bot holds it. The owner merges that fix on GitHub, then runs
+`ship-bot/install.sh`. Both routes install only from `origin/main`.
 
 To stop it: add the **`hold`** label to a pull request, or run
 `node ~/.ship-bot/app/ship-bot.mjs --set-live false` to stop everything, or run
@@ -363,6 +407,10 @@ To stop it: add the **`hold`** label to a pull request, or run
   `node ~/.ship-bot/app/ship-bot.mjs --set-live false` (or change `"live"` to
   `false` in `~/.ship-bot/config.json`). From the next run it only watches and
   logs. `--set-live true` resumes.
+- **Only the self-install:** run `touch ~/.ship-bot/self-install.off`. The bot
+  then never installs a new version of itself. It still holds control-plane
+  pull requests while it is behind, and `ship-bot/install.sh` still works.
+  Delete the file to turn the self-install back on.
 - **Remove it from the Mac:** `ship-bot/install.sh --uninstall`.
 
 ## GitHub quota (13 November 2026)
@@ -430,7 +478,30 @@ node ship-bot/ship-bot.mjs --validate                  # expectedChecks against 
 node ship-bot/ship-bot.mjs --check-preflight           # run the config's preflight steps once, pass or fail per step
 ship-bot/preflight-launchd.sh                          # the same, inside a one-shot LaunchAgent with the installed agent's environment
 node ship-bot/ship-bot.mjs --set-repo-live <slug> true|false
+node ship-bot/ship-bot.mjs --self-test                 # read-only: can this copy start? One JSON line {ok, stateVersion, source}
+node ship-bot/ship-bot.mjs --dry-run --once --summary-json  # end a dry pass with one JSON line {passOk, authOk, repoErrors, undecided}
 ```
+
+**Self-install (15 November 2026, replan row N2).** `lib/install.mjs` owns
+the files below, and `install.sh` and the bot both build a version with it.
+
+- `~/.ship-bot/versions/<sha>/` is one installed copy, with the commit in
+  `gate-scripts/SOURCE`. The bot keeps the current one, the one before it and
+  one more.
+- `~/.ship-bot/app` is a link to the current version. The plist names
+  `app/ship-bot.mjs`, so it never changes with a version.
+- `~/.ship-bot/self-install.json` is the marker. Its phase is `swapping`,
+  `probation`, `healthy`, `rolled-back` or `hand`. It also holds the refused
+  commits and any message ntfy has not accepted yet.
+- `~/.ship-bot/install.lock` is held by whichever install is running.
+- `~/.ship-bot/self-install.off` is the off switch.
+
+A session never edits those files and never moves the link. After a merge
+that changes the bot, watch `~/.ship-bot/logs/ship-bot.log` for
+`validate OK, swap OK` and then `health OK`. A `refused` line names the step
+and the reason, and the fix is a new pull request plus a hand install. The
+first install of this layout is a hand install. It moves the old `app`
+directory to `versions/<its SOURCE>` and makes the link.
 
 `preflight-launchd.sh` answers the question a terminal cannot: does the ssh to
 the NAS and the Docker host work from launchd's context, where the keychain-held
@@ -483,9 +554,10 @@ repository's own CI run), and the example points at the
 The bot does not run them from that clone, where a session can switch
 branches (plan row 1.12). `install.sh` exports `origin/main`'s commit with
 `git archive` (never the working tree), runs the suite from it, and copies the
-three scripts and `scripts/lib/` into `~/.ship-bot/app/gate-scripts/` with the
-commit in `SOURCE`, after `lib/gate-imports.mjs` confirms every import
-resolves inside the copy. A fix to a bot too broken to merge it is merged by
+three scripts and `scripts/lib/` into the new version's `gate-scripts/`
+(reached as `~/.ship-bot/app/gate-scripts/`) with the commit in `SOURCE`.
+`lib/gate-imports.mjs` confirms every import resolves inside the copy before
+the swap. The bot's self-install does the same steps. A fix to a bot too broken to merge it is merged by
 the owner on GitHub, then installed the same way. While that copy exists the bot runs it and nothing else, and an
 incomplete copy refuses the pass. The gate commands on PATH (`~/.local/bin/review-status` and its siblings,
 plan row 1.7) are a different copy: symlinks into the detached worktree
