@@ -64,6 +64,26 @@ describe('status.json schema: installed tools', () => {
   })
 })
 
+describe('status.json schema: local counts (replan row N7)', async () => {
+  const { reduceStatus } = await import('../scripts/lib/localCounts.mjs')
+  const { fullStatus } = await import('./fixtures/local-status.mjs')
+  const withCounts = (counts) => ({ ...structuredClone(fixture), localCounts: counts })
+  it('accepts the counts the publisher writes, with null rows, and refuses an extra key or a string count', () => {
+    const { counts } = reduceStatus(fullStatus(), { kept: 1 })
+    assert.deepEqual(validate(withCounts(counts), schema), [])
+    const partial = structuredClone(counts)
+    partial.rows.idleSessions = { count: null, measuredAt: null }
+    partial.inventory.job = { total: null, orphans: null, measuredAt: null }
+    assert.deepEqual(validate(withCounts(partial), schema), [])
+    const extra = structuredClone(counts)
+    extra.rows.dirtyClones.surprise = 1
+    assert.equal(validate(withCounts(extra), schema).length, 1)
+    const text = structuredClone(counts)
+    text.rows.dirtyClones.count = 'three'
+    assert.equal(validate(withCounts(text), schema).length, 1)
+  })
+})
+
 describe('helpers', () => {
   it('nextItem reads the first unchecked line under ## Next only', () => {
     const body = '- [ ] not this\n## Done\n- [ ] nor this\n## Next\n- [x] done\n- [ ] the one\n- [ ] later\n## After\n- [ ] no'

@@ -31,6 +31,7 @@ import { promisify } from 'node:util'
 import { isMain } from '../templates/verification-kit/lib/isMain.mjs'
 import { lapsedBacklog } from './fleet-report.mjs'
 import { backlogIds, collectLocal, duplicatePrs, idlePrs } from './lib/hygiene.mjs'
+import { LOCAL_COUNTS_SOURCE, readLocalCounts } from './lib/localCounts.mjs'
 import { collectPrCost } from './lib/prCost.mjs'
 import { backlogFromStatus, buildInventory, collectHerdrJobs, collectSessions, collectWorktrees, fetchOpenPrs, planRows, summarizeInventory } from './lib/inventory.mjs'
 import { claudeReviewVerdict } from './lib/reviewVerdict.mjs'
@@ -356,6 +357,23 @@ export function readPlanOfRecord(json = ghJson, log = console.error) {
   return null
 }
 
+/**
+ * The Mac's counts (replan row N7), read from the ops data branch with the run's own token: one request, that
+ * ref only, no other ref tried. Null when the file is absent, unreadable or refused by the strict reader, so a
+ * hosted run says "not measured" and never 0. Only a rule id is logged, never a key or a value.
+ */
+export function fetchLocalCounts(json = ghJson, { now = Date.now(), log = console.error } = {}) {
+  const { slug, path, ref } = LOCAL_COUNTS_SOURCE
+  let text
+  try {
+    text = fileText(slug, `${path}?ref=${ref}`, json)
+  } catch (cause) {
+    log(`::warning::fleet-status: local counts unreadable: ${String(cause.message).split('\n')[0].replace(/https?:\/\/\S+/g, '<url>')}`)
+    return null
+  }
+  return readLocalCounts(text, { now, log })
+}
+
 export function collectInventory(status, { includePrivate = false, local = false, now = new Date(), json = ghJson } = {}) {
   const readText = (rel) => {
     try {
@@ -454,6 +472,11 @@ if (isMain(import.meta.url)) {
     const cost = await collectPrCost({ now })
     status.prCost = cost.error ? null : cost
     if (cost.error) status.prCostUnread = cost.error
+  }
+  if (!process.argv.includes('--local')) {
+    // A hosted run has no Mac: the janitor's daily counts stand in for the local rows (absent means "not measured").
+    const counts = fetchLocalCounts(ghJson, { now: now.getTime() })
+    if (counts) status.localCounts = counts
   }
   if (process.argv.includes('--inventory')) {
     status.inventory = collectInventory(status, { includePrivate: process.argv.includes('--include-private'), local: process.argv.includes('--local'), now })
