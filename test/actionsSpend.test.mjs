@@ -259,6 +259,48 @@ describe('applyAlert', () => {
     assert.equal(a.memo, null)
     assert.equal((await applyAlert(reading(80), recorder(true).push)).action, 'pushed')
   })
+  it('an unreadable memo is rewritten from the reading, so the thresholds still to come are not silenced (review round 7)', async () => {
+    const r = recorder()
+    // The reviewer's case: a memo with no `fired`, read at 93%. It is repaired to what the reading has passed.
+    const a = await applyAlert(withMemo(meter(93), { month: '2026-11' }), r.push)
+    assert.equal(a.action, 'none', 'the passed lines are taken as sent: none is pushed')
+    assert.deepEqual(a.memo, { month: '2026-11', fired: [70, 90] })
+    // A later run reads the repaired file and pushes the 100% line.
+    const later = await applyAlert(withMemo(meter(100), a.memo), r.push)
+    assert.equal(later.due, 100)
+    assert.equal(r.sent.length, 1)
+    assert.match(r.sent[0][0], /cap reached/)
+    // A memo with no month, text, or a number is repaired the same way, and an unreadable memo under 70% is repaired to empty.
+    for (const bad of [{}, 'text', 7]) assert.deepEqual((await applyAlert(withMemo(meter(100), bad), recorder().push)).memo, { month: '2026-11', fired: [70, 90, 100] }, JSON.stringify(bad))
+    assert.deepEqual((await applyAlert(withMemo(meter(40), {}), recorder().push)).memo, { month: '2026-11', fired: [] })
+    // Left alone, the same unreadable file would give the 100% line nothing to fire from: the next run reads it as 93 did.
+    assert.equal(withMemo(meter(100), { month: '2026-11' }).memoUnreadable, true)
+  })
+  it('a dropped threshold is written, so the re-arm survives the next run (review round 7)', async () => {
+    const r = recorder()
+    // Credits bring the reading to 60% with [70, 90] on file: nothing is due, and the memo is written empty.
+    const down = await applyAlert(withMemo(meter(60), memo([70, 90])), r.push)
+    assert.equal(down.action, 'none')
+    assert.deepEqual(down.memo, { month: '2026-11', fired: [] })
+    // Spend climbs back to 75%: the memo on disk is the written one, so the 70% line is pushed again.
+    const back = await applyAlert(withMemo(meter(75), down.memo), r.push)
+    assert.equal(back.due, 70)
+    assert.equal(r.sent.length, 1)
+    // A partial drop is written too, and an unchanged reading writes nothing.
+    assert.deepEqual((await applyAlert(withMemo(meter(80), memo([70, 90])), recorder().push)).memo, { month: '2026-11', fired: [70] })
+    assert.equal((await applyAlert(withMemo(meter(80), memo([70])), recorder().push)).memo, null)
+    // A drop and a push in one run write the result of both.
+    assert.deepEqual((await applyAlert(withMemo(meter(75), memo([70, 90])), recorder().push)).memo, { month: '2026-11', fired: [70] })
+    // A failed push still persists a drop it had nothing to do with.
+    const failed = await applyAlert(withMemo(meter(75), memo([])), recorder(false).push)
+    assert.equal(failed.action, 'push-failed')
+    assert.equal(failed.memo, null)
+  })
+  it('an unknown reading writes no memo, even over an unreadable one', async () => {
+    const m = withMemo(meterFromReport({}, { now: NOW, cap: CAP }), { month: '2026-11' })
+    assert.equal(m.memoUnreadable, true)
+    assert.equal((await applyAlert(m, recorder().push)).memo, null)
+  })
   it('pushes nothing under 70%, and nothing for an unknown or missing reading', async () => {
     const r = recorder()
     assert.equal((await applyAlert(reading(69), r.push)).action, 'none')

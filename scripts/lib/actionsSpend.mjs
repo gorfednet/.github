@@ -168,9 +168,10 @@ export function readMemo(memo, month) {
  */
 export function withMemo(meter, memo) {
   const { fired, readable } = readMemo(memo, meter.month)
-  if (meter.unknown !== undefined) return { ...meter, fired, ...(readable ? {} : { memoUnreadable: true }) }
-  if (!readable) return { ...meter, fired: SPEND_THRESHOLDS.filter((t) => t <= meter.usedPct), memoUnreadable: true }
-  return { ...meter, fired: fired.filter((t) => meter.usedPct >= t) }
+  // `stored` is what the memo file holds for this month, as read. applyAlert compares it with the thresholds the run ends on.
+  if (meter.unknown !== undefined) return { ...meter, fired, stored: fired, ...(readable ? {} : { memoUnreadable: true }) }
+  if (!readable) return { ...meter, fired: SPEND_THRESHOLDS.filter((t) => t <= meter.usedPct), stored: [], memoUnreadable: true }
+  return { ...meter, fired: fired.filter((t) => meter.usedPct >= t), stored: fired }
 }
 
 /** BILLING_READ_TOKEN, when set, stands in for the usual token on the billing call alone. */
@@ -186,14 +187,24 @@ export const alertText = (meter, threshold) =>
 /**
  * Push at most one line, for the highest threshold newly crossed, then record every threshold up to it. The memo
  * records a threshold only after `push(text, threshold)` resolved true, so a failed push retries next run.
- * `meter` is a reading with `fired` (from withMemo). Returns what happened and the memo to write back: `memo` is
- * null when it is unchanged and must not be rewritten.
+ * `meter` is a reading with `fired` and `stored` (from withMemo). Returns what happened and `memo`: the file to write,
+ * or null when the file already says what the run ends on. It is written when a line was pushed, when the file was
+ * unreadable (repaired from the reading, or it would stay corrupt and be read as "everything so far was sent"
+ * on every later run, silencing the thresholds still to come), and when a threshold was dropped (a re-arm that is
+ * only in memory is lost at the next run). An unknown reading writes nothing.
  */
 export async function applyAlert(meter, push) {
   if (meter?.unknown !== undefined || !Number.isFinite(meter?.usedPct)) return { action: 'unknown', memo: null }
   const due = pendingSpendThreshold(meter.usedPct, meter.fired ?? [])
-  if (due === null) return { action: 'none', memo: null }
-  if (!(await push(alertText(meter, due), due))) return { action: 'push-failed', due, memo: null }
-  const fired = [...new Set([...(meter.fired ?? []), ...SPEND_THRESHOLDS.filter((t) => t <= due)])].sort((x, y) => x - y)
-  return { action: 'pushed', due, memo: { month: meter.month, fired } }
+  let action = 'none'
+  let fired = [...(meter.fired ?? [])]
+  if (due !== null) {
+    if (await push(alertText(meter, due), due)) {
+      action = 'pushed'
+      fired = [...new Set([...fired, ...SPEND_THRESHOLDS.filter((t) => t <= due)])].sort((x, y) => x - y)
+    } else action = 'push-failed'
+  }
+  const same = fired.length === (meter.stored ?? []).length && fired.every((t, i) => t === meter.stored[i])
+  const memo = meter.memoUnreadable || !same ? { month: meter.month, fired } : null
+  return due === null ? { action, memo } : { action, due, memo }
 }

@@ -19,7 +19,7 @@ The wiring is its own change, run from the Mac's private job (the capacity job's
 
 The projection is "about", not exact. It runs on gross dollars, because net reads 0 for as long as the included minutes cover usage, so an early overflow would not move it. The rate for the days left is the larger of the month's average and the last 7 days', so a late spike counts. The discount applied so far is subtracted, and it is at most the whole allowance, so the figure leans high. The first day counts as a whole day.
 
-Thresholds fire once each a month. A jump past several pushes only the highest and records them all. A push that fails records nothing and retries on the next run. A new calendar month starts with nothing fired, and a reading that falls back under a threshold re-arms it. A memo that cannot be read is not "nothing fired": the thresholds the reading has already passed are taken as sent, which can lose a line and never repeats one.
+Thresholds fire once each a month. A jump past several pushes only the highest and records them all. A push that fails records nothing and retries on the next run. A new calendar month starts with nothing fired, and a reading that falls back under a threshold re-arms it. A memo that cannot be read is not "nothing fired": the thresholds the reading has already passed are taken as sent, which can lose a line and never repeats one. That run also rewrites the memo from its reading, so the file is repaired and the thresholds still to come are not silenced. A threshold the reading has dropped under is written too, so the re-arm survives to the next run.
 
 ## Unknown is not zero
 
