@@ -206,6 +206,13 @@ describe('a Node that is not the one check.sh passed on (plan row 1.22a)', () =>
     assert.equal(hit[0].tool, 'Node version net.gorfed.ship-bot')
     assert.match(hit[0].detail, /unread: .* --version failed or timed out/)
   })
+  it('reports an unreadable Node even when no record exists (the state right after merge)', () => {
+    const f = setup('v22.23.1', null)
+    put(join(f.home, 'opt', 'bin', 'node'), '#!/bin/sh\nexit 1\n', 0o755)
+    const hit = nodeRows(f)
+    assert.equal(hit.length, 1)
+    assert.match(hit[0].detail, /unread: .* --version failed or timed out/)
+  })
 })
 
 describe('gate scripts and the ~/.claude mirror (plan row 1.18)', () => {

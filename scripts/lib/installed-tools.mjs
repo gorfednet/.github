@@ -188,7 +188,7 @@ export function nodeVersionDrift(home, launchAgents) {
     const recorded = existsSync(file) ? readFileSync(file, 'utf8').trim() : null
     const now = nodeVersion(program)
     if (now === null && !existsSync(program)) continue // a missing program is already reported by privateInterpreters
-    if (recorded !== now) out.push({ agent, program, recorded, now })
+    if (now === null || recorded !== now) out.push({ agent, program, recorded, now })
   }
   return out
 }
