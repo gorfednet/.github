@@ -154,6 +154,9 @@ fi
 # The swap: versions/<sha>.new becomes versions/<sha>, and the link ${APP_DIR} is renamed onto it.
 # It also records a hand install in the marker, which clears what the self-install had refused.
 "${NODE_BIN}" "${INSTALLER}" swap --home "${BOT_HOME}" --sha "${main_sha}"
+# The Node check.sh passed on, beside the app (not in it: the app is compared with origin/main). The installed-tools
+# row flags the agent when its Node reports another version (plan row 1.22a).
+"${NODE_BIN}" --version >"${APP_DIR}.node-version"
 
 xml() { sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g' <<<"$1"; }
 

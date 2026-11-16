@@ -12,6 +12,16 @@ describe('installers and resolve-node', () => {
       assert.match(s, /source "\$\{HERE\}\/\.\.\/scripts\/lib\/resolve-node\.sh"/, f)
       assert.match(s, /NODE_BIN="\$\(resolve_node\)" \|\| \{[^}]*exit 1/, f)
       assert.ok(!s.includes("node -p 'process.execPath'"), `${f} still records process.execPath`)
+      assert.match(s, /"\$\{NODE_BIN\}" --version >"\$\{APP_DIR\}\.node-version"/, `${f} does not record the Node version`)
+    }
+  })
+
+  it('both check.sh scripts pick Node through the resolver, not PATH', () => {
+    for (const f of ['../ship-bot/check.sh', '../capacity/check.sh']) {
+      const s = readFileSync(new URL(f, import.meta.url), 'utf8')
+      assert.match(s, /source "\$\{HERE\}\/\.\.\/scripts\/lib\/resolve-node\.sh"/, f)
+      assert.match(s, /NODE_BIN="\$\(resolve_node\)"/, f)
+      assert.ok(!s.includes("node -p 'process.execPath'"), `${f} still defaults to process.execPath`)
     }
   })
 })
