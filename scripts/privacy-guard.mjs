@@ -55,20 +55,21 @@
  * IPv4 address has four parts, and a version of three (v10.1.2) never matches. A domain of
  * numbers (an npm tag) is a version tag, not an email.
  *
- * The allowlist is read from the MERGE BASE, never from the change: an exemption takes
- * effect only after its own pull request has merged. Format in .github/privacy-guard-allow.txt.
+ * The allowlist is read from the BASE revision (main's tip for a pull request), never from the
+ * change: an exemption takes effect once its own pull request has merged, on the next run of a
+ * waiting pull request, with no merge of main needed. Format in .github/privacy-guard-allow.txt.
  *
  * A false positive in a commit that is not the tip cannot be fixed forward: the commit stays
  * in the branch, and force push is denied. The way out is a `commit <full sha>` line, merged
  * to main first. It exempts that commit's own diff and its message, never the net diff, so
  * the tree a merge lands is still read whole. The change being judged cannot exempt itself:
- * the line is read from the merge base, and it names one full 40-hex id, so a commit made to
- * share a short prefix with an exempt one is still read.
+ * the line is read from the base revision, and it names one full 40-hex id, so a commit made
+ * to share a short prefix with an exempt one is still read.
  *
  * Usage:
  *   PRIVATE_REPOS=name-one,name-two node scripts/privacy-guard.mjs --base <ref> --head <ref>
  *     [--dir <repo>]      the git repository to read (default: current directory)
- *     [--allow <file>]    read the allowlist from this file instead of the merge base
+ *     [--allow <file>]    read the allowlist from this file instead of the base revision
  * Both revisions are resolved first (`rev-parse --verify --end-of-options`), so a value that
  * starts with "--" is a name that fails, never an option. The commits read are the head's
  * that the base does not hold (`head --not base`); the net diff is against the merge base.
@@ -666,12 +667,14 @@ export function run(argv, env = process.env, out = console) {
     })
     messages = git(dir, ['log', '-z', '--format=%H%n%B', headSha, '--not', baseSha, '--'])
     if (commits.length > 0) net = readDiff(dir, mergeBase, headSha)
+    // The allowlist comes from the base revision, not the merge base: an exemption merged to
+    // main after this branch forked counts on the next run, and the branch never supplies it.
     if (args.allow) allowText = readFileSync(resolve(args.allow), 'utf8')
     else {
       try {
-        allowText = git(dir, ['show', `${mergeBase}:${ALLOWLIST_PATH}`])
+        allowText = git(dir, ['show', `${baseSha}:${ALLOWLIST_PATH}`])
       } catch {
-        allowText = '' // no allowlist at the merge base: no exemptions
+        allowText = '' // no allowlist at the base: no exemptions
       }
     }
   } catch (error) {
@@ -866,7 +869,7 @@ export function run(argv, env = process.env, out = console) {
       out.log(
         `privacy-guard: ${stuck.size} commit(s) have a finding in their own diff or message, which a fix on the tip does not clear: ${[...stuck].join(' ')}. ` +
           'Before a push, rewrite the branch. Once pushed, force push is denied, so: for a real value, start a new branch from main with the final change and close this one, so the value stays off main. ' +
-          'For a false positive, merge a pull request to main that adds `commit <full sha>` to the allowlist. It exempts that commit\'s own diff and message only; the final tree is still read.',
+          'For a false positive, merge a pull request to main that adds `commit <full sha>` to the allowlist, then edit this pull request\'s title or body (or push) so the check runs against main\'s new tip; a rerun of the old job keeps its old base. The allowlist is read from the base, so no merge of main is needed. It exempts that commit\'s own diff and message only; the final tree is still read.',
       )
     }
     return 1

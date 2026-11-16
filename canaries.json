@@ -906,6 +906,14 @@
       "replace": "if (false) {"
     },
     {
+      "id": "privacy-guard-reads-the-allowlist-from-the-merge-base",
+      "guards": "The allowlist is read from the base revision. Read from the merge base, a commit line merged to main after the branch forked does nothing until the branch merges main, so a stuck pull request stays red.",
+      "command": "node --test --test-name-pattern='allowlist PR merged after the branch forked' test/privacyGuard.test.mjs",
+      "file": "scripts/privacy-guard.mjs",
+      "find": "allowText = git(dir, ['show', `${baseSha}:${ALLOWLIST_PATH}`])",
+      "replace": "allowText = git(dir, ['show', `${mergeBase}:${ALLOWLIST_PATH}`])"
+    },
+    {
       "id": "privacy-guard-takes-a-short-commit-prefix",
       "guards": "A commit exemption names the full 40-hex id. A short prefix can be matched by a commit made to share it, which would exempt a leak.",
       "command": "node --test --test-name-pattern='short or not hex' test/privacyGuard.test.mjs",

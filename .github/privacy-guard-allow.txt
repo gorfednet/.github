@@ -1,5 +1,6 @@
-# Exemptions for scripts/privacy-guard.mjs. The guard reads this file from the merge base,
-# so a pull request that adds an exemption gets it only after that pull request has merged.
+# Exemptions for scripts/privacy-guard.mjs. The guard reads this file from the base (main's
+# tip), so a pull request that adds an exemption gets it only after that pull request has
+# merged. A waiting pull request gets it on its next run, with no merge of main.
 # The guard flags a change to this file, its script or its workflow: read every line.
 #
 #   email <domain-or-address>     an address, or a domain and its subdomains

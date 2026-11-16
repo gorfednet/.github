@@ -890,7 +890,7 @@ describe('privacy guard: a commit message that cannot be rewritten can be exempt
     assert.equal(r.status, 0, r.out)
   })
 
-  it('exempts that commit\'s message only: not its lines, and not another commit\'s message', () => {
+  it('exempts that commit only: never a value still in the final tree, and not another commit\'s message', () => {
     let first
     const lines = scenario(
       (a) => {
@@ -955,6 +955,35 @@ describe('privacy guard: a false positive in a commit that is not the tip can be
     const r = scenario(fixedForward(keep), { args: (dir) => allowWith(keep.c1)(dir) })
     assert.equal(r.status, 0, r.out)
     assert.match(r.out, /1 commit\(s\) had findings in their own diff or message that a `commit <sha>` allowlist line exempts/)
+  })
+
+  it('reads the line from main\'s tip, so an allowlist PR merged after the branch forked clears it with no merge of main', () => {
+    const keep = {}
+    const allowLine = (where) => (a) => {
+      fixedForward(keep)(a)
+      a.checkout(where)
+      const base = readFileSync(join(a.dir, '.github', 'privacy-guard-allow.txt'), 'utf8')
+      a.commit('allow it', { '.github/privacy-guard-allow.txt': `${base}commit ${keep.c1}\n` })
+      a.checkout('pr')
+    }
+    const onMain = scenario(allowLine('main'))
+    assert.equal(onMain.status, 0, onMain.out)
+    assert.match(onMain.out, /1 commit\(s\) had findings/)
+    // Near miss: the same line on a branch main has not merged counts for nothing.
+    const onSide = scenario((a) => {
+      a.commit('base', { 'README.md': 'hello\n' })
+      a.branch('side')
+      a.checkout('main')
+      a.branch('pr')
+      keep.c1 = a.commit('add', { 'a.md': `top\nserver ${ip}\n` })
+      a.commit('fix forward', { 'a.md': 'top\n' })
+      a.checkout('side')
+      const base = readFileSync(join(a.dir, '.github', 'privacy-guard-allow.txt'), 'utf8')
+      a.commit('allow it', { '.github/privacy-guard-allow.txt': `${base}commit ${keep.c1}\n` })
+      a.checkout('pr')
+    })
+    assert.equal(onSide.status, 1, onSide.out)
+    assert.match(onSide.out, /then edit this pull request/)
   })
 
   it('never exempts the net diff: a value still in the final tree stays red', () => {
