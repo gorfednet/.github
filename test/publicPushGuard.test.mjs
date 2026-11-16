@@ -1154,6 +1154,24 @@ describe('public-push-guard: a body or field read from standard input', () => {
   })
 })
 
+describe('public-push-guard: round 13', () => {
+  it('reads a push whose word is split by a backslash-newline', () => {
+    const r = repo({ outgoing: { 'x.md': `${IP}\n` } })
+    assert.ok(denied(hook('git pu\\\nsh origin feature', { r })))
+    assert.equal(hook('git pu\\\nsh origin feature', { r: repo() }).out, '', 'near miss: the same spelling with nothing to find passes')
+  })
+  it('does not fall back to a predictable directory when the private cache is unusable', () => {
+    const r = repo({ outgoing: { 'x.md': `${IP}\n` } })
+    const cache = tmp('hostile')
+    const root = join(cache, `public-push-guard-${process.getuid()}`)
+    mkdirSync(root, { mode: 0o777 })
+    chmodSync(root, 0o777) // not ours alone: cacheDir must give up on it
+    const x = hook('git push origin feature', { r, env: { TMPDIR: cache } })
+    assert.ok(denied(x), 'the guard still runs and finds the plant')
+    assert.deepEqual(readdirSync(cache).filter((n) => n.startsWith('public-push-guard-nocache')), [], 'no predictable fallback directory is created')
+  })
+})
+
 describe('public-push-guard: wiring', () => {
   it('has a settings entry that runs the hook as a PreToolUse hook on Bash, with room for its own budget', () => {
     const own = JSON.parse(readFileSync(join(ROOT, 'scripts', 'claude-hooks', 'public-push-guard.settings.json'), 'utf8'))

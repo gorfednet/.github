@@ -33,7 +33,7 @@
  */
 import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, renameSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -517,8 +517,19 @@ async function loadGuard(cache) {
   const override = TEST_MODE ? process.env.PUBLIC_PUSH_GUARD_SCRIPT : undefined
   let file = override
   let validated = Boolean(override)
-  const dir = cache?.dir ?? join(tmpdir(), `public-push-guard-nocache-${process.pid}`)
-  mkdirSync(dir, { recursive: true, mode: 0o700 })
+  // With no usable private cache, work in a fresh directory only this process can open (mkdtemp makes it 0700 with a
+  // random name). A fixed name another user could create first would let them put code where it is imported from.
+  let dir = cache?.dir
+  if (!dir) {
+    dir = mkdtempSync(join(tmpdir(), 'public-push-guard-'))
+    process.on('exit', () => {
+      try {
+        rmSync(dir, { recursive: true, force: true })
+      } catch {
+        // a leftover temp directory is harmless
+      }
+    })
+  }
   const known = cache ? join(cache.root, 'known-good-privacy-guard.mjs') : null
   if (!override) {
     file = join(dir, 'privacy-guard.mjs')
@@ -964,7 +975,7 @@ async function main() {
   const session = String(payload.session_id ?? '')
 
   // Could this push or write to GitHub anywhere in it? Quotes and backslashes are dropped first.
-  const stripped = command.replace(/[\\'"]/g, '')
+  const stripped = command.replace(/\\\n/g, '').replace(/[\\'"]/g, '')
   const expands = /[$`]/.test(command)
   const pushText = /push/.test(stripped) || (/\bgit\b/.test(stripped) && expands)
   const ghText = /\bgh\b/.test(stripped) && (GH_WRITE.test(stripped) || (/\bapi\b/.test(stripped) && GH_API_WRITE.test(stripped)) || expands)
