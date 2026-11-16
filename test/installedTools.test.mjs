@@ -163,11 +163,14 @@ describe('LaunchAgents on another tool\'s Node', () => {
     put(ours, '#!/bin/sh\n', 0o755)
     symlinkSync(join(f.home, '.local', 'share', 'node', 'v24.22.3'), join(f.home, '.local', 'share', 'node', '24'))
     agent(f, 'net.gorfed.ship-bot', join(f.home, '.local', 'share', 'node', '24', 'bin', 'node'))
-    const other = join(f.home, '.local', 'share', 'othertool', 'bin', 'node')
+    const other = join(f.home, '.local', 'share', 'nodeish', 'bin', 'node')
     put(other, '#!/bin/sh\n', 0o755)
     agent(f, 'net.gorfed.capacity', other)
+    // The shell's own link resolves into the same folder, but an agent naming it is still on a shared Node.
+    symlinkSync(join(f.home, '.local', 'share', 'node', 'v24.22.3', 'bin', 'node'), join(f.home, '.local', 'bin', 'node'))
+    agent(f, 'net.gorfed.herdr-reconcile', join(f.home, '.local', 'bin', 'node'))
     const hit = run(f).behind.filter((b) => b.tool.startsWith('LaunchAgent'))
-    assert.deepEqual(hit.map((h) => h.tool), ['LaunchAgent net.gorfed.capacity'])
+    assert.deepEqual(hit.map((h) => h.tool).sort(), ['LaunchAgent net.gorfed.capacity', 'LaunchAgent net.gorfed.herdr-reconcile'])
   })
   it('reports a LaunchAgent whose program no longer exists as behind, not unread', () => {
     const f = fixture()
@@ -185,9 +188,9 @@ describe('LaunchAgents on another tool\'s Node', () => {
 })
 
 describe('a Node that is not the one check.sh passed on (plan row 1.22a)', () => {
-  const setup = (version, recorded) => {
+  const setup = (version, recorded, rel = join('opt', 'bin', 'node')) => {
     const f = fixture()
-    const node = join(f.home, 'opt', 'bin', 'node')
+    const node = join(f.home, rel)
     put(node, `#!/bin/sh\necho ${version}\n`, 0o755)
     mkdirSync(f.agents, { recursive: true })
     put(join(f.agents, 'net.gorfed.ship-bot.plist'), `<?xml version="1.0" encoding="UTF-8"?>\n<plist version="1.0"><dict><key>Label</key><string>net.gorfed.ship-bot</string><key>ProgramArguments</key><array><string>${node}</string><string>${join(f.home, '.ship-bot', 'app', 'ship-bot.mjs')}</string></array></dict></plist>\n`)
@@ -198,12 +201,15 @@ describe('a Node that is not the one check.sh passed on (plan row 1.22a)', () =>
   it('is quiet when the agent\'s Node reports the recorded version', () => {
     assert.deepEqual(nodeRows(setup('v22.23.1', 'v22.23.1')), [])
   })
-  it('is quiet after a patch or minor release in the recorded major line (plan row 3.20k: node-update.sh swaps the link)', () => {
-    assert.deepEqual(nodeRows(setup('v24.22.4', 'v24.22.1')), [])
-    assert.deepEqual(nodeRows(setup('v24.23.0', 'v24.22.1')), [])
+  const stable = join('.local', 'share', 'node', '24', 'bin', 'node')
+  it('is quiet after a patch or minor release in the recorded major, on the stable user-owned link only (plan row 3.20k)', () => {
+    assert.deepEqual(nodeRows(setup('v24.22.4', 'v24.22.1', stable)), [])
+    assert.deepEqual(nodeRows(setup('v24.23.0', 'v24.22.1', stable)), [])
+    assert.equal(nodeRows(setup('v24.22.4', 'v24.22.1')).length, 1, 'any other program path keeps the exact comparison')
+    assert.equal(nodeRows(setup('v24.22.0', 'v24.22.1', stable)).length, 1, 'a downgrade is drift')
   })
   it('still flags a different major, even one newer', () => {
-    assert.equal(nodeRows(setup('v26.0.0', 'v24.22.1')).length, 1)
+    assert.equal(nodeRows(setup('v26.0.0', 'v24.22.1', stable)).length, 1)
   })
   it('flags a changed version, naming both', () => {
     const hit = nodeRows(setup('v24.1.0', 'v22.23.1'))

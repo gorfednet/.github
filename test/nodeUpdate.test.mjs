@@ -34,7 +34,7 @@ function env() {
   const run = (...args) =>
     spawnSync('bash', [script, ...args], {
       encoding: 'utf8',
-      env: { PATH: '/usr/bin:/bin:/usr/sbin:/sbin', HOME: join(top, 'home'), NODE_DIST_BASE: `file://${join(top, 'dist')}`, NODE_ROOT: root, NODE_SHELL_BIN: bin, NODE_PLATFORM: PLAT },
+      env: { PATH: '/usr/bin:/bin:/usr/sbin:/sbin', HOME: join(top, 'home'), NODE_DIST_BASE: `file://${join(top, 'dist')}`, NODE_ROOT: root, NODE_SHELL_BIN: bin, NODE_LAUNCH_AGENTS: join(top, 'agents'), NODE_PLATFORM: PLAT },
     })
   return { top, root, bin, run }
 }
@@ -130,12 +130,50 @@ describe('node-update.sh', () => {
     dist(e.top, 22, 'v22.23.5')
     const old = join(e.root, 'v22.23.1', 'bin')
     mkdirSync(old, { recursive: true })
+    mkdirSync(join(e.root, 'v22.23.1', 'etc'))
+    writeFileSync(join(e.root, 'v22.23.1', 'etc', 'npmrc'), 'prefix=/home\n')
     for (const t of ['node', 'npm', 'npx']) symlinkSync(join(old, t), join(e.bin, t))
     const r = e.run('22', '--link-shell')
     assert.equal(r.status, 0, r.stderr)
     for (const t of ['node', 'npm', 'npx']) assert.equal(readlinkSync(join(e.bin, t)), join(e.root, '22', 'bin', t))
     assert.ok(lstatSync(join(e.bin, 'node')).isSymbolicLink())
-    assert.ok(!readdirSync(e.root).includes('v22.23.1'), 'the old install is pruned once no link names it')
+    // The hand-made install this replaces (no 22 link yet) is the rollback target, and its npmrc carries over.
+    assert.ok(readdirSync(e.root).includes('v22.23.1'), 'the install it replaces is kept')
+    assert.equal(readFileSync(join(e.root, 'v22.23.5', 'etc', 'npmrc'), 'utf8'), 'prefix=/home\n')
+    assert.match(r.stdout, /rollback: ln -sfn v22\.23\.1 /)
+  })
+
+  it('never links a directory whose node does not run: a broken earlier unpack is replaced, a stale .part is cleared', () => {
+    const e = env()
+    dist(e.top, 24, 'v24.22.3')
+    assert.equal(e.run('24').status, 0)
+    dist(e.top, 24, 'v24.22.4')
+    mkdirSync(join(e.root, 'v24.22.4', 'bin'), { recursive: true })
+    writeFileSync(join(e.root, 'v24.22.4', 'bin', 'node'), '#!/bin/sh\nexit 1\n')
+    chmodSync(join(e.root, 'v24.22.4', 'bin', 'node'), 0o755)
+    mkdirSync(join(e.root, 'v24.22.4.part', 'junk'), { recursive: true })
+    const r = e.run('24')
+    assert.equal(r.status, 0, r.stderr)
+    assert.equal(spawnSync(join(e.root, '24', 'bin', 'node'), ['--version'], { encoding: 'utf8' }).stdout.trim(), 'v24.22.4')
+    assert.ok(!existsSync(join(e.root, 'v24.22.4.part')))
+    assert.ok(!existsSync(join(e.root, 'v24.22.4', 'v24.22.4-darwin-arm64')), 'nothing nested')
+  })
+
+  it('keeps a patch that a relative shell link or a LaunchAgent plist still names', () => {
+    const e = env()
+    for (const v of ['v24.22.3', 'v24.22.4', 'v24.22.5']) {
+      dist(e.top, 24, v)
+      if (v === 'v24.22.3') {
+        assert.equal(e.run('24').status, 0)
+        symlinkSync('../share/node/v24.22.3/bin/node', join(e.bin, 'node'))
+        const agents = join(e.top, 'agents')
+        mkdirSync(agents)
+        writeFileSync(join(agents, 'net.gorfed.x.plist'), `<string>${e.root}/v24.22.4/bin/node</string>`)
+      } else {
+        assert.equal(e.run('24').status, 0)
+      }
+    }
+    assert.deepEqual(readdirSync(e.root).sort(), ['24', 'v24.22.3', 'v24.22.4', 'v24.22.5'])
   })
 
   it('takes only 22 or 24 and never touches /usr/local', () => {

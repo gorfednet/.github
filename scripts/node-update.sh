@@ -13,7 +13,9 @@
 # Layout under $NODE_ROOT (default ~/.local/share/node):
 #   v24.22.3/        one directory per installed patch, from the official tarball
 #   24 -> v24.22.3   stable link. Agents and shells name this path, so a patch is one atomic link swap.
-# The previous patch stays until the next run, so a bad patch rolls back with the line printed at the end.
+# The previous patch stays until the next run, so a bad patch rolls back with the line printed at the end
+# (the next run installs the newest patch again, so hold a rollback by not running it). A directory is
+# linked only after its node has run and reported the version; a failed check leaves the old link in place.
 #
 # The tarball comes from $NODE_DIST_BASE (default https://nodejs.org/dist) and its SHA-256 is checked
 # against that release's SHASUMS256.txt. That list comes from the same host over TLS, so it catches a
@@ -89,8 +91,26 @@ swap_link() { # swap_link <target> <linkpath>
   ln -s "$1" "${tmp}"
   python3 -c 'import os,sys; os.replace(sys.argv[1], sys.argv[2])' "${tmp}" "$2"
 }
+reports() { [[ "$("$1/bin/node" --version 2>/dev/null || true)" == "${latest}" ]]; } # reports <installdir>
 
-if [[ ! -x "${ROOT}/${latest}/bin/node" ]]; then
+# An unpacked directory is reused only when its node really runs and reports this version; a broken
+# or half-moved one is removed and fetched again, so a bad unpack never gets the stable link.
+if [[ -e "${ROOT}/${latest}" ]] && ! reports "${ROOT}/${latest}"; then
+  echo "${ROOT}/${latest} does not run as ${latest}; removing it and fetching again"
+  rm -rf "${ROOT:?}/${latest}"
+fi
+rm -rf "${ROOT:?}/${latest}.part"
+
+# The install this one replaces: the line's current link, else (a first run beside an install made by hand)
+# the newest other v<major>.* directory. Its etc/npmrc (the shell's npm prefix) and its directory both carry over.
+previous="${current}"
+if [[ -z "${previous}" ]]; then
+  for d in "${ROOT}"/v"${major}".*; do
+    [[ -d "${d}" && "$(basename "${d}")" != "${latest}" ]] && previous="$(basename "${d}")"
+  done
+fi
+
+if [[ ! -e "${ROOT}/${latest}" ]]; then
   echo "downloading ${tarball}"
   curl -fsSL --max-time 600 -o "${work}/${tarball}" "${BASE}/latest-v${major}.x/${tarball}"
   got_sum="$(shasum -a 256 "${work}/${tarball}" | awk '{ print $1 }')"
@@ -105,33 +125,50 @@ if [[ ! -x "${ROOT}/${latest}/bin/node" ]]; then
     echo "node-update: the unpacked node does not report ${latest}. Nothing installed." >&2
     exit 1
   fi
-  # npm's global prefix lives in the install's etc/npmrc; keep the line's setting (prefix=~/.local).
-  if [[ -n "${current}" && -f "${ROOT}/${current}/etc/npmrc" && ! -e "${src}/etc/npmrc" ]]; then
-    mkdir -p "${src}/etc"
-    cp "${ROOT}/${current}/etc/npmrc" "${src}/etc/npmrc"
-  fi
   mv "${src}" "${ROOT}/${latest}.part"
   mv "${ROOT}/${latest}.part" "${ROOT}/${latest}"
 else
   echo "${latest} is already unpacked in ${ROOT}"
 fi
 
+# npm's global prefix lives in the install's etc/npmrc; keep the line's setting (prefix=~/.local).
+if [[ -n "${previous}" && -f "${ROOT}/${previous}/etc/npmrc" && ! -e "${ROOT}/${latest}/etc/npmrc" ]]; then
+  mkdir -p "${ROOT}/${latest}/etc"
+  cp "${ROOT}/${previous}/etc/npmrc" "${ROOT}/${latest}/etc/npmrc"
+fi
+
+reports "${ROOT}/${latest}" || { echo "node-update: ${ROOT}/${latest} does not report ${latest}. Link not changed." >&2; exit 1; }
 swap_link "${latest}" "${link}"
-[[ "$("${link}/bin/node" --version)" == "${latest}" ]] || { echo "node-update: ${link}/bin/node does not report ${latest}." >&2; exit 1; }
+if ! reports "${link}"; then
+  # Belt and braces: the checks above passed, so this is a race or a full disk. Put the old link back.
+  if [[ -n "${current}" ]]; then swap_link "${current}" "${link}"; else rm -f "${link}"; fi
+  echo "node-update: ${link}/bin/node does not report ${latest}; the link was put back." >&2
+  exit 1
+fi
 
 if [[ "${link_shell}" -eq 1 ]]; then
   mkdir -p "${BIN}"
   for t in node npm npx; do swap_link "${link}/bin/${t}" "${BIN}/${t}"; done
 fi
 
-# Keep the new patch, the one before it, and anything a link in the shell bin still names.
-keep=" ${latest} ${current} "
-for t in node npm npx; do
-  if [[ -L "${BIN}/${t}" ]]; then
-    d="$(readlink "${BIN}/${t}")"
-    d="${d#${ROOT}/}"
-    keep="${keep}${d%%/*} "
-  fi
+# Keep the new patch, the one it replaced, and every directory something still names: a link in the shell
+# bin (resolved, so a relative link counts), another stable link in ROOT, or a LaunchAgent that spells out
+# a versioned path.
+keep=" ${latest} ${previous} "
+real_of() { python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$1" 2>/dev/null || true; }
+root_real="$(real_of "${ROOT}")"
+note_dir() { # note_dir <path>: remember the v<version> directory under ROOT that <path> lives in
+  local rp rel
+  rp="$(real_of "$1")"
+  case "${rp}" in "${root_real}"/*) rel="${rp#"${root_real}"/}"; keep="${keep}${rel%%/*} " ;; esac
+}
+for t in node npm npx; do [[ -e "${BIN}/${t}" ]] && note_dir "${BIN}/${t}"; done
+for l in "${ROOT}"/[0-9][0-9]; do [[ -L "${l}" ]] && note_dir "${l}"; done
+for p in "${NODE_LAUNCH_AGENTS:-${HOME}/Library/LaunchAgents}"/*.plist; do
+  [[ -f "${p}" ]] || continue
+  for d in "${ROOT}"/v"${major}".*; do
+    [[ -d "${d}" ]] && grep -qF "$(basename "${d}")/" "${p}" 2>/dev/null && keep="${keep}$(basename "${d}") "
+  done
 done
 for d in "${ROOT}"/v"${major}".*; do
   [[ -d "${d}" ]] || continue
@@ -140,6 +177,6 @@ for d in "${ROOT}"/v"${major}".*; do
 done
 
 echo "node ${major}: ${current:-none} -> ${latest} (${link})"
-if [[ -n "${current}" && "${current}" != "${latest}" && -d "${ROOT}/${current}" ]]; then
-  echo "rollback: ln -sfn ${current} ${link}"
+if [[ -n "${previous}" && "${previous}" != "${latest}" && -d "${ROOT}/${previous}" ]]; then
+  echo "rollback: ln -sfn ${previous} ${link}   (the next run installs the newest patch again)"
 fi

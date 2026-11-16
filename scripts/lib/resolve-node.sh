@@ -21,15 +21,25 @@ _rn_realpath() {
   python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$1" 2>/dev/null || true
 }
 
-# True when $1 lies under a dot-folder of $HOME (another tool's private area). $1 is a realpath, so
-# $HOME is compared both as given and with its symlinks resolved (`pwd -P`): a symlinked home would
-# otherwise never match. $HOME/.local/share/node/ is the one dot-folder path that is ours: the Node
-# installs scripts/node-update.sh makes (plan row 3.20k), owned by no other tool.
+# True when $1 (a realpath) lies under a dot-folder of $HOME (another tool's private area). $HOME is
+# compared both as given and with its symlinks resolved (`pwd -P`): a symlinked home would otherwise
+# never match. The one dot-folder path that is ours is the Node installs scripts/node-update.sh makes
+# (plan row 3.20k), and only when the candidate $2, as written, is the stable link
+# $HOME/.local/share/node/<major>/bin/node and it resolves into a v<version> directory there. The
+# shell's ~/.local/bin/node points into the same folder but is not that link, so it stays refused:
+# the 14 November incident was a PATH node silently becoming the agents' Node.
 _rn_private() {
   local home_phys
   home_phys="$(cd "${HOME}" 2>/dev/null && pwd -P)" || home_phys="${HOME}"
+  case "$2" in
+    *..*) ;;
+    "${HOME}"/.local/share/node/[0-9][0-9]/bin/node)
+      case "$1" in
+        "${HOME}"/.local/share/node/v[0-9]*/bin/node | "${home_phys}"/.local/share/node/v[0-9]*/bin/node) return 1 ;;
+      esac
+      ;;
+  esac
   case "$1" in
-    "${HOME}"/.local/share/node/* | "${home_phys}"/.local/share/node/*) return 1 ;;
     "${HOME}"/.*/* | "${home_phys}"/.*/*) return 0 ;;
     *) return 1 ;;
   esac
@@ -56,10 +66,14 @@ resolve_node() {
   read -r -a candidates <<<"${RESOLVE_NODE_CANDIDATES:-${HOME}/.local/share/node/24/bin/node /usr/local/bin/node /opt/homebrew/bin/node}"
   if cand="$(command -v node 2>/dev/null)" && [[ -n "${cand}" ]]; then candidates+=("${cand}"); fi
   for cand in "${candidates[@]}"; do
+    if [[ "${cand}" == "${HOME}"/.local/share/node/[0-9][0-9]/bin/node && -L "${cand%/bin/node}" && ! -e "${cand%/bin/node}" ]]; then
+      echo "resolve-node: ${cand%/bin/node} is a link to nothing (the install it named is gone). Run scripts/node-update.sh again, or set NODE_BIN=<path>." >&2
+      return 1
+    fi
     [[ -e "${cand}" ]] || continue
     real="$(_rn_realpath "${cand}")"
     [[ -n "${real}" && -x "${real}" ]] || continue
-    if _rn_private "${real}"; then
+    if _rn_private "${real}" "${cand}"; then
       seen_private="${seen_private:-${cand} -> ${real}}"
       continue
     fi
