@@ -153,6 +153,10 @@ export function buildInventory(input) {
     const mine = items.filter((i) => i.kind === k)
     counts[k] = sources[k] === null || sources[k] === undefined ? null : { total: mine.length, orphans: mine.filter((i) => !i.ok).length }
   }
+  // Worktrees held only by the janitor's verdict: not orphans, but they pile up unseen if the prune never runs.
+  // Rendered next to the table, so a count that grows day on day shows the prune stopped.
+  if (counts.worktree) counts.worktree.janitorOwned = items.filter((i) => i.kind === 'worktree' && i.via.length === 1 && i.via[0] === 'janitor prune' && i.rows.length === 0 && i.ids.length === 0).length
+
   return { items, orphans: items.filter((i) => !i.ok), counts, notMeasured: kinds.filter((k) => counts[k] === null) }
 }
 
@@ -185,7 +189,9 @@ export function renderInventory(inv, etStamp = (iso) => iso) {
     const c = inv.counts[k]
     out.push(`| ${KIND_NAME[k]} | ${c == null ? 'not measured' : c.total} | ${c == null || c.orphans == null ? 'not measured' : c.orphans} |`)
   }
-  out.push('')
+  const owned = inv.counts.worktree?.janitorOwned
+  if (Number.isInteger(owned) && owned > 0) out.push(`${owned} more worktrees are merged and clean and left to the janitor's prune, so they are not listed. If that number only grows from day to day, the prune has stopped.`, '')
+  else out.push('')
   // A Mac kind counted but not listed (published counts), above 0 or not measured: the table is all there is, so never say "No orphans.".
   const unlisted = MAC_KINDS.some((k) => {
     const c = inv.counts[k]

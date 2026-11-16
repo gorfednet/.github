@@ -112,7 +112,7 @@ describe('the counts file', () => {
     status.inventory.counts.worktree = null
     const r = run(root, status, ['--keep-list', keepFile(root)])
     assert.equal(r.status, 1)
-    assert.deepEqual(r.counts.inventory.worktree, { total: null, orphans: null, measuredAt: null })
+    assert.deepEqual(r.counts.inventory.worktree, { total: null, orphans: null, measuredAt: null, janitorOwned: null })
     assert.equal(r.counts.inventory.session.total, 7)
   })
 
