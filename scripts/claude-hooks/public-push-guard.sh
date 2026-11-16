@@ -9,7 +9,7 @@
 # crashing script ends in a deny decision, never in a pass.
 payload="$(cat)"
 # Quotes and backslashes are dropped first: git pu''sh and git pu\sh are a push to the shell.
-printf '%s' "$payload" | tr -d "\\\\'\"" | grep -Eq 'pu[^[:space:]]*sh|gh|eval' || exit 0
+printf '%s' "$payload" | tr -d "\\\\'\"" | grep -Eq 'pu[^[:space:]]*sh|gh|eval|pu.*[$`]' || exit 0
 
 deny() {
   printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"public-push-guard: %s"}}\n' "$1"

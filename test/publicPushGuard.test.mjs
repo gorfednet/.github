@@ -176,7 +176,6 @@ describe('public-push-guard: a public repository is checked before the push', ()
     sh(r.dir, r.w, 'push', '-q', 'origin', 'feature') // really pushed (by hand, in the test)
     const x = hook('git push origin feature', { r })
     assert.equal(x.out, '', 'nothing outgoing')
-    assert.ok(!ranGuard(x), 'nothing outgoing, so the guard was not needed')
   })
 
   it('does not trust a stale remote-tracking ref: the remote is asked', () => {
@@ -321,7 +320,7 @@ describe('public-push-guard: every spelling of a push is resolved or refused, ne
     const r = bad()
     const x = hook('git -C "$NOPE_UNSET" push origin feature', { r, cwd: tmp('elsewhere') })
     assert.ok(denied(x), x.out)
-    assert.match(reason(x), /can't work out/)
+    assert.match(reason(x), /plain command/)
   })
 
   it('reads a directory variable that is set in the same command', () => {
@@ -616,14 +615,16 @@ describe('public-push-guard: the guard is fetched from main', () => {
 })
 
 describe('public-push-guard: the hook reads the repository before the command runs', () => {
-  it('refuses a commit and a push in one command to a public repository, and passes it to a private one', () => {
+  it('refuses a commit and a push in one command, whatever the repository, and passes the push on its own', () => {
     const r = repo()
     for (const c of ['git add -A && git commit -m "work" && git push origin feature', 'git checkout -b fresh && git push -u origin fresh', 'git merge --no-edit main; git push origin feature']) {
-      const x = hook(c, { r })
-      assert.ok(denied(x), c)
-      assert.match(reason(x), /Commit in one call, then push in the next/)
-      assert.equal(hook(c, { r, vis: 'PRIVATE' }).out, '', `${c} (private)`)
+      for (const vis of ['PUBLIC', 'PRIVATE']) {
+        const x = hook(c, { r, vis })
+        assert.ok(denied(x), `${c} (${vis})`)
+        assert.match(reason(x), /one plain command/)
+      }
     }
+    assert.equal(hook('git push origin feature', { r }).out, '', 'the same push, alone')
   })
   it('refuses a ref that does not resolve when nothing else could be read', () => {
     const r = repo()
@@ -675,12 +676,10 @@ describe('public-push-guard: what the first review found', () => {
     sh(r.dir, r.w, 'config', 'push.default', 'matching')
     assert.ok(denied(hook('git push origin :', { r })), 'a lone colon is matching')
   })
-  it('treats $(git branch --show-current) as HEAD, so it does not read every local branch', () => {
+  it('refuses a branch name from a command substitution: write it out', () => {
     const r = repo()
-    sh(r.dir, r.w, 'checkout', '-q', '-b', 'other', 'main')
-    commit(r.dir, r.w, { 'o.md': `${IP}\n` })
-    sh(r.dir, r.w, 'checkout', '-q', 'feature')
-    assert.equal(hook('git push origin "$(git branch --show-current)"', { r }).out, '')
+    assert.ok(denied(hook('git push origin "$(git branch --show-current)"', { r })))
+    assert.equal(hook('git push origin feature', { r }).out, '', 'near miss: the literal name passes')
   })
   it('finds the repository from a URL argument, an attached -R, GH_REPO or a later api call, from a private directory', () => {
     const r = repo({ slug: 'privaterepo' })
@@ -689,7 +688,7 @@ describe('public-push-guard: what the first review found', () => {
       `gh pr comment https://github.com/${ORG}/testrepo/pull/9 --body "${IP}"`,
       `gh pr comment 3 -R${ORG}/testrepo --body "${IP}"`,
       `GH_REPO=${ORG}/testrepo gh pr comment 3 --body "${IP}"`,
-      `gh api repos/${ORG}/privaterepo/issues && gh api -X POST repos/${ORG}/testrepo/issues -f body="${IP}"`,
+      `gh pr comment 3 --body "${IP}" https://github.com/${ORG}/testrepo/pull/9`,
       `gh issue close 3 --repo ${ORG}/testrepo --comment "${IP}"`,
     ]) assert.ok(denied(hook(c, { r, vis })), c)
     assert.equal(hook('gh api repos/{owner}/{repo}/issues -f body=clean', { r, vis }).out, '', 'a placeholder is the working directory, here private')
@@ -736,9 +735,12 @@ describe('public-push-guard: the second review', () => {
   })
   it('does not block private work because a body links to some other GitHub page', () => {
     const r = repo({ slug: 'privaterepo' })
-    for (const link of ['https://github.com/actions/checkout', 'https://github.com/orgs/x/y', 'https://github.com/user-attachments/assets/1']) {
-      assert.equal(hook(`gh pr comment 3 --body "see ${link} ${IP}"`, { r, vis }).out, '', link)
+    const v = { ...vis, 'orgs/x': 'FAIL', 'user-attachments/assets': 'FAIL' }
+    for (const link of ['https://github.com/orgs/x/y', 'https://github.com/user-attachments/assets/1']) {
+      assert.equal(hook(`gh pr comment 3 --body "see ${link}"`, { r, vis: v }).out, '', link)
     }
+    // near miss: a link to a public repository adds it to the repositories checked, so a private value in the same body is refused
+    assert.ok(denied(hook(`gh pr comment 3 --body "see https://github.com/${ORG}/testrepo ${IP}"`, { r, vis })))
   })
   it('does not read a -f value that starts with @ as a file', () => {
     const r = repo()
@@ -764,12 +766,11 @@ describe('public-push-guard: the second review', () => {
     assert.ok(denied(hook('git push origin v1', { r })))
     assert.ok(denied(hook('git push --tags origin', { r })))
   })
-  it('counts a tag with a message, gh pr checkout and npm version as changing the repository', () => {
+  it('refuses a tag, gh pr checkout, npm version or branch listing chained before a push (more than one command)', () => {
     const r = repo()
-    for (const c of ['git tag -a v1 -m x && git push --follow-tags origin feature', 'gh pr checkout 5 && git push origin feature', 'npm version patch && git push origin feature']) {
-      assert.match(reason(hook(c, { r })), /Commit in one call/, c)
+    for (const c of ['git tag -a v1 -m x && git push --follow-tags origin feature', 'gh pr checkout 5 && git push origin feature', 'npm version patch && git push origin feature', 'git branch --show-current && git push origin feature']) {
+      assert.match(reason(hook(c, { r })), /one plain command/, c)
     }
-    assert.equal(hook('git branch --show-current && git push origin feature', { r }).out === '' || true, true)
   })
   it('reads GH_REPO exported earlier, and a repository named beside a directory it cannot resolve', () => {
     const r = repo({ slug: 'privaterepo' })
@@ -833,29 +834,23 @@ describe('public-push-guard: the third review', () => {
       assert.ok(denied(hook(c, { r })), c)
     }
   })
-  it('counts any fetch as changing the repository, since a later push can send what it brought in', () => {
+  it('refuses any fetch chained before a push', () => {
     const r = repo()
     for (const c of ['git fetch origin main:main && git push origin feature', 'git fetch . feature:main; git push origin feature', 'git fetch upstream && git push origin upstream/main:refs/heads/sync', 'git fetch other && git push --tags origin']) {
-      assert.match(reason(hook(c, { r })), /Commit in one call/, c)
+      assert.match(reason(hook(c, { r })), /one plain command/, c)
     }
-    assert.equal(hook('git fetch origin && git push origin feature', { r, vis: 'PRIVATE' }).out, '', 'a private repository is untouched')
   })
 })
 
 describe('public-push-guard: the fourth review', () => {
-  it('refuses gh pr create in a directory it cannot work out, even with --repo, since gh pushes from there', () => {
-    const r = repo()
-    const x = hook(`cd "$NOPE_UNSET" && gh pr create --repo ${ORG}/testrepo --title t --body clean`, { r })
-    assert.ok(denied(x), x.out)
-    assert.match(reason(x), /can't work out/)
-  })
-  it('refuses a relative body file when the directory is unresolved, since it can\'t tell which file gh reads', () => {
+  it('refuses gh pr create and a relative body file in a directory it cannot work out', () => {
     const r = repo()
     writeFileSync(join(r.dir, 'body.md'), 'clean\n')
-    const x = hook(`cd "$NOPE_UNSET" && gh pr comment 1 --repo ${ORG}/testrepo --body-file body.md`, { r })
-    assert.ok(denied(x), x.out)
-    assert.match(reason(x), /relative file/)
-    assert.equal(hook(`cd "$NOPE_UNSET" && gh pr comment 1 --repo ${ORG}/testrepo --body-file ${join(r.dir, 'body.md')}`, { r }).out, '', 'an absolute path is read')
+    for (const c of [`cd "$NOPE_UNSET" && gh pr create --repo ${ORG}/testrepo --title t --body clean`, `cd "$NOPE_UNSET" && gh pr comment 1 --repo ${ORG}/testrepo --body-file body.md`]) {
+      const x = hook(c, { r })
+      assert.ok(denied(x), x.out)
+      assert.match(reason(x), /one plain command/)
+    }
   })
   it('lets a clean push through when the repository is named with --git-dir from elsewhere (the guard reads it too)', () => {
     const r = repo()
@@ -874,6 +869,100 @@ describe('public-push-guard: the fourth review', () => {
   it('reads the text of gh pr reopen and gh issue reopen', () => {
     const r = repo()
     for (const c of [`gh pr reopen 5 -R ${ORG}/testrepo -c "${IP}"`, `gh issue reopen 5 -R ${ORG}/testrepo --comment "${IP}"`]) assert.ok(denied(hook(c, { r })), c)
+  })
+})
+
+describe('public-push-guard: the Fable read (a command it cannot read in full is refused)', () => {
+  const vis = { [`${ORG}/privaterepo`]: 'PRIVATE', [`${ORG}/testrepo`]: 'PUBLIC' }
+  const plainMsg = /one plain command/
+  it('refuses a push inside a loop, an if, or behind time, sudo, nohup, xargs, command or env', () => {
+    const r = repo({ outgoing: { 'x.md': `${IP}\n` } })
+    for (const c of ['for b in feature; do git push origin $b; done', 'if true; then git push origin feature; fi', 'while true; do git push origin feature; break; done', 'time git push origin feature', 'sudo git push origin feature', 'nohup git push origin feature', 'echo feature | xargs git push origin', 'command git push origin feature', 'case x in x) git push origin feature;; esac']) {
+      const x = hook(c, { r })
+      assert.ok(denied(x), c)
+      assert.match(reason(x), plainMsg, c)
+    }
+  })
+  it('passes the same push when it is one plain command (the near miss)', () => {
+    const r = repo()
+    for (const c of ['git push origin feature', 'git push -u origin feature', '/usr/bin/git push origin feature', `git -C ${r.dir} push origin feature`, 'git push --recurse-submodules on-demand origin feature', 'git push --force-with-lease=feature origin feature']) {
+      assert.equal(hook(c, { r, cwd: c.includes('-C') ? tmp('elsewhere') : r.dir }).out, '', c)
+    }
+  })
+  it('reads a push with an option it knows, and refuses one it does not', () => {
+    const bad = repo({ outgoing: { 'x.md': `${IP}\n` } })
+    assert.ok(denied(hook('git push --recurse-submodules on-demand origin feature', { r: bad })), 'the value is not mistaken for the remote')
+    const x = hook('git push --some-new-option origin feature', { r: repo() })
+    assert.ok(denied(x), x.out)
+    assert.match(reason(x), /option the hook doesn't know/)
+  })
+  it('refuses cd /typo; git push (it pushes from the session directory), and passes cd <real dir> && git push', () => {
+    const r = repo({ outgoing: { 'x.md': `${IP}\n` } })
+    const clean = repo()
+    const elsewhere = tmp('elsewhere')
+    assert.ok(denied(hook('cd /no/such/dir; git push origin feature', { r })), 'semicolon')
+    assert.ok(denied(hook('cd /no/such/dir && git push origin feature', { r })), 'a directory that is not there')
+    assert.ok(denied(hook(`cd ${r.dir} && git push origin feature`, { r, cwd: elsewhere })), 'a real directory: the push is read there and refused')
+    assert.equal(hook(`cd ${clean.dir} && git push origin feature`, { r: clean, cwd: elsewhere }).out, '', 'near miss: clean, read in that directory')
+  })
+  it('refuses a body or field from a substitution or a variable, and reads a literal --body-file', () => {
+    const r = repo()
+    sh(r.dir, r.w, 'push', '-q', 'origin', 'feature')
+    writeFileSync(join(r.dir, 'f.md'), `${IP}\n`)
+    writeFileSync(join(r.dir, 'ok.md'), 'clean words\n')
+    for (const c of ['gh pr comment 3 --body "$(cat f.md)"', 'gh pr comment 3 --body "$BODY_UNSET"', 'gh api -X POST repos/gorfednet/testrepo/issues -f body="$(cat f.md)"']) {
+      const x = hook(c, { r })
+      assert.ok(denied(x), c)
+      assert.match(reason(x), plainMsg, c)
+    }
+    assert.ok(denied(hook('gh pr comment 3 --body-file f.md', { r })), 'the literal file is read, and refused')
+    assert.equal(hook('gh pr comment 3 --body-file ok.md', { r }).out, '', 'near miss: a clean literal file passes')
+  })
+  it('reads a heredoc body given to --body-file -, since the command text holds it', () => {
+    const r = repo()
+    sh(r.dir, r.w, 'push', '-q', 'origin', 'feature')
+    assert.ok(denied(hook(`gh pr comment 3 --body-file - <<'EOF'\nsee ${IP}\nEOF`, { r })))
+    assert.equal(hook("gh pr comment 3 --body-file - <<'EOF'\nclean words\nEOF", { r }).out, '')
+  })
+  it('refuses a push spelled through a variable or ANSI-C quoting', () => {
+    const r = repo({ outgoing: { 'x.md': `${IP}\n` } })
+    for (const c of ['S=sh; git pu$S origin feature', "git $'pu\\x73h' origin feature", 'git pu${NOPE_UNSET}sh origin feature']) assert.ok(denied(hook(c, { r })), c)
+  })
+  it('refuses --work-tree, which leaves the repository to be found some other way', () => {
+    const r = repo({ outgoing: { 'x.md': `${IP}\n` } })
+    for (const c of ['git --work-tree=/tmp push origin feature', 'git --work-tree /tmp push origin feature']) assert.ok(denied(hook(c, { r })), c)
+  })
+  it('replies on a private repository thread through repos/{owner}/{repo} and a graphql mutation, and refuses a public one', () => {
+    const priv = repo({ slug: 'privaterepo' })
+    const body = `see ${ORG}/secret-repo`
+    assert.equal(hook(`gh api -X POST repos/{owner}/{repo}/issues/1/comments -f body="${body}"`, { r: priv, vis }).out, '')
+    assert.equal(hook(`gh api graphql -f query='mutation{addComment(input:{subjectId:"x",body:"${body}"}){clientMutationId}}'`, { r: priv, vis }).out, '')
+    const pub = repo()
+    assert.ok(denied(hook(`gh api -X POST repos/{owner}/{repo}/issues/1/comments -f body="${body}"`, { r: pub, vis })), 'near miss: a public working directory')
+    assert.ok(denied(hook(`gh api graphql -f query='mutation{addComment(input:{subjectId:"x",body:"${body}"}){clientMutationId}}'`, { r: pub, vis })))
+  })
+  it('reads a branch or tag name', () => {
+    const r = repo()
+    sh(r.dir, r.w, 'checkout', '-q', '-b', `feat-${IP}`)
+    commit(r.dir, r.w, { 'y.md': 'clean\n' })
+    const x = hook(`git push origin feat-${IP}`, { r })
+    assert.ok(denied(x), x.out)
+    assert.match(reason(x), /branch or tag name/)
+    assert.doesNotMatch(x.out, new RegExp(IP.replace(/\./g, '\\.')))
+    sh(r.dir, r.w, 'checkout', '-q', 'feature')
+    sh(r.dir, r.w, 'tag', `rel-${IP}`)
+    assert.ok(denied(hook(`git push origin rel-${IP}`, { r })), 'a tag name')
+    assert.equal(hook('git push origin feature', { r }).out, '', 'near miss: a clean name')
+  })
+  it('treats -X GET with fields as a read, and -X POST as a write', () => {
+    const r = repo()
+    sh(r.dir, r.w, 'push', '-q', 'origin', 'feature')
+    assert.equal(hook(`gh api -X GET repos/${ORG}/testrepo/issues -f q="${IP}"`, { r }).out, '')
+    assert.ok(denied(hook(`gh api -X POST repos/${ORG}/testrepo/issues -f q="${IP}"`, { r })))
+  })
+  it('lets a command that only mentions push or gh through', () => {
+    const r = repo()
+    for (const c of ['echo "git push is slow"', 'git commit -m "fix git push"', 'grep -r push .', "cat <<'EOF'\ngit push origin feature\nEOF"]) assert.equal(hook(c, { r }).out, '', c)
   })
 })
 

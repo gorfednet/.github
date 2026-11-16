@@ -300,6 +300,11 @@ function readShell(source, state) {
       w.text += '$('
       return j
     }
+    if (src[at + 1] === "'" || src[at + 1] === '"') {
+      w.open = true // $'...' (ANSI-C quoting) and $"..." can spell anything
+      w.text += '$'
+      return at + 1
+    }
     const m = /^\$(?:\{([A-Za-z_][A-Za-z0-9_]*)\}|([A-Za-z_][A-Za-z0-9_]*))/.exec(src.slice(at))
     if (!m) {
       if (src[at + 1] === '{') {
@@ -384,9 +389,6 @@ function commandsIn(stmt) {
       }
       // An open word in the subcommand position (git pu${X}sh) could expand to push: read it as one.
       if (words[k]?.text === 'push' || words[k]?.open) found.push({ kind: 'push', dir, gitDir, cfg, unresolvedDir, args: words.slice(k + 1) })
-      else found.push({ kind: 'git', sub: words[k]?.text ?? '', rest: words.slice(k + 1).map((w) => w.text) })
-    } else if (['npm', 'yarn', 'pnpm'].includes(prog) && ['version', 'release'].includes(words[at + 1]?.text)) {
-      found.push({ kind: 'npm' })
     } else if (prog === 'gh') {
       const args = words.slice(at + 1)
       found.push({ kind: 'gh', dir: stmt.cwd, unresolvedDir: stmt.cwd === null, args, env: stmt.env })
@@ -740,17 +742,22 @@ const messageHits = (g, sha, text) => {
   return hits.length > 0 ? `commit ${sha.slice(0, 7)}: message: ${[...new Set(hits.map((h) => `[${h.rule}]`))].join(' ')}` : null
 }
 
-async function checkPush(target, remote, sent, slug, cache) {
+async function checkPush(target, remote, sent, slug, cache, names = []) {
   const { commits, boundary, tips } = outgoing(target, remote, sent)
   const tagNames = sent
     .filter(({ ref }) => ref !== 'HEAD')
     .map(({ ref }) => `refs/tags/${ref.replace(/^refs\/tags\//, '')}`)
     .filter((name) => git(target, ['for-each-ref', '--format=%(objecttype)', name]).stdout.trim() === 'tag')
-  if (commits.length === 0 && tagNames.length === 0) return
+  if (sent.length === 0) return
   if (commits.length > MAX_COMMITS) deny(`public-push-guard: ${slug} is public and this push carries ${commits.length} new commits, more than the ${MAX_COMMITS} the hook reads one by one. Push in smaller pieces.`)
   const nearest = boundary.length > 0 ? must(target, ['merge-base', '--independent', ...boundary], 'find the published base').split('\n').filter(Boolean) : []
   // Exemptions come from what is already published, never from a commit in this push.
   const g = await scoped(cache, target, slug, nearest[0] ?? boundary[0])
+  // Branch and tag names are public too.
+  for (const name of [...names, ...sent.map((x) => x.ref).filter((x) => x !== 'HEAD')]) {
+    const hits = g.mod.scanText(name, g.ctx, TEXT_RULES.filter((r) => r !== 'owner-quote'))
+    if (hits.length > 0) deny(`public-push-guard refused: a branch or tag name in this push would publish private detail to ${slug}, which is public: name#${createHash('sha1').update(name).digest('hex').slice(0, 8)} [${hits[0].rule}]`)
+  }
   // An annotated tag carries a message of its own, and it is public too.
   for (const name of tagNames) {
     const text = must(target, ['for-each-ref', '--format=%(contents)', name], 'read a tag message')
@@ -816,43 +823,49 @@ async function checkText(text, slug, cache, target) {
 }
 
 const GH_TEXT_ACTIONS = new Set(['pr create', 'pr new', 'pr edit', 'pr comment', 'pr review', 'pr close', 'issue create', 'issue new', 'issue edit', 'issue comment', 'pr reopen', 'issue reopen', 'issue close', 'release create', 'release edit', 'pr merge', 'repo edit', 'label create', 'label edit'])
-// Commands that change what a repository holds, or which repository it is. The hook sees the
-// repository as it is BEFORE the command runs, so a push that follows one of these in the same
-// command can't be read.
-const MOVERS = new Set(['commit', 'merge', 'rebase', 'cherry-pick', 'pull', 'am', 'reset', 'revert', 'checkout', 'switch', 'tag', 'branch', 'clone', 'init', 'apply', 'restore', 'stash', 'fetch', 'update-ref', 'filter-branch', 'fast-import', 'commit-tree', 'subtree', 'worktree', 'symbolic-ref', 'remote', 'config'])
-// These move things only when they are given something to write; with a reading flag they don't.
-const READ_ARGS = {
-  branch: /^(?:--show-current|--list|-l|-a|-r|-v|-vv|--contains|--merged|--no-merged)$/,
-  tag: /^(?:--list|-l|-n|--contains|--merged|--no-merged)$/,
-  remote: /^(?:-v|show|get-url)$/,
-  config: /^(?:--get|--get-all|--get-regexp|--list|-l|--show-origin)$/,
-  stash: /^(?:list|show)$/,
-  worktree: /^(?:list)$/,
-}
-const isMover = (c) => {
-  if (c.kind === 'npm') return true
-  if (c.kind !== 'git' || !MOVERS.has(c.sub)) return false
-  const reads = READ_ARGS[c.sub]
-  if (c.sub === 'fetch') return true // any fetch moves remote-tracking refs and follows tags, which a later push can send
-  if (!reads) return true
-  if (c.rest.length === 0) return !['branch', 'tag', 'remote', 'stash', 'worktree'].includes(c.sub) // a bare listing
-  return !c.rest.some((a) => reads.test(a))
-}
-const HEAD_SUBSTS = new Set(['git branch --show-current', 'git rev-parse --abbrev-ref HEAD', 'git symbolic-ref --short HEAD'])
-
 const SLUG_RE = /(?:^|[\s"'=:/@])github\.com[:/]+([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+?)(?:\.git)?(?=[/\s"'?#]|$)/g
 
 /** A body file or api field file the call reads. Returns its text, or denies when it can't be read. */
-function readBodyFile(word, base) {
+function readBodyFile(word, base, heredoc) {
   if (word.open) deny('public-push-guard: a body file is named through a variable the hook can\'t read, so this call is refused.')
-  if (base === null && !/^[/~]/.test(word.text)) deny('public-push-guard: this call reads a relative file in a directory the hook can\'t work out, so it can\'t tell which file is read and the call is refused. Use an absolute path, or cd to the directory first.')
-  if (word.text === '-') deny('public-push-guard: this call reads its text from standard input, which the hook can\'t read, so it is refused. Write the text to a file and use --body-file.')
+  if (word.text === '-') {
+    if (heredoc) return '' // the here-document is part of the command text, which is scanned whole
+    deny('public-push-guard: this call reads its text from standard input, which the hook can\'t read, so it is refused. Write the text to a file and use a literal --body-file.')
+  }
   try {
     return readFileSync(resolvePath(word.text, base), 'utf8')
   } catch {
     deny(`public-push-guard: the file ${word.text} can't be read, so this call is refused.`)
   }
 }
+
+const PUSH_BOOL_FLAGS = new Set(['-f', '--force', '--force-if-includes', '-u', '--set-upstream', '-n', '--dry-run', '-v', '--verbose', '-q', '--quiet', '--no-verify', '--verify', '--porcelain', '--atomic', '--no-atomic', '--prune', '--thin', '--no-thin', '--no-signed', '--no-follow-tags', '--progress', '--no-progress', '-4', '--ipv4', '-6', '--ipv6', '--no-recurse-submodules', '--no-force-with-lease', '--no-force-if-includes'])
+const PUSH_ATTACHED = /^--(?:force-with-lease|signed|recurse-submodules|push-option|receive-pack|exec|repo)=/
+
+const GH_WRITE = /\b(?:create|new|edit|comment|review|merge|close|reopen|upload)\b/
+const GH_API_WRITE = /(?:-X|--method)[ =]*(?:POST|PATCH|PUT|DELETE)|\s(?:-f|-F|--field|--raw-field|--input)\b/i
+
+/**
+ * Anything that could push or write to GitHub is checked only when it is one plain command the
+ * hook has fully read: git or gh as the first word, a literal directory, nothing it has no value
+ * for. Anything else is refused: a session can always rephrase, and a false refusal costs little.
+ * Returns false when the command holds no git or gh at all (a push word in an echo).
+ */
+function plain(parsed) {
+  const refuse = (why) => deny(`public-push-guard: this command could push or write to GitHub, and the hook checks only one plain command it can read in full (${why}). Run the push or gh write as one plain command from the target directory, with a literal --body-file.`)
+  const sts = parsed.statements
+  if (parsed.uncertain) refuse('it holds something the hook can\'t read')
+  if (sts.some((x) => x.cwd === null || x.words.some((w) => w.open))) refuse('it uses a variable, a substitution or a directory the hook has no value for')
+  if (sts.some((x) => x.words.some((w) => (!w.quoted && /[*?[{]/.test(w.text.replace(/\{(?:owner|repo|branch)\}/g, ''))) || w.text.startsWith('--work-tree')))) refuse('it uses a glob, a brace or --work-tree')
+  if (!sts.some((x) => x.words.some((w) => ['git', 'gh'].includes(basename(w.text))))) return false
+  if (sts.length !== 1) refuse('it has more than one command, a pipe, a loop or a wrapper')
+  if (!['git', 'gh'].includes(basename(sts[0].words[0].text))) refuse('git or gh sits behind a wrapper')
+  if (Object.keys(sts[0].env).some((k) => !['GIT_DIR', 'GH_REPO'].includes(k))) refuse('it sets an environment variable')
+  return true
+}
+
+// `cd <existing literal directory> && ` in front is safe: if the cd fails, nothing after it runs.
+const CD_PREFIX = /^\s*cd\s+(?:'([^']*)'|"([^"$`\\]*)"|([^\s;&|$`\\"'()*?[\]{}<>]+))\s*&&\s*/
 
 async function main() {
   const raw = readFileSync(0, 'utf8')
@@ -866,62 +879,67 @@ async function main() {
   if ((payload.tool_name ?? 'Bash') !== 'Bash') return
   const command = payload.tool_input?.command
   if (typeof command !== 'string' || command === '') return
-  const cwd = payload.cwd || process.cwd()
+  let cwd = payload.cwd || process.cwd()
   const session = String(payload.session_id ?? '')
 
-  const parsed = readShell(command, { cwd, vars: {} })
-  const calls = []
-  for (const stmt of parsed.statements) calls.push(...commandsIn(stmt))
-  // Anything we couldn't read that could still hold a push: check the working directory's repository.
-  if (parsed.uncertain && /\bpush\b/.test(command) && !calls.some((c) => c.kind === 'push')) {
-    calls.push({ kind: 'push', dir: cwd, unresolvedDir: false, args: [], fallback: true })
+  // Could this push or write to GitHub anywhere in it? Quotes and backslashes are dropped first.
+  const stripped = command.replace(/[\\'"]/g, '')
+  const expands = /[$`]/.test(command)
+  const pushText = /push/.test(stripped) || (/\bgit\b/.test(stripped) && /pu/.test(stripped) && expands)
+  const ghText = /\bgh\b/.test(stripped) && (GH_WRITE.test(stripped) || (/\bapi\b/.test(stripped) && GH_API_WRITE.test(stripped)) || expands)
+  if (!pushText && !ghText) return
+
+  let body = command
+  const cd = CD_PREFIX.exec(body)
+  if (cd) {
+    const dir = resolvePath(cd[1] ?? cd[2] ?? cd[3], cwd)
+    if (!existsSync(dir) || !statSync(dir).isDirectory()) deny(`public-push-guard: this command starts with a cd to ${dir.slice(0, 80)}, which is not a directory here, so it is refused.`)
+    cwd = dir
+    body = body.slice(cd[0].length)
   }
+  const parsed = readShell(body, { cwd, vars: {} })
+  if (!plain(parsed)) return
+  const calls = commandsIn(parsed.statements[0])
   if (!calls.some((c) => c.kind === 'push' || c.kind === 'gh')) return
 
-  const movedBefore = (index) =>
-    calls.slice(0, index).some((c) => isMover(c) || (c.kind === 'gh' && /^(?:repo\s+clone|pr\s+checkout)/.test(ghAction(c.args).join(' ')))) || (index > 0 && parsed.uncertain)
   const cache = cacheDir(session)
   const visited = new Set()
+  const heredoc = /<<-?\s*['"]?[A-Za-z0-9_.-]+/.test(command)
 
-  for (const [index, c] of calls.entries()) {
+  for (const c of calls) {
     if (c.kind !== 'push') continue
-    const moved = movedBefore(index)
-    if (c.unresolvedDir) deny('public-push-guard: this push runs in a directory the hook can\'t work out (a variable, a glob or a command substitution it has no value for). Write the path out, or cd to it first, then try again.')
+    if (c.unresolvedDir) deny('public-push-guard: this push runs in a directory the hook can\'t work out. Write the path out, then try again.')
     const target = { dir: c.dir ?? cwd, gitDir: c.gitDir, cfg: c.cfg }
     const probe = git(target, ['rev-parse', '--git-dir'])
     if (!probe.ok && !/not a git repository|cannot change to|No such file or directory/i.test(probe.stderr)) deny('public-push-guard: git could not open the repository for this push (' + probe.stderr.trim().split('\n')[0].slice(0, 120) + '), so it is refused.')
-    if (!probe.ok) {
-      if (moved) deny('public-push-guard: this command creates or moves into a repository and then pushes, so the hook can\'t read it before it runs. Do the first part in one call and the push in the next.')
-      continue // not a repository: git itself will refuse
-    }
+    if (!probe.ok) continue // not a repository: git itself will refuse
     const flags = { all: false, mirror: false, tags: false, matching: false, configured: [] }
     const positional = []
     let delete_ = false
     const args = c.args
     for (let k = 0; k < args.length; k += 1) {
       const t = args[k].text
-      if (t.startsWith('--repo=')) positional.unshift({ text: t.slice(7), open: args[k].open })
-      else if (PUSH_ARG_FLAGS.has(t)) {
-        if (t === '--repo') positional.unshift(args[k + 1]) // --repo names the remote
-        k += 1
+      if (t.startsWith('--repo=')) positional.unshift({ text: t.slice(7), open: false })
+      else if (t === '--repo') positional.unshift(args[(k += 1)]) // --repo names the remote
+      else if (['-o', '--push-option', '--receive-pack', '--exec'].includes(t)) k += 1
+      else if (t === '--recurse-submodules') {
+        if (['check', 'on-demand', 'only', 'no'].includes(args[k + 1]?.text)) k += 1
       } else if (t === '--all' || t === '--branches') flags.all = true
       else if (t === '--mirror') flags.mirror = true
-      else if (t === '--tags') flags.tags = true
-      else if (t === '--follow-tags') flags.tags = true
+      else if (t === '--tags' || t === '--follow-tags') flags.tags = true
       else if (t === '--delete' || t === '-d') delete_ = true
       else if (t === 'tag' && positional.length >= 1) positional.push({ text: `refs/tags/${args[(k += 1)]?.text ?? ''}`, open: false })
-      else if (t.startsWith('-') && t !== '-') continue
+      else if (PUSH_ATTACHED.test(t) || PUSH_BOOL_FLAGS.has(t)) continue
+      else if (t.startsWith('-') && t !== '-') deny(`public-push-guard: this push has an option the hook doesn't know (${t.slice(0, 30)}), so it is refused. Drop it, or run the push without it.`)
       else positional.push(args[k])
     }
     if (delete_) continue // deleting a remote ref publishes nothing
     const branchR = git(target, ['rev-parse', '--abbrev-ref', 'HEAD'])
     const branch = branchR.ok ? branchR.stdout.trim() : ''
     const [remoteSpec, ...specWords] = positional
-    const refspecs = specWords.map((w) => {
-      if (!w.open && !(w.text.includes('{') && !w.quoted)) return w.text
-      const headOnly = w.open && w.subst?.length === 1 && (w.text === '$(' || w.text === '`') && HEAD_SUBSTS.has(w.subst[0].replace(/\s+/g, ' '))
-      return headOnly ? 'HEAD' : { open: true }
-    })
+    const refspecs = specWords.map((w) => w.text)
+    // Branch and tag names are public too.
+    const names = [...(refspecs.length === 0 ? [branch] : []), ...refspecs.map((x) => x.replace(/^\+/, '').split(':').pop().replace(/^refs\/(?:heads|tags)\//, '')), ...(refspecs.some((x) => x === 'HEAD' || x.startsWith('HEAD:')) ? [branch] : [])].filter(Boolean)
     for (const remote of remotesFor(target, remoteSpec, branch)) {
       const { slugs, unknown } = publicSlugs(remote, cache)
       if (slugs.length === 0 && unknown) deny(`public-push-guard: could not tell whether the remote "${remote.name}" is on GitHub, so this push is refused.`)
@@ -934,25 +952,27 @@ async function main() {
       if (pd.ok && pd.stdout.trim() === 'nothing' && refspecs.length === 0 && !flags.all && !flags.mirror && !flags.tags && flags.configured.length === 0) continue
       for (const slug of slugs) {
         if (visibilityOf(slug, cache) === 'PRIVATE') continue
-        if (moved) deny(`public-push-guard: this command changes the repository and then pushes to ${slug}, which is public. The hook can only read the repository as it is before the command runs, so the new commits can't be checked. Commit in one call, then push in the next.`)
         const { refs, unresolved } = refsToSend(target, flags, refspecs)
         if (refs.length === 0 && unresolved.length > 0 && refspecs.length > 0) {
           deny(`public-push-guard: ${slug} is public and the ref ${unresolved[0].slice(0, 60)} doesn't resolve here, so there is nothing the hook can read. Check the name, then try again.`)
         }
-        const key = `${slug}|${refs.map((x) => x.sha).join(',')}`
+        const key = `${slug}|${refs.map((x) => x.sha).join(',')}|${names.join(',')}`
         if (visited.has(key)) continue
         visited.add(key)
-        await checkPush(target, remote, refs, slug, cache)
+        await checkPush(target, remote, refs, slug, cache, names)
       }
     }
   }
 
-  for (const [index, c] of calls.entries()) {
+  for (const c of calls) {
     if (c.kind !== 'gh') continue
     const [a, b] = ghAction(c.args)
     const action = `${a ?? ''} ${b ?? ''}`.trim()
     const isApi = a === 'api'
-    const writesApi = isApi && (/^(?:POST|PATCH|PUT)$/i.test(flagValue(c.args, ['-X', '--method'])?.text ?? '') || c.args.some((w) => /^(?:-f|-F|--field|--raw-field|--input)(?:=|$)/.test(w.text) || /^-[fF]./.test(w.text)))
+    const method = flagValue(c.args, ['-X', '--method'])?.text ?? ''
+    const hasFields = c.args.some((w) => /^(?:-f|-F|--field|--raw-field|--input)(?:=|$)/.test(w.text) || /^-[fF]./.test(w.text))
+    // -X GET with fields sends them as a query string: a read.
+    const writesApi = isApi && !/^GET$/i.test(method) && (/^(?:POST|PATCH|PUT|DELETE)$/i.test(method) || hasFields)
     const visibilityWord = flagValue(c.args, ['--visibility'])?.text
     const apiFieldText = c.args.map((w) => w.text).join(' ')
     const isVisibility =
@@ -960,59 +980,60 @@ async function main() {
       (a === 'repo' && b === 'create' && c.args.some((w) => w.text === '--public')) ||
       (writesApi && /\b(visibility=public|private=false)\b|"visibility"\s*:\s*"public"/.test(apiFieldText))
     const inputWord = isApi ? flagValue(c.args, ['--input']) : undefined
-    let inputText = null // null: not read (standard input, a variable, a file made earlier in the command)
-    if (inputWord && !inputWord.open && inputWord.text !== '-') {
+    let inputText = null // null: not read (standard input, a file that isn't there)
+    if (inputWord && inputWord.text !== '-') {
       try {
-        inputText = c.unresolvedDir && !/^[/~]/.test(inputWord.text) ? null : readFileSync(resolvePath(inputWord.text, c.dir ?? cwd), 'utf8')
+        inputText = readFileSync(resolvePath(inputWord.text, c.dir ?? cwd), 'utf8')
       } catch {
         inputText = null
       }
     }
     if (isVisibility || /"visibility"\s*:\s*"public"|"private"\s*:\s*false/.test(inputText ?? '')) deny('public-push-guard: this would make a repository public. The rule is that no repository goes from private to public. The owner does that by hand, never a session.')
-    // A graphql call is a read only when its query is a literal -f field with no mutation in it. A query read from a file (-F query=@file, --input) or built from a variable is a write.
-    const isGraphqlRead = isApi && c.args.some((w) => w.text === 'graphql') && c.args.every((w) => !w.open && !/^(?:--input|-F|--field)/.test(w.text)) && !/mutation/i.test(apiFieldText)
+    // A graphql call is a read only when its query is a literal -f field with no mutation in it. A query read from a file (-F query=@file, --input) is a write.
+    const isGraphqlRead = isApi && c.args.some((w) => w.text === 'graphql') && c.args.every((w) => !/^(?:--input|-F|--field)/.test(w.text)) && !/mutation/i.test(apiFieldText)
     const writesText = GH_TEXT_ACTIONS.has(action) || (writesApi && !isGraphqlRead)
     const creates = action === 'pr create' || action === 'pr new'
     if (!writesText && !creates) continue
-    if (creates && c.unresolvedDir) deny('public-push-guard: this gh pr create runs in a directory the hook can\'t work out, and it may push the branch there. Write the path out, or cd to it first, then try again.')
     const target = { dir: c.dir ?? cwd }
 
-    // The repository: --repo/-R, GH_REPO, a GitHub URL as the selector (the word right after the
-    // action), or the endpoint of a gh api call. A URL inside a flag's value (a body) names nothing.
-    // Otherwise every GitHub remote of the working directory.
-    const slugSet = new Set()
+    // The repositories it could reach: the working directory's GitHub remotes, plus --repo, GH_REPO,
+    // every github.com URL in the arguments and the endpoint of a gh api call. A URL inside a body
+    // adds a repository to check; it never replaces the working directory's.
+    const hard = new Set()
+    const soft = new Set() // from a URL: may not be a repository at all (orgs, user-attachments)
     const repoFlag = flagValue(c.args, ['--repo', '-R'])
-    if (repoFlag?.open) deny('public-push-guard: this gh call names a repository through a variable the hook can\'t read, so it is refused. Write the owner/name out.')
     const clean = (x) => x.replace(/^https?:\/\/github\.com\//i, '').replace(/\.git$/, '')
-    if (repoFlag) slugSet.add(clean(repoFlag.text))
+    if (repoFlag) hard.add(clean(repoFlag.text))
     const envRepo = c.env?.GH_REPO ?? process.env.GH_REPO
-    if (envRepo && !repoFlag) slugSet.add(clean(envRepo))
+    if (envRepo && !repoFlag) hard.add(clean(envRepo))
+    for (const w of c.args) for (const m of w.text.matchAll(SLUG_RE)) soft.add(`${m[1]}/${m[2]}`)
+    if (a === 'repo' && b) for (const w of c.args) if (/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(w.text)) hard.add(w.text)
     if (isApi) {
       const endpoint = c.args.find((w) => /^(?:https:\/\/api\.github\.com)?\/?repos\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+/.test(w.text))
       const m = endpoint && /repos\/([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)/.exec(endpoint.text)
-      if (m) slugSet.add(`${m[1]}/${m[2]}`)
-    } else {
-      const at = c.args.findIndex((w) => w.text === b)
-      const selector = at >= 0 ? c.args[at + 1] : undefined
-      if (selector && !selector.text.startsWith('-')) {
-        for (const m of selector.text.matchAll(SLUG_RE)) slugSet.add(`${m[1]}/${m[2]}`)
-        if (a === 'repo' && /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(selector.text)) slugSet.add(selector.text)
-      }
+      if (m) hard.add(`${m[1]}/${m[2]}`)
     }
-    if (c.unresolvedDir && slugSet.size === 0) deny('public-push-guard: this gh call runs in a directory the hook can\'t work out. Write the path out, or cd to it first, then try again.')
-    let slugs = [...slugSet]
-    // A gh api write whose endpoint isn't repos/<owner>/<name> (graphql, a URL, orgs/...) names no
-    // repository: a mutation can comment on any public pull request by node id. Read as if public.
-    if (slugs.length === 0 && writesApi && !isGraphqlRead) slugs = ['(unattributed gh api write)']
-    if (slugs.length === 0) {
-      if (!git(target, ['rev-parse', '--git-dir']).ok) continue
+    const isRepo = git(target, ['rev-parse', '--git-dir']).ok
+    const fromDir = new Set()
+    if (isRepo) {
       for (const name of must(target, ['remote'], 'list the remotes').split('\n').filter(Boolean)) {
-        for (const r of remotesFor(target, { text: name, open: false }, '')) slugs.push(...publicSlugs(r, cache).slugs)
+        for (const r of remotesFor(target, { text: name, open: false }, '')) publicSlugs(r, cache).slugs.forEach((x) => fromDir.add(x))
       }
-      slugs = [...new Set(slugs)]
     }
+    let slugs = [...new Set([...hard, ...fromDir, ...soft])]
+    // A write that names no repository (graphql, orgs/..., from a directory that isn't a repository): read as public.
+    if (fromDir.size === 0 && hard.size === 0 && writesApi && !isGraphqlRead) slugs = ['(unattributed gh api write)', ...soft]
     for (const slug of slugs) {
-      if (!slug.startsWith('(') && visibilityOf(slug, cache) === 'PRIVATE') continue
+      if (!slug.startsWith('(')) {
+        let vis
+        try {
+          vis = visibilityOf(slug, cache)
+        } catch (e) {
+          if (soft.has(slug) && !hard.has(slug) && !fromDir.has(slug)) continue // a URL that isn't a repository
+          throw e
+        }
+        if (vis === 'PRIVATE') continue
+      }
       if (writesText) {
         await checkText(command, slug, cache, target)
         if (inputWord && inputText === null) deny(`public-push-guard: this gh api call reads its body from ${inputWord.text === '-' ? 'standard input' : `${inputWord.text}, which the hook can't read here`}, and ${slug} is public, so it is refused. Write the body to a file first, in an earlier call.`)
@@ -1020,7 +1041,7 @@ async function main() {
         const fileFlags = isApi ? [] : ['--body-file', '-F', '--notes-file']
         for (const flag of fileFlags) {
           const v = flagValue(c.args, [flag])
-          if (v) await checkText(readBodyFile(v, c.unresolvedDir ? null : target.dir), slug, cache, target)
+          if (v) await checkText(readBodyFile(v, target.dir, heredoc), slug, cache, target)
         }
         if (isApi) {
           // -F / --field read a value that starts with @ as a file; -f / --raw-field never do
@@ -1028,18 +1049,17 @@ async function main() {
             const t = c.args[k].text
             const val = t === '-F' || t === '--field' ? c.args[k + 1] : /^-F./.test(t) ? { text: t.slice(2), open: c.args[k].open } : t.startsWith('--field=') ? { text: t.slice(8), open: c.args[k].open } : null
             const m = val && /^[^=\s]+=@(.+)$/.exec(val.text)
-            if (m) await checkText(readBodyFile({ text: m[1], open: val.open }, c.unresolvedDir ? null : target.dir), slug, cache, target)
+            if (m) await checkText(readBodyFile({ text: m[1], open: val.open }, target.dir, false), slug, cache, target)
           }
         }
       }
       if (creates) {
         // gh pr create can push the branch itself: read what HEAD would send
-        if (movedBefore(index)) deny(`public-push-guard: this command changes the repository and then opens a pull request on ${slug}, which is public. Commit in one call, then open the pull request in the next.`)
         const branchR = git(target, ['rev-parse', '--abbrev-ref', 'HEAD'])
         for (const remote of remotesFor(target, null, branchR.ok ? branchR.stdout.trim() : '')) {
           if (!publicSlugs(remote, cache).slugs.includes(slug)) continue
           const { refs } = refsToSend(target, { all: false, mirror: false, tags: false, matching: false, configured: [] }, [])
-          await checkPush(target, remote, refs, slug, cache)
+          await checkPush(target, remote, refs, slug, cache, [branchR.stdout.trim()])
         }
       }
     }
