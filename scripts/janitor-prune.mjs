@@ -4,7 +4,7 @@
  *
  *   node scripts/janitor-prune.mjs [--root ~/Developer/gorfednet] [--keep-file <paths.txt>] [--idle-hours 24] [--apply]
  *   node scripts/janitor-prune.mjs sessions <sessions.json>
- *   node scripts/janitor-prune.mjs --remote-sweep <owner/name> --keep-file <paths.txt> [--root ...] [--min-age-hours 24] [--apply]
+ *   node scripts/janitor-prune.mjs --remote-sweep <owner/name> --keep-file <paths.txt> --branch-keep <branch-keep.json> [--root ...] [--min-age-hours 24] [--apply]
  *
  * The `--remote-sweep` form is a separate mode (plan row 1.30 e): it deletes origin branches that are
  * already merged into the default branch and that no worktree ever pruned. See `remoteSweep` below.
@@ -41,6 +41,7 @@ import { homedir } from 'node:os'
 import { basename, join, resolve } from 'node:path'
 
 import { parseGitHubSlug } from './lib/githubSlug.mjs'
+import { keepMap } from './branch-sweep-propose.mjs'
 import { isMain } from './lib/isMain.mjs'
 
 export const PROTECTED_NAMES = new Set(['gates-main', 'tools-main', 'desk-log', 'janitor-main'])
@@ -245,18 +246,23 @@ export function run({ root, keep, idleMs, apply, now = Date.now(), fetch = true,
  *
  * A branch is deleted only when none of these keep it:
  *   - protected: the default branch, main, master, status, desk-log, gates-main, tools-main, janitor-main
+ *   - it is on the branch keep list (ops `control/branch-keep.json`, copied by step 1b; `keepList` below). A keep
+ *     list that was not read, or is not valid, ends the sweep: with no list a kept branch would look deletable
  *   - an open pull request has it as its head or its base (one `gh pr list` call for the repository, never a loop)
  *   - a worktree of the clone has it checked out, or a live session's folder (the keep file) does
  *   - its tip is on the default branch's first-parent line: it has no commits of its own (a branch just cut)
- *   - its tip commit is under `minAgeMs` old (default 24 hours), or under 8 days for a `janitor/train-` branch:
+ *   - it was last touched under `minAgeMs` ago (default 24 hours), or under 8 days for a `janitor/train-` branch. Last touched
+ *     is the later of its tip commit's date and the date of the commit that merged it into the default branch; a merge
+ *     time that cannot be found keeps the branch:
  *     janitor-train.mjs reads that branch on origin as the week's one-train lock, so a merged train stays that long
  * Ship-bot merges with merge commits only, so a branch whose pull request merged is reachable from the
  * default branch off that line. Fail closed: a failed fetch, a shallow clone, a failed or cut-off pull
  * request list, or a missing default branch ends the sweep with one `abort` row and no deletion.
  * Without `apply` nothing changes. Deletes run through `git push origin --delete`, in batches, and each
  * branch's tip is read from origin again just before its batch, so one that moved since the fetch stays.
- * A push that lands between that read and the delete (about one round trip) still loses origin's copy of
- * its commits; the pusher keeps them. No lease is used: the owner's settings deny force-push patterns.
+ * The read is repeated for each branch before a retry. A push that lands between a read and its delete (about one
+ * round trip) still loses origin's copy of those commits; the pusher keeps them. No lease guards it: the owner's
+ * settings deny force-push patterns, and a lease is a force flag, so adding one is the owner's call.
  */
 const DAY_MS = 86400000
 export const REMOTE_PREFIX = 'refs/remotes/origin/'
@@ -291,7 +297,22 @@ function checkedOutBranches(clone, keep) {
   return checked
 }
 
-export function remoteSweep({ clone, slug, keep = new Set(), minAgeMs = DAY_MS, apply = false, now = Date.now(), fetch = true, openBranches = openPullRequestBranches, batchSize = 20, log = (o) => console.log(JSON.stringify(o)) }) {
+/** When `sha` reached the default branch: the committer time of the first commit on its first-parent line that contains it. Null if unknown. */
+export function mergedAt(clone, sha, mainRef) {
+  const r = tryGit(clone, 'rev-list', '--first-parent', '--ancestry-path', '--reverse', '--format=%ct', '--no-commit-header', `${sha}..${mainRef}`)
+  if (!r.ok) return null
+  const first = Number(r.out.split('\n')[0])
+  return Number.isFinite(first) && first > 0 ? first * 1000 : null
+}
+
+/** Origin's tips for these branches: a Map of full ref to SHA, or null when origin could not be read. */
+function originTips(clone, rows) {
+  const heads = tryGit(clone, 'ls-remote', '--heads', 'origin', ...rows.map((r) => `refs/heads/${r.branch}`))
+  if (!heads.ok) return { tips: null, error: heads.out.split('\n')[0] }
+  return { tips: new Map(heads.out.split('\n').filter(Boolean).map((l) => l.split('\t')).map(([sha, ref]) => [ref, sha])) }
+}
+
+export function remoteSweep({ clone, slug, keepList, keep = new Set(), minAgeMs = DAY_MS, apply = false, now = Date.now(), fetch = true, openBranches = openPullRequestBranches, batchSize = 20, beforePush = () => {}, log = (o) => console.log(JSON.stringify(o)) }) {
   const rows = []
   const emit = (row) => {
     rows.push(row)
@@ -309,6 +330,8 @@ export function remoteSweep({ clone, slug, keep = new Set(), minAgeMs = DAY_MS, 
   const base = defaultBranch(clone)
   const mainRef = `refs/remotes/origin/${base}`
   if (!tryGit(clone, 'rev-parse', '--verify', '--quiet', mainRef).ok) return abort(`no ${mainRef}`)
+  const kept = keepMap(keepList)
+  if (kept === null) return abort('branch keep list not read (ops control/branch-keep.json): without it a kept branch looks deletable')
   let open
   try {
     open = new Set(openBranches(slug))
@@ -330,13 +353,19 @@ export function remoteSweep({ clone, slug, keep = new Set(), minAgeMs = DAY_MS, 
     const branch = ref.slice(REMOTE_PREFIX.length)
     if (branch === 'HEAD') continue
     const row = { remoteSweep: slug, branch, sha }
-    const age = now - Number(stamp) * 1000
     if (protectedNames.has(branch)) emit({ ...row, verdict: 'keep', reason: 'protected' })
+    else if (kept.has(`${slug}\u0000${branch}`)) emit({ ...row, verdict: 'keep', reason: `on the keep list: ${String(kept.get(`${slug}\u0000${branch}`).reason ?? 'no reason given')}` })
     else if (open.has(branch)) emit({ ...row, verdict: 'keep', reason: 'open pull request' })
     else if (checked.has(branch)) emit({ ...row, verdict: 'keep', reason: checked.get(branch) })
     else if (firstParent.has(sha)) emit({ ...row, verdict: 'keep', reason: 'no commits of its own (tip is on the default branch)' })
-    else if (!Number.isFinite(age) || age < (branch.startsWith(TRAIN_PREFIX) ? Math.max(minAgeMs, TRAIN_MIN_AGE_MS) : minAgeMs)) emit({ ...row, verdict: 'keep', reason: `tip is ${Number.isFinite(age) ? Math.round(age / 3600000) : '?'} h old` })
-    else todo.push(row)
+    else {
+      const merged = mergedAt(clone, sha, mainRef)
+      const touched = Math.max(Number(stamp) * 1000, merged ?? Number.NaN)
+      const age = now - touched
+      if (merged === null) emit({ ...row, verdict: 'keep', reason: 'merge time unknown' })
+      else if (!Number.isFinite(age) || age < (branch.startsWith(TRAIN_PREFIX) ? Math.max(minAgeMs, TRAIN_MIN_AGE_MS) : minAgeMs)) emit({ ...row, verdict: 'keep', reason: `last touched ${Number.isFinite(age) ? Math.round(age / 3600000) : '?'} h ago` })
+      else todo.push(row)
+    }
   }
   if (!apply) {
     for (const row of todo) emit({ ...row, verdict: 'delete', reason: 'merged into the default branch' })
@@ -345,34 +374,47 @@ export function remoteSweep({ clone, slug, keep = new Set(), minAgeMs = DAY_MS, 
   for (let i = 0; i < todo.length; i += batchSize) {
     const batch = todo.slice(i, i + batchSize)
     // Read each tip from origin again: a branch pushed to since the fetch is no longer the merged one.
-    const heads = tryGit(clone, 'ls-remote', '--heads', 'origin', ...batch.map((r) => `refs/heads/${r.branch}`))
-    if (!heads.ok) {
-      for (const row of batch) emit({ ...row, verdict: 'delete', reason: 'merged into the default branch', deleted: false, error: `could not re-read origin: ${heads.out.split('\n')[0]}` })
+    const first = originTips(clone, batch)
+    if (!first.tips) {
+      for (const row of batch) emit({ ...row, verdict: 'delete', reason: 'merged into the default branch', deleted: false, error: `could not re-read origin: ${first.error}` })
       continue
     }
-    const tips = new Map(heads.out.split('\n').filter(Boolean).map((l) => l.split('\t')).map(([sha, ref]) => [ref, sha]))
     const sure = []
     for (const row of batch) {
-      const tip = tips.get(`refs/heads/${row.branch}`)
+      const tip = first.tips.get(`refs/heads/${row.branch}`)
       if (tip === undefined) emit({ ...row, verdict: 'keep', reason: 'already gone from origin', deleted: false })
       else if (tip !== row.sha) emit({ ...row, verdict: 'keep', reason: 'pushed to since the fetch', deleted: false })
       else sure.push(row)
     }
     if (sure.length === 0) continue
-    const push = (rowsToDelete) => tryGit(clone, 'push', '--quiet', 'origin', '--delete', ...rowsToDelete.map((r) => `refs/heads/${r.branch}`))
+    const push = (rowsToDelete) => {
+      beforePush(rowsToDelete)
+      return tryGit(clone, 'push', '--quiet', 'origin', '--delete', ...rowsToDelete.map((r) => `refs/heads/${r.branch}`))
+    }
+    const done = (row, extra) => emit({ ...row, verdict: 'delete', reason: 'merged into the default branch', ...extra })
     if (push(sure).ok) {
-      for (const row of sure) emit({ ...row, verdict: 'delete', reason: 'merged into the default branch', deleted: true })
+      for (const row of sure) done(row, { deleted: true })
     } else {
-      // A refused ref fails the push, but git deletes the others. Read origin again: what is gone counts as deleted.
-      const after = tryGit(clone, 'ls-remote', '--heads', 'origin', ...sure.map((r) => `refs/heads/${r.branch}`))
-      const left = after.ok ? new Set(after.out.split('\n').filter(Boolean).map((l) => l.split('\t')[1])) : null
+      // A refused ref (a ruleset) fails the push, but git deletes the others. Read origin again: what is gone
+      // counts as deleted, what moved stays, and only a branch still at its judged tip is tried alone, after its own re-read.
+      const after = originTips(clone, sure)
+      if (!after.tips) {
+        for (const row of sure) done(row, { deleted: false, error: `could not re-read origin: ${after.error}` })
+        continue
+      }
       for (const row of sure) {
-        if (left && !left.has(`refs/heads/${row.branch}`)) {
-          emit({ ...row, verdict: 'delete', reason: 'merged into the default branch', deleted: true })
-          continue
+        const tip = after.tips.get(`refs/heads/${row.branch}`)
+        if (tip === undefined) done(row, { deleted: true })
+        else if (tip !== row.sha) emit({ ...row, verdict: 'keep', reason: 'pushed to since the fetch', deleted: false })
+        else {
+          const again = originTips(clone, [row])
+          if (!again.tips) done(row, { deleted: false, error: `could not re-read origin: ${again.error}` })
+          else if (again.tips.get(`refs/heads/${row.branch}`) !== row.sha) emit({ ...row, verdict: 'keep', reason: 'pushed to since the fetch', deleted: false })
+          else {
+            const one = push([row])
+            done(row, { deleted: one.ok, ...(one.ok ? {} : { error: one.out.split('\n')[0] }) })
+          }
         }
-        const one = push([row])
-        emit({ ...row, verdict: 'delete', reason: 'merged into the default branch', deleted: one.ok, ...(one.ok ? {} : { error: one.out.split('\n')[0] }) })
       }
     }
   }
@@ -385,7 +427,7 @@ function summarize(rows, slug, apply) {
   const reasons = {}
   for (const r of rows) {
     if (r.verdict !== 'keep') continue
-    const why = r.reason.replace(/\d+ h old/, 'N h old')
+    const why = r.reason.replace(/\d+ h ago/, 'N h ago').replace(/^on the keep list: .*/, 'on the keep list')
     reasons[why] = (reasons[why] ?? 0) + 1
   }
   return {
@@ -417,6 +459,8 @@ if (isMain(import.meta.url) && process.argv.includes('--remote-sweep')) {
   if (!slug || !/^[\w.-]+\/[\w.-]+$/.test(slug)) badArgument('--remote-sweep needs owner/name, for example gorfednet/.github')
   const root = arg('--root') ?? join(homedir(), 'Developer', 'gorfednet')
   const keepFile = arg('--keep-file')
+  const branchKeepFile = arg('--branch-keep')
+  if (!branchKeepFile) badArgument('--remote-sweep needs --branch-keep with the copy of ops control/branch-keep.json (step 1b)')
   if (!keepFile) badArgument('--remote-sweep needs --keep-file with the working folders of live sessions (an empty file if there are none)')
   let keep
   try {
@@ -429,7 +473,14 @@ if (isMain(import.meta.url) && process.argv.includes('--remote-sweep')) {
   if (!Number.isFinite(hours) || hours < 1) badArgument('--min-age-hours must be at least 1')
   const clone = clones(root).find((c) => parseGitHubSlug(tryGit(c, 'remote', 'get-url', 'origin').out) === slug)
   if (!clone) badArgument(`no clone of ${slug} under ${root}`)
-  const { summary, aborted } = remoteSweep({ clone, slug, keep, minAgeMs: hours * 3600000, apply: process.argv.includes('--apply') })
+  // An empty, missing or invalid keep list is passed on as null: the sweep aborts rather than guess that nothing is kept.
+  let keepList = null
+  try {
+    keepList = JSON.parse(readFileSync(branchKeepFile, 'utf8'))
+  } catch {
+    keepList = null
+  }
+  const { summary, aborted } = remoteSweep({ clone, slug, keepList, keep, minAgeMs: hours * 3600000, apply: process.argv.includes('--apply') })
   console.log(JSON.stringify({ summary }))
   // 3: the sweep stopped before deleting anything (fetch, shallow clone or pull request list). 1: a delete failed.
   if (aborted) process.exit(3)

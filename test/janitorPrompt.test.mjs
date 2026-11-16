@@ -236,11 +236,12 @@ test("the quoted file form runs nothing a hostile title or branch holds", () => 
 test("janitor step 5b sweeps merged origin branches through the script only, after the worktree prune", () => {
   const step = prompt.match(/\n5b\. Remote branches[\s\S]*?(?=\n6\. Retire tags)/);
   assert.ok(step, "step 5b exists between 5 and 6");
-  assert.match(step[0], /janitor-prune\.mjs --remote-sweep gorfednet\/\.github --keep-file \$R\/keep\.txt > \$R\/remote-sweep\.jsonl/);
+  assert.match(step[0], /janitor-prune\.mjs --remote-sweep gorfednet\/\.github --keep-file \$R\/keep\.txt --branch-keep \$R\/branch-keep\.json > \$R\/remote-sweep\.jsonl/);
   assert.match(step[0], /adding `--apply` before the `>` in a live run/);
   for (const kept of ["main", "master", "status", "desk-log", "gates-main", "tools-main", "janitor-main"]) assert.match(step[0], new RegExp("`" + kept + "`"));
   assert.match(step[0], /open pull request/);
-  assert.match(step[0], /under 24 hours old/);
+  assert.match(step[0], /last touched under 24 hours ago, by tip commit or by its merge/);
+  assert.match(step[0], /on the keep list \(the copy of ops `control\/branch-keep\.json` that step 1b made; if that copy is empty the sweep stops, exit 3/);
   assert.match(step[0], /Exit 3 means it stopped before deleting anything/);
   assert.match(step[0], /never delete a branch any other way, and never put a branch name on a command line/);
   assert.match(prompt, /remote sweep's merged, deleted and kept counts \(step 5b\)/);
