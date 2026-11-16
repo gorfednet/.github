@@ -61,8 +61,10 @@ export function meterFromReport(report, { now, cap }) {
   const base = { month, readAt: now.toISOString(), capUsd: cap }
   if (!Array.isArray(report?.usageItems)) return { ...base, unknown: 'the billing report had no usageItems list' }
   const rows = report.usageItems.filter(isActions)
-  if (rows.length === 0) return { ...base, unknown: 'the billing report held no Actions rows' }
   const start = Date.parse(`${month}-01T00:00:00Z`)
+  // The new month's report is empty for the first hours (it lags). Inside the first day that is "nothing reported
+  // yet", still unknown and never 0, but not a broken read: `early` keeps it out of the warnings.
+  if (rows.length === 0) return now.getTime() - start < DAY ? { ...base, unknown: 'no usage has been reported yet this month (the report lags by hours)', early: true } : { ...base, unknown: 'the billing report held no Actions rows' }
   // Under one elapsed day the run rate is noise: count it as a whole day.
   const elapsedDays = Math.max(1, (now.getTime() - start) / DAY)
   const windowStart = Math.max(start, now.getTime() - 7 * DAY)

@@ -97,6 +97,18 @@ describe('meterFromReport', () => {
     const m = meterFromReport(report(1), { now: new Date('2026-11-01T01:00:00Z'), cap: CAP })
     assert.equal(m.projectedUsd, 30)
   })
+  it('an empty report in the first day of a month is "not reported yet": unknown, never 0, and not a broken read (review round 2)', () => {
+    const first = meterFromReport({ usageItems: [] }, { now: new Date('2026-12-01T00:30:00Z'), cap: CAP })
+    assert.match(first.unknown, /no usage has been reported yet/)
+    assert.equal(first.early, true)
+    assert.equal('spendUsd' in first, false)
+    // A day later an empty report is a broken read again.
+    const later = meterFromReport({ usageItems: [] }, { now: new Date('2026-12-02T00:30:00Z'), cap: CAP })
+    assert.match(later.unknown, /no Actions rows/)
+    assert.equal('early' in later, false)
+    // A malformed report is never excused as early.
+    assert.equal('early' in meterFromReport({}, { now: new Date('2026-12-01T00:30:00Z'), cap: CAP }), false)
+  })
   it('is unknown, never 0, when the report cannot be trusted', () => {
     const bad = [
       [null, 'no usageItems'],

@@ -502,7 +502,7 @@ if (isMain(import.meta.url)) {
     try { earlier = earlierFile ? JSON.parse(readFileSync(earlierFile, 'utf8')) : null } catch { /* no memo: nothing fired yet */ }
     const { meter, block } = collectActions({ fleet, now, earlier, fromEarlier: Boolean(arg('--from')), includePrivate: process.argv.includes('--include-private'), carryPublished: process.argv.includes('--local') })
     if (block) status.actions = block
-    if (block?.unknown !== undefined) console.error(`::warning::Hosted Actions spend is unknown: ${block.unknown}`)
+    if (block?.unknown !== undefined) console.error(`::${meter?.early ? 'notice' : 'warning'}::Hosted Actions spend is unknown: ${block.unknown}`)
     // The full reading, for the ntfy lines only. Never published: the workflow keeps it on the runner.
     if (arg('--spend-out') && meter) writeFileSync(arg('--spend-out'), `${JSON.stringify(meter)}\n`)
   }
