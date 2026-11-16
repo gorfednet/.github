@@ -162,6 +162,9 @@ describe('config validation', () => {
       ops: 'merge-only',
       // Plan row 5.6's scratch repository, registered by scripts/register-repo.mjs (13 November 2026).
       'scratch-bootstrap-5-6': 'merge-only',
+      // Desk's decision of 16 November 2026: ship-bot takes both service repositories. Neither has a deploy workflow.
+      propose: 'merge-only',
+      intake: 'merge-only',
     })
   })
 

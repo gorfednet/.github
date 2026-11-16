@@ -120,6 +120,20 @@ node ~/.ship-bot/app/ship-bot.mjs --set-repo-live gorfednet/assess true   # one 
 node ~/.ship-bot/app/ship-bot.mjs --set-live true                          # the global switch
 ```
 
+## Adding a repository to a live config
+
+`install.sh` never overwrites `~/.ship-bot/config.json`, and sessions never read it. A new
+repository reaches it as a patch in `patches/` (an `add` row, identical to the row in
+`config.example.json`; a test fails when the two differ). The owner applies it after an install
+from `origin/main`:
+
+```bash
+node ~/.ship-bot/app/patch-config.mjs ~/.ship-bot/app/patches/<file>.json
+```
+
+It backs the config up, refuses a slug the config already has, validates the result and prints
+slugs and key names only. The new row ships `live: false`; `--set-repo-live` turns it on.
+
 `--set-live` never touches the per-repository flags, so turning the global
 switch on acts only in the repositories already switched on. Stage 1 of the
 go-live (owner, 7 November 2026) is merge-only in `.github`, assess,

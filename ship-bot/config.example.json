@@ -890,6 +890,30 @@
       "expectedChecks": [
         "check / check"
       ]
+    },
+    {
+      "slug": "gorfednet/propose",
+      "dir": "propose",
+      "mode": "merge-only",
+      "reason": "a service with no deploy workflow: CI is the one check job, and nothing ships from a merge (owner, 16 November 2026: ship-bot takes it)",
+      "claudeReview": true,
+      "live": false,
+      "expectedChecks": [
+        "check"
+      ],
+      "note": "Check name from #7. review / review and review / trigger are the Claude reviewer caller, read through review-status.mjs (claudeReview), as for ops."
+    },
+    {
+      "slug": "gorfednet/intake",
+      "dir": "intake",
+      "mode": "merge-only",
+      "reason": "a service with no deploy workflow: CI builds and tests it, and nothing ships from a merge (owner, 16 November 2026: ship-bot takes it)",
+      "claudeReview": true,
+      "live": false,
+      "expectedChecks": [
+        "check"
+      ],
+      "note": "heavy-runner-preflight is left out, as everywhere: a pool preflight that every listed job needs to succeed. The reviewer waits on CLAUDE_CODE_OAUTH_TOKEN being set on the repository; until then review-status.mjs reads not-run and the bot holds each pull request."
     }
   ]
 }
