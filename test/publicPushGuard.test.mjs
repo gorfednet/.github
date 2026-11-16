@@ -424,6 +424,9 @@ describe('public-push-guard: pull request text and other writes to a public repo
     `gh issue create --title t --body "${IP}"`,
     `gh issue comment 4 -b "${IP}"`,
     `gh release create v1 --notes "${IP}"`,
+    `gh release new v1 --notes "${IP}"`,
+    `gh pr new --title t --body "${IP}"`,
+    `gh issue new --title t --body "${IP}"`,
     `gh api -X POST repos/${ORG}/testrepo/issues -f body="${IP}"`,
     `gh pr create --repo ${ORG}/testrepo --title "${IP}" --body x`,
     `gh --repo ${ORG}/testrepo pr comment 3 --body "${IP}"`,
@@ -459,7 +462,7 @@ describe('public-push-guard: pull request text and other writes to a public repo
   })
   it('refuses to make a repository public', () => {
     const r = r0()
-    for (const c of [`gh repo edit ${ORG}/x --visibility public`, 'gh repo create y --public --source .', `gh api -X PATCH repos/${ORG}/x -f visibility=public`]) {
+    for (const c of [`gh repo edit ${ORG}/x --visibility public`, 'gh repo create y --public --source .', 'gh repo new y --public --source .', `gh api -X PATCH repos/${ORG}/x -f visibility=public`]) {
       const x = hook(c, { r, vis: 'PRIVATE' })
       assert.ok(denied(x), c)
       assert.match(reason(x), /public/)

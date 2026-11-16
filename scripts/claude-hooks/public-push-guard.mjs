@@ -851,7 +851,8 @@ async function checkText(text, slug, cache, target) {
   }
 }
 
-const GH_TEXT_ACTIONS = new Set(['pr create', 'pr new', 'pr edit', 'pr comment', 'pr review', 'pr close', 'issue create', 'issue new', 'issue edit', 'issue comment', 'pr reopen', 'issue reopen', 'issue close', 'release create', 'release edit', 'pr merge', 'repo edit', 'label create', 'label edit'])
+// gh aliases checked against each command's ALIASES line: pr/issue/release/repo/gist create = new (ls and co only read)
+const GH_TEXT_ACTIONS = new Set(['pr create', 'pr new', 'pr edit', 'pr comment', 'pr review', 'pr close', 'issue create', 'issue new', 'issue edit', 'issue comment', 'pr reopen', 'issue reopen', 'issue close', 'release create', 'release new', 'release edit', 'pr merge', 'repo edit', 'label create', 'label edit'])
 const SLUG_RE = /(?:^|[\s"'=:/@])github\.com[:/]+([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+?)(?:\.git)?(?=[/\s"'?#]|$)/g
 
 /** A body file or api field file the call reads. Returns its text, or denies when it can't be read. */
@@ -1075,7 +1076,7 @@ async function main() {
     const apiFieldText = c.args.map((w) => w.text).join(' ')
     const isVisibility =
       (a === 'repo' && b === 'edit' && visibilityWord === 'public') ||
-      (a === 'repo' && b === 'create' && c.args.some((w) => w.text === '--public')) ||
+      (a === 'repo' && (b === 'create' || b === 'new') && c.args.some((w) => w.text === '--public')) ||
       (writesApi && /(?:visibility=public|private=false)\b|"visibility"\s*:\s*"public"/.test(apiFieldText))
     const inputWord = isApi ? flagValue(c.args, ['--input']) : undefined
     let inputText = null // null: not read (standard input, a file that isn't there)
