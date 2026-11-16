@@ -849,6 +849,28 @@ describe('public-push-guard: the fourth review', () => {
     assert.ok(denied(x), x.out)
     assert.match(reason(x), /can't work out/)
   })
+  it('refuses a relative body file when the directory is unresolved, since it can\'t tell which file gh reads', () => {
+    const r = repo()
+    writeFileSync(join(r.dir, 'body.md'), 'clean\n')
+    const x = hook(`cd "$NOPE_UNSET" && gh pr comment 1 --repo ${ORG}/testrepo --body-file body.md`, { r })
+    assert.ok(denied(x), x.out)
+    assert.match(reason(x), /relative file/)
+    assert.equal(hook(`cd "$NOPE_UNSET" && gh pr comment 1 --repo ${ORG}/testrepo --body-file ${join(r.dir, 'body.md')}`, { r }).out, '', 'an absolute path is read')
+  })
+  it('lets a clean push through when the repository is named with --git-dir from elsewhere (the guard reads it too)', () => {
+    const r = repo()
+    assert.equal(hook(`git --git-dir ${r.dir}/.git push origin feature`, { r, cwd: tmp('elsewhere') }).out, '')
+  })
+  it('reads git pu${X}sh as a possible push', () => {
+    const r = repo({ outgoing: { 'x.md': `${IP}\n` } })
+    assert.ok(denied(hook('git pu${NOPE_UNSET}sh origin feature', { r })))
+  })
+  it('applies git -c settings: a pushurl set on the command line is the target', () => {
+    const r = repo({ outgoing: { 'x.md': `${IP}\n` }, slug: 'privaterepo' })
+    const vis = { [`${ORG}/privaterepo`]: 'PRIVATE', [`${ORG}/testrepo`]: 'PUBLIC' }
+    assert.equal(hook('git push origin feature', { r, vis }).out, '', 'the configured remote is private')
+    assert.ok(denied(hook(`git -c remote.origin.pushurl=https://github.com/${ORG}/testrepo.git push origin feature`, { r, vis })))
+  })
   it('reads the text of gh pr reopen and gh issue reopen', () => {
     const r = repo()
     for (const c of [`gh pr reopen 5 -R ${ORG}/testrepo -c "${IP}"`, `gh issue reopen 5 -R ${ORG}/testrepo --comment "${IP}"`]) assert.ok(denied(hook(c, { r })), c)

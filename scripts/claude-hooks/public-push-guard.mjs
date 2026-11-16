@@ -362,6 +362,7 @@ function commandsIn(stmt) {
       let gitDir = stmt.env.GIT_DIR
       let k = at + 1
       let unresolvedDir = stmt.cwd === null
+      const cfg = [] // -c key=value pairs: they change the remote and refs a push uses
       if (stmt.env.GIT_DIR !== undefined || 'GIT_DIR' in stmt.env) unresolvedDir ||= stmt.env.GIT_DIR === undefined || GLOB.test(stmt.env.GIT_DIR)
       while (k < words.length && words[k].text.startsWith('-')) {
         const w = words[k]
@@ -369,6 +370,7 @@ function commandsIn(stmt) {
         if (GIT_ARG_OPTS.has(name)) {
           const val = attached !== undefined && name.startsWith('--') ? { text: attached, open: w.open } : words[k + 1]
           if (val === undefined) break
+          if (name === '-c' && !val.open) cfg.push(val.text)
           if (name === '-C') {
             if (val.open || dir === null || GLOB.test(val.text)) unresolvedDir = true // a variable, or a pattern the shell or xargs fills in
             else dir = resolvePath(val.text, dir)
@@ -380,7 +382,8 @@ function commandsIn(stmt) {
           k += attached !== undefined && name.startsWith('--') ? 1 : 2
         } else k += 1
       }
-      if (words[k]?.text === 'push') found.push({ kind: 'push', dir, gitDir, unresolvedDir, args: words.slice(k + 1) })
+      // An open word in the subcommand position (git pu${X}sh) could expand to push: read it as one.
+      if (words[k]?.text === 'push' || words[k]?.open) found.push({ kind: 'push', dir, gitDir, cfg, unresolvedDir, args: words.slice(k + 1) })
       else found.push({ kind: 'git', sub: words[k]?.text ?? '', rest: words.slice(k + 1).map((w) => w.text) })
     } else if (['npm', 'yarn', 'pnpm'].includes(prog) && ['version', 'release'].includes(words[at + 1]?.text)) {
       found.push({ kind: 'npm' })
@@ -584,7 +587,8 @@ function redact(out, g) {
 
 const git = (target, args, opts) => {
   const base = target.gitDir ? [`--git-dir=${target.gitDir}`] : []
-  return run('git', [...(target.dir ? ['-C', target.dir] : []), ...base, '-c', 'core.quotepath=false', ...args], opts)
+  const cfg = (target.cfg ?? []).flatMap((kv) => ['-c', kv])
+  return run('git', [...(target.dir ? ['-C', target.dir] : []), ...base, ...cfg, '-c', 'core.quotepath=false', ...args], opts)
 }
 
 /** A git call that must succeed: a failure reads as "can't tell", never as "nothing there". */
@@ -713,7 +717,7 @@ function outgoing(target, remote, sent) {
 }
 
 function runGuard(target, g, base, head) {
-  const env = { ...process.env, PRIVATE_REPOS: g.names }
+  const env = { ...process.env, PRIVATE_REPOS: g.names, ...(target.gitDir ? { GIT_DIR: target.gitDir } : {}) }
   const args = [realpathSync(g.file), '--base', base, '--head', head, '--dir', target.dir ?? '.']
   if (g.allowFile) args.push('--allow', g.allowFile)
   const r = run('node', args, { cwd: target.dir ?? undefined, env, timeout: 40_000 })
@@ -841,6 +845,7 @@ const SLUG_RE = /(?:^|[\s"'=:/@])github\.com[:/]+([A-Za-z0-9_.-]+)\/([A-Za-z0-9_
 /** A body file or api field file the call reads. Returns its text, or denies when it can't be read. */
 function readBodyFile(word, base) {
   if (word.open) deny('public-push-guard: a body file is named through a variable the hook can\'t read, so this call is refused.')
+  if (base === null && !/^[/~]/.test(word.text)) deny('public-push-guard: this call reads a relative file in a directory the hook can\'t work out, so it can\'t tell which file is read and the call is refused. Use an absolute path, or cd to the directory first.')
   if (word.text === '-') deny('public-push-guard: this call reads its text from standard input, which the hook can\'t read, so it is refused. Write the text to a file and use --body-file.')
   try {
     return readFileSync(resolvePath(word.text, base), 'utf8')
@@ -882,8 +887,10 @@ async function main() {
     if (c.kind !== 'push') continue
     const moved = movedBefore(index)
     if (c.unresolvedDir) deny('public-push-guard: this push runs in a directory the hook can\'t work out (a variable, a glob or a command substitution it has no value for). Write the path out, or cd to it first, then try again.')
-    const target = { dir: c.dir ?? cwd, gitDir: c.gitDir }
-    if (!git(target, ['rev-parse', '--git-dir']).ok) {
+    const target = { dir: c.dir ?? cwd, gitDir: c.gitDir, cfg: c.cfg }
+    const probe = git(target, ['rev-parse', '--git-dir'])
+    if (!probe.ok && !/not a git repository|cannot change to|No such file or directory/i.test(probe.stderr)) deny('public-push-guard: git could not open the repository for this push (' + probe.stderr.trim().split('\n')[0].slice(0, 120) + '), so it is refused.')
+    if (!probe.ok) {
       if (moved) deny('public-push-guard: this command creates or moves into a repository and then pushes, so the hook can\'t read it before it runs. Do the first part in one call and the push in the next.')
       continue // not a repository: git itself will refuse
     }
@@ -956,7 +963,7 @@ async function main() {
     let inputText = null // null: not read (standard input, a variable, a file made earlier in the command)
     if (inputWord && !inputWord.open && inputWord.text !== '-') {
       try {
-        inputText = readFileSync(resolvePath(inputWord.text, c.dir ?? cwd), 'utf8')
+        inputText = c.unresolvedDir && !/^[/~]/.test(inputWord.text) ? null : readFileSync(resolvePath(inputWord.text, c.dir ?? cwd), 'utf8')
       } catch {
         inputText = null
       }
@@ -1013,7 +1020,7 @@ async function main() {
         const fileFlags = isApi ? [] : ['--body-file', '-F', '--notes-file']
         for (const flag of fileFlags) {
           const v = flagValue(c.args, [flag])
-          if (v) await checkText(readBodyFile(v, target.dir), slug, cache, target)
+          if (v) await checkText(readBodyFile(v, c.unresolvedDir ? null : target.dir), slug, cache, target)
         }
         if (isApi) {
           // -F / --field read a value that starts with @ as a file; -f / --raw-field never do
@@ -1021,7 +1028,7 @@ async function main() {
             const t = c.args[k].text
             const val = t === '-F' || t === '--field' ? c.args[k + 1] : /^-F./.test(t) ? { text: t.slice(2), open: c.args[k].open } : t.startsWith('--field=') ? { text: t.slice(8), open: c.args[k].open } : null
             const m = val && /^[^=\s]+=@(.+)$/.exec(val.text)
-            if (m) await checkText(readBodyFile({ text: m[1], open: val.open }, target.dir), slug, cache, target)
+            if (m) await checkText(readBodyFile({ text: m[1], open: val.open }, c.unresolvedDir ? null : target.dir), slug, cache, target)
           }
         }
       }
