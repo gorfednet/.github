@@ -974,6 +974,34 @@ describe('public-push-guard: the Fable read (a command it cannot read in full is
   })
 })
 
+describe('public-push-guard: fields attached to a flag, and ordinary commits', () => {
+  it('reads gh api fields attached to the flag (-fbody=x, -fprivate=false, --field=private=false)', () => {
+    const r = repo()
+    sh(r.dir, r.w, 'push', '-q', 'origin', 'feature')
+    for (const c of [`gh api repos/${ORG}/testrepo/issues -fbody=${IP}`, `gh api repos/${ORG}/testrepo/issues -Fbody=${IP}`, `gh api --raw-field=body=${IP} repos/${ORG}/testrepo/issues`]) {
+      assert.ok(denied(hook(c, { r })), c)
+    }
+    for (const c of [`gh api -X PATCH repos/${ORG}/testrepo -fprivate=false`, `gh api -X PATCH repos/${ORG}/testrepo --field=private=false`, `gh api -X PATCH repos/${ORG}/testrepo -f private=false`, `gh api -X PATCH repos/${ORG}/testrepo -fvisibility=public`]) {
+      const x = hook(c, { r, vis: 'PRIVATE' })
+      assert.ok(denied(x), c)
+      assert.match(reason(x), /public/, c)
+    }
+    assert.equal(hook(`gh api repos/${ORG}/testrepo/issues -fbody=clean`, { r }).out, '', 'near miss: a clean field')
+  })
+  it('refuses git p${X}sh, whatever letters the expansion hides', () => {
+    const r = repo({ outgoing: { 'x.md': `${IP}\n` } })
+    for (const c of ['git p${NOPE_UNSET}sh origin feature', 'git pu${NOPE_UNSET}sh origin feature']) assert.ok(denied(hook(c, { r })), c)
+  })
+  it('lets an ordinary commit through even when its message comes from a heredoc and mentions public output', () => {
+    const r = repo()
+    const msg = "git commit -m \"$(cat <<'EOF'\nmake the public output shorter\nEOF\n)\""
+    assert.equal(hook(msg, { r }).out, '')
+    assert.equal(hook('git commit -m "$MSG_UNSET"', { r }).out, '')
+    assert.ok(denied(hook('git commit -m "$(git push origin feature)"', { r: repo({ outgoing: { 'x.md': `${IP}\n` } }) })), 'near miss: a push hidden in the substitution')
+    assert.ok(denied(hook("git commit -m x && git push origin feature", { r })), 'near miss: a commit chained to a push')
+  })
+})
+
 describe('public-push-guard: wiring', () => {
   it('has a settings entry that runs the hook as a PreToolUse hook on Bash, with room for its own budget', () => {
     const own = JSON.parse(readFileSync(join(ROOT, 'scripts', 'claude-hooks', 'public-push-guard.settings.json'), 'utf8'))

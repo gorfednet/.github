@@ -101,6 +101,7 @@ function readShell(source, state) {
   }
   const nested = (text) => {
     const inner = readShell(text, { cwd, vars, exported })
+    inner.statements.forEach((x) => { x.nested = true })
     out.statements.push(...inner.statements)
     if (inner.uncertain) out.uncertain = true
     return inner
@@ -839,11 +840,23 @@ function readBodyFile(word, base, heredoc) {
   }
 }
 
+/** The literal subcommand word of a git command, or null when an option or the word itself holds an expansion. */
+function gitSubcommand(words) {
+  let k = 1
+  while (k < words.length && words[k].text.startsWith('-')) {
+    if (words[k].open) return null
+    k += GIT_ARG_OPTS.has(words[k].text) ? 2 : 1
+  }
+  const w = words[k]
+  return w && !w.open && /^[a-z][a-z-]*$/.test(w.text) ? w.text : null
+}
+
 const PUSH_BOOL_FLAGS = new Set(['-f', '--force', '--force-if-includes', '-u', '--set-upstream', '-n', '--dry-run', '-v', '--verbose', '-q', '--quiet', '--no-verify', '--verify', '--porcelain', '--atomic', '--no-atomic', '--prune', '--thin', '--no-thin', '--no-signed', '--no-follow-tags', '--progress', '--no-progress', '-4', '--ipv4', '-6', '--ipv6', '--no-recurse-submodules', '--no-force-with-lease', '--no-force-if-includes'])
 const PUSH_ATTACHED = /^--(?:force-with-lease|signed|recurse-submodules|push-option|receive-pack|exec|repo)=/
 
 const GH_WRITE = /\b(?:create|new|edit|comment|review|merge|close|reopen|upload)\b/
-const GH_API_WRITE = /(?:-X|--method)[ =]*(?:POST|PATCH|PUT|DELETE)|\s(?:-f|-F|--field|--raw-field|--input)\b/i
+// -fbody=x and -Fbody=x carry the value on the flag itself, so nothing may be required after the letter.
+const GH_API_WRITE = /(?:-X|--method)[ =]*(?:POST|PATCH|PUT|DELETE)|\s(?:-[fF]|--field|--raw-field|--input)/i
 
 /**
  * Anything that could push or write to GitHub is checked only when it is one plain command the
@@ -852,6 +865,12 @@ const GH_API_WRITE = /(?:-X|--method)[ =]*(?:POST|PATCH|PUT|DELETE)|\s(?:-f|-F|-
  * Returns false when the command holds no git or gh at all (a push word in an echo).
  */
 function plain(parsed) {
+  // A git command whose subcommand is a plain word other than push (commit, log, ...) can't push, whatever its
+  // arguments hold: a commit message from a here-document or a variable is routine. Only when nothing else in
+  // the command, a substitution included, mentions git or gh.
+  const top = parsed.statements.filter((x) => !x.nested)
+  const gitish = (x) => x.words.some((w) => ['git', 'gh'].includes(basename(w.text)))
+  if (!parsed.uncertain && top.length === 1 && basename(top[0].words[0].text) === 'git' && gitSubcommand(top[0].words) !== null && gitSubcommand(top[0].words) !== 'push' && parsed.statements.every((x) => x === top[0] || !gitish(x))) return false
   const refuse = (why) => deny(`public-push-guard: this command could push or write to GitHub, and the hook checks only one plain command it can read in full (${why}). Run the push or gh write as one plain command from the target directory, with a literal --body-file.`)
   const sts = parsed.statements
   if (parsed.uncertain) refuse('it holds something the hook can\'t read')
@@ -885,7 +904,7 @@ async function main() {
   // Could this push or write to GitHub anywhere in it? Quotes and backslashes are dropped first.
   const stripped = command.replace(/[\\'"]/g, '')
   const expands = /[$`]/.test(command)
-  const pushText = /push/.test(stripped) || (/\bgit\b/.test(stripped) && /pu/.test(stripped) && expands)
+  const pushText = /push/.test(stripped) || (/\bgit\b/.test(stripped) && expands)
   const ghText = /\bgh\b/.test(stripped) && (GH_WRITE.test(stripped) || (/\bapi\b/.test(stripped) && GH_API_WRITE.test(stripped)) || expands)
   if (!pushText && !ghText) return
 
@@ -978,7 +997,7 @@ async function main() {
     const isVisibility =
       (a === 'repo' && b === 'edit' && visibilityWord === 'public') ||
       (a === 'repo' && b === 'create' && c.args.some((w) => w.text === '--public')) ||
-      (writesApi && /\b(visibility=public|private=false)\b|"visibility"\s*:\s*"public"/.test(apiFieldText))
+      (writesApi && /(?:visibility=public|private=false)\b|"visibility"\s*:\s*"public"/.test(apiFieldText))
     const inputWord = isApi ? flagValue(c.args, ['--input']) : undefined
     let inputText = null // null: not read (standard input, a file that isn't there)
     if (inputWord && inputWord.text !== '-') {
