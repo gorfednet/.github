@@ -430,6 +430,45 @@ describe('where the shared reviewer runs', () => {
   })
 })
 
+describe('the action accepts the ship-bot App as actor, and no other bot', () => {
+  // claude-code-action refuses a Bot actor that is not in `allowed_bots` ("Add bot to allowed_bots
+  // list or use '*'"; ops run 43786723140, ops 105, 15 November 2026). This mirrors the action's
+  // own isAllowedBot (src/github/validation/actor.ts at the pinned commit).
+  const SHIP_BOT = 'gorfednet-ship-bot'
+  const isAllowedBot = (actor, allowed) => {
+    const trimmed = allowed.trim()
+    if (trimmed === '*') return true
+    if (!trimmed) return false
+    const list = trimmed.split(',').map((b) => b.trim().toLowerCase().replace(/\[bot\]$/, '')).filter(Boolean)
+    return list.includes(actor.toLowerCase().replace(/\[bot\]$/, ''))
+  }
+  const allowedBotsOf = (text) => /^\s+allowed_bots: (.*)$/m.exec(step(text, 'Review'))?.[1]?.trim() ?? ''
+
+  it('without the line the ship-bot actor is refused (the workflow as it was before the fix)', () => {
+    const before = workflow.replace(/^\s+allowed_bots: .*\n/m, '')
+    assert.notEqual(before, workflow, 'the line was present to remove')
+    assert.equal(allowedBotsOf(before), '')
+    assert.equal(isAllowedBot(`${SHIP_BOT}[bot]`, allowedBotsOf(before)), false)
+  })
+
+  it('allows the ship-bot App, with or without the [bot] suffix', () => {
+    assert.equal(isAllowedBot(SHIP_BOT, allowedBotsOf(workflow)), true)
+    assert.equal(isAllowedBot(`${SHIP_BOT}[bot]`, allowedBotsOf(workflow)), true)
+  })
+
+  it('still refuses every other bot, including near misses', () => {
+    for (const other of ['dependabot[bot]', 'github-actions[bot]', 'gorfednet-ship-bot-2[bot]', 'ship-bot[bot]', 'evil-gorfednet-ship-bot[bot]']) {
+      assert.equal(isAllowedBot(other, allowedBotsOf(workflow)), false, other)
+    }
+  })
+
+  it('names one exact login, never a wildcard or a list', () => {
+    const value = allowedBotsOf(workflow)
+    assert.equal(value, SHIP_BOT)
+    assert.doesNotMatch(value, /[*,]/)
+  })
+})
+
 describe('claude-review model choice', () => {
   const pick = step(workflow, 'Pick the model')
   const script = /run: \|\n([\s\S]*)$/.exec(pick)[1].replace(/^ {10}/gm, '')
