@@ -1165,6 +1165,12 @@ describe('public-push-guard: round 13', () => {
     assert.ok(denied(hook('git "pu\\\nsh" origin feature', { r })))
     assert.equal(hook('git "pu\\\nsh" origin feature', { r: repo() }).out, '', 'near miss: nothing to find passes')
   })
+  it('refuses a brace or glob in a word that is also partly quoted', () => {
+    const r = repo({ outgoing: { 'x.md': `${IP}\n` } })
+    for (const c of ['git push {origin,-v}"" feature', 'git push "o"{rigin,} feature', 'git push "origi"? feature']) assert.ok(denied(hook(c, { r })), c)
+    assert.equal(hook('git push "origin" feature', { r: repo() }).out, '', 'near miss: a fully quoted word with nothing to find')
+    assert.equal(hook('gh pr comment 3 --body "a * b {c}"', { r: repo() }).out, '', 'near miss: braces and stars wholly inside quotes are text')
+  })
   it('does not fall back to a predictable directory when the private cache is unusable', () => {
     const r = repo({ outgoing: { 'x.md': `${IP}\n` } })
     const cache = tmp('hostile')

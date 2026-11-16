@@ -253,7 +253,9 @@ function readShell(source, state) {
         endStatement()
         i += 1
       } else {
-        startWord().text += c
+        const bare = startWord()
+        bare.text += c
+        if ('*?[{'.includes(c)) bare.glob = true // an unquoted glob or brace character: the shell expands it
         i += 1
       }
     } else if (c === ' ' || c === '\t') {
@@ -277,7 +279,9 @@ function readShell(source, state) {
           pendingHeredocs = []
         }
       } else {
-        startWord().text += c
+        const bare = startWord()
+        bare.text += c
+        if ('*?[{'.includes(c)) bare.glob = true // an unquoted glob or brace character: the shell expands it
         i += 1
       }
     }
@@ -935,7 +939,7 @@ function plain(parsed) {
   const sts = parsed.statements
   if (parsed.uncertain) refuse('it holds something the hook can\'t read')
   if (sts.some((x) => x.cwd === null || x.words.some((w) => w.open))) refuse('it uses a variable, a substitution or a directory the hook has no value for')
-  if (sts.some((x) => x.words.some((w) => (!w.quoted && /[*?[{]/.test(w.text.replace(/\{(?:owner|repo|branch)\}/g, ''))) || w.text.startsWith('--work-tree') || w.text.startsWith('--config-env')))) refuse('it uses a glob, a brace, --work-tree or --config-env')
+  if (sts.some((x) => x.words.some((w) => (w.glob && /[*?[{]/.test(w.text.replace(/\{(?:owner|repo|branch)\}/g, ''))) || w.text.startsWith('--work-tree') || w.text.startsWith('--config-env')))) refuse('it uses a glob, a brace, --work-tree or --config-env')
   if (!sts.some((x) => x.words.some((w) => ['git', 'gh'].includes(basename(w.text))))) {
     // No word is git or gh. Only a command that just prints or searches text may hold a push word. An interpreter
     // running inline code, or any other command with git push or gh inside an argument, could run it.
