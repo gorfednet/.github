@@ -1,13 +1,13 @@
 {
-  "generatedAt": "2026-11-15T22:32:00.360Z",
-  "renderedAt": "2026-11-15T22:32:00.360Z",
+  "generatedAt": "2026-11-16T00:51:20.538Z",
+  "renderedAt": "2026-11-16T00:51:20.538Z",
   "repos": [
     {
       "slug": "gorfednet/bindercurve.com",
       "redacted": true,
       "mainRed": true,
-      "openPrCount": 4,
-      "lapsedBacklogCount": 0,
+      "openPrCount": 5,
+      "lapsedBacklogCount": 16,
       "noPrCount": 79,
       "idlePrCount": 1,
       "duplicatePrCount": 0,
@@ -19,7 +19,7 @@
       "redacted": true,
       "mainRed": false,
       "openPrCount": 22,
-      "lapsedBacklogCount": 0,
+      "lapsedBacklogCount": 20,
       "noPrCount": 13,
       "idlePrCount": 7,
       "duplicatePrCount": 0,
@@ -31,7 +31,7 @@
       "redacted": true,
       "mainRed": false,
       "openPrCount": 0,
-      "lapsedBacklogCount": 0,
+      "lapsedBacklogCount": 3,
       "noPrCount": 2,
       "idlePrCount": 0,
       "duplicatePrCount": 0,
@@ -55,7 +55,7 @@
       "redacted": true,
       "mainRed": false,
       "openPrCount": 2,
-      "lapsedBacklogCount": 0,
+      "lapsedBacklogCount": 1,
       "noPrCount": 2,
       "idlePrCount": 1,
       "duplicatePrCount": 1,
@@ -91,7 +91,7 @@
       "redacted": true,
       "mainRed": false,
       "openPrCount": 2,
-      "lapsedBacklogCount": 0,
+      "lapsedBacklogCount": 2,
       "noPrCount": 2,
       "idlePrCount": 0,
       "duplicatePrCount": 0,
@@ -103,7 +103,7 @@
       "redacted": true,
       "mainRed": false,
       "openPrCount": 2,
-      "lapsedBacklogCount": 0,
+      "lapsedBacklogCount": 2,
       "noPrCount": 20,
       "idlePrCount": 1,
       "duplicatePrCount": 0,
@@ -127,7 +127,7 @@
       "redacted": true,
       "mainRed": false,
       "openPrCount": 7,
-      "lapsedBacklogCount": 1,
+      "lapsedBacklogCount": 2,
       "noPrCount": 1,
       "idlePrCount": 0,
       "duplicatePrCount": 3,
@@ -140,29 +140,51 @@
       "mainRed": false,
       "openPrs": [
         {
-          "number": 208,
-          "title": "ci-resourcing: pool variable set on 11 repos, hosted jobs decided (plan 3.2)",
+          "number": 216,
+          "title": "Public push guard: check a push or gh text before it reaches a public repository (plan row 1.30 f)",
           "ageDays": 0,
-          "labels": [
-            "ready-to-merge"
-          ],
+          "labels": [],
           "draft": false,
-          "review": "clean",
-          "headSha": "4b6f1364617fe6d6432ef30dfcc73ac64903c82a",
-          "ci": "green",
-          "next": "Merge (docs only).",
+          "review": "findings",
+          "headSha": "67836293a313a2d9552c4d80f8f9872dcba45b13",
+          "ci": "red",
+          "next": "Merge once the Claude review is clean.",
           "author": "gorfednet"
         },
         {
-          "number": 207,
-          "title": "Installed tools: compare gate scripts and ~/.claude mirror, ntfy once on drift (plan 1.18)",
+          "number": 214,
+          "title": "Plan and briefs: CI parallelism sized from the container's cpus",
+          "ageDays": 0,
+          "labels": [],
+          "draft": false,
+          "review": "clean",
+          "headSha": "b7614c9ed1b1515bb3e688ef897c07fdee164053",
+          "ci": "green",
+          "next": "merge: round 4 of 4 is clean on b7614c9, CI green, no closing phrases. Desk labels.",
+          "author": "gorfednet"
+        },
+        {
+          "number": 213,
+          "title": "janitor: sweep merged origin branches (plan row 1.30 e)",
           "ageDays": 0,
           "labels": [],
           "draft": true,
           "review": "clean",
-          "headSha": "bc3b7d1ae22ef44ed35fabe8820ee54a6d993873",
+          "headSha": "344878e0886f85b9ec6c36a206e33d3c6ccd9da8",
           "ci": "green",
-          "next": "After merge, ship-bot advances `gates-main`. Then the owner installs, one at a time. This PR changes `scripts/lib`, so the installed ship-bot reads stale until step 1.",
+          "next": "Merge: Desk labels `ready-to-merge` once the review is clean (control-plane path, so the janitor never labels it).",
+          "author": "gorfednet"
+        },
+        {
+          "number": 212,
+          "title": "Move Desk, plan, briefs, handoffs and the ~/.claude copy to private ops; weekly upkeep line (plan 1.30 c, d)",
+          "ageDays": 0,
+          "labels": [],
+          "draft": true,
+          "review": "clean",
+          "headSha": "e7b4d544fce2add6ecabea81c8166ab8e9173a88",
+          "ci": "green",
+          "next": "Merge once the gates are clean, and only after gorfednet/ops#102 has merged and Desk has switched to ops `desk-log` (steps below). Control plane: Desk labels after a Fable read and a clean review.",
           "author": "gorfednet"
         },
         {
@@ -184,7 +206,7 @@
           "labels": [],
           "draft": true,
           "review": "not-run",
-          "headSha": "7f21b767fc1770a13991e67d665ba9fad0765783",
+          "headSha": "302575a501840ef62939a7032917011f074824c2",
           "ci": "none",
           "next": "Desk appends each pass's line until the 02:00 ET rotation (hold: the log is still being written)",
           "author": "gorfednet"
@@ -280,9 +302,19 @@
       ],
       "lapsedBacklog": [
         {
+          "id": "cards-at-overwritable-urls",
+          "status": "confirmed-bug",
+          "reviewBy": "2026-11-15"
+        },
+        {
           "id": "publish-the-server-never-saw",
           "status": "confirmed-bug",
           "reviewBy": "2026-10-15"
+        },
+        {
+          "id": "vhost-capture-drift-gorfed-work-and-assist",
+          "status": "landed",
+          "reviewBy": "2026-11-15"
         }
       ],
       "backlogOpen": [
@@ -519,7 +551,7 @@
       "redacted": true,
       "mainRed": false,
       "openPrCount": 2,
-      "lapsedBacklogCount": 0,
+      "lapsedBacklogCount": 1,
       "noPrCount": 1,
       "idlePrCount": 1,
       "duplicatePrCount": 0,
@@ -529,9 +561,9 @@
     {
       "slug": "gorfednet/heuristics.4thcltr.com",
       "redacted": true,
-      "mainRed": true,
-      "openPrCount": 10,
-      "lapsedBacklogCount": 12,
+      "mainRed": false,
+      "openPrCount": 11,
+      "lapsedBacklogCount": 15,
       "noPrCount": 5,
       "idlePrCount": 0,
       "duplicatePrCount": 4,
@@ -542,7 +574,7 @@
       "slug": "gorfednet/papers.4thcltr.com",
       "redacted": true,
       "mainRed": true,
-      "openPrCount": 1,
+      "openPrCount": 3,
       "lapsedBacklogCount": 0,
       "noPrCount": 1,
       "idlePrCount": 0,
@@ -578,7 +610,7 @@
       "slug": "gorfednet/ops",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 4,
+      "openPrCount": 5,
       "lapsedBacklogCount": 0,
       "noPrCount": 0,
       "idlePrCount": 0,
@@ -594,26 +626,50 @@
   "branchesReadAt": "2026-11-15T02:31:55.477Z",
   "carried": true,
   "inventory": {
-    "measuredAt": "2026-11-15T22:32:00.360Z",
+    "measuredAt": "2026-11-16T00:51:20.538Z",
     "counts": {
       "pr": {
-        "total": 81,
-        "orphans": 47
+        "total": 88,
+        "orphans": 54
       },
       "session": null,
       "worktree": null,
       "job": null,
       "backlog": {
         "total": 30,
-        "orphans": 1
+        "orphans": 2
       }
     },
     "orphans": [
       {
         "kind": "pr",
         "repo": "gorfednet/.github",
-        "ref": "#207",
-        "label": "Installed tools: compare gate scripts and ~/.claude mirror, ntfy once on drift (plan 1.18)",
+        "ref": "#216",
+        "label": "Public push guard: check a push or gh text before it reaches a public repository (plan row 1.30 f)",
+        "private": false,
+        "lapsed": false
+      },
+      {
+        "kind": "pr",
+        "repo": "gorfednet/.github",
+        "ref": "#214",
+        "label": "Plan and briefs: CI parallelism sized from the container's cpus",
+        "private": false,
+        "lapsed": false
+      },
+      {
+        "kind": "pr",
+        "repo": "gorfednet/.github",
+        "ref": "#213",
+        "label": "janitor: sweep merged origin branches (plan row 1.30 e)",
+        "private": false,
+        "lapsed": false
+      },
+      {
+        "kind": "pr",
+        "repo": "gorfednet/.github",
+        "ref": "#212",
+        "label": "Move Desk, plan, briefs, handoffs and the ~/.claude copy to private ops; weekly upkeep line (plan 1.30 c, d)",
         "private": false,
         "lapsed": false
       },
@@ -668,13 +724,21 @@
       {
         "kind": "backlog",
         "repo": "gorfednet/.github",
+        "ref": "cards-at-overwritable-urls",
+        "label": "Most sites still declare a social card at a URL that cannot be replaced",
+        "private": false,
+        "lapsed": true
+      },
+      {
+        "kind": "backlog",
+        "repo": "gorfednet/.github",
         "ref": "publish-the-server-never-saw",
         "label": "Every deploy to the ten NAS sites reached the filesystem and not the visitor",
         "private": false,
         "lapsed": true
       }
     ],
-    "hiddenPrivate": 40,
+    "hiddenPrivate": 44,
     "privateReposNotItemised": 18
   }
 }
