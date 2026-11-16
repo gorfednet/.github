@@ -182,6 +182,12 @@ jobs:
           anthropic_api_key: ${{ steps.auth.outputs.kind == 'api' && secrets.CLAUDE_CODE_OAUTH_TOKEN || '' }}
           claude_code_oauth_token: ${{ steps.auth.outputs.kind == 'oauth' && secrets.CLAUDE_CODE_OAUTH_TOKEN || '' }}
           github_token: ${{ github.token }}
+          # The action refuses any non-human actor unless it is listed here. Ship-bot readies a
+          # draft, and a `ready_for_review` run then has the ship-bot App as its actor (ops 105,
+          # 15 November 2026). Exactly that one login, never `*`: any other bot is still refused.
+          # The trigger job above decides which events reach this step; this only lets the
+          # action's own actor check agree with it.
+          allowed_bots: gorfednet-ship-bot
           prompt: |
             REPO: ${{ github.repository }}
             PR NUMBER: ${{ steps.pr.outputs.number }}
