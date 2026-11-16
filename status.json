@@ -1,86 +1,665 @@
 {
-  "generatedAt": "2026-11-16T16:32:02.302Z",
-  "renderedAt": "2026-11-16T16:32:02.302Z",
+  "generatedAt": "2026-11-16T18:32:03.626Z",
+  "renderedAt": "2026-11-16T18:32:03.626Z",
   "repos": [
     {
       "slug": "gorfednet/bindercurve.com",
-      "unavailable": "unreadable"
+      "redacted": true,
+      "mainRed": false,
+      "openPrCount": 8,
+      "lapsedBacklogCount": 16,
+      "noPrCount": 79,
+      "idlePrCount": 1,
+      "duplicatePrCount": 0,
+      "dependabotRedCount": 0,
+      "kitVersion": "0.61.0"
     },
     {
       "slug": "gorfednet/4thcltr.com",
-      "unavailable": "unreadable"
+      "redacted": true,
+      "mainRed": true,
+      "openPrCount": 23,
+      "lapsedBacklogCount": 20,
+      "noPrCount": 13,
+      "idlePrCount": 19,
+      "duplicatePrCount": 0,
+      "dependabotRedCount": 0,
+      "kitVersion": "0.61.0"
     },
     {
       "slug": "gorfednet/gorfed.net",
-      "unavailable": "unreadable"
+      "redacted": true,
+      "mainRed": false,
+      "openPrCount": 0,
+      "lapsedBacklogCount": 3,
+      "noPrCount": 4,
+      "idlePrCount": 0,
+      "duplicatePrCount": 0,
+      "dependabotRedCount": 0,
+      "kitVersion": "0.61.0"
     },
     {
       "slug": "gorfednet/subrythm.com",
-      "unavailable": "unreadable"
+      "redacted": true,
+      "mainRed": false,
+      "openPrCount": 1,
+      "lapsedBacklogCount": 3,
+      "noPrCount": 1,
+      "idlePrCount": 1,
+      "duplicatePrCount": 0,
+      "dependabotRedCount": 0,
+      "kitVersion": "0.61.0"
     },
     {
       "slug": "gorfednet/anal0g.org",
-      "unavailable": "unreadable"
+      "redacted": true,
+      "mainRed": false,
+      "openPrCount": 2,
+      "lapsedBacklogCount": 1,
+      "noPrCount": 2,
+      "idlePrCount": 2,
+      "duplicatePrCount": 1,
+      "dependabotRedCount": 0,
+      "kitVersion": "0.61.0"
     },
     {
       "slug": "gorfednet/blackpixelrecords.com",
-      "unavailable": "unreadable"
+      "redacted": true,
+      "mainRed": false,
+      "openPrCount": 2,
+      "lapsedBacklogCount": 0,
+      "noPrCount": 3,
+      "idlePrCount": 1,
+      "duplicatePrCount": 0,
+      "dependabotRedCount": 0,
+      "kitVersion": "0.61.0"
     },
     {
       "slug": "gorfednet/denseware.com",
-      "unavailable": "unreadable"
+      "redacted": true,
+      "mainRed": false,
+      "openPrCount": 0,
+      "lapsedBacklogCount": 0,
+      "noPrCount": 2,
+      "idlePrCount": 0,
+      "duplicatePrCount": 0,
+      "dependabotRedCount": 0,
+      "kitVersion": "0.61.0"
     },
     {
       "slug": "gorfednet/gorfmusic.com",
-      "unavailable": "unreadable"
+      "redacted": true,
+      "mainRed": false,
+      "openPrCount": 2,
+      "lapsedBacklogCount": 2,
+      "noPrCount": 2,
+      "idlePrCount": 2,
+      "duplicatePrCount": 0,
+      "dependabotRedCount": 0,
+      "kitVersion": "0.61.0"
     },
     {
       "slug": "gorfednet/promptboi.com",
-      "unavailable": "unreadable"
+      "redacted": true,
+      "mainRed": false,
+      "openPrCount": 2,
+      "lapsedBacklogCount": 2,
+      "noPrCount": 20,
+      "idlePrCount": 2,
+      "duplicatePrCount": 0,
+      "dependabotRedCount": 0,
+      "kitVersion": "0.61.0"
     },
     {
       "slug": "gorfednet/rowanmcarthur.com",
-      "unavailable": "unreadable"
+      "redacted": true,
+      "mainRed": false,
+      "openPrCount": 0,
+      "lapsedBacklogCount": 0,
+      "noPrCount": 0,
+      "idlePrCount": 0,
+      "duplicatePrCount": 0,
+      "dependabotRedCount": 0,
+      "kitVersion": "0.61.0"
     },
     {
       "slug": "gorfednet/ssatcy.com",
-      "unavailable": "unreadable"
+      "redacted": true,
+      "mainRed": false,
+      "openPrCount": 7,
+      "lapsedBacklogCount": 2,
+      "noPrCount": 1,
+      "idlePrCount": 6,
+      "duplicatePrCount": 3,
+      "dependabotRedCount": 0,
+      "kitVersion": "0.61.0"
     },
     {
       "slug": "gorfednet/.github",
-      "unavailable": "unreadable"
+      "defaultBranch": "main",
+      "mainRed": false,
+      "openPrs": [
+        {
+          "number": 230,
+          "title": "Quota fixes for local fleet-status (row 1.17): refuse unaffordable runs, light runs from a cache, sampler on launchd",
+          "ageDays": 0,
+          "labels": [],
+          "draft": true,
+          "review": "findings",
+          "headSha": "f7c4f31a8f5d12e22db6b7d40b6165d277350b1e",
+          "ci": "green",
+          "next": "Merge once Desk has done the Fable read and labelled it (`scripts/` is control plane)",
+          "author": "gorfednet"
+        },
+        {
+          "number": 228,
+          "title": "site-deploy: Cloudflare Pages backend, shared analytics Function, upload guard (plan row 3.13, B0)",
+          "ageDays": 0,
+          "labels": [],
+          "draft": false,
+          "review": "clean",
+          "headSha": "4f76b9ff6f22aa4f1a418e488d95b58580e0a985",
+          "ci": "green",
+          "next": "Merge once the review is clean (control-plane: Desk labels after its Fable read).",
+          "author": "gorfednet"
+        },
+        {
+          "number": 220,
+          "title": "Privacy guard: merge commits, hidden paths, commit exemption, bare names (plan row 1.30 f)",
+          "ageDays": 0,
+          "labels": [],
+          "draft": false,
+          "review": "clean",
+          "headSha": "270341796ab6375ab5cac53d96fe8a801dbcf187",
+          "ci": "green",
+          "next": "merge once Desk's Fable read and the review on 2703417 are clean",
+          "author": "gorfednet"
+        },
+        {
+          "number": 216,
+          "title": "Public push guard: check a push or gh text before it reaches a public repository (plan row 1.30 f)",
+          "ageDays": 0,
+          "labels": [],
+          "draft": false,
+          "review": "findings",
+          "headSha": "c37fe752a7e0bad7ae61cddf7f40c8e2c2b0833d",
+          "ci": "red",
+          "next": "Review rounds are over (Desk, 16 November 2026). Known gap, deferred: a push spelled in pieces inside inline code (`python3 -c` with `'pu'+'sh'`). Backlog entry `public-push-guard-spelled-in-pieces`; any later finding outside the README's covered list is triaged the same way. Say here when the review of the new head is clean.",
+          "author": "gorfednet"
+        },
+        {
+          "number": 189,
+          "title": "Plan: move the fleet into one GitHub organization (assessment only)",
+          "ageDays": 2,
+          "labels": [],
+          "draft": true,
+          "review": "findings",
+          "headSha": "87092f1b035d206c0d5f24d8830c5cc7b5815734",
+          "ci": "green",
+          "next": "Fable review, then Desk asks the owner (path, org name, Team plan, cutover sitting)",
+          "author": "gorfednet"
+        },
+        {
+          "number": 117,
+          "title": "Handoff: fleet close-out plan and 4-week assessment (11 Nov)",
+          "ageDays": 5,
+          "labels": [
+            "ready-to-merge",
+            "needs-fix"
+          ],
+          "draft": false,
+          "review": "findings",
+          "headSha": "e2a05068bbc3f8c3004f0292e10f12dd5f936a82",
+          "ci": "green",
+          "next": "Merge when checks are green (docs-only).",
+          "author": "gorfednet"
+        },
+        {
+          "number": 103,
+          "title": "Handoff: recovery of 38 failed Herdr jobs",
+          "ageDays": 6,
+          "labels": [
+            "ready-to-merge",
+            "needs-fix"
+          ],
+          "draft": false,
+          "review": "findings",
+          "headSha": "91108205bc649c9b985761b45c8c9290a84df676",
+          "ci": "green",
+          "next": "Main session: run the gates and merge (docs-only).",
+          "author": "gorfednet"
+        }
+      ],
+      "branchesAhead": [
+        {
+          "branch": "chore/recapture-promptboi-api-vhost",
+          "ahead": 1
+        },
+        {
+          "branch": "claude/headless-starter-1-10",
+          "ahead": 2
+        },
+        {
+          "branch": "desk-log",
+          "ahead": 447
+        },
+        {
+          "branch": "docs/desk-brief",
+          "ahead": 1
+        },
+        {
+          "branch": "docs/desk-brief-session-starts",
+          "ahead": 2
+        },
+        {
+          "branch": "docs/lost-job-hosted-rule",
+          "ahead": 2
+        },
+        {
+          "branch": "docs/plan-pool-app-1115",
+          "ahead": 2
+        },
+        {
+          "branch": "drain/gorfednet.github-kit0482",
+          "ahead": 2
+        },
+        {
+          "branch": "feat/ship-bot-add-repo",
+          "ahead": 1
+        },
+        {
+          "branch": "fix/no-apt-in-no-smb-guard",
+          "ahead": 2
+        },
+        {
+          "branch": "guard-fix-1-30g",
+          "ahead": 1
+        },
+        {
+          "branch": "guard-history-1-30f",
+          "ahead": 3
+        },
+        {
+          "branch": "kit/rules-doc-drift",
+          "ahead": 1
+        },
+        {
+          "branch": "kit/v0.27.0",
+          "ahead": 5
+        },
+        {
+          "branch": "kit/v0.28.0",
+          "ahead": 4
+        },
+        {
+          "branch": "kit/v0.29.0",
+          "ahead": 3
+        },
+        {
+          "branch": "ship-bot-self-install",
+          "ahead": 11
+        },
+        {
+          "branch": "worktree-breezy-toasting-unicorn",
+          "ahead": 1
+        },
+        {
+          "branch": "worktree-crystalline-mapping-acorn",
+          "ahead": 1
+        },
+        {
+          "branch": "worktree-crystalline-weaving-tarjan",
+          "ahead": 1
+        },
+        {
+          "branch": "worktree-effervescent-gliding-pnueli",
+          "ahead": 1
+        },
+        {
+          "branch": "worktree-fancy-sleeping-tower",
+          "ahead": 1
+        },
+        {
+          "branch": "worktree-harmonic-marinating-harp",
+          "ahead": 1
+        },
+        {
+          "branch": "worktree-quizzical-sparking-globe",
+          "ahead": 1
+        },
+        {
+          "branch": "worktree-synthetic-orbiting-blossom",
+          "ahead": 1
+        }
+      ],
+      "lapsedBacklog": [
+        {
+          "id": "cards-at-overwritable-urls",
+          "status": "confirmed-bug",
+          "reviewBy": "2026-11-15"
+        },
+        {
+          "id": "publish-the-server-never-saw",
+          "status": "confirmed-bug",
+          "reviewBy": "2026-10-15"
+        },
+        {
+          "id": "vhost-capture-drift-gorfed-work-and-assist",
+          "status": "landed",
+          "reviewBy": "2026-11-15"
+        }
+      ],
+      "backlogOpen": [
+        {
+          "id": "html-min-bytes-applied-to-assets",
+          "title": "The live healthcheck applied the HTML size floor to sitemaps and robots.txt",
+          "status": "confirmed-bug",
+          "reviewBy": "2026-12-01"
+        },
+        {
+          "id": "cards-at-overwritable-urls",
+          "title": "Most sites still declare a social card at a URL that cannot be replaced",
+          "status": "confirmed-bug",
+          "reviewBy": "2026-11-15"
+        },
+        {
+          "id": "publish-the-server-never-saw",
+          "title": "Every deploy to the ten NAS sites reached the filesystem and not the visitor",
+          "status": "confirmed-bug",
+          "reviewBy": "2026-10-15"
+        },
+        {
+          "id": "fleet-analytics-one-service",
+          "title": "The fleet has page-view analytics only, from Cloudflare, and no way to count an enquiry; BinderCurve also runs Google Tag Manager",
+          "status": "confirmed-bug",
+          "reviewBy": "2026-11-30"
+        },
+        {
+          "id": "papers-deploy-verify-fails-under-load",
+          "title": "papers deploy fails make verify under load",
+          "status": "confirmed-bug",
+          "reviewBy": "2026-12-12"
+        },
+        {
+          "id": "ship-bot-default-rollback-cannot-pass-tip-guard",
+          "title": "Ship-bot's default rollback can never pass site-deploy's merged-tip guard",
+          "status": "confirmed-bug",
+          "reviewBy": "2026-12-13"
+        },
+        {
+          "id": "healthchecks-alerts-email-only",
+          "title": "Dead-man alerts reach the owner by email only: healthchecks.io has no ntfy integration",
+          "status": "confirmed-bug",
+          "reviewBy": "2026-12-14"
+        },
+        {
+          "id": "heartbeat-deadman-deliberate-stop-unproven",
+          "title": "Row 1.13's deliberate dead-man proof (stop the job, see the alert) has not run",
+          "status": "confirmed-bug",
+          "reviewBy": "2026-11-28"
+        },
+        {
+          "id": "assess-1112-a1-kit-copied-not-distributed-drift-warns-only",
+          "title": "A1: Kit refresh: every active repo on one version; drift stays in the scheduled reports",
+          "status": "confirmed-bug",
+          "reviewBy": "2026-12-01"
+        },
+        {
+          "id": "assess-1112-a2-skills-and-agents-still-name-cursor",
+          "title": "A2: Rewrite the five files, move 4thcltr .cursor skills, add skill evals",
+          "status": "confirmed-bug",
+          "reviewBy": "2026-12-01"
+        },
+        {
+          "id": "assess-1112-a4-must-rules-live-in-prose",
+          "title": "A4: hookify them into PreToolUse and Stop hooks, each shown failing once",
+          "status": "confirmed-bug",
+          "reviewBy": "2026-12-01"
+        },
+        {
+          "id": "assess-1112-b1-no-shared-design-system",
+          "title": "B1: Design package distributed by the kit refresh, seeded from BinderCurve tokens.css",
+          "status": "confirmed-bug",
+          "reviewBy": "2026-12-01"
+        },
+        {
+          "id": "assess-1112-b2-no-design-direction-per-property",
+          "title": "B2: design-direction.md per property via frontend-design two-pass method; owner approves each",
+          "status": "confirmed-bug",
+          "reviewBy": "2026-12-01"
+        },
+        {
+          "id": "assess-1112-b3-no-design-review-in-gate",
+          "title": "B3: design-reviewer agent plus check-design-tells lint, watched failing once",
+          "status": "confirmed-bug",
+          "reviewBy": "2026-12-01"
+        },
+        {
+          "id": "assess-1112-b4-heroes-are-text-on-flat-background",
+          "title": "B4: One property per session: 4thcltr, gorfed.net, MoonMan landing, BinderCurve, four Figma-scaffold sites, music sites",
+          "status": "confirmed-bug",
+          "reviewBy": "2026-12-01"
+        },
+        {
+          "id": "assess-1112-b5-og-and-image-pipelines-copied-nine-times",
+          "title": "B5: One pipeline in the design package, gated by check-og-image and check-live-og-image",
+          "status": "confirmed-bug",
+          "reviewBy": "2026-12-01"
+        },
+        {
+          "id": "assess-1112-c1-moonman-main-red-and-repo-clutter",
+          "title": "C1: heal-drift root-cause fix, backlog sync, CLAUDE.md, gitignore, move renders, check the gate pin",
+          "status": "confirmed-bug",
+          "reviewBy": "2026-12-01"
+        },
+        {
+          "id": "assess-1112-c2-wall-clock-in-tests",
+          "title": "C2: check-test-clock and check-fail-closed lints in the kit",
+          "status": "confirmed-bug",
+          "reviewBy": "2026-12-01"
+        },
+        {
+          "id": "assess-1112-c3-five-projects-no-executed-floor-and-no-device-proof",
+          "title": "C3: assert-tests-executed in five repos; required device artifact on MoonMan release PRs",
+          "status": "confirmed-bug",
+          "reviewBy": "2026-12-01"
+        },
+        {
+          "id": "assess-1112-c4-runner-image-drifts-from-lockfiles",
+          "title": "C4: Derive the image from lockfiles, report queue depth, decide a second host from data",
+          "status": "confirmed-bug",
+          "reviewBy": "2026-12-01"
+        },
+        {
+          "id": "assess-1112-c5-declared-facts-drift",
+          "title": "C5: Inventory and derive declared facts; sync checks only where drift reached users",
+          "status": "confirmed-bug",
+          "reviewBy": "2026-12-01"
+        },
+        {
+          "id": "assess-1112-d1-security-headers-dropped-or-missing",
+          "title": "D1: check-security-headers in kit and healthcheck; deploy engine carries headers",
+          "status": "confirmed-bug",
+          "reviewBy": "2026-12-01"
+        },
+        {
+          "id": "assess-1112-d2-no-vuln-scan-on-money-and-server-repos",
+          "title": "D2: claude-security on those paths, security-guidance everywhere, actions pinned by SHA",
+          "status": "confirmed-bug",
+          "reviewBy": "2026-12-01"
+        },
+        {
+          "id": "assess-1112-d3-dependabot-and-branch-protection-open",
+          "title": "D3: Group updates, ship-bot labels green bumps, protect-branches on six repos",
+          "status": "confirmed-bug",
+          "reviewBy": "2026-12-01"
+        },
+        {
+          "id": "assess-1112-d4-settings-local-allowlists-uncommitted-and-stale",
+          "title": "D4: Committed .claude/settings.json per repo from fewer-permission-prompts",
+          "status": "confirmed-bug",
+          "reviewBy": "2026-12-01"
+        },
+        {
+          "id": "assess-1112-e1-eleven-nov-phases-b-and-c-open",
+          "title": "E1: Execute as tiered in the 11 Nov plan after A1 to A4",
+          "status": "confirmed-bug",
+          "reviewBy": "2026-12-01"
+        },
+        {
+          "id": "assess-1112-e3-session-cost-not-measured",
+          "title": "E3: Monthly session-report into docs/usage, act on the top item",
+          "status": "confirmed-bug",
+          "reviewBy": "2026-12-01"
+        },
+        {
+          "id": "fleet-registry-missing-repos",
+          "title": "Six active repositories are missing from fleet.json",
+          "status": "confirmed-bug",
+          "reviewBy": "2026-11-27"
+        },
+        {
+          "id": "janitor-prompt-199-lows",
+          "title": "Janitor PROMPT.md: two Low findings left from .github 199",
+          "status": "confirmed-bug",
+          "reviewBy": "2026-11-28"
+        },
+        {
+          "id": "eval-triage-dangerous-must-be-zero",
+          "title": "Eval judge lets a candidate match Haiku's dangerous triage misses instead of requiring none",
+          "status": "confirmed-bug",
+          "reviewBy": "2026-11-28"
+        },
+        {
+          "id": "ci-parallelism-host-cpus",
+          "title": "CI tools size their parallelism from the host's 12 cpus inside the pool's 2-cpu containers",
+          "status": "confirmed-bug",
+          "reviewBy": "2026-11-27"
+        }
+      ],
+      "idlePrs": [],
+      "duplicatePrs": [],
+      "lastDeploy": null,
+      "incidents7d": 1,
+      "dependabotRed": 0,
+      "kitVersion": "0.63.0"
     },
     {
       "slug": "gorfednet/MoonMan",
-      "unavailable": "unreadable"
+      "redacted": true,
+      "mainRed": false,
+      "openPrCount": 3,
+      "lapsedBacklogCount": 2,
+      "noPrCount": 46,
+      "idlePrCount": 0,
+      "duplicatePrCount": 0,
+      "dependabotRedCount": 0,
+      "kitVersion": null
     },
     {
       "slug": "gorfednet/ACID2REAPER",
-      "unavailable": "unreadable"
+      "defaultBranch": "main",
+      "mainRed": false,
+      "openPrs": [
+        {
+          "number": 8,
+          "title": "Drain: Acid3 sample fixtures",
+          "ageDays": 3,
+          "labels": [],
+          "draft": true,
+          "review": "not-run",
+          "headSha": "f8feb2f4de86269761c71e46fb6b32edb94fe5a2",
+          "ci": "red",
+          "next": "merge if tests use them, else close",
+          "author": "gorfednet"
+        }
+      ],
+      "branchesAhead": [],
+      "lapsedBacklog": [],
+      "backlogOpen": [],
+      "idlePrs": [
+        {
+          "number": 8,
+          "idleDays": 3
+        }
+      ],
+      "duplicatePrs": [],
+      "lastDeploy": null,
+      "incidents7d": 0,
+      "dependabotRed": 0,
+      "kitVersion": null
     },
     {
       "slug": "gorfednet/career-portfolio",
-      "unavailable": "unreadable"
+      "redacted": true,
+      "mainRed": false,
+      "openPrCount": 4,
+      "lapsedBacklogCount": 1,
+      "noPrCount": 1,
+      "idlePrCount": 2,
+      "duplicatePrCount": 0,
+      "dependabotRedCount": 0,
+      "kitVersion": "0.61.0"
     },
     {
       "slug": "gorfednet/heuristics.4thcltr.com",
-      "unavailable": "unreadable"
+      "redacted": true,
+      "mainRed": false,
+      "openPrCount": 11,
+      "lapsedBacklogCount": 15,
+      "noPrCount": 6,
+      "idlePrCount": 7,
+      "duplicatePrCount": 4,
+      "dependabotRedCount": 0,
+      "kitVersion": "0.61.0"
     },
     {
       "slug": "gorfednet/papers.4thcltr.com",
-      "unavailable": "unreadable"
+      "redacted": true,
+      "mainRed": false,
+      "openPrCount": 1,
+      "lapsedBacklogCount": 0,
+      "noPrCount": 4,
+      "idlePrCount": 1,
+      "duplicatePrCount": 0,
+      "dependabotRedCount": 0,
+      "kitVersion": "0.61.0"
     },
     {
       "slug": "gorfednet/scratch-bootstrap-5-6",
-      "unavailable": "unreadable"
+      "redacted": true,
+      "mainRed": false,
+      "openPrCount": 0,
+      "lapsedBacklogCount": 0,
+      "noPrCount": 0,
+      "idlePrCount": 0,
+      "duplicatePrCount": 0,
+      "dependabotRedCount": 0,
+      "kitVersion": "0.62.0"
     },
     {
       "slug": "gorfednet/assess",
-      "unavailable": "unreadable"
+      "redacted": true,
+      "mainRed": false,
+      "openPrCount": 3,
+      "lapsedBacklogCount": 6,
+      "noPrCount": 3,
+      "idlePrCount": 2,
+      "duplicatePrCount": 0,
+      "dependabotRedCount": 0,
+      "kitVersion": "0.61.0"
     },
     {
       "slug": "gorfednet/ops",
-      "unavailable": "unreadable"
+      "redacted": true,
+      "mainRed": false,
+      "openPrCount": 15,
+      "lapsedBacklogCount": 0,
+      "noPrCount": 1,
+      "idlePrCount": 1,
+      "duplicatePrCount": 0,
+      "dependabotRedCount": 0,
+      "kitVersion": "0.61.0"
     }
   ],
   "dormant": [
@@ -89,83 +668,67 @@
   ],
   "branchesReadAt": "2026-11-16T02:33:23.845Z",
   "carried": true,
+  "localCounts": {
+    "rows": {
+      "dirtyClones": {
+        "count": 1,
+        "measuredAt": "2026-11-15T15:00:00.000Z"
+      },
+      "behindClones": {
+        "count": 2,
+        "measuredAt": "2026-11-15T15:00:00.000Z"
+      },
+      "oldWorktrees": {
+        "count": 1,
+        "measuredAt": "2026-11-15T15:00:00.000Z"
+      },
+      "idleSessions": {
+        "count": 1,
+        "measuredAt": "2026-11-15T15:00:00.000Z"
+      },
+      "installedTools": {
+        "count": 1,
+        "measuredAt": "2026-11-15T15:00:00.000Z"
+      },
+      "keptBranches": {
+        "count": null,
+        "measuredAt": null
+      }
+    },
+    "inventory": {
+      "session": {
+        "total": 7,
+        "orphans": 2,
+        "measuredAt": "2026-11-15T15:00:00.000Z"
+      },
+      "worktree": {
+        "total": 4,
+        "orphans": 0,
+        "measuredAt": "2026-11-15T15:00:00.000Z"
+      },
+      "job": {
+        "total": 1,
+        "orphans": 1,
+        "measuredAt": "2026-11-15T15:00:00.000Z"
+      }
+    }
+  },
   "inventory": {
-    "measuredAt": "2026-11-16T16:32:02.302Z",
+    "measuredAt": "2026-11-16T18:32:03.626Z",
     "counts": {
       "pr": {
-        "total": 103,
-        "orphans": 103
+        "total": 104,
+        "orphans": 49
       },
       "session": null,
       "worktree": null,
       "job": null,
-      "backlog": null
+      "backlog": {
+        "total": 31,
+        "orphans": 2
+      }
     },
     "orphans": [
-      {
-        "kind": "pr",
-        "repo": "gorfednet/.github",
-        "ref": "#229",
-        "label": "Inventory (row 1.17): first hand run, retired jobs and janitor-owned worktrees leave the orphan list",
-        "private": false,
-        "lapsed": false
-      },
-      {
-        "kind": "pr",
-        "repo": "gorfednet/.github",
-        "ref": "#228",
-        "label": "site-deploy: Cloudflare Pages backend, shared analytics Function, upload guard (plan row 3.13, B0)",
-        "private": false,
-        "lapsed": false
-      },
-      {
-        "kind": "pr",
-        "repo": "gorfednet/.github",
-        "ref": "#220",
-        "label": "Privacy guard: merge commits, hidden paths, commit exemption, bare names (plan row 1.30 f)",
-        "private": false,
-        "lapsed": false
-      },
-      {
-        "kind": "pr",
-        "repo": "gorfednet/.github",
-        "ref": "#216",
-        "label": "Public push guard: check a push or gh text before it reaches a public repository (plan row 1.30 f)",
-        "private": false,
-        "lapsed": false
-      },
-      {
-        "kind": "pr",
-        "repo": "gorfednet/.github",
-        "ref": "#213",
-        "label": "janitor: sweep merged origin branches (plan row 1.30 e)",
-        "private": false,
-        "lapsed": false
-      },
-      {
-        "kind": "pr",
-        "repo": "gorfednet/.github",
-        "ref": "#189",
-        "label": "Plan: move the fleet into one GitHub organization (assessment only)",
-        "private": false,
-        "lapsed": false
-      },
-      {
-        "kind": "pr",
-        "repo": "gorfednet/ACID2REAPER",
-        "ref": "#8",
-        "label": "Drain: Acid3 sample fixtures",
-        "private": false,
-        "lapsed": false
-      },
-      {
-        "kind": "pr",
-        "repo": "gorfednet/ai-use-levels",
-        "ref": "#25",
-        "label": "Add REVIEW.md and the Claude review workflow",
-        "private": false,
-        "lapsed": false
-      },
       {
         "kind": "pr",
         "repo": "gorfednet/ai-use-levels",
@@ -197,15 +760,31 @@
         "label": "Verification kit 0.48.0: the content guidelines and check-voice",
         "private": false,
         "lapsed": false
+      },
+      {
+        "kind": "backlog",
+        "repo": "gorfednet/.github",
+        "ref": "cards-at-overwritable-urls",
+        "label": "Most sites still declare a social card at a URL that cannot be replaced",
+        "private": false,
+        "lapsed": true
+      },
+      {
+        "kind": "backlog",
+        "repo": "gorfednet/.github",
+        "ref": "publish-the-server-never-saw",
+        "label": "Every deploy to the ten NAS sites reached the filesystem and not the visitor",
+        "private": false,
+        "lapsed": true
       }
     ],
-    "hiddenPrivate": 91,
-    "privateReposNotItemised": 0,
-    "planRead": false
+    "hiddenPrivate": 45,
+    "privateReposNotItemised": 18,
+    "planRead": true
   },
   "dotgithub": {
-    "measuredAt": "2026-11-16T16:32:08.486Z",
-    "branches": 37,
+    "measuredAt": "2026-11-16T18:32:52.144Z",
+    "branches": 36,
     "merged": 2,
     "exposedFiles": 76,
     "rulesNotChecked": [],
