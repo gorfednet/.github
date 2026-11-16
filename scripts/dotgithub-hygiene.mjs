@@ -21,7 +21,7 @@
  * The published fields are counts and public folder names only, never a matched line.
  */
 import { execFileSync } from 'node:child_process'
-import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
@@ -82,17 +82,24 @@ export function countExposure(files, guard, { privateRepos = '', allowText = '' 
   return { exposedFiles: exposed, exposureByRule: byRule, rulesNotChecked }
 }
 
-/** Tracked text files of the checkout: [{ path, text }]. Binary and oversized files are skipped. */
+/**
+ * Tracked files of the checkout, read as text as the guard reads them (`--text`): [{ path, text }]. NULs are
+ * stripped first, so a UTF-16 file's letters join up as they do in the guard's scanText. Files over 2 MB are
+ * not read; their count comes back as `oversized`, so the gap is reported, never silent (rule 1).
+ */
 export function trackedText(root) {
-  const out = []
+  const files = []
+  let oversized = 0
   for (const path of git(root, 'ls-files', '-z').split('\0').filter(Boolean)) {
     const full = join(root, path)
     if (!existsSync(full)) continue
-    const buf = readFileSync(full)
-    if (buf.length > MAX_BYTES || buf.includes(0)) continue
-    out.push({ path, text: buf.toString('utf8') })
+    if (statSync(full).size > MAX_BYTES) {
+      oversized += 1
+      continue
+    }
+    files.push({ path, text: readFileSync(full).toString('utf8').replace(/\0/g, '') })
   }
-  return out
+  return { files, oversized }
 }
 
 export async function measure({ root = '.', ref = 'origin/main', env = process.env, now = new Date(), guardPath } = {}) {
@@ -106,7 +113,9 @@ export async function measure({ root = '.', ref = 'origin/main', env = process.e
   if (existsSync(gp)) {
     const guard = await import(pathToFileURL(gp).href)
     const allowFile = join(root, '.github', 'privacy-guard-allow.txt')
-    exposure = countExposure(trackedText(root), guard, { privateRepos: env.PRIVATE_REPOS ?? '', allowText: existsSync(allowFile) ? readFileSync(allowFile, 'utf8') : '' })
+    const { files, oversized } = trackedText(root)
+    exposure = countExposure(files, guard, { privateRepos: env.PRIVATE_REPOS ?? '', allowText: existsSync(allowFile) ? readFileSync(allowFile, 'utf8') : '' })
+    if (oversized > 0) exposure.rulesNotChecked.push(`${oversized} files over 2 MB not read`)
   }
   // Only the total is published: a per-rule count for a public repository says more than it needs to.
   return { measuredAt: now.toISOString(), branches, merged, exposedFiles: exposure.exposedFiles, rulesNotChecked: exposure.rulesNotChecked, readmeMissing: missing }

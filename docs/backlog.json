@@ -527,7 +527,7 @@
       "status": "confirmed-bug",
       "assignee": "main-model",
       "userSymptom": "Repos pin an old gate ref while the kit on main moves on, and STATUS.md measures vendored copies the gate never runs",
-      "evidence": "Installed versions read from each repo's origin/main, 12 Nov 2026 audit; V77 reached main with .github PR 132 (kit 0.61.0, 12 Nov); main is at 0.62.0 on 14 Nov. Plan: docs/assessment-2026-11-12-output-quality.md. Who: runner, one refresh PR per repo.",
+      "evidence": "Installed versions read from each repo's origin/main, 12 Nov 2026 audit; V77 reached main with .github PR 132 (kit 0.61.0, 12 Nov); main is at 0.62.0 on 14 Nov. Plan: gorfednet/ops control/assessments/2026-11-12-output-quality.md. Who: runner, one refresh PR per repo.",
       "reviewBy": "2026-12-01",
       "created": "2026-11-12",
       "updated": "2026-11-15",
@@ -539,7 +539,7 @@
       "status": "confirmed-bug",
       "assignee": "main-model",
       "userSymptom": "self-heal, verification-bootstrap, full-codebase-assessment, runner and builder still cite Cursor, Bugbot and V1 to V38",
-      "evidence": "12 Nov 2026 audit of ~/.claude and repo .cursor dirs. Plan: docs/assessment-2026-11-12-output-quality.md. Who: Sonnet builder drafts; main session reviews.",
+      "evidence": "12 Nov 2026 audit of ~/.claude and repo .cursor dirs. Plan: gorfednet/ops control/assessments/2026-11-12-output-quality.md. Who: Sonnet builder drafts; main session reviews.",
       "reviewBy": "2026-12-01",
       "created": "2026-11-12",
       "updated": "2026-11-12"
@@ -550,7 +550,7 @@
       "status": "landed",
       "assignee": "main-model",
       "userSymptom": "The frontend-design skill and other official plugins are not installed, and figma-desktop fails in every session",
-      "evidence": "Plugin catalogue and ~/.claude/plugins, 12 Nov 2026; 11 Nov assessment (git show 6b8a1b3:docs/assessment-2026-11-11.md, .github PR 117) section 3. Plan: docs/assessment-2026-11-12-output-quality.md. Who: main session.",
+      "evidence": "Plugin catalogue and ~/.claude/plugins, 12 Nov 2026; 11 Nov assessment (git show 6b8a1b3:docs/assessment-2026-11-11.md, .github PR 117) section 3. Plan: gorfednet/ops control/assessments/2026-11-12-output-quality.md. Who: main session.",
       "reviewBy": "2026-12-01",
       "created": "2026-11-12",
       "updated": "2026-11-14",
@@ -563,7 +563,7 @@
       "status": "confirmed-bug",
       "assignee": "main-model",
       "userSymptom": "Rules that must always hold (label gate, review trigger line, no skip without id, builder brief) are prose a session can forget",
-      "evidence": "11 Nov assessment (git show 6b8a1b3:docs/assessment-2026-11-11.md, .github PR 117) Phase A item 2 not landed; incident pattern 8 (7 entries). Plan: docs/assessment-2026-11-12-output-quality.md. Who: main session; runner for tests.",
+      "evidence": "11 Nov assessment (git show 6b8a1b3:docs/assessment-2026-11-11.md, .github PR 117) Phase A item 2 not landed; incident pattern 8 (7 entries). Plan: gorfednet/ops control/assessments/2026-11-12-output-quality.md. Who: main session; runner for tests.",
       "reviewBy": "2026-12-01",
       "created": "2026-11-12",
       "updated": "2026-11-12"
@@ -574,7 +574,7 @@
       "status": "confirmed-bug",
       "assignee": "main-model",
       "userSymptom": "None of my sites look current because each copies fonts, tokens and footer by hand",
-      "evidence": "Design audit 12 Nov 2026: kit holds no styles; 4thcltr trio vendored by hand. Plan: docs/assessment-2026-11-12-output-quality.md. Who: main session designs; Sonnet builder builds; reviewer reads.",
+      "evidence": "Design audit 12 Nov 2026: kit holds no styles; 4thcltr trio vendored by hand. Plan: gorfednet/ops control/assessments/2026-11-12-output-quality.md. Who: main session designs; Sonnet builder builds; reviewer reads.",
       "reviewBy": "2026-12-01",
       "created": "2026-11-12",
       "updated": "2026-11-12"
@@ -585,7 +585,7 @@
       "status": "confirmed-bug",
       "assignee": "main-model",
       "userSymptom": "Builders reach for defaults because only BinderCurve has a design direction document",
-      "evidence": "Design audit 12 Nov 2026. Plan: docs/assessment-2026-11-12-output-quality.md. Who: editor (Fable); owner approves.",
+      "evidence": "Design audit 12 Nov 2026. Plan: gorfednet/ops control/assessments/2026-11-12-output-quality.md. Who: editor (Fable); owner approves.",
       "reviewBy": "2026-12-01",
       "created": "2026-11-12",
       "updated": "2026-11-12"
@@ -596,7 +596,7 @@
       "status": "confirmed-bug",
       "assignee": "main-model",
       "userSymptom": "Visual mediocrity passes every gate because reviewers read code and pixel diffs only catch change",
-      "evidence": "Reviewer reads code only; frontend-design calibration list names the tells. Plan: docs/assessment-2026-11-12-output-quality.md. Who: main session writes checklist; runner wires.",
+      "evidence": "Reviewer reads code only; frontend-design calibration list names the tells. Plan: gorfednet/ops control/assessments/2026-11-12-output-quality.md. Who: main session writes checklist; runner wires.",
       "reviewBy": "2026-12-01",
       "created": "2026-11-12",
       "updated": "2026-11-12"
@@ -607,7 +607,7 @@
       "status": "confirmed-bug",
       "assignee": "main-model",
       "userSymptom": "I see full-screen imagery from Claude and none of my work looks like that",
-      "evidence": "Only subrythm, BinderCurve and MoonMan use real imagery; 2.8k renders, 5.5k captures unused as heroes. Plan: docs/assessment-2026-11-12-output-quality.md. Who: Sonnet builder per property with frontend-design; design-reviewer; editor for copy.",
+      "evidence": "Only subrythm, BinderCurve and MoonMan use real imagery; 2.8k renders, 5.5k captures unused as heroes. Plan: gorfednet/ops control/assessments/2026-11-12-output-quality.md. Who: Sonnet builder per property with frontend-design; design-reviewer; editor for copy.",
       "reviewBy": "2026-12-01",
       "created": "2026-11-12",
       "updated": "2026-11-12"
@@ -618,7 +618,7 @@
       "status": "confirmed-bug",
       "assignee": "main-model",
       "userSymptom": "Nine near-identical OG generators and five image optimisers drift apart",
-      "evidence": "Design audit 12 Nov 2026; overlaps cards-at-overwritable-urls. Plan: docs/assessment-2026-11-12-output-quality.md. Who: Sonnet builder; runner migrates.",
+      "evidence": "Design audit 12 Nov 2026; overlaps cards-at-overwritable-urls. Plan: gorfednet/ops control/assessments/2026-11-12-output-quality.md. Who: Sonnet builder; runner migrates.",
       "reviewBy": "2026-12-01",
       "created": "2026-11-12",
       "updated": "2026-11-12"
@@ -629,7 +629,7 @@
       "status": "confirmed-bug",
       "assignee": "main-model",
       "userSymptom": "MoonMan main is red, backlog statuses are wrong, no CLAUDE.md, 6.4 GB untracked .claude and loose renders at the root",
-      "evidence": "MoonMan audit 12 Nov 2026. Plan: docs/assessment-2026-11-12-output-quality.md. Who: Sonnet builder; main session for CLAUDE.md and gitignore.",
+      "evidence": "MoonMan audit 12 Nov 2026. Plan: gorfednet/ops control/assessments/2026-11-12-output-quality.md. Who: Sonnet builder; main session for CLAUDE.md and gitignore.",
       "reviewBy": "2026-12-01",
       "created": "2026-11-12",
       "updated": "2026-11-12"
@@ -640,7 +640,7 @@
       "status": "confirmed-bug",
       "assignee": "main-model",
       "userSymptom": "Tests that read the clock fail on a date, not a defect (MoonMan heal-drift, BinderCurve PR 652)",
-      "evidence": "Incident pattern 5, about 6 entries. Plan: docs/assessment-2026-11-12-output-quality.md. Who: runner; main session writes near-miss case.",
+      "evidence": "Incident pattern 5, about 6 entries. Plan: gorfednet/ops control/assessments/2026-11-12-output-quality.md. Who: runner; main session writes near-miss case.",
       "reviewBy": "2026-12-01",
       "created": "2026-11-12",
       "updated": "2026-11-12"
@@ -651,7 +651,7 @@
       "status": "confirmed-bug",
       "assignee": "main-model",
       "userSymptom": "Five repos can run zero tests and pass, and MoonMan device faults were fixed on the simulator five times",
-      "evidence": "Existing backlog entry five-projects-run-tests-with-no-floor; incident pattern 3. Plan: docs/assessment-2026-11-12-output-quality.md. Who: runner; main session for release gate.",
+      "evidence": "Existing backlog entry five-projects-run-tests-with-no-floor; incident pattern 3. Plan: gorfednet/ops control/assessments/2026-11-12-output-quality.md. Who: runner; main session for release gate.",
       "reviewBy": "2026-12-01",
       "created": "2026-11-12",
       "updated": "2026-11-12"
@@ -662,7 +662,7 @@
       "status": "confirmed-bug",
       "assignee": "main-model",
       "userSymptom": "The pool image is built by hand and drifts from each repo's pins, forcing hosted-runner flips",
-      "evidence": "Incident patterns 1 and 4, about 19 entries. Plan: docs/assessment-2026-11-12-output-quality.md. Who: Sonnet builder in ops; main session for the deploy.",
+      "evidence": "Incident patterns 1 and 4, about 19 entries. Plan: gorfednet/ops control/assessments/2026-11-12-output-quality.md. Who: Sonnet builder in ops; main session for the deploy.",
       "reviewBy": "2026-12-01",
       "created": "2026-11-12",
       "updated": "2026-11-12"
@@ -673,7 +673,7 @@
       "status": "confirmed-bug",
       "assignee": "main-model",
       "userSymptom": "Two sources of the same fact drift apart and reach visitors",
-      "evidence": "Incident pattern 6, about 6 entries. Plan: docs/assessment-2026-11-12-output-quality.md. Who: scout inventories; runner converts; reviewer reads guards.",
+      "evidence": "Incident pattern 6, about 6 entries. Plan: gorfednet/ops control/assessments/2026-11-12-output-quality.md. Who: scout inventories; runner converts; reviewer reads guards.",
       "reviewBy": "2026-12-01",
       "created": "2026-11-12",
       "updated": "2026-11-12"
@@ -684,7 +684,7 @@
       "status": "confirmed-bug",
       "assignee": "main-model",
       "userSymptom": "ssatcy drops every header it declares and anal0g serves none",
-      "evidence": "ssatcy PR 38, anal0g PR 32. Plan: docs/assessment-2026-11-12-output-quality.md. Who: main session specifies; Sonnet builder; reviewer reads.",
+      "evidence": "ssatcy PR 38, anal0g PR 32. Plan: gorfednet/ops control/assessments/2026-11-12-output-quality.md. Who: main session specifies; Sonnet builder; reviewer reads.",
       "reviewBy": "2026-12-01",
       "created": "2026-11-12",
       "updated": "2026-11-12"
@@ -695,7 +695,7 @@
       "status": "confirmed-bug",
       "assignee": "main-model",
       "userSymptom": "MoonMan server, BinderCurve api and worker and 4thcltr Stripe flow have no automated vulnerability scan",
-      "evidence": "12 Nov 2026 audit. Plan: docs/assessment-2026-11-12-output-quality.md. Who: main session; runner for pinning.",
+      "evidence": "12 Nov 2026 audit. Plan: gorfednet/ops control/assessments/2026-11-12-output-quality.md. Who: main session; runner for pinning.",
       "reviewBy": "2026-12-01",
       "created": "2026-11-12",
       "updated": "2026-11-12"
@@ -706,7 +706,7 @@
       "status": "confirmed-bug",
       "assignee": "main-model",
       "userSymptom": "Dependabot takes 7 days to merge and six repos have no required checks on main",
-      "evidence": "11 Nov assessment (git show 6b8a1b3:docs/assessment-2026-11-11.md, .github PR 117) section 4. Plan: docs/assessment-2026-11-12-output-quality.md. Who: runner; main session reads the script first.",
+      "evidence": "11 Nov assessment (git show 6b8a1b3:docs/assessment-2026-11-11.md, .github PR 117) section 4. Plan: gorfednet/ops control/assessments/2026-11-12-output-quality.md. Who: runner; main session reads the script first.",
       "reviewBy": "2026-12-01",
       "created": "2026-11-12",
       "updated": "2026-11-12"
@@ -717,7 +717,7 @@
       "status": "confirmed-bug",
       "assignee": "main-model",
       "userSymptom": "A new session starts with a stale 145-entry allowlist or none",
-      "evidence": "11 Nov assessment (git show 6b8a1b3:docs/assessment-2026-11-11.md, .github PR 117) section 1. Plan: docs/assessment-2026-11-12-output-quality.md. Who: main session.",
+      "evidence": "11 Nov assessment (git show 6b8a1b3:docs/assessment-2026-11-11.md, .github PR 117) section 1. Plan: gorfednet/ops control/assessments/2026-11-12-output-quality.md. Who: main session.",
       "reviewBy": "2026-12-01",
       "created": "2026-11-12",
       "updated": "2026-11-12"
@@ -728,7 +728,7 @@
       "status": "confirmed-bug",
       "assignee": "main-model",
       "userSymptom": "ntfy hook, review re-runs, reviewer on pool, janitor and Herdr stall are still open",
-      "evidence": "STATUS.md 12 Nov 2026; .github PR 117, 118, 120. Plan: docs/assessment-2026-11-12-output-quality.md. Who: as tiered in the 11 Nov plan.",
+      "evidence": "STATUS.md 12 Nov 2026; .github PR 117, 118, 120. Plan: gorfednet/ops control/assessments/2026-11-12-output-quality.md. Who: as tiered in the 11 Nov plan.",
       "reviewBy": "2026-12-01",
       "created": "2026-11-12",
       "updated": "2026-11-12"
@@ -739,7 +739,7 @@
       "status": "declined",
       "assignee": "main-model",
       "userSymptom": "115 directories and 63 GB beside the repos, 32 worktrees idle over 14 days",
-      "evidence": "12 Nov 2026 audit. Plan: docs/assessment-2026-11-12-output-quality.md. Who: runner.",
+      "evidence": "12 Nov 2026 audit. Plan: gorfednet/ops control/assessments/2026-11-12-output-quality.md. Who: runner.",
       "reviewBy": "2026-12-01",
       "created": "2026-11-12",
       "updated": "2026-11-15",
@@ -751,7 +751,7 @@
       "status": "confirmed-bug",
       "assignee": "main-model",
       "userSymptom": "Cost awareness is a rule, not a number",
-      "evidence": "11 Nov assessment (git show 6b8a1b3:docs/assessment-2026-11-11.md, .github PR 117) section 3. Plan: docs/assessment-2026-11-12-output-quality.md. Who: runner runs; main session reads.",
+      "evidence": "11 Nov assessment (git show 6b8a1b3:docs/assessment-2026-11-11.md, .github PR 117) section 3. Plan: gorfednet/ops control/assessments/2026-11-12-output-quality.md. Who: runner runs; main session reads.",
       "reviewBy": "2026-12-01",
       "created": "2026-11-12",
       "updated": "2026-11-12"

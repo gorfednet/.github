@@ -10,7 +10,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { after, describe, it } from 'node:test'
 
-import { branchCounts, countExposure, digestLine, isWeeklyDay, measure, readmeMissing, renderDotgithub } from '../scripts/dotgithub-hygiene.mjs'
+import { branchCounts, countExposure, digestLine, isWeeklyDay, measure, readmeMissing, renderDotgithub, trackedText } from '../scripts/dotgithub-hygiene.mjs'
 import { digest, render } from '../scripts/write-status-md.mjs'
 
 const dirs = []
@@ -123,6 +123,27 @@ export const scanLine = (line) => (/x/.test(line) ? ['internal-host'] : [])
     // scripts/a.mjs, docs/a.md, infra/a hold "x"; the guard file itself does too.
     assert.equal(d.exposedFiles, 4)
     assert.deepEqual(d.rulesNotChecked, [])
+  })
+
+  it('reads a UTF-16 file as the guard does, and reports a file too big to read', async () => {
+    const dir = clone()
+    writeFileSync(join(dir, 'docs', 'u16.txt'), Buffer.from('ssh SECRET-HOST\n', 'utf16le'))
+    writeFileSync(join(dir, 'docs', 'big.txt'), Buffer.alloc(2 * 1024 * 1024 + 1, 'a'))
+    sh(dir, 'add', 'docs/u16.txt', 'docs/big.txt')
+    const { files, oversized } = trackedText(dir)
+    assert.equal(oversized, 1)
+    assert.deepEqual(countExposure(files, guard, {}).exposedFiles, 1, 'the UTF-16 host name is found once its NULs are stripped')
+    const g = join(dir, 'scripts', 'privacy-guard.mjs')
+    writeFileSync(g, `export const FORBIDDEN_NEW_DIRS = []
+export const parsePrivateRepos = () => []
+export const privateRepoPattern = () => /(?!)/g
+export const parseAllowlist = () => ({ emails: [], paths: [] })
+export const scanLine = (line) => (/SECRET-HOST/.test(line) ? ['internal-host'] : [])
+`)
+    sh(dir, 'add', 'scripts/privacy-guard.mjs')
+    const d = await measure({ root: dir, env: {} })
+    assert.equal(d.exposedFiles, 2, 'docs/u16.txt, and the stand-in guard whose own pattern names SECRET-HOST')
+    assert.ok(d.rulesNotChecked.includes('1 files over 2 MB not read'), d.rulesNotChecked.join(' | '))
   })
 
   it('goes in the digest on Mondays in Toronto only, and in STATUS.md every run', () => {
