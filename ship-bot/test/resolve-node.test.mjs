@@ -111,7 +111,9 @@ describe('resolve_node', () => {
   it('install.sh records the Node check.sh passed on beside the app, after the swap', () => {
     const s = readFileSync(new URL('../install.sh', import.meta.url), 'utf8')
     assert.match(s, /"\$\{NODE_BIN\}" --version >"\$\{APP_DIR\}\.node-version"/)
-    assert.ok(s.indexOf('mv "${APP_DIR}.new" "${APP_DIR}"') < s.indexOf('.node-version'), 'record must follow the swap')
+    const swap = s.indexOf('"${INSTALLER}" swap')
+    assert.ok(swap >= 0, 'install.sh no longer swaps through the installer')
+    assert.ok(swap < s.indexOf('.node-version'), 'record must follow the swap')
   })
 
   // Only ship-bot's own installer here: install.sh runs these tests from a `git archive` of
