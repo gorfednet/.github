@@ -7,6 +7,7 @@
  * write or a non-gate command throws, whatever the logic below decides.
  */
 import { createHash } from 'node:crypto'
+import * as nodeFs from 'node:fs'
 import os from 'node:os'
 import { join } from 'node:path'
 import { HOLD_LABEL, READY_LABEL } from './config.mjs'
@@ -19,7 +20,8 @@ import { HOTFIX_LABEL, RELEASE_LABEL, planDeploy } from './deploy-plan.mjs'
 import { Redactor } from './redact.mjs'
 import { guardCommands, succeeded } from './runner.mjs'
 import { GATES_REPO, advanceGatesWorktree, ownInstallFreshness, toolWorktreeFor } from './gates-worktree.mjs'
-import { StateStore } from './state.mjs'
+import { STATE_VERSION, StateStore, acquireLock } from './state.mjs'
+import { DEFER_NOTIFY_AT, OFF_FILE, buildVersion, commitVersion, currentVersion, discardVersion, installLockPath, isOff, pruneVersions, queueNotice, readMarker, refuse, rollBack, swapForProbation, writeMarker } from './install.mjs'
 
 const NEEDS_FIX_LABEL = 'needs-fix'
 const short = (sha) => String(sha ?? '').slice(0, 7)
@@ -73,6 +75,8 @@ export async function runOnce(deps) {
     decisions: [],
     /** Shared across repo contexts: merges decided this pass (live: attempted; dry: "would merge"), against maxMergesPerPass. */
     pass: { merges: 0 },
+    /** Self-install (lib/install.mjs): the bot home behind the version link, the live config's path, and the effects. Null when run from a checkout. */
+    selfInstall: deps.selfInstall?.home ? { fs: nodeFs, lock: acquireLock, ...deps.selfInstall } : null,
     say(level, text) {
       const line = redactor.apply(text)
       this.decisions.push({ level, text: line })
@@ -80,9 +84,17 @@ export async function runOnce(deps) {
     },
   }
 
+  /**
+   * What the pass came to, for the caller (ship-bot.mjs): the repos that
+   * stopped on an unexpected error, whether a quota pause cut it short, how
+   * fresh the install read, and whether this pass swapped a new version in.
+   */
+  const summary = Object.assign(deps.summary ?? {}, { repoErrors: [], quota: false, complete: false, freshness: undefined, swapped: false })
   const repos = selectRepos(config.repos, deps.repoNames)
   recoverInterruptedDeploys(ctx)
+  await flushSelfInstallNotices(ctx)
   if (quotaPaused(ctx)) {
+    summary.quota = true
     stateStore.save()
     return ctx.decisions
   }
@@ -90,12 +102,21 @@ export async function runOnce(deps) {
   ctx.ownInstall = { state: 'current' }
   try {
     if (deps.installedSha) ctx.ownInstall = await checkOwnInstall(ctx, deps.installedSha)
+    summary.freshness = ctx.ownInstall.state
+    if (deps.installedSha && (await selfInstall(ctx, deps.installedSha))) {
+      // The pass ends before any repo: no pass mixes this version's code with the new one's gate scripts.
+      summary.swapped = true
+      stateStore.save()
+      return ctx.decisions
+    }
   } catch (cause) {
     if (!(cause instanceof RateLimitError)) throw cause
+    summary.quota = true
     await quotaLow(ctx, cause)
     stateStore.save()
     return ctx.decisions
   }
+  if (ctx.noticesQueued) await flushSelfInstallNotices(ctx)
   let limited = null
   for (const repo of repos) {
     if (repo.mode === 'off') {
@@ -110,11 +131,17 @@ export async function runOnce(deps) {
         break
       }
       ctx.say('error', `${repo.slug}: stopped on an unexpected error: ${cause.message}`)
+      summary.repoErrors.push(repo.slug)
     }
     stateStore.save()
   }
-  if (limited) await quotaLow(ctx, limited)
-  else delete stateStore.data.rateLimits?.[ctx.authAs]
+  if (limited) {
+    summary.quota = true
+    await quotaLow(ctx, limited)
+  } else delete stateStore.data.rateLimits?.[ctx.authAs]
+  // The baseline a self-install compares a new version against: only a live pass over every repo is one.
+  summary.complete = !limited && !(deps.repoNames?.length > 0)
+  if (!dry && summary.complete) stateStore.data.lastPassErrors = [...summary.repoErrors]
   sayUsage(ctx)
   stateStore.save()
   return ctx.decisions
@@ -846,10 +873,237 @@ async function checkOwnInstall(ctx, installedSha) {
   ctx.say('warn', text)
   const memo = (ctx.state.data.ownInstall ??= {})
   if (memo.notifiedFor === r.latest || ctx.dry) return r
+  // While the bot can still install that commit itself, this is not news: the owner hears only when
+  // self-install is off or has refused it (a refusal sends its own message as well).
+  if (!selfInstallRuledOut(ctx, r.latest)) return r
   memo.notifiedFor = r.latest
   ctx.state.save()
   await notify(ctx, text, true)
   return r
+}
+
+/** The paths whose change means the LaunchAgent or the install itself changes: a hand install, never a self-install. */
+export const HAND_INSTALL_PATHS = ['ship-bot/install.sh', 'ship-bot/launchd-load.sh']
+
+/** Loads the live config with a version's own loadConfig. The paths are arguments, never spliced into the script. */
+const CONFIG_CHECK = "const [lib, config] = process.argv.slice(1); const { pathToFileURL } = await import('node:url'); try { (await import(pathToFileURL(lib).href)).loadConfig(config) } catch (e) { console.error(e.message); process.exit(1) }"
+
+/** The last line of `text` that is a JSON object holding `key`, or null. */
+function jsonLine(text, key) {
+  for (const line of String(text ?? '').trim().split('\n').reverse()) {
+    try {
+      const v = JSON.parse(line)
+      if (v !== null && typeof v === 'object' && key in v) return v
+    } catch {
+      // Not this line.
+    }
+  }
+  return null
+}
+
+/**
+ * Why the bot will never install commit `latest` itself, or null while it
+ * still can (this pass or a later one). Decides whether the behind-main alert
+ * is sent: a lock that is held or a version on probation is "not yet", not "never".
+ */
+function selfInstallRuledOut(ctx, latest) {
+  const si = ctx.selfInstall
+  if (ctx.dry) return 'a dry run installs nothing'
+  if (!si) return 'this bot does not run through a version link (a hand install sets one up)'
+  if (isOff(si.home, si.fs)) return `${OFF_FILE} is present`
+  let marker
+  try {
+    marker = readMarker(si.home, si.fs)
+  } catch (cause) {
+    return cause.message
+  }
+  const refused = marker.refused?.[latest]
+  if (refused) return `it was refused at ${refused.step} (${refused.reason}) and needs a hand install`
+  return null
+}
+
+/**
+ * Send the messages the marker holds (a refusal, a rollback, a long deferral).
+ * Each is shown on the Mac once and dropped only when ntfy accepts it, so a
+ * phone that was unreachable still hears. With ntfy not configured it stays
+ * queued, and every pass says so.
+ */
+async function flushSelfInstallNotices(ctx) {
+  ctx.noticesQueued = false
+  const si = ctx.selfInstall
+  if (ctx.dry || !si) return
+  let marker
+  try {
+    marker = readMarker(si.home, si.fs)
+  } catch (cause) {
+    ctx.say('warn', `self-install: ${cause.message}`)
+    return
+  }
+  const queue = marker.notify ?? []
+  if (queue.length === 0) return
+  const kept = []
+  for (const item of queue) {
+    const accepted = await notify(ctx, item.text, true, { mac: !item.mac })
+    if (!accepted) kept.push(ctx.config.notify ? { ...item, mac: true } : item)
+  }
+  if (kept.length > 0) marker.notify = kept
+  else delete marker.notify
+  writeMarker(si.home, marker, si.fs)
+  if (kept.length > 0) ctx.say('warn', `self-install: ${kept.length} message(s) for the owner still queued in the marker: ${ctx.config.notify && ctx.config.ntfy ? 'ntfy did not accept them' : 'ntfy is not configured'}`)
+}
+
+/**
+ * Install merged main over a stale install (replan row N2). The installed,
+ * reviewed code does all of it: it stages origin/main, builds the version,
+ * runs the new version's own tests, self-test and one full dry pass, judges
+ * them, and only then moves the link. The new version gets no live authority
+ * before that. It never writes the plist and never calls launchctl.
+ *
+ * @returns {Promise<boolean>} true when the link now names a new version, so the pass must end
+ */
+async function selfInstall(ctx, installedSha) {
+  const own = ctx.ownInstall
+  if (own.state !== 'stale') return false
+  const latest = own.latest
+  const skip = (why) => {
+    ctx.say('info', `self-install of ${short(latest)} skipped: ${why}`)
+    return false
+  }
+  const never = selfInstallRuledOut(ctx, latest)
+  if (never) return skip(never)
+  const { home, fs } = ctx.selfInstall
+  const marker = readMarker(home, fs)
+  if (marker.phase === 'probation' || marker.phase === 'swapping') return skip(`${short(marker.sha)} is in ${marker.phase}`)
+  if (currentVersion(home, fs) !== installedSha) return skip(`${join(home, 'app')} does not name this version (${short(installedSha)})`)
+  const lock = ctx.selfInstall.lock(installLockPath(home))
+  if (!lock.ok) return skip(`install.lock is held (${lock.holder})`)
+  const stage = join(home, 'stage')
+  const attempt = { sha: null }
+  try {
+    const outcome = await stageValidateSwap(ctx, { installedSha, latest, stage, attempt })
+    if (outcome.result === 'swapped') return true
+    if (attempt.sha) discardVersion({ home, sha: attempt.sha, fs })
+    if (outcome.result === 'rolled-back') return false
+    const m = readMarker(home, fs)
+    const what = attempt.sha ? short(attempt.sha) : `origin/main (${short(latest)})`
+    if (outcome.result === 'refused') {
+      refuse(m, latest, { step: outcome.step, reason: outcome.reason, sha: attempt.sha }, ctx.clock.now())
+      queueNotice(m, `ship-bot self-install of ${what} refused at ${outcome.step}: ${outcome.reason}. The installed ${short(installedSha)} keeps running. It needs a hand install (ship-bot/install.sh).`, ctx.clock.now())
+      ctx.noticesQueued = true
+      ctx.say('error', `self-install ${what}: refused at ${outcome.step}: ${outcome.reason}; ${short(latest)} is not tried again until a hand install`)
+    } else {
+      const count = (m.deferred?.latest === latest ? m.deferred.count : 0) + 1
+      m.deferred = { latest, count }
+      if (outcome.retry) m.retry = { latest, step: outcome.step }
+      if (count === DEFER_NOTIFY_AT) {
+        queueNotice(m, `ship-bot self-install of ${what} has been deferred ${count} passes in a row (last at ${outcome.step}: ${outcome.reason}). The installed ${short(installedSha)} keeps running.`, ctx.clock.now())
+        ctx.noticesQueued = true
+      }
+      ctx.say('info', `self-install ${what}: deferred at ${outcome.step} (${count}): ${outcome.reason}; tried again next pass`)
+    }
+    writeMarker(home, m, fs)
+    return false
+  } finally {
+    fs.rmSync(stage, { recursive: true, force: true })
+    lock.release()
+  }
+}
+
+/** @returns {Promise<{result: 'swapped' | 'rolled-back'} | {result: 'refused' | 'deferred', step: string, reason: string, retry?: true}>} */
+async function stageValidateSwap(ctx, { installedSha, latest, stage, attempt }) {
+  const { home, fs, configPath } = ctx.selfInstall
+  const refused = (step, reason) => ({ result: 'refused', step, reason: ctx.redactor.apply(reason) })
+  const deferred = (step, reason, extra = {}) => ({ result: 'deferred', step, reason: ctx.redactor.apply(reason), ...extra })
+  // Kind `install` is not read-only: guardCommands refuses it in a dry or observe run, whatever the code above decided.
+  const run = (cmd, args, { timeoutMs = 60_000, env = {} } = {}) => ctx.runner.run({ kind: 'install', cmd, args, env: { ...ctx.baseEnv, ...env }, timeoutMs })
+  const how = (r) => {
+    const base = r.timedOut ? 'timed out' : r.error ? `could not start (${r.error})` : `exit ${r.code}`
+    const detail = String(r.stderr || r.stdout || '').trim().split('\n').pop().slice(0, 300)
+    return detail ? `${base}: ${detail}` : base
+  }
+  try {
+    // Stage: M is origin/main after a fresh fetch, and must be GitHub's main as read again now.
+    const row = ctx.config.repos.find((r) => r.slug === GATES_REPO)
+    const clone = row.sourceDir ?? join(ctx.config.sourceRoot, row.dir)
+    const git = (args, timeoutMs) => run('git', ['-C', clone, ...args], { timeoutMs })
+    const fetched = await git(['fetch', 'origin', 'main'], 120_000)
+    if (!succeeded(fetched)) return deferred('fetch', `git fetch origin main failed in ${clone} (${how(fetched)})`)
+    const tip = await git(['rev-parse', '--verify', 'refs/remotes/origin/main'])
+    const sha = String(tip.stdout ?? '').trim()
+    if (!succeeded(tip) || !/^[0-9a-f]{40}$/.test(sha)) return deferred('fetch', `cannot read origin/main in ${clone} (${how(tip)})`)
+    const mainSha = await ctx.github.getBranchSha(GATES_REPO, 'main')
+    if (mainSha !== sha) return deferred('fetch', `origin/main (${short(sha)}) is not GitHub's main (${short(mainSha)})`)
+    if (sha === installedSha) return deferred('fetch', `origin/main is the installed ${short(sha)}`)
+    const hand = await git(['diff', '--quiet', installedSha, sha, '--', ...HAND_INSTALL_PATHS])
+    if (hand.code === 1 && !hand.timedOut && !hand.error) return refused('hand-install check', `${HAND_INSTALL_PATHS.join(' or ')} changed since ${short(installedSha)}: the LaunchAgent or the install itself changes, so this one needs a hand install`)
+    if (!succeeded(hand)) return deferred('hand-install check', `cannot compare ${short(installedSha)} with ${short(sha)} (${how(hand)})`)
+    // The baseline for the dry pass: what the installed version's last complete live pass stopped on.
+    const baseline = ctx.state.data.lastPassErrors
+    if (!Array.isArray(baseline)) return deferred('baseline', 'no complete live pass has recorded its repo errors yet')
+
+    fs.rmSync(stage, { recursive: true, force: true })
+    const src = join(stage, 'src')
+    fs.mkdirSync(src, { recursive: true })
+    const tar = join(stage, 'src.tar')
+    const archived = await git(['archive', '--format=tar', '-o', tar, sha, 'ship-bot', 'scripts'], 120_000)
+    if (!succeeded(archived)) return deferred('stage', `git archive ${short(sha)} failed (${how(archived)})`)
+    const unpacked = await run('tar', ['-xf', tar, '-C', src], { timeoutMs: 120_000 })
+    if (!succeeded(unpacked)) return deferred('stage', `could not unpack the archive (${how(unpacked)})`)
+    attempt.sha = sha
+    buildVersion({ home, stage: src, sha, fs })
+    const version = commitVersion({ home, sha, fs })
+
+    // Validate: the new version's pieces run as subprocesses of the Node this bot runs on, judged by exit code and one JSON line.
+    const node = (args, opts) => run(ctx.nodePath, args, opts)
+    const suite = await run('/bin/bash', [join(src, 'ship-bot', 'check.sh')], { timeoutMs: 20 * 60_000, env: { NODE_BIN: ctx.nodePath } })
+    if (!succeeded(suite)) {
+      // A suite can flake under load: one retry on the next pass, then it is a refusal.
+      const before = readMarker(home, fs).retry
+      if (before?.latest === latest && before.step === 'check.sh') return refused('check.sh', `its test suite failed twice (${how(suite)})`)
+      return deferred('check.sh', `its test suite failed (${how(suite)}); one retry`, { retry: true })
+    }
+    const imports = await node([join(version, 'lib', 'gate-imports.mjs'), join(version, 'gate-scripts')])
+    if (!succeeded(imports)) return refused('gate-imports', `its gate scripts import something the copy does not hold (${how(imports)})`)
+    const parsed = await node(['--input-type=module', '-e', CONFIG_CHECK, join(version, 'lib', 'config.mjs'), configPath])
+    if (!succeeded(parsed)) return refused('config', `it does not accept the live config (${how(parsed)})`)
+    const selfTest = await node([join(version, 'ship-bot.mjs'), '--self-test', '--config', configPath], { timeoutMs: 120_000 })
+    const st = jsonLine(selfTest.stdout, 'ok')
+    if (!succeeded(selfTest) || st?.ok !== true) return refused('self-test', `its self-test failed (${st?.problem ?? how(selfTest)})`)
+    if (st.source !== sha) return refused('self-test', `its gate scripts say ${short(st.source)}, not ${short(sha)}`)
+    if (st.stateVersion !== STATE_VERSION) return refused('self-test', `it writes state version ${st.stateVersion} and this one reads ${STATE_VERSION}: after a rollback every pass would refuse the state file`)
+    const dryPass = await node([join(version, 'ship-bot.mjs'), '--dry-run', '--once', '--summary-json', '--config', configPath], { timeoutMs: 30 * 60_000 })
+    const sum = jsonLine(dryPass.stdout, 'passOk')
+    if (!sum) return refused('dry pass', `its dry pass printed no summary (${how(dryPass)})`)
+    if (sum.authOk === false) return deferred('dry pass', 'its dry pass had no GitHub token')
+    if (sum.undecided) return deferred('dry pass', `its dry pass could not finish: ${sum.undecided}`)
+    if (!succeeded(dryPass) || sum.passOk !== true || sum.authOk !== true) return refused('dry pass', `its dry pass failed (${how(dryPass)})`)
+    const fresh = (Array.isArray(sum.repoErrors) ? sum.repoErrors : ['(unreadable repoErrors)']).filter((slug) => !baseline.includes(slug))
+    if (fresh.length > 0) return refused('dry pass', `repos stopped on an error in its dry pass that the installed version does not stop on: ${fresh.join(', ')}`)
+
+    // Swap: marker `swapping`, the link rename, marker `probation`; then the new version must start through the link.
+    swapForProbation({ home, sha, from: installedSha, latest, baselineErrors: baseline, now: ctx.clock.now(), fs })
+    const linked = await node([join(home, 'app', 'ship-bot.mjs'), '--self-test', '--config', configPath], { timeoutMs: 120_000 })
+    const lt = jsonLine(linked.stdout, 'ok')
+    if (!succeeded(linked) || lt?.ok !== true || lt.source !== sha) {
+      const reason = ctx.redactor.apply(`its self-test through the app link failed (${lt?.problem ?? how(linked)})`)
+      const back = rollBack({ home, reason, step: 'post-swap self-test', now: ctx.clock.now(), fs })
+      ctx.noticesQueued = true
+      ctx.say('error', `self-install ${short(sha)}: ${reason}; ${back.ok ? `the link is back at ${short(installedSha)}` : `AND THE ROLLBACK FAILED (${back.reason})`}`)
+      // The marker already holds the refusal and its message.
+      return { result: 'rolled-back' }
+    }
+    try {
+      pruneVersions({ home, keep: [installedSha], fs })
+    } catch (cause) {
+      // The swap is done: an old version that could not be removed must not read as a failed install.
+      ctx.say('warn', `self-install ${short(sha)}: could not prune old versions: ${cause.message}`)
+    }
+    ctx.say('info', `self-install ${short(sha)}: validate OK, swap OK; the next pass runs it`)
+    return { result: 'swapped' }
+  } catch (cause) {
+    if (cause instanceof RateLimitError) throw cause
+    return deferred('unexpected error', cause.message)
+  }
 }
 
 /** Says why a ready control-plane pull request is not merged by a stale install: one warning and one notification per pull request per stale commit (state `ownInstall.held`), a debug line after that, and one comment per head. */
@@ -1045,13 +1299,19 @@ export function tailscaleApprovalLink(text) {
   return /https:\/\/login\.tailscale\.com\/\S+/.exec(text)?.[0] ?? null
 }
 
-async function notify(ctx, message, loud = false) {
-  if (!ctx.config.notify) return
+/**
+ * @param {{mac?: boolean}} [opts] mac=false skips the Mac notification (a queued message already shown there)
+ * @returns {Promise<boolean>} whether ntfy accepted the message; false when ntfy is not configured or notify is off
+ */
+async function notify(ctx, message, loud = false, { mac = true } = {}) {
+  if (!ctx.config.notify) return false
   const text = ctx.redactor.apply(message)
-  const script = `display notification "${escapeAppleScript(text)}" with title "ship bot"${loud ? ' sound name "Basso"' : ''}`
-  const result = await ctx.runner.run({ kind: 'notify', cmd: 'osascript', args: ['-e', script], env: ctx.baseEnv, timeoutMs: 15_000 })
-  if (result.code !== 0) ctx.say('warn', `notification failed: ${result.stderr ?? result.error ?? ''}`)
-  await notifyNtfy(ctx, text, loud)
+  if (mac) {
+    const script = `display notification "${escapeAppleScript(text)}" with title "ship bot"${loud ? ' sound name "Basso"' : ''}`
+    const result = await ctx.runner.run({ kind: 'notify', cmd: 'osascript', args: ['-e', script], env: ctx.baseEnv, timeoutMs: 15_000 })
+    if (result.code !== 0) ctx.say('warn', `notification failed: ${result.stderr ?? result.error ?? ''}`)
+  }
+  return notifyNtfy(ctx, text, loud)
 }
 
 /** ntfy turns a longer body into an attachment the phone shows without the text (ops' cta-watch). */
@@ -1064,10 +1324,11 @@ const NTFY_MAX_BYTES = 4000
  * there is one (the server is deny-all, so without a token it answers 403).
  * A failed POST is one warning line, never a thrown error: the merge or
  * deploy it reports has already happened.
+ * @returns {Promise<boolean>} whether ntfy accepted it
  */
 async function notifyNtfy(ctx, text, loud) {
   const ntfy = ctx.config.ntfy
-  if (!ntfy) return
+  if (!ntfy) return false
   const headers = {
     'User-Agent': 'gorfednet-ship-bot',
     Title: 'ship bot',
@@ -1090,8 +1351,10 @@ async function notifyNtfy(ctx, text, loud) {
     })
     if (res.status === 401 || res.status === 403) throw new Error(`ntfy answered HTTP ${res.status}: ntfy.tokenFile must hold a token the topic accepts`)
     if (!res.ok) throw new Error(`ntfy answered HTTP ${res.status}`)
+    return true
   } catch (cause) {
     ctx.say('warn', `ntfy notification failed: ${cause.message}`)
+    return false
   }
 }
 
