@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync, rmSync } from 'node:fs'
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, it } from 'node:test'
 
 import { collectLocal } from '../scripts/lib/hygiene.mjs'
 import { installedTools } from '../scripts/lib/installed-tools.mjs'
+import { checkInstalledDrift, plan } from '../scripts/lib/installedDrift.mjs'
 
 const sh = (cwd, ...a) => {
   const r = spawnSync('git', ['-c', 'user.email=a@b.c', '-c', 'user.name=t', ...a], { cwd, encoding: 'utf8' })
@@ -70,24 +71,6 @@ describe('installed tools behind main', () => {
         ['capacity check', '~/.desk/capacity-app/capacity.mjs', 1],
       ],
     )
-  })
-
-  it('an always-pr-remind hook copy left behind a committed fix is flagged', () => {
-    const f = fixture()
-    const src = join(f.clone, 'docs', 'claude-home', 'hooks', 'always-pr-remind.py')
-    put(src, '# old\n')
-    sh(f.clone, 'add', '-A')
-    sh(f.clone, 'commit', '-q', '-m', 'hook v1')
-    put(src, '# fixed\n')
-    sh(f.clone, 'add', '-A')
-    sh(f.clone, 'commit', '-q', '-m', 'hook v2')
-    sh(f.clone, 'push', '-q', 'origin', 'main')
-    put(join(f.home, '.claude', 'hooks', 'always-pr-remind.py'), '# old\n')
-    const r = run(f)
-    const hook = (x) => x.behind.filter((b) => b.tool === 'always-pr-remind hook')
-    assert.deepEqual(hook(r).map((b) => b.behind), [1])
-    put(join(f.home, '.claude', 'hooks', 'always-pr-remind.py'), '# fixed\n')
-    assert.deepEqual(hook(run(f)), [])
   })
 
   it('a link into a working checkout is flagged even when that checkout is current', () => {
@@ -179,18 +162,239 @@ describe('LaunchAgents on another tool\'s Node', () => {
   })
 })
 
-describe('a required copy that is absent', () => {
-  it('is reported once main has it, and not before', () => {
-    const f = fixture()
-    assert.deepEqual(run(f).behind, [], 'main does not hold the hook yet')
-    put(join(f.clone, 'docs', 'claude-home', 'hooks', 'public-push-guard.mjs'), '// hook\n')
+describe('gate scripts and the ~/.claude mirror (plan row 1.18)', () => {
+  const commitFile = (f, rel, body) => {
+    put(join(f.clone, rel), body)
     sh(f.clone, 'add', '-A')
-    sh(f.clone, 'commit', '-q', '-m', 'hook')
+    sh(f.clone, 'commit', '-q', '-m', rel)
     sh(f.clone, 'push', '-q', 'origin', 'main')
-    const hook = (r) => r.behind.filter((b) => b.tool === 'public-push-guard hook')
-    assert.equal(hook(run(f)).length, 1)
-    assert.match(hook(run(f))[0].detail, /not installed/)
-    put(join(f.home, '.claude', 'hooks', 'public-push-guard.mjs'), '// hook\n')
-    assert.deepEqual(hook(run(f)), [], 'an installed current copy is fine')
+  }
+  const named = (f, tool) => run(f).behind.filter((b) => b.tool === tool)
+
+  it('the installed gate scripts are compared with scripts/ on main, and SOURCE is ignored', () => {
+    const f = fixture()
+    commitFile(f, 'scripts/review-status.mjs', '// r1\n')
+    commitFile(f, 'scripts/review-status.mjs', '// r2\n')
+    const gs = join(f.home, '.ship-bot', 'app', 'gate-scripts')
+    put(join(gs, 'SOURCE'), `${'a'.repeat(40)}\n`)
+    put(join(gs, 'review-status.mjs'), '// r1\n')
+    const [b] = named(f, 'ship-bot gate scripts')
+    assert.equal(b.behind, 1)
+    assert.match(b.detail, /1 files behind/)
+    put(join(gs, 'review-status.mjs'), '// r2\n')
+    assert.deepEqual(named(f, 'ship-bot gate scripts'), [])
+  })
+
+  it('a stale or hand-edited rule, a missing skill and an unmirrored file are told apart', () => {
+    const f = fixture()
+    commitFile(f, 'docs/claude-home/rules/shipping.md', 'v1\n')
+    commitFile(f, 'docs/claude-home/rules/shipping.md', 'v2\n')
+    commitFile(f, 'docs/claude-home/skills/copy/SKILL.md', 'skill\n')
+    commitFile(f, 'docs/claude-home/README.md', 'docs only\n')
+    commitFile(f, 'docs/claude-home/hooks/README.md', 'docs only\n') // excluded: never installed
+    put(join(f.home, '.claude', 'rules', 'shipping.md'), 'v1\n')
+    put(join(f.home, '.claude', 'rules', 'only-here.md'), 'no mirror\n')
+    const [b] = named(f, '~/.claude mirror')
+    assert.equal(b.behind, 1)
+    assert.match(b.detail, /1 files behind, 1 files not installed/, 'README.md is not in the include list')
+    put(join(f.home, '.claude', 'rules', 'shipping.md'), 'edited by hand\n')
+    const ahead = named(f, '~/.claude mirror').find((b) => b.ahead)
+    assert.match(ahead.detail, /1 files ahead of main or unmirrored \(not behind\)/)
+    assert.equal(ahead.behind, null)
+    put(join(f.home, '.claude', 'rules', 'shipping.md'), 'v2\n')
+    put(join(f.home, '.claude', 'skills', 'copy', 'SKILL.md'), 'skill\n')
+    assert.deepEqual(named(f, '~/.claude mirror'), [])
+  })
+})
+
+describe('installed-drift notification (plan row 1.18)', () => {
+  const memoOf = (f) => join(f.home, '.desk', 'installed-drift.json')
+  const drift = (f, push, extra = {}) => checkInstalledDrift({ home: f.home, root: f.root, launchAgents: f.agents, push, fetchOrigin: () => true, ...extra })
+
+  it('goes red once, only after two runs in a row, stays quiet, then green and re-arms', async () => {
+    const f = fixture()
+    f.commit('v3') // the gates worktree and the capacity copy are now one behind
+    const sent = []
+    const push = async (t) => (sent.push(t), true)
+    assert.equal((await drift(f, push)).action, 'pending', 'one sighting could be the gap before ship-bot advances gates-main')
+    assert.equal(sent.length, 0)
+    assert.equal((await drift(f, push)).action, 'pushed')
+    assert.equal(sent.length, 1)
+    assert.match(sent[0], /installed tools behind main: .*~\/\.local\/bin\/tool.*capacity check/)
+    assert.equal((await drift(f, push)).action, 'pending', 'told already; still behind')
+    f.commit('v4')
+    await drift(f, push); await drift(f, push)
+    assert.equal(sent.length, 1, 'further behind is not news')
+    sh(f.gates, 'checkout', '-q', '--detach', 'origin/main')
+    put(join(f.home, '.desk', 'capacity-app', 'capacity.mjs'), '// v4\n')
+    const green = await drift(f, push)
+    assert.deepEqual([green.action, green.behind], ['none', 0])
+    assert.deepEqual(JSON.parse(readFileSync(memoOf(f), 'utf8')).told, [])
+    f.commit('v5')
+    await drift(f, push)
+    assert.equal((await drift(f, push)).action, 'pushed', 'a second lapse tells again')
+    assert.equal(sent.length, 2)
+  })
+
+  it('another file going stale under an aggregate tool is news; a one-run blip is not', async () => {
+    const f = fixture()
+    const sent = []
+    const push = async (t) => (sent.push(t), true)
+    const rule = (n, body) => { put(join(f.clone, 'docs/claude-home/rules', n), body); sh(f.clone, 'add', '-A'); sh(f.clone, 'commit', '-q', '-m', n); sh(f.clone, 'push', '-q', 'origin', 'main'); sh(f.gates, 'checkout', '-q', '--detach', 'origin/main') }
+    rule('a.md', 'a1\n'); rule('b.md', 'b1\n')
+    put(join(f.home, '.claude', 'rules', 'a.md'), 'a1\n'); put(join(f.home, '.claude', 'rules', 'b.md'), 'b1\n')
+    assert.equal((await drift(f, push)).action, 'none')
+    rule('a.md', 'a2\n')
+    await drift(f, push); await drift(f, push)
+    assert.equal(sent.length, 1)
+    rule('b.md', 'b2\n') // same tool, another file (2 files behind)
+    await drift(f, push)
+    assert.equal((await drift(f, push)).action, 'pushed')
+    assert.equal(sent.length, 2)
+    put(join(f.home, '.claude', 'rules', 'b.md'), 'b2\n') // one comes right: fewer files, nothing new
+    await drift(f, push); await drift(f, push)
+    assert.equal(sent.length, 2, 'a falling count is not news')
+  })
+
+  it('a push nobody received is retried on the next run', async () => {
+    const f = fixture()
+    f.commit('v3')
+    await drift(f, async () => false)
+    assert.equal((await drift(f, async () => false)).action, 'push-failed')
+    assert.equal((await drift(f, async () => true)).action, 'pushed')
+  })
+
+  it('a check that cannot measure is never green: silent twice, one push on the third run, none after', async () => {
+    const f = fixture()
+    f.commit('v3')
+    const sent = []
+    const push = async (t) => (sent.push(t), true)
+    const broken = { fetchOrigin: () => false }
+    for (let i = 0; i < 2; i++) assert.equal((await drift(f, push, broken)).action, 'unmeasured')
+    assert.equal(sent.length, 0)
+    assert.equal((await drift(f, push, broken)).action, 'unmeasured')
+    assert.equal(sent.length, 1)
+    assert.match(sent[0], /could not measure for 3 runs \(a fetch failed\); capacity.log has the reason/)
+    assert.ok(!sent[0].includes(f.root) && !sent[0].includes(f.home), 'no path leaves the Mac')
+    await drift(f, push, broken)
+    assert.equal(sent.length, 1)
+    const bare = mkdtempSync(join(tmpdir(), 'no-clones-'))
+    const nothing = await drift(f, push, { root: bare })
+    assert.deepEqual([nothing.action, nothing.unread.length > 0], ['none', true], 'no clones: nothing found, and said to be unread rather than green')
+    await drift(f, push); assert.equal(JSON.parse(readFileSync(memoOf(f), 'utf8')).unmeasuredRuns, undefined, 'a measurement resets the streak')
+  })
+
+  it('a clone the tools come from but the list does not name is fetched too, and unmeasured when that fetch fails', async () => {
+    const f = fixture()
+    const third = join(f.root, 'third')
+    sh(f.root, 'clone', '-q', join(f.top, 'origin.git'), 'third')
+    symlinkSync(join(third, 'bin', 'tool'), join(f.home, '.local', 'bin', 'tool5')) // a working checkout outside DRIFT_REPOS
+    const seen = []
+    await drift(f, async () => true, { fetchOrigin: (d) => (seen.push(d), true) })
+    assert.ok(seen.some((d) => d.endsWith('/third')), `third clone fetched: ${seen.join(' ')}`)
+    const r = await drift(f, async () => true, { fetchOrigin: (d) => !d.endsWith('/third') })
+    assert.deepEqual([r.action, r.reason.startsWith('fetch of')], ['unmeasured', true])
+  })
+
+  it('plan keys a finding by tool and file, or tool and detail without files', () => {
+    const r = plan([{ tool: 'a', detail: 'x' }, { tool: 'a', detail: '2 files', items: ['f1', 'f2'] }, { tool: 'b', detail: 'z' }], { told: ['b|z', 'gone|q', 'a|f2'], seen: { 'a|x': 1 } })
+    assert.deepEqual(r.fresh, ['a|x'])
+    assert.deepEqual(r.told, ['b|z', 'a|f2'])
+    assert.deepEqual(r.tools, ['a', 'b'])
+  })
+})
+
+describe('review fixes: code-only ship-bot copy, ahead is not behind, fail closed (plan row 1.18)', () => {
+  const commitFile = (f, rel, body) => {
+    put(join(f.clone, rel), body)
+    sh(f.clone, 'add', '-A')
+    sh(f.clone, 'commit', '-q', '-m', rel)
+    sh(f.clone, 'push', '-q', 'origin', 'main')
+    sh(f.gates, 'checkout', '-q', '--detach', 'origin/main')
+  }
+  const drift = (f, push, extra = {}) => checkInstalledDrift({ home: f.home, root: f.root, launchAgents: f.agents, push, fetchOrigin: () => true, ...extra })
+
+  it('a README or example-config merge does not make the ship-bot copy stale, a code merge does', () => {
+    const f = fixture()
+    const app = join(f.home, '.ship-bot', 'app')
+    commitFile(f, 'ship-bot/README.md', 'r1\n')
+    commitFile(f, 'ship-bot/config.example.json', '{}\n')
+    commitFile(f, 'ship-bot/ship-bot.mjs', '// s1\n')
+    put(join(app, 'README.md'), 'old readme\n')
+    put(join(app, 'config.example.json'), '{"old":1}\n')
+    put(join(app, 'ship-bot.mjs'), '// s1\n')
+    assert.deepEqual(run(f).behind.filter((b) => b.tool === 'ship-bot'), [])
+    commitFile(f, 'ship-bot/ship-bot.mjs', '// s2\n')
+    assert.equal(run(f).behind.filter((b) => b.tool === 'ship-bot')[0].behind, 1)
+  })
+
+  it('a copy ahead of main is shown as ahead, never notified, and does not hide a real stale tool', async () => {
+    const f = fixture()
+    commitFile(f, 'docs/claude-home/rules/shipping.md', 's1\n')
+    put(join(f.home, '.claude', 'rules', 'shipping.md'), 's1 plus an edit not yet in a pull request\n')
+    const [b] = run(f).behind
+    assert.deepEqual([b.ahead, b.behind], [true, null])
+    const sent = []
+    const push = async (t) => (sent.push(t), true)
+    await drift(f, push); await drift(f, push)
+    assert.equal(sent.length, 0, 'ahead is not behind')
+    f.commit('v3')
+    await drift(f, push)
+    assert.equal((await drift(f, push)).action, 'pushed')
+    assert.ok(!sent[0].includes('~/.claude mirror'))
+  })
+
+  it('an empty listing compares nothing and is unread, not a clean mirror', () => {
+    const f = fixture()
+    put(join(f.home, '.claude', 'rules', 'shipping.md'), 'x\n') // ~/.claude exists but main holds no docs/claude-home
+    const r = run(f)
+    assert.ok(r.unread.includes('~/.claude'))
+    assert.deepEqual(r.behind.filter((b) => b.tool === '~/.claude mirror'), [])
+  })
+
+  it('one unreadable item does not discard the findings, and the unread streak is told once without a path', async () => {
+    const f = fixture()
+    f.commit('v3') // stale link and copy
+    put(join(f.home, '.claude', 'rules', 'shipping.md'), 'x\n') // ~/.claude exists, main has no docs/claude-home: unread
+    const sent = []
+    const push = async (t) => (sent.push(t), true)
+    const r1 = await drift(f, push)
+    assert.deepEqual([r1.action, r1.behind, r1.unread.length], ['pending', 2, 1])
+    const r2 = await drift(f, push)
+    assert.equal(r2.action, 'pushed')
+    await drift(f, push)
+    assert.equal(sent.length, 2)
+    assert.match(sent[0], /^installed tools behind main: /)
+    assert.match(sent[1], /could not measure for 3 runs \(1 items unread\)/)
+    for (const t of sent) assert.ok(!t.includes(f.home) && !t.includes(f.root) && !t.includes('/Users/'), t)
+  })
+
+  it('an installed file that cannot be read is unread, not ahead and not a made-up count, in the mirror and in a copied directory', () => {
+    const f = fixture()
+    // history with a deletion: the path was committed, deleted and committed again, so a null blob would match the deletion commit
+    commitFile(f, 'docs/claude-home/rules/shipping.md', 's1\n')
+    sh(f.clone, 'rm', '-q', 'docs/claude-home/rules/shipping.md')
+    sh(f.clone, 'commit', '-q', '-m', 'delete')
+    commitFile(f, 'docs/claude-home/rules/shipping.md', 's2\n')
+    commitFile(f, 'scripts/review-status.mjs', 'r1\n')
+    sh(f.clone, 'rm', '-q', 'scripts/review-status.mjs')
+    sh(f.clone, 'commit', '-q', '-m', 'delete')
+    commitFile(f, 'scripts/review-status.mjs', 'r2\n')
+    const rule = join(f.home, '.claude', 'rules', 'shipping.md')
+    const gate = join(f.home, '.ship-bot', 'app', 'gate-scripts', 'review-status.mjs')
+    put(rule, 's2\n')
+    put(gate, 'r2\n')
+    assert.deepEqual(run(f).behind.filter((b) => b.tool === '~/.claude mirror' || b.tool === 'ship-bot gate scripts'), [], 'readable and current: nothing')
+    chmodSync(rule, 0o000)
+    chmodSync(gate, 0o000)
+    try {
+      const r = run(f)
+      assert.deepEqual(r.behind.filter((b) => b.tool === '~/.claude mirror' || b.tool === 'ship-bot gate scripts'), [], 'no ahead item and no count')
+      assert.ok(r.unread.includes('~/.claude/rules/shipping.md'), r.unread.join(' '))
+      assert.ok(r.unread.includes('~/.ship-bot/app/gate-scripts/review-status.mjs'), r.unread.join(' '))
+    } finally {
+      chmodSync(rule, 0o644)
+      chmodSync(gate, 0o644)
+    }
   })
 })

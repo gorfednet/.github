@@ -106,25 +106,35 @@ export async function loadHelpers(here = path.dirname(fileURLToPath(import.meta.
     }
     return null
   }
-  return { heartbeat: await pick('lib/heartbeat.mjs', '../ship-bot/lib/heartbeat.mjs'), usage: await pick('lib/usageAlert.mjs', '../scripts/lib/usageAlert.mjs') }
+  // The installed-tools check is the one helper that may fail to load: a broken import of it must never cost the dead-man ping,
+  // so it is isolated and logged, and the run goes on without it (plan row 1.18).
+  const safe = async (installed, repo) => {
+    try { return await pick(installed, repo) } catch (cause) { console.error(`capacity: ${installed} failed to load: ${String(cause?.message ?? cause).split('\n')[0]}`); return null }
+  }
+  return { heartbeat: await pick('lib/heartbeat.mjs', '../ship-bot/lib/heartbeat.mjs'), usage: await pick('lib/usageAlert.mjs', '../scripts/lib/usageAlert.mjs'), drift: await safe('lib/installedDrift.mjs', '../scripts/lib/installedDrift.mjs') }
 }
 
-/** After a good run: the weekly-usage pushes (both ntfy paths; either delivering counts), then the ping. */
-export async function afterRun({ helpers, home, pushOps, log = console.log }) {
-  const done = { usage: null, ping: null }
+/** After a good run: the weekly-usage pushes, the ping, then the installed-tools check (ntfy on both paths; either delivering counts). */
+export async function afterRun({ helpers, home, pushOps, log = console.log, root = path.join(home, 'Developer', 'gorfednet'), driftOpts = {} }) {
+  const done = { usage: null, drift: null, ping: null }
+  const push = async (text) => {
+    const ops = (await pushOps(text)) !== false
+    const off = helpers.heartbeat ? (await helpers.heartbeat.pushOffbox(text, { home })).sent === true : false
+    return ops || off
+  }
   if (helpers.usage && helpers.heartbeat) {
     done.usage = await helpers.usage.checkUsage({
       statePath: path.join(home, '.herdr-jobs', 'state.json'),
       memoPath: path.join(home, '.desk', 'usage-alerts.json'),
-      push: async (text) => {
-        const ops = (await pushOps(text)) !== false
-        const off = (await helpers.heartbeat.pushOffbox(text, { home })).sent === true
-        return ops || off
-      },
+      push,
     })
   } else log('capacity: usage helper not installed; no 70% or 90% push this run')
   if (helpers.heartbeat) done.ping = await helpers.heartbeat.ping('capacity', { home })
   else log('capacity: heartbeat helper not installed; no ping this run')
+  // Plan row 1.18, after the ping so a slow or failing check never delays the dead-man signal: tell the owner when an installed tool falls behind main.
+  if (helpers.drift) {
+    try { done.drift = await helpers.drift.checkInstalledDrift({ home, root, push, ...driftOpts }) } catch (cause) { done.drift = { action: 'error', reason: String(cause?.message ?? cause).split('\n')[0] } }
+  } else log('capacity: installed-drift helper not installed; no installed-tools check this run')
   return done
 }
 
