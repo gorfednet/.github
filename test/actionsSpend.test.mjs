@@ -291,10 +291,15 @@ describe('applyAlert', () => {
     assert.equal((await applyAlert(withMemo(meter(80), memo([70])), recorder().push)).memo, null)
     // A drop and a push in one run write the result of both.
     assert.deepEqual((await applyAlert(withMemo(meter(75), memo([70, 90])), recorder().push)).memo, { month: '2026-11', fired: [70] })
-    // A failed push still persists a drop it had nothing to do with.
+    // A failed push with nothing dropped writes nothing, and retries next run.
     const failed = await applyAlert(withMemo(meter(75), memo([])), recorder(false).push)
     assert.equal(failed.action, 'push-failed')
     assert.equal(failed.memo, null)
+    // A failed push in the same run as a drop still writes the drop (review round 9): 100 is dropped at 75%, and 70 is due and fails.
+    const both = await applyAlert(withMemo(meter(75), memo([100])), recorder(false).push)
+    assert.equal(both.action, 'push-failed')
+    assert.equal(both.due, 70)
+    assert.deepEqual(both.memo, { month: '2026-11', fired: [] })
   })
   it('an unknown reading writes no memo, even over an unreadable one', async () => {
     const m = withMemo(meterFromReport({}, { now: NOW, cap: CAP }), { month: '2026-11' })
