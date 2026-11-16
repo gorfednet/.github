@@ -185,11 +185,41 @@ test('afterRun: under 70% pushes nothing and still pings', async () => {
   assert.deepEqual(calls.map((c) => c[0]), ['ping'])
 })
 
+test('afterRun: a stale installed tool pushes once on both paths, a throwing check still pings', async () => {
+  const home = homeWith(27)
+  const calls = []
+  const base = await fakeHelpers(calls)
+  const drift = { checkInstalledDrift: async ({ push }) => ((await push('installed tools behind main: x')) ? { action: 'pushed' } : { action: 'push-failed' }) }
+  const ops = []
+  const r = await afterRun({ helpers: { ...base, drift }, home, pushOps: async (t) => { ops.push(t) } })
+  assert.equal(r.drift.action, 'pushed')
+  assert.deepEqual(ops, ['installed tools behind main: x'])
+  assert.deepEqual(calls.map((c) => c[0]), ['ping', 'offbox'], 'the ping goes before the check')
+  const calls2 = []
+  const boom = { checkInstalledDrift: async () => { throw new Error('git exploded\nsecond line') } }
+  const bare = { checkInstalledDrift: async () => { throw 'a bare string' } }
+  assert.deepEqual((await afterRun({ helpers: { ...(await fakeHelpers([])), drift: bare }, home, pushOps: async () => {} })).drift, { action: 'error', reason: 'a bare string' })
+  const r2 = await afterRun({ helpers: { ...(await fakeHelpers(calls2)), drift: boom }, home, pushOps: async () => {} })
+  assert.deepEqual(r2.drift, { action: 'error', reason: 'git exploded' })
+  assert.deepEqual(calls2.map((c) => c[0]), ['ping'], 'the dead-man ping is not held back by the check')
+})
+
+test('loadHelpers: a drift helper that fails to import is null and the run still pings', async () => {
+  const importer = async (p) => { if (p.includes('installedDrift')) throw new SyntaxError('broken helper\nat line 2'); return {} }
+  const h = await loadHelpers(path.join(import.meta.dirname, '..'), importer)
+  assert.equal(h.drift, null)
+  assert.ok(h.heartbeat && h.usage, 'the other helpers still load')
+  const calls = []
+  const r = await afterRun({ helpers: { ...(await fakeHelpers(calls)), drift: h.drift }, home: homeWith(27), pushOps: async () => {}, log: () => {} })
+  assert.equal(r.drift, null)
+  assert.deepEqual(calls.map((c) => c[0]), ['ping'])
+})
+
 test('loadHelpers: the installed lib/ copy first, the repository path otherwise, null when neither', async () => {
   const seen = []
   const importer = async (p) => (seen.push(p), {})
   const repo = await loadHelpers(path.join(import.meta.dirname, '..'), importer)
-  assert.ok(repo.heartbeat && repo.usage)
+  assert.ok(repo.heartbeat && repo.usage && repo.drift)
   assert.ok(seen.some((p) => p.endsWith(path.join('ship-bot', 'lib', 'heartbeat.mjs'))), seen.join(' '))
   const app = fs.mkdtempSync(path.join(os.tmpdir(), 'cap-app-'))
   fs.mkdirSync(path.join(app, 'lib'))
@@ -201,6 +231,6 @@ test('loadHelpers: the installed lib/ copy first, the repository path otherwise,
   assert.deepEqual(seen, [path.join(app, 'lib', 'heartbeat.mjs')])
   const logs = []
   const r = await afterRun({ helpers: installed.usage ? installed : { heartbeat: null, usage: null }, home: homeWith(95), pushOps: async () => {}, log: (l) => logs.push(l) })
-  assert.deepEqual(r, { usage: null, ping: null })
-  assert.equal(logs.length, 2)
+  assert.deepEqual(r, { usage: null, drift: null, ping: null })
+  assert.equal(logs.length, 3)
 })

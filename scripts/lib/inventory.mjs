@@ -17,7 +17,7 @@ import { SESSIONS_DIR, idsNamedIn, primaryClones } from './hygiene.mjs'
 export const GRAPHQL_RESERVE = 1500
 export const PR_CACHE_MINUTES = 30
 
-/** Plan row ids (`1.17`) from the `| 1.17 |` table rows of docs/plan-of-record.md. */
+/** Plan row ids (`1.17`) from the `| 1.17 |` table rows of the plan of record (gorfednet/ops control/plan-of-record.md). */
 export function planRows(text) {
   return [...String(text ?? '').matchAll(/^\|\s*(\d{1,2}\.\d{1,2})\s*\|/gm)].map((m) => m[1])
 }
@@ -170,6 +170,8 @@ export function summarizeInventory(inv, { includePrivate = false, now = new Date
 }
 
 const cell = (s) => String(s ?? '').replace(/\|/g, '\\|').replace(/\r?\n/g, ' ')
+/** The kinds only the Mac can see. */
+export const MAC_KINDS = ['session', 'worktree', 'job']
 export const KIND_NAME = { pr: 'Pull requests', session: 'Sessions', worktree: 'Worktrees', job: 'Herdr jobs', backlog: 'Backlog entries' }
 
 /** Markdown for STATUS.md from the stored shape. A kind that was not measured says so, never 0. */
@@ -177,10 +179,19 @@ export function renderInventory(inv, etStamp = (iso) => iso) {
   const out = [`## Inventory (measured ${etStamp(inv.measuredAt)})`, '', 'Everything open maps to a plan row, a backlog id or something that owns it, or it is an orphan. Desk decides each orphan within 24 h: attach, close or archive.', '', '| Kind | Total | Orphans |', '|---|---|---|']
   for (const k of Object.keys(KIND_NAME)) {
     const c = inv.counts[k]
-    out.push(`| ${KIND_NAME[k]} | ${c == null ? 'not measured' : c.total} | ${c == null ? 'not measured' : c.orphans} |`)
+    out.push(`| ${KIND_NAME[k]} | ${c == null ? 'not measured' : c.total} | ${c == null || c.orphans == null ? 'not measured' : c.orphans} |`)
   }
   out.push('')
-  if (inv.orphans.length === 0 && inv.hiddenPrivate === 0) out.push('No orphans.', '')
+  // A Mac kind counted but not listed (published counts), above 0 or not measured: the table is all there is, so never say "No orphans.".
+  const unlisted = MAC_KINDS.some((k) => {
+    const c = inv.counts[k]
+    return c == null || c.orphans == null || c.orphans > inv.orphans.filter((o) => o.kind === k).length
+  })
+  if (inv.stamps && Object.keys(inv.stamps).length > 0) {
+    out.push(`Counts from the Mac, each measured on its own: ${Object.entries(inv.stamps).filter(([, at]) => at).map(([k, at]) => `${KIND_NAME[k].toLowerCase()} ${etStamp(at)}`).join('; ')}.`, '')
+  }
+  if (inv.orphans.length === 0 && inv.hiddenPrivate === 0 && !unlisted) out.push('No orphans.', '')
+  else if (unlisted) out.push('Orphans on the Mac, and any kind not measured, are counted in the table and not listed.', '')
   for (const k of Object.keys(KIND_NAME)) {
     const list = inv.orphans.filter((o) => o.kind === k)
     if (list.length === 0) continue
@@ -189,6 +200,7 @@ export function renderInventory(inv, etStamp = (iso) => iso) {
     out.push('')
   }
   if (inv.hiddenPrivate > 0) out.push(`${inv.hiddenPrivate} orphans in private repositories are counted, not listed.`, '')
+  if (inv.planRead === false) out.push('The plan of record could not be read this run, so no item matched a plan row: the orphan counts are high.', '')
   if (inv.privateReposNotItemised > 0) out.push(`Backlog entries of ${inv.privateReposNotItemised} private repositories are not itemised in this run.`, '')
   return out.join('\n')
 }

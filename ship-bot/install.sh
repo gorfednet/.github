@@ -10,9 +10,18 @@
 #     CI: it costs no GitHub Actions minutes)
 #   - creates ~/.ship-bot/ (config, state, logs, the bot's own workspaces)
 #   - installs origin/main's commit (git archive), never the working tree
-#   - copies the bot's code to ~/.ship-bot/app/, and the gate scripts to
-#     ~/.ship-bot/app/gate-scripts/, so neither changes when a clone switches
-#     branches; re-run to update them
+#   - builds that commit as ~/.ship-bot/versions/<sha>/ (the bot's code, and the
+#     gate scripts in gate-scripts/), so neither changes when a clone switches
+#     branches. lib/install.mjs does the copying, the same module the bot uses
+#     when it installs a merged main itself, so the copy list is in one place.
+#   - validates the new version before anything running changes: its gate
+#     imports, the live config with its own loadConfig, and its --self-test
+#   - points the link ~/.ship-bot/app at it with one atomic rename. An `app`
+#     directory from before this layout is moved to versions/<its SOURCE>.
+#   - holds ~/.ship-bot/install.lock while it does this, so the bot's own
+#     self-install never runs at the same time. It records the install as
+#     `hand` in ~/.ship-bot/self-install.json and clears any commit the
+#     self-install had refused.
 #   - writes ~/.ship-bot/config.json from config.example.json ONLY if there is
 #     none; an existing config is never touched. The example has "live": false.
 #   - writes and loads ~/Library/LaunchAgents/net.gorfed.ship-bot.plist, which
@@ -84,23 +93,32 @@ fi
 mkdir -p "${BOT_HOME}/logs" "${BOT_HOME}/work" "${HOME}/Library/LaunchAgents"
 chmod 700 "${BOT_HOME}"
 
-# Copy the code: into a fresh directory, then swap, so a half-copied app is never run.
-rm -rf "${APP_DIR}.new"
-mkdir -p "${APP_DIR}.new"
-cp -R "${SRC}/ship-bot.mjs" "${SRC}/patch-config.mjs" "${SRC}/patches" "${SRC}/lib" "${SRC}/github-app" "${SRC}/config.example.json" "${SRC}/README.md" "${APP_DIR}.new/"
-# The gate scripts, in the layout of scripts/ (lib/gate-source.mjs): the bot
-# runs these and never the main clone, where a session can switch branches.
-GATES="${APP_DIR}.new/gate-scripts"
-mkdir -p "${GATES}/gates"
-cp "${STAGE}/scripts/review-status.mjs" "${GATES}/"
-cp "${STAGE}/scripts/gates/assert-checks-started.mjs" "${STAGE}/scripts/gates/check-closing-keywords.mjs" "${GATES}/gates/"
-cp -R "${STAGE}/scripts/lib" "${GATES}/"
-echo "${main_sha}" >"${GATES}/SOURCE"
+# One install at a time: the bot's self-install takes the same lock (lib/install.mjs).
+INSTALLER="${SRC}/lib/install.mjs"
+if ! "${NODE_BIN}" "${INSTALLER}" lock --home "${BOT_HOME}" --pid "$$"; then
+  echo "install.sh: nothing was installed." >&2
+  exit 1
+fi
+trap '"${NODE_BIN}" "${INSTALLER}" unlock --home "${BOT_HOME}" --pid "$$"; rm -rf "${STAGE}"' EXIT
+
+# Build the version beside the running one (versions/<sha>.new): the code and the gate scripts, in the
+# layout of scripts/ (lib/gate-source.mjs), with the commit in gate-scripts/SOURCE. Nothing running
+# reads it until the swap.
+NEW="$("${NODE_BIN}" "${INSTALLER}" build --home "${BOT_HOME}" --stage "${STAGE}" --sha "${main_sha}")"
+refuse() {
+  "${NODE_BIN}" "${INSTALLER}" discard --home "${BOT_HOME}" --sha "${main_sha}"
+  echo "install.sh: $1" >&2
+  if [[ -e "${APP_DIR}" ]]; then
+    echo "install.sh: ${APP_DIR} and the LaunchAgent were left as they were." >&2
+  else
+    echo "install.sh: no bot was installed." >&2
+  fi
+}
 # Every relative import in the installed gates must resolve inside the copy
 # before it replaces the running one (a later gate importing outside
 # scripts/lib would otherwise fail only at merge time).
-if ! "${NODE_BIN}" "${SRC}/lib/gate-imports.mjs" "${GATES}"; then
-  echo "install.sh: the gate scripts import something the copy does not hold. Nothing was installed." >&2
+if ! "${NODE_BIN}" "${NEW}/lib/gate-imports.mjs" "${NEW}/gate-scripts"; then
+  refuse "the gate scripts import something the copy does not hold."
   exit 1
 fi
 if [[ ! -f "${BOT_HOME}/config.json" ]]; then
@@ -111,28 +129,34 @@ else
   echo "Kept the existing ${BOT_HOME}/config.json."
 fi
 
-# Validate the live config with the NEW app's validator before it replaces the running one (13 November
+# Validate the live config with the NEW version's validator before it replaces the running one (13 November
 # 2026: the swap came first, a tightened validator refused the live ops row, and every pass exited until a
-# patch was applied). On refusal the running app and its LaunchAgent stay exactly as they were.
-if ! "${NODE_BIN}" --input-type=module -e "
-  import('${APP_DIR}.new/lib/config.mjs').then((m) => m.loadConfig('${BOT_HOME}/config.json'))
-    .catch((e) => { console.error(e.message); process.exit(1) })"; then
-  rm -rf "${APP_DIR}.new"
-  if [[ -d "${APP_DIR}" ]]; then
-    echo "install.sh: this ${main_sha:0:7} bot does not accept ${BOT_HOME}/config.json, so ${APP_DIR} and the LaunchAgent were left as they were." >&2
-  else
-    echo "install.sh: this ${main_sha:0:7} bot does not accept ${BOT_HOME}/config.json, so no bot was installed." >&2
-  fi
+# patch was applied). On refusal the running version and its LaunchAgent stay exactly as they were.
+# The two paths are arguments to the script, never spliced into it.
+if ! "${NODE_BIN}" --input-type=module -e '
+  const [lib, config] = process.argv.slice(1)
+  const { pathToFileURL } = await import("node:url")
+  try { (await import(pathToFileURL(lib).href)).loadConfig(config) } catch (e) { console.error(e.message); process.exit(1) }
+' "${NEW}/lib/config.mjs" "${BOT_HOME}/config.json"; then
+  refuse "this ${main_sha:0:7} bot does not accept ${BOT_HOME}/config.json."
   # No command is printed: a row patch written for a stricter validator may be refused by the running
   # one (13 November 2026), so which patch to apply, and with which copy, is decided on its pull request.
   echo "install.sh: the config needs the reviewed row change named in its pull request first; then run this again." >&2
   exit 1
 fi
 
-rm -rf "${APP_DIR}.old"
-if [[ -d "${APP_DIR}" ]]; then mv "${APP_DIR}" "${APP_DIR}.old"; fi
-mv "${APP_DIR}.new" "${APP_DIR}"
-rm -rf "${APP_DIR}.old"
+# The new version must start: every module imports, its gate scripts resolve, and it reads the state file.
+if ! "${NODE_BIN}" "${NEW}/ship-bot.mjs" --self-test --config "${BOT_HOME}/config.json"; then
+  refuse "this ${main_sha:0:7} bot failed its self-test (the JSON line above says why)."
+  exit 1
+fi
+
+# The swap: versions/<sha>.new becomes versions/<sha>, and the link ${APP_DIR} is renamed onto it.
+# It also records a hand install in the marker, which clears what the self-install had refused.
+"${NODE_BIN}" "${INSTALLER}" swap --home "${BOT_HOME}" --sha "${main_sha}"
+# The Node check.sh passed on, beside the app (not in it: the app is compared with origin/main). The installed-tools
+# row flags the agent when its Node reports another version (plan row 1.22a).
+"${NODE_BIN}" --version >"${APP_DIR}.node-version"
 
 xml() { sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g' <<<"$1"; }
 

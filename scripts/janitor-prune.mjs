@@ -19,7 +19,8 @@
  *
  * A worktree is pruned only when all of these hold:
  *   - it is a linked worktree, never a clone's main checkout
- *   - its name is not protected (gates-main and ops' tools-main: installed tools link there; desk-log; janitor-main)
+ *   - its name is not protected (gates-main and ops' tools-main: installed tools link there; desk-log in any clone,
+ *     which is Desk's ops worktree since plan row 1.30; janitor-main)
  *   - its path is not in the keep file (the working folders of live sessions)
  *   - `git status --porcelain` is empty and nothing is ahead of its upstream
  *   - it holds no ignored file except `node_modules` and `.DS_Store` (git removes ignored files silently)

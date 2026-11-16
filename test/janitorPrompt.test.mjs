@@ -65,6 +65,8 @@ test("janitor rescues dirty work through a draft held from ship-bot before archi
   assert.match(rescue[0], /--untracked-files=all/);
   assert.match(rescue[0], /HEAD --not --remotes/);
   assert.match(rescue[0], /only once the push and the draft both succeeded/);
+  // Plan row 1.30: .github is public, so a rescue there (git add -A, push) is propose-only.
+  assert.match(rescue[0], /Never rescue a `gorfednet\/\.github` worktree: that repository is public[^\n]*Propose it in the digest instead/);
   assert.doesNotMatch(rescue[0].split("## Next")[1] ?? "", /merge/i);
 });
 
@@ -97,14 +99,15 @@ test("janitor step 3b builds housekeeping trains through the script and never la
   assert.match(step[0], /check-closing-keywords/);
 });
 
-test("janitor never labels a path ship-bot calls control plane, docs/claude-home/ included", () => {
+test("janitor never labels a path ship-bot calls control plane, ops control/claude-home/ included", () => {
   const step = prompt.match(/\n3\. Labels\.[\s\S]*?(?=\n4\. Sessions)/);
   assert.ok(step, "step 3 exists");
   assert.match(step[0], /`touchesControlPlane\(path, slug\)`[^\n]*is never labelled, even under `docs\/`/);
   assert.match(step[0], /ship-bot\/lib\/drafts\.mjs/);
   assert.match(step[0], /Never put a changed file's name on the command line/);
   assert.match(step[0], /exact `owner\/name` used in the `gh api` call/);
-  assert.match(step[0], /in `gorfednet\/\.github` everything under `docs\/claude-home\/`/);
+  assert.match(step[0], /in `gorfednet\/ops` everything under `control\/claude-home\/`/);
+  assert.match(step[0], /in `gorfednet\/\.github` all of `scripts\/`/);
   assert.match(step[0], /Any other exit code, or a check that can't run, means no label/);
 });
 
@@ -133,6 +136,8 @@ test("janitor control-plane command: exit 1 on a hit, 0 on plain docs, non-zero 
   assert.equal(controlPlaneCheck([[{ filename: "docs/x.md" }], [{ filename: "docs/claude-home/rules/a.md" }]], DOT).status, 1, "a hit on a later page");
   assert.equal(controlPlaneCheck([[{ filename: "docs/x.md", previous_filename: "docs/claude-home/rules/a.md", status: "renamed" }]], DOT).status, 1);
   assert.equal(controlPlaneCheck([[{ filename: "docs/claude-home/settings.json" }]], "gorfednet/site").status, 0, "ordinary docs in another repository");
+  assert.equal(controlPlaneCheck([[{ filename: "control/claude-home/rules/shipping.md" }]], "gorfednet/ops").status, 1, "the ~/.claude copy in ops (plan row 1.30)");
+  assert.equal(controlPlaneCheck([[{ filename: "control/handoff/2026-11-16-x.md" }]], "gorfednet/ops").status, 0, "an ops handoff is ordinary docs");
   for (const slug of ["", ".github", "gorfednet/.github/x", "gorfednet/.github;x"]) {
     const { status } = controlPlaneCheck([[{ filename: "docs/x.md" }]], slug && `'${slug}'`);
     assert.ok(status !== 0 && status !== null, `slug ${JSON.stringify(slug)} exits ${status}`);
@@ -160,12 +165,12 @@ test("janitor puts no branch, title or worktree on a command line: each goes thr
   assert.match(prompt, /skip that session/);
 });
 
-/** Every untrusted-valued flag takes `"$(cat $R/<name>-<id8>.txt)"` with its double quotes; `-C` may also take the owner's `$J` or `$G`. Returns how many it checked. */
+/** Every untrusted-valued flag takes `"$(cat $R/<name>-<id8>.txt)"` with its double quotes; `-C` may also take the owner's `$J`, `$G` or `$O`. Returns how many it checked. */
 function quotedFileFlags(spans) {
   let seen = 0;
   for (const c of spans) {
     for (const m of c.matchAll(/(?:^| )(-C|--head|--branch|--worktree|--title) (\S+)/g)) {
-      if (m[1] === "-C" && /^\$[JG]$/.test(m[2])) continue;
+      if (m[1] === "-C" && /^\$[JGO]$/.test(m[2])) continue;
       seen += 1;
       assert.match(c.slice(m.index + m[0].indexOf(m[1]) + m[1].length + 1), /^"\$\(cat \$R\/[a-z]+-<id8>\.txt\)"/, `${m[1]} must read a quoted file: ${c}`);
     }
@@ -244,4 +249,43 @@ test("janitor step 5b sweeps merged origin branches through the script only, aft
   assert.match(step[0], /8 days for `janitor\/train-\*`/);
   const without = step[0].replace(/adding `--apply` before the `>` in a live run/, "").replace(/leave `--apply` off/, "");
   assert.doesNotMatch(without, /--apply/, "the only --apply in 5b is the live-run one");
+});
+
+test("janitor step 1b publishes local counts: the command line has no --apply, and only a live run adds it", () => {
+  const step = prompt.match(/\n1b\. [\s\S]*?(?=\n2\. Read)/);
+  assert.ok(step, "step 1b exists, between steps 1 and 2");
+  const spans = [...step[0].matchAll(/`([^`]*local-status-publish\.mjs[^`]*)`/g)].map((m) => m[1]);
+  assert.equal(spans.length, 1);
+  assert.doesNotMatch(spans[0], /--apply/, "the command a dry run copies carries no --apply");
+  assert.match(step[0], /Add `--apply` in a live run only/);
+  assert.match(step[0], /Never push anywhere else, never force/);
+  assert.match(step[0], /Never retry a refused push/);
+  // The proposer is read-only: its line takes no --apply either.
+  const proposer = [...step[0].matchAll(/`([^`]*branch-sweep-propose\.mjs[^`]*)`/g)].map((m) => m[1]);
+  assert.equal(proposer.length, 1);
+  assert.doesNotMatch(proposer[0], /--apply|--remote-sweep/);
+  assert.match(step[0], /Open no draft, close nothing and delete nothing from it/);
+});
+
+test("janitor lists the one local-counts push among its GitHub calls and bars it from a dry run", () => {
+  assert.match(prompt, /Your only GitHub calls are step 1b's one push of `local-counts\.json` to the ops data branch \(live runs only\)/);
+  assert.match(prompt, /push \(step 1b's `--apply` included\)/);
+});
+
+test("janitor 1b reads the keep list from ops origin/main into $R and gives the same copy to both scripts", () => {
+  const step = prompt.match(/\n1b\. [\s\S]*?(?=\n2\. Read)/)[0];
+  assert.match(step, /git -C \$O fetch --quiet origin main/);
+  assert.match(step, /git -C \$O show origin\/main:control\/branch-keep\.json > \$R\/branch-keep\.json/);
+  assert.match(step, /never from its working tree/);
+  for (const name of ["local-status-publish", "branch-sweep-propose"]) {
+    const span = [...step.matchAll(new RegExp("`([^`]*" + name + "\\.mjs[^`]*)`", "g"))].map((m) => m[1]);
+    assert.equal(span.length, 1, name);
+    assert.match(span[0], /--keep-list \$R\/branch-keep\.json/, name);
+  }
+  assert.doesNotMatch(step, /--keep-list \$G/, "no keep list is read from the working tree");
+});
+
+test("janitor step 1 goes on to 1b when repositories are unreadable, and 1b admits its one push", () => {
+  assert.match(prompt, /go on to step 1b, then step 2/);
+  assert.match(prompt, /write only under `\$R`, apart from the one push below/);
 });

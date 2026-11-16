@@ -31,6 +31,7 @@ import { promisify } from 'node:util'
 import { isMain } from '../templates/verification-kit/lib/isMain.mjs'
 import { lapsedBacklog } from './fleet-report.mjs'
 import { backlogIds, collectLocal, duplicatePrs, idlePrs } from './lib/hygiene.mjs'
+import { LOCAL_COUNTS_SOURCE, readLocalCounts } from './lib/localCounts.mjs'
 import { collectPrCost } from './lib/prCost.mjs'
 import { backlogFromStatus, buildInventory, collectHerdrJobs, collectSessions, collectWorktrees, fetchOpenPrs, planRows, summarizeInventory } from './lib/inventory.mjs'
 import { claudeReviewVerdict } from './lib/reviewVerdict.mjs'
@@ -338,7 +339,42 @@ export async function mapLimit(items, limit, fn) {
  * above; sessions, worktrees and Herdr jobs only on a run that looked at the Mac. Anything that could not
  * be read is null ("not measured").
  */
-export function collectInventory(status, { includePrivate = false, local = false, now = new Date() } = {}) {
+/**
+ * The plan of record lives in private gorfednet/ops since plan row 1.30: Desk edits it on ops' `desk-log`
+ * branch, and ops main trails it. Read through the API with the run's token, desk-log first. Only row ids and
+ * substring matches come out of it; no plan text reaches STATUS.md. Null when neither ref can be read.
+ */
+export const PLAN_SOURCE = { slug: 'gorfednet/ops', path: 'control/plan-of-record.md', refs: ['desk-log', 'main'] }
+export function readPlanOfRecord(json = ghJson, log = console.error) {
+  for (const ref of PLAN_SOURCE.refs) {
+    try {
+      const text = fileText(PLAN_SOURCE.slug, `${PLAN_SOURCE.path}?ref=${ref}`, json)
+      if (text !== null) return { text, ref }
+    } catch (cause) {
+      log(`::warning::inventory: plan of record unreadable at ${PLAN_SOURCE.slug}@${ref}: ${String(cause.message).split('\n')[0]}`)
+    }
+  }
+  return null
+}
+
+/**
+ * The Mac's counts (replan row N7), read from the ops data branch with the run's own token: one request, that
+ * ref only, no other ref tried. Null when the file is absent, unreadable or refused by the strict reader, so a
+ * hosted run says "not measured" and never 0. Only a rule id is logged, never a key or a value.
+ */
+export function fetchLocalCounts(json = ghJson, { now = Date.now(), log = console.error } = {}) {
+  const { slug, path, ref } = LOCAL_COUNTS_SOURCE
+  let text
+  try {
+    text = fileText(slug, `${path}?ref=${ref}`, json)
+  } catch (cause) {
+    log(`::warning::fleet-status: local counts unreadable: ${String(cause.message).split('\n')[0].replace(/https?:\/\/\S+/g, '<url>')}`)
+    return null
+  }
+  return readLocalCounts(text, { now, log })
+}
+
+export function collectInventory(status, { includePrivate = false, local = false, now = new Date(), json = ghJson } = {}) {
   const readText = (rel) => {
     try {
       return readFileSync(new URL(`../${rel}`, import.meta.url), 'utf8')
@@ -346,7 +382,9 @@ export function collectInventory(status, { includePrivate = false, local = false
       return null
     }
   }
-  const planText = readText('docs/plan-of-record.md') ?? ''
+  const plan = readPlanOfRecord(json)
+  if (plan === null) console.error('::warning::inventory: no plan of record read, so no item matches a plan row this run')
+  const planText = plan?.text ?? ''
   const ranking = readText('docs/plan-ranking.json')
   let prs = null
   try {
@@ -367,7 +405,7 @@ export function collectInventory(status, { includePrivate = false, local = false
     jobs: local ? collectHerdrJobs() : null,
     rankedRepos: ranking ? JSON.parse(ranking).tiers.flatMap((t) => t.repos.map((r) => r.slug)) : [],
   })
-  return summarizeInventory(inv, { includePrivate, now, privateReposNotItemised: (status.repos ?? []).filter((r) => r.redacted).length })
+  return { ...summarizeInventory(inv, { includePrivate, now, privateReposNotItemised: (status.repos ?? []).filter((r) => r.redacted).length }), planRead: plan !== null }
 }
 
 function arg(name) {
@@ -434,6 +472,12 @@ if (isMain(import.meta.url)) {
     const cost = await collectPrCost({ now })
     status.prCost = cost.error ? null : cost
     if (cost.error) status.prCostUnread = cost.error
+  }
+  if (!process.argv.includes('--local') && !arg('--only')) {
+    // (Not in a per-repository child: the parent reads the file once.)
+    // A hosted run has no Mac: the janitor's daily counts stand in for the local rows (absent means "not measured").
+    const counts = fetchLocalCounts(ghJson, { now: now.getTime() })
+    if (counts) status.localCounts = counts
   }
   if (process.argv.includes('--inventory')) {
     status.inventory = collectInventory(status, { includePrivate: process.argv.includes('--include-private'), local: process.argv.includes('--local'), now })

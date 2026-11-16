@@ -12,14 +12,24 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const HOOK = join(here, '..', 'docs', 'claude-home', 'hooks', 'gh-poll-guard.py');
+const HOOK = join(here, '..', 'scripts', 'claude-hooks', 'gh-poll-guard.py');
 // Every spawn writes its call log here, never to the owner's real ~/.gh-quota/calls.log.
 const ENV = { ...process.env, GH_GUARD_LOG: join(mkdtempSync(join(tmpdir(), 'ghguard-')), 'calls.log') };
 const fixture = (name) => readFileSync(join(here, 'fixtures', 'gh-poll-guard', name), 'utf8');
 
+// A hook that never returns must fail the test, not hold the machine's one gate lock for as long as it likes
+// (16 November 2026, docs/incidents.md): every spawn has a ceiling, and a kill is an error.
+const HOOK_TIMEOUT_MS = 20_000;
+// `args` and `ceilingMs` default to the real hook and the real ceiling; the canary below passes a sleeper and a short one.
+function spawnHook(input, { args = ['-I', HOOK], ceilingMs = HOOK_TIMEOUT_MS } = {}) {
+  const r = spawnSync('python3', args, { input, encoding: 'utf8', env: ENV, timeout: ceilingMs, killSignal: 'SIGKILL' });
+  assert.ok(!r.error, `the hook did not finish within ${ceilingMs} ms or could not start: ${r.error?.message}`);
+  return r;
+}
+
 function run(command, extra = {}) {
   const input = JSON.stringify({ tool_name: 'Bash', tool_input: { command }, ...extra });
-  const r = spawnSync('python3', ['-I', HOOK], { input, encoding: 'utf8', env: ENV });
+  const r = spawnHook(input);
   assert.equal(r.status, 0, `hook exited ${r.status}: ${r.stderr}`);
   if (!r.stdout.trim()) return null;
   const out = JSON.parse(r.stdout).hookSpecificOutput;
@@ -147,17 +157,20 @@ test('a whitespace-heavy command finishes well inside the 5 s timeout', () => {
 });
 
 test('covers the Monitor tool too', () => {
-  const r = spawnSync('python3', ['-I', HOOK], {
-    input: JSON.stringify({ tool_name: 'Monitor', tool_input: { command: 'while true; do gh pr checks 5; sleep 30; done' } }),
-    encoding: 'utf8',
-    env: ENV,
-  });
+  const r = spawnHook(JSON.stringify({ tool_name: 'Monitor', tool_input: { command: 'while true; do gh pr checks 5; sleep 30; done' } }));
   assert.equal(JSON.parse(r.stdout).hookSpecificOutput.permissionDecision, 'deny');
 });
 
 test('fails open on input it cannot read', () => {
-  const r = spawnSync('python3', ['-I', HOOK], { input: 'not json', encoding: 'utf8', env: ENV });
+  const r = spawnHook('not json');
   assert.equal(r.status, 0);
   assert.equal(r.stdout.trim(), '');
   assert.equal(run('while true; do gh api x; sleep 1; done', { tool_name: 'Read' }), null);
+});
+
+test('a hook that never returns fails the test instead of hanging it', () => {
+  // Through the same helper every other test uses: a process that sleeps past a short ceiling must throw from spawnHook itself.
+  const started = Date.now();
+  assert.throws(() => spawnHook('{}', { args: ['-I', '-c', 'import time; time.sleep(30)'], ceilingMs: 500 }), /did not finish within 500 ms.*ETIMEDOUT/);
+  assert.ok(Date.now() - started < 10_000, 'the kill came at the ceiling, not after the sleep');
 });

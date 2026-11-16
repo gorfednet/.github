@@ -84,4 +84,8 @@ describe('control-plane PRs need a clean review for Medium and High threads (row
     assert.equal(merges((await run(['docs/claude-home/rules/x.md'], 'High: x')).gh).length, 1)
     assert.equal(merges((await run(['docs/readme.md'], 'High: x', { slug: 'gorfednet/.github' })).gh).length, 1, 'the .github fixture itself can merge')
   })
+  it('in gorfednet/ops control/claude-home/ is such a path; a handoff beside it is ordinary docs', async () => {
+    assert.equal(merges((await run(['control/claude-home/rules/x.md'], 'High: x', { slug: 'gorfednet/ops' })).gh).length, 0)
+    assert.equal(merges((await run(['control/handoff/x.md'], 'High: x', { slug: 'gorfednet/ops' })).gh).length, 1)
+  })
 })
