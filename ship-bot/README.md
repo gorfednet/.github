@@ -507,9 +507,11 @@ these ship-bot-advanced worktrees, never a working checkout. `install-gates.sh`,
 `capacity/install.sh` and ops' Herdr `install.sh` refuse anything else.
 fleet-status's "Installed tools behind main" row flags a link into a working
 checkout, a worktree behind origin/main, and an installed copy that differs from
-main (this bot and its gate-scripts copy, the capacity app, the hooks, and the
-rules, agents, skills, `CLAUDE.md` and `settings.json` mirrored in
-`docs/claude-home/`; `scripts/lib/installed-tools.mjs`). The published STATUS.md
+main (this bot and its gate-scripts copy, the capacity app, the hooks from
+`scripts/claude-hooks/`, and the rules, agents, skills, `CLAUDE.md` and
+`settings.json` mirrored in ops `control/claude-home/` since plan row 1.30;
+`scripts/lib/installed-tools.mjs`). A stale mirror there means ops main is ahead
+of the live `~/.claude`. The published STATUS.md
 runs on GitHub and cannot read this Mac, so that row reads "not measured" there.
 The capacity job (every 15 minutes, `scripts/lib/installedDrift.mjs`) fetches the
 two clones, runs the same check and sends one ntfy the first time each finding has been seen on two runs in a row
