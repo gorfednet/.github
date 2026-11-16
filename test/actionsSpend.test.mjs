@@ -19,7 +19,11 @@ import { digest, render } from '../scripts/write-status-md.mjs'
 const schema = JSON.parse(readFileSync(new URL('../scripts/lib/status.schema.json', import.meta.url), 'utf8'))
 const fixture = JSON.parse(readFileSync(new URL('./fixtures/status.fixture.json', import.meta.url), 'utf8'))
 
-const row = (over = {}) => ({ date: '2026-11-05', product: 'Actions', sku: 'Actions Linux', quantity: 100, unitType: 'minutes', pricePerUnit: 0.008, grossAmount: 0.8, discountAmount: 0, netAmount: 0.8, repositoryName: 'owner/repo', ...over })
+const row = (over = {}) => {
+  const r = { date: '2026-11-05', product: 'Actions', sku: 'Actions Linux', quantity: 100, unitType: 'minutes', pricePerUnit: 0.008, discountAmount: 0, netAmount: 0.8, repositoryName: 'owner/repo', ...over }
+  // Gross is what was used before the included minutes: net plus the discount, unless a test sets it.
+  return { grossAmount: r.netAmount + r.discountAmount, ...r }
+}
 // Day 15 of a 30-day month at noon UTC: 14.5 days elapsed.
 const NOW = new Date('2026-11-15T12:00:00Z')
 const CAP = 100
@@ -42,6 +46,24 @@ describe('meterFromReport', () => {
     assert.equal(m.projectedUsd, 60)
     assert.equal(m.projectedPct, 60)
     assert.equal(m.unknown, undefined)
+  })
+  it('projects the gross run rate, so usage the included minutes cover still moves it (review round 1)', () => {
+    // Day 15 of 30, 14.5 days elapsed. 20 dollars of usage, all covered by the allowance: net 0, but the projection is not 0.
+    const covered = meterFromReport({ usageItems: [row({ quantity: 2500, netAmount: 0, discountAmount: 20 })] }, { now: NOW, cap: CAP })
+    assert.equal(covered.spendUsd, 0)
+    assert.equal(covered.usedPct, 0)
+    assert.ok(covered.projectedUsd > 0, 'an early overflow must show in the projection')
+    // 20 gross over 14.5 days, times 30, less the 20 already discounted.
+    assert.equal(covered.projectedUsd, 21.38)
+    // A steady 1.6 a day with a 24 allowance, read at the start of day 20: gross 32, discount 24, billed 8. Truth at month end: 48 - 24 = 24.
+    const later = meterFromReport({ usageItems: [row({ quantity: 4000, netAmount: 8, discountAmount: 24 })] }, { now: new Date('2026-11-20T00:00:00Z'), cap: CAP })
+    assert.equal(later.spendUsd, 8)
+    assert.equal(later.projectedUsd, 26.53) // 19 elapsed days at 00:00 on day 20: 32 / 19 * 30 - 24
+    assert.ok(later.projectedUsd >= 24, 'an upper bound: never under the true month-end bill')
+  })
+  it('never projects below what is already billed', () => {
+    const m = meterFromReport({ usageItems: [row({ netAmount: 50, discountAmount: 500 })] }, { now: new Date('2026-11-29T00:00:00Z'), cap: CAP })
+    assert.ok(m.projectedUsd >= m.spendUsd)
   })
   it('leaves other products, self-hosted minutes and non-minute units out of the minutes', () => {
     const m = meter(10, [
@@ -71,6 +93,9 @@ describe('meterFromReport', () => {
       [{ usageItems: [row({ netAmount: NaN })] }, 'netAmount'],
       [{ usageItems: [row({ netAmount: -1 })] }, 'netAmount'],
       [{ usageItems: [row({ quantity: null })] }, 'minutes'],
+      [{ usageItems: [row({ grossAmount: undefined, discountAmount: undefined })].map(({ grossAmount, discountAmount, ...r }) => r) }, 'grossAmount'],
+      [{ usageItems: [row({ discountAmount: '1' })] }, 'discountAmount'],
+      [{ usageItems: [row({ grossAmount: NaN })] }, 'grossAmount'],
     ]
     for (const [input, why] of bad) {
       const m = meterFromReport(input, { now: NOW, cap: CAP })
@@ -181,7 +206,7 @@ describe('applyAlert', () => {
     assert.match(text, /91%/)
     assert.match(text, /US\$91\.00 so far/)
     assert.match(text, /7500 hosted minutes/)
-    assert.match(text, /on course for US\$188\.28/)
+    assert.match(text, /on course for at most US\$188\.28/)
   })
 })
 
@@ -195,7 +220,7 @@ describe('the status.json block and its readers', () => {
   })
   it('STATUS.md shows the month, the spend and the projection', () => {
     const md = render(withActions(withMemo(meter(30), null)))
-    assert.match(md, /## Hosted Actions spend\n\nNovember 2026: 7,500 hosted minutes, US\$30\.00 of the US\$100\.00 cap \(30%\)\. On course for US\$62\.07 by month end \(62% of the cap\)\./)
+    assert.match(md, /## Hosted Actions spend\n\nNovember 2026: 7,500 hosted minutes, US\$30\.00 of the US\$100\.00 cap \(30%\)\. On course for at most US\$62.07 by month end \(62% of the cap\)\./)
   })
   it('STATUS.md says unknown, not zero, when the reading failed or is missing', () => {
     const failed = render(withActions(withMemo(meterFromReport({}, { now: NOW, cap: CAP }), null)))
@@ -209,7 +234,7 @@ describe('the status.json block and its readers', () => {
   it('the digest carries one spend line and stays within 10 lines', () => {
     const lines = digest(withActions(withMemo(meter(30), null))).trimEnd().split('\n')
     assert.ok(lines.length <= 10)
-    assert.match(lines[1], /^Hosted Actions November 2026: US\$30\.00 of US\$100\.00 \(30%\), 7500 min, on course for US\$62\.07 \(62%\)$/)
+    assert.match(lines[1], /^Hosted Actions November 2026: US\$30\.00 of US\$100\.00 \(30%\), 7500 min, on course for at most US\$62\.07 \(62%\)$/)
     assert.match(digest(fixture), /Hosted Actions spend: unknown \(no reading in this snapshot\)/)
     assert.match(digest(withActions(withMemo(meterFromReport({}, { now: NOW, cap: CAP }), null))), /Hosted Actions spend: unknown, not zero/)
   })
@@ -232,6 +257,19 @@ describe('fleet-status wiring', () => {
     assert.equal(billingEnv({ GH_TOKEN: 'fleet', BILLING_READ_TOKEN: 'bill' }).GH_TOKEN, 'bill')
     assert.equal(billingEnv({ GH_TOKEN: 'fleet' }).GH_TOKEN, 'fleet')
     assert.equal(billingEnv({ GH_TOKEN: 'fleet', BILLING_READ_TOKEN: '' }).GH_TOKEN, 'fleet')
+  })
+})
+
+describe('fleet-status workflow', () => {
+  const workflow = readFileSync(new URL('../.github/workflows/fleet-status.yml', import.meta.url), 'utf8')
+  it('runs one at a time, so an overlapping manual run cannot push the same threshold line twice (review round 1)', () => {
+    // Top level, before `jobs:`. A queued run waits for the one in flight and then reads its published memo.
+    const top = workflow.slice(0, workflow.indexOf('\njobs:'))
+    assert.match(top, /^concurrency:\n  group: fleet-status\n  cancel-in-progress: false$/m)
+  })
+  it('posts the spend lines before it publishes, so the memo is what gets committed', () => {
+    assert.ok(workflow.indexOf('actions-spend-alert.mjs') > 0)
+    assert.ok(workflow.indexOf('actions-spend-alert.mjs') < workflow.indexOf('name: Publish to the status branch'))
   })
 })
 

@@ -20,6 +20,13 @@ on:
   workflow_dispatch:
 # Not on pull_request: a pull request cannot be given the token.
 
+# One run at a time, and a queued one waits instead of cancelling the one in flight: the published status.json is
+# the memo of which Actions spend lines (70%, 90%) already went to ntfy, so two overlapping runs would both read
+# the same memo and both push the same line.
+concurrency:
+  group: fleet-status
+  cancel-in-progress: false
+
 permissions:
   contents: write
 

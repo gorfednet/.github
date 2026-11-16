@@ -35,7 +35,7 @@ const isSelfHosted = (item) => /self[-_ ]?hosted/i.test(String(item?.sku ?? ''))
 /**
  * The meter from one billing usage report (`usageItems` rows: product, sku, quantity, unitType, netAmount).
  * Dollars are net of the included minutes, which is what a budget stop counts. Minutes are the hosted
- * minutes billed or covered by the free allowance; self-hosted rows are left out. Returns `{ unknown }`
+ * minutes billed or covered by the free allowance; self-hosted rows are left out. The projection is an upper bound (see below). Returns `{ unknown }`
  * when the report cannot be trusted: no usageItems array, no Actions row at all (the reviewer runs hosted
  * every day, so an empty month is a broken read, not a zero), or an Actions row with a non-numeric amount.
  */
@@ -47,11 +47,15 @@ export function meterFromReport(report, { now, cap }) {
   if (rows.length === 0) return { ...base, unknown: 'the billing report held no Actions rows' }
   let minutes = 0
   let net = 0
+  let gross = 0
+  const usable = (n) => typeof n === 'number' && Number.isFinite(n) && n >= 0
   for (const row of rows) {
     const amount = row.netAmount
     const quantity = row.quantity
-    if (typeof amount !== 'number' || !Number.isFinite(amount) || amount < 0) return { ...base, unknown: 'an Actions row had no usable netAmount' }
+    if (!usable(amount)) return { ...base, unknown: 'an Actions row had no usable netAmount' }
+    if (!usable(row.grossAmount) || !usable(row.discountAmount)) return { ...base, unknown: 'an Actions row had no usable grossAmount or discountAmount' }
     net += amount
+    gross += row.grossAmount
     if (isMinutes(row) && !isSelfHosted(row)) {
       if (typeof quantity !== 'number' || !Number.isFinite(quantity) || quantity < 0) return { ...base, unknown: 'an Actions row had no usable minutes' }
       minutes += quantity
@@ -62,7 +66,12 @@ export function meterFromReport(report, { now, cap }) {
   const daysInMonth = new Date(Date.UTC(y, m, 0)).getUTCDate()
   // Under one elapsed day the run rate is noise: count it as a whole day.
   const elapsedDays = Math.max(1, (now.getTime() - start) / DAY)
-  const projected = (net / elapsedDays) * daysInMonth
+  // The projection runs on gross dollars, not net: net stays 0 while the included minutes cover usage, so a net run
+  // rate would read 0 through an overflow early in the month and come out low after the allowance ends. The
+  // allowance is a fixed amount for the month and the discount so far is at most all of it, so gross run rate minus
+  // the discount so far is never below the true month-end bill: an upper bound, and never under what is already billed.
+  const discount = Math.max(0, gross - net)
+  const projected = Math.max(net, (gross / elapsedDays) * daysInMonth - discount)
   return {
     ...base,
     minutes: Math.round(minutes),
@@ -118,7 +127,7 @@ export function withMemo(meter, earlier) {
 }
 
 export const alertText = (meter, threshold) =>
-  `Hosted Actions spend is at ${meter.usedPct}% of the ${usd(meter.capUsd)} cap for ${monthName(meter.month)} (passed ${threshold}%): ${usd(meter.spendUsd)} so far, ${meter.minutes} hosted minutes, on course for ${usd(meter.projectedUsd)} by month end.`
+  `Hosted Actions spend is at ${meter.usedPct}% of the ${usd(meter.capUsd)} cap for ${monthName(meter.month)} (passed ${threshold}%): ${usd(meter.spendUsd)} so far, ${meter.minutes} hosted minutes, on course for at most ${usd(meter.projectedUsd)} by month end.`
 
 /**
  * Push at most one line, for the highest threshold newly crossed, then record every threshold up to it. The memo
@@ -143,7 +152,7 @@ export function renderSpend(a) {
   return [
     '## Hosted Actions spend',
     '',
-    `${monthName(a.month)}: ${a.minutes.toLocaleString('en-US')} hosted minutes, ${usd(a.spendUsd)} of the ${usd(a.capUsd)} cap (${a.usedPct}%).${over} On course for ${usd(a.projectedUsd)} by month end (${a.projectedPct}% of the cap).`,
+    `${monthName(a.month)}: ${a.minutes.toLocaleString('en-US')} hosted minutes, ${usd(a.spendUsd)} of the ${usd(a.capUsd)} cap (${a.usedPct}%).${over} On course for at most ${usd(a.projectedUsd)} by month end (${a.projectedPct}% of the cap).`,
     '',
   ]
 }
@@ -152,5 +161,5 @@ export function renderSpend(a) {
 export function spendDigestLine(a) {
   if (!a) return 'Hosted Actions spend: unknown (no reading in this snapshot)'
   if (a.unknown !== undefined) return `Hosted Actions spend: unknown, not zero (${a.unknown})`
-  return `Hosted Actions ${monthName(a.month)}: ${usd(a.spendUsd)} of ${usd(a.capUsd)} (${a.usedPct}%), ${a.minutes} min, on course for ${usd(a.projectedUsd)} (${a.projectedPct}%)`
+  return `Hosted Actions ${monthName(a.month)}: ${usd(a.spendUsd)} of ${usd(a.capUsd)} (${a.usedPct}%), ${a.minutes} min, on course for at most ${usd(a.projectedUsd)} (${a.projectedPct}%)`
 }

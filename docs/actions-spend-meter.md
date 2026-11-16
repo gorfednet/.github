@@ -4,13 +4,13 @@ Replan row N6. Owner rule: hosted Actions minutes have a hard cap of US$100 a mo
 
 ## What it does
 
-`fleet-status` (every 2 hours, hosted) reads the month's billing usage report and writes an `actions` block to `status.json`:
+`fleet-status` (every 2 hours, hosted, one run at a time through a `concurrency` group so two runs cannot push the same line) reads the month's billing usage report and writes an `actions` block to `status.json`:
 
 - hosted minutes, net dollars (after the included minutes, which is what a budget stop counts), and whole percent of the cap;
-- a projection to month end, from the run rate so far (the first day counts as a whole day);
+- a projection to month end, "at most": the gross run rate (usage before the included minutes) to month end, less the discount already applied, and never below what is already billed. Net dollars would read 0 for as long as the included minutes cover usage, so an early overflow would not move it. The discount so far is at most the whole allowance, so this never comes out under the true bill. The first day counts as a whole day;
 - `fired`: the thresholds already pushed this month.
 
-`STATUS.md` shows it under "Hosted Actions spend". The daily digest carries it as its second line. `scripts/actions-spend-alert.mjs` posts one line to ntfy `ops-report` at 70% of the cap and one at 90%. A jump past both posts only the 90% line. A push that fails records nothing and retries on the next run. A month with a fresh calendar month starts with nothing fired, and a reading that falls back under a threshold re-arms it.
+`STATUS.md` shows it under "Hosted Actions spend". The daily digest carries it as its second line. `scripts/actions-spend-alert.mjs` posts one line to ntfy `ops-report` at 70% of the cap and one at 90%. A jump past both posts only the 90% line. A push that fails records nothing and retries on the next run. A new calendar month starts with nothing fired, and a reading that falls back under a threshold re-arms it.
 
 The numbers are totals only. The report lists a repository on every row, and a private repository's name must not reach the public `status` branch, so nothing per repository is kept.
 
@@ -36,7 +36,7 @@ Overflow (`shipping.md`, "Runners": pool heartbeat stale, or the oldest queued j
 
 What this means in practice:
 
-- A pool outage shows as a steeper projection on the next 2-hourly run, and as a 70% or 90% line if it is large enough. That is the signal to put a repository back on the pool or hold BinderCurve, not a bill to read afterwards.
+- A pool outage shows as a higher projection on the next 2-hourly run, and as a 70% or 90% line if it is large enough. That is the signal to put a repository back on the pool or hold BinderCurve, not a bill to read afterwards.
 - The meter is month to date, so the pool setting coming back after the queue clears is visible as the projection flattening.
 - The billing report lags by hours, so the first minutes of an overflow show on a later run.
 - To see how much of a month was overflow, compare the month's minutes with the steady-state estimate in the CI resourcing plan (private ops). A per-repository split stays out of the public file by design; read it from the billing page.
