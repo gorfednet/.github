@@ -44,7 +44,7 @@ Steady state: about 6,800 hosted minutes a month, about US$23 to 29 after the in
 6. **gorfed.net onto the pool** (runner). Its token is live. Set `["self-hosted","linux","gn-heavy"]` and add the hosted preflight its `ci.yml` lacks.
 7. **Stop or cut** (Sonnet, BinderCurve): pause `nightly-main` until it can go green. Move `production-monitor` (722 runs in 7 days, 321 cancelled by its own concurrency) to a dapyllil systemd timer, like `cta-watch`.
 8. **Fix fleet-status** (Sonnet, `.github`; infra priority 1): 9 failures in 13 runs.
-9. **Report hosted minutes** (runner, after the owner grants the `user` scope): `fleet-status` reads the billing API and puts hosted minutes against US$50 in the daily digest.
+9. **Report hosted minutes** (runner, after the owner grants the `user` scope): `fleet-status` reads the billing API and puts hosted minutes against US$50 in the daily digest. Built as replan row N6: see `docs/actions-spend-meter.md` (the read needs the Plan permission, read, on the fleet token, not the `gh` `user` scope).
 
 Not recommended: more slots or new hardware. Use is 41%. Waits come from the outages, orphaned jobs, the model service's 1-slot mode and per-repository caps. Revisit slots only if p90 stays over 60 minutes for a week after steps 2 and 3.
 

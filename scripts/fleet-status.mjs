@@ -17,6 +17,11 @@
  * because the workflow publishes status.json on a public branch. `--include-private`
  * keeps the full row (the local wrapper passes it; nothing it prints is published).
  *
+ * Hosted Actions spend (replan row N6): a run over all repositories also reads the month's billing usage report
+ * into `actions` (`lib/actionsSpend.mjs`). `--spend-memo <earlier status.json>` carries the thresholds already
+ * pushed this month. A reading that fails is `actions.unknown` with its reason, never zero, and only warns:
+ * the run stays green because STATUS.md and the digest say unknown. `--from` keeps the earlier file's `actions`.
+ *
  * Fails closed: a repository that cannot be read becomes a row with `unavailable`
  * set to the reason, and the process exits 1 after writing the file. Token:
  * FLEET_READ_TOKEN or GH_TOKEN.
@@ -34,6 +39,7 @@ import { backlogIds, collectLocal, duplicatePrs, idlePrs } from './lib/hygiene.m
 import { collectPrCost } from './lib/prCost.mjs'
 import { backlogFromStatus, buildInventory, collectHerdrJobs, collectSessions, collectWorktrees, fetchOpenPrs, planRows, summarizeInventory } from './lib/inventory.mjs'
 import { claudeReviewVerdict } from './lib/reviewVerdict.mjs'
+import { readMeter, withMemo } from './lib/actionsSpend.mjs'
 
 const DAY = 86_400_000
 const FAILED = new Set(['FAILURE', 'TIMED_OUT', 'CANCELLED', 'ACTION_REQUIRED', 'STARTUP_FAILURE', 'ERROR', 'STALE'])
@@ -370,6 +376,19 @@ export function collectInventory(status, { includePrivate = false, local = false
   return summarizeInventory(inv, { includePrivate, now, privateReposNotItemised: (status.repos ?? []).filter((r) => r.redacted).length })
 }
 
+/** BILLING_READ_TOKEN, when set, stands in for the fleet token on the billing call alone. */
+export const billingEnv = (env) => (env.BILLING_READ_TOKEN ? { ...env, GH_TOKEN: env.BILLING_READ_TOKEN } : env)
+
+/**
+ * The `actions` block of status.json. With `fromEarlier` (a `--from` run) nothing is read: the earlier file's block
+ * is kept, or there is none and the render says unknown. Otherwise the month's meter is read and given the memo.
+ */
+export function collectActions({ fleet, now, earlier, fromEarlier, env = process.env, json } = {}) {
+  if (fromEarlier) return earlier?.actions
+  const run = json ?? ((args) => JSON.parse(execFileSync('gh', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], env: billingEnv(env) })))
+  return withMemo(readMeter({ owner: fleet.projects[0].slug.split('/')[0], now, json: run }), earlier)
+}
+
 function arg(name) {
   const at = process.argv.indexOf(name)
   return at !== -1 ? process.argv[at + 1] : null
@@ -423,6 +442,15 @@ if (isMain(import.meta.url)) {
   // With --from the repository data is the earlier snapshot's, so its generatedAt is kept.
   const prior = arg('--from') ? JSON.parse(readFileSync(arg('--from'), 'utf8')).generatedAt : null
   const status = { generatedAt: prior ?? now.toISOString(), renderedAt: now.toISOString(), repos, dormant: dormantRepos(fleet), branchesReadAt: carriedFrom ?? now.toISOString(), carried: carriedFrom !== null }
+  if (!arg('--only')) {
+    // One read per run, never in a per-repository child. `--from` reads nothing: it keeps the earlier file's reading.
+    const earlierFile = arg('--from') ?? arg('--spend-memo')
+    let earlier = null
+    try { earlier = earlierFile ? JSON.parse(readFileSync(earlierFile, 'utf8')) : null } catch { /* no memo: nothing fired yet */ }
+    const actions = collectActions({ fleet, now, earlier, fromEarlier: Boolean(arg('--from')) })
+    if (actions) status.actions = actions
+    if (actions?.unknown !== undefined) console.error(`::warning::Hosted Actions spend is unknown: ${actions.unknown}`)
+  }
   if (process.argv.includes('--local')) {
     // The `local` object exists only when this run looked at the Mac; its absence means "not measured".
     status.local = collectLocal(join(homedir(), 'Developer', 'gorfednet'), { fetch: !process.argv.includes('--no-fetch') })
