@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { describe, it } from 'node:test'
 import { fileURLToPath } from 'node:url'
 import { validateConfig } from '../lib/config.mjs'
@@ -99,5 +99,22 @@ describe('patch-config', () => {
     const after = JSON.parse(readFileSync(config, 'utf8'))
     assert.deepEqual(after.repos.find((r) => r.slug === 'gorfednet/blackpixelrecords.com').envFiles, ['.secret-value-xyz'])
     assert.throws(() => execFileSync(process.execPath, [script, patch, config], { stdio: 'pipe' }))
+  })
+
+  it('run through a symlinked directory, as the installed copy is through `app`, it still applies the patch', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'patch-config-link-'))
+    // app -> the real ship-bot directory, the way ~/.ship-bot/app names versions/<sha>.
+    symlinkSync(dirname(script), join(dir, 'app'))
+    const linked = join(dir, 'app', 'patch-config.mjs')
+    const config = join(dir, 'config.json')
+    writeFileSync(config, `${JSON.stringify(example(), null, 2)}\n`)
+    const patch = join(dir, 'p.json')
+    writeFileSync(patch, JSON.stringify({ label: 't-link', repos: { 'gorfednet/blackpixelrecords.com': { envFiles: ['.env.linked'] } } }))
+    const out = execFileSync(process.execPath, [linked, patch, config], { encoding: 'utf8' })
+    assert.match(out, /patch-config: written/, 'a CLI that does nothing prints nothing and exits 0')
+    assert.ok(existsSync(`${config}.bak-t-link`))
+    assert.deepEqual(JSON.parse(readFileSync(config, 'utf8')).repos.find((r) => r.slug === 'gorfednet/blackpixelrecords.com').envFiles, ['.env.linked'])
+    // And a bad run through the link fails loudly instead of exiting 0.
+    assert.throws(() => execFileSync(process.execPath, [linked, patch, config], { stdio: 'pipe' }))
   })
 })

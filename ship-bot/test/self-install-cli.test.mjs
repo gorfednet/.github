@@ -216,13 +216,18 @@ describe('health: the first live passes of a self-installed version', () => {
     assert.equal(said(h, /health/).length, 1)
   })
 
-  it('a repo already broken under the old version does not roll it back; a newly broken one does', async () => {
+  it('a repo already broken under the old version does not roll it back; one newly broken on two probation passes does', async () => {
     const base = harness({ marker: probation({ baselineErrors: [OTHER_REPO] }), box: { broken: [OTHER_REPO] } })
     await base.live()
     assert.equal(base.marker().phase, 'healthy')
     const fresh = harness({ marker: probation(), box: { broken: [OTHER_REPO] } })
     assert.equal(await fresh.live(), 0)
-    assert.equal(currentVersion(fresh.home), FROM, 'rolled back')
+    assert.equal(currentVersion(fresh.home), NEW, 'one pass with a new repo error is undecided')
+    assert.deepEqual(fresh.marker().newErrors, [OTHER_REPO])
+    assert.equal(fresh.marker().phase, 'probation')
+    assert.equal(said(fresh, /health undecided: repos stopped on an error they did not stop on before: gorfednet\/site; .* \(1 of 30\)/).length, 1, fresh.out.join('\n'))
+    assert.equal(await fresh.live(), 0)
+    assert.equal(currentVersion(fresh.home), FROM, 'rolled back on the second')
     const m = fresh.marker()
     assert.equal(m.phase, 'rolled-back')
     assert.equal(m.refused[LATEST].step, 'health')
@@ -230,6 +235,17 @@ describe('health: the first live passes of a self-installed version', () => {
     assert.equal(m.notify.length, 1, 'one message queued for the owner')
     assert.equal(said(fresh, /error self-install bbbbbbb: unhealthy \(.*\); rolled back, and the next pass runs aaaaaaa/).length, 1, fresh.out.join('\n'))
     assert.ok(!existsSync(installLockPath(fresh.home)), 'install.lock is released')
+  })
+
+  it('near-miss: a repo error on one probation pass that is gone on the next is healthy', async () => {
+    const h = harness({ marker: probation(), box: { broken: [OTHER_REPO] } })
+    await h.live()
+    h.box.broken = []
+    await h.live()
+    assert.equal(h.marker().phase, 'healthy')
+    assert.equal(h.marker().newErrors, undefined)
+    assert.equal(h.marker().refused, undefined)
+    assert.equal(currentVersion(h.home), NEW)
   })
 
   it('unhealthy: gate scripts refused, the pass threw, or the install still reads stale', async () => {
@@ -274,8 +290,14 @@ describe('health: the first live passes of a self-installed version', () => {
     assert.equal(currentVersion(h.home), NEW)
     await h.live()
     assert.equal(currentVersion(h.home), FROM)
-    assert.equal(h.marker().phase, 'rolled-back')
-    assert.match(h.marker().refused[LATEST].reason, /30 passes in a row could not decide its health \(last: no GitHub token\)/)
+    const m = h.marker()
+    assert.equal(m.phase, 'rolled-back')
+    assert.equal(m.refused, undefined, 'undecided for an hour is not broken: the commit is not refused')
+    assert.equal(m.deferred.latest, LATEST)
+    assert.ok(m.deferred.skip > 0, 'it is tried again after a backoff')
+    assert.equal(m.notify.length, 1, 'one notice')
+    assert.match(m.notify[0].text, /30 passes in a row could not decide its health \(last: no GitHub token\)\. It is not refused/)
+    assert.equal(said(h, /error self-install bbbbbbb: 30 passes in a row could not decide its health .*; rolled back without refusing it/).length, 1, h.out.join('\n'))
   })
 
   it('near-miss: a marker on probation for another version than the one running settles nothing', async () => {
@@ -310,7 +332,8 @@ describe('health: the first live passes of a self-installed version', () => {
   })
 
   it('an unhealthy version is not rolled back while a hand install holds install.lock', async () => {
-    const h = harness({ marker: probation(), box: { broken: [OTHER_REPO] } })
+    // A second probation pass with a new repo error: unhealthy.
+    const h = harness({ marker: probation({ newErrors: [OTHER_REPO] }), box: { broken: [OTHER_REPO] } })
     const held = acquireLock(installLockPath(h.home))
     await h.live()
     assert.equal(currentVersion(h.home), NEW)

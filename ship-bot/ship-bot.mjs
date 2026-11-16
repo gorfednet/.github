@@ -256,10 +256,11 @@ function readProbation(home, print) {
 function settleHealth(home, marker, pass, deps, print) {
   const who = `self-install ${short(marker.sha)}`
   try {
-    const { verdict, reason } = judgeHealth(marker, pass)
-    const r = settleProbation({ home, verdict, reason, now: deps.clock.now() })
+    const { verdict, reason, newErrors } = judgeHealth(marker, pass)
+    const r = settleProbation({ home, verdict, reason, newErrors, now: deps.clock.now() })
     if (r.outcome === 'healthy') print('info', `${who}: health OK`)
     else if (r.outcome === 'undecided') print('info', `${who}: health undecided: ${r.reason}`)
+    else if (r.outcome === 'rolled-back' && r.refused === false) print('error', `${who}: ${r.reason}; rolled back without refusing it, and the next pass runs ${short(marker.from)}`)
     else if (r.outcome === 'rolled-back') print('error', `${who}: unhealthy (${r.reason}); rolled back, and the next pass runs ${short(marker.from)}`)
     else print('error', `${who}: unhealthy (${r.reason})`)
   } catch (cause) {
