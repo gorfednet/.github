@@ -1,11 +1,12 @@
 /** Plan row 1.17: the inventory maps every open item to a plan row or an owner, or flags it an orphan. */
 import { strict as assert } from 'node:assert'
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, it } from 'node:test'
 
-import { buildInventory, collectHerdrJobs, fetchOpenPrs, planRows, prunable, renderInventory, rowRefs, summarizeInventory } from '../scripts/lib/inventory.mjs'
+import { buildInventory, collectHerdrJobs, collectWorktrees, fetchOpenPrs, janitorVerdicts, planRows, renderInventory, rowRefs, summarizeInventory } from '../scripts/lib/inventory.mjs'
 import { openBacklog } from '../scripts/fleet-status.mjs'
 
 const ROWS = ['1.13', '1.17', '3.6', '4.1']
@@ -70,42 +71,77 @@ describe('buildInventory', () => {
     assert.deepEqual(inv.orphans.filter((o) => o.kind === 'worktree').map((o) => o.ref), ['/w/4'])
   })
 
-  it('a clean worktree with nothing beyond the default branch is the janitor\'s; anything else, or unread, is an orphan', () => {
-    const w = (path, over) => ({ clone: 'c', repo: 'gorfednet/.github', path, branch: `b-${path}`, ahead: 0, clean: true, ...over })
-    const inv = buildInventory(
-      base({
-        worktrees: [
-          w('/w/merged'),
-          w('/w/ahead', { ahead: 2 }),
-          w('/w/dirty', { clean: false }),
-          w('/w/unread-ahead', { ahead: null }),
-          w('/w/unread-clean', { clean: null }),
-          w('/w/detached', { branch: null }),
-        ],
-      }),
-    )
-    assert.deepEqual(inv.orphans.map((o) => o.ref).sort(), ['/w/ahead', '/w/dirty', '/w/detached', '/w/unread-ahead', '/w/unread-clean'].sort())
-    assert.deepEqual(inv.items.find((i) => i.ref === '/w/merged').via, ['janitor prune'])
+  it('a worktree the janitor would prune is not an orphan; one it keeps, or could not judge, is', () => {
+    const w = (path, janitor, over) => ({ clone: 'c', repo: 'gorfednet/.github', path, branch: `b-${path}`, janitor, ...over })
+    const inv = buildInventory(base({ worktrees: [w('/w/prune', 'prune'), w('/w/keep', 'keep'), w('/w/unjudged', null), w('/w/detached', 'keep', { branch: null })] }))
+    assert.deepEqual(inv.orphans.map((o) => o.ref).sort(), ['/w/detached', '/w/keep', '/w/unjudged'])
+    assert.deepEqual(inv.items.find((i) => i.ref === '/w/prune').via, ['janitor prune'])
   })
 
-  it('prunable reads ahead and clean from git, and leaves null what it cannot read', () => {
-    const run = (dir, ...args) => {
-      if (args[0] === 'rev-list') {
-        if (args[2].startsWith('origin/main..')) throw new Error('no origin/main')
-        return '0\n'
+  it('on real repositories only what the janitor would prune is credited to it', () => {
+    const top = realpathSync(mkdtempSync(join(tmpdir(), 'inv-wt-')))
+    try {
+      const g = (dir, ...args) => execFileSync('git', ['-C', dir, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim()
+      const origin = join(top, 'origin.git')
+      const root = join(top, 'gorfednet')
+      mkdirSync(root)
+      execFileSync('git', ['init', '--quiet', '--bare', '-b', 'main', origin])
+      const clone = join(root, 'site')
+      execFileSync('git', ['clone', '--quiet', origin, clone], { stdio: 'ignore' })
+      g(clone, 'config', 'user.email', 't@example.com')
+      g(clone, 'config', 'user.name', 't')
+      writeFileSync(join(clone, '.gitignore'), 'local.env\n')
+      writeFileSync(join(clone, 'a.txt'), 'a\n')
+      g(clone, 'add', '.')
+      g(clone, 'commit', '--quiet', '-m', 'a')
+      g(clone, 'push', '--quiet', 'origin', 'main')
+      g(clone, 'remote', 'set-head', 'origin', 'main')
+      const wt = (name, branch) => {
+        const path = join(clone, '.claude', 'worktrees', name)
+        g(clone, 'worktree', 'add', '--quiet', '-b', branch, path, 'main')
+        return path
       }
-      if (dir === '/w/dirty') return ' M a.txt\n'
-      if (dir === '/w/gone') throw new Error('not a worktree')
-      return ''
+      const commit = (path, file) => {
+        writeFileSync(join(path, file), 'x\n')
+        g(path, 'add', '.')
+        g(path, 'commit', '--quiet', '-m', file)
+      }
+      const merged = wt('merged', 'feat/merged')
+      commit(merged, 'b.txt')
+      g(merged, 'push', '--quiet', '-u', 'origin', 'feat/merged')
+      g(clone, 'merge', '--quiet', '--no-ff', '-m', 'merge', 'feat/merged')
+      g(clone, 'push', '--quiet', 'origin', 'main')
+      const same = wt('same-as-main', 'feat/same') // no commit of its own
+      const ahead = wt('ahead', 'feat/ahead')
+      commit(ahead, 'c.txt')
+      const untracked = wt('untracked', 'feat/untracked')
+      writeFileSync(join(untracked, 'wip.txt'), 'wip\n')
+      const ignored = wt('ignored', 'feat/ignored') // clean to `git status`, but holds ignored local state
+      writeFileSync(join(ignored, 'local.env'), 'SECRET=1\n')
+      const gates = wt('gates-main', 'feat/gates') // protected name
+      const verdicts = janitorVerdicts(root)
+      assert.equal(verdicts.get(merged), 'prune')
+      assert.equal(verdicts.get(same), 'prune')
+      for (const p of [ahead, untracked, ignored, gates]) assert.equal(verdicts.get(p), 'keep', p)
+      const wts = collectWorktrees(root)
+      assert.deepEqual(wts.filter((x) => x.janitor === 'prune').map((x) => x.path).sort(), [merged, same].sort())
+      const inv = buildInventory(base({ worktrees: wts.map((x) => ({ ...x, repo: 'gorfednet/.github' })) }))
+      assert.deepEqual(inv.orphans.map((o) => o.ref).sort(), [ahead, untracked, ignored, gates].sort())
+    } finally {
+      rmSync(top, { recursive: true, force: true })
     }
-    assert.deepEqual(prunable('/c', '/w/ok', 'b', run), { ahead: 0, clean: true }) // falls back to origin/master
-    assert.deepEqual(prunable('/c', '/w/dirty', 'b', run), { ahead: 0, clean: false })
-    assert.deepEqual(prunable('/c', '/w/gone', 'b', run), { ahead: 0, clean: null })
-    assert.deepEqual(prunable('/c', '/w/ok', null, run), { ahead: null, clean: true })
-    const none = () => {
-      throw new Error('boom')
-    }
-    assert.deepEqual(prunable('/c', '/w/ok', 'b', none), { ahead: null, clean: null })
+  })
+
+  it('the janitor is only ever asked for a dry run that fetches nothing', () => {
+    let seen
+    janitorVerdicts('/r', { dryRun: (o) => { seen = o; return [] } })
+    assert.equal(seen.apply, false)
+    assert.equal(seen.fetch, false)
+  })
+
+  it('a dry run that cannot run leaves no worktree credited to the janitor', () => {
+    assert.equal(janitorVerdicts('/nope', { dryRun: () => { throw new Error('boom') } }), null)
+    assert.equal(process.env.GIT_OPTIONAL_LOCKS, undefined)
   })
 
   it('a retired Herdr job is finished and is not in flight', () => {
@@ -113,7 +149,7 @@ describe('buildInventory', () => {
     try {
       const file = join(dir, 'state.json')
       writeFileSync(file, JSON.stringify({ jobs: {
-        'bl-a-aaaaaa': { cwd: null, lastResult: 'retired', retired: 'landed', done: false },
+        'bl-a-aaaaaa': { cwd: null, retired: 'landed', done: false },
         'bl-b-bbbbbb': { cwd: null, lastResult: 'retired', done: false },
         'bl-c-cccccc': { cwd: null, done: true },
         'bl-d-dddddd': { cwd: null, lastResult: 'ok', done: false },

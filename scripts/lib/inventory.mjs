@@ -12,6 +12,7 @@ import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from '
 import { homedir } from 'node:os'
 import { basename, join } from 'node:path'
 
+import { run as janitorRun } from '../janitor-prune.mjs'
 import { SESSIONS_DIR, idsNamedIn, primaryClones } from './hygiene.mjs'
 
 export const GRAPHQL_RESERVE = 1500
@@ -101,9 +102,9 @@ export function buildInventory(input) {
     if (pr) via.push(`PR ${pr.repo}#${pr.number}`)
     if (sessionPaths.has(w.path)) via.push('live session')
     if (jobWts.has(w.path)) via.push('Herdr job')
-    // Nothing to decide: every commit is already on the default branch and the tree is clean, so the
-    // janitor's daily prune owns it. Only a positive read counts; null (unreadable) stays an orphan.
-    if (w.branch && w.ahead === 0 && w.clean === true) via.push('janitor prune')
+    // Nothing to decide: the janitor's own dry run would prune it (merged, clean, nothing unpushed, no
+    // ignored local files, not protected). A worktree it keeps for any reason stays an orphan here.
+    if (w.janitor === 'prune') via.push('janitor prune')
     const a = attach(`${basename(w.path)}\n${w.branch ?? ''}`, ctx, { via })
     note(a.ids, 'worktree')
     items.push({ kind: 'worktree', repo: w.repo, ref: w.path, label: w.branch || '(detached)', private: false, ...a })
@@ -267,38 +268,31 @@ export function collectSessions(dir = SESSIONS_DIR) {
 }
 
 /**
- * Whether a worktree holds anything not already on the clone's default branch: `ahead` is the count of
- * commits on its branch that origin/main lacks, `clean` whether its tree has no change. Either is null
- * when it could not be read (never guessed), so an unreadable worktree stays an orphan.
+ * The janitor's own verdict for every linked worktree under root, from its dry run (no fetch, no idle
+ * wait, no live-session list: the inventory maps those itself). `prune` means merged, clean, nothing
+ * unpushed and no ignored local files, on an unprotected name and branch. Returns a Map path -> verdict,
+ * or null when the dry run could not run. Optional git locks are off, so a builder mid-commit is never
+ * blocked by this read.
  */
-export function prunable(clone, path, branch, run = git) {
-  let ahead = null
-  let clean = null
-  if (branch) {
-    for (const base of ['origin/main', 'origin/master']) {
-      try {
-        const n = Number(run(clone, 'rev-list', '--count', `${base}..refs/heads/${branch}`).trim())
-        if (Number.isInteger(n)) {
-          ahead = n
-          break
-        }
-      } catch {
-        // try the next default-branch name
-      }
-    }
-  }
+export function janitorVerdicts(root, { dryRun = janitorRun } = {}) {
+  const before = process.env.GIT_OPTIONAL_LOCKS
+  process.env.GIT_OPTIONAL_LOCKS = '0'
   try {
-    clean = run(path, 'status', '--porcelain').trim() === ''
+    const rows = dryRun({ root, keep: new Set(), idleMs: 0, apply: false, fetch: false, log: () => {} })
+    return new Map(rows.filter((r) => r.path).map((r) => [r.path, r.verdict]))
   } catch {
-    clean = null
+    return null
+  } finally {
+    if (before === undefined) delete process.env.GIT_OPTIONAL_LOCKS
+    else process.env.GIT_OPTIONAL_LOCKS = before
   }
-  return { ahead, clean }
 }
 
 /** Linked worktrees of every primary clone under root. Null when any clone could not be read. */
-export function collectWorktrees(root) {
+export function collectWorktrees(root, { verdicts = janitorVerdicts } = {}) {
   const clones = primaryClones(root)
   if (clones.length === 0) return null
+  const verdictOf = verdicts(root) // null: no worktree is credited to the janitor
   const out = []
   for (const name of clones) {
     const dir = join(root, name)
@@ -308,7 +302,7 @@ export function collectWorktrees(root) {
       for (const b of blocks) {
         const path = /^worktree (.+)$/m.exec(b)?.[1]
         const branch = /^branch refs\/heads\/(.+)$/m.exec(b)?.[1] ?? null
-        if (path) out.push({ clone: name, repo, path, branch, ...prunable(dir, path, branch) })
+        if (path) out.push({ clone: name, repo, path, branch, janitor: verdictOf?.get(path) ?? null })
       }
     } catch {
       return null
