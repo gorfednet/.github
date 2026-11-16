@@ -10,7 +10,13 @@ import { fileURLToPath } from 'node:url'
 import { describe, it } from 'node:test'
 import {
   APP_FILES,
+  BACKOFF_MAX,
   PROBATION_LIMIT,
+  acquireInstallLock,
+  backoffPasses,
+  baselineOf,
+  finishRollBack,
+  pidStartedAt,
   buildVersion,
   commitVersion,
   currentVersion,
@@ -276,9 +282,52 @@ describe('install: rollback', () => {
     assert.equal(r.ok, false)
     assert.match(r.reason, /no installed version bbbbbbb/)
     assert.equal(currentVersion(home), C)
-    assert.equal(readMarker(home).phase, 'probation', 'a failed rollback is not recorded as one')
+    assert.equal(r.queued, true)
+    const m = readMarker(home)
+    assert.equal(m.phase, 'probation', 'a failed rollback is not recorded as one')
+    assert.equal(m.refused, undefined)
+    assert.equal(m.notify.length, 1, 'a failed rollback is loud')
+    assert.match(m.notify[0].text, /self-install ccccccc could NOT be rolled back to bbbbbbb \(no installed version bbbbbbb/)
+    // The next pass fails the same way: said once, and it reports that it queued nothing.
+    const again = rollBack({ home, reason: 'unhealthy', now: NOW })
+    assert.deepEqual({ ok: again.ok, queued: again.queued }, { ok: false, queued: false })
+    assert.equal(readMarker(home).notify.length, 1)
     writeMarker(home, { phase: 'hand', sha: C })
-    assert.deepEqual(rollBack({ home, reason: 'x', now: NOW }), { ok: false, reason: 'the marker names no version to go back to' })
+    assert.deepEqual(rollBack({ home, reason: 'x', now: NOW }), { ok: false, reason: 'the marker names no version to go back to', queued: false })
+    assert.equal(readMarker(home).notify, undefined, 'nothing queued, as it says')
+  })
+
+  it('with refuseLatest false: back to `from`, the commit not refused, a backoff set, and one message that says so', () => {
+    const home = onProbation()
+    const r = rollBack({ home, reason: '30 passes in a row could not decide its health', refuseLatest: false, now: NOW })
+    assert.equal(r.ok, true)
+    assert.equal(currentVersion(home), B)
+    const m = readMarker(home)
+    assert.equal(m.phase, 'rolled-back')
+    assert.equal(m.refused, undefined)
+    assert.deepEqual(m.deferred, { latest: D, count: 1, tries: 1, skip: BACKOFF_MAX })
+    assert.equal(m.notify.length, 1)
+    assert.match(m.notify[0].text, /rolled back to bbbbbbb: 30 passes in a row could not decide its health\. It is not refused/)
+    assert.equal(m.rollback, undefined, 'the record is gone once the rollback is finished')
+  })
+
+  it('a kill after the link moved and before the marker: the record written first lets finishRollBack complete it', () => {
+    for (const refuseLatest of [true, false]) {
+      const home = onProbation()
+      // writeMarker is: write the tmp file, rename it. Rename 1 is the record; the link's rename is 2; the kill is at 3.
+      const dies = fsThatDiesAt('renameSync', (n) => n === 3)
+      assert.throws(() => rollBack({ home, reason: 'its pass failed', refuseLatest, now: NOW, fs: dies }), /killed at renameSync 3/)
+      assert.equal(currentVersion(home), B, 'the link moved')
+      const left = readMarker(home)
+      assert.equal(left.phase, 'probation')
+      assert.deepEqual(left.rollback, { reason: 'its pass failed', step: 'health', refuse: refuseLatest })
+      const m = finishRollBack({ home, now: NOW })
+      assert.equal(m.phase, 'rolled-back')
+      assert.equal(Boolean(m.refused?.[D]), refuseLatest)
+      assert.equal(Boolean(m.deferred), !refuseLatest)
+      assert.equal(m.notify.length, 1)
+      assert.deepEqual(readMarker(home), m)
+    }
   })
 })
 
@@ -416,12 +465,25 @@ describe('install: the health verdict of a version on probation', () => {
     assert.equal(verdict({ ...ok, repoErrors: ['x/broken'] }, { baselineErrors: ['x/broken'] }), 'healthy', 'a repo already broken under the old version is not this one\'s fault')
   })
 
-  it('unhealthy: gate scripts refused, the pass threw, still stale, or a new repo error', () => {
+  it('unhealthy: gate scripts refused, the pass threw, or still stale', () => {
     assert.equal(verdict({ refusedGates: true }), 'unhealthy')
     assert.equal(verdict({ ...ok, code: 1, threw: 'boom' }), 'unhealthy')
     assert.equal(verdict({ ...ok, freshness: 'stale' }), 'unhealthy')
-    assert.equal(verdict({ ...ok, repoErrors: ['x/broken', 'x/new'] }, { baselineErrors: ['x/broken'] }), 'unhealthy')
-    assert.match(judgeHealth({ baselineErrors: ['x/broken'] }, { ...ok, repoErrors: ['x/broken', 'x/new'] }).reason, /: x\/new$/)
+    assert.equal(verdict({ ...ok, freshness: 'stale', repoErrors: ['x/new'] }), 'unhealthy', 'stale is decided, whatever the repos did')
+  })
+
+  it('new repo errors: undecided on the first probation pass, unhealthy on a second', () => {
+    const pass = { ...ok, repoErrors: ['x/broken', 'x/new'] }
+    const first = judgeHealth({ baselineErrors: ['x/broken'] }, pass)
+    assert.equal(first.verdict, 'undecided')
+    assert.deepEqual(first.newErrors, ['x/new'])
+    assert.match(first.reason, /did not stop on before: x\/new; unhealthy if a second probation pass/)
+    const second = judgeHealth({ baselineErrors: ['x/broken'], newErrors: ['x/new'] }, { ...ok, repoErrors: ['x/other'] })
+    assert.equal(second.verdict, 'unhealthy')
+    assert.match(second.reason, /on a second probation pass, .*: x\/other \(the first time: x\/new\)/)
+    // Near-misses: a first strike on record with a clean pass now is healthy; a baseline error is never a strike.
+    assert.equal(verdict(ok, { baselineErrors: [], newErrors: ['x/new'] }), 'healthy')
+    assert.equal(judgeHealth({ baselineErrors: ['x/broken'] }, { ...ok, repoErrors: ['x/broken'] }).newErrors, undefined)
   })
 
   it('undecided: no token, a quota pause, or freshness unknown', () => {
@@ -465,9 +527,40 @@ describe('install: the health verdict of a version on probation', () => {
     assert.equal(currentVersion(home), B, 'still the new version after 29')
     const last = settleProbation({ home, verdict: 'undecided', reason: 'no GitHub token', now: NOW })
     assert.equal(last.outcome, 'rolled-back')
+    assert.equal(last.refused, false)
     assert.match(last.reason, /30 passes in a row could not decide its health/)
     assert.equal(currentVersion(home), A)
-    assert.equal(readMarker(home).phase, 'rolled-back')
+    const m = readMarker(home)
+    assert.equal(m.phase, 'rolled-back')
+    assert.equal(m.refused, undefined, 'nothing showed the version broken: its commit is not refused')
+    assert.deepEqual(m.deferred, { latest: C, count: 1, tries: 1, skip: BACKOFF_MAX }, 'tried again after the longest backoff')
+    assert.equal(m.notify.length, 1, 'one notice')
+    assert.match(m.notify[0].text, /It is not refused/)
+  })
+
+  it('new repo errors on one probation pass are recorded and stay on probation; on a second they roll back and refuse', () => {
+    const home = probation()
+    const first = judgeHealth(readMarker(home), { ...ok, repoErrors: ['x/new'] })
+    const one = settleProbation({ home, ...first, now: NOW })
+    assert.equal(one.outcome, 'undecided')
+    assert.deepEqual(readMarker(home).newErrors, ['x/new'])
+    assert.equal(currentVersion(home), B)
+    const second = judgeHealth(readMarker(home), { ...ok, repoErrors: ['x/new'] })
+    const two = settleProbation({ home, ...second, now: NOW })
+    assert.equal(two.outcome, 'rolled-back')
+    assert.equal(two.refused, true)
+    assert.equal(currentVersion(home), A)
+    assert.match(readMarker(home).refused[C].reason, /on a second probation pass/)
+    assert.equal(readMarker(home).newErrors, undefined)
+  })
+
+  it('near-miss: new repo errors once, then a clean pass, is healthy and leaves no strike behind', () => {
+    const home = probation()
+    settleProbation({ home, ...judgeHealth(readMarker(home), { ...ok, repoErrors: ['x/new'] }), now: NOW })
+    const r = settleProbation({ home, ...judgeHealth(readMarker(home), ok), now: NOW })
+    assert.equal(r.outcome, 'healthy')
+    assert.equal(readMarker(home).newErrors, undefined)
+    assert.equal(currentVersion(home), B)
   })
 
   it('a healthy pass ends the count: it does not carry into a later probation', () => {
@@ -486,5 +579,111 @@ describe('install: the health verdict of a version on probation', () => {
     assert.equal(currentVersion(home), B)
     assert.equal(readMarker(home).phase, 'probation')
     held.release()
+  })
+})
+
+describe('install: install.lock and its takeover', () => {
+  const MIN = 60_000
+  const lockFile = (home, held) => {
+    writeFileSync(installLockPath(home), JSON.stringify(held))
+    return installLockPath(home)
+  }
+  const at = (ms) => new Date(NOW.getTime() - ms).toISOString()
+  /** A lock taken `ageMs` ago by pid 4242, whose process started at `recorded`; that pid is alive and its process started at `actual`. */
+  const take = (ageMs, recorded, actual, alive = true) => {
+    const home = tempHome()
+    const path = lockFile(home, { pid: 4242, startedAt: at(ageMs), ...(recorded ? { procStartedAt: recorded } : {}) })
+    return acquireInstallLock(path, { pid: 77, now: () => NOW, isAlive: () => alive, procStart: (pid) => (pid === 4242 ? actual : 'Sun Nov 15 11:00:00 2026') })
+  }
+  const T1 = 'Sun Nov 15 09:00:00 2026'
+  const T2 = 'Sun Nov 15 11:30:00 2026'
+
+  it('records the pid, when it was taken and when that process started; release removes only its own', () => {
+    const home = tempHome()
+    const path = installLockPath(home)
+    const held = acquireInstallLock(path, { now: () => NOW })
+    assert.equal(held.ok, true)
+    const rec = JSON.parse(readFileSync(path, 'utf8'))
+    assert.deepEqual({ pid: rec.pid, startedAt: rec.startedAt }, { pid: process.pid, startedAt: NOW.toISOString() })
+    assert.equal(rec.procStartedAt, pidStartedAt(process.pid))
+    assert.match(rec.procStartedAt, /^\w{3} \w{3} \d+ \d\d:\d\d:\d\d \d{4}$/, 'the real ps answer for this process')
+    const second = acquireInstallLock(path)
+    assert.equal(second.ok, false)
+    assert.match(second.holder, new RegExp(`pid ${process.pid} since`))
+    held.release()
+    assert.ok(!existsSync(path))
+  })
+
+  it('a dead pid is taken over at any age, and the result says why', () => {
+    const r = take(1000, T1, null, false)
+    assert.equal(r.ok, true)
+    assert.match(r.tookOver, /pid 4242 since .*: that process is gone/)
+  })
+
+  it('a live pid, over 30 minutes old, whose process start is not the recorded one: the pid was reused, so it is taken over', () => {
+    const r = take(31 * MIN, T1, T2)
+    assert.equal(r.ok, true)
+    assert.match(r.tookOver, /that pid now belongs to another process/)
+  })
+
+  it('near-misses: the same process still holds it, it is 29 minutes old, or the pid\'s start cannot be read', () => {
+    assert.equal(take(31 * MIN, T1, T1).ok, false, 'a long install by the process that took the lock')
+    assert.equal(take(600 * MIN, T1, T1).ok, false, 'however old')
+    assert.equal(take(29 * MIN, T1, T2).ok, false, 'not yet 30 minutes')
+    assert.equal(take(31 * MIN, T1, null).ok, false, 'no proof of reuse')
+  })
+
+  it('a lock with no recorded process start: over 60 minutes old and a pid whose process started after it was taken', () => {
+    // Taken at 10:58:20 (61m40s ago); the pid's process started at 11:30.
+    assert.equal(take(61 * MIN + 40_000, null, T2).ok, true)
+    assert.equal(take(59 * MIN, null, T2).ok, false, 'not yet 60 minutes')
+    assert.equal(take(600 * MIN, null, 'Sun Nov 15 01:00:00 2026').ok, false, 'that process is older than the lock: it may be the holder')
+    assert.equal(take(600 * MIN, null, 'not a date').ok, false)
+  })
+
+  it('a lock file that does not parse is never taken over', () => {
+    const home = tempHome()
+    writeFileSync(installLockPath(home), '{ "pid": ')
+    const r = acquireInstallLock(installLockPath(home), { isAlive: () => false })
+    assert.deepEqual(r, { ok: false, holder: 'a lock file that could not be read' })
+  })
+
+  it('install.sh takes the lock through the same rule: the CLI takes over a dead pid\'s lock and says so', () => {
+    const home = tempHome()
+    lockFile(home, { pid: 2 ** 22 + 12345, startedAt: at(5 * MIN) })
+    const r = spawnSync(process.execPath, [INSTALLER, 'lock', '--home', home, '--pid', String(process.pid)], { encoding: 'utf8' })
+    assert.equal(r.status, 0, r.stderr)
+    assert.match(r.stdout, /Took over a stale install\.lock \(pid 4206649 since .*: that process is gone\)/)
+    const rec = JSON.parse(readFileSync(installLockPath(home), 'utf8'))
+    assert.equal(rec.pid, process.pid)
+    assert.equal(rec.procStartedAt, pidStartedAt(process.pid), 'the pid given is the one whose start is recorded')
+  })
+
+  it('settleProbation rolls back through a stale lock rather than staying on probation for ever', () => {
+    const home = homeWith(A, B)
+    swapLink({ home, sha: A })
+    swapForProbation({ home, sha: B, from: A, latest: C, baselineErrors: [], now: NOW })
+    lockFile(home, { pid: 2 ** 22 + 12345, startedAt: at(5 * MIN) })
+    assert.equal(settleProbation({ home, verdict: 'unhealthy', reason: 'boom', now: NOW }).outcome, 'rolled-back')
+    assert.equal(currentVersion(home), A)
+    assert.ok(!existsSync(installLockPath(home)))
+  })
+})
+
+describe('install: the backoff and the baseline', () => {
+  it('backoffPasses: 1, 2, 4, 8, then the cap', () => {
+    assert.deepEqual([1, 2, 3, 4, 5, 6, 60].map(backoffPasses), [1, 2, 4, 8, BACKOFF_MAX, BACKOFF_MAX, BACKOFF_MAX])
+    assert.equal(BACKOFF_MAX, 15)
+  })
+
+  it('baselineOf: the repos in every one of the last 3 samples; null with none', () => {
+    assert.equal(baselineOf([]), null)
+    assert.equal(baselineOf(undefined), null)
+    assert.deepEqual(baselineOf([['a', 'b']]), ['a', 'b'])
+    assert.deepEqual(baselineOf([['a', 'b'], ['b']]), ['b'])
+    assert.deepEqual(baselineOf([['a', 'b'], ['b', 'c'], ['b', 'a']]), ['b'])
+    assert.deepEqual(baselineOf([['a'], ['a'], []]), [])
+    // Only the last 3 count: an old clean pass does not keep a repo out for ever.
+    assert.deepEqual(baselineOf([[], ['a'], ['a'], ['a']]), ['a'])
   })
 })

@@ -8,7 +8,8 @@ import { dirname, join } from 'node:path'
 import { describe, it } from 'node:test'
 import { HAND_INSTALL_PATHS } from '../lib/bot.mjs'
 import { GATES_REPO, OWN_INSTALL_PATHS } from '../lib/gates-worktree.mjs'
-import { DEFER_NOTIFY_AT, buildVersion, commitVersion, currentVersion, installLockPath, readMarker, swapLink, versionPath, writeMarker } from '../lib/install.mjs'
+import * as nodeFs from 'node:fs'
+import { BACKOFF_MAX, DEFER_NOTIFY_AT, buildVersion, commitVersion, currentVersion, installLockPath, readMarker, swapLink, versionPath, writeMarker } from '../lib/install.mjs'
 import { guardCommands } from '../lib/runner.mjs'
 import { acquireLock } from '../lib/state.mjs'
 import { FakeGitHub, PARENT, makeRunner, repoEntry, scenario } from './fakes.mjs'
@@ -132,6 +133,24 @@ function setup({ box = {}, marker, lastPassErrors = [], notify = true, ntfy = tr
 }
 
 const skipped = (lines) => lines.filter((l) => /self-install of bbbbbbb skipped/.test(l))
+const behind = (l) => /installed ship-bot \(aaaaaaa\) is behind origin\/main/.test(l)
+/** How many times the heavy validation (check.sh) has run. */
+const suites = (t) => t.installs().filter((c) => c.cmd === '/bin/bash').length
+
+/** A GitHub whose listOpenPulls throws for the slugs `slugs()` names: those repos stop on an unexpected error. */
+const failing = (slugs) => {
+  const github = new FakeGitHub({ pulls: [] })
+  const real = github.listOpenPulls.bind(github)
+  github.listOpenPulls = async (slug) => {
+    if (slugs().includes(slug)) {
+      // Still a repo the pass looked at.
+      github.calls.push({ name: 'listOpenPulls', args: [slug] })
+      throw new Error('boom')
+    }
+    return real(slug)
+  }
+  return github
+}
 
 describe('self-install: a stale install installs merged main itself', () => {
   it('stages, validates, swaps, and ends the pass before any repo', async () => {
@@ -163,7 +182,7 @@ describe('self-install: a stale install installs merged main itself', () => {
       [
         `git -C ${clone} fetch origin main`,
         `git -C ${clone} rev-parse --verify refs/remotes/origin/main`,
-        `git -C ${clone} diff --quiet ${INSTALLED} ${M} -- ship-bot/install.sh ship-bot/launchd-load.sh`,
+        `git -C ${clone} diff --quiet ${INSTALLED} ${M} -- ship-bot/install.sh ship-bot/launchd-load.sh scripts/lib/resolve-node.sh`,
         `git -C ${clone} archive --format=tar -o ${join(t.home, 'stage', 'src.tar')} ${M} ship-bot scripts`,
         `tar -xf ${join(t.home, 'stage', 'src.tar')} -C ${src}`,
         `/bin/bash ${join(src, 'ship-bot', 'check.sh')}`,
@@ -199,9 +218,17 @@ describe('self-install: a stale install installs merged main itself', () => {
     assert.equal(currentVersion(t.home), INSTALLED)
   })
 
-  it('the freshness paths include the LaunchAgent\'s two files, which are exactly the hand-install paths', () => {
-    for (const p of HAND_INSTALL_PATHS) assert.ok(OWN_INSTALL_PATHS.includes(p), p)
-    assert.deepEqual(HAND_INSTALL_PATHS, ['ship-bot/install.sh', 'ship-bot/launchd-load.sh'])
+  it('the hand-install paths are the LaunchAgent\'s two files and the script that picks its Node, and each one reads stale', () => {
+    // Stale is read from OWN_INSTALL_PATHS: a path listed there itself, or under a directory listed there.
+    for (const p of HAND_INSTALL_PATHS) assert.ok(OWN_INSTALL_PATHS.some((own) => p === own || p.startsWith(`${own}/`)), p)
+    assert.deepEqual(HAND_INSTALL_PATHS, ['ship-bot/install.sh', 'ship-bot/launchd-load.sh', 'scripts/lib/resolve-node.sh'])
+  })
+
+  it('resolve-node.sh picks the plist\'s Node: a change to it is compared in the hand-install check', async () => {
+    const t = setup()
+    await t.pass()
+    const diff = t.installs().find((c) => c.args.includes('diff'))
+    assert.ok(diff.args.slice(diff.args.indexOf('--') + 1).includes('scripts/lib/resolve-node.sh'), diff.args.join(' '))
   })
 })
 
@@ -262,17 +289,94 @@ describe('self-install: skips, each said once a pass, each with its near-miss', 
     assertSkipped(t, await t.pass(), /install\.lock is held \(pid \d+/)
     held.release()
     const near = setup()
+    // No process has this pid: the default lock (acquireInstallLock) takes it over and says so.
     writeFileSync(installLockPath(near.home), JSON.stringify({ pid: 2 ** 22 + 12345, startedAt: 'long ago' }))
-    await near.pass('live', { selfInstall: { home: near.home, configPath: CONFIG, lock: (p) => acquireLock(p, { isAlive: () => false }) } })
+    const lines = await near.pass()
+    assert.ok(lines.some((l) => /^warn self-install: took over a stale install\.lock \(pid 4206649 since long ago: that process is gone\)/.test(l)), lines.join('\n'))
     assert.equal(currentVersion(near.home), M)
   })
 
-  for (const phase of ['probation', 'swapping']) {
-    it(`a version is in ${phase}`, async () => {
-      const t = setup({ marker: { phase, sha: OTHER, from: INSTALLED, latest: OTHER } })
-      assertSkipped(t, await t.pass(), new RegExp(`ddddddd is in ${phase}`))
-    })
-  }
+  it(`install.lock held for ${DEFER_NOTIFY_AT} passes sends one loud message, counted in the state file; taking the lock ends the count`, async () => {
+    const t = setup()
+    const held = acquireLock(installLockPath(t.home))
+    for (let i = 1; i < DEFER_NOTIFY_AT; i += 1) await t.pass()
+    assert.equal(t.s.state().data.ownInstall.lockHeld.count, DEFER_NOTIFY_AT - 1)
+    assert.equal(t.macNotes().length, 0, `${DEFER_NOTIFY_AT - 1} held passes are quiet`)
+    assert.equal(t.marker().deferred, undefined, 'the marker belongs to whoever holds the lock: not written')
+    await t.pass()
+    assert.equal(t.macNotes().length, 1)
+    assert.match(t.macNotes()[0], /has found install\.lock held 30 passes in a row \(pid \d+/)
+    await t.pass()
+    assert.equal(t.macNotes().length, 1, 'said once')
+    held.release()
+    await t.pass()
+    assert.equal(currentVersion(t.home), M)
+    assert.equal(t.s.state().data.ownInstall.lockHeld, undefined)
+  })
+
+  it('a version is in swapping, or this version is the one on probation: a normal wait, counted nowhere', async () => {
+    const swapping = setup({ marker: { phase: 'swapping', sha: OTHER, from: INSTALLED, latest: OTHER } })
+    assertSkipped(swapping, await swapping.pass(), /ddddddd is in swapping/)
+    const own = setup({ marker: { phase: 'probation', sha: INSTALLED, from: OTHER, latest: OTHER } })
+    assertSkipped(own, await own.pass(), /aaaaaaa is in probation$/)
+    for (const t of [swapping, own]) {
+      assert.equal(t.marker().deferred, undefined)
+      assert.equal(t.macNotes().length, 0, 'the behind-main alert stays suppressed during a normal wait')
+    }
+  })
+
+  it('probation whose link is back at `from`: an interrupted rollback is finished from its record, then the commit is refused', async () => {
+    // What rollBack leaves when it is killed after the rename: the record, the link at `from`, phase still probation.
+    const t = setup({ marker: { phase: 'probation', sha: OTHER, from: INSTALLED, latest: LATEST, undecided: 3, rollback: { reason: 'its pass failed (boom)', step: 'health', refuse: true } } })
+    const lines = await t.pass()
+    assert.ok(lines.some((l) => /^warn self-install: ddddddd is in probation, but .*app is back at aaaaaaa: a rollback was interrupted; its record is finished, and bbbbbbb is refused$/.test(l)), lines.join('\n'))
+    const m = t.marker()
+    assert.equal(m.phase, 'rolled-back')
+    assert.deepEqual({ step: m.refused[LATEST].step, reason: m.refused[LATEST].reason, sha: m.refused[LATEST].sha }, { step: 'health', reason: 'its pass failed (boom)', sha: OTHER })
+    assert.equal(m.rollback, undefined)
+    assert.equal(m.undecided, undefined)
+    assert.equal(t.installs().length, 0, 'nothing staged by the pass that finished the record')
+    assert.equal(t.macNotes().length, 1, 'the rollback\'s message, sent by this pass')
+    assert.match(t.macNotes()[0], /self-install ddddddd rolled back to aaaaaaa: its pass failed \(boom\)\. It needs a hand install/)
+    assert.ok(!existsSync(installLockPath(t.home)))
+    // The next pass reads a refusal like any other.
+    assert.match(skipped(await t.pass())[0], /refused at health/)
+  })
+
+  it('probation whose link is back at `from`, the record saying "not refused": finished, and the commit is tried again after the backoff', async () => {
+    const t = setup({ marker: { phase: 'probation', sha: OTHER, from: INSTALLED, latest: LATEST, rollback: { reason: '30 passes in a row could not decide its health', step: 'health', refuse: false } } })
+    await t.pass()
+    const m = t.marker()
+    assert.equal(m.phase, 'rolled-back')
+    assert.equal(m.refused, undefined)
+    assert.deepEqual(m.deferred, { latest: LATEST, count: 1, tries: 1, skip: BACKOFF_MAX })
+    assert.match(t.macNotes()[0], /It is not refused: the bot tries it again in about 30 minutes/)
+  })
+
+  it('probation whose link is back at `from` with no record at all: finished as a refusal, never left as a silent skip', async () => {
+    const t = setup({ marker: { phase: 'probation', sha: OTHER, from: INSTALLED, latest: LATEST } })
+    await t.pass()
+    assert.equal(t.marker().phase, 'rolled-back')
+    assert.match(t.marker().refused[LATEST].reason, /found back at aaaaaaa with no finished rollback record/)
+    assert.equal(t.macNotes().length, 1)
+  })
+
+  it('probation whose version the link names neither as `sha` nor as `from`: a warning every pass, the alert, and the long-deferral message', async () => {
+    const t = setup({ marker: { phase: 'probation', sha: OTHER, from: 'e'.repeat(40), latest: OTHER, deferred: { latest: LATEST, count: DEFER_NOTIFY_AT - 2 } } })
+    const lines = await t.pass()
+    assert.equal(skipped(lines).length, 1)
+    assert.match(skipped(lines)[0], /^warn .*ddddddd is in probation, but .*app names aaaaaaa, neither it nor the version before it \(eeeeeee\)/)
+    assert.equal(t.installs().length, 0)
+    assert.equal(t.marker().phase, 'probation', 'not this bot\'s to clear')
+    assert.equal(t.marker().deferred.count, DEFER_NOTIFY_AT - 1)
+    assert.equal(t.macNotes().filter(behind).length, 1, 'the behind-main alert is not suppressed while it is stuck')
+    await t.pass()
+    assert.equal(t.marker().deferred.count, DEFER_NOTIFY_AT)
+    const long = t.macNotes().filter((l) => /has been deferred 30 passes in a row \(last skipped: ddddddd is in probation/.test(l))
+    assert.equal(long.length, 1, t.macNotes().join('\n'))
+    await t.pass()
+    assert.equal(t.macNotes().length, 2, 'each said once')
+  })
 
   it('near-miss: the phases that are over (healthy, rolled-back, hand) do not skip', async () => {
     for (const phase of ['healthy', 'rolled-back', 'hand']) {
@@ -295,9 +399,19 @@ describe('self-install: skips, each said once a pass, each with its near-miss', 
     commitVersion({ home: t.home, sha: OTHER })
     swapLink({ home: t.home, sha: OTHER })
     const lines = await t.pass()
-    assert.match(skipped(lines)[0], /does not name this version \(aaaaaaa\)/)
+    assert.match(skipped(lines)[0], /^warn .*does not name this version \(aaaaaaa\)/)
     assert.equal(t.installs().length, 0)
     assert.equal(currentVersion(t.home), OTHER)
+    // Not a normal wait: it counts toward the long-deferral message, and the behind-main alert goes out.
+    assert.deepEqual(t.marker().deferred, { latest: LATEST, count: 1 })
+    assert.equal(t.macNotes().filter(behind).length, 1)
+    await t.pass()
+    assert.equal(t.marker().deferred.count, 2)
+    assert.equal(t.macNotes().filter(behind).length, 1, 'the alert is sent once')
+    // Near-miss: with the link back on the running version the next pass installs.
+    swapLink({ home: t.home, sha: INSTALLED })
+    await t.pass()
+    assert.equal(currentVersion(t.home), M)
   })
 })
 
@@ -316,11 +430,13 @@ describe('self-install: the judgement', () => {
     assert.equal(t.visitedRepos(), 1, 'the installed version carries on with the pass')
     assert.ok(!existsSync(installLockPath(t.home)))
   }
+  /** What a deferral after check.sh started adds to the record: the first one waits one pass. */
+  const HEAVY = { tries: 1, skip: 1 }
   /** A deferred pass: quiet, the link unmoved, nothing refused. */
-  const assertDeferred = (t, lines, step, count = 1) => {
+  const assertDeferred = (t, lines, step, count = 1, backoff = {}) => {
     assert.equal(currentVersion(t.home), INSTALLED)
     assert.equal(t.marker().refused, undefined, lines.join('\n'))
-    assert.deepEqual(t.marker().deferred, { latest: LATEST, count })
+    assert.deepEqual(t.marker().deferred, { latest: LATEST, count, ...backoff })
     assert.ok(lines.some((l) => l.startsWith('info self-install') && l.includes(`deferred at ${step} (${count})`)), lines.join('\n'))
     assert.equal(t.macNotes().length, 0, 'a deferral is quiet')
     assert.equal(t.fetches.length, 0)
@@ -378,11 +494,14 @@ describe('self-install: the judgement', () => {
 
   it('check.sh failing is retried once on the next pass, then refused', async () => {
     const t = setup({ box: { checkFails: true } })
-    assertDeferred(t, await t.pass(), 'check.sh')
+    assertDeferred(t, await t.pass(), 'check.sh', 1, HEAVY)
     assert.deepEqual(t.marker().retry, { latest: LATEST, step: 'check.sh' })
+    assert.match(skipped(await t.pass())[0], /backing off after 1 deferred validation\(s\); validated again next pass/)
+    assert.deepEqual(t.marker().retry, { latest: LATEST, step: 'check.sh' }, 'a backoff pass is no outcome: the retry record stands')
     const lines = await t.pass()
     assertRefused(t, lines, 'check.sh', /its test suite failed twice/)
     assert.equal(t.marker().retry, undefined)
+    assert.equal(suites(t), 2)
   })
 
   it('near-miss: check.sh failing once and passing on the retry installs', async () => {
@@ -390,9 +509,33 @@ describe('self-install: the judgement', () => {
     await t.pass()
     t.box.checkFails = false
     await t.pass()
+    await t.pass()
     assert.equal(currentVersion(t.home), M)
     assert.equal(t.marker().retry, undefined)
     assert.equal(t.macNotes().length, 0)
+  })
+
+  it('`retry` is one step\'s second chance: another outcome in between clears it, so the step gets a fresh one', async () => {
+    const t = setup({ box: { checkFails: true } })
+    await t.pass()
+    await t.pass()
+    // The validation after the backoff stops at the fetch: a different outcome.
+    t.box.fetchFails = true
+    await t.pass()
+    assert.equal(t.marker().retry, undefined, 'cleared by the deferral at fetch')
+    t.box.fetchFails = false
+    const lines = await t.pass()
+    assert.equal(t.marker().refused, undefined, lines.join('\n'))
+    assert.deepEqual(t.marker().retry, { latest: LATEST, step: 'check.sh' }, 'failing again is a first failure again')
+    // And a retry for one step is not a retry for another: check.sh passes, the dry pass fails once.
+    t.box.checkFails = false
+    t.box.dryCode = 1
+    // The second deferred validation waits 2 passes.
+    await t.pass()
+    await t.pass()
+    await t.pass()
+    assert.equal(t.marker().refused, undefined)
+    assert.deepEqual(t.marker().retry, { latest: LATEST, step: 'dry pass' })
   })
 
   it('refused: the gate imports, the live config, the self-test', async () => {
@@ -412,29 +555,56 @@ describe('self-install: the judgement', () => {
     assertRefused(version, await version.pass(), 'self-test', /state version 2 and this one reads 1/)
   })
 
-  it('the dry pass: a new repo error refuses; one already in the baseline does not', async () => {
-    const t = setup({ box: { dry: { repoErrors: ['gorfednet/old', 'gorfednet/new'] } }, lastPassErrors: ['gorfednet/old'] })
-    assertRefused(t, await t.pass(), 'dry pass', /the installed version does not stop on: gorfednet\/new$/)
-    const base = setup({ box: { dry: { repoErrors: ['gorfednet/old'] } }, lastPassErrors: ['gorfednet/old'] })
+  it('the dry pass: a new repo error is retried once, then refused; one already in the baseline does not count', async () => {
+    // The .github repo stops on an error in every live pass of the installed version, so it is the baseline.
+    const t = setup({ box: { dry: { repoErrors: [GATES_REPO, 'gorfednet/new'] } }, github: failing(() => [GATES_REPO]), lastPassErrors: [GATES_REPO] })
+    const first = await t.pass()
+    assertDeferred(t, first, 'dry pass', 1, HEAVY)
+    assert.ok(first.some((l) => /does not stop on: gorfednet\/new; one retry; validated again after 1 pass/.test(l)), first.join('\n'))
+    assert.deepEqual(t.marker().retry, { latest: LATEST, step: 'dry pass' })
+    await t.pass()
+    assertRefused(t, await t.pass(), 'dry pass', /^on two validations running, repos stopped on an error in its dry pass that the installed version does not stop on: gorfednet\/new$/)
+    const base = setup({ box: { dry: { repoErrors: [GATES_REPO] } }, github: failing(() => [GATES_REPO]), lastPassErrors: [GATES_REPO] })
     await base.pass()
     assert.equal(currentVersion(base.home), M)
-    assert.deepEqual(base.marker().baselineErrors, ['gorfednet/old'], 'the health check gets the same baseline')
+    assert.deepEqual(base.marker().baselineErrors, [GATES_REPO], 'the health check gets the same baseline')
   })
 
-  it('the dry pass: no token or an unfinished pass defers; a failed pass or no summary refuses', async () => {
-    const auth = setup({ box: { dry: { passOk: false, authOk: false }, dryCode: 1 } })
-    assertDeferred(auth, await auth.pass(), 'dry pass')
-    const quota = setup({ box: { dry: { undecided: 'a GitHub quota pause' } } })
-    assertDeferred(quota, await quota.pass(), 'dry pass')
-    const failed = setup({ box: { dry: { passOk: false }, dryCode: 1 } })
-    assertRefused(failed, await failed.pass(), 'dry pass', /its dry pass failed/)
-    const exit = setup({ box: { dryCode: 1 } })
-    assertRefused(exit, await exit.pass(), 'dry pass', /its dry pass failed \(exit 1/)
-    const silent = setup({ box: { dry: null } })
-    assertRefused(silent, await silent.pass(), 'dry pass', /printed no summary \(exit 1: SyntaxError: boom\)/)
-    const gates = setup({ box: { dry: { passOk: false, authOk: null }, dryCode: 1 } })
-    assertRefused(gates, await gates.pass(), 'dry pass', /its dry pass failed/)
+  it('near-miss: a repo error in one dry pass that is gone on the retry installs, and nobody is told', async () => {
+    const t = setup({ box: { dry: { repoErrors: ['gorfednet/new'] } } })
+    await t.pass()
+    t.box.dry = {}
+    await t.pass()
+    await t.pass()
+    assert.equal(currentVersion(t.home), M)
+    assert.equal(t.marker().refused, undefined)
+    assert.equal(t.macNotes().length, 0)
   })
+
+  it('the dry pass: no token or an unfinished pass defers, with no retry record', async () => {
+    const auth = setup({ box: { dry: { passOk: false, authOk: false }, dryCode: 1 } })
+    assertDeferred(auth, await auth.pass(), 'dry pass', 1, HEAVY)
+    const quota = setup({ box: { dry: { undecided: 'a GitHub quota pause' } } })
+    assertDeferred(quota, await quota.pass(), 'dry pass', 1, HEAVY)
+    for (const t of [auth, quota]) assert.equal(t.marker().retry, undefined)
+  })
+
+  for (const [name, box, why] of [
+    ['says it failed', { dry: { passOk: false }, dryCode: 1 }, /its dry pass failed/],
+    ['exits 1', { dryCode: 1 }, /its dry pass failed \(exit 1/],
+    ['prints no summary', { dry: null }, /printed no summary \(exit 1: SyntaxError: boom\)/],
+    ['had its gate scripts refused', { dry: { passOk: false, authOk: null }, dryCode: 1 }, /its dry pass failed/],
+  ]) {
+    it(`the dry pass: one that ${name} is retried once on a later pass, then refused`, async () => {
+      const t = setup({ box })
+      assertDeferred(t, await t.pass(), 'dry pass', 1, HEAVY)
+      assert.deepEqual(t.marker().retry, { latest: LATEST, step: 'dry pass' })
+      await t.pass()
+      const lines = await t.pass()
+      assertRefused(t, lines, 'dry pass', why)
+      assert.match(t.marker().refused[LATEST].reason, /^on two validations running, /)
+    })
+  }
 
   it('no baseline yet defers, and a complete live pass records one', async () => {
     const t = setup({ lastPassErrors: null })
@@ -477,6 +647,23 @@ describe('self-install: the judgement', () => {
     assert.ok(!existsSync(versionPath(t.home, M)))
   })
 
+  it('a rollback that fails after the post-swap self-test queues one loud message of its own', async () => {
+    const t = setup({ box: { linkedSelfTest: { ok: false, stateVersion: 1, source: null, problem: 'gate scripts refused' } } })
+    // The link can be made for the new version and not for the one to go back to.
+    const fs = { ...nodeFs, symlinkSync: (target, path) => {
+      if (target.endsWith(INSTALLED)) throw new Error('EROFS: read-only file system')
+      return nodeFs.symlinkSync(target, path)
+    } }
+    const lines = await t.pass('live', { selfInstall: { home: t.home, configPath: CONFIG, fs } })
+    assert.ok(lines.some((l) => /AND THE ROLLBACK FAILED \(EROFS/.test(l)), lines.join('\n'))
+    assert.equal(currentVersion(t.home), M, 'the link could not be moved back')
+    assert.equal(t.marker().phase, 'probation')
+    assert.equal(t.marker().refused, undefined)
+    assert.equal(t.macNotes().length, 1)
+    assert.match(t.macNotes()[0], /self-install ccccccc could NOT be rolled back to aaaaaaa \(EROFS: read-only file system\)/)
+    assert.ok(existsSync(versionPath(t.home, M)), 'the version the link names is never discarded')
+  })
+
   it('retention after a swap: the new version, the one it came from and one more', async () => {
     const t = setup()
     const stage = join(t.s.home, 'installed-stage')
@@ -492,16 +679,6 @@ describe('self-install: the judgement', () => {
 })
 
 describe('self-install: the repo errors a pass records', () => {
-  const failing = (slugs) => {
-    const github = new FakeGitHub({ pulls: [] })
-    const real = github.listOpenPulls.bind(github)
-    github.listOpenPulls = async (slug) => {
-      if (slugs().includes(slug)) throw new Error('boom')
-      return real(slug)
-    }
-    return github
-  }
-
   it('a live pass saves the repos that stopped on an unexpected error as lastPassErrors; a clean pass saves none', async () => {
     let broken = [GATES_REPO]
     const t = setup({ box: { current: true }, github: failing(() => broken), lastPassErrors: null })
@@ -512,6 +689,50 @@ describe('self-install: the repo errors a pass records', () => {
     broken = []
     await t.pass()
     assert.deepEqual(t.s.state().data.lastPassErrors, [])
+  })
+
+  it('the baseline is the repos that errored in each of the last 3 complete live passes; the 3 samples are kept', async () => {
+    let broken = [GATES_REPO]
+    const t = setup({ box: { current: true }, github: failing(() => broken), lastPassErrors: null })
+    await t.pass()
+    await t.pass()
+    assert.deepEqual(t.s.state().data.passErrorSamples, [[GATES_REPO], [GATES_REPO]])
+    assert.deepEqual(t.s.state().data.lastPassErrors, [GATES_REPO], 'with fewer than 3 samples, what exists')
+    // One clean pass: the repo did not error in each of the last 3, so it leaves the baseline.
+    broken = []
+    await t.pass()
+    assert.deepEqual(t.s.state().data.passErrorSamples, [[GATES_REPO], [GATES_REPO], []])
+    assert.deepEqual(t.s.state().data.lastPassErrors, [])
+    // It is back in only after erroring in 3 passes running; the oldest sample is dropped each time.
+    broken = [GATES_REPO]
+    await t.pass()
+    await t.pass()
+    assert.deepEqual(t.s.state().data.lastPassErrors, [], 'two of the last 3 is not each of them')
+    await t.pass()
+    assert.deepEqual(t.s.state().data.passErrorSamples, [[GATES_REPO], [GATES_REPO], [GATES_REPO]])
+    assert.deepEqual(t.s.state().data.lastPassErrors, [GATES_REPO])
+  })
+
+  it('one transient repo error in the installed version\'s last pass is no baseline for the new one', async () => {
+    // The installed version stopped on the repo once, in its newest pass only. The new version's dry pass stops on it too.
+    let broken = []
+    const t = setup({ box: { current: true, dry: { repoErrors: [GATES_REPO] } }, github: failing(() => broken), lastPassErrors: null })
+    await t.pass()
+    await t.pass()
+    broken = [GATES_REPO]
+    await t.pass()
+    assert.deepEqual(t.s.state().data.lastPassErrors, [])
+    t.box.current = false
+    const lines = await t.pass()
+    assert.equal(currentVersion(t.home), INSTALLED, 'not installed over an error the old version does not have')
+    assert.ok(lines.some((l) => /deferred at dry pass .*does not stop on: gorfednet\/\.github; one retry/.test(l)), lines.join('\n'))
+  })
+
+  it('a state file from before the samples seeds them with the baseline it has', async () => {
+    const t = setup({ box: { current: true }, github: failing(() => [GATES_REPO]), lastPassErrors: [GATES_REPO, 'gorfednet/gone'] })
+    await t.pass()
+    assert.deepEqual(t.s.state().data.passErrorSamples, [[GATES_REPO, 'gorfednet/gone'], [GATES_REPO]])
+    assert.deepEqual(t.s.state().data.lastPassErrors, [GATES_REPO])
   })
 
   it('a dry pass and a pass over named repos report theirs and leave the saved baseline alone', async () => {
@@ -592,9 +813,86 @@ describe('self-install: the notification queue', () => {
   })
 })
 
-describe('self-install: the behind-main alert', () => {
-  const behind = (l) => /installed ship-bot \(aaaaaaa\) is behind origin\/main/.test(l)
+describe('self-install: the heavy validation backs off after a deferral', () => {
+  /** Run passes until check.sh has run `n` times; returns how many passes that took. */
+  const passesUntilSuite = async (t, n) => {
+    let passes = 0
+    while (suites(t) < n) {
+      await t.pass()
+      passes += 1
+      assert.ok(passes < 40, 'the validation never ran again')
+    }
+    return passes
+  }
 
+  it('waits 1, 2, 4, 8, then 15 passes between validations, and every waiting pass says so', async () => {
+    // No token in the dry pass: deferred every time, never refused.
+    const t = setup({ box: { dry: { passOk: false, authOk: false }, dryCode: 1 } })
+    await t.pass()
+    assert.equal(suites(t), 1)
+    const gaps = []
+    for (let n = 2; n <= 7; n += 1) gaps.push((await passesUntilSuite(t, n)) - 1)
+    assert.deepEqual(gaps, [1, 2, 4, 8, BACKOFF_MAX, BACKOFF_MAX])
+    assert.equal(t.marker().refused, undefined)
+    const lines = await t.pass()
+    assert.match(skipped(lines)[0], /backing off after 7 deferred validation\(s\); 14 more pass\(es\)/)
+    assert.equal(t.visitedRepos(), 1, 'the pass carries on')
+  })
+
+  it('a waiting pass counts toward the long-deferral message, so the owner still hears after 30 passes', async () => {
+    const t = setup({ box: { dry: { passOk: false, authOk: false }, dryCode: 1 } })
+    for (let i = 1; i < DEFER_NOTIFY_AT; i += 1) await t.pass()
+    assert.equal(t.marker().deferred.count, DEFER_NOTIFY_AT - 1)
+    assert.equal(t.macNotes().length, 0)
+    await t.pass()
+    assert.equal(t.macNotes().length, 1)
+    assert.match(t.macNotes()[0], /has been deferred 30 passes in a row/)
+    assert.ok(suites(t) <= 5, `${suites(t)} validations in 30 passes`)
+  })
+
+  it('a new commit resets it: validated on the very next pass', async () => {
+    const t = setup({ box: { dry: { passOk: false, authOk: false }, dryCode: 1 } })
+    await passesUntilSuite(t, 3)
+    assert.equal(t.marker().deferred.skip, 4)
+    t.box.latest = 'f'.repeat(40)
+    await t.pass()
+    assert.equal(suites(t), 4, 'no wait for the new commit')
+    assert.deepEqual(t.marker().deferred, { latest: 'f'.repeat(40), count: 1, tries: 1, skip: 1 })
+  })
+
+  it('a deferral before check.sh (the fetch) is cheap and sets no wait', async () => {
+    const t = setup({ box: { fetchFails: true } })
+    await t.pass()
+    await t.pass()
+    await t.pass()
+    assert.equal(t.installs().filter((c) => c.args.includes('fetch')).length, 3, 'tried every pass')
+    assert.deepEqual(t.marker().deferred, { latest: LATEST, count: 3 })
+  })
+
+  it('the cheap skip checks still run on a waiting pass: the off switch wins over the backoff', async () => {
+    const t = setup({ marker: { deferred: { latest: LATEST, count: 4, tries: 3, skip: 3 } } })
+    writeFileSync(join(t.home, 'self-install.off'), '')
+    assert.match(skipped(await t.pass())[0], /self-install\.off is present/)
+    assert.equal(t.marker().deferred.skip, 3, 'the off switch is not a waiting pass')
+    rmSync(join(t.home, 'self-install.off'))
+    const held = acquireLock(installLockPath(t.home))
+    assert.match(skipped(await t.pass())[0], /install\.lock is held/)
+    held.release()
+    assert.equal(t.marker().deferred.skip, 3)
+  })
+
+  it('after a rollback that did not refuse (the undecided bound), the old version tries the commit again when the wait is over', async () => {
+    const t = setup({ marker: { phase: 'rolled-back', sha: M, from: INSTALLED, latest: LATEST, deferred: { latest: LATEST, count: 1, tries: 1, skip: 2 } } })
+    await t.pass()
+    await t.pass()
+    assert.equal(t.installs().length, 0, 'two waiting passes')
+    await t.pass()
+    assert.equal(currentVersion(t.home), M)
+    assert.equal(t.marker().phase, 'probation')
+  })
+})
+
+describe('self-install: the behind-main alert', () => {
   it('is not sent while a self-install can still happen, though the log says it every pass', async () => {
     const t = setup({ box: { fetchFails: true } })
     const first = await t.pass()

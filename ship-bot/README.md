@@ -349,38 +349,56 @@ Some commits are refused. A refused commit is never tried again, and the
 refusal sends one loud message. Each of these needs a hand install
 (`ship-bot/install.sh`, from any clone):
 
-- A change to `ship-bot/install.sh` or `ship-bot/launchd-load.sh`. The
-  LaunchAgent or the install itself changes.
+- A change to `ship-bot/install.sh`, `ship-bot/launchd-load.sh` or
+  `scripts/lib/resolve-node.sh`. The LaunchAgent or the install itself changes.
 - A new version that fails a check. A failed `check.sh` gets one retry first.
-- A new version whose dry pass stops on a repository the installed one handles.
-- A new version that a health check rolled back.
+- A new version whose dry pass fails, or stops on a repository the installed
+  one handles. The dry pass gets one retry first too.
+- A new version that a health check found unhealthy and rolled back.
+
+"Handles" is read from the last 3 complete live passes. A repository counts
+as already broken only when it stopped on an error in each of them.
 
 A hand install clears every refusal.
 
 The bot defers when it can't decide. Examples are no GitHub token, a quota
 pause, or `main` moving during the install. A deferral is quiet and is tried
-again on the next pass. After 30 deferrals of one commit it sends one message.
+again. One that came after `check.sh` started waits before the next try. The
+waits are 1, 2, 4 and 8 passes. After that it's 15 passes, which is 30 minutes. A new commit
+starts again with no wait. After 30 passes of waiting on one commit the bot
+sends one message.
 
-A pass on probation can also end undecided, for the same reasons. After 30
-undecided passes in a row the bot rolls the version back. That takes about
-an hour.
+Some skips aren't a normal wait. The link names a version other than the one
+running. Or the marker says a version is on probation and the link doesn't
+name it. The bot warns every pass and counts those toward the same message.
+It also sends the "behind origin/main" message. A `probation` marker whose
+link is back on the old version is an interrupted rollback. The next pass
+finishes its record.
+
+A pass on probation can also end undecided, for the same reasons. A new
+repository error on one probation pass is undecided too. On a second
+probation pass it's unhealthy. After 30 undecided passes in a row the bot
+rolls the version back. That takes about an hour. That rollback doesn't
+refuse the commit. The bot sends one message and tries it again 30 minutes
+later.
 
 Until the new version is installed, the bot is behind `origin/main`. It says
 so every pass and merges no pull request that changes control-plane paths. It
 comments once on each one it holds. It does the same when it can't read how
-fresh its install is: GitHub's `main` can't be read, the clone's `origin/main`
-differs from it after a fetch, or `gates-main` was not advanced. Other pull
-requests still merge (INCIDENTS.md, 14 November 2026, ops 94). The loud
-"behind origin/main" message is sent only when self-install is off or has
-refused that commit.
+fresh its install is. That happens when GitHub's `main` can't be read. It
+also happens when the clone's `origin/main` differs from it after a fetch, or
+when `gates-main` was not advanced. Other pull requests still merge
+(INCIDENTS.md, 14 November 2026, ops 94). The loud "behind origin/main"
+message is sent only when self-install is off, stuck or has refused that
+commit.
 
 This hold is in the bot's own code, so it starts with the first install that
 includes it. A bot installed from an older commit still merges control-plane
 pull requests while it is behind.
 
-If a new `origin/main` can't be installed at all (`check.sh` or the import
-check fails), the fix is itself a `ship-bot/` pull request and the installed
-bot holds it. The owner merges that fix on GitHub, then runs
+Sometimes a new `origin/main` can't be installed at all, because `check.sh`
+or the import check fails. The fix is itself a `ship-bot/` pull request, and
+the installed bot holds it. The owner merges that fix on GitHub, then runs
 `ship-bot/install.sh`. Both routes install only from `origin/main`.
 
 To stop it: add the **`hold`** label to a pull request, or run
@@ -494,7 +512,9 @@ the files below, and `install.sh` and the bot both build a version with it.
 - `~/.ship-bot/self-install.json` is the marker. Its phase is `swapping`,
   `probation`, `healthy`, `rolled-back` or `hand`. It also holds the refused
   commits and any message ntfy has not accepted yet.
-- `~/.ship-bot/install.lock` is held by whichever install is running.
+- `~/.ship-bot/install.lock` is held by whichever install is running. A lock
+  left by a process that is gone is taken over. So is one over 30 minutes old
+  whose process id now belongs to another process.
 - `~/.ship-bot/self-install.off` is the off switch.
 
 A session never edits those files and never moves the link. After a merge

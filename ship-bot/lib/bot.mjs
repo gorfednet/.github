@@ -20,8 +20,8 @@ import { HOTFIX_LABEL, RELEASE_LABEL, planDeploy } from './deploy-plan.mjs'
 import { Redactor } from './redact.mjs'
 import { guardCommands, succeeded } from './runner.mjs'
 import { GATES_REPO, advanceGatesWorktree, ownInstallFreshness, toolWorktreeFor } from './gates-worktree.mjs'
-import { STATE_VERSION, StateStore, acquireLock } from './state.mjs'
-import { DEFER_NOTIFY_AT, OFF_FILE, buildVersion, commitVersion, currentVersion, discardVersion, installLockPath, isOff, pruneVersions, queueNotice, readMarker, refuse, rollBack, swapForProbation, writeMarker } from './install.mjs'
+import { STATE_VERSION, StateStore } from './state.mjs'
+import { BASELINE_SAMPLES, DEFER_NOTIFY_AT, OFF_FILE, acquireInstallLock, backoffPasses, baselineOf, buildVersion, commitVersion, currentVersion, discardVersion, finishRollBack, installLockPath, isOff, pruneVersions, queueNotice, readMarker, refuse, rollBack, swapForProbation, writeMarker } from './install.mjs'
 
 const NEEDS_FIX_LABEL = 'needs-fix'
 const short = (sha) => String(sha ?? '').slice(0, 7)
@@ -76,7 +76,7 @@ export async function runOnce(deps) {
     /** Shared across repo contexts: merges decided this pass (live: attempted; dry: "would merge"), against maxMergesPerPass. */
     pass: { merges: 0 },
     /** Self-install (lib/install.mjs): the bot home behind the version link, the live config's path, and the effects. Null when run from a checkout. */
-    selfInstall: deps.selfInstall?.home ? { fs: nodeFs, lock: acquireLock, ...deps.selfInstall } : null,
+    selfInstall: deps.selfInstall?.home ? { fs: nodeFs, lock: acquireInstallLock, ...deps.selfInstall } : null,
     say(level, text) {
       const line = redactor.apply(text)
       this.decisions.push({ level, text: line })
@@ -141,10 +141,24 @@ export async function runOnce(deps) {
   } else delete stateStore.data.rateLimits?.[ctx.authAs]
   // The baseline a self-install compares a new version against: only a live pass over every repo is one.
   summary.complete = !limited && !(deps.repoNames?.length > 0)
-  if (!dry && summary.complete) stateStore.data.lastPassErrors = [...summary.repoErrors]
+  if (!dry && summary.complete) recordPassErrors(stateStore.data, summary.repoErrors)
   sayUsage(ctx)
   stateStore.save()
   return ctx.decisions
+}
+
+/**
+ * Keep the repo errors of the last BASELINE_SAMPLES complete live passes, and
+ * the baseline read from them (`lastPassErrors`): the repos that stopped on an
+ * error in every one. One transient error in the old version's last pass is
+ * then no excuse for the new one, and one clean pass does not erase a repo
+ * that is broken most of the time. A state file from before the samples seeds
+ * them with the baseline it has.
+ */
+function recordPassErrors(data, repoErrors) {
+  const before = Array.isArray(data.passErrorSamples) ? data.passErrorSamples : Array.isArray(data.lastPassErrors) ? [data.lastPassErrors] : []
+  data.passErrorSamples = [...before.filter(Array.isArray), [...repoErrors]].slice(-BASELINE_SAMPLES)
+  data.lastPassErrors = baselineOf(data.passErrorSamples)
 }
 
 /** A time as the owner reads it: Toronto local, labelled ET. */
@@ -874,16 +888,21 @@ async function checkOwnInstall(ctx, installedSha) {
   const memo = (ctx.state.data.ownInstall ??= {})
   if (memo.notifiedFor === r.latest || ctx.dry) return r
   // While the bot can still install that commit itself, this is not news: the owner hears only when
-  // self-install is off or has refused it (a refusal sends its own message as well).
-  if (!selfInstallRuledOut(ctx, r.latest)) return r
+  // self-install is off, has refused it (a refusal sends its own message as well), or is stuck on
+  // something that no later pass clears by itself.
+  const block = selfInstallBlock(ctx, r.latest, installedSha)
+  if (!block || block.kind === 'wait' || block.kind === 'finish') return r
   memo.notifiedFor = r.latest
   ctx.state.save()
   await notify(ctx, text, true)
   return r
 }
 
-/** The paths whose change means the LaunchAgent or the install itself changes: a hand install, never a self-install. */
-export const HAND_INSTALL_PATHS = ['ship-bot/install.sh', 'ship-bot/launchd-load.sh']
+/**
+ * The paths whose change means the LaunchAgent or the install itself changes: a hand install, never a
+ * self-install. resolve-node.sh picks the Node the plist names, and only install.sh writes the plist.
+ */
+export const HAND_INSTALL_PATHS = ['ship-bot/install.sh', 'ship-bot/launchd-load.sh', 'scripts/lib/resolve-node.sh']
 
 /** Loads the live config with a version's own loadConfig. The paths are arguments, never spliced into the script. */
 const CONFIG_CHECK = "const [lib, config] = process.argv.slice(1); const { pathToFileURL } = await import('node:url'); try { (await import(pathToFileURL(lib).href)).loadConfig(config) } catch (e) { console.error(e.message); process.exit(1) }"
@@ -902,24 +921,58 @@ function jsonLine(text, key) {
 }
 
 /**
- * Why the bot will never install commit `latest` itself, or null while it
- * still can (this pass or a later one). Decides whether the behind-main alert
- * is sent: a lock that is held or a version on probation is "not yet", not "never".
+ * What stops this pass from installing commit `latest`, or null when nothing does.
+ *   never   it will not happen without a person: dry, no version link, the off switch, an unreadable marker, a refusal
+ *   wait    a normal wait that the next passes end: a swap or a probation that is this version's own
+ *   finish  a rollback moved the link back to `from` and was killed before its record: selfInstall finishes it
+ *   stuck   nothing in the bot clears it: a probation whose version the link no longer names, or a link
+ *           that names another version than the one running
+ * `never` and `stuck` let the behind-main alert through; `stuck` also counts toward the long-deferral message.
+ * @returns {null | {kind: 'never' | 'wait' | 'finish' | 'stuck', why: string}}
  */
-function selfInstallRuledOut(ctx, latest) {
+function selfInstallBlock(ctx, latest, installedSha) {
   const si = ctx.selfInstall
-  if (ctx.dry) return 'a dry run installs nothing'
-  if (!si) return 'this bot does not run through a version link (a hand install sets one up)'
-  if (isOff(si.home, si.fs)) return `${OFF_FILE} is present`
+  const never = (why) => ({ kind: 'never', why })
+  if (ctx.dry) return never('a dry run installs nothing')
+  if (!si) return never('this bot does not run through a version link (a hand install sets one up)')
+  if (isOff(si.home, si.fs)) return never(`${OFF_FILE} is present`)
   let marker
+  let linked
   try {
     marker = readMarker(si.home, si.fs)
+    linked = currentVersion(si.home, si.fs)
   } catch (cause) {
-    return cause.message
+    return never(cause.message)
   }
   const refused = marker.refused?.[latest]
-  if (refused) return `it was refused at ${refused.step} (${refused.reason}) and needs a hand install`
+  if (refused) return never(`it was refused at ${refused.step} (${refused.reason}) and needs a hand install`)
+  const app = join(si.home, 'app')
+  if (marker.phase === 'swapping') return { kind: 'wait', why: `${short(marker.sha)} is in swapping` }
+  if (marker.phase === 'probation' && linked !== marker.sha) {
+    if (linked === marker.from && linked === installedSha) return { kind: 'finish', why: `${short(marker.sha)} is in probation, but ${app} is back at ${short(marker.from)}: a rollback was interrupted` }
+    return { kind: 'stuck', why: `${short(marker.sha)} is in probation, but ${app} names ${linked ? short(linked) : 'no version'}, neither it nor the version before it (${short(marker.from)}); a hand install (ship-bot/install.sh) clears it` }
+  }
+  if (linked !== installedSha) return { kind: 'stuck', why: `${app} does not name this version (${short(installedSha)})` }
+  if (marker.phase === 'probation') return { kind: 'wait', why: `${short(marker.sha)} is in probation` }
   return null
+}
+
+/**
+ * Count one more pass that commit `latest` waited, in the marker's `deferred`.
+ * At DEFER_NOTIFY_AT the owner hears, once per commit: a deferral, a backoff
+ * pass and a stuck skip all count, so none of them waits in silence for ever.
+ * @returns {object} the `deferred` record
+ */
+function countDeferral(ctx, marker, latest, { what, last, installedSha }) {
+  const d = marker.deferred?.latest === latest ? marker.deferred : { latest, count: 0 }
+  d.count += 1
+  marker.deferred = d
+  if (d.count >= DEFER_NOTIFY_AT && !d.notified) {
+    d.notified = true
+    queueNotice(marker, `ship-bot self-install of ${what} has been deferred ${d.count} passes in a row (last ${last}). The installed ${short(installedSha)} keeps running.`, ctx.clock.now())
+    ctx.noticesQueued = true
+  }
+  return d
 }
 
 /**
@@ -965,41 +1018,76 @@ async function selfInstall(ctx, installedSha) {
   const own = ctx.ownInstall
   if (own.state !== 'stale') return false
   const latest = own.latest
-  const skip = (why) => {
-    ctx.say('info', `self-install of ${short(latest)} skipped: ${why}`)
+  const skip = (why, level = 'info') => {
+    ctx.say(level, `self-install of ${short(latest)} skipped: ${why}`)
     return false
   }
-  const never = selfInstallRuledOut(ctx, latest)
-  if (never) return skip(never)
+  const block = selfInstallBlock(ctx, latest, installedSha)
+  if (block?.kind === 'never' || block?.kind === 'wait') return skip(block.why)
   const { home, fs } = ctx.selfInstall
-  const marker = readMarker(home, fs)
-  if (marker.phase === 'probation' || marker.phase === 'swapping') return skip(`${short(marker.sha)} is in ${marker.phase}`)
-  if (currentVersion(home, fs) !== installedSha) return skip(`${join(home, 'app')} does not name this version (${short(installedSha)})`)
+  const origin = `origin/main (${short(latest)})`
+  const memo = (ctx.state.data.ownInstall ??= {})
   const lock = ctx.selfInstall.lock(installLockPath(home))
-  if (!lock.ok) return skip(`install.lock is held (${lock.holder})`)
+  if (!lock.ok) {
+    // Counted in the state file, not the marker: the marker belongs to whoever holds the lock.
+    const held = memo.lockHeld?.latest === latest ? memo.lockHeld : { latest, count: 0 }
+    held.count += 1
+    memo.lockHeld = held
+    if (held.count >= DEFER_NOTIFY_AT && !held.notified) {
+      held.notified = true
+      ctx.state.save()
+      await notify(ctx, `ship-bot self-install of ${origin} has found install.lock held ${held.count} passes in a row (${lock.holder}). The installed ${short(installedSha)} keeps running.`, true)
+    }
+    return skip(`install.lock is held (${lock.holder})`)
+  }
+  delete memo.lockHeld
+  if (lock.tookOver) ctx.say('warn', `self-install: took over a stale install.lock (${lock.tookOver})`)
   const stage = join(home, 'stage')
   const attempt = { sha: null }
   try {
+    if (block?.kind === 'finish') {
+      const done = finishRollBack({ home, now: ctx.clock.now(), fs })
+      ctx.noticesQueued = true
+      ctx.say('warn', `self-install: ${block.why}; its record is finished${done.refused?.[done.latest] ? `, and ${short(done.latest)} is refused` : ''}`)
+      return false
+    }
+    const marker = readMarker(home, fs)
+    if (block?.kind === 'stuck') {
+      countDeferral(ctx, marker, latest, { what: origin, last: `skipped: ${block.why}`, installedSha })
+      writeMarker(home, marker, fs)
+      return skip(block.why, 'warn')
+    }
+    // Back off: the cheap checks above ran, the heavy validation (check.sh, the dry pass) waits.
+    if (marker.deferred?.latest === latest && marker.deferred.skip > 0) {
+      const left = (marker.deferred.skip -= 1)
+      countDeferral(ctx, marker, latest, { what: origin, last: 'backing off after a deferral', installedSha })
+      writeMarker(home, marker, fs)
+      return skip(`backing off after ${marker.deferred.tries} deferred validation(s); ${left === 0 ? 'validated again next pass' : `${left} more pass(es)`}`)
+    }
     const outcome = await stageValidateSwap(ctx, { installedSha, latest, stage, attempt })
     if (outcome.result === 'swapped') return true
     if (attempt.sha) discardVersion({ home, sha: attempt.sha, fs })
     if (outcome.result === 'rolled-back') return false
     const m = readMarker(home, fs)
-    const what = attempt.sha ? short(attempt.sha) : `origin/main (${short(latest)})`
+    const what = attempt.sha ? short(attempt.sha) : origin
     if (outcome.result === 'refused') {
       refuse(m, latest, { step: outcome.step, reason: outcome.reason, sha: attempt.sha }, ctx.clock.now())
+      // `retry` is one step's one second chance: any other outcome ends it.
+      delete m.retry
       queueNotice(m, `ship-bot self-install of ${what} refused at ${outcome.step}: ${outcome.reason}. The installed ${short(installedSha)} keeps running. It needs a hand install (ship-bot/install.sh).`, ctx.clock.now())
       ctx.noticesQueued = true
       ctx.say('error', `self-install ${what}: refused at ${outcome.step}: ${outcome.reason}; ${short(latest)} is not tried again until a hand install`)
     } else {
-      const count = (m.deferred?.latest === latest ? m.deferred.count : 0) + 1
-      m.deferred = { latest, count }
+      const d = countDeferral(ctx, m, latest, { what, last: `at ${outcome.step}: ${outcome.reason}`, installedSha })
       if (outcome.retry) m.retry = { latest, step: outcome.step }
-      if (count === DEFER_NOTIFY_AT) {
-        queueNotice(m, `ship-bot self-install of ${what} has been deferred ${count} passes in a row (last at ${outcome.step}: ${outcome.reason}). The installed ${short(installedSha)} keeps running.`, ctx.clock.now())
-        ctx.noticesQueued = true
+      else delete m.retry
+      let next = 'tried again next pass'
+      if (outcome.heavy) {
+        d.tries = (d.tries ?? 0) + 1
+        d.skip = backoffPasses(d.tries)
+        next = `validated again after ${d.skip} pass(es)`
       }
-      ctx.say('info', `self-install ${what}: deferred at ${outcome.step} (${count}): ${outcome.reason}; tried again next pass`)
+      ctx.say('info', `self-install ${what}: deferred at ${outcome.step} (${d.count}): ${outcome.reason}; ${next}`)
     }
     writeMarker(home, m, fs)
     return false
@@ -1009,11 +1097,23 @@ async function selfInstall(ctx, installedSha) {
   }
 }
 
-/** @returns {Promise<{result: 'swapped' | 'rolled-back'} | {result: 'refused' | 'deferred', step: string, reason: string, retry?: true}>} */
+/**
+ * `retry`: the step failed in a way that can be a flake, and gets one more go on a later pass.
+ * `heavy`: the deferral came after check.sh started, so the next validation backs off.
+ * @returns {Promise<{result: 'swapped' | 'rolled-back'} | {result: 'refused' | 'deferred', step: string, reason: string, retry?: true, heavy?: true}>}
+ */
 async function stageValidateSwap(ctx, { installedSha, latest, stage, attempt }) {
   const { home, fs, configPath } = ctx.selfInstall
   const refused = (step, reason) => ({ result: 'refused', step, reason: ctx.redactor.apply(reason) })
-  const deferred = (step, reason, extra = {}) => ({ result: 'deferred', step, reason: ctx.redactor.apply(reason), ...extra })
+  let heavy = false
+  const deferred = (step, reason, extra = {}) => ({ result: 'deferred', step, reason: ctx.redactor.apply(reason), ...(heavy ? { heavy: true } : {}), ...extra })
+  // A failure that load or one bad GitHub answer can cause: deferred once with a `retry` record that
+  // names the step, and refused only when that same step fails again on the next validation.
+  const flaky = (step, once, twice) => {
+    const before = readMarker(home, fs).retry
+    if (before?.latest === latest && before.step === step) return refused(step, twice)
+    return deferred(step, `${once}; one retry`, { retry: true })
+  }
   // Kind `install` is not read-only: guardCommands refuses it in a dry or observe run, whatever the code above decided.
   const run = (cmd, args, { timeoutMs = 60_000, env = {} } = {}) => ctx.runner.run({ kind: 'install', cmd, args, env: { ...ctx.baseEnv, ...env }, timeoutMs })
   const how = (r) => {
@@ -1037,7 +1137,7 @@ async function stageValidateSwap(ctx, { installedSha, latest, stage, attempt }) 
     const hand = await git(['diff', '--quiet', installedSha, sha, '--', ...HAND_INSTALL_PATHS])
     if (hand.code === 1 && !hand.timedOut && !hand.error) return refused('hand-install check', `${HAND_INSTALL_PATHS.join(' or ')} changed since ${short(installedSha)}: the LaunchAgent or the install itself changes, so this one needs a hand install`)
     if (!succeeded(hand)) return deferred('hand-install check', `cannot compare ${short(installedSha)} with ${short(sha)} (${how(hand)})`)
-    // The baseline for the dry pass: what the installed version's last complete live pass stopped on.
+    // The baseline for the dry pass: the repos the installed version stopped on in each of its last complete live passes.
     const baseline = ctx.state.data.lastPassErrors
     if (!Array.isArray(baseline)) return deferred('baseline', 'no complete live pass has recorded its repo errors yet')
 
@@ -1055,13 +1155,10 @@ async function stageValidateSwap(ctx, { installedSha, latest, stage, attempt }) 
 
     // Validate: the new version's pieces run as subprocesses of the Node this bot runs on, judged by exit code and one JSON line.
     const node = (args, opts) => run(ctx.nodePath, args, opts)
+    heavy = true
     const suite = await run('/bin/bash', [join(src, 'ship-bot', 'check.sh')], { timeoutMs: 20 * 60_000, env: { NODE_BIN: ctx.nodePath } })
-    if (!succeeded(suite)) {
-      // A suite can flake under load: one retry on the next pass, then it is a refusal.
-      const before = readMarker(home, fs).retry
-      if (before?.latest === latest && before.step === 'check.sh') return refused('check.sh', `its test suite failed twice (${how(suite)})`)
-      return deferred('check.sh', `its test suite failed (${how(suite)}); one retry`, { retry: true })
-    }
+    // A suite can flake under load: one retry, then it is a refusal.
+    if (!succeeded(suite)) return flaky('check.sh', `its test suite failed (${how(suite)})`, `its test suite failed twice (${how(suite)})`)
     const imports = await node([join(version, 'lib', 'gate-imports.mjs'), join(version, 'gate-scripts')])
     if (!succeeded(imports)) return refused('gate-imports', `its gate scripts import something the copy does not hold (${how(imports)})`)
     const parsed = await node(['--input-type=module', '-e', CONFIG_CHECK, join(version, 'lib', 'config.mjs'), configPath])
@@ -1073,12 +1170,18 @@ async function stageValidateSwap(ctx, { installedSha, latest, stage, attempt }) 
     if (st.stateVersion !== STATE_VERSION) return refused('self-test', `it writes state version ${st.stateVersion} and this one reads ${STATE_VERSION}: after a rollback every pass would refuse the state file`)
     const dryPass = await node([join(version, 'ship-bot.mjs'), '--dry-run', '--once', '--summary-json', '--config', configPath], { timeoutMs: 30 * 60_000 })
     const sum = jsonLine(dryPass.stdout, 'passOk')
-    if (!sum) return refused('dry pass', `its dry pass printed no summary (${how(dryPass)})`)
+    // A dry pass reads GitHub for every repo: one bad answer fails it or stops one repo. So each of
+    // these gets one retry, like check.sh, before the commit is refused for good.
+    const twice = (text) => `on two validations running, ${text}`
+    if (!sum) return flaky('dry pass', `its dry pass printed no summary (${how(dryPass)})`, twice(`its dry pass printed no summary (${how(dryPass)})`))
     if (sum.authOk === false) return deferred('dry pass', 'its dry pass had no GitHub token')
     if (sum.undecided) return deferred('dry pass', `its dry pass could not finish: ${sum.undecided}`)
-    if (!succeeded(dryPass) || sum.passOk !== true || sum.authOk !== true) return refused('dry pass', `its dry pass failed (${how(dryPass)})`)
+    if (!succeeded(dryPass) || sum.passOk !== true || sum.authOk !== true) return flaky('dry pass', `its dry pass failed (${how(dryPass)})`, twice(`its dry pass failed (${how(dryPass)})`))
     const fresh = (Array.isArray(sum.repoErrors) ? sum.repoErrors : ['(unreadable repoErrors)']).filter((slug) => !baseline.includes(slug))
-    if (fresh.length > 0) return refused('dry pass', `repos stopped on an error in its dry pass that the installed version does not stop on: ${fresh.join(', ')}`)
+    if (fresh.length > 0) {
+      const text = `repos stopped on an error in its dry pass that the installed version does not stop on: ${fresh.join(', ')}`
+      return flaky('dry pass', text, twice(text))
+    }
 
     // Swap: marker `swapping`, the link rename, marker `probation`; then the new version must start through the link.
     swapForProbation({ home, sha, from: installedSha, latest, baselineErrors: baseline, now: ctx.clock.now(), fs })
@@ -1087,9 +1190,10 @@ async function stageValidateSwap(ctx, { installedSha, latest, stage, attempt }) 
     if (!succeeded(linked) || lt?.ok !== true || lt.source !== sha) {
       const reason = ctx.redactor.apply(`its self-test through the app link failed (${lt?.problem ?? how(linked)})`)
       const back = rollBack({ home, reason, step: 'post-swap self-test', now: ctx.clock.now(), fs })
-      ctx.noticesQueued = true
+      // A rollback that worked queued its message; one that failed queued one only if it could.
+      if (back.ok || back.queued) ctx.noticesQueued = true
       ctx.say('error', `self-install ${short(sha)}: ${reason}; ${back.ok ? `the link is back at ${short(installedSha)}` : `AND THE ROLLBACK FAILED (${back.reason})`}`)
-      // The marker already holds the refusal and its message.
+      // The marker already holds the refusal and its message (or, for a failed rollback, the message alone).
       return { result: 'rolled-back' }
     }
     try {
