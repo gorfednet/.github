@@ -827,7 +827,7 @@ const isMover = (c) => {
   if (c.kind === 'npm') return true
   if (c.kind !== 'git' || !MOVERS.has(c.sub)) return false
   const reads = READ_ARGS[c.sub]
-  if (c.sub === 'fetch') return c.rest.some((a) => a.includes(':') && !a.includes('://') && !a.includes('@')) // a refspec with a destination rewrites a local ref
+  if (c.sub === 'fetch') return true // any fetch moves remote-tracking refs and follows tags, which a later push can send
   if (!reads) return true
   if (c.rest.length === 0) return !['branch', 'tag', 'remote', 'stash', 'worktree'].includes(c.sub) // a bare listing
   return !c.rest.some((a) => reads.test(a))
@@ -960,7 +960,8 @@ async function main() {
       }
     }
     if (isVisibility || /"visibility"\s*:\s*"public"|"private"\s*:\s*false/.test(inputText ?? '')) deny('public-push-guard: this would make a repository public. The rule is that no repository goes from private to public. The owner does that by hand, never a session.')
-    const isGraphqlRead = isApi && c.args.some((w) => w.text === 'graphql') && !/mutation/.test(apiFieldText)
+    // A graphql call is a read only when its query is a literal -f field with no mutation in it. A query read from a file (-F query=@file, --input) or built from a variable is a write.
+    const isGraphqlRead = isApi && c.args.some((w) => w.text === 'graphql') && c.args.every((w) => !w.open && !/^(?:--input|-F|--field)/.test(w.text)) && !/mutation/i.test(apiFieldText)
     const writesText = GH_TEXT_ACTIONS.has(action) || (writesApi && !isGraphqlRead)
     const creates = action === 'pr create' || action === 'pr new'
     if (!writesText && !creates) continue

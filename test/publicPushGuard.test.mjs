@@ -813,6 +813,13 @@ describe('public-push-guard: the third review', () => {
       `gh api -X POST https://api.github.com/repos/${ORG}/testrepo/issues -f body="${IP}"`,
     ]) assert.ok(denied(hook(c, { cwd: nowhere })), c)
     assert.equal(hook("gh api graphql -f query='query{viewer{login}}'", { cwd: nowhere }).out, '', 'a graphql read is not a write')
+    // a mutation held in a file, or read from standard input, is still a write
+    const q = join(nowhere, 'q.graphql')
+    writeFileSync(q, `mutation{addComment(input:{subjectId:"x",body:"${IP}"}){clientMutationId}}\n`)
+    writeFileSync(join(nowhere, 'b.json'), JSON.stringify({ query: `mutation{addComment(input:{subjectId:"x",body:"${IP}"}){clientMutationId}}` }))
+    assert.ok(denied(hook(`gh api graphql -F query=@${q}`, { cwd: nowhere })), '-F query=@file')
+    assert.ok(denied(hook(`gh api graphql --input ${join(nowhere, 'b.json')}`, { cwd: nowhere })), '--input file')
+    assert.ok(denied(hook('gh api graphql --input -', { cwd: nowhere })), '--input from stdin')
   })
   it('reads the text of gh pr merge, gh repo edit and gh label create', () => {
     const r = repo()
@@ -820,10 +827,12 @@ describe('public-push-guard: the third review', () => {
       assert.ok(denied(hook(c, { r })), c)
     }
   })
-  it('counts a fetch with a destination refspec as changing the repository', () => {
+  it('counts any fetch as changing the repository, since a later push can send what it brought in', () => {
     const r = repo()
-    for (const c of ['git fetch origin main:main && git push origin feature', 'git fetch . feature:main; git push origin feature']) assert.match(reason(hook(c, { r })), /Commit in one call/, c)
-    assert.equal(hook('git fetch origin && git push origin feature', { r }).out, '', 'a plain fetch moves no local ref')
+    for (const c of ['git fetch origin main:main && git push origin feature', 'git fetch . feature:main; git push origin feature', 'git fetch upstream && git push origin upstream/main:refs/heads/sync', 'git fetch other && git push --tags origin']) {
+      assert.match(reason(hook(c, { r })), /Commit in one call/, c)
+    }
+    assert.equal(hook('git fetch origin && git push origin feature', { r, vis: 'PRIVATE' }).out, '', 'a private repository is untouched')
   })
 })
 
