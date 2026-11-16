@@ -635,10 +635,10 @@
     },
     {
       "id": "privacy-guard-reads-allowlist-from-the-change",
-      "guards": "The allowlist comes from the merge base. Read from the head, a change that adds a path exemption for itself passes with private detail in it.",
+      "guards": "The allowlist comes from the base revision. Read from the head, a change that adds a path exemption for itself passes with private detail in it.",
       "command": "node --test --test-name-pattern='widen its own exemptions' test/privacyGuard.test.mjs",
       "file": "scripts/privacy-guard.mjs",
-      "find": "git(dir, ['show', `${mergeBase}:${ALLOWLIST_PATH}`])",
+      "find": "git(dir, ['show', `${baseSha}:${ALLOWLIST_PATH}`])",
       "replace": "git(dir, ['show', `${args.head}:${ALLOWLIST_PATH}`])"
     },
     {
