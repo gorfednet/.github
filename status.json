@@ -1,12 +1,12 @@
 {
-  "generatedAt": "2026-11-16T02:33:23.845Z",
-  "renderedAt": "2026-11-16T02:33:23.845Z",
+  "generatedAt": "2026-11-16T04:39:26.064Z",
+  "renderedAt": "2026-11-16T04:39:26.064Z",
   "repos": [
     {
       "slug": "gorfednet/bindercurve.com",
       "redacted": true,
-      "mainRed": false,
-      "openPrCount": 5,
+      "mainRed": true,
+      "openPrCount": 4,
       "lapsedBacklogCount": 16,
       "noPrCount": 79,
       "idlePrCount": 1,
@@ -145,10 +145,10 @@
           "ageDays": 0,
           "labels": [],
           "draft": false,
-          "review": "findings",
-          "headSha": "b28931e8225635edb718001ef12eda58afd89109",
+          "review": "clean",
+          "headSha": "9f11472f03274ecb849fcb20626aa3eaced8c6b9",
           "ci": "green",
-          "next": "Desk: Fable read of the diff, `claude review` on the final head, then label `ready-to-merge`.",
+          "next": "Desk: Fable read of the diff, check `claude review` is clean on the newest head (rounds 1 and 2: three Low findings, all fixed and answered in their threads), then label `ready-to-merge`.",
           "author": "gorfednet"
         },
         {
@@ -168,23 +168,11 @@
           "title": "ship-bot: install merged main itself, with validate-before-swap and rollback (replan N2)",
           "ageDays": 0,
           "labels": [],
-          "draft": true,
-          "review": "not-run",
-          "headSha": "4806f394667d790b852ab5ca4de677bc5b2fa2bc",
-          "ci": "red",
-          "next": "Build (Fable `builder`), tests, `check.sh` floor",
-          "author": "gorfednet"
-        },
-        {
-          "number": 217,
-          "title": "shipping.md: lost CI jobs rerun with priority, then hosted, in every repo",
-          "ageDays": 0,
-          "labels": [],
           "draft": false,
-          "review": "clean",
-          "headSha": "8818881cbf94eac52a2307040b9144a76d03fa70",
+          "review": "not-run",
+          "headSha": "d72e3ed4f9e63425c01c179b2d2c210999e7fa25",
           "ci": "green",
-          "next": "Fable read and a clean Claude review, then Desk labels `ready-to-merge`",
+          "next": "Desk: mark ready and label `ready-to-merge` once CI is green on c00890e",
           "author": "gorfednet"
         },
         {
@@ -194,7 +182,7 @@
           "labels": [],
           "draft": false,
           "review": "findings",
-          "headSha": "c04672f5eda3c1fb0b25779a60ee180d97426d4a",
+          "headSha": "6bb0ebf86b2aa8322ba3daebb869b1056c08c4f6",
           "ci": "red",
           "next": "Merge once the Claude review is clean.",
           "author": "gorfednet"
@@ -565,7 +553,7 @@
     {
       "slug": "gorfednet/MoonMan",
       "redacted": true,
-      "mainRed": true,
+      "mainRed": false,
       "openPrCount": 3,
       "lapsedBacklogCount": 2,
       "noPrCount": 46,
@@ -630,7 +618,7 @@
       "slug": "gorfednet/papers.4thcltr.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 2,
+      "openPrCount": 1,
       "lapsedBacklogCount": 0,
       "noPrCount": 4,
       "idlePrCount": 0,
@@ -680,13 +668,58 @@
     "gorfednet/wychwood"
   ],
   "branchesReadAt": "2026-11-16T02:33:23.845Z",
-  "carried": false,
+  "carried": true,
+  "localCounts": {
+    "rows": {
+      "dirtyClones": {
+        "count": 1,
+        "measuredAt": "2026-11-15T15:00:00.000Z"
+      },
+      "behindClones": {
+        "count": 2,
+        "measuredAt": "2026-11-15T15:00:00.000Z"
+      },
+      "oldWorktrees": {
+        "count": 1,
+        "measuredAt": "2026-11-15T15:00:00.000Z"
+      },
+      "idleSessions": {
+        "count": 1,
+        "measuredAt": "2026-11-15T15:00:00.000Z"
+      },
+      "installedTools": {
+        "count": 1,
+        "measuredAt": "2026-11-15T15:00:00.000Z"
+      },
+      "keptBranches": {
+        "count": null,
+        "measuredAt": null
+      }
+    },
+    "inventory": {
+      "session": {
+        "total": 7,
+        "orphans": 2,
+        "measuredAt": "2026-11-15T15:00:00.000Z"
+      },
+      "worktree": {
+        "total": 4,
+        "orphans": 0,
+        "measuredAt": "2026-11-15T15:00:00.000Z"
+      },
+      "job": {
+        "total": 1,
+        "orphans": 1,
+        "measuredAt": "2026-11-15T15:00:00.000Z"
+      }
+    }
+  },
   "inventory": {
-    "measuredAt": "2026-11-16T02:33:23.845Z",
+    "measuredAt": "2026-11-16T04:39:26.064Z",
     "counts": {
       "pr": {
-        "total": 91,
-        "orphans": 49
+        "total": 88,
+        "orphans": 47
       },
       "session": null,
       "worktree": null,
@@ -770,12 +803,12 @@
         "lapsed": true
       }
     ],
-    "hiddenPrivate": 42,
+    "hiddenPrivate": 40,
     "privateReposNotItemised": 18,
     "planRead": true
   },
   "dotgithub": {
-    "measuredAt": "2026-11-16T02:34:01.192Z",
+    "measuredAt": "2026-11-16T04:39:52.143Z",
     "branches": 36,
     "merged": 2,
     "exposedFiles": 61,
