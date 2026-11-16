@@ -1,11 +1,11 @@
 {
-  "generatedAt": "2026-11-16T00:51:20.538Z",
-  "renderedAt": "2026-11-16T00:51:20.538Z",
+  "generatedAt": "2026-11-16T02:33:23.845Z",
+  "renderedAt": "2026-11-16T02:33:23.845Z",
   "repos": [
     {
       "slug": "gorfednet/bindercurve.com",
       "redacted": true,
-      "mainRed": true,
+      "mainRed": false,
       "openPrCount": 5,
       "lapsedBacklogCount": 16,
       "noPrCount": 79,
@@ -32,7 +32,7 @@
       "mainRed": false,
       "openPrCount": 0,
       "lapsedBacklogCount": 3,
-      "noPrCount": 2,
+      "noPrCount": 4,
       "idlePrCount": 0,
       "duplicatePrCount": 0,
       "dependabotRedCount": 0,
@@ -140,13 +140,61 @@
       "mainRed": false,
       "openPrs": [
         {
+          "number": 221,
+          "title": "Hosted Actions spend meter with 70% and 90% lines (replan row N6)",
+          "ageDays": 0,
+          "labels": [],
+          "draft": false,
+          "review": "findings",
+          "headSha": "b28931e8225635edb718001ef12eda58afd89109",
+          "ci": "green",
+          "next": "Desk: Fable read of the diff, `claude review` on the final head, then label `ready-to-merge`.",
+          "author": "gorfednet"
+        },
+        {
+          "number": 220,
+          "title": "Privacy guard: merge commits, hidden paths, commit exemption, bare names (plan row 1.30 f)",
+          "ageDays": 0,
+          "labels": [],
+          "draft": false,
+          "review": "clean",
+          "headSha": "8a96e2a88e52066483938e4f59f65f443c37fb3c",
+          "ci": "green",
+          "next": "merge once the review is clean",
+          "author": "gorfednet"
+        },
+        {
+          "number": 218,
+          "title": "ship-bot: install merged main itself, with validate-before-swap and rollback (replan N2)",
+          "ageDays": 0,
+          "labels": [],
+          "draft": true,
+          "review": "not-run",
+          "headSha": "4806f394667d790b852ab5ca4de677bc5b2fa2bc",
+          "ci": "red",
+          "next": "Build (Fable `builder`), tests, `check.sh` floor",
+          "author": "gorfednet"
+        },
+        {
+          "number": 217,
+          "title": "shipping.md: lost CI jobs rerun with priority, then hosted, in every repo",
+          "ageDays": 0,
+          "labels": [],
+          "draft": false,
+          "review": "clean",
+          "headSha": "8818881cbf94eac52a2307040b9144a76d03fa70",
+          "ci": "green",
+          "next": "Fable read and a clean Claude review, then Desk labels `ready-to-merge`",
+          "author": "gorfednet"
+        },
+        {
           "number": 216,
           "title": "Public push guard: check a push or gh text before it reaches a public repository (plan row 1.30 f)",
           "ageDays": 0,
           "labels": [],
           "draft": false,
           "review": "findings",
-          "headSha": "67836293a313a2d9552c4d80f8f9872dcba45b13",
+          "headSha": "c04672f5eda3c1fb0b25779a60ee180d97426d4a",
           "ci": "red",
           "next": "Merge once the Claude review is clean.",
           "author": "gorfednet"
@@ -176,18 +224,6 @@
           "author": "gorfednet"
         },
         {
-          "number": 212,
-          "title": "Move Desk, plan, briefs, handoffs and the ~/.claude copy to private ops; weekly upkeep line (plan 1.30 c, d)",
-          "ageDays": 0,
-          "labels": [],
-          "draft": true,
-          "review": "clean",
-          "headSha": "e7b4d544fce2add6ecabea81c8166ab8e9173a88",
-          "ci": "green",
-          "next": "Merge once the gates are clean, and only after gorfednet/ops#102 has merged and Desk has switched to ops `desk-log` (steps below). Control plane: Desk labels after a Fable read and a clean review.",
-          "author": "gorfednet"
-        },
-        {
           "number": 189,
           "title": "Plan: move the fleet into one GitHub organization (assessment only)",
           "ageDays": 1,
@@ -197,18 +233,6 @@
           "headSha": "87092f1b035d206c0d5f24d8830c5cc7b5815734",
           "ci": "green",
           "next": "Fable review, then Desk asks the owner (path, org name, Team plan, cutover sitting)",
-          "author": "gorfednet"
-        },
-        {
-          "number": 139,
-          "title": "Desk log and briefs, 13 November",
-          "ageDays": 2,
-          "labels": [],
-          "draft": true,
-          "review": "not-run",
-          "headSha": "302575a501840ef62939a7032917011f074824c2",
-          "ci": "none",
-          "next": "Desk appends each pass's line until the 02:00 ET rotation (hold: the log is still being written)",
           "author": "gorfednet"
         },
         {
@@ -252,6 +276,10 @@
           "ahead": 2
         },
         {
+          "branch": "desk-log",
+          "ahead": 447
+        },
+        {
           "branch": "docs/desk-brief",
           "ahead": 1
         },
@@ -260,8 +288,24 @@
           "ahead": 2
         },
         {
+          "branch": "docs/plan-pool-app-1115",
+          "ahead": 2
+        },
+        {
+          "branch": "drain/gorfednet.github-kit0482",
+          "ahead": 2
+        },
+        {
           "branch": "fix/no-apt-in-no-smb-guard",
           "ahead": 2
+        },
+        {
+          "branch": "guard-fix-1-30g",
+          "ahead": 1
+        },
+        {
+          "branch": "guard-history-1-30f",
+          "ahead": 3
         },
         {
           "branch": "kit/rules-doc-drift",
@@ -278,6 +322,14 @@
         {
           "branch": "kit/v0.29.0",
           "ahead": 3
+        },
+        {
+          "branch": "worktree-breezy-toasting-unicorn",
+          "ahead": 1
+        },
+        {
+          "branch": "worktree-crystalline-mapping-acorn",
+          "ahead": 1
         },
         {
           "branch": "worktree-crystalline-weaving-tarjan",
@@ -297,6 +349,10 @@
         },
         {
           "branch": "worktree-quizzical-sparking-globe",
+          "ahead": 1
+        },
+        {
+          "branch": "worktree-synthetic-orbiting-blossom",
           "ahead": 1
         }
       ],
@@ -512,7 +568,7 @@
       "mainRed": true,
       "openPrCount": 3,
       "lapsedBacklogCount": 2,
-      "noPrCount": 41,
+      "noPrCount": 46,
       "idlePrCount": 0,
       "duplicatePrCount": 0,
       "dependabotRedCount": 0,
@@ -562,7 +618,7 @@
       "slug": "gorfednet/heuristics.4thcltr.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 11,
+      "openPrCount": 10,
       "lapsedBacklogCount": 15,
       "noPrCount": 5,
       "idlePrCount": 0,
@@ -573,10 +629,10 @@
     {
       "slug": "gorfednet/papers.4thcltr.com",
       "redacted": true,
-      "mainRed": true,
-      "openPrCount": 3,
+      "mainRed": false,
+      "openPrCount": 2,
       "lapsedBacklogCount": 0,
-      "noPrCount": 1,
+      "noPrCount": 4,
       "idlePrCount": 0,
       "duplicatePrCount": 0,
       "dependabotRedCount": 0,
@@ -610,7 +666,7 @@
       "slug": "gorfednet/ops",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 5,
+      "openPrCount": 8,
       "lapsedBacklogCount": 0,
       "noPrCount": 0,
       "idlePrCount": 0,
@@ -623,14 +679,14 @@
     "gorfednet/TowIt",
     "gorfednet/wychwood"
   ],
-  "branchesReadAt": "2026-11-15T02:31:55.477Z",
-  "carried": true,
+  "branchesReadAt": "2026-11-16T02:33:23.845Z",
+  "carried": false,
   "inventory": {
-    "measuredAt": "2026-11-16T00:51:20.538Z",
+    "measuredAt": "2026-11-16T02:33:23.845Z",
     "counts": {
       "pr": {
-        "total": 88,
-        "orphans": 54
+        "total": 91,
+        "orphans": 49
       },
       "session": null,
       "worktree": null,
@@ -644,8 +700,16 @@
       {
         "kind": "pr",
         "repo": "gorfednet/.github",
-        "ref": "#216",
-        "label": "Public push guard: check a push or gh text before it reaches a public repository (plan row 1.30 f)",
+        "ref": "#221",
+        "label": "Hosted Actions spend meter with 70% and 90% lines (replan row N6)",
+        "private": false,
+        "lapsed": false
+      },
+      {
+        "kind": "pr",
+        "repo": "gorfednet/.github",
+        "ref": "#218",
+        "label": "ship-bot: install merged main itself, with validate-before-swap and rollback (replan N2)",
         "private": false,
         "lapsed": false
       },
@@ -654,38 +718,6 @@
         "repo": "gorfednet/.github",
         "ref": "#214",
         "label": "Plan and briefs: CI parallelism sized from the container's cpus",
-        "private": false,
-        "lapsed": false
-      },
-      {
-        "kind": "pr",
-        "repo": "gorfednet/.github",
-        "ref": "#213",
-        "label": "janitor: sweep merged origin branches (plan row 1.30 e)",
-        "private": false,
-        "lapsed": false
-      },
-      {
-        "kind": "pr",
-        "repo": "gorfednet/.github",
-        "ref": "#212",
-        "label": "Move Desk, plan, briefs, handoffs and the ~/.claude copy to private ops; weekly upkeep line (plan 1.30 c, d)",
-        "private": false,
-        "lapsed": false
-      },
-      {
-        "kind": "pr",
-        "repo": "gorfednet/.github",
-        "ref": "#189",
-        "label": "Plan: move the fleet into one GitHub organization (assessment only)",
-        "private": false,
-        "lapsed": false
-      },
-      {
-        "kind": "pr",
-        "repo": "gorfednet/.github",
-        "ref": "#139",
-        "label": "Desk log and briefs, 13 November",
         "private": false,
         "lapsed": false
       },
@@ -738,7 +770,21 @@
         "lapsed": true
       }
     ],
-    "hiddenPrivate": 44,
-    "privateReposNotItemised": 18
+    "hiddenPrivate": 42,
+    "privateReposNotItemised": 18,
+    "planRead": true
+  },
+  "dotgithub": {
+    "measuredAt": "2026-11-16T02:34:01.192Z",
+    "branches": 36,
+    "merged": 2,
+    "exposedFiles": 61,
+    "rulesNotChecked": [],
+    "readmeMissing": [
+      ".claude",
+      "capacity",
+      "infra",
+      "test"
+    ]
   }
 }
