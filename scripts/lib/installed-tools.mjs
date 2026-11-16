@@ -3,16 +3,19 @@
  *
  * Every tool this Mac runs must come from a detached worktree that ship-bot advances after each merge
  * (`.claude/worktrees/gates-main` in .github, `.claude/worktrees/tools-main` in ops), or be a copy of a
- * committed file. Three kinds are read:
+ * committed file. Four kinds are read:
  *
  *   - links: symlinks in ~/.local/bin and ~/.config/herdr-core that point under the clone root;
  *   - LaunchAgents: net.gorfed.*.plist program arguments under the clone root;
- *   - copies: the files `COPIES` names (hooks, the capacity app, ship-bot's install), matched by content
- *     against every committed version of their source on origin/main.
+ *   - copies: the files `COPIES` names (hooks, the capacity app, ship-bot's install and its gate scripts), matched by
+ *     content against every committed version of their source on origin/main;
+ *   - mirrors: every file of ops control/claude-home/ that ~/.claude should hold (rules, agents, skills, CLAUDE.md, settings.json),
+ *     and the hooks from this repository's scripts/claude-hooks/ (plan row 1.30 moved the rest of the copy to private ops).
  *
  * A link or agent is flagged when it resolves into a working checkout instead of a tool worktree, or when
  * its worktree's HEAD is behind origin/main. A copy is flagged when it differs from origin/main: the
- * entry says how many commits to its source it is behind, or that it matches no committed version.
+ * entry says how many commits to its source it is behind, or that it matches no committed version. That second
+ * kind (`ahead: true`) is ahead of main or unmirrored, not behind: shown in the row, never notified.
  *
  * Refs come from the fetch the clones-behind row already ran. `fetched: false` (no fetch, or a failed
  * one in a repository a tool comes from) means the result is not a measurement, and the row is null.
@@ -27,12 +30,20 @@ export const TOOL_WORKTREE_NAMES = ['gates-main', 'tools-main']
 
 /** Installed copies of committed files: where the copy lives (under home) and its source (clone dir, path). */
 export const COPIES = [
-  { tool: 'gh-poll-guard hook', copy: '.claude/hooks/gh-poll-guard.py', clone: 'gorfednet.github', source: 'scripts/claude-hooks/gh-poll-guard.py' },
-  { tool: 'always-pr-remind hook', copy: '.claude/hooks/always-pr-remind.py', clone: 'gorfednet.github', source: 'scripts/claude-hooks/always-pr-remind.py' },
   { tool: 'capacity check', copy: '.desk/capacity-app/capacity.mjs', clone: 'gorfednet.github', source: 'capacity/capacity.mjs' },
   { tool: 'capacity heartbeat helper', copy: '.desk/capacity-app/lib/heartbeat.mjs', clone: 'gorfednet.github', source: 'ship-bot/lib/heartbeat.mjs' },
+  { tool: 'capacity drift check', copy: '.desk/capacity-app/lib/installedDrift.mjs', clone: 'gorfednet.github', source: 'scripts/lib/installedDrift.mjs' },
+  { tool: 'capacity installed-tools helper', copy: '.desk/capacity-app/lib/installed-tools.mjs', clone: 'gorfednet.github', source: 'scripts/lib/installed-tools.mjs' },
   { tool: 'capacity usage helper', copy: '.desk/capacity-app/lib/usageAlert.mjs', clone: 'gorfednet.github', source: 'scripts/lib/usageAlert.mjs' },
-  { tool: 'ship-bot', copyDir: '.ship-bot/app', clone: 'gorfednet.github', sourceDir: 'ship-bot', skip: ['gate-scripts', 'node_modules'] },
+  { tool: 'ship-bot', copyDir: '.ship-bot/app', clone: 'gorfednet.github', sourceDir: 'ship-bot', skip: ['gate-scripts', 'node_modules', 'README.md', 'config.example.json'] }, // code only: install.sh copies the README and the example config too, and a doc merge is not a stale bot (OWN_INSTALL_PATHS leaves them out too)
+  // install.sh copies review-status, the two gates and scripts/lib into app/gate-scripts, laid out as scripts/ (its SOURCE file names the commit).
+  { tool: 'ship-bot gate scripts', copyDir: '.ship-bot/app/gate-scripts', clone: 'gorfednet.github', sourceDir: 'scripts', skip: ['SOURCE'] },
+  // ~/.claude is not a repository: its rules, agents, skills, CLAUDE.md and settings.json are mirrored in ops control/claude-home/
+  // (moved from public .github docs/claude-home/ by plan row 1.30) and changed only through a pull request (CLAUDE.md,
+  // 13 November 2026). The hooks are code with tests, so they stayed here in scripts/claude-hooks/. Every mirrored file is
+  // compared; files only in ~/.claude (no mirror yet) are not measured here.
+  { tool: '~/.claude mirror', mirrorDir: '.claude', clone: 'ops', sourceDir: 'control/claude-home', include: ['rules', 'agents', 'skills', 'CLAUDE.md', 'settings.json'] },
+  { tool: '~/.claude hooks', mirrorDir: '.claude/hooks', clone: 'gorfednet.github', sourceDir: 'scripts/claude-hooks', include: ['gh-poll-guard.py', 'always-pr-remind.py'] },
 ]
 
 const LINK_DIRS = ['.local/bin', '.config/herdr-core', '.config/herdr-core/templates']
@@ -156,10 +167,12 @@ function checkoutOf(target) {
 
 /** How many commits on origin/main touched `path` since the newest committed version whose blob is `blob`; null when none matches. */
 function behindForBlob(clone, path, blob) {
+  if (!blob) return { unread: true } // hash-object failed: an unreadable file is not measured, never "ahead" (and null must not match a deletion below)
   const log = tryGit(clone, 'log', '--format=%H', 'origin/main', '--', path)
   if (log === null) return { unread: true }
   for (const c of log.split('\n').filter(Boolean)) {
-    if (tryGit(clone, 'rev-parse', '--verify', '--quiet', `${c}:${path}`) === blob) {
+    const at = tryGit(clone, 'rev-parse', '--verify', '--quiet', `${c}:${path}`) // null where the commit deleted the path
+    if (at !== null && at === blob) {
       return { behind: Number(git(clone, 'rev-list', '--count', `${c}..origin/main`, '--', path)) }
     }
   }
@@ -265,35 +278,91 @@ export function installedTools({ home = homedir(), root, launchAgents } = {}) {
       if (blob === head) continue
       const r = behindForBlob(clone, c.source, blob)
       if (r.unread) unread.push(`~/${c.copy}`)
-      else behind.push({ tool: c.tool, source: `~/${c.copy}`, behind: r.behind, detail: r.behind === null ? `matches no committed version of ${c.clone}/${c.source}` : `copy of ${c.clone}/${c.source}` })
+      else if (r.behind === null) behind.push({ tool: c.tool, source: `~/${c.copy}`, behind: null, ahead: true, detail: `matches no committed version of ${c.clone}/${c.source} (ahead of main, hand-edited or unmirrored)` })
+      else behind.push({ tool: c.tool, source: `~/${c.copy}`, behind: r.behind, detail: `copy of ${c.clone}/${c.source}` })
+      continue
+    }
+    if (c.mirrorDir) {
+      const dir = join(home, c.mirrorDir)
+      if (!existsSync(dir)) continue
+      checked++
+      const listing = tryGit(clone, 'ls-tree', '-r', '--name-only', 'origin/main', '--', c.sourceDir)
+      if (listing === null) {
+        unread.push(`~/${c.mirrorDir}`)
+        continue
+      }
+      let stale = 0
+      let missing = 0
+      let worst = 0
+      let compared = 0
+      const items = [] // which files, so a count that falls is not news to the drift notifier
+      const aheadItems = []
+      for (const src of listing.split('\n').filter(Boolean)) {
+        const rel = src.slice(c.sourceDir.length + 1)
+        if (!c.include.includes(rel.split('/')[0]) || (c.exclude ?? []).includes(rel)) continue
+        compared++
+        const file = join(dir, ...rel.split('/'))
+        if (!existsSync(file)) {
+          missing++
+          items.push(rel)
+          continue
+        }
+        const blob = tryGit(clone, 'hash-object', '--', file)
+        const head = tryGit(clone, 'rev-parse', '--verify', '--quiet', `origin/main:${src}`)
+        if (blob && head && blob === head) continue
+        const r = behindForBlob(clone, src, blob)
+        if (r.unread) {
+          unread.push(`~/${c.mirrorDir}/${rel}`)
+          continue
+        }
+        if (r.behind === null) aheadItems.push(rel)
+        else {
+          stale++
+          worst = Math.max(worst, r.behind)
+          items.push(rel)
+        }
+      }
+      if (compared === 0) {
+        unread.push(`~/${c.mirrorDir}`) // an empty listing compares nothing: not a clean Mac
+        continue
+      }
+      if (stale + missing > 0) {
+        const parts = [stale ? `${stale} files behind` : '', missing ? `${missing} files not installed` : ''].filter(Boolean)
+        behind.push({ tool: c.tool, source: `~/${c.mirrorDir}`, behind: stale ? worst : null, detail: `mirror of ${c.clone}/${c.sourceDir}: ${parts.join(', ')}`, items })
+      }
+      if (aheadItems.length > 0) behind.push({ tool: c.tool, source: `~/${c.mirrorDir}`, behind: null, ahead: true, detail: `mirror of ${c.clone}/${c.sourceDir}: ${aheadItems.length} files ahead of main or unmirrored (not behind)`, items: aheadItems })
       continue
     }
     const dir = join(home, c.copyDir)
     if (!existsSync(dir)) continue
     checked++
     let stale = 0
-    let unknown = 0
     let worst = 0
+    const items = []
+    const aheadItems = []
     for (const rel of filesUnder(dir, c.skip)) {
       const src = `${c.sourceDir}/${rel.split(sep).join('/')}`
       const blob = tryGit(clone, 'hash-object', '--', join(dir, rel))
       const head = tryGit(clone, 'rev-parse', '--verify', '--quiet', `origin/main:${src}`)
       if (blob && head && blob === head) continue
       if (!head) {
-        unknown++ // removed from main, or never committed
+        aheadItems.push(rel) // removed from main, or never committed
         continue
       }
       const r = behindForBlob(clone, src, blob)
-      if (r.behind === null || r.unread) unknown++
+      if (r.unread) {
+        unread.push(`~/${c.copyDir}/${rel}`)
+        continue
+      }
+      if (r.behind === null) aheadItems.push(rel)
       else {
         stale++
         worst = Math.max(worst, r.behind)
+        items.push(rel)
       }
     }
-    if (stale + unknown > 0) {
-      const parts = [stale ? `${stale} files behind` : '', unknown ? `${unknown} files match no version on main` : ''].filter(Boolean)
-      behind.push({ tool: c.tool, source: `~/${c.copyDir}`, behind: stale ? worst : null, detail: `copy of ${c.clone}/${c.sourceDir}: ${parts.join(', ')}` })
-    }
+    if (stale > 0) behind.push({ tool: c.tool, source: `~/${c.copyDir}`, behind: worst, detail: `copy of ${c.clone}/${c.sourceDir}: ${stale} files behind`, items })
+    if (aheadItems.length > 0) behind.push({ tool: c.tool, source: `~/${c.copyDir}`, behind: null, ahead: true, detail: `copy of ${c.clone}/${c.sourceDir}: ${aheadItems.length} files ahead of main or unmirrored (not behind)`, items: aheadItems })
   }
   return { behind, checked, unread, repos: [...repos] }
 }

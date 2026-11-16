@@ -11,6 +11,7 @@ Shared CI and tooling for the gorfednet sites.
 - **Janitor**: `janitor/` closes out merged work each day
 - **fleet-status**: `fleet-status.yml` rebuilds `STATUS.md` on the `status` branch. It lists open pull requests and red `main` branches across the sites.
 - **Site deploy**: `scripts/site-deploy.sh` publishes a static site as a release and rolls it back. See [`docs/site-deploy.md`](docs/site-deploy.md).
+- **Privacy guard**: this repository is public, so the `privacy-guard` check fails a pull request that adds private detail
 
 ## Use it
 

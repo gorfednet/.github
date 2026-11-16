@@ -624,6 +624,70 @@
       "file": "scripts/check-rules-drift.mjs",
       "find": "const text = excuseRetirements ? line.replace(RETIREMENT_LINE.pattern, ' ') : line",
       "replace": "const text = excuseRetirements ? '' : line"
+    },
+    {
+      "id": "privacy-guard-trusts-git-binary-detection",
+      "guards": "The diff is read with --text. Without it a .gitattributes line in the change marks a file binary and the guard reads none of it, and the change switches its own check off (plan row 1.30a review).",
+      "command": "node --test --test-name-pattern='gitattributes|NUL' test/privacyGuard.test.mjs",
+      "file": "scripts/privacy-guard.mjs",
+      "find": "'--no-textconv', '--text', '-M'",
+      "replace": "'--no-textconv', '-M'"
+    },
+    {
+      "id": "privacy-guard-reads-allowlist-from-the-change",
+      "guards": "The allowlist comes from the merge base. Read from the head, a change that adds a path exemption for itself passes with private detail in it.",
+      "command": "node --test --test-name-pattern='widen its own exemptions' test/privacyGuard.test.mjs",
+      "file": "scripts/privacy-guard.mjs",
+      "find": "git(dir, ['show', `${mergeBase}:${ALLOWLIST_PATH}`])",
+      "replace": "git(dir, ['show', `${args.head}:${ALLOWLIST_PATH}`])"
+    },
+    {
+      "id": "privacy-guard-takes-added-line-for-a-header",
+      "guards": "An added line that begins with ++ shows up as +++ and is content. Taken for a file header it drops the next lines, and a planted value after it passes.",
+      "command": "node --test --test-name-pattern='starts with \\+\\+' test/privacyGuard.test.mjs",
+      "file": "scripts/privacy-guard.mjs",
+      "find": "} else if (!inHunk && row.startsWith('+++ ')) {",
+      "replace": "} else if (row.startsWith('+++ ')) {"
+    },
+    {
+      "id": "privacy-guard-stops-checking-private-ips",
+      "guards": "A plain private address added to a file must fail the guard.",
+      "command": "node --test --test-name-pattern='private-ip' test/privacyGuard.test.mjs",
+      "file": "scripts/privacy-guard.mjs",
+      "find": "if (on('private-ip')) add('private-ip', all(PRIVATE_IP, text))",
+      "replace": "if (false) add('private-ip', all(PRIVATE_IP, text))"
+    },
+    {
+      "id": "privacy-guard-runs-the-head-copy-of-itself",
+      "guards": "The workflow runs the guard from the base commit. Run from the head, a pull request that edits the script (for example to exit 0 at once) switches its own check off.",
+      "command": "node --test --test-name-pattern='merge base with full history' test/privacyGuard.test.mjs",
+      "file": ".github/workflows/privacy-guard.yml",
+      "find": "git show \"$BASE_SHA:scripts/privacy-guard.mjs\" > \"$guard\"",
+      "replace": "cp scripts/privacy-guard.mjs \"$guard\""
+    },
+    {
+      "id": "privacy-guard-held-at-base-is-a-substring",
+      "guards": "A value counts as already held only when the same rule finds the same whole value in the base file. As a substring test, a file holding a longer public name lets a shorter private one through.",
+      "command": "node --test --test-name-pattern='longer or shorter' test/privacyGuard.test.mjs",
+      "file": "scripts/privacy-guard.mjs",
+      "find": "return baseCache.get(key).has(`${rule}\\0${value.toLowerCase()}`)",
+      "replace": "return [...baseCache.get(key)].some((h) => h.includes(value.toLowerCase()))"
+    },
+    {
+      "id": "privacy-guard-splits-commit-log-on-a-control-character",
+      "guards": "The commit log is split on NUL (git log -z). Split on a control character a message can hold, a message with that byte hides text from the scan and can print it as a sha.",
+      "command": "node --test --test-name-pattern='control characters' test/privacyGuard.test.mjs",
+      "file": "scripts/privacy-guard.mjs",
+      "find": "messages.split('\\0').filter((e) => e.trim() !== '')",
+      "replace": "messages.split(/[\\0\\x01]/).filter((e) => e.trim() !== '')"
+    },
+    {
+      "id": "privacy-guard-skips-files-by-extension",
+      "guards": "No file is skipped by name. A text file called notes.png that holds a private address must still fail; skipping image names lets a change hide a value behind a file name it picks.",
+      "command": "node --test --test-name-pattern='image name' test/privacyGuard.test.mjs",
+      "file": "scripts/privacy-guard.mjs",
+      "find": "  for (const { path, line, text } of added) {\n",
+      "replace": "  for (const { path, line, text } of added) {\n    if (/\\.(?:png|ico|woff2?)$/i.test(path)) continue\n"
     }
   ]
 }
