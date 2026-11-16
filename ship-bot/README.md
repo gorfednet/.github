@@ -371,7 +371,8 @@ sends one message.
 Some skips aren't a normal wait. The link names a version other than the one
 running. Or the marker says a version is on probation and the link doesn't
 name it. The bot warns every pass and counts those toward the same message.
-It also sends the "behind origin/main" message. A `probation` marker whose
+From the second such pass in a row it also sends the "behind origin/main"
+message. One pass can be a hand install that just moved the link. A `probation` marker whose
 link is back on the old version is an interrupted rollback. The next pass
 finishes its record.
 
@@ -380,7 +381,15 @@ repository error on one probation pass is undecided too. On a second
 probation pass it's unhealthy. After 30 undecided passes in a row the bot
 rolls the version back. That takes about an hour. That rollback doesn't
 refuse the commit. The bot sends one message and tries it again 30 minutes
-later.
+later. A second such rollback of the same commit refuses it.
+
+A version on probation can read as behind `origin/main` for two reasons. If
+the commit it's behind is the one it was installed for, it's unhealthy. If
+`main` has moved to a newer commit since, the rest of the pass decides. A
+later pass installs the newer commit.
+
+An unhealthy version can't be rolled back while a hand install holds
+`install.lock`. The bot sends one loud message and tries again every pass.
 
 Until the new version is installed, the bot is behind `origin/main`. It says
 so every pass and merges no pull request that changes control-plane paths. It
@@ -514,7 +523,8 @@ the files below, and `install.sh` and the bot both build a version with it.
   commits and any message ntfy has not accepted yet.
 - `~/.ship-bot/install.lock` is held by whichever install is running. A lock
   left by a process that is gone is taken over. So is one over 30 minutes old
-  whose process id now belongs to another process.
+  whose process id now belongs to another process. So is an empty or
+  unreadable one that hasn't been written for over 60 seconds.
 - `~/.ship-bot/self-install.off` is the off switch.
 
 A session never edits those files and never moves the link. After a merge

@@ -22,6 +22,9 @@
  *   rolled-back  it did not, and the link is back at `from`
  * A rollback writes `rollback` (its reason, and whether it refuses the commit)
  * before the link moves, so a kill after the move can be finished from the record.
+ * `undecidedRollbacks` ({latest, count}) counts the rollbacks of one commit that
+ * did not refuse it. No swap and no rollback clears it: a healthy probation, a
+ * refusal of that commit or a hand install does.
  *   hand         a person ran install.sh (which also clears `refused`)
  *
  * Every effect (the filesystem, the lock) arrives as a parameter, so the tests
@@ -51,6 +54,10 @@ export const PROBATION_LIMIT = 30
 export const DEFER_NOTIFY_AT = 30
 /** The most passes a deferred validation waits before it is run again: 30 minutes. */
 export const BACKOFF_MAX = 15
+/** Rollbacks of one commit after PROBATION_LIMIT undecided passes before that commit is refused: the second one refuses it. */
+export const UNDECIDED_ROLLBACK_LIMIT = 2
+/** An install.lock that does not parse (empty, half written) is taken over once it has not been written for this long. */
+export const LOCK_UNREADABLE_AFTER_MS = 60_000
 /** How many complete live passes the repo-error baseline is read from. */
 export const BASELINE_SAMPLES = 3
 /** install.lock held by a live pid is taken over past this age when the pid is not the process that took it. */
@@ -110,9 +117,10 @@ export function pidStartedAt(pid) {
  *     (the recorded process start differs from the pid's); or
  *   - it recorded no process start, is over 60 minutes old, and its pid's
  *     process started after the lock was taken.
- * A lock file that does not parse is never taken over: one being written
- * right now reads as empty. A process start that cannot be read is no proof
- * of reuse, so the lock stays held.
+ * A lock file that does not parse is held while it is fresh: one being written
+ * right now reads as empty. Not written for over 60 seconds (its mtime), it was
+ * left by a kill between its creation and its write, and it is taken over. A
+ * process start that cannot be read is no proof of reuse, so the lock stays held.
  *
  * @returns {{ok: true, release: () => void, tookOver?: string} | {ok: false, holder: string}}
  */
@@ -143,10 +151,17 @@ export function acquireInstallLock(path, { pid = process.pid, now = () => new Da
       } catch {
         held = null
       }
-      if (held === null || typeof held !== 'object') return { ok: false, holder: 'a lock file that could not be read' }
-      const stale = staleLock(held, { now: new Date(now()), isAlive, procStart })
-      if (!stale) return { ok: false, holder: `pid ${held.pid} since ${held.startedAt}` }
-      tookOver = `pid ${held.pid} since ${held.startedAt}: ${stale}`
+      if (held === null || typeof held !== 'object') {
+        const mtime = lstat(fs, path)?.mtimeMs
+        // Gone since the open: the next attempt takes it.
+        if (mtime === undefined) continue
+        if (!(new Date(now()).getTime() - mtime > LOCK_UNREADABLE_AFTER_MS)) return { ok: false, holder: 'a lock file that could not be read' }
+        tookOver = `a lock file that could not be read, not written for over ${LOCK_UNREADABLE_AFTER_MS / 1000} seconds`
+      } else {
+        const stale = staleLock(held, { now: new Date(now()), isAlive, procStart })
+        if (!stale) return { ok: false, holder: `pid ${held.pid} since ${held.startedAt}` }
+        tookOver = `pid ${held.pid} since ${held.startedAt}: ${stale}`
+      }
       fs.rmSync(path, { force: true })
     }
   }
@@ -166,7 +181,7 @@ function staleLock(held, { now, isAlive, procStart }) {
   return age > LOCK_REUSE_AFTER_UNRECORDED_MS && Number.isFinite(startedMs) && startedMs > new Date(held.startedAt).getTime() + 1000 ? 'that pid now belongs to a process started after the lock was taken' : null
 }
 
-const lstat = (fs, p) => {
+function lstat(fs, p) {
   try {
     return fs.lstatSync(p)
   } catch (cause) {
@@ -360,7 +375,7 @@ export function refuse(marker, latest, { step, reason, sha }, now) {
 }
 
 const clearSwap = (marker) => {
-  for (const k of ['phase', 'sha', 'from', 'latest', 'at', 'baselineErrors', 'undecided', 'newErrors', 'rollback', 'rollbackFailed']) delete marker[k]
+  for (const k of ['phase', 'sha', 'from', 'latest', 'at', 'baselineErrors', 'undecided', 'newErrors', 'rollback', 'rollbackFailed', 'rollbackHeld']) delete marker[k]
 }
 
 /**
@@ -392,7 +407,8 @@ export function recoverSwapping({ home, fs = nodeFs }) {
 export function swapForProbation({ home, sha, from, latest, baselineErrors, now, fs = nodeFs }) {
   const marker = readMarker(home, fs)
   Object.assign(marker, { phase: 'swapping', sha, from, latest, at: new Date(now).toISOString(), baselineErrors: [...baselineErrors], undecided: 0 })
-  for (const k of ['deferred', 'retry', 'newErrors', 'rollback', 'rollbackFailed']) delete marker[k]
+  // `undecidedRollbacks` stays: it is what remembers this commit's earlier probations.
+  for (const k of ['deferred', 'retry', 'newErrors', 'rollback', 'rollbackFailed', 'rollbackHeld']) delete marker[k]
   writeMarker(home, marker, fs)
   swapLink({ home, sha, fs })
   marker.phase = 'probation'
@@ -436,16 +452,32 @@ export function rollBack({ home, reason, step = 'health', refuseLatest = true, n
  * pass that finds `probation` with the link at `from` (a kill between the
  * rename and this write). With no record of why (the link was moved some other
  * way) the commit is refused: a hand install is the safe way out.
+ *
+ * A rollback that does not refuse is counted per commit (`undecidedRollbacks`).
+ * The UNDECIDED_ROLLBACK_LIMIT-th such rollback of one commit refuses it: a
+ * version nobody can decide about must not cycle (swap, an hour live, roll
+ * back, one loud message) for ever.
  * @returns {object} the marker as written
  */
 export function finishRollBack({ home, now, fs = nodeFs }) {
   const marker = readMarker(home, fs)
-  const { reason, step, refuse: refuseLatest } = marker.rollback ?? { reason: `the link was found back at ${short(marker.from)} with no finished rollback record`, step: 'health', refuse: true }
+  const record = marker.rollback ?? { reason: `the link was found back at ${short(marker.from)} with no finished rollback record`, step: 'health', refuse: true }
+  const { step } = record
+  let { reason, refuse: refuseLatest } = record
   marker.phase = 'rolled-back'
-  for (const k of ['undecided', 'newErrors', 'rollback', 'rollbackFailed']) delete marker[k]
+  for (const k of ['undecided', 'newErrors', 'rollback', 'rollbackFailed', 'rollbackHeld']) delete marker[k]
+  if (!refuseLatest && marker.latest) {
+    const count = (marker.undecidedRollbacks?.latest === marker.latest ? marker.undecidedRollbacks.count : 0) + 1
+    marker.undecidedRollbacks = { latest: marker.latest, count }
+    if (count >= UNDECIDED_ROLLBACK_LIMIT) {
+      refuseLatest = true
+      reason = `${reason}; that is rollback ${count} of ${short(marker.latest)} with its health undecided, so it is not tried again`
+    }
+  }
   const head = `ship-bot self-install ${short(marker.sha)} rolled back to ${short(marker.from)}: ${reason}.`
   if (refuseLatest) {
     if (marker.latest) refuse(marker, marker.latest, { step, reason, sha: marker.sha }, now)
+    if (marker.undecidedRollbacks?.latest === marker.latest) delete marker.undecidedRollbacks
     queueNotice(marker, `${head} It needs a hand install (ship-bot/install.sh) once fixed.`, now)
   } else {
     // Not refused: the commit is tried again, after the longest backoff.
@@ -462,7 +494,14 @@ export function finishRollBack({ home, now, fs = nodeFs }) {
  *
  * @param {{baselineErrors?: string[]}} marker
  * @param {{refusedGates?: boolean, threw?: boolean, code?: number, authOk?: boolean, quota?: boolean,
- *   freshness?: string, repoErrors?: string[]}} pass
+ *   freshness?: string, latest?: string, repoErrors?: string[]}} pass
+ * `stale` is unhealthy only against the commit this version was installed for
+ * (`pass.latest` is the marker's `latest`, or one of them is missing): the
+ * version did not make the install current. Stale against another commit means
+ * main moved on during the probation (the version's own pass can merge a
+ * ship-bot pull request). That is no fault of this version: the other signals
+ * settle it, and the newer commit is installed by a later pass.
+ *
  * New repo errors on one probation pass are undecided (one repo can stop on a
  * transient error); the verdict then carries `newErrors`, which
  * settleProbation records. New repo errors on a second probation pass are unhealthy.
@@ -476,13 +515,16 @@ export function judgeHealth(marker, pass) {
   if (pass.code !== 0) return { verdict: 'unhealthy', reason: `its pass exited ${pass.code}` }
   const baseline = new Set(marker.baselineErrors ?? [])
   const fresh = (pass.repoErrors ?? []).filter((slug) => !baseline.has(slug))
-  if (pass.freshness === 'stale') return { verdict: 'unhealthy', reason: 'it still reads as behind origin/main' }
+  const stale = pass.freshness === 'stale'
+  const newer = stale && Boolean(pass.latest) && Boolean(marker.latest) && pass.latest !== marker.latest
+  if (stale && !newer) return { verdict: 'unhealthy', reason: 'it still reads as behind origin/main' }
   if (fresh.length > 0) {
     const what = `repos stopped on an error they did not stop on before: ${fresh.join(', ')}`
     if (Array.isArray(marker.newErrors)) return { verdict: 'unhealthy', reason: `on a second probation pass, ${what} (the first time: ${marker.newErrors.join(', ')})` }
     return { verdict: 'undecided', reason: `${what}; unhealthy if a second probation pass has new repo errors too`, newErrors: fresh }
   }
   if (pass.quota) return { verdict: 'undecided', reason: 'a GitHub quota pause' }
+  if (newer) return { verdict: 'healthy', reason: `pass OK, no new repo errors; origin/main has since moved to ${short(pass.latest)}, which a later pass installs` }
   if (pass.freshness !== 'current') return { verdict: 'undecided', reason: 'its freshness could not be read' }
   return { verdict: 'healthy', reason: 'pass OK, install current, no new repo errors' }
 }
@@ -491,9 +533,11 @@ export function judgeHealth(marker, pass) {
  * Apply a probation pass's verdict. Healthy: phase `healthy`. Undecided: count
  * it (and record `newErrors` when that is why). At PROBATION_LIMIT the version
  * is rolled back without refusing its commit: nothing showed it broken, so it
- * is tried again after a backoff. Unhealthy: roll back and refuse. Both
- * rollbacks run under install.lock. A held lock (a hand install is running)
- * or a failed rollback leaves the marker in probation, and says so.
+ * is tried again after a backoff, once (finishRollBack refuses the commit on
+ * its second such rollback). Unhealthy: roll back and refuse. Both rollbacks
+ * run under install.lock, taken over from a dead or stale holder by the one
+ * takeover rule. A lock held by a live install or a failed rollback leaves the
+ * marker in probation, and queues one loud message per swap.
  *
  * @returns {{outcome: 'healthy' | 'undecided' | 'rolled-back' | 'rollback-failed', reason: string, refused?: boolean, marker?: object}}
  */
@@ -501,8 +545,7 @@ export function settleProbation({ home, verdict, reason, newErrors, now, fs = no
   const marker = readMarker(home, fs)
   if (verdict === 'healthy') {
     marker.phase = 'healthy'
-    delete marker.undecided
-    delete marker.newErrors
+    for (const k of ['undecided', 'newErrors', 'rollbackFailed', 'rollbackHeld', 'undecidedRollbacks']) delete marker[k]
     writeMarker(home, marker, fs)
     return { outcome: 'healthy', reason, marker }
   }
@@ -516,11 +559,21 @@ export function settleProbation({ home, verdict, reason, newErrors, now, fs = no
     why = `${limit} passes in a row could not decide its health (last: ${reason})`
   }
   const held = lock(installLockPath(home))
-  if (!held.ok) return { outcome: 'rollback-failed', reason: `${why}; not rolled back: an install holds ${INSTALL_LOCK} (${held.holder})` }
+  if (!held.ok) {
+    // The holder is a live install, which owns the marker: only the message is added, once per swap.
+    const current = readMarker(home, fs)
+    if (!current.rollbackHeld) {
+      current.rollbackHeld = true
+      queueNotice(current, `ship-bot self-install ${short(current.sha)} could NOT be rolled back to ${short(current.from)}: an install holds ${INSTALL_LOCK} (${held.holder}). It was to be rolled back because: ${why}. It keeps running, and the rollback is tried again every pass until that install ends.`, now)
+      writeMarker(home, current, fs)
+    }
+    return { outcome: 'rollback-failed', reason: `${why}; not rolled back: an install holds ${INSTALL_LOCK} (${held.holder})` }
+  }
   try {
     const r = rollBack({ home, reason: why, refuseLatest, now, fs })
     if (!r.ok) return { outcome: 'rollback-failed', reason: `${why}; not rolled back: ${r.reason}` }
-    return { outcome: 'rolled-back', reason: why, refused: refuseLatest, marker: r.marker }
+    const done = r.marker.refused?.[r.marker.latest]
+    return { outcome: 'rolled-back', reason: done?.reason ?? why, refused: Boolean(done), marker: r.marker }
   } finally {
     held.release()
   }
