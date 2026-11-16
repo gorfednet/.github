@@ -63,7 +63,7 @@ function harness({ marker, link = NEW, box = {} } = {}) {
       const sub = c.args[2]
       if (sub === 'rev-parse' && c.args[3] === '--show-prefix') return { stdout: '' }
       if (sub === 'rev-parse' && c.args.at(-1) === 'refs/remotes/origin/main') return { stdout: PARENT }
-      if (sub === 'rev-list') return b.unknown ? { code: 128, stderr: 'fatal: bad revision' } : { stdout: LATEST }
+      if (sub === 'rev-list') return b.unknown ? { code: 128, stderr: 'fatal: bad revision' } : { stdout: b.latest ?? LATEST }
       if (sub === 'merge-base') return { code: b.current ? 0 : 1 }
       return undefined
     },
@@ -265,6 +265,28 @@ describe('health: the first live passes of a self-installed version', () => {
     assert.equal(currentVersion(stale.home), FROM)
     assert.match(stale.marker().refused[LATEST].reason, /still reads as behind origin\/main/)
     assert.equal(stale.runner.ofKind('install').length, 0, 'a version on probation does not start another install')
+  })
+
+  it('an undecided pass, then stale against a commit newer than the one it was installed for: healthy, never rolled back', async () => {
+    const NEWER = 'f'.repeat(40)
+    const h = harness({ marker: probation(), box: { unknown: true } })
+    await h.live()
+    assert.equal(h.marker().undecided, 1)
+    // That pass merged a ship-bot pull request: the install now reads stale, against NEWER.
+    Object.assign(h.box, { unknown: false, current: false, latest: NEWER })
+    await h.live()
+    assert.equal(currentVersion(h.home), NEW, h.out.join('\n'))
+    assert.equal(h.marker().phase, 'healthy')
+    assert.equal(h.marker().refused, undefined)
+    assert.equal(h.marker().notify, undefined)
+    assert.equal(said(h, /self-install bbbbbbb: health OK/).length, 1)
+    // Near-miss: the same second pass, stale against the commit it was installed for, rolls back and refuses.
+    const near = harness({ marker: probation(), box: { unknown: true } })
+    await near.live()
+    Object.assign(near.box, { unknown: false, current: false })
+    await near.live()
+    assert.equal(currentVersion(near.home), FROM)
+    assert.match(near.marker().refused[LATEST].reason, /still reads as behind origin\/main/)
   })
 
   it('undecided: no token, a quota pause or freshness unknown stays on probation and counts', async () => {

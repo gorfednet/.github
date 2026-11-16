@@ -11,7 +11,9 @@ import { describe, it } from 'node:test'
 import {
   APP_FILES,
   BACKOFF_MAX,
+  LOCK_UNREADABLE_AFTER_MS,
   PROBATION_LIMIT,
+  UNDECIDED_ROLLBACK_LIMIT,
   acquireInstallLock,
   backoffPasses,
   baselineOf,
@@ -472,6 +474,22 @@ describe('install: the health verdict of a version on probation', () => {
     assert.equal(verdict({ ...ok, freshness: 'stale', repoErrors: ['x/new'] }), 'unhealthy', 'stale is decided, whatever the repos did')
   })
 
+  it('stale against a newer commit than the one it was installed for is not this version\'s fault: the other signals settle it', () => {
+    const marker = { baselineErrors: [], latest: C }
+    const moved = { ...ok, freshness: 'stale', latest: D }
+    const r = judgeHealth(marker, moved)
+    assert.equal(r.verdict, 'healthy')
+    assert.match(r.reason, /origin\/main has since moved to ddddddd, which a later pass installs/)
+    assert.equal(judgeHealth(marker, { ...moved, quota: true }).verdict, 'undecided', 'a quota pause is still undecided')
+    assert.equal(judgeHealth(marker, { ...moved, repoErrors: ['x/new'] }).verdict, 'undecided', 'a first new repo error is still a strike')
+    assert.equal(judgeHealth({ ...marker, newErrors: ['x/new'] }, { ...moved, repoErrors: ['x/new'] }).verdict, 'unhealthy', 'and a second is still unhealthy')
+    assert.equal(judgeHealth(marker, { ...moved, code: 1 }).verdict, 'unhealthy')
+    // Near-misses: stale against its own commit is unhealthy, and so is a stale read that names no commit on either side.
+    assert.equal(judgeHealth(marker, { ...ok, freshness: 'stale', latest: C }).verdict, 'unhealthy')
+    assert.equal(judgeHealth(marker, { ...ok, freshness: 'stale' }).verdict, 'unhealthy')
+    assert.equal(judgeHealth({ baselineErrors: [] }, moved).verdict, 'unhealthy')
+  })
+
   it('new repo errors: undecided on the first probation pass, unhealthy on a second', () => {
     const pass = { ...ok, repoErrors: ['x/broken', 'x/new'] }
     const first = judgeHealth({ baselineErrors: ['x/broken'] }, pass)
@@ -538,6 +556,72 @@ describe('install: the health verdict of a version on probation', () => {
     assert.match(m.notify[0].text, /It is not refused/)
   })
 
+  it('an undecided pass, then stale against a newer commit: settled healthy, not rolled back and not refused', () => {
+    const home = probation()
+    const one = settleProbation({ home, ...judgeHealth(readMarker(home), { ...ok, freshness: 'unknown' }), now: NOW })
+    assert.equal(one.outcome, 'undecided')
+    // The undecided pass merged a ship-bot pull request: the next read is stale against D, not the C this version was installed for.
+    const two = settleProbation({ home, ...judgeHealth(readMarker(home), { ...ok, freshness: 'stale', latest: D }), now: NOW })
+    assert.equal(two.outcome, 'healthy')
+    assert.equal(currentVersion(home), B)
+    assert.equal(readMarker(home).phase, 'healthy')
+    assert.equal(readMarker(home).refused, undefined)
+    assert.equal(readMarker(home).notify, undefined, 'no "needs a hand install" message')
+    // Near-miss: the same two passes, the second stale against C itself, roll back and refuse.
+    const near = probation()
+    settleProbation({ home: near, ...judgeHealth(readMarker(near), { ...ok, freshness: 'unknown' }), now: NOW })
+    const bad = settleProbation({ home: near, ...judgeHealth(readMarker(near), { ...ok, freshness: 'stale', latest: C }), now: NOW })
+    assert.equal(bad.outcome, 'rolled-back')
+    assert.equal(currentVersion(near), A)
+    assert.match(readMarker(near).refused[C].reason, /still reads as behind origin\/main/)
+  })
+
+  it(`the cycle ends: rollback ${UNDECIDED_ROLLBACK_LIMIT} of one commit after undecided probations refuses it`, () => {
+    const undecidedHour = (home) => {
+      let last
+      for (let i = 0; i < PROBATION_LIMIT; i += 1) last = settleProbation({ home, verdict: 'undecided', reason: 'no GitHub token', now: NOW })
+      return last
+    }
+    const home = probation()
+    const first = undecidedHour(home)
+    assert.equal(first.refused, false)
+    assert.deepEqual(readMarker(home).undecidedRollbacks, { latest: C, count: 1 })
+    // The retry: the same commit is swapped in again. The swap clears `deferred`, never the count.
+    swapForProbation({ home, sha: B, from: A, latest: C, baselineErrors: [], now: NOW })
+    assert.equal(readMarker(home).deferred, undefined)
+    assert.deepEqual(readMarker(home).undecidedRollbacks, { latest: C, count: 1 }, 'the swap keeps the count')
+    const second = undecidedHour(home)
+    assert.equal(second.outcome, 'rolled-back')
+    assert.equal(second.refused, true)
+    assert.equal(currentVersion(home), A)
+    const m = readMarker(home)
+    assert.match(m.refused[C].reason, /30 passes in a row could not decide its health \(last: no GitHub token\); that is rollback 2 of ccccccc with its health undecided, so it is not tried again/)
+    assert.equal(m.deferred, undefined, 'no third try')
+    assert.equal(m.undecidedRollbacks, undefined, 'the refusal is the record now')
+    assert.equal(m.notify.length, 2)
+    assert.match(m.notify[1].text, /that is rollback 2 of ccccccc .*It needs a hand install/)
+  })
+
+  it('near-misses: the count is per commit, and a healthy probation ends it', () => {
+    const undecidedHour = (home) => {
+      let last
+      for (let i = 0; i < PROBATION_LIMIT; i += 1) last = settleProbation({ home, verdict: 'undecided', reason: 'x', now: NOW })
+      return last
+    }
+    const other = probation()
+    undecidedHour(other)
+    // A newer commit (D) is installed next: its first undecided rollback is its first.
+    swapForProbation({ home: other, sha: B, from: A, latest: D, baselineErrors: [], now: NOW })
+    assert.equal(undecidedHour(other).refused, false)
+    assert.deepEqual(readMarker(other).undecidedRollbacks, { latest: D, count: 1 })
+    assert.equal(readMarker(other).refused, undefined)
+    const healed = probation()
+    undecidedHour(healed)
+    swapForProbation({ home: healed, sha: B, from: A, latest: C, baselineErrors: [], now: NOW })
+    settleProbation({ home: healed, verdict: 'healthy', reason: 'ok', now: NOW })
+    assert.equal(readMarker(healed).undecidedRollbacks, undefined)
+  })
+
   it('new repo errors on one probation pass are recorded and stay on probation; on a second they roll back and refuse', () => {
     const home = probation()
     const first = judgeHealth(readMarker(home), { ...ok, repoErrors: ['x/new'] })
@@ -578,6 +662,23 @@ describe('install: the health verdict of a version on probation', () => {
     assert.match(r.reason, /an install holds install\.lock/)
     assert.equal(currentVersion(home), B)
     assert.equal(readMarker(home).phase, 'probation')
+    assert.equal(readMarker(home).notify.length, 1, 'the owner hears: a version judged unhealthy is still live')
+    assert.match(readMarker(home).notify[0].text, /self-install bbbbbbb could NOT be rolled back to aaaaaaa: an install holds install\.lock \(pid \d+ .*It was to be rolled back because: boom\./)
+    assert.equal(settleProbation({ home, verdict: 'unhealthy', reason: 'boom', now: NOW }).outcome, 'rollback-failed')
+    assert.equal(readMarker(home).notify.length, 1, 'said once per swap, tried every pass')
+    held.release()
+    // The install ended: the next pass rolls back, and that message is its own.
+    assert.equal(settleProbation({ home, verdict: 'unhealthy', reason: 'boom', now: NOW }).outcome, 'rolled-back')
+    assert.equal(currentVersion(home), A)
+    assert.equal(readMarker(home).rollbackHeld, undefined)
+    assert.equal(readMarker(home).notify.length, 2)
+  })
+
+  it('near-miss: an undecided pass under a held lock queues nothing', () => {
+    const home = probation()
+    const held = acquireLock(installLockPath(home))
+    assert.equal(settleProbation({ home, verdict: 'undecided', reason: 'no GitHub token', now: NOW }).outcome, 'undecided')
+    assert.equal(readMarker(home).notify, undefined)
     held.release()
   })
 })
@@ -641,11 +742,45 @@ describe('install: install.lock and its takeover', () => {
     assert.equal(take(600 * MIN, null, 'not a date').ok, false)
   })
 
-  it('a lock file that does not parse is never taken over', () => {
+  it('a lock file that does not parse is held while it is fresh: it may be being written right now', () => {
+    for (const text of ['{ "pid": ', '', 'null']) {
+      const home = tempHome()
+      writeFileSync(installLockPath(home), text)
+      const r = acquireInstallLock(installLockPath(home), { isAlive: () => false })
+      assert.deepEqual(r, { ok: false, holder: 'a lock file that could not be read' }, JSON.stringify(text))
+      // Exactly at the bound is not past it.
+      const at60 = new Date(lstatSync(installLockPath(home)).mtimeMs + LOCK_UNREADABLE_AFTER_MS)
+      assert.equal(acquireInstallLock(installLockPath(home), { now: () => at60 }).ok, false)
+    }
+  })
+
+  it('a lock file that does not parse and has not been written for over 60 seconds is taken over', () => {
+    assert.equal(LOCK_UNREADABLE_AFTER_MS, 60_000)
+    for (const text of ['{ "pid": ', '']) {
+      const home = tempHome()
+      const path = installLockPath(home)
+      writeFileSync(path, text)
+      const old = new Date(Date.now() - 61_000)
+      utimesSync(path, old, old)
+      const r = acquireInstallLock(path, { pid: 77 })
+      assert.equal(r.ok, true, JSON.stringify(text))
+      assert.match(r.tookOver, /a lock file that could not be read, not written for over 60 seconds/)
+      assert.equal(JSON.parse(readFileSync(path, 'utf8')).pid, 77)
+      r.release()
+      assert.ok(!existsSync(path))
+    }
+  })
+
+  it('install.sh is not blocked by an empty lock a kill left: the CLI takes it over and says so', () => {
     const home = tempHome()
-    writeFileSync(installLockPath(home), '{ "pid": ')
-    const r = acquireInstallLock(installLockPath(home), { isAlive: () => false })
-    assert.deepEqual(r, { ok: false, holder: 'a lock file that could not be read' })
+    writeFileSync(installLockPath(home), '')
+    const fresh = spawnSync(process.execPath, [INSTALLER, 'lock', '--home', home, '--pid', String(process.pid)], { encoding: 'utf8' })
+    assert.equal(fresh.status, 1, 'a fresh one is respected')
+    const old = new Date(Date.now() - 61_000)
+    utimesSync(installLockPath(home), old, old)
+    const r = spawnSync(process.execPath, [INSTALLER, 'lock', '--home', home, '--pid', String(process.pid)], { encoding: 'utf8' })
+    assert.equal(r.status, 0, r.stderr)
+    assert.match(r.stdout, /Took over a stale install\.lock \(a lock file that could not be read/)
   })
 
   it('install.sh takes the lock through the same rule: the CLI takes over a dead pid\'s lock and says so', () => {

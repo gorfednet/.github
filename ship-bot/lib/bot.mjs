@@ -103,6 +103,8 @@ export async function runOnce(deps) {
   try {
     if (deps.installedSha) ctx.ownInstall = await checkOwnInstall(ctx, deps.installedSha)
     summary.freshness = ctx.ownInstall.state
+    // What it is stale against: a version on probation is judged on its own commit, not a newer one.
+    summary.latest = ctx.ownInstall.latest
     if (deps.installedSha && (await selfInstall(ctx, deps.installedSha))) {
       // The pass ends before any repo: no pass mixes this version's code with the new one's gate scripts.
       summary.swapped = true
@@ -151,9 +153,9 @@ export async function runOnce(deps) {
  * Keep the repo errors of the last BASELINE_SAMPLES complete live passes, and
  * the baseline read from them (`lastPassErrors`): the repos that stopped on an
  * error in every one. One transient error in the old version's last pass is
- * then no excuse for the new one, and one clean pass does not erase a repo
- * that is broken most of the time. A state file from before the samples seeds
- * them with the baseline it has.
+ * then no excuse for the new one. One clean pass among the samples takes a
+ * repo out of the baseline, until it has stopped in every sample again. A
+ * state file from before the samples seeds them with the baseline it has.
  */
 function recordPassErrors(data, repoErrors) {
   const before = Array.isArray(data.passErrorSamples) ? data.passErrorSamples : Array.isArray(data.lastPassErrors) ? [data.lastPassErrors] : []
@@ -881,6 +883,7 @@ async function checkOwnInstall(ctx, installedSha) {
   }
   if (r.state === 'current') {
     delete ctx.state.data.ownInstall?.held
+    delete ctx.state.data.ownInstall?.stuck
     return r
   }
   const text = `installed ship-bot (${short(installedSha)}) is behind origin/main: ${short(r.latest)} changed what install.sh copies, so the bot runs old code until it is reinstalled`
@@ -891,7 +894,14 @@ async function checkOwnInstall(ctx, installedSha) {
   // self-install is off, has refused it (a refusal sends its own message as well), or is stuck on
   // something that no later pass clears by itself.
   const block = selfInstallBlock(ctx, r.latest, installedSha)
+  if (block?.kind !== 'stuck') delete memo.stuck
   if (!block || block.kind === 'wait' || block.kind === 'finish') return r
+  if (block.kind === 'stuck') {
+    // One stuck pass can be a hand install that moved the link just after this pass started: the alert waits for a second in a row.
+    const count = (memo.stuck?.latest === r.latest ? memo.stuck.count : 0) + 1
+    memo.stuck = { latest: r.latest, count }
+    if (count < 2) return r
+  }
   memo.notifiedFor = r.latest
   ctx.state.save()
   await notify(ctx, text, true)
@@ -927,7 +937,7 @@ function jsonLine(text, key) {
  *   finish  a rollback moved the link back to `from` and was killed before its record: selfInstall finishes it
  *   stuck   nothing in the bot clears it: a probation whose version the link no longer names, or a link
  *           that names another version than the one running
- * `never` and `stuck` let the behind-main alert through; `stuck` also counts toward the long-deferral message.
+ * `never` lets the behind-main alert through at once, `stuck` from its second pass in a row; `stuck` also counts toward the long-deferral message.
  * @returns {null | {kind: 'never' | 'wait' | 'finish' | 'stuck', why: string}}
  */
 function selfInstallBlock(ctx, latest, installedSha) {
@@ -979,12 +989,31 @@ function countDeferral(ctx, marker, latest, { what, last, installedSha }) {
  * Send the messages the marker holds (a refusal, a rollback, a long deferral).
  * Each is shown on the Mac once and dropped only when ntfy accepts it, so a
  * phone that was unreachable still hears. With ntfy not configured it stays
- * queued, and every pass says so.
+ * queued, and every pass says so. The lock-held message is queued the same
+ * way in the state file (`ownInstall.notify`), since the marker is then not
+ * this bot's to write.
  */
 async function flushSelfInstallNotices(ctx) {
   ctx.noticesQueued = false
   const si = ctx.selfInstall
   if (ctx.dry || !si) return
+  const send = async (queue) => {
+    const kept = []
+    for (const item of queue) {
+      const accepted = await notify(ctx, item.text, true, { mac: !item.mac })
+      if (!accepted) kept.push(ctx.config.notify ? { ...item, mac: true } : item)
+    }
+    return kept
+  }
+  const still = (n, where) => ctx.say('warn', `self-install: ${n} message(s) for the owner still queued in ${where}: ${ctx.config.notify && ctx.config.ntfy ? 'ntfy did not accept them' : 'ntfy is not configured'}`)
+  const memo = ctx.state.data.ownInstall
+  if (memo?.notify?.length > 0) {
+    const kept = await send(memo.notify)
+    if (kept.length > 0) memo.notify = kept
+    else delete memo.notify
+    ctx.state.save()
+    if (kept.length > 0) still(kept.length, 'the state file')
+  }
   let marker
   try {
     marker = readMarker(si.home, si.fs)
@@ -994,15 +1023,11 @@ async function flushSelfInstallNotices(ctx) {
   }
   const queue = marker.notify ?? []
   if (queue.length === 0) return
-  const kept = []
-  for (const item of queue) {
-    const accepted = await notify(ctx, item.text, true, { mac: !item.mac })
-    if (!accepted) kept.push(ctx.config.notify ? { ...item, mac: true } : item)
-  }
+  const kept = await send(queue)
   if (kept.length > 0) marker.notify = kept
   else delete marker.notify
   writeMarker(si.home, marker, si.fs)
-  if (kept.length > 0) ctx.say('warn', `self-install: ${kept.length} message(s) for the owner still queued in the marker: ${ctx.config.notify && ctx.config.ntfy ? 'ntfy did not accept them' : 'ntfy is not configured'}`)
+  if (kept.length > 0) still(kept.length, 'the marker')
 }
 
 /**
@@ -1029,14 +1054,15 @@ async function selfInstall(ctx, installedSha) {
   const memo = (ctx.state.data.ownInstall ??= {})
   const lock = ctx.selfInstall.lock(installLockPath(home))
   if (!lock.ok) {
-    // Counted in the state file, not the marker: the marker belongs to whoever holds the lock.
+    // Counted and queued in the state file, not the marker: the marker belongs to whoever holds the lock.
     const held = memo.lockHeld?.latest === latest ? memo.lockHeld : { latest, count: 0 }
     held.count += 1
     memo.lockHeld = held
     if (held.count >= DEFER_NOTIFY_AT && !held.notified) {
       held.notified = true
+      ;(memo.notify ??= []).push({ text: `ship-bot self-install of ${origin} has found install.lock held ${held.count} passes in a row (${lock.holder}). The installed ${short(installedSha)} keeps running.`, at: ctx.clock.now().toISOString() })
+      ctx.noticesQueued = true
       ctx.state.save()
-      await notify(ctx, `ship-bot self-install of ${origin} has found install.lock held ${held.count} passes in a row (${lock.holder}). The installed ${short(installedSha)} keeps running.`, true)
     }
     return skip(`install.lock is held (${lock.holder})`)
   }

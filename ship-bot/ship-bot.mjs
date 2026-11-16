@@ -363,7 +363,7 @@ async function onePass(loaded, args, deps, print) {
     const { summary } = pass
     // A pass over named repos only is no evidence about the rest, so it settles nothing.
     if (probation && args.repos.length === 0) {
-      settleHealth(home, probation, { code: pass.code, authOk: pass.authOk, threw: pass.threw, quota: summary.quota, freshness: summary.freshness, repoErrors: summary.repoErrors }, deps, print)
+      settleHealth(home, probation, { code: pass.code, authOk: pass.authOk, threw: pass.threw, quota: summary.quota, freshness: summary.freshness, latest: summary.latest, repoErrors: summary.repoErrors }, deps, print)
     }
     // `undecided`: the pass stopped short of every repo (a quota pause) or could not read GitHub's main.
     const undecided = summary.quota ? 'a GitHub quota pause' : pass.code === 0 && summary.freshness === 'unknown' ? "the install's freshness could not be read" : null

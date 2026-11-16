@@ -314,6 +314,51 @@ describe('self-install: skips, each said once a pass, each with its near-miss', 
     assert.equal(t.s.state().data.ownInstall.lockHeld, undefined)
   })
 
+  it('near-miss: one stuck pass, then not stuck, sends no behind-main alert and forgets the count', async () => {
+    const t = setup()
+    const stage = join(t.s.home, 'installed-stage')
+    buildVersion({ home: t.home, stage, sha: OTHER })
+    commitVersion({ home: t.home, sha: OTHER })
+    swapLink({ home: t.home, sha: OTHER })
+    await t.pass()
+    assert.equal(t.s.state().data.ownInstall.stuck.count, 1)
+    // The link is back on the running version, but install.lock is held: not stuck, nothing installed.
+    swapLink({ home: t.home, sha: INSTALLED })
+    const held = acquireLock(installLockPath(t.home))
+    await t.pass()
+    assert.equal(t.s.state().data.ownInstall.stuck, undefined, 'the count is of passes in a row')
+    held.release()
+    swapLink({ home: t.home, sha: OTHER })
+    await t.pass()
+    assert.equal(t.s.state().data.ownInstall.stuck.count, 1)
+    assert.equal(t.macNotes().filter(behind).length, 0, 'two stuck passes with one between them are not two in a row')
+  })
+
+  it('the install.lock message is queued, not sent once and forgotten: it stays in the state file until ntfy accepts it', async () => {
+    const t = setup()
+    const held = acquireLock(installLockPath(t.home))
+    const lockNote = (l) => /has found install\.lock held 30 passes in a row/.test(l)
+    for (let i = 1; i < DEFER_NOTIFY_AT; i += 1) await t.pass()
+    t.ntfyStatus = 500
+    t.fetches.length = 0
+    const lines = await t.pass()
+    assert.equal(t.macNotes().filter(lockNote).length, 1, 'shown on the Mac')
+    assert.equal(t.s.state().data.ownInstall.notify.length, 1, 'ntfy refused it: still queued')
+    assert.equal(t.marker().notify, undefined, 'never in the marker, which the lock holder owns')
+    assert.ok(lines.some((l) => /^warn self-install: 1 message\(s\) for the owner still queued in the state file: ntfy did not accept them$/.test(l)), lines.join('\n'))
+    await t.pass()
+    assert.equal(t.macNotes().filter(lockNote).length, 1, 'the Mac is not told twice')
+    assert.equal(t.s.state().data.ownInstall.notify.length, 1)
+    t.ntfyStatus = 200
+    t.fetches.length = 0
+    await t.pass()
+    assert.equal(t.fetches.filter((f) => lockNote(String(f.body))).length, 1, 'the phone hears once ntfy answers')
+    assert.equal(t.s.state().data.ownInstall.notify, undefined)
+    await t.pass()
+    assert.equal(t.fetches.filter((f) => lockNote(String(f.body))).length, 1, 'and only once')
+    held.release()
+  })
+
   it('a version is in swapping, or this version is the one on probation: a normal wait, counted nowhere', async () => {
     const swapping = setup({ marker: { phase: 'swapping', sha: OTHER, from: INSTALLED, latest: OTHER } })
     assertSkipped(swapping, await swapping.pass(), /ddddddd is in swapping/)
@@ -369,8 +414,9 @@ describe('self-install: skips, each said once a pass, each with its near-miss', 
     assert.equal(t.installs().length, 0)
     assert.equal(t.marker().phase, 'probation', 'not this bot\'s to clear')
     assert.equal(t.marker().deferred.count, DEFER_NOTIFY_AT - 1)
-    assert.equal(t.macNotes().filter(behind).length, 1, 'the behind-main alert is not suppressed while it is stuck')
+    assert.equal(t.macNotes().filter(behind).length, 0, 'one stuck pass is not yet an alert')
     await t.pass()
+    assert.equal(t.macNotes().filter(behind).length, 1, 'the behind-main alert is not suppressed while it stays stuck')
     assert.equal(t.marker().deferred.count, DEFER_NOTIFY_AT)
     const long = t.macNotes().filter((l) => /has been deferred 30 passes in a row \(last skipped: ddddddd is in probation/.test(l))
     assert.equal(long.length, 1, t.macNotes().join('\n'))
@@ -402,11 +448,14 @@ describe('self-install: skips, each said once a pass, each with its near-miss', 
     assert.match(skipped(lines)[0], /^warn .*does not name this version \(aaaaaaa\)/)
     assert.equal(t.installs().length, 0)
     assert.equal(currentVersion(t.home), OTHER)
-    // Not a normal wait: it counts toward the long-deferral message, and the behind-main alert goes out.
+    // Not a normal wait: it counts toward the long-deferral message, and the behind-main alert goes out on the second pass in a row.
     assert.deepEqual(t.marker().deferred, { latest: LATEST, count: 1 })
-    assert.equal(t.macNotes().filter(behind).length, 1)
+    assert.equal(t.macNotes().filter(behind).length, 0, 'a hand install may have moved the link just after this pass started')
+    assert.deepEqual(t.s.state().data.ownInstall.stuck, { latest: LATEST, count: 1 })
     await t.pass()
     assert.equal(t.marker().deferred.count, 2)
+    assert.equal(t.macNotes().filter(behind).length, 1, 'stuck twice in a row: the alert')
+    await t.pass()
     assert.equal(t.macNotes().filter(behind).length, 1, 'the alert is sent once')
     // Near-miss: with the link back on the running version the next pass installs.
     swapLink({ home: t.home, sha: INSTALLED })
