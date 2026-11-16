@@ -8,7 +8,8 @@
 # crashes or times out (only exit 2 or a deny decision blocks), so a missing node or a
 # crashing script ends in a deny decision, never in a pass.
 payload="$(cat)"
-printf '%s' "$payload" | grep -Eq 'push|gh|eval' || exit 0
+# Quotes and backslashes are dropped first: git pu''sh and git pu\sh are a push to the shell.
+printf '%s' "$payload" | tr -d "\\\\'\"" | grep -Eq 'push|gh|eval' || exit 0
 
 deny() {
   printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"public-push-guard: %s"}}\n' "$1"

@@ -350,6 +350,8 @@ const PUSH_ARG_FLAGS = new Set(['-o', '--push-option', '--receive-pack', '--exec
  * Pushes and gh calls in one statement. A statement can name git or gh at any word
  * (`command git push`, `time git push`, `xargs git push`, `/usr/bin/git push`).
  */
+const GLOB = /[*?[{]/
+
 function commandsIn(stmt) {
   const found = []
   const words = stmt.words
@@ -360,7 +362,7 @@ function commandsIn(stmt) {
       let gitDir = stmt.env.GIT_DIR
       let k = at + 1
       let unresolvedDir = stmt.cwd === null
-      if (stmt.env.GIT_DIR !== undefined || 'GIT_DIR' in stmt.env) unresolvedDir ||= stmt.env.GIT_DIR === undefined
+      if (stmt.env.GIT_DIR !== undefined || 'GIT_DIR' in stmt.env) unresolvedDir ||= stmt.env.GIT_DIR === undefined || GLOB.test(stmt.env.GIT_DIR)
       while (k < words.length && words[k].text.startsWith('-')) {
         const w = words[k]
         const [name, attached] = w.text.split(/=(.*)/s)
@@ -368,10 +370,10 @@ function commandsIn(stmt) {
           const val = attached !== undefined && name.startsWith('--') ? { text: attached, open: w.open } : words[k + 1]
           if (val === undefined) break
           if (name === '-C') {
-            if (val.open || dir === null) unresolvedDir = true
+            if (val.open || dir === null || GLOB.test(val.text)) unresolvedDir = true // a variable, or a pattern the shell or xargs fills in
             else dir = resolvePath(val.text, dir)
           } else if (name === '--git-dir' || name === '--work-tree') {
-            if (val.open) unresolvedDir = true
+            if (val.open || GLOB.test(val.text)) unresolvedDir = true
             else if (name === '--git-dir') gitDir = resolvePath(val.text, dir ?? process.cwd())
             else dir = resolvePath(val.text, dir ?? process.cwd())
           }
@@ -809,7 +811,7 @@ async function checkText(text, slug, cache, target) {
   }
 }
 
-const GH_TEXT_ACTIONS = new Set(['pr create', 'pr new', 'pr edit', 'pr comment', 'pr review', 'pr close', 'issue create', 'issue new', 'issue edit', 'issue comment', 'issue close', 'release create', 'release edit', 'pr merge', 'repo edit', 'label create', 'label edit'])
+const GH_TEXT_ACTIONS = new Set(['pr create', 'pr new', 'pr edit', 'pr comment', 'pr review', 'pr close', 'issue create', 'issue new', 'issue edit', 'issue comment', 'pr reopen', 'issue reopen', 'issue close', 'release create', 'release edit', 'pr merge', 'repo edit', 'label create', 'label edit'])
 // Commands that change what a repository holds, or which repository it is. The hook sees the
 // repository as it is BEFORE the command runs, so a push that follows one of these in the same
 // command can't be read.
@@ -965,6 +967,7 @@ async function main() {
     const writesText = GH_TEXT_ACTIONS.has(action) || (writesApi && !isGraphqlRead)
     const creates = action === 'pr create' || action === 'pr new'
     if (!writesText && !creates) continue
+    if (creates && c.unresolvedDir) deny('public-push-guard: this gh pr create runs in a directory the hook can\'t work out, and it may push the branch there. Write the path out, or cd to it first, then try again.')
     const target = { dir: c.dir ?? cwd }
 
     // The repository: --repo/-R, GH_REPO, a GitHub URL as the selector (the word right after the

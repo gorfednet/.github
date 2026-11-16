@@ -289,6 +289,12 @@ describe('public-push-guard: every spelling of a push is resolved or refused, ne
     "echo 'git push origin feature' | sh",
     "git push origin feature-{b,c}",
     `cd ${d}/nonexistent* ; git push origin feature`,
+    `ls -d ${d} | xargs -I{} git -C {} push origin feature`,
+    `git -C ${d}/../w* push origin feature`,
+    `git --git-dir ${d}/.g* push origin feature`,
+    "git pu''sh origin feature",
+    'git "pu"sh origin feature',
+    'git pu\\sh origin feature',
     `(cd ${e}; true); git push origin feature`,
     `pushd ${d} && git push origin feature`,
     `D=${d}; git -C "$D" push origin feature`,
@@ -566,7 +572,7 @@ describe('public-push-guard: it refuses rather than guess', () => {
   it('refuses, and does not exit 1, when node is not on the path', () => {
     const r = repo()
     const bin = tmp('nonode')
-    for (const t of ['grep', 'cat', 'dirname']) spawnSync('ln', ['-s', spawnSync('which', [t], { encoding: 'utf8' }).stdout.trim(), join(bin, t)])
+    for (const t of ['grep', 'cat', 'dirname', 'tr']) spawnSync('ln', ['-s', spawnSync('which', [t], { encoding: 'utf8' }).stdout.trim(), join(bin, t)])
     const x = spawnSync('/bin/bash', [HOOK], {
       input: JSON.stringify({ tool_name: 'Bash', tool_input: { command: 'git push origin feature' }, cwd: r.dir, session_id: 's' }),
       encoding: 'utf8',
@@ -833,6 +839,19 @@ describe('public-push-guard: the third review', () => {
       assert.match(reason(hook(c, { r })), /Commit in one call/, c)
     }
     assert.equal(hook('git fetch origin && git push origin feature', { r, vis: 'PRIVATE' }).out, '', 'a private repository is untouched')
+  })
+})
+
+describe('public-push-guard: the fourth review', () => {
+  it('refuses gh pr create in a directory it cannot work out, even with --repo, since gh pushes from there', () => {
+    const r = repo()
+    const x = hook(`cd "$NOPE_UNSET" && gh pr create --repo ${ORG}/testrepo --title t --body clean`, { r })
+    assert.ok(denied(x), x.out)
+    assert.match(reason(x), /can't work out/)
+  })
+  it('reads the text of gh pr reopen and gh issue reopen', () => {
+    const r = repo()
+    for (const c of [`gh pr reopen 5 -R ${ORG}/testrepo -c "${IP}"`, `gh issue reopen 5 -R ${ORG}/testrepo --comment "${IP}"`]) assert.ok(denied(hook(c, { r })), c)
   })
 })
 
