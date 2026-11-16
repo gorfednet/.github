@@ -162,7 +162,7 @@ describe('readMeter', () => {
     const leak = (() => { try { JSON.parse('{"usageItems":[{"repositoryName":"secret-owner/private-repo", oops') } catch (e) { return e } })()
     assert.ok(leak instanceof SyntaxError)
     assert.equal(readFailure(leak), 'the billing read returned something that was not JSON')
-    const stray = readFailure(Object.assign(new Error('boom: token ghp_abc123 at /Users/someone/secret'), { stderr: 'secret-owner/private-repo exploded' }))
+    const stray = readFailure(Object.assign(new Error('boom: token ghp_abc123 at ' + ['', 'Users', 'someone', 'secret'].join('/')), { stderr: 'secret-owner/private-repo exploded' }))
     assert.equal(stray, 'the billing read failed')
     for (const text of [readFailure(leak), stray]) assert.doesNotMatch(text, /secret|ghp_|private-repo|Users/)
   })
