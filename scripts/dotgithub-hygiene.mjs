@@ -61,7 +61,8 @@ export function readmeMissing(readme, folders) {
  */
 export function countExposure(files, guard, { privateRepos = '', allowText = '' } = {}) {
   const allow = guard.parseAllowlist(allowText)
-  const names = guard.parsePrivateRepos(privateRepos)
+  // As the guard does: a name the allowlist exempts (`repo <name>`) is not a private-repo finding.
+  const names = guard.parsePrivateRepos(privateRepos).filter((n) => !(allow.repos ?? []).includes(n))
   const rulesNotChecked = names.length === 0 ? ['private-repo'] : []
   // An empty list matches nothing, so the rule is reported as not checked rather than passed.
   const privateRepo = names.length === 0 ? /(?!)/g : guard.privateRepoPattern(names)
@@ -71,7 +72,8 @@ export function countExposure(files, guard, { privateRepos = '', allowText = '' 
   let exposed = 0
   for (const { path, text } of files) {
     const rules = new Set()
-    if (guard.FORBIDDEN_NEW_DIRS.some((d) => path.startsWith(d)) && !exempt(path, 'new-file')) rules.add('new-file')
+    // Case-insensitive, as the guard's own check is: a case-insensitive disk lands Briefs/x on briefs/x.
+    if (guard.FORBIDDEN_NEW_DIRS.some((d) => path.toLowerCase().startsWith(d)) && !exempt(path, 'new-file')) rules.add('new-file')
     for (const line of text.split('\n')) for (const r of guard.scanLine(line, { privateRepo, allow })) if (!exempt(path, r)) rules.add(r)
     if (rules.size === 0) continue
     exposed += 1

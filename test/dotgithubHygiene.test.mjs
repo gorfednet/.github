@@ -91,6 +91,15 @@ describe('dotgithub-hygiene', () => {
     assert.equal(without.exposureByRule['private-repo'], undefined)
   })
 
+  it('counts as the guard does: an allowlisted repo name is no finding, and a forbidden folder matches in any case', () => {
+    const allowRepos = { ...guard, parseAllowlist: (text) => ({ ...guard.parseAllowlist(''), repos: text.split(',').filter(Boolean) }) }
+    const files = [{ path: 'docs/a.md', text: 'see gorfednet/ops\n' }, { path: 'Briefs/x.md', text: 'clean\n' }]
+    const r = countExposure(files, allowRepos, { privateRepos: 'ops', allowText: 'ops' })
+    assert.deepEqual(r, { exposedFiles: 1, exposureByRule: { 'new-file': 1 }, rulesNotChecked: ['private-repo'] }, 'ops exempted leaves no name to check')
+    assert.equal(countExposure(files, allowRepos, { privateRepos: 'ops,other', allowText: 'ops' }).rulesNotChecked.length, 0)
+    assert.equal(countExposure(files, allowRepos, { privateRepos: 'ops', allowText: '' }).exposureByRule['private-repo'], 1)
+  })
+
   it('reports exposure as not measured when the guard is not in the checkout, never as 0', async () => {
     const dir = clone()
     const d = await measure({ root: dir, env: {} })
