@@ -39,6 +39,6 @@ What this means in practice:
 - A pool outage shows as a steeper projection on the next 2-hourly run, and as a 70% or 90% line if it is large enough. That is the signal to put a repository back on the pool or hold BinderCurve, not a bill to read afterwards.
 - The meter is month to date, so the pool setting coming back after the queue clears is visible as the projection flattening.
 - The billing report lags by hours, so the first minutes of an overflow show on a later run.
-- To see how much of a month was overflow, compare the month's minutes with the steady-state estimate in `docs/plans/ci-resourcing.md`. A per-repository split stays out of the public file by design; read it from the billing page.
+- To see how much of a month was overflow, compare the month's minutes with the steady-state estimate in the CI resourcing plan (private ops). A per-repository split stays out of the public file by design; read it from the billing page.
 
 Changing the overflow switch itself (`HEAVY_RUNS_ON` and the heartbeat threshold) is a separate pull request.

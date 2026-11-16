@@ -149,7 +149,7 @@ export function renderSpend(a) {
 }
 
 /** One digest line. */
-export function digestLine(a) {
+export function spendDigestLine(a) {
   if (!a) return 'Hosted Actions spend: unknown (no reading in this snapshot)'
   if (a.unknown !== undefined) return `Hosted Actions spend: unknown, not zero (${a.unknown})`
   return `Hosted Actions ${monthName(a.month)}: ${usd(a.spendUsd)} of ${usd(a.capUsd)} (${a.usedPct}%), ${a.minutes} min, on course for ${usd(a.projectedUsd)} (${a.projectedPct}%)`

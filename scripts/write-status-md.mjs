@@ -10,7 +10,7 @@
 import { readFileSync, writeFileSync } from 'node:fs'
 
 import { isMain } from '../templates/verification-kit/lib/isMain.mjs'
-import { digestLine, renderSpend } from './lib/actionsSpend.mjs'
+import { renderSpend, spendDigestLine } from './lib/actionsSpend.mjs'
 import { showInstalled } from './lib/installed-tools.mjs'
 import { renderInventory } from './lib/inventory.mjs'
 import { digestLine, isWeeklyDay, renderDotgithub } from './dotgithub-hygiene.mjs'
@@ -198,7 +198,7 @@ export function render(status) {
 /** At most 10 lines for ntfy. */
 export function digest(status) {
   const s = summarize(status)
-  const lines = [summaryLine(status), digestLine(status.actions)]
+  const lines = [summaryLine(status), spendDigestLine(status.actions)]
   const rows = hygiene(status)
   const counts = rows.filter((h) => h.count !== null && h.count > 0).map((h) => `${h.row} ${h.count}`)
   const unmeasured = rows.filter((h) => h.count === null).length
