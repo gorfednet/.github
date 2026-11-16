@@ -992,41 +992,90 @@ function countDeferral(ctx, marker, latest, { what, last, installedSha }) {
  * queued, and every pass says so. The lock-held message is queued the same
  * way in the state file (`ownInstall.notify`), since the marker is then not
  * this bot's to write.
+ *
+ * Sending takes up to 30 seconds a message, with no lock held. The marker is
+ * another process's to write in that time (a hand install sets it to `hand`),
+ * so the copy read before the sends is never written back: the marker is read
+ * again under install.lock, and only what was sent is taken out of the queue
+ * it holds then. With the lock held by someone else nothing is written, and
+ * the next pass sends again.
  */
 async function flushSelfInstallNotices(ctx) {
   ctx.noticesQueued = false
   const si = ctx.selfInstall
   if (ctx.dry || !si) return
+  /** Send each item: `delivered` are the ones ntfy accepted, `shown` the others the Mac has now shown. */
   const send = async (queue) => {
-    const kept = []
+    const delivered = []
+    const shown = []
     for (const item of queue) {
       const accepted = await notify(ctx, item.text, true, { mac: !item.mac })
-      if (!accepted) kept.push(ctx.config.notify ? { ...item, mac: true } : item)
+      if (accepted) delivered.push(item)
+      else if (ctx.config.notify) shown.push(item)
+    }
+    return { delivered, shown }
+  }
+  /** `queue` without one item per `delivered` one, and with `mac` set on one per `shown` one. Items are matched on `text` and `at`. */
+  const settle = (queue, { delivered, shown }) => {
+    const take = (list, item) => {
+      const i = list.findIndex((other) => other.text === item.text && other.at === item.at)
+      if (i === -1) return false
+      list.splice(i, 1)
+      return true
+    }
+    const gone = [...delivered]
+    const seen = [...shown]
+    const kept = []
+    for (const item of queue) {
+      if (take(gone, item)) continue
+      kept.push(take(seen, item) && !item.mac ? { ...item, mac: true } : item)
     }
     return kept
   }
   const still = (n, where) => ctx.say('warn', `self-install: ${n} message(s) for the owner still queued in ${where}: ${ctx.config.notify && ctx.config.ntfy ? 'ntfy did not accept them' : 'ntfy is not configured'}`)
   const memo = ctx.state.data.ownInstall
   if (memo?.notify?.length > 0) {
-    const kept = await send(memo.notify)
+    // The state file is this pass's alone (the pass lock), and `memo` is the live object, not a copy: settled against what it holds now.
+    const sent = await send([...memo.notify])
+    const kept = settle(memo.notify ?? [], sent)
     if (kept.length > 0) memo.notify = kept
     else delete memo.notify
     ctx.state.save()
     if (kept.length > 0) still(kept.length, 'the state file')
   }
-  let marker
+  let queue
   try {
-    marker = readMarker(si.home, si.fs)
+    queue = readMarker(si.home, si.fs).notify ?? []
   } catch (cause) {
     ctx.say('warn', `self-install: ${cause.message}`)
     return
   }
-  const queue = marker.notify ?? []
   if (queue.length === 0) return
-  const kept = await send(queue)
-  if (kept.length > 0) marker.notify = kept
-  else delete marker.notify
-  writeMarker(si.home, marker, si.fs)
+  const sent = await send(queue)
+  let kept
+  try {
+    const lock = si.lock(installLockPath(si.home))
+    if (!lock.ok) {
+      ctx.say('warn', `self-install: ${queue.length} message(s) for the owner stay queued in the marker as they were: install.lock is held (${lock.holder}), so the marker is not written; ${sent.delivered.length} sent in this pass may be sent again`)
+      return
+    }
+    try {
+      if (lock.tookOver) ctx.say('warn', `self-install: took over a stale install.lock (${lock.tookOver})`)
+      const marker = readMarker(si.home, si.fs)
+      const held = marker.notify ?? []
+      kept = settle(held, sent)
+      if (kept.length !== held.length || kept.some((item, i) => item !== held[i])) {
+        if (kept.length > 0) marker.notify = kept
+        else delete marker.notify
+        writeMarker(si.home, marker, si.fs)
+      }
+    } finally {
+      lock.release()
+    }
+  } catch (cause) {
+    ctx.say('warn', `self-install: the marker's queue was not updated (${String(cause.message).split('\n')[0]}); ${sent.delivered.length} sent in this pass may be sent again`)
+    return
+  }
   if (kept.length > 0) still(kept.length, 'the marker')
 }
 
@@ -1062,13 +1111,20 @@ async function selfInstall(ctx, installedSha) {
     ctx.say('warn', `self-install of ${short(latest)} deferred ${last}; the installed ${short(installedSha)} keeps running`)
     const memo = (ctx.state.data.ownInstall ??= {})
     try {
+      // The step's own lock is released by now, and a hand install may have run: read and written under install.lock, or not at all.
       const { home, fs } = ctx.selfInstall
-      const marker = readMarker(home, fs)
-      countDeferral(ctx, marker, latest, { what, last, installedSha })
-      writeMarker(home, marker, fs)
+      const lock = ctx.selfInstall.lock(installLockPath(home))
+      if (!lock.ok) throw new Error(`install.lock is held (${lock.holder})`)
+      try {
+        const marker = readMarker(home, fs)
+        countDeferral(ctx, marker, latest, { what, last, installedSha })
+        writeMarker(home, marker, fs)
+      } finally {
+        lock.release()
+      }
       delete memo.stepFailed
     } catch {
-      // The marker cannot be read or written either: counted and queued in the state file, like a held lock.
+      // The lock cannot be taken, or the marker cannot be read or written either: counted and queued in the state file, like a held lock.
       const failed = memo.stepFailed?.latest === latest ? memo.stepFailed : { latest, count: 0 }
       failed.count += 1
       memo.stepFailed = failed

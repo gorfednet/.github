@@ -775,8 +775,12 @@ describe('self-install: an error from the lock, the marker or the version direct
 
   it('a lock that throws, with the marker still writable, counts in the marker toward the long-deferral message', async () => {
     const t = setup({ marker: { deferred: { latest: LATEST, count: DEFER_NOTIFY_AT - 1 } } })
-    const lock = () => {
-      throw new Error('EACCES: permission denied, open install.lock')
+    // The step's own take throws; the take that records the deferral works, so the marker is written under the lock.
+    let takes = 0
+    const lock = (path) => {
+      takes += 1
+      if (takes === 1) throw new Error('EACCES: permission denied, open install.lock')
+      return acquireInstallLock(path)
     }
     const lines = await t.pass('live', withFs(t, nodeFs, { lock }))
     assert.ok(lines.some((l) => /^warn self-install of bbbbbbb deferred on an unexpected error: EACCES/.test(l)), lines.join('\n'))
@@ -785,6 +789,19 @@ describe('self-install: an error from the lock, the marker or the version direct
     assert.match(t.fetches.map((f) => f.body).join('\n'), /has been deferred 30 passes in a row \(last on an unexpected error: EACCES/)
     assert.equal(t.marker().deferred.notified, true)
     assert.equal(t.s.state().data.ownInstall?.stepFailed, undefined, 'counted once, in the marker')
+  })
+
+  it('a lock that cannot be taken to record the deferral: the marker is not written, and the count is in the state file', async () => {
+    const before = { deferred: { latest: LATEST, count: DEFER_NOTIFY_AT - 1 } }
+    const t = setup({ marker: before })
+    const lock = () => {
+      throw new Error('EACCES: permission denied, open install.lock')
+    }
+    const lines = await t.pass('live', withFs(t, nodeFs, { lock }))
+    assert.ok(lines.some((l) => /^warn self-install of bbbbbbb deferred on an unexpected error: EACCES/.test(l)), lines.join('\n'))
+    assert.deepEqual(t.marker(), before, 'no marker write outside install.lock')
+    assert.deepEqual(t.s.state().data.ownInstall.stepFailed, { latest: LATEST, count: 1 })
+    assert.equal(t.visitedRepos(), 1)
   })
 
   it('the stage that cannot be removed after a swap does not undo the swap: the pass still ends before any repo', async () => {
@@ -948,6 +965,83 @@ describe('self-install: the notification queue', () => {
     assert.equal(t.fetches.length, 1)
     assert.equal(t.fetches[0].body, 'queued earlier')
     assert.equal(t.marker().notify, undefined)
+  })
+})
+
+describe('self-install: the notification queue is settled under install.lock, never from the copy read before the sends', () => {
+  const first = { text: 'queued earlier', at: '2026-11-15T12:00:00.000Z' }
+  const second = { text: 'queued later', at: '2026-11-15T12:01:00.000Z' }
+  /** What a hand install (install.sh, handSwap) leaves: phase `hand`, with the queue carried over. */
+  const handMarker = (notify) => ({ phase: 'hand', sha: OTHER, from: INSTALLED, at: '2026-11-15T12:02:00.000Z', notify })
+  /** An ntfy whose POST is still in flight when `during` runs (a hand install, say), and then answers `status(body)`. */
+  const ntfy = (t, { during = () => {}, status = () => 200 } = {}) => ({
+    fetchImpl: async (url, init) => {
+      t.fetches.push({ url, body: init.body })
+      during(init.body)
+      const code = status(init.body)
+      return { ok: code === 200, status: code }
+    },
+  })
+  /** A marker a rollback could act on: INSTALLED on probation, as the stale copy in the review's case said. */
+  const onProbation = (notify) => ({ phase: 'probation', sha: INSTALLED, from: OTHER, latest: INSTALLED, at: '2026-11-15T11:00:00.000Z', notify })
+
+  it('a hand install that writes its marker while a message is being sent keeps it: only the delivered message is taken out', async () => {
+    const t = setup({ box: { current: true }, marker: onProbation([first]) })
+    let wrote = 0
+    await t.pass('live', ntfy(t, { during: () => {
+      wrote += 1
+      writeMarker(t.home, handMarker([first]))
+    } }))
+    assert.equal(wrote, 1, 'the hand install ran during the one send')
+    assert.equal(t.marker().phase, 'hand', 'the stale copy read before the send is not written back')
+    assert.deepEqual(t.marker(), { phase: 'hand', sha: OTHER, from: INSTALLED, at: '2026-11-15T12:02:00.000Z' }, 'and the delivered message is gone from the queue')
+    assert.ok(!existsSync(installLockPath(t.home)), 'install.lock is released')
+  })
+
+  it('a message ntfy did not accept, and one queued during the sends, both stay queued', async () => {
+    const t = setup({ box: { current: true }, marker: { notify: [first, second] } })
+    const added = { text: 'queued by the hand install', at: '2026-11-15T12:03:00.000Z' }
+    const lines = await t.pass('live', ntfy(t, {
+      during: (body) => {
+        if (body === second.text) writeMarker(t.home, handMarker([first, second, added]))
+      },
+      status: (body) => (body === second.text ? 500 : 200),
+    }))
+    assert.deepEqual(t.fetches.map((f) => f.body), [first.text, second.text])
+    assert.equal(t.marker().phase, 'hand')
+    assert.deepEqual(t.marker().notify, [{ ...second, mac: true }, added], 'only the delivered one is removed; the one the Mac showed is marked')
+    assert.ok(lines.some((l) => /2 message\(s\) for the owner still queued in the marker/.test(l)), lines.join('\n'))
+    // Same text at another time is another message: it is not taken out with the delivered one.
+    const twin = setup({ box: { current: true }, marker: { notify: [first] } })
+    const later = { ...first, at: '2026-11-15T12:04:00.000Z' }
+    await twin.pass('live', ntfy(twin, { during: () => writeMarker(twin.home, handMarker([later])) }))
+    assert.deepEqual(twin.marker().notify, [later])
+  })
+
+  it('with install.lock held the marker is not written and the queue is kept as it was; the next pass sends again', async () => {
+    const before = { notify: [first] }
+    const t = setup({ box: { current: true }, marker: before })
+    const held = acquireInstallLock(installLockPath(t.home))
+    assert.equal(held.ok, true)
+    const raw = readFileSync(join(t.home, 'self-install.json'), 'utf8')
+    // ntfy refuses it: a write would have marked it as shown on the Mac.
+    t.ntfyStatus = 500
+    let lines = await t.pass()
+    assert.equal(t.fetches.length, 1, 'sent with no lock needed')
+    assert.equal(readFileSync(join(t.home, 'self-install.json'), 'utf8'), raw, 'not written')
+    assert.ok(lines.some((l) => /^warn self-install: 1 message\(s\) for the owner stay queued in the marker as they were: install\.lock is held \(pid \d+ since /.test(l)), lines.join('\n'))
+    // ntfy accepts it, and the lock is still held: delivered, but still not written.
+    t.ntfyStatus = 200
+    lines = await t.pass()
+    assert.equal(t.fetches.length, 2)
+    assert.deepEqual(t.marker(), before)
+    assert.ok(existsSync(installLockPath(t.home)), 'the holder\'s lock is left alone')
+    held.release()
+    await t.pass()
+    assert.equal(t.fetches.length, 3, 'sent again once the marker can be written')
+    assert.equal(t.marker().notify, undefined)
+    await t.pass()
+    assert.equal(t.fetches.length, 3, 'and then no more')
   })
 })
 
