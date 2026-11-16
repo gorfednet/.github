@@ -10,6 +10,13 @@
 # has no fallback: a missing token means nothing was read, so it goes red.
 # A repository it cannot read becomes an "unavailable" row and turns the job
 # red after the file is published, so the gap is visible in both places.
+#
+# Whose quota the token spends (16 November 2026, plan row 1.17): almost certainly the owner's 5,000 an
+# hour. At 11:32 ET, six minutes into a zero quota on the owner's side, the scheduled run found all 20
+# repositories unreadable within a second; the run at 09:45 ET read all 20. Not proven, because the log
+# kept no header and no cause. The "Quota of the read token" steps log the window's reset epoch: the same
+# second as `resetAt` in the Mac's ~/.gh-quota/samples.jsonl means the same quota. Update this note from
+# the first run that logs it.
 name: fleet-status
 
 on:
@@ -47,6 +54,18 @@ jobs:
             exit 1
           fi
 
+      # Whose quota does this token spend? (16 November 2026, plan row 1.17.) The rate-limit headers carry the
+      # window's limit, what is left and when it resets, and no name or secret. The reset epoch is the same
+      # second as the owner's own window when the token is the owner's, so it can be matched against the
+      # Mac's ~/.gh-quota/samples.jsonl (`resetAt`). Logged before and after the read, so a run's own spend is
+      # `before - after`. Never fails the job: a quota that cannot be read is a warning.
+      - name: Quota of the read token (before)
+        env:
+          GH_TOKEN: ${{ secrets.FLEET_READ_TOKEN }}
+        run: |
+          gh api -i rate_limit 2>&1 | tr -d '\r' | grep -i -E '^x-ratelimit-(limit|remaining|used|reset|resource):' \
+            || echo "::warning::the read token's rate-limit headers could not be read"
+
       # Written even when a repository was unreadable (it appears as an
       # unavailable row); the exit code is kept and asserted after publishing.
       - name: Read the fleet
@@ -71,6 +90,14 @@ jobs:
           # The ntfy digest goes out once a day, on the run that did the full read.
           echo "digest=$(node -p "require('./status.json').carried ? 'no' : 'yes'" 2>/dev/null || echo yes)" >> "$GITHUB_OUTPUT"
           test -s status.json
+
+      - name: Quota of the read token (after)
+        if: ${{ !cancelled() }}
+        env:
+          GH_TOKEN: ${{ secrets.FLEET_READ_TOKEN }}
+        run: |
+          gh api -i rate_limit 2>&1 | tr -d '\r' | grep -i -E '^x-ratelimit-(limit|remaining|used|reset|resource):' \
+            || echo "::warning::the read token's rate-limit headers could not be read"
 
       # Plan row 1.30 d: this public repository's own upkeep (branches, merged branches not
       # deleted, files on main the privacy guard would refuse, README drift). Scheduled, never
