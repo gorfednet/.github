@@ -140,8 +140,12 @@ export function readMeter({ owner, now = new Date(), cap = capUsd(), json }) {
   return { month, readAt: now.toISOString(), capUsd: cap, unknown: failure }
 }
 
-/** Opaque memo of the thresholds pushed this month: an HMAC, so the public branch holds no band (70, 90 or 100) and no way to test for one without the key. */
-export const memoTag = (key, month, fired) => createHmac('sha256', key).update(`spend-memo:${month}:${fired.join(',')}`).digest('hex').slice(0, 32)
+/**
+ * Opaque memo of the thresholds pushed this month: an HMAC, so the public branch holds no band (70, 90 or 100) and no
+ * way to test for one without the key. `nonce` is the block's own `readAt`, which differs on every run, so the memo
+ * changes on every run whether or not a threshold fired: the branch's history carries no signal of when one did.
+ */
+export const memoTag = (key, month, fired, nonce) => createHmac('sha256', key).update(`spend-memo:${nonce}:${month}:${fired.join(',')}`).digest('hex').slice(0, 32)
 
 /** Thresholds fire in order, so the only sets ever recorded are these prefixes: none, 70, 70 and 90, all three. */
 const PREFIXES = SPEND_THRESHOLDS.map((_, i) => SPEND_THRESHOLDS.slice(0, i)).concat([SPEND_THRESHOLDS])
@@ -155,7 +159,7 @@ export function readMemo(earlier, month, key) {
   const a = earlier?.actions
   if (!a || a.month !== month) return { fired: [], readable: true }
   if (!key || typeof a.memo !== 'string') return { fired: [], readable: false }
-  const found = PREFIXES.find((p) => memoTag(key, month, p) === a.memo)
+  const found = PREFIXES.find((p) => memoTag(key, month, p, a.readAt) === a.memo)
   return found ? { fired: found, readable: true } : { fired: [], readable: false }
 }
 
@@ -181,7 +185,7 @@ export const stateOf = (meter) => (meter.unknown !== undefined ? 'unknown' : met
  */
 export function publicBlock(meter, key) {
   const block = { month: meter.month, readAt: meter.readAt, state: stateOf(meter) }
-  if (key && !(meter.unknown !== undefined && meter.memoUnreadable)) block.memo = memoTag(key, meter.month, meter.fired)
+  if (key && !(meter.unknown !== undefined && meter.memoUnreadable)) block.memo = memoTag(key, meter.month, meter.fired, meter.readAt)
   if (meter.unknown !== undefined) block.unknown = meter.unknown
   return block
 }
@@ -203,7 +207,7 @@ export async function applyAlert(status, meter, push, key) {
   if (due === null) return { status, action: 'none' }
   if (!(await push(alertText(meter, due), due))) return { status, action: 'push-failed', due }
   const fired = [...new Set([...(meter.fired ?? []), ...SPEND_THRESHOLDS.filter((t) => t <= due)])].sort((x, y) => x - y)
-  return { status: { ...status, actions: { ...a, memo: memoTag(key, meter.month, fired) } }, action: 'pushed', due, fired }
+  return { status: { ...status, actions: { ...a, memo: memoTag(key, meter.month, fired, a.readAt) } }, action: 'pushed', due, fired }
 }
 
 /** The STATUS.md paragraph. With figures (a private or local run) it shows them; the public file shows the state only. */

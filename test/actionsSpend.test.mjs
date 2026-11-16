@@ -30,7 +30,7 @@ const NOW = new Date('2026-11-15T12:00:00Z')
 const CAP = 100
 const KEY = 'test-memo-key'
 /** The status.json an earlier run published, holding the opaque memo for `fired`. */
-const prior = (fired, month = '2026-11', key = KEY) => ({ actions: { month, readAt: 'x', state: 'alert', memo: memoTag(key, month, fired) } })
+const prior = (fired, month = '2026-11', key = KEY) => ({ actions: { month, readAt: 'x', state: 'alert', memo: memoTag(key, month, fired, 'x') } })
 /** A report whose Actions net dollars total `net`, split over two rows so summing is exercised. */
 const report = (net, extra = []) => ({ usageItems: [row({ quantity: 6000, netAmount: net / 2 }), row({ sku: 'Actions Linux 4-core', quantity: 1500, netAmount: net / 2 }), ...extra] })
 const meter = (net, extra) => meterFromReport(report(net, extra), { now: NOW, cap: CAP })
@@ -186,12 +186,32 @@ describe('readMeter', () => {
 
 describe('the threshold memo', () => {
   it('is an HMAC: the public file holds no threshold, and the same set under another key or month reads differently', () => {
-    const tag = memoTag(KEY, '2026-11', [70, 90])
+    const tag = memoTag(KEY, '2026-11', [70, 90], 'n1')
     assert.match(tag, /^[0-9a-f]{32}$/)
-    assert.notEqual(tag, memoTag('another-key', '2026-11', [70, 90]))
-    assert.notEqual(tag, memoTag(KEY, '2026-12', [70, 90]))
-    assert.notEqual(tag, memoTag(KEY, '2026-11', [70]))
+    assert.notEqual(tag, memoTag('another-key', '2026-11', [70, 90], 'n1'))
+    assert.notEqual(tag, memoTag(KEY, '2026-12', [70, 90], 'n1'))
+    assert.notEqual(tag, memoTag(KEY, '2026-11', [70], 'n1'))
+    assert.notEqual(tag, memoTag(KEY, '2026-11', [70, 90], 'n2'), 'the same set at another run reads differently')
     assert.doesNotMatch(JSON.stringify(prior([70, 90])), /fired/)
+  })
+  it('changes on every run, crossing or not, so the branch history carries no signal of when a threshold fired (review round 5)', async () => {
+    // Eight 2-hourly runs from the same key. The 70% line crosses at the fourth: the published memos must all differ,
+    // and none may be a function of the fired set alone.
+    const nets = [10, 20, 30, 72, 73, 74, 75, 76]
+    let status = null
+    const memos = []
+    for (const [i, net] of nets.entries()) {
+      const at = new Date(NOW.getTime() + i * 2 * 3600_000)
+      const m = withMemo(meterFromReport(report(net), { now: at, cap: CAP }), status, KEY)
+      status = { actions: publicBlock(m, KEY) }
+      status = (await applyAlert(status, m, async () => true, KEY)).status
+      memos.push(status.actions.memo)
+      assert.deepEqual(readMemo(status, '2026-11', KEY).fired, i >= 3 ? [70] : [], `run ${i} reads back`)
+    }
+    assert.equal(new Set(memos).size, nets.length, 'a run with no threshold crossed still changes the memo')
+    // The same fired set, one run apart, shares nothing an observer could compare.
+    assert.notEqual(memos[4], memos[5])
+    assert.notEqual(memos[0], memos[1])
   })
   it('reads back what was pushed this month, and starts empty in a new month or with nothing published', () => {
     for (const fired of [[], [70], [70, 90], [70, 90, 100]]) assert.deepEqual(readMemo(prior(fired), '2026-11', KEY), { fired, readable: true })
@@ -320,7 +340,7 @@ describe('the published block carries a state, never a figure (review round 3)',
   const known = withMemo(meter(75), null, KEY)
   const unknown = withMemo(meterFromReport({}, { now: NOW, cap: CAP }), null, KEY)
   it('is a state, the month, the reading time and the memo, and for an unknown reading its reason', () => {
-    assert.deepEqual(publicBlock(withMemo(meter(30), null, KEY), KEY), { month: '2026-11', readAt: NOW.toISOString(), state: 'ok', memo: memoTag(KEY, '2026-11', []) })
+    assert.deepEqual(publicBlock(withMemo(meter(30), null, KEY), KEY), { month: '2026-11', readAt: NOW.toISOString(), state: 'ok', memo: memoTag(KEY, '2026-11', [], NOW.toISOString()) })
     assert.equal(publicBlock(withMemo(meter(70), null, KEY), KEY).state, 'alert')
     assert.equal(publicBlock(withMemo(meter(69), null, KEY), KEY).state, 'ok')
     assert.equal(publicBlock(known, KEY).state, 'alert')
@@ -383,7 +403,7 @@ describe('fleet-status wiring', () => {
     const { meter: m, block } = collectActions({ fleet, now: NOW, earlier: prior([70]), env: { SPEND_MEMO_KEY: KEY }, json: () => report(75) })
     assert.deepEqual(m.fired, [70])
     assert.equal(m.usedPct, 75)
-    assert.deepEqual(block, { month: '2026-11', readAt: NOW.toISOString(), state: 'alert', memo: memoTag(KEY, '2026-11', [70]) })
+    assert.deepEqual(block, { month: '2026-11', readAt: NOW.toISOString(), state: 'alert', memo: memoTag(KEY, '2026-11', [70], NOW.toISOString()) })
     for (const k of FIGURES) assert.equal(k in block, false)
   })
   it('without the memo key the run publishes no memo and reads the old one as unreadable', () => {
@@ -402,7 +422,8 @@ describe('fleet-status wiring', () => {
     assert.equal(collectActions({ fleet, now: NOW, earlier: { repos: [] }, fromEarlier: true, json }).block, undefined)
   })
   const refused = () => { throw Object.assign(new Error('x'), { stderr: 'gh: Not Found (HTTP 404)' }) }
-  const published = (over = {}) => ({ actions: { month: '2026-11', readAt: new Date(NOW.getTime() - 3600_000).toISOString(), state: 'alert', memo: memoTag(KEY, '2026-11', [70]), ...over } })
+  const hourAgo = new Date(NOW.getTime() - 3600_000).toISOString()
+  const published = (over = {}) => ({ actions: { month: '2026-11', readAt: hourAgo, state: 'alert', memo: memoTag(KEY, '2026-11', [70], over.readAt ?? hourAgo), ...over } })
   it('a local run whose own login cannot read billing falls back to the published block (review round 3)', () => {
     const { meter: m, block } = collectActions({ fleet, now: NOW, earlier: published(), includePrivate: true, carryPublished: true, json: refused })
     assert.equal(m, null)
