@@ -1077,6 +1077,31 @@ describe('public-push-guard: a push run by an inline interpreter', () => {
   })
 })
 
+describe('public-push-guard: an interpreter that reads its program from a here-document or a pipe', () => {
+  const plainMsg = /one plain command/
+  it('refuses python, node, sh and bash given a program on standard input, and source of standard input', () => {
+    const r = repo({ outgoing: { 'x.md': `${IP}\n` } })
+    for (const c of [
+      `python3 <<'EOF'\nimport subprocess; subprocess.run(["git","push","origin","feature"])\nEOF`,
+      `node <<'EOF'\nrequire('child_process').execSync('git push origin feature')\nEOF`,
+      `bash <<'EOF'\ngit push origin feature\nEOF`,
+      `echo 'import os; os.system("git push origin feature")' | python3`,
+      `echo "require('child_process').execSync('git push origin feature')" | node`,
+      `echo 'git push origin feature' | sh`,
+      `echo 'git push origin feature' | source /dev/stdin`,
+      `python3 - <<'EOF'\nimport os; os.system("git push origin feature")\nEOF`,
+    ]) {
+      const x = hook(c, { r })
+      assert.ok(denied(x), c)
+      assert.match(reason(x), plainMsg, c)
+    }
+  })
+  it('near miss: a named script, or text that only prints a push word, still passes', () => {
+    const r = repo()
+    for (const c of ['python3 tool.py push', 'python3 -m pytest -k push', 'echo "git push is slow" | grep push', "cat <<'EOF'\ngit push origin feature\nEOF", 'echo push | cat']) assert.equal(hook(c, { r }).out, '', c)
+  })
+})
+
 describe('public-push-guard: wiring', () => {
   it('has a settings entry that runs the hook as a PreToolUse hook on Bash, with room for its own budget', () => {
     const own = JSON.parse(readFileSync(join(ROOT, 'scripts', 'claude-hooks', 'public-push-guard.settings.json'), 'utf8'))

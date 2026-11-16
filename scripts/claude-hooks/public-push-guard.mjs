@@ -851,7 +851,7 @@ function readBodyFile(word, base, heredoc) {
 
 // Commands that only print or search text, so a push word in their arguments is data.
 const INERT = new Set(['echo', 'printf', 'cat', 'grep', 'egrep', 'fgrep', 'rg', 'head', 'tail', 'wc', 'less'])
-const INTERPRETERS = /^(?:python[\d.]*|node(?:js)?|perl|ruby|php|lua|deno|bun|osascript|awk|gawk)$/
+const INTERPRETERS = /^(?:python[\d.]*|node(?:js)?|perl|ruby|php|lua|deno|bun|osascript|awk|gawk|sh|bash|zsh|dash|ksh)$/
 
 /** A word that could carry a push or a gh call to a shell somewhere else (quotes and backslashes dropped). */
 function holdsPush(w) {
@@ -859,11 +859,18 @@ function holdsPush(w) {
   return (/\bgit\b/.test(t) && /push/.test(t)) || /\bgh\b/.test(t)
 }
 
-/** An interpreter given code on the command line (-c, -e, -r, --eval, awk's program): it can run anything. */
+/**
+ * An interpreter given code on the command line (-c, -e, -r, --eval, awk's program), or one with no script
+ * file to run, which reads its program from a here-document or a pipe; source or . of standard input.
+ */
 function runsInline(x) {
   const cmd = basename(x.words[0]?.text ?? '')
-  if (cmd === 'awk' || cmd === 'gawk') return x.words.slice(1).some((w) => !w.text.startsWith('-'))
-  return INTERPRETERS.test(cmd) && x.words.slice(1).some((w) => /^-(?:[a-zA-Z]*[ceErpP]|-eval|-exec)\b/.test(w.text) || /^-[ceErpP]$/.test(w.text))
+  const rest = x.words.slice(1)
+  if (cmd === 'source' || cmd === '.') return rest.some((w) => w.text === '-' || w.text.startsWith('/dev/'))
+  if (cmd === 'awk' || cmd === 'gawk') return rest.some((w) => !w.text.startsWith('-'))
+  if (!INTERPRETERS.test(cmd)) return false
+  if (rest.every((w) => w.text.startsWith('-')) || rest.some((w) => w.text === '-')) return true
+  return rest.some((w) => /^-(?:[a-zA-Z]*[ceErpP]|-eval|-exec)\b/.test(w.text) || /^-[ceErpP]$/.test(w.text))
 }
 
 // Subcommands that take no command to run: a commit message or tag message that says "push" is routine.
