@@ -232,3 +232,24 @@ test("the quoted file form runs nothing a hostile title or branch holds", () => 
     assert.equal(existsSync(pwn), false, `ran: ${hostile}`);
   }
 });
+
+test("janitor step 1b publishes local counts: the command line has no --apply, and only a live run adds it", () => {
+  const step = prompt.match(/\n1b\. [\s\S]*?(?=\n2\. Read)/);
+  assert.ok(step, "step 1b exists, between steps 1 and 2");
+  const spans = [...step[0].matchAll(/`([^`]*local-status-publish\.mjs[^`]*)`/g)].map((m) => m[1]);
+  assert.equal(spans.length, 1);
+  assert.doesNotMatch(spans[0], /--apply/, "the command a dry run copies carries no --apply");
+  assert.match(step[0], /Add `--apply` in a live run only/);
+  assert.match(step[0], /Never push anywhere else, never force/);
+  assert.match(step[0], /Never retry a refused push/);
+  // The proposer is read-only: its line takes no --apply either.
+  const proposer = [...step[0].matchAll(/`([^`]*branch-sweep-propose\.mjs[^`]*)`/g)].map((m) => m[1]);
+  assert.equal(proposer.length, 1);
+  assert.doesNotMatch(proposer[0], /--apply|--remote-sweep/);
+  assert.match(step[0], /Open no draft, close nothing and delete nothing from it/);
+});
+
+test("janitor lists the one local-counts push among its GitHub calls and bars it from a dry run", () => {
+  assert.match(prompt, /Your only GitHub calls are step 1b's one push of `local-counts\.json` to the ops data branch \(live runs only\)/);
+  assert.match(prompt, /push \(step 1b's `--apply` included\)/);
+});

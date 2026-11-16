@@ -23,7 +23,7 @@ This file takes precedence over the scheduled task's own text. Where that text c
 
 Read `~/.fleet-janitor/mode`. If it says `live`, act. Anything else, or no file, means `dry`.
 
-In a dry run, do every step and run every script without `--apply`. Write what you would do to `$R/actions.json` and the digest. Change nothing in the fleet: no label, archive, commit, push, pull request, file in any repository or scheduled-task change. A dry run still writes its own files (`$R`, `retire.json`, the digest, the run log) and posts the digest.
+In a dry run, do every step and run every script without `--apply`. Write what you would do to `$R/actions.json` and the digest. Change nothing in the fleet: no label, archive, commit, push (step 1b's `--apply` included), pull request, file in any repository or scheduled-task change. A dry run still writes its own files (`$R`, `retire.json`, the digest, the run log) and posts the digest.
 
 "Idle" always means the time since the session's `lastActivityAt`.
 
@@ -35,6 +35,10 @@ Never write the mode file. Desk or the owner writes `live` after 3 dry runs in a
    - Exit 1 means some repositories were unreadable. Wait 5 minutes in the background, then run it once more.
    - If repositories are still unreadable after the second run, go on to step 2. Their pull requests get no label this run. Name those repositories in the digest.
    - If `$R/status.json` is missing or empty, or the exit code is anything but 0 or 1, skip to step 8.
+1b. Local counts and branch proposals (replan row N7). The hosted report cannot see this Mac, so publish its counts. Both commands read `$R/status.json` and write only under `$R`.
+   - Run `node $J/scripts/local-status-publish.mjs --in $R/status.json --out-dir $R --keep-list $G/../ops/control/branch-keep.json` and note its exit code. It writes `$R/local-counts.json` and prints what it would push. Add `--apply` in a live run only: it makes one plain push of that file to the ops data branch `fleet-local`, from its own temporary clone. The target is fixed in the script. Never push anywhere else, never force, never push this file by hand.
+   - Exit 1 means a row wasn't measured or the push was refused. Name the row, or the refusal, in the digest and go on. Never retry a refused push. Exit 2 is a bad argument: name it in the digest.
+   - Run `node $J/scripts/branch-sweep-propose.mjs --in $R/status.json`. It is read-only and writes `$R/branch-proposals.json`: one action per branch with no pull request (draft PR, keep, close duplicate). Put the counts of each in the digest as proposals. Open no draft, close nothing and delete nothing from it: a draft it proposes carries `hold`, and Desk decides. Exit 2 means a bad argument.
 2. Read `~/.herdr-jobs/STATE.md` if it exists. It's read-only input from `herdr-reconcile`. Put its "Parked" line and any "not readable" weekly-usage note in the digest. If the file is missing or older than 1 hour, say in the digest that the reconciler isn't running. Never edit it or `~/.herdr-jobs/state.json`.
 3. Labels. Consider the open pull requests in `status.json`, cheapest test first. Label `ready-to-merge` (`gh pr edit <n> --repo <slug> --add-label ready-to-merge`) only on a pull request that meets all 4 of these:
    - Every changed path is on the allowlist. Check it this way:
@@ -129,5 +133,5 @@ For each of these, open a draft pull request or put a line in the digest:
 
 - `STATUS.md` on the `status` branch of `gorfednet/.github` is the shared view. Ship-bot merges labelled pull requests (`shipping.md`), so a wrong label ends in a merge.
 - Ship-bot merges with merge commits only. That's how `janitor-prune.mjs sessions` tells a `merged` branch from a `fresh` one without asking GitHub.
-- The owner's GitHub quota is shared by every session and ship-bot. Your only GitHub calls are step 3's file lists and labels, step 4's `gh pr list`, a rescue's push, `gh label create` and `gh pr create`, the origin branch deletes in step 5, and step 3b's one `gh pr view` per housekeeping candidate, one push, one `gh pr create --draft` and one `gh pr comment` per carried pull request.
+- The owner's GitHub quota is shared by every session and ship-bot. Your only GitHub calls are step 1b's one push of `local-counts.json` to the ops data branch (live runs only), step 3's file lists and labels, step 4's `gh pr list`, a rescue's push, `gh label create` and `gh pr create`, the origin branch deletes in step 5, and step 3b's one `gh pr view` per housekeeping candidate, one push, one `gh pr create --draft` and one `gh pr comment` per carried pull request.
 - Every pull request you open has a `## Next` section with `- [ ]` lines.
