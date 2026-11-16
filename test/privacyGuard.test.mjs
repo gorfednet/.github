@@ -1032,6 +1032,11 @@ describe('privacy guard: a value the base held in general is not an excuse for a
       a.branch('pr')
       a.commit('work', { 'notes.md': `intro\n${quote('first')}\n` })
     }).status, 0, 'the same quote, moved')
+    assert.equal(scenario((a) => {
+      a.commit('base', { 'notes.md': `${quote('first')} said so.\n` })
+      a.branch('pr')
+      a.commit('work', { 'notes.md': `${quote('first')} said so, twice.\n` })
+    }).status, 0, 'text edited after a quote the base already held')
   })
 })
 
@@ -1060,7 +1065,7 @@ describe('privacy guard: changes that no pull request could clear stay green', (
   })
 
   it('reads a file whose name holds a quote, a backslash or a tab, and never prints it', () => {
-    for (const name of ['docs/a"b.md', 'docs/a\\b.md', 'docs/a\tb.md']) {
+    for (const name of ['docs/a"b.md', 'docs/a\\b.md', 'docs/a\tb.md', 'docs/a"\u{1F600}.md']) {
       const clean = scenario((a) => {
         a.commit('base', { 'README.md': 'hello\n' })
         a.branch('pr')

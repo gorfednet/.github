@@ -4,7 +4,7 @@ name: privacy-guard
 # delete are denied, and git history counts as disclosed. A value that lands here
 # stays. So a pull request that adds a private IP, a session id, a tailnet name, an
 # internal host name, a private repository name or a personal email address, or a new
-# file under docs/desk, docs/handoff or briefs, fails here. Plan row 1.30 (a).
+# file under docs/desk, docs/handoff, docs/plans or briefs, fails here. Plan row 1.30 (a).
 #
 # It reads only the lines the pull request adds (scripts/privacy-guard.mjs), so it
 # cannot go red on old content (verification-floor rule 5).

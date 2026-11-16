@@ -38,7 +38,7 @@
  *   email          an address that is not a noreply, a bot identity already on main or an
  *                  allowlisted domain (not checked in commit messages)
  *   owner-quote    an owner marker with a date, a colon or comma, and then an opening quote
- *   new-file       a new file under docs/desk/, docs/handoff/ or briefs/
+ *   new-file       a new file under docs/desk/, docs/handoff/, docs/plans/ or briefs/
  *
  * Files git treats as binary are read as text (`--text`), so a `.gitattributes` line in
  * the change cannot switch the guard off. No file is skipped by name or type: a text file
@@ -129,7 +129,7 @@ const EMAIL = /(?<![A-Za-z0-9._%+-])[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0
 // Two shapes. The word owner, a comma, a date (a digit within 60 characters), then a colon
 // or comma and an opening quote. Or the word owner, a colon, and a quote that holds a
 // space, so a GraphQL owner: "org" argument is not a quote.
-const OWNER_QUOTE = /\bowner,\s+[^"“\n]{0,60}?\d[^"“\n]{0,40}?[:,]\s*["“][^\n]{0,200}|\bowner:\s*["“][^"”\s]+\s[^\n]{0,200}/gi
+const OWNER_QUOTE = /\bowner,\s+[^"“\n]{0,60}?\d[^"“\n]{0,40}?[:,]\s*["“][^"”\n]{0,200}["”]?|\bowner:\s*["“][^"”\s]+\s[^"”\n]{0,200}["”]?/gi
 
 // A filename that looks like an address (hero@2x.png, getty@tty1.service) is not one.
 // Only names that are not real top-level domains: .md is Moldova's, so it is not here.
@@ -323,7 +323,7 @@ const C_ESCAPES = { n: 10, t: 9, r: 13, '"': 34, '\\': 92, a: 7, b: 8, f: 12, v:
 function unquote(raw) {
   const t = raw.replace(/\t.*$/, '')
   if (t.length < 2 || !t.startsWith('"') || !t.endsWith('"')) return t
-  const inner = t.slice(1, -1)
+  const inner = [...t.slice(1, -1)] // by code point: a character outside the BMP is one unit, not two halves
   const bytes = []
   for (let i = 0; i < inner.length; i += 1) {
     if (inner[i] !== '\\') {
@@ -335,7 +335,7 @@ function unquote(raw) {
       let octal = inner[i]
       while (octal.length < 3 && /[0-7]/.test(inner[i + 1] ?? '')) octal += inner[(i += 1)]
       bytes.push(parseInt(octal, 8))
-    } else bytes.push(C_ESCAPES[inner[i]] ?? inner.charCodeAt(i))
+    } else bytes.push(C_ESCAPES[inner[i]] ?? inner[i].codePointAt(0))
   }
   return Buffer.from(bytes).toString('utf8')
 }

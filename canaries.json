@@ -856,6 +856,22 @@
       "file": "scripts/privacy-guard.mjs",
       "find": "return lines.some((line) => line.match(word))",
       "replace": "return lines.some((line) => line.length > 0)"
+    },
+    {
+      "id": "privacy-guard-compares-text-after-a-held-quote",
+      "guards": "The owner-quote value ends at the closing quote. Run to the end of the line, editing text after a quote the base already holds goes red for good.",
+      "command": "node --test --test-name-pattern='owner quote in a file whose marker' test/privacyGuard.test.mjs",
+      "file": "scripts/privacy-guard.mjs",
+      "find": "[\"“][^\"”\\n]{0,200}[\"”]?|\\bowner:",
+      "replace": "[\"“][^\\n]{0,200}|\\bowner:"
+    },
+    {
+      "id": "privacy-guard-decodes-a-path-by-code-unit",
+      "guards": "A quoted path is decoded by code point. By code unit a character outside the BMP breaks, the diff path never matches the count, and the guard exits 2 for good.",
+      "command": "node --test --test-name-pattern='quote, a backslash or a tab' test/privacyGuard.test.mjs",
+      "file": "scripts/privacy-guard.mjs",
+      "find": "const inner = [...t.slice(1, -1)]",
+      "replace": "const inner = t.slice(1, -1)"
     }
   ]
 }
