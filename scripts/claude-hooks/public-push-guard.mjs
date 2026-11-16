@@ -898,7 +898,7 @@ function gitSubcommand(words) {
   return w && !w.open && /^[a-z][a-z-]*$/.test(w.text) ? w.text : null
 }
 
-const PUSH_BOOL_FLAGS = new Set(['-f', '--force', '--force-if-includes', '-u', '--set-upstream', '-n', '--dry-run', '-v', '--verbose', '-q', '--quiet', '--no-verify', '--verify', '--porcelain', '--atomic', '--no-atomic', '--prune', '--thin', '--no-thin', '--no-signed', '--no-follow-tags', '--progress', '--no-progress', '-4', '--ipv4', '-6', '--ipv6', '--no-recurse-submodules', '--no-force-with-lease', '--no-force-if-includes'])
+const PUSH_BOOL_FLAGS = new Set(['-f', '--force', '--force-if-includes', '--force-with-lease', '-u', '--set-upstream', '-n', '--dry-run', '-v', '--verbose', '-q', '--quiet', '--no-verify', '--verify', '--porcelain', '--atomic', '--no-atomic', '--prune', '--thin', '--no-thin', '--no-signed', '--no-follow-tags', '--progress', '--no-progress', '-4', '--ipv4', '-6', '--ipv6', '--no-recurse-submodules', '--no-force-with-lease', '--no-force-if-includes'])
 const PUSH_ATTACHED = /^--(?:force-with-lease|signed|recurse-submodules|push-option|receive-pack|exec|repo)=/
 
 const GH_WRITE = /\b(?:create|new|edit|comment|review|merge|close|reopen|upload)\b/

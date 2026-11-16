@@ -896,6 +896,18 @@ describe('public-push-guard: the Fable read (a command it cannot read in full is
     assert.ok(denied(x), x.out)
     assert.match(reason(x), /option the hook doesn't know/)
   })
+  it('knows a bare --force-with-lease and --force-if-includes: private passes, public gets the normal check, an unknown option is still refused', () => {
+    const vis2 = { [`${ORG}/privaterepo`]: 'PRIVATE', [`${ORG}/testrepo`]: 'PUBLIC' }
+    const priv = repo({ outgoing: { 'x.md': `${IP}\n` }, slug: 'privaterepo' })
+    const pub = repo({ outgoing: { 'x.md': `${IP}\n` } })
+    for (const c of ['git push --force-with-lease origin feature', 'git push --force-with-lease --force-if-includes origin feature']) {
+      assert.equal(hook(c, { r: priv, vis: vis2 }).out, '', `${c}: private passes untouched`)
+      const x = hook(c, { r: pub, vis: vis2 })
+      assert.ok(denied(x), `${c}: public is checked`)
+      assert.match(reason(x), /\[private-ip\]/, c)
+    }
+    assert.ok(denied(hook('git push --force-with-leash origin feature', { r: priv, vis: vis2 })), 'near miss: a misspelt option is still refused')
+  })
   it('refuses cd /typo; git push (it pushes from the session directory), and passes cd <real dir> && git push', () => {
     const r = repo({ outgoing: { 'x.md': `${IP}\n` } })
     const clean = repo()
