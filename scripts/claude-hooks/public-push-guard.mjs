@@ -856,7 +856,7 @@ function plain(parsed) {
   const sts = parsed.statements
   if (parsed.uncertain) refuse('it holds something the hook can\'t read')
   if (sts.some((x) => x.cwd === null || x.words.some((w) => w.open))) refuse('it uses a variable, a substitution or a directory the hook has no value for')
-  if (sts.some((x) => x.words.some((w) => (!w.quoted && /[*?[{]/.test(w.text.replace(/\{(?:owner|repo|branch)\}/g, ''))) || w.text.startsWith('--work-tree')))) refuse('it uses a glob, a brace or --work-tree')
+  if (sts.some((x) => x.words.some((w) => (!w.quoted && /[*?[{]/.test(w.text.replace(/\{(?:owner|repo|branch)\}/g, ''))) || w.text.startsWith('--work-tree') || w.text.startsWith('--config-env')))) refuse('it uses a glob, a brace, --work-tree or --config-env')
   if (!sts.some((x) => x.words.some((w) => ['git', 'gh'].includes(basename(w.text))))) return false
   if (sts.length !== 1) refuse('it has more than one command, a pipe, a loop or a wrapper')
   if (!['git', 'gh'].includes(basename(sts[0].words[0].text))) refuse('git or gh sits behind a wrapper')

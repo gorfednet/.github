@@ -928,6 +928,14 @@ describe('public-push-guard: the Fable read (a command it cannot read in full is
     const r = repo({ outgoing: { 'x.md': `${IP}\n` } })
     for (const c of ['S=sh; git pu$S origin feature', "git $'pu\\x73h' origin feature", 'git pu${NOPE_UNSET}sh origin feature']) assert.ok(denied(hook(c, { r })), c)
   })
+  it('refuses config set on the command line by a substitution, --config-env or GIT_CONFIG_* (the settings the push would use)', () => {
+    const r = repo({ outgoing: { 'x.md': `${IP}\n` }, slug: 'privaterepo' })
+    const v = { [`${ORG}/privaterepo`]: 'PRIVATE', [`${ORG}/testrepo`]: 'PUBLIC' }
+    for (const c of ['git -c remote.origin.pushurl=$(echo https://github.com/gorfednet/testrepo.git) push origin feature', 'git --config-env=remote.origin.pushurl=PUSHURL push origin feature', `GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=remote.origin.pushurl GIT_CONFIG_VALUE_0=https://github.com/${ORG}/testrepo.git git push origin feature`, 'git $(echo commit) -qam x && git push origin feature']) {
+      assert.ok(denied(hook(c, { r, vis: v })), c)
+    }
+    assert.equal(hook('git push origin feature', { r, vis: v }).out, '', 'near miss: the same push without them, to the private origin')
+  })
   it('refuses --work-tree, which leaves the repository to be found some other way', () => {
     const r = repo({ outgoing: { 'x.md': `${IP}\n` } })
     for (const c of ['git --work-tree=/tmp push origin feature', 'git --work-tree /tmp push origin feature']) assert.ok(denied(hook(c, { r })), c)
