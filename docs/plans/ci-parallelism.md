@@ -49,7 +49,7 @@ Every pull request gets the Claude reviewer (Fable). Desk labels. Builders run a
 
 | # | Item | Who and why |
 |---|------|-------------|
-| 1.1 | This file, the briefs and the backlog entry, in one PR to `gorfednet/.github`. | The papers fix session (Opus). Done when it merges |
+| 1.1 | This file and the backlog entry in `gorfednet/.github`. The briefs live in ops `control/briefs/` (moved by PR 231). | The papers fix session (Opus). Done when it merges |
 | 1.2 | Kit PR in `gorfednet/.github`: `lib/cpuBudget.mjs` with its `.d.mts`, `test/cpuBudget.test.mjs` (fixtures from the 15 November probe: 12, 8, 2, `200000 100000`), `bin/check-parallelism.mjs` with a canary and the near-miss cases, the `assert-tests-executed` line, the gate step as a warning, rule V78, `write-manifest`, the kit's test floor. Reuses 4thcltr's `scripts/playwright-workers.mjs` and its 7 tests. Also fixes `templates/playwright.config.ts`, the bootstrap skill and `register-repo.mjs`, so new repositories start protected. | **New Fable session.** It changes what CI enforces for every repository, and writes skill text every session reads |
 | 1.3 | heuristics.4thcltr.com: kit refresh, config uses the kit helper, ledger line. Depends on 1.2. | **Sonnet builder session.** Mechanical once the kit exists. The check and the reviewer catch a slip |
 
@@ -61,7 +61,7 @@ Every pull request gets the Claude reviewer (Fable). Desk labels. Builders run a
 | 2.2 | gorfmusic (fixes the `canaries` job), denseware, ssatcy, promptboi, gorfed.net: kit refresh, config uses the kit helper. | **Sonnet builder**, one session per repository. A Haiku runner is wrong here: a kit refresh can show drift that needs diagnosis |
 | 2.3 | assess: `Math.min(3, usableCpus())` for its browser file concurrency. | **Sonnet builder** |
 | 2.4 | `scripts/pool-flip.mjs` with tests, the pool README's "Add a repository" step, and `ci-resourcing.md`'s column renamed to "passing". | **Sonnet builder**, reviewed by Fable. It's run by a session, never unattended |
-| 2.5 | `shipping.md` Runners gets 2 lines (workers come from the kit; a move to the pool goes through `pool-flip`). Mirrored in `docs/claude-home/`, then copied to `~/.claude/rules/`. | **Fable editor.** Every session reads this file |
+| 2.5 | `shipping.md` Runners gets 2 lines (workers come from the kit; a move to the pool goes through `pool-flip`). Mirrored in ops `control/claude-home/`, then copied to `~/.claude/rules/`. | **Fable editor.** Every session reads this file |
 | 2.6 | Turn the gate's check from a warning into a failure. `fleet-audit` (scheduled) lists any repository not converted, and any whose `HEAVY_RUNS_ON` is hosted while it has a pool row. | **Fable**, small PR. It changes what CI enforces |
 | 2.7 | Move heuristics back to the pool with `pool-flip`. Re-run it for the other 10 repositories moved on 15 November, so each has a passing pool run on record. | **Haiku runner.** It runs one script per repository and reports the output |
 | 2.8 | BinderCurve: axe jobs and Vitest take their count from the kit, and `pools.conf`'s comment is corrected. | **Sonnet builder.** Priority 6, so it goes last and waits when the pool is busy |
