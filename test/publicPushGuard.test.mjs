@@ -1160,6 +1160,11 @@ describe('public-push-guard: round 13', () => {
     assert.ok(denied(hook('git pu\\\nsh origin feature', { r })))
     assert.equal(hook('git pu\\\nsh origin feature', { r: repo() }).out, '', 'near miss: the same spelling with nothing to find passes')
   })
+  it('reads a push whose word is split by a backslash-newline inside double quotes', () => {
+    const r = repo({ outgoing: { 'x.md': `${IP}\n` } })
+    assert.ok(denied(hook('git "pu\\\nsh" origin feature', { r })))
+    assert.equal(hook('git "pu\\\nsh" origin feature', { r: repo() }).out, '', 'near miss: nothing to find passes')
+  })
   it('does not fall back to a predictable directory when the private cache is unusable', () => {
     const r = repo({ outgoing: { 'x.md': `${IP}\n` } })
     const cache = tmp('hostile')

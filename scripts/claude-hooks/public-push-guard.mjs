@@ -192,7 +192,9 @@ function readShell(source, state) {
       w.quoted = true
       i += 1
       while (i < source.length && source[i] !== '"') {
-        if (source[i] === '\\' && i + 1 < source.length) {
+        if (source[i] === '\\' && source[i + 1] === '\n') {
+          i += 2 // a backslash-newline is deleted inside double quotes too
+        } else if (source[i] === '\\' && i + 1 < source.length) {
           w.text += '"$`\\'.includes(source[i + 1]) ? source[i + 1] : source.slice(i, i + 2)
           i += 2
         } else if (source[i] === '$' || source[i] === '`') {
