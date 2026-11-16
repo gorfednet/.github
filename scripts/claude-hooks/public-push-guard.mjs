@@ -215,6 +215,7 @@ function readShell(source, state) {
       while (source[j] === ' ') j += 1
       const m = /^(['"]?)([A-Za-z0-9_.-]+)\1/.exec(source.slice(j))
       if (m) {
+        out.heredoc = true
         pendingHeredocs.push({ delim: m[2], quoted: m[1] !== '' })
         i = j + m[0].length
         // a delimiter quoted only in part (E"O"F), or glued to something, is not read
@@ -225,6 +226,7 @@ function readShell(source, state) {
       }
     } else if (/[<>]/.test(c)) {
       // redirection: drop it with its target (and a leading fd digit already in the word)
+      if (c === '<') out.stdinRedirect = true // a file or process fed to standard input: the hook can't see what it holds
       if (word && /^[0-9&]+$/.test(word.text)) word = null
       i += 1
       while (/[<>&|]/.test(source[i] ?? '')) i += 1
@@ -838,6 +840,7 @@ const SLUG_RE = /(?:^|[\s"'=:/@])github\.com[:/]+([A-Za-z0-9_.-]+)\/([A-Za-z0-9_
 /** A body file or api field file the call reads. Returns its text, or denies when it can't be read. */
 function readBodyFile(word, base, heredoc) {
   if (word.open) deny('public-push-guard: a body file is named through a variable the hook can\'t read, so this call is refused.')
+  if (/^\/(?:dev|proc)\//.test(resolvePath(word.text, base))) deny('public-push-guard: this call reads its text from a device or process file (/dev, /proc), which the hook can\'t read, so it is refused. Write the text to a file and use a literal --body-file.')
   if (word.text === '-') {
     if (heredoc) return '' // the here-document is part of the command text, which is scanned whole
     deny('public-push-guard: this call reads its text from standard input, which the hook can\'t read, so it is refused. Write the text to a file and use a literal --body-file.')
@@ -929,6 +932,7 @@ function plain(parsed) {
   if (sts.length !== 1) refuse('it has more than one command, a pipe, a loop or a wrapper')
   if (!['git', 'gh'].includes(basename(sts[0].words[0].text))) refuse('git or gh sits behind a wrapper')
   if (Object.keys(sts[0].env).some((k) => !['GIT_DIR', 'GH_REPO'].includes(k))) refuse('it sets an environment variable')
+  if (parsed.stdinRedirect && basename(sts[0].words[0].text) === 'gh') refuse('it feeds a file into gh through an input redirect, which the hook can\'t read')
   // A git subcommand that is not a push can still run one: rebase -x, bisect run, submodule foreach, -c alias.x=push.
   // Any word that could hold a push, a gh call, or git behind an expansion, in a command that isn't itself a push, is refused.
   if (basename(sts[0].words[0].text) === 'git' && gitSubcommand(sts[0].words) !== 'push') {
@@ -981,7 +985,7 @@ async function main() {
 
   const cache = cacheDir(session)
   const visited = new Set()
-  const heredoc = /<<-?\s*['"]?[A-Za-z0-9_.-]+/.test(command)
+  const heredoc = parsed.heredoc === true
 
   for (const c of calls) {
     if (c.kind !== 'push') continue

@@ -1102,6 +1102,36 @@ describe('public-push-guard: an interpreter that reads its program from a here-d
   })
 })
 
+describe('public-push-guard: a body or field read from standard input', () => {
+  it('refuses a body file that names standard input, and any input redirect into a gh write', () => {
+    const r = repo()
+    sh(r.dir, r.w, 'push', '-q', 'origin', 'feature')
+    writeFileSync(join(r.dir, 'notes.md'), `${IP}\n`)
+    for (const c of [
+      'gh pr comment 3 --body-file /dev/stdin < notes.md',
+      'gh pr comment 3 --body-file /dev/fd/0 < notes.md',
+      'gh pr comment 3 --body-file /proc/self/fd/0 < notes.md',
+      'gh pr comment 3 --body-file - < notes.md',
+      "gh pr comment 3 --body-file - <<'EOF' < notes.md\nclean words\nEOF",
+      'gh pr comment 3 --body "a << b" --body-file - < notes.md',
+      'gh api -X POST repos/gorfednet/testrepo/issues -F body=@/dev/stdin < notes.md',
+      'gh api -X POST repos/gorfednet/testrepo/issues -F body=@- < notes.md',
+      'gh pr comment 3 --body-file notes.md < notes.md',
+    ]) {
+      const x = hook(c, { r })
+      assert.ok(denied(x), c)
+    }
+  })
+  it('near miss: a literal file, and a quoted here-document, are still read and pass when clean', () => {
+    const r = repo()
+    sh(r.dir, r.w, 'push', '-q', 'origin', 'feature')
+    writeFileSync(join(r.dir, 'ok.md'), 'clean words\n')
+    assert.equal(hook('gh pr comment 3 --body-file ok.md', { r }).out, '')
+    assert.equal(hook("gh pr comment 3 --body-file - <<'EOF'\nclean words\nEOF", { r }).out, '')
+    assert.equal(hook('gh pr comment 3 --body "a << b is fine"', { r }).out, '')
+  })
+})
+
 describe('public-push-guard: wiring', () => {
   it('has a settings entry that runs the hook as a PreToolUse hook on Bash, with room for its own budget', () => {
     const own = JSON.parse(readFileSync(join(ROOT, 'scripts', 'claude-hooks', 'public-push-guard.settings.json'), 'utf8'))
