@@ -59,6 +59,9 @@
 # "live" is "pages", switching nginx changes nothing a visitor sees. The rollback is
 # then on Pages (the dashboard: the previous production deployment), or the domain's
 # CNAME back to the tunnel, after rolling nginx to the release you want if needed.
+# So with "live": "pages" rollback switches nginx and then exits 3: a caller such as
+# ship-bot's rollback step reports a failed rollback, never "rolled back". The nginx
+# switch alone exits 0 with SITE_ROLLBACK_NGINX_ONLY=1.
 #   - The upload is staged in a temp directory without the engine's files and passes
 #     the upload guard (pages_guard: what nginx denies and Pages cannot, plus the
 #     free plan's limits). "allow" exempts paths from it; * is one path segment.
@@ -1007,12 +1010,19 @@ pages_wrangler_failed() {
   local log
   {
     echo "[site-deploy] wrangler's last output:"
-    tail -n 40 "${PAGES_TMP}/wrangler.out" 2>/dev/null | sed 's/^/    /'
+    tail -n 40 "${PAGES_TMP}/wrangler.out" 2>/dev/null | pages_mask_ids | sed 's/^/    /' || true
     while IFS= read -r log; do
       echo "[site-deploy] the end of wrangler's log ${log##*/}:"
-      tail -n 40 "${log}" | pages_mask | sed 's/^/    /'
+      tail -n 40 "${log}" 2>/dev/null | pages_mask | pages_mask_ids | sed 's/^/    /' || true
     done < <(find "${PAGES_TMP}/logs" -type f 2>/dev/null | sort)
   } >&2
+}
+
+# wrangler's debug logs carry API paths with the account id, which ship-bot masks
+# only when it is in cloudflare-pages.env. Cloudflare account and zone ids are 32
+# hex characters, so mask every such run in a failure dump.
+pages_mask_ids() {
+  sed -E 's/[0-9a-fA-F]{32}/[REDACTED]/g'
 }
 
 # Ask the account for its Pages projects. This is the first call that uses the
@@ -1360,9 +1370,15 @@ cmd_rollback() {
   # must not stop a rollback, so anything but a clear "pages" takes the usual check.
   local live=""
   live="$(pages_row "${SITE_FLEET_FILE:-${SCRIPT_DIR}/../fleet.json}" "${SITE}" 2>/dev/null | sed -n 3p)" || live=""
+  # It exits 3, so a caller such as ship-bot's rollback step reports a failed rollback
+  # and never "rolled back" while visitors still see the bad Pages release. A person
+  # who wants only the nginx switch (before pointing the CNAME back) passes
+  # SITE_ROLLBACK_NGINX_ONLY=1, which exits 0.
   if [[ "${live}" == pages ]]; then
-    echo "dapyllil NOT CHECKED: the domain is served by Pages (\"live\": \"pages\"). This switched nginx only. To take visitors back, roll back the deployment on Pages, or point the domain's CNAME back at the tunnel."
-    return 0
+    echo "dapyllil NOT CHECKED: the domain is served by Pages (\"live\": \"pages\"). This switched nginx only. To take visitors back, roll back the deployment on Pages, or point the domain's CNAME back at the tunnel." >&2
+    if [[ "${SITE_ROLLBACK_NGINX_ONLY:-0}" == 1 ]]; then return 0; fi
+    echo "[site-deploy] Visitors still see the Pages release, so this rollback is not done (exit 3). SITE_ROLLBACK_NGINX_ONLY=1 accepts the nginx-only switch." >&2
+    return 3
   fi
   check_current_live
 }

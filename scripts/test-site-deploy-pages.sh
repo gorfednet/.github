@@ -435,10 +435,19 @@ reset
 FAKE_WRANGLER_FAIL=1 refused "live pages: Pages failing" 'the domain is served by Pages, so visitors still see the previous one' deploy dist
 # rollback switches nginx only, checks nothing on the domain, and says what to do.
 reset
-must_run "live pages: rollback" rollback
+# It exits 3, so ship-bot's rollback step never reports "rolled back" while visitors
+# still see the bad Pages release.
+refused "live pages: rollback is not done" 'this rollback is not done (exit 3)' rollback
+assert "live pages: rollback exits 3" grep -q 'exit 3' "${out}"
 assert "live pages: rollback says it switched nginx only" grep -q 'This switched nginx only' "${out}"
 assert "live pages: rollback names the CNAME" grep -q "point the domain's CNAME back at the tunnel" "${out}"
 assert "live pages: rollback asks the domain nothing" test ! -s "${STUB_CURL_LOG}"
+# A person who wants only the nginx switch says so, and it exits 0.
+reset
+SITE_ROLLBACK_NGINX_ONLY=1 must_run "live pages: nginx-only rollback accepted" rollback
+assert "live pages: nginx-only rollback still says so" grep -q 'This switched nginx only' "${out}"
+if grep -q 'this rollback is not done' "${out}"; then fail "live pages: nginx-only rollback must not say it is not done"; fi
+pass
 # With nginx serving, rollback still runs its live check.
 row "${BOTH}"
 cp "${site_dir}/releases/${base}/index.html" "${tmp}/base.html"
