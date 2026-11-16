@@ -97,4 +97,4 @@ Left alone: `retries` settings, and unit "hang" bounds with wide margins. Neithe
 - The week is at 80% of all models and 66% of Fable. It resets Friday 20 November 2026 at 05:00 ET.
 - Fable work before the reset: 1.1 (small, here), 1.2 (one session), 2.5 and 2.6 (small). Everything else before the reset is Sonnet or Haiku.
 - Wave 3's design waits for the reset. Nothing in waves 1 and 2 depends on it.
-- About 18 small sessions in all, each ending when its pull request merges. 4 are Fable, 1 is Haiku and 13 are Sonnet.
+- About 24 small sessions in all, each ending when its pull request merges: 4 Fable, 1 Haiku, 1 Opus (item 1.1) and 18 Sonnet. 2.10 rides inside the 2.2 sessions. Before the reset: 2 Fable (1.2, then 2.5), 12 Sonnet (1.3, 2.1, 2.2, 2.3, 2.4, 2.8, 2.9) and 1 Haiku. 2.6 runs only once those land.
