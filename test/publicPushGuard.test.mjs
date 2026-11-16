@@ -223,7 +223,7 @@ describe('public-push-guard: a public repository is checked before the push', ()
     const x = hook('git push origin feature', { r })
     assert.ok(denied(x), x.out)
     assert.doesNotMatch(x.out, /secret-repo/)
-    assert.match(reason(x), /path#[0-9a-f]{8}:1:/)
+    assert.match(reason(x), /path(?:#| hash )[0-9a-f]{8}:1:/) // the guard's own wording has changed once; the hash is what matters
   })
 })
 

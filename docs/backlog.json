@@ -795,13 +795,12 @@
     {
       "id": "public-push-guard-spelled-in-pieces",
       "title": "public-push-guard: a push spelled in pieces inside inline code is not read",
-      "status": "in-review",
+      "status": "confirmed-bug",
       "assignee": "main-model",
       "userSymptom": "A session that runs python3 -c with the word push built from parts (for example 'pu'+'sh') publishes to a public repository with no check.",
       "evidence": "Claude review of .github 216 at 592f83d (16 November 2026): the hook's own filter looks for the literal word push after quotes are stripped, so 'pu'+'sh' never reaches the inline-interpreter rule, though the wrapper's looser filter passes it on. One way to close it: send any command that runs inline code and holds git or gh through the plain-command check, whatever the text says.",
       "note": "Deferred by Desk on 16 November 2026: the guard catches accidental pushes, not code that builds the word deliberately, and no pattern list catches every spelling (the settings deny list says the same). Not fixed in .github 216; any finding outside the README's covered list is triaged the same way.",
       "reviewBy": "2026-11-30",
-      "pr": 216,
       "created": "2026-11-16",
       "updated": "2026-11-16"
     },
