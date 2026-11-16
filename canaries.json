@@ -726,8 +726,8 @@
       "guards": "The allowlist can exempt one commit message. Ignored, a message with a value is red for good, because force push is denied.",
       "command": "node --test --test-name-pattern='cannot be rewritten' test/privacyGuard.test.mjs",
       "file": "scripts/privacy-guard.mjs",
-      "find": "if (allow.commits.some((c) => full.toLowerCase().startsWith(c))) continue",
-      "replace": "if (false) continue"
+      "find": "const exempt = allow.commits.includes(full.toLowerCase())",
+      "replace": "const exempt = false"
     },
     {
       "id": "privacy-guard-sets-rename-origin-after-the-scan",
@@ -827,10 +827,10 @@
     },
     {
       "id": "privacy-guard-excuses-any-letter-before-an-address",
-      "guards": "Only a v that starts a word excuses a dotted number as a version. Any other letter (a flag, a host name, an escape) must not.",
+      "guards": "A letter before a dotted number is no excuse: a flag, a host name, an escape. Excused, an address written right after a letter passes.",
       "command": "node --test --test-name-pattern='take a version for an address' test/privacyGuard.test.mjs",
       "file": "scripts/privacy-guard.mjs",
-      "find": "'(?<![\\\\d.])(?<!(?<![A-Za-z0-9])[vV])(?:' +",
+      "find": "'(?<![\\\\d.])(?:' +",
       "replace": "'(?<![\\\\d.])(?<![A-Za-z])(?:' +"
     },
     {
@@ -862,8 +862,64 @@
       "guards": "The owner-quote value ends at the closing quote. Run to the end of the line, editing text after a quote the base already holds goes red for good.",
       "command": "node --test --test-name-pattern='owner quote in a file whose marker' test/privacyGuard.test.mjs",
       "file": "scripts/privacy-guard.mjs",
-      "find": "[\"“][^\"”\\n]{0,200}[\"”]?|\\bowner:",
-      "replace": "[\"“][^\\n]{0,200}|\\bowner:"
+      "find": "[^\"”\\\\n]{0,200}[\"”]?` +",
+      "replace": "[^\\\\n]{0,200}` +"
+    },
+    {
+      "id": "privacy-guard-excuses-a-v-before-an-address",
+      "guards": "A v before a four-part address is not a version. Every private IPv4 address has four parts, so excusing a v let v10 and three more parts through.",
+      "command": "node --test --test-name-pattern='take a version for an address' test/privacyGuard.test.mjs",
+      "file": "scripts/privacy-guard.mjs",
+      "find": "'(?<![\\\\d.])(?:' +",
+      "replace": "'(?<![\\\\d.])(?<!(?<![A-Za-z0-9])[vV])(?:' +"
+    },
+    {
+      "id": "privacy-guard-takes-code-for-an-owner-quote",
+      "guards": "The comma shape needs a date right after the comma. With any digit later on the line, code that destructures owner beside a number and a string reads as a quote.",
+      "command": "node --test --test-name-pattern='near misses that must stay clean' test/privacyGuard.test.mjs",
+      "file": "scripts/privacy-guard.mjs",
+      "find": "(?:(?:19|20)\\\\d\\\\d|\\\\d{1,2}\\\\s+${MONTH}|${MONTH}\\\\s+\\\\d)[^\"“\\\\n]{0,60}?",
+      "replace": "[^\"“\\\\n]{0,60}?\\\\d[^\"“\\\\n]{0,40}?"
+    },
+    {
+      "id": "privacy-guard-takes-a-key-for-an-owner-quote",
+      "guards": "The colon shape skips owner as a key: first on its line, or after a brace or a comma. Without that, an object literal with a two-word value reads as a quote.",
+      "command": "node --test --test-name-pattern='near misses that must stay clean' test/privacyGuard.test.mjs",
+      "file": "scripts/privacy-guard.mjs",
+      "find": "'|(?<!(?:^|[{,\\\\n])[ \\\\t]*)\\\\bowner:",
+      "replace": "'|\\\\bowner:"
+    },
+    {
+      "id": "privacy-guard-refuses-new-design-notes",
+      "guards": "main holds public design notes under docs/plans, and plan row 1.30 moves the plan of record, not those. Refused, every later design note PR goes red.",
+      "command": "node --test --test-name-pattern='design note under docs/plans' test/privacyGuard.test.mjs",
+      "file": "scripts/privacy-guard.mjs",
+      "find": "export const FORBIDDEN_NEW_DIRS = ['docs/desk/', 'docs/handoff/', 'briefs/']",
+      "replace": "export const FORBIDDEN_NEW_DIRS = ['docs/desk/', 'docs/handoff/', 'docs/plans/', 'briefs/']"
+    },
+    {
+      "id": "privacy-guard-ignores-a-commit-exemption-for-its-diff",
+      "guards": "A commit line in main's allowlist exempts that commit's own diff. Ignored, a false positive in a commit that is not the tip is red for good: fixing forward leaves it in history, and force push is denied.",
+      "command": "node --test --test-name-pattern='cleared without a rewrite' test/privacyGuard.test.mjs",
+      "file": "scripts/privacy-guard.mjs",
+      "find": "if (allow.commits.includes(c.sha)) {",
+      "replace": "if (false) {"
+    },
+    {
+      "id": "privacy-guard-takes-a-short-commit-prefix",
+      "guards": "A commit exemption names the full 40-hex id. A short prefix can be matched by a commit made to share it, which would exempt a leak.",
+      "command": "node --test --test-name-pattern='short or not hex' test/privacyGuard.test.mjs",
+      "file": "scripts/privacy-guard.mjs",
+      "find": "/^[0-9a-f]{40}$/i.test(value)",
+      "replace": "/^[0-9a-f]{7,40}$/i.test(value)"
+    },
+    {
+      "id": "privacy-guard-hides-the-way-out-of-a-stuck-commit",
+      "guards": "A finding in a commit that is not the tip gets the full id and the allowlist way out. Without it, the advice is to rewrite a branch that cannot be force pushed.",
+      "command": "node --test --test-name-pattern='stays red after a fix forward' test/privacyGuard.test.mjs",
+      "file": "scripts/privacy-guard.mjs",
+      "find": "if (own.length > 0) stuck.add(c.sha)",
+      "replace": "if (false) stuck.add(c.sha)"
     },
     {
       "id": "privacy-guard-decodes-a-path-by-code-unit",

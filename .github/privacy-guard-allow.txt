@@ -5,8 +5,9 @@
 #   email <domain-or-address>     an address, or a domain and its subdomains
 #   path <glob> <rule,rule | *>   the named rules are not applied to matching files
 #   repo <name>                   a private repository whose name public files may use
-#   commit <sha>                  a commit (7 to 40 hex) whose message findings are exempt. A pushed
-#                                 message cannot be rewritten, so this is the way out of a red one.
+#   commit <sha>                  a commit (the full 40 hex) whose own diff and message are exempt.
+#                                 A pushed commit cannot be rewritten, so this clears a false
+#                                 positive in one that is not the tip. The net diff is still read.
 #
 # Rules: private-ip, session-id, tailnet-name, internal-host, private-repo, email,
 # owner-quote, new-file. The reserved example domains need no line: they are built in.

@@ -38,7 +38,8 @@
  *   email          an address that is not a noreply, a bot identity already on main or an
  *                  allowlisted domain (not checked in commit messages)
  *   owner-quote    an owner marker with a date, a colon or comma, and then an opening quote
- *   new-file       a new file under docs/desk/, docs/handoff/, docs/plans/ or briefs/
+ *   new-file       a new file under docs/desk/, docs/handoff/ or briefs/ (not docs/plans/:
+ *                  main holds public design notes there)
  *
  * Files git treats as binary are read as text (`--text`), so a `.gitattributes` line in
  * the change cannot switch the guard off. No file is skipped by name or type: a text file
@@ -50,11 +51,19 @@
  * A finding names the rule and the place, never the value. A file whose own name holds a
  * value is shown as `path hash <8 hex>` (the path's sha1) and gets no annotation.
  * An address is not read in minified SVG path data (a `d` or `points` attribute that is
- * only drawing data), nor after a v that starts a word (a version); a domain of numbers (an npm tag)
- * is a version tag, not an email.
+ * only drawing data). A letter before an address is no excuse, a v included: every private
+ * IPv4 address has four parts, and a version of three (v10.1.2) never matches. A domain of
+ * numbers (an npm tag) is a version tag, not an email.
  *
  * The allowlist is read from the MERGE BASE, never from the change: an exemption takes
  * effect only after its own pull request has merged. Format in .github/privacy-guard-allow.txt.
+ *
+ * A false positive in a commit that is not the tip cannot be fixed forward: the commit stays
+ * in the branch, and force push is denied. The way out is a `commit <full sha>` line, merged
+ * to main first. It exempts that commit's own diff and its message, never the net diff, so
+ * the tree a merge lands is still read whole. The change being judged cannot exempt itself:
+ * the line is read from the merge base, and it names one full 40-hex id, so a commit made to
+ * share a short prefix with an exempt one is still read.
  *
  * Usage:
  *   PRIVATE_REPOS=name-one,name-two node scripts/privacy-guard.mjs --base <ref> --head <ref>
@@ -91,7 +100,9 @@ export const INTERNAL_HOSTS = ['dapyl' + 'lil', 'gorfedna' + 's', 'gorfpa' + 'el
 
 // New files under these are refused: runbooks, plans, handoffs and briefs live in the
 // private ops repository (plan row 1.30).
-export const FORBIDDEN_NEW_DIRS = ['docs/desk/', 'docs/handoff/', 'docs/plans/', 'briefs/']
+// docs/plans/ is not here: main holds public design notes there for the shared CI and the
+// fleet tools, and plan row 1.30 moves the plan of record, not those notes.
+export const FORBIDDEN_NEW_DIRS = ['docs/desk/', 'docs/handoff/', 'briefs/']
 
 /** Exit status for "no commits in the range": nothing was read, and that is not a pass. */
 export const EXIT_NOTHING_TO_READ = 3
@@ -107,10 +118,10 @@ export const bareScope = () => 'word'
 export const ALLOWLIST_PATH = '.github/privacy-guard-allow.txt'
 
 const O = '(?:25[0-5]|2[0-4]\\d|1?\\d?\\d)'
-// Not after a digit or dot (a longer number), and not a version: a v or V that starts a word
-// right before it. Any other letter before it is no excuse (a flag, a host, an escape).
+// Not after a digit or dot (a longer number). A letter before it is no excuse (a flag, a
+// host, an escape, a v): v10 followed by three more parts reads as an address.
 const PRIVATE_IP = new RegExp(
-  '(?<![\\d.])(?<!(?<![A-Za-z0-9])[vV])(?:' +
+  '(?<![\\d.])(?:' +
     `10(?:\\.${O}){3}` +
     `|172\\.(?:1[6-9]|2\\d|3[01])(?:\\.${O}){2}` +
     `|192\\.168(?:\\.${O}){2}` +
@@ -126,10 +137,18 @@ const TAILNET = /(?<![A-Za-z0-9.-])(?:[A-Za-z0-9-]+\.)+ts\.net(?![A-Za-z0-9-])|\
 // Not next to a letter or digit; an underscore or hyphen is a boundary (DAPY_HOST, bc-x-host).
 const INTERNAL = new RegExp(`(?<![A-Za-z0-9])(?:${INTERNAL_HOSTS.join('|')})(?![A-Za-z0-9])`, 'gi')
 const EMAIL = /(?<![A-Za-z0-9._%+-])[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/g
-// Two shapes. The word owner, a comma, a date (a digit within 60 characters), then a colon
-// or comma and an opening quote. Or the word owner, a colon, and a quote that holds a
-// space, so a GraphQL owner: "org" argument is not a quote.
-const OWNER_QUOTE = /\bowner,\s+[^"“\n]{0,60}?\d[^"“\n]{0,40}?[:,]\s*["“][^"”\n]{0,200}["”]?|\bowner:\s*["“][^"”\s]+\s[^"”\n]{0,200}["”]?/gi
+// Two shapes. The word owner, a comma, then a date right after it (a year, an ISO date, a
+// day and a month name, or a month name and a day), then a colon or comma and an opening
+// quote. A code object that destructures owner and later holds a number and a string is
+// not one. Or the word owner, a colon, and a quote that holds a space, unless owner is a key
+// (first on its line, or after a brace or a comma), so a GraphQL owner: "org" argument
+// and an object literal are not quotes.
+const MONTH = '(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\\.?'
+const OWNER_QUOTE = new RegExp(
+  `\\bowner,\\s+(?:(?:19|20)\\d\\d|\\d{1,2}\\s+${MONTH}|${MONTH}\\s+\\d)[^"“\\n]{0,60}?[:,]\\s*["“][^"”\\n]{0,200}["”]?` +
+    '|(?<!(?:^|[{,\\n])[ \\t]*)\\bowner:\\s*["“][^"”\\s]+\\s[^"”\\n]{0,200}["”]?',
+  'gi',
+)
 
 // A filename that looks like an address (hero@2x.png, getty@tty1.service) is not one.
 // Only names that are not real top-level domains: .md is Moldova's, so it is not here.
@@ -193,8 +212,9 @@ function globToRegex(glob) {
  *   email <domain-or-address>       domain also covers its subdomains
  *   path <glob> <rule,rule | *>     the named rules are not applied to matching files
  *   repo <name>                     a private repository whose name public files may use
- *   commit <sha>                    a commit (7 to 40 hex) whose MESSAGE findings are exempt: a
- *                                   pushed message cannot be rewritten, so this is the way out
+ *   commit <sha>                    a commit (the full 40 hex) whose own diff and message are
+ *                                   exempt: a pushed commit cannot be rewritten, so this is the
+ *                                   way out. The net diff is still read.
  * A line that is neither is an error: a typo in an exemption must not read as no exemption.
  */
 export function parseAllowlist(text) {
@@ -210,7 +230,7 @@ export function parseAllowlist(text) {
       emails.push(value.toLowerCase())
     } else if (kind === 'repo' && value && !rules && /^[A-Za-z0-9._-]+$/.test(value)) {
       repos.push(value.toLowerCase())
-    } else if (kind === 'commit' && value && !rules && /^[0-9a-f]{7,40}$/i.test(value)) {
+    } else if (kind === 'commit' && value && !rules && /^[0-9a-f]{40}$/i.test(value)) {
       commits.push(value.toLowerCase())
     } else if (kind === 'path' && value && rules) {
       const set = rules === '*' ? '*' : new Set(rules.split(','))
@@ -221,7 +241,7 @@ export function parseAllowlist(text) {
       }
       paths.push({ re: globToRegex(value), rules: set })
     } else {
-      throw new Error(`allowlist line ${i + 1}: expected "email <domain-or-address>", "repo <name>", "commit <sha>" or "path <glob> <rules|*>"`)
+      throw new Error(`allowlist line ${i + 1}: expected "email <domain-or-address>", "repo <name>", "commit <40-hex sha>" or "path <glob> <rules|*>"`)
     }
   })
   return { emails, paths, repos, commits }
@@ -738,6 +758,8 @@ export function run(argv, env = process.env, out = console) {
 
   let linesRead = 0
   let filesRead = new Set()
+  const exempted = new Set() // allowlisted commits whose own diff or message had a finding
+  const stuck = new Set() // commits with a finding in their own diff or message, which the tip cannot clear
   try {
     const first = scanDiff(net, null, ctx, base, new Map())
     take(first.findings)
@@ -747,12 +769,20 @@ export function run(argv, env = process.env, out = console) {
     // Then each commit's own diff. The net diff above is what a merge would land; this is
     // what the push publishes. A value added in one commit and removed in the next is in
     // the second and not the first. A merge commit contributes what it wrote itself.
+    // An allowlisted commit is still read (its renames carry to later commits), and what
+    // its own diff finds is dropped. The net diff above is never exempt.
     const origin = new Map()
     for (const c of commits) {
       let diff
       if (c.parents.length > 1) diff = readMerge(dir, c.parents, c.sha)
       else diff = readDiff(dir, c.parents[0] ?? EMPTY_TREE, c.sha)
-      take(scanDiff(diff, c.short, ctx, base, origin).findings)
+      const { findings: own } = scanDiff(diff, c.short, ctx, base, origin)
+      if (allow.commits.includes(c.sha)) {
+        if (own.length > 0) exempted.add(c.sha)
+      } else {
+        if (own.length > 0) stuck.add(c.sha) // counted before the dedup: the net diff may hold the same value
+        take(own)
+      }
     }
   } catch (error) {
     out.error(`privacy-guard: cannot trust the diff, so nothing was checked: ${error.message}`)
@@ -760,7 +790,7 @@ export function run(argv, env = process.env, out = console) {
   }
 
   // Commit messages are public too. The finding is "commit <sha>", never the text. An
-  // allowlisted `commit <sha>` exempts that commit's message and nothing else.
+  // allowlisted `commit <sha>` exempts that commit's message and its own diff.
   // -z separates commits with NUL, which a commit message cannot hold; a control character
   // a message can hold (\x01, \x02) would otherwise split an entry and hide text.
   let messageCount = 0
@@ -770,10 +800,14 @@ export function run(argv, env = process.env, out = console) {
     const sha = full.slice(0, 7)
     const body = entry.slice(nl + 1)
     messageCount += 1
-    if (allow.commits.some((c) => full.toLowerCase().startsWith(c))) continue
+    const exempt = allow.commits.includes(full.toLowerCase())
     body.split('\n').forEach((text, i) => {
       for (const hit of scanText(text, ctx, COMMIT_RULES, 'word')) {
-        findings.push({ path: `commit ${sha}`, line: i + 1, rule: hit.rule, value: hit.value, sha, message: true })
+        if (exempt) exempted.add(full.toLowerCase())
+        else {
+          stuck.add(full.toLowerCase())
+          findings.push({ path: `commit ${sha}`, line: i + 1, rule: hit.rule, value: hit.value, sha, message: true })
+        }
       }
     })
   }
@@ -816,14 +850,25 @@ export function run(argv, env = process.env, out = console) {
     out.log('::warning title=privacy-guard::This change edits the guard, its workflow or its allowlist. Read every line it adds.')
   }
 
+  if (exempted.size > 0) {
+    out.log(`privacy-guard: ${exempted.size} commit(s) had findings in their own diff or message that a \`commit <sha>\` allowlist line exempts`)
+  }
+
   if (findings.length > 0) {
     out.log(
       `privacy-guard: ${findings.length} finding(s) on what ${range} adds. This repository is public; ` +
-        'remove the value, or describe it without naming it. Runbooks, plans and handoffs belong in the private ops repository. ' +
-        'The finding names the rule and the place, never the value, so the log does not repeat it; a file whose own name holds the value is shown by a hash of its path (the first 8 hex of the path\'s sha1). ' +
-        'History is public too: a value that a later commit removes still counts, so rewrite the branch before it is pushed. ' +
-        'A commit message that cannot be rewritten has one way out: a `commit <sha>` line in the allowlist, merged first.',
+        'remove the value, or describe it without naming it. Runbooks, handoffs and briefs belong in the private ops repository. ' +
+        'The finding names the rule and the place, never the value, so the log does not repeat it; a file whose own name holds the value is shown by a hash of its path (the first 8 hex of the path\'s sha1).',
     )
+    // A finding in a commit's own diff or message stays after a fix on the tip: history is
+    // public too. Say the way out that needs no rewrite, with the full id it needs.
+    if (stuck.size > 0) {
+      out.log(
+        `privacy-guard: ${stuck.size} commit(s) have a finding in their own diff or message, which a fix on the tip does not clear: ${[...stuck].join(' ')}. ` +
+          'Before a push, rewrite the branch. Once pushed, force push is denied, so: for a real value, start a new branch from main with the final change and close this one, so the value stays off main. ' +
+          'For a false positive, merge a pull request to main that adds `commit <full sha>` to the allowlist. It exempts that commit\'s own diff and message only; the final tree is still read.',
+      )
+    }
     return 1
   }
   out.log(

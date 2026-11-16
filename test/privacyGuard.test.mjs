@@ -134,12 +134,21 @@ describe('privacy guard: each rule fails once when its value is added', () => {
     })
   }
 
-  it('fails on a new file under docs/desk, docs/handoff, docs/plans and briefs, whatever it says', () => {
-    for (const dir of ['docs/desk', 'docs/handoff', 'docs/plans', 'briefs']) {
+  it('fails on a new file under docs/desk, docs/handoff and briefs, whatever it says', () => {
+    for (const dir of ['docs/desk', 'docs/handoff', 'briefs']) {
       const r = guard({ after: { [`${dir}/x.md`]: 'plain text\n' } })
       assert.equal(r.status, 1, `${dir}: ${r.out}`)
       assert.match(r.out, /\[new-file\]/)
     }
+  })
+
+  it('lets a new design note under docs/plans through, and still reads what it says', () => {
+    // main holds public design notes there; plan row 1.30 moves the plan of record, not these.
+    assert.equal(guard({ after: { 'docs/plans/shared-ci.md': 'plain text\n' } }).status, 0)
+    const r = guard({ after: { 'docs/plans/shared-ci.md': `${PLANT['private-ip']}\n` } })
+    assert.equal(r.status, 1, r.out)
+    assert.match(r.out, /\[private-ip\]/)
+    assert.doesNotMatch(r.out, /\[new-file\]/)
   })
 })
 
@@ -364,6 +373,13 @@ describe('privacy guard: near misses that must stay clean', () => {
     '8.8.8.8',
     'version 10.0.0 and 10.1.2',
     'owner: "gorfednet"',
+    // Code, not quotes: owner destructured beside a number and a string, or owner as a key.
+    `run({ ${'owne' + 'r'}, n: 2, title: "a b" })`,
+    `{ ${'owne' + 'r'}: "the org" }`,
+    `  ${'owne' + 'r'}: "the org",`,
+    `x, ${'owne' + 'r'}: "a b"`,
+    `readMeter({ ${'owne' + 'r'}, now = new Date(), cap, json })`,
+    'needs v10.1.2 and 10.1.2',
     'gorfednet/.github and gorfednet/secret-repo-two',
     'getty@tty1.service and hero@2x.png',
     'plain host names like hostname.example.com',
@@ -383,6 +399,11 @@ describe('privacy guard: more shapes that must fail', () => {
     'host after an underscore': `${'DAPYL' + 'LIL'}_HOST=x and runner_${'dapyl' + 'lil'}`,
     'owner quote with a comma before the quote': `(${'owne' + 'r'}, 7 November 2026, "automate as much as you can")`,
     'owner quote, colon form with a sentence': `(${'owne' + 'r'}: "stop asking me in all sessions")`,
+    'owner quote with an ISO date': `(${'owne' + 'r'}, 2026-10-19: "do it")`,
+    'owner quote with the month first': `(${'owne' + 'r'}, Nov 7, 2026: "do it")`,
+    'owner quote with a time after the date': `(${'owne' + 'r'}, 16 Nov 2026, 07:23 ET: "do it")`,
+    'owner quote, colon form after a dash': `- ${'owne' + 'r'}: "stop asking me"`,
+    'a v stuck to a four-part address': `see v${['10', '0', '0', '5'].join('.')} now`,
     'org given as an Actions expression': '${{ github.repository_owner }}/' + 'secret-repo',
     'org slash encoded': `${'gorfednet' + '%2F'}secret-repo`,
     'an address at a real top-level domain that looks like a file extension': `${'someone' + '@'}mail.md`,
@@ -855,7 +876,7 @@ describe('privacy guard: a commit message that cannot be rewritten can be exempt
     assert.equal(scenario(build).status, 1)
   })
 
-  it('passes when the allowlist names that commit, by a 7-character prefix', () => {
+  it('passes when the allowlist names that commit by its full id', () => {
     let head
     const r = scenario(
       (a) => {
@@ -895,10 +916,83 @@ describe('privacy guard: a commit message that cannot be rewritten can be exempt
     assert.match(second.out, /message line 1/)
   })
 
-  it('is a parse error when the sha is too short or not hex, never a silent no-op', () => {
+  it('is a parse error when the sha is short or not hex, never a silent no-op', () => {
+    // A short prefix could be matched by a commit made to share it, so only the full id counts.
     assert.throws(() => parseAllowlist('commit abc12\n'), /allowlist line 1/)
+    assert.throws(() => parseAllowlist('commit abcdef1\n'), /allowlist line 1/)
+    assert.throws(() => parseAllowlist(`commit ${'a'.repeat(39)}\n`), /allowlist line 1/)
     assert.throws(() => parseAllowlist('commit zzzzzzzz\n'), /allowlist line 1/)
-    assert.deepEqual(parseAllowlist('commit ABCDEF1\n').commits, ['abcdef1'])
+    assert.deepEqual(parseAllowlist(`commit ${'ABCDEF12'.repeat(5)}\n`).commits, ['abcdef12'.repeat(5)])
+  })
+})
+
+describe('privacy guard: a false positive in a commit that is not the tip can be cleared without a rewrite', () => {
+  const allowWith = (...shas) => (dir) => {
+    const file = join(dir, '..', `allow-own-${shas[0].slice(0, 7)}.txt`)
+    writeFileSync(file, shas.map((sha) => `commit ${sha}\n`).join(''))
+    return ['--allow', file]
+  }
+  const ip = ['10', '0', '0', '5'].join('.')
+  // c1 adds a value, c2 fixes it forward: only c1's own diff still holds it.
+  const fixedForward = (keep) => (a) => {
+    a.commit('base', { 'README.md': 'hello\n' })
+    a.branch('pr')
+    keep.c1 = a.commit('add', { 'a.md': `top\nserver ${ip}\n` })
+    keep.c2 = a.commit('fix forward', { 'a.md': 'top\n' })
+  }
+
+  it('stays red after a fix forward, and names the full commit id and the way out', () => {
+    const keep = {}
+    const r = scenario(fixedForward(keep))
+    assert.equal(r.status, 1, r.out)
+    assert.match(r.out, /commit [0-9a-f]{7}: a\.md:2: .*\[private-ip\]/)
+    assert.ok(r.out.includes(keep.c1), 'the advice gives the full id the allowlist line needs')
+    assert.match(r.out, /adds `commit <full sha>` to the allowlist/)
+  })
+
+  it('passes once main\'s allowlist names that commit, and says it exempted one', () => {
+    const keep = {}
+    const r = scenario(fixedForward(keep), { args: (dir) => allowWith(keep.c1)(dir) })
+    assert.equal(r.status, 0, r.out)
+    assert.match(r.out, /1 commit\(s\) had findings in their own diff or message that a `commit <sha>` allowlist line exempts/)
+  })
+
+  it('never exempts the net diff: a value still in the final tree stays red', () => {
+    const keep = {}
+    const r = scenario(
+      (a) => {
+        a.commit('base', { 'README.md': 'hello\n' })
+        a.branch('pr')
+        keep.c1 = a.commit('add', { 'a.md': `server ${ip}\n` })
+      },
+      { args: (dir) => allowWith(keep.c1)(dir) },
+    )
+    assert.equal(r.status, 1, r.out)
+    assert.match(r.out, /a\.md:1: .*\[private-ip\]/)
+  })
+
+  it('exempts only the named commit: the same value added again by a later one stays red', () => {
+    const keep = {}
+    const r = scenario(
+      (a) => {
+        fixedForward(keep)(a)
+        keep.c3 = a.commit('again', { 'a.md': `top\nserver ${ip}\n` })
+        a.commit('fix again', { 'a.md': 'top\n' })
+      },
+      { args: (dir) => allowWith(keep.c1)(dir) },
+    )
+    assert.equal(r.status, 1, r.out)
+    assert.match(r.out, new RegExp(`commit ${keep.c3.slice(0, 7)}: a\\.md:2: .*\\[private-ip\\]`))
+  })
+
+  it('cannot be granted by the change itself: an allowlist line the branch adds does nothing', () => {
+    const keep = {}
+    const r = scenario((a) => {
+      fixedForward(keep)(a)
+      a.commit('exempt myself', { '.github/privacy-guard-allow.txt': `commit ${keep.c1}\n` })
+    })
+    assert.equal(r.status, 1, r.out)
+    assert.match(r.out, /\[private-ip\]/)
   })
 })
 
@@ -1220,10 +1314,11 @@ describe('privacy guard: false positives it must not raise', () => {
     })
   const ip = ['10', '0', '0', '5'].join('.')
 
-  it('does not take a version for an address, and still takes an address after any other letter or a punctuation mark', () => {
-    const v = ['10', '1', '2', '3'].join('.')
+  it('does not take a version for an address, and still takes an address after any letter or a punctuation mark', () => {
+    // Every private IPv4 address has four parts, so a three-part version never matches.
+    const v = ['10', '1', '2'].join('.')
     assert.equal(scan({ 'a.md': `needs v${v} and V${v} and go v${v}\n` }).status, 0)
-    for (const text of [`user@${ip}`, `host=${ip}`, `(${ip})`, `ssh ${ip}`, `curl -x${ip}`, `nas-${ip}`, `IP${ip}`, `ev${ip}`, `x-${ip}`, `1-${ip}`]) {
+    for (const text of [`v${ip}`, `V${ip}`, `user@${ip}`, `host=${ip}`, `(${ip})`, `ssh ${ip}`, `curl -x${ip}`, `nas-${ip}`, `IP${ip}`, `ev${ip}`, `x-${ip}`, `1-${ip}`]) {
       assert.equal(scan({ 'a.md': `${text}\n` }).status, 1, text)
     }
     assert.equal(scan({ 'a.md': `"nameserver\\n${ip}"\n` }).status, 1, 'after an escape written as text')
