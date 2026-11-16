@@ -168,7 +168,10 @@ function nodeVersion(program) {
   }
 }
 
-/** Installed agents whose Node reports a version other than the recorded one; recorded is null when there is no record. */
+/**
+ * Installed agents whose Node reports a version other than the recorded one; recorded is null when there is no record.
+ * `now` is null when the program exists but its --version fails or times out: that agent is unread, and still gets a row.
+ */
 export function nodeVersionDrift(home, launchAgents) {
   const out = []
   for (const { agent, record } of NODE_RECORDS) {
@@ -183,8 +186,8 @@ export function nodeVersionDrift(home, launchAgents) {
     if (!program.startsWith('/')) continue
     const file = join(home, record)
     const recorded = existsSync(file) ? readFileSync(file, 'utf8').trim() : null
-    const now = nodeVersion(program) // a program that will not run is already reported by privateInterpreters
-    if (now === null) continue
+    const now = nodeVersion(program)
+    if (now === null && !existsSync(program)) continue // a missing program is already reported by privateInterpreters
     if (recorded !== now) out.push({ agent, program, recorded, now })
   }
   return out
@@ -301,6 +304,10 @@ export function installedTools({ home = homedir(), root, launchAgents } = {}) {
   // A Node that is not the one the installer's check.sh passed on.
   for (const d of nodeVersionDrift(home, launchAgents ?? join(home, 'Library', 'LaunchAgents'))) {
     checked++
+    if (d.now === null) {
+      behind.push({ tool: `Node version ${d.agent}`, source: d.program, behind: null, detail: `unread: ${d.program} --version failed or timed out, so its Node version is unknown` })
+      continue
+    }
     const why = d.recorded === null ? 'and no check.sh pass is recorded for it' : `but check.sh passed on ${d.recorded}`
     behind.push({ tool: `Node version ${d.agent}`, source: d.program, behind: null, detail: `runs Node ${d.now}, ${why}: rerun the installer from origin/main` })
   }

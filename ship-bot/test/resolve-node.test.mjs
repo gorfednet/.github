@@ -34,6 +34,16 @@ describe('resolve_node', () => {
     assert.match(r.stderr, /refusing .*\.hermes\/node\/bin\/node: it lives in another tool's private folder/)
   })
 
+  it('refuses a private node when HOME is a symlink to the real home', () => {
+    const home = mac()
+    const link = `${home}-link`
+    symlinkSync(home, link)
+    const r = resolve(link, { RESOLVE_NODE_CANDIDATES: join(home, '.local', 'bin', 'node') })
+    assert.notEqual(r.status, 0)
+    assert.equal(r.stdout, '')
+    assert.match(r.stderr, /another tool's private folder/)
+  })
+
   it('prefers a system node over a private one earlier on PATH, and prints its path', () => {
     const home = mac()
     const sys = join(home, 'usr', 'bin', 'node')
