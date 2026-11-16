@@ -1053,6 +1053,30 @@ describe('public-push-guard: a push hidden in another subcommand, and an unquote
   })
 })
 
+describe('public-push-guard: a push run by an inline interpreter', () => {
+  const plainMsg = /one plain command/
+  it('refuses python, node, perl and ruby running inline code that pushes, alone or inside a commit message', () => {
+    const r = repo({ outgoing: { 'x.md': `${IP}\n` } })
+    for (const c of [
+      `python3 -c 'import os; os.system("git push origin feature")'`,
+      `node -e "require('child_process').execSync('git push origin feature')"`,
+      `perl -e 'system("git push origin feature")'`,
+      `ruby -e 'system("git push origin feature")'`,
+      `python3 -c 'import subprocess; subprocess.run(["g"+"it","push","origin","feature"])'`,
+      `git commit -m "$(python3 -c 'import os; os.system("git push origin feature")')"`,
+      `awk 'BEGIN{system("git push origin feature")}'`,
+    ]) {
+      const x = hook(c, { r })
+      assert.ok(denied(x), c)
+      assert.match(reason(x), plainMsg, c)
+    }
+  })
+  it('near miss: commands that only mention push, or run a script by name, still pass', () => {
+    const r = repo()
+    for (const c of ['echo "git push is slow"', 'grep -r push .', "sed 's/push/pull/' f.txt", 'python3 tool.py push', 'cat f.txt | grep git', "python3 -c 'print(1)'"]) assert.equal(hook(c, { r }).out, '', c)
+  })
+})
+
 describe('public-push-guard: wiring', () => {
   it('has a settings entry that runs the hook as a PreToolUse hook on Bash, with room for its own budget', () => {
     const own = JSON.parse(readFileSync(join(ROOT, 'scripts', 'claude-hooks', 'public-push-guard.settings.json'), 'utf8'))

@@ -849,6 +849,23 @@ function readBodyFile(word, base, heredoc) {
   }
 }
 
+// Commands that only print or search text, so a push word in their arguments is data.
+const INERT = new Set(['echo', 'printf', 'cat', 'grep', 'egrep', 'fgrep', 'rg', 'head', 'tail', 'wc', 'less'])
+const INTERPRETERS = /^(?:python[\d.]*|node(?:js)?|perl|ruby|php|lua|deno|bun|osascript|awk|gawk)$/
+
+/** A word that could carry a push or a gh call to a shell somewhere else (quotes and backslashes dropped). */
+function holdsPush(w) {
+  const t = w.text.replace(/[\\'"]/g, '')
+  return (/\bgit\b/.test(t) && /push/.test(t)) || /\bgh\b/.test(t)
+}
+
+/** An interpreter given code on the command line (-c, -e, -r, --eval, awk's program): it can run anything. */
+function runsInline(x) {
+  const cmd = basename(x.words[0]?.text ?? '')
+  if (cmd === 'awk' || cmd === 'gawk') return x.words.slice(1).some((w) => !w.text.startsWith('-'))
+  return INTERPRETERS.test(cmd) && x.words.slice(1).some((w) => /^-(?:[a-zA-Z]*[ceErpP]|-eval|-exec)\b/.test(w.text) || /^-[ceErpP]$/.test(w.text))
+}
+
 // Subcommands that take no command to run: a commit message or tag message that says "push" is routine.
 const SAFE_GIT = new Set(['add', 'commit', 'log', 'status', 'diff', 'show', 'branch', 'checkout', 'switch', 'restore', 'reset', 'tag', 'merge', 'stash', 'rev-parse', 'rev-list', 'ls-files', 'remote', 'worktree', 'config', 'mv', 'rm', 'revert', 'cherry-pick', 'describe', 'blame', 'init'])
 
@@ -889,14 +906,19 @@ function plain(parsed) {
   // arguments hold: a commit message from a here-document or a variable is routine. Only when nothing else in
   // the command, a substitution included, mentions git or gh.
   const top = parsed.statements.filter((x) => !x.nested)
-  const gitish = (x) => x.words.some((w) => ['git', 'gh'].includes(basename(w.text)))
+  const gitish = (x) => x.words.some((w) => ['git', 'gh'].includes(basename(w.text)) || holdsPush(w)) || runsInline(x)
   if (!parsed.uncertain && top.length === 1 && basename(top[0].words[0].text) === 'git' && SAFE_GIT.has(gitSubcommand(top[0].words)) && !gitConfigPairs(top[0].words) && parsed.statements.every((x) => x === top[0] || !gitish(x))) return false
   const refuse = (why) => deny(`public-push-guard: this command could push or write to GitHub, and the hook checks only one plain command it can read in full (${why}). Run the push or gh write as one plain command from the target directory, with a literal --body-file.`)
   const sts = parsed.statements
   if (parsed.uncertain) refuse('it holds something the hook can\'t read')
   if (sts.some((x) => x.cwd === null || x.words.some((w) => w.open))) refuse('it uses a variable, a substitution or a directory the hook has no value for')
   if (sts.some((x) => x.words.some((w) => (!w.quoted && /[*?[{]/.test(w.text.replace(/\{(?:owner|repo|branch)\}/g, ''))) || w.text.startsWith('--work-tree') || w.text.startsWith('--config-env')))) refuse('it uses a glob, a brace, --work-tree or --config-env')
-  if (!sts.some((x) => x.words.some((w) => ['git', 'gh'].includes(basename(w.text))))) return false
+  if (!sts.some((x) => x.words.some((w) => ['git', 'gh'].includes(basename(w.text))))) {
+    // No word is git or gh. Only a command that just prints or searches text may hold a push word. An interpreter
+    // running inline code, or any other command with git push or gh inside an argument, could run it.
+    if (sts.some((x) => !INERT.has(basename(x.words[0]?.text ?? '')) && (runsInline(x) || x.words.slice(1).some(holdsPush)))) refuse('a command other than a plain text printer holds git push or gh in its arguments, or runs inline code')
+    return false
+  }
   if (sts.length !== 1) refuse('it has more than one command, a pipe, a loop or a wrapper')
   if (!['git', 'gh'].includes(basename(sts[0].words[0].text))) refuse('git or gh sits behind a wrapper')
   if (Object.keys(sts[0].env).some((k) => !['GIT_DIR', 'GH_REPO'].includes(k))) refuse('it sets an environment variable')
