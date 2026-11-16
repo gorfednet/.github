@@ -4,12 +4,12 @@
  *
  *   node scripts/actions-spend-alert.mjs [--in status.json] --spend spend.json
  *
- * Reads the published `actions` block from status.json (the state and `fired`, no figure) and the full reading
+ * Reads the published `actions` block from status.json (a state and an opaque memo, no figure) and the full reading
  * from spend.json (written by fleet-status.mjs --spend-out, kept on the runner), pushes at most one line for
- * the highest threshold newly crossed (70, 90 or 100% of the cap), and records it in `actions.fired` in
- * status.json, which the workflow then publishes: the status branch is the memo between runs. A push that fails records nothing, so the next
- * run (2 hours later) tries again. Needs NTFY_TOKEN and NTFY_URL; without them it warns and records
- * nothing. An unknown reading pushes nothing and leaves the memo alone.
+ * the highest threshold newly crossed (70, 90 or 100% of the cap), and records it in `actions.memo` (an HMAC
+ * under SPEND_MEMO_KEY, so no threshold is readable) in status.json, which the workflow then publishes: the status branch is the memo between runs. A push that fails records nothing, so the next
+ * run (2 hours later) tries again. Needs NTFY_TOKEN, NTFY_URL and SPEND_MEMO_KEY; without them it warns and records
+ * nothing. It prints only "alert sent" or "no alert": this log is public and the band is not. An unknown reading pushes nothing and leaves the memo alone.
  */
 import { readFileSync, renameSync, writeFileSync } from 'node:fs'
 
@@ -55,11 +55,11 @@ if (isMain(import.meta.url)) {
     console.error('::warning::NTFY_URL or NTFY_TOKEN missing, spend alert not posted')
     return false
   }
-  const { status: next, action, due } = await applyAlert(status, meter, push)
+  const { status: next, action } = await applyAlert(status, meter, push, process.env.SPEND_MEMO_KEY)
   if (next !== status) {
     writeFileSync(`${path}.tmp`, `${JSON.stringify(next, null, 2)}\n`)
     renameSync(`${path}.tmp`, path)
   }
-  if (action === 'push-failed') console.error(`::warning::spend alert for ${due}% was not delivered; it retries on the next run`)
-  console.log(`actions-spend-alert: ${action}${due ? ` (${due}%)` : ''}`)
+  if (action === 'push-failed') console.error('::warning::a spend alert was not delivered; it retries on the next run')
+  console.log(`actions-spend-alert: ${action === 'pushed' ? 'alert sent' : 'no alert'}`)
 }

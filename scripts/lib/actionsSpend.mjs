@@ -10,6 +10,7 @@
 // `publicBlock(meter)`: a state (ok, alert or unknown) and the thresholds already pushed, no figure. No
 // per-repository value is kept in either, because a private repository's name must not leave the report.
 
+import { createHmac } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 
 const DAY = 86_400_000
@@ -139,29 +140,48 @@ export function readMeter({ owner, now = new Date(), cap = capUsd(), json }) {
   return { month, readAt: now.toISOString(), capUsd: cap, unknown: failure }
 }
 
-/** The thresholds already pushed this month, from an earlier status.json's `actions`. A new month starts empty. */
-export function carriedFired(earlier, month) {
+/** Opaque memo of the thresholds pushed this month: an HMAC, so the public branch holds no band (70, 90 or 100) and no way to test for one without the key. */
+export const memoTag = (key, month, fired) => createHmac('sha256', key).update(`spend-memo:${month}:${fired.join(',')}`).digest('hex').slice(0, 32)
+
+/** Thresholds fire in order, so the only sets ever recorded are these prefixes: none, 70, 70 and 90, all three. */
+const PREFIXES = SPEND_THRESHOLDS.map((_, i) => SPEND_THRESHOLDS.slice(0, i)).concat([SPEND_THRESHOLDS])
+
+/**
+ * The thresholds already pushed this month, read from an earlier status.json's `actions.memo` with the key.
+ * No block, or a block of another month, is a fresh month: nothing fired. A block of this month whose memo is
+ * missing or matches no recorded set (no key, a damaged file, an older shape) is `readable: false`.
+ */
+export function readMemo(earlier, month, key) {
   const a = earlier?.actions
-  if (!a || a.month !== month || !Array.isArray(a.fired)) return []
-  return a.fired.filter((t) => SPEND_THRESHOLDS.includes(t))
+  if (!a || a.month !== month) return { fired: [], readable: true }
+  if (!key || typeof a.memo !== 'string') return { fired: [], readable: false }
+  const found = PREFIXES.find((p) => memoTag(key, month, p) === a.memo)
+  return found ? { fired: found, readable: true } : { fired: [], readable: false }
 }
 
 /**
  * Attach the memo to a fresh meter. A reading under a threshold drops it (credits applied, a correction); an
- * unknown reading keeps what was carried, so a failed read neither re-arms nor fires.
+ * unknown reading keeps what was carried, so a failed read neither re-arms nor fires. A memo that cannot be read
+ * is not "nothing fired": it would push every due line again. The thresholds the reading has already passed are
+ * taken as sent (`memoUnreadable`), which at worst loses a line and never repeats one.
  */
-export function withMemo(meter, earlier) {
-  const carried = carriedFired(earlier, meter.month)
-  if (meter.unknown !== undefined) return { ...meter, fired: carried }
-  return { ...meter, fired: carried.filter((t) => meter.usedPct >= t) }
+export function withMemo(meter, earlier, key) {
+  const { fired, readable } = readMemo(earlier, meter.month, key)
+  if (meter.unknown !== undefined) return { ...meter, fired, ...(readable ? {} : { memoUnreadable: true }) }
+  if (!readable) return { ...meter, fired: SPEND_THRESHOLDS.filter((t) => t <= meter.usedPct), memoUnreadable: true }
+  return { ...meter, fired: fired.filter((t) => meter.usedPct >= t) }
 }
 
 /** ok under 70% of the cap, alert from there, unknown when unread. */
 export const stateOf = (meter) => (meter.unknown !== undefined ? 'unknown' : meter.usedPct >= SPEND_THRESHOLDS[0] ? 'alert' : 'ok')
 
-/** What the public status branch gets: the state and the memo, no dollar or minute figure. */
-export function publicBlock(meter) {
-  const block = { month: meter.month, readAt: meter.readAt, state: stateOf(meter), fired: meter.fired }
+/**
+ * What the public status branch gets: the state and the opaque memo, no dollar or minute figure and no threshold.
+ * With no key, or an unread memo behind an unknown reading, there is no memo to write and the block has none.
+ */
+export function publicBlock(meter, key) {
+  const block = { month: meter.month, readAt: meter.readAt, state: stateOf(meter) }
+  if (key && !(meter.unknown !== undefined && meter.memoUnreadable)) block.memo = memoTag(key, meter.month, meter.fired)
   if (meter.unknown !== undefined) block.unknown = meter.unknown
   return block
 }
@@ -172,17 +192,18 @@ export const alertText = (meter, threshold) =>
 /**
  * Push at most one line, for the highest threshold newly crossed, then record every threshold up to it. The memo
  * records a threshold only after `push(text, threshold)` resolved true, so a failed push retries next run.
- * `status.actions` is the published block (holds `fired`); `meter` is the private reading with the figures.
- * Returns the status with its `actions.fired` updated, and what happened.
+ * `meter` is the private reading (with `fired`); `status.actions` is the published block, which gets the new opaque
+ * memo. Without the key nothing is pushed: there would be nowhere safe to record it. Returns the status and what
+ * happened; the caller prints only whether a line was sent, never which.
  */
-export async function applyAlert(status, meter, push) {
+export async function applyAlert(status, meter, push, key) {
   const a = status.actions
-  if (!a || a.state === 'unknown' || meter?.unknown !== undefined || !Number.isFinite(meter?.usedPct) || a.month !== meter.month) return { status, action: 'unknown' }
-  const due = pendingSpendThreshold(meter.usedPct, a.fired ?? [])
+  if (!a || !key || a.state === 'unknown' || meter?.unknown !== undefined || !Number.isFinite(meter?.usedPct) || a.month !== meter.month) return { status, action: 'unknown' }
+  const due = pendingSpendThreshold(meter.usedPct, meter.fired ?? [])
   if (due === null) return { status, action: 'none' }
   if (!(await push(alertText(meter, due), due))) return { status, action: 'push-failed', due }
-  const fired = [...new Set([...(a.fired ?? []), ...SPEND_THRESHOLDS.filter((t) => t <= due)])].sort((x, y) => x - y)
-  return { status: { ...status, actions: { ...a, fired } }, action: 'pushed', due }
+  const fired = [...new Set([...(meter.fired ?? []), ...SPEND_THRESHOLDS.filter((t) => t <= due)])].sort((x, y) => x - y)
+  return { status: { ...status, actions: { ...a, memo: memoTag(key, meter.month, fired) } }, action: 'pushed', due, fired }
 }
 
 /** The STATUS.md paragraph. With figures (a private or local run) it shows them; the public file shows the state only. */

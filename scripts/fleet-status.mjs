@@ -19,7 +19,8 @@
  *
  * Hosted Actions spend (replan row N6): a run over all repositories also reads the month's billing usage report
  * into `actions` (`lib/actionsSpend.mjs`). `--spend-memo <earlier status.json>` carries the thresholds already
- * pushed this month. The published `actions` holds a state (ok, alert, unknown) and that memo, never a figure: the
+ * pushed this month. The published `actions` holds a state (ok, alert, unknown) and an opaque memo (an HMAC under
+ * SPEND_MEMO_KEY, so no threshold is readable), never a figure: the
  * figures go to `--spend-out <file>` (kept on the runner, for the private ntfy lines) and, with `--include-private`,
  * into the block of a local run. A reading that fails is `actions.unknown` with its reason, never zero, and only warns:
  * the run stays green because STATUS.md and the digest say unknown. `--from` keeps the earlier file's `actions`.
@@ -436,10 +437,12 @@ export function collectActions({ fleet, now, earlier, fromEarlier, includePrivat
   if (fromEarlier) return { meter: null, block: earlier?.actions }
   // 64 MiB like the gh helper above: the report has a row per day, repository and SKU and grows through the month, so the default 1 MiB would fail on exactly the days the thresholds matter.
   const run = json ?? ((args) => JSON.parse(execFileSync('gh', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], env: billingEnv(env), maxBuffer: 64 * 1024 * 1024 })))
-  const meter = withMemo(readMeter({ owner: fleet.projects[0].slug.split('/')[0], now, json: run }), earlier)
+  // The memo key signs the thresholds already pushed, so the public file holds no band. Without it the memo is unreadable.
+  const key = env.SPEND_MEMO_KEY || undefined
+  const meter = withMemo(readMeter({ owner: fleet.projects[0].slug.split('/')[0], now, json: run }), earlier, key)
   const published = earlier?.actions
   if (meter.unknown !== undefined && carryPublished && published && published.month === meter.month && published.state !== 'unknown' && now - Date.parse(published.readAt) < 24 * 3600 * 1000) return { meter: null, block: published }
-  return { meter, block: includePrivate && meter.unknown === undefined ? { ...publicBlock(meter), ...spendFigures(meter) } : publicBlock(meter) }
+  return { meter, block: includePrivate && meter.unknown === undefined ? { ...publicBlock(meter, key), ...spendFigures(meter) } : publicBlock(meter, key) }
 }
 
 function arg(name) {
@@ -499,7 +502,7 @@ if (isMain(import.meta.url)) {
     // One read per run, never in a per-repository child. `--from` reads nothing: it keeps the earlier file's reading.
     const earlierFile = arg('--from') ?? arg('--spend-memo')
     let earlier = null
-    try { earlier = earlierFile ? JSON.parse(readFileSync(earlierFile, 'utf8')) : null } catch { /* no memo: nothing fired yet */ }
+    try { earlier = earlierFile ? JSON.parse(readFileSync(earlierFile, 'utf8')) : null } catch { /* no usable memo: the run reads it as none */ }
     const { meter, block } = collectActions({ fleet, now, earlier, fromEarlier: Boolean(arg('--from')), includePrivate: process.argv.includes('--include-private'), carryPublished: process.argv.includes('--local') })
     if (block) status.actions = block
     if (block?.unknown !== undefined) console.error(`::${meter?.early ? 'notice' : 'warning'}::Hosted Actions spend is unknown: ${block.unknown}`)

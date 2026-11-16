@@ -5,15 +5,16 @@
  */
 import { strict as assert } from 'node:assert'
 import { spawn } from 'node:child_process'
-import { chmodSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { chmodSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { describe, it } from 'node:test'
 
 import { ntfyPush } from '../scripts/actions-spend-alert.mjs'
 import { billingEnv, collectActions } from '../scripts/fleet-status.mjs'
-import { alertText, applyAlert, capUsd, carriedFired, meterFromReport, publicBlock, readFailure, readMeter, spendDigestLine, withMemo } from '../scripts/lib/actionsSpend.mjs'
+import { alertText, applyAlert, capUsd, memoTag, meterFromReport, publicBlock, readFailure, readMemo, readMeter, spendDigestLine, withMemo } from '../scripts/lib/actionsSpend.mjs'
 import { digest, render } from '../scripts/write-status-md.mjs'
 
 const schema = JSON.parse(readFileSync(new URL('../scripts/lib/status.schema.json', import.meta.url), 'utf8'))
@@ -27,6 +28,9 @@ const row = (over = {}) => {
 // Day 15 of a 30-day month at noon UTC: 14.5 days elapsed.
 const NOW = new Date('2026-11-15T12:00:00Z')
 const CAP = 100
+const KEY = 'test-memo-key'
+/** The status.json an earlier run published, holding the opaque memo for `fired`. */
+const prior = (fired, month = '2026-11', key = KEY) => ({ actions: { month, readAt: 'x', state: 'alert', memo: memoTag(key, month, fired) } })
 /** A report whose Actions net dollars total `net`, split over two rows so summing is exercised. */
 const report = (net, extra = []) => ({ usageItems: [row({ quantity: 6000, netAmount: net / 2 }), row({ sku: 'Actions Linux 4-core', quantity: 1500, netAmount: net / 2 }), ...extra] })
 const meter = (net, extra) => meterFromReport(report(net, extra), { now: NOW, cap: CAP })
@@ -181,29 +185,54 @@ describe('readMeter', () => {
 })
 
 describe('the threshold memo', () => {
-  const prior = (month, fired) => ({ actions: { month, readAt: 'x', capUsd: CAP, fired } })
-  it('carries what was pushed this month, and starts empty in a new month', () => {
-    assert.deepEqual(carriedFired(prior('2026-11', [70]), '2026-11'), [70])
-    assert.deepEqual(carriedFired(prior('2026-10', [70, 90]), '2026-11'), [])
-    assert.deepEqual(carriedFired(null, '2026-11'), [])
-    assert.deepEqual(carriedFired({ actions: { month: '2026-11', fired: [70, 33, 'x'] } }, '2026-11'), [70], 'only known thresholds')
+  it('is an HMAC: the public file holds no threshold, and the same set under another key or month reads differently', () => {
+    const tag = memoTag(KEY, '2026-11', [70, 90])
+    assert.match(tag, /^[0-9a-f]{32}$/)
+    assert.notEqual(tag, memoTag('another-key', '2026-11', [70, 90]))
+    assert.notEqual(tag, memoTag(KEY, '2026-12', [70, 90]))
+    assert.notEqual(tag, memoTag(KEY, '2026-11', [70]))
+    assert.doesNotMatch(JSON.stringify(prior([70, 90])), /fired/)
   })
-  it('knows the 100% line too', () => {
-    assert.deepEqual(carriedFired({ actions: { month: '2026-11', fired: [70, 90, 100] } }, '2026-11'), [70, 90, 100])
+  it('reads back what was pushed this month, and starts empty in a new month or with nothing published', () => {
+    for (const fired of [[], [70], [70, 90], [70, 90, 100]]) assert.deepEqual(readMemo(prior(fired), '2026-11', KEY), { fired, readable: true })
+    assert.deepEqual(readMemo(prior([70, 90], '2026-10'), '2026-11', KEY), { fired: [], readable: true })
+    assert.deepEqual(readMemo(null, '2026-11', KEY), { fired: [], readable: true })
+    assert.deepEqual(readMemo({ repos: [] }, '2026-11', KEY), { fired: [], readable: true })
+  })
+  it('is unreadable, never "nothing fired", with no key, a wrong key, a missing memo or a damaged one (review round 4)', () => {
+    assert.equal(readMemo(prior([70]), '2026-11', undefined).readable, false)
+    assert.equal(readMemo(prior([70], '2026-11', 'another-key'), '2026-11', KEY).readable, false)
+    assert.equal(readMemo({ actions: { month: '2026-11', state: 'alert' } }, '2026-11', KEY).readable, false)
+    assert.equal(readMemo({ actions: { month: '2026-11', memo: 'zz' } }, '2026-11', KEY).readable, false)
+    assert.equal(readMemo({ actions: { month: '2026-11', memo: 7 } }, '2026-11', KEY).readable, false)
   })
   it('drops a threshold the reading is back under, and keeps all of them on an unknown reading', () => {
-    assert.deepEqual(withMemo(meter(60), prior('2026-11', [70, 90])).fired, [], 'credits applied: re-armed')
-    assert.deepEqual(withMemo(meter(75), prior('2026-11', [70, 90])).fired, [70])
-    const unknown = withMemo(meterFromReport({}, { now: NOW, cap: CAP }), prior('2026-11', [70]))
+    assert.deepEqual(withMemo(meter(60), prior([70, 90]), KEY).fired, [], 'credits applied: re-armed')
+    assert.deepEqual(withMemo(meter(75), prior([70, 90]), KEY).fired, [70])
+    const unknown = withMemo(meterFromReport({}, { now: NOW, cap: CAP }), prior([70]), KEY)
     assert.deepEqual(unknown.fired, [70], 'a failed read neither fires nor re-arms')
+  })
+  it('an unreadable memo takes the thresholds already passed as sent, so it repeats no line (it may lose one)', () => {
+    const m = withMemo(meter(93), { actions: { month: '2026-11', state: 'alert' } }, KEY)
+    assert.deepEqual(m.fired, [70, 90])
+    assert.equal(m.memoUnreadable, true)
+    assert.deepEqual(withMemo(meter(40), { actions: { month: '2026-11' } }, KEY).fired, [])
+    // An unknown reading behind an unreadable memo has nothing to record: the block carries no memo.
+    const unknown = withMemo(meterFromReport({}, { now: NOW, cap: CAP }), { actions: { month: '2026-11' } }, KEY)
+    assert.equal('memo' in publicBlock(unknown, KEY), false)
   })
 })
 
 describe('applyAlert', () => {
   /** A reading at `net` dollars, with the memo from earlier runs: the private meter and the public status it publishes. */
   const reading = (net, fired = []) => {
-    const m = withMemo(meter(net), { actions: { month: '2026-11', fired } })
-    return { m, status: { actions: publicBlock(m) } }
+    const m = withMemo(meter(net), prior(fired), KEY)
+    return { m, status: { actions: publicBlock(m, KEY) } }
+  }
+  /** What the next run reads: the memo the alert wrote into the published block. */
+  const nextReading = (net, status) => {
+    const m = withMemo(meter(net), { actions: status.actions }, KEY)
+    return { m, status: { actions: publicBlock(m, KEY) } }
   }
   const recorder = (ok = true) => {
     const sent = []
@@ -212,68 +241,68 @@ describe('applyAlert', () => {
   it('fires the 70% line once, and records it', async () => {
     const r = recorder()
     const { m, status } = reading(72)
-    const first = await applyAlert(status, m, r.push)
+    const first = await applyAlert(status, m, r.push, KEY)
     assert.equal(first.action, 'pushed')
     assert.equal(first.due, 70)
-    assert.deepEqual(first.status.actions.fired, [70])
+    assert.deepEqual(readMemo(first.status, '2026-11', KEY).fired, [70])
     assert.match(r.sent[0][0], /72% of the US\$100\.00 cap for November 2026 \(passed 70%\)/)
     // The next run reads the status the first one published as its memo.
-    const next = reading(73, first.status.actions.fired)
-    assert.equal((await applyAlert(next.status, next.m, r.push)).action, 'none')
+    const next = nextReading(73, first.status)
+    assert.equal((await applyAlert(next.status, next.m, r.push, KEY)).action, 'none')
     assert.equal(r.sent.length, 1)
   })
   it('then the 90% line, once', async () => {
     const r = recorder()
     const { m, status } = reading(91, [70])
-    const a = await applyAlert(status, m, r.push)
+    const a = await applyAlert(status, m, r.push, KEY)
     assert.equal(a.due, 90)
-    assert.deepEqual(a.status.actions.fired, [70, 90])
-    const next = reading(95, a.status.actions.fired)
-    assert.equal((await applyAlert(next.status, next.m, r.push)).action, 'none')
+    assert.deepEqual(readMemo(a.status, '2026-11', KEY).fired, [70, 90])
+    const next = nextReading(95, a.status)
+    assert.equal((await applyAlert(next.status, next.m, r.push, KEY)).action, 'none')
     assert.equal(r.sent.length, 1)
   })
   it('then the 100% line when the cap is reached, once, saying so (review round 3: nothing was pushed at 100%)', async () => {
     const r = recorder()
     const { m, status } = reading(100, [70, 90])
-    const a = await applyAlert(status, m, r.push)
+    const a = await applyAlert(status, m, r.push, KEY)
     assert.equal(a.action, 'pushed')
     assert.equal(a.due, 100)
-    assert.deepEqual(a.status.actions.fired, [70, 90, 100])
+    assert.deepEqual(readMemo(a.status, '2026-11', KEY).fired, [70, 90, 100])
     assert.match(r.sent[0][0], /cap reached/)
-    const next = reading(120, a.status.actions.fired)
-    assert.equal((await applyAlert(next.status, next.m, r.push)).action, 'none')
+    const next = nextReading(120, a.status)
+    assert.equal((await applyAlert(next.status, next.m, r.push, KEY)).action, 'none')
     assert.equal(r.sent.length, 1)
   })
   it('a jump past all of them pushes only the highest line and records every one', async () => {
     const r = recorder()
     const { m, status } = reading(93)
-    const a = await applyAlert(status, m, r.push)
+    const a = await applyAlert(status, m, r.push, KEY)
     assert.equal(r.sent.length, 1)
     assert.equal(r.sent[0][1], 90)
-    assert.deepEqual(a.status.actions.fired, [70, 90])
+    assert.deepEqual(readMemo(a.status, '2026-11', KEY).fired, [70, 90])
     const b = reading(101)
-    assert.equal((await applyAlert(b.status, b.m, recorder().push)).due, 100)
+    assert.equal((await applyAlert(b.status, b.m, recorder().push, KEY)).due, 100)
   })
   it('a failed push records nothing and retries on the next run', async () => {
     const down = recorder(false)
     const { m, status } = reading(80)
-    const a = await applyAlert(status, m, down.push)
+    const a = await applyAlert(status, m, down.push, KEY)
     assert.equal(a.action, 'push-failed')
-    assert.deepEqual(a.status.actions.fired, [])
+    assert.deepEqual(readMemo(a.status, '2026-11', KEY).fired, [])
     const up = recorder(true)
-    const next = reading(80, a.status.actions.fired)
-    assert.equal((await applyAlert(next.status, next.m, up.push)).action, 'pushed')
+    const next = nextReading(80, a.status)
+    assert.equal((await applyAlert(next.status, next.m, up.push, KEY)).action, 'pushed')
   })
   it('pushes nothing under 70%, and nothing for an unknown reading or a missing one', async () => {
     const r = recorder()
     const low = reading(69)
-    assert.equal((await applyAlert(low.status, low.m, r.push)).action, 'none')
+    assert.equal((await applyAlert(low.status, low.m, r.push, KEY)).action, 'none')
     const unknownMeter = withMemo(meterFromReport({}, { now: NOW, cap: CAP }), null)
     const unknown = { actions: publicBlock(unknownMeter) }
-    assert.equal((await applyAlert(unknown, unknownMeter, r.push)).action, 'unknown')
-    assert.equal((await applyAlert(low.status, null, r.push)).action, 'unknown', 'no private reading')
-    assert.equal((await applyAlert({}, low.m, r.push)).action, 'unknown')
-    assert.equal((await applyAlert({ actions: { ...low.status.actions, month: '2026-10' } }, low.m, r.push)).action, 'unknown', 'a block from another month')
+    assert.equal((await applyAlert(unknown, unknownMeter, r.push, KEY)).action, 'unknown')
+    assert.equal((await applyAlert(low.status, null, r.push, KEY)).action, 'unknown', 'no private reading')
+    assert.equal((await applyAlert({}, low.m, r.push, KEY)).action, 'unknown')
+    assert.equal((await applyAlert({ actions: { ...low.status.actions, month: '2026-10' } }, low.m, r.push, KEY)).action, 'unknown', 'a block from another month')
     assert.equal(r.sent.length, 0)
   })
   it('the text says what was passed, what is spent and where it is heading', () => {
@@ -288,26 +317,36 @@ describe('applyAlert', () => {
 describe('the published block carries a state, never a figure (review round 3)', () => {
   const FIGURES = ['capUsd', 'minutes', 'spendUsd', 'projectedUsd', 'usedPct', 'projectedPct']
   const withActions = (actions) => ({ ...structuredClone(fixture), actions })
-  const known = withMemo(meter(75), null)
-  const unknown = withMemo(meterFromReport({}, { now: NOW, cap: CAP }), null)
+  const known = withMemo(meter(75), null, KEY)
+  const unknown = withMemo(meterFromReport({}, { now: NOW, cap: CAP }), null, KEY)
   it('is a state, the month, the reading time and the memo, and for an unknown reading its reason', () => {
-    assert.deepEqual(publicBlock(withMemo(meter(30), null)), { month: '2026-11', readAt: NOW.toISOString(), state: 'ok', fired: [] })
-    assert.equal(publicBlock(withMemo(meter(70), null)).state, 'alert')
-    assert.equal(publicBlock(withMemo(meter(69), null)).state, 'ok')
-    assert.equal(publicBlock(known).state, 'alert')
-    assert.equal(publicBlock(unknown).state, 'unknown')
-    assert.match(publicBlock(unknown).unknown, /usageItems/)
-    for (const k of FIGURES) assert.equal(k in publicBlock(known), false, `${k} must not be published`)
+    assert.deepEqual(publicBlock(withMemo(meter(30), null, KEY), KEY), { month: '2026-11', readAt: NOW.toISOString(), state: 'ok', memo: memoTag(KEY, '2026-11', []) })
+    assert.equal(publicBlock(withMemo(meter(70), null, KEY), KEY).state, 'alert')
+    assert.equal(publicBlock(withMemo(meter(69), null, KEY), KEY).state, 'ok')
+    assert.equal(publicBlock(known, KEY).state, 'alert')
+    assert.equal(publicBlock(unknown, KEY).state, 'unknown')
+    assert.match(publicBlock(unknown, KEY).unknown, /usageItems/)
+    for (const k of FIGURES) assert.equal(k in publicBlock(known, KEY), false, `${k} must not be published`)
+  })
+  it('holds no threshold: the memo is opaque, and with no key there is none (review round 4)', () => {
+    const at90 = withMemo(meter(93), prior([70, 90]), KEY)
+    const block = publicBlock(at90, KEY)
+    assert.equal('fired' in block, false)
+    assert.deepEqual(Object.keys(block).sort(), ['memo', 'month', 'readAt', 'state'])
+    assert.doesNotMatch(JSON.stringify(block), /"(fired|thresholds?)"/)
+    assert.equal('memo' in publicBlock(at90, undefined), false)
+    // Two different sets give two different tags, neither readable as a number.
+    assert.notEqual(publicBlock(withMemo(meter(75), prior([70]), KEY), KEY).memo, block.memo)
   })
   it('is valid in the schema, the schema refuses a stray field and a bad state', () => {
-    for (const actions of [publicBlock(known), publicBlock(unknown), { ...publicBlock(known), ...fig(known) }]) assert.deepEqual(validate(withActions(actions)), [])
-    assert.equal(validate(withActions({ ...publicBlock(known), repo: 'x/y' })).length, 1)
-    assert.equal(validate(withActions({ ...publicBlock(known), state: 'maybe' })).length, 1)
+    for (const actions of [publicBlock(known, KEY), publicBlock(unknown, KEY), { ...publicBlock(known, KEY), ...fig(known) }]) assert.deepEqual(validate(withActions(actions)), [])
+    assert.equal(validate(withActions({ ...publicBlock(known, KEY), repo: 'x/y' })).length, 1)
+    assert.equal(validate(withActions({ ...publicBlock(known, KEY), state: 'maybe' })).length, 1)
   })
   it('STATUS.md says ok, alert or unknown and no dollar or minute figure', () => {
-    const ok = render(withActions(publicBlock(withMemo(meter(30), null))))
+    const ok = render(withActions(publicBlock(withMemo(meter(30), null, KEY), KEY)))
     assert.match(ok, /## Hosted Actions spend\n\nSpend meter for November 2026: ok\. The figures stay private\./)
-    const alert = render(withActions(publicBlock(known)))
+    const alert = render(withActions(publicBlock(known, KEY)))
     assert.match(alert, /Spend meter for November 2026: alert: a threshold has passed this month, see the ops-report line\./)
     for (const md of [ok, alert]) {
       const section = md.slice(md.indexOf('## Hosted Actions spend'), md.indexOf('## Hygiene'))
@@ -315,25 +354,25 @@ describe('the published block carries a state, never a figure (review round 3)',
     }
   })
   it('STATUS.md says unknown, not zero, when the reading failed or is missing', () => {
-    const failed = render(withActions(publicBlock(unknown)))
+    const failed = render(withActions(publicBlock(unknown, KEY)))
     assert.match(failed, /## Hosted Actions spend\n\nunknown, and not zero: the billing report had no usageItems list\./)
     assert.match(render(fixture), /## Hosted Actions spend\n\nunknown: this snapshot has no spend reading\./)
     assert.doesNotMatch(failed, /US\$0\.00/)
   })
   it('a private or local run shows the figures when it has them', () => {
-    const md = render(withActions({ ...publicBlock(known), ...fig(known) }))
+    const md = render(withActions({ ...publicBlock(known, KEY), ...fig(known) }))
     assert.match(md, /November 2026: 7,500 hosted minutes, US\$75\.00 of the US\$100\.00 cap \(75%\)\. On course for about US\$155\.17 by month end \(155% of the cap\)\./)
-    assert.match(render(withActions({ ...publicBlock(withMemo(meter(104), null)), ...fig(withMemo(meter(104), null)) })), /\(104%\)\. Over the cap\./)
+    assert.match(render(withActions({ ...publicBlock(withMemo(meter(104), null, KEY), KEY), ...fig(withMemo(meter(104), null, KEY)) })), /\(104%\)\. Over the cap\./)
   })
   it('the digest goes to ntfy only: with the private reading it carries the figures, without it the state', () => {
-    const status = withActions(publicBlock(known))
+    const status = withActions(publicBlock(known, KEY))
     const withFigures = digest(status, known).trimEnd().split('\n')
     assert.ok(withFigures.length <= 10)
     assert.match(withFigures[1], /^Hosted Actions November 2026: US\$75\.00 of US\$100\.00 \(75%\), 7500 min, on course for about US\$155\.17 \(155%\)$/)
     assert.equal(digest(status).split('\n')[1], 'Hosted Actions spend meter: alert')
     assert.match(digest(fixture), /Hosted Actions spend: unknown \(no reading in this snapshot\)/)
-    assert.match(digest(withActions(publicBlock(unknown)), unknown), /Hosted Actions spend: unknown, not zero/)
-    assert.match(spendDigestLine(publicBlock(known), { unknown: 'x' }), /Hosted Actions spend meter: alert/, 'an unknown private reading falls back to the published state')
+    assert.match(digest(withActions(publicBlock(unknown, KEY)), unknown), /Hosted Actions spend: unknown, not zero/)
+    assert.match(spendDigestLine(publicBlock(known, KEY), { unknown: 'x' }), /Hosted Actions spend meter: alert/, 'an unknown private reading falls back to the published state')
   })
 })
 
@@ -341,15 +380,19 @@ describe('fleet-status wiring', () => {
   const fleet = { projects: [{ slug: 'acct/one' }] }
   const FIGURES = ['capUsd', 'minutes', 'spendUsd', 'projectedUsd', 'usedPct', 'projectedPct']
   it('a hosted run reads the meter with the earlier file as memo and publishes the state only', () => {
-    const earlier = { actions: { month: '2026-11', readAt: 'x', state: 'alert', fired: [70] } }
-    const { meter: m, block } = collectActions({ fleet, now: NOW, earlier, json: () => report(75) })
+    const { meter: m, block } = collectActions({ fleet, now: NOW, earlier: prior([70]), env: { SPEND_MEMO_KEY: KEY }, json: () => report(75) })
     assert.deepEqual(m.fired, [70])
     assert.equal(m.usedPct, 75)
-    assert.deepEqual(block, { month: '2026-11', readAt: NOW.toISOString(), state: 'alert', fired: [70] })
+    assert.deepEqual(block, { month: '2026-11', readAt: NOW.toISOString(), state: 'alert', memo: memoTag(KEY, '2026-11', [70]) })
     for (const k of FIGURES) assert.equal(k in block, false)
   })
+  it('without the memo key the run publishes no memo and reads the old one as unreadable', () => {
+    const { meter: m, block } = collectActions({ fleet, now: NOW, earlier: prior([70]), env: {}, json: () => report(75) })
+    assert.equal(m.memoUnreadable, true)
+    assert.equal('memo' in block, false)
+  })
   it('a private run puts the figures in its own block', () => {
-    const { block } = collectActions({ fleet, now: NOW, earlier: null, includePrivate: true, json: () => report(75) })
+    const { block } = collectActions({ fleet, now: NOW, earlier: null, includePrivate: true, env: { SPEND_MEMO_KEY: KEY }, json: () => report(75) })
     assert.equal(block.spendUsd, 75)
     assert.equal(block.state, 'alert')
   })
@@ -359,7 +402,7 @@ describe('fleet-status wiring', () => {
     assert.equal(collectActions({ fleet, now: NOW, earlier: { repos: [] }, fromEarlier: true, json }).block, undefined)
   })
   const refused = () => { throw Object.assign(new Error('x'), { stderr: 'gh: Not Found (HTTP 404)' }) }
-  const published = (over = {}) => ({ actions: { month: '2026-11', readAt: new Date(NOW.getTime() - 3600_000).toISOString(), state: 'alert', fired: [70], ...over } })
+  const published = (over = {}) => ({ actions: { month: '2026-11', readAt: new Date(NOW.getTime() - 3600_000).toISOString(), state: 'alert', memo: memoTag(KEY, '2026-11', [70]), ...over } })
   it('a local run whose own login cannot read billing falls back to the published block (review round 3)', () => {
     const { meter: m, block } = collectActions({ fleet, now: NOW, earlier: published(), includePrivate: true, carryPublished: true, json: refused })
     assert.equal(m, null)
@@ -412,6 +455,47 @@ describe('fleet-status workflow', () => {
     assert.match(workflow, /git ls-remote --exit-code --heads origin status/)
     assert.match(workflow, /elif \[ "\$\{rc\}" != "2" \]; then\n\s+prior=failed/)
     assert.match(workflow, /JSON\.parse\(require\("fs"\)\.readFileSync\(process\.argv\[1\]/)
+  })
+  it('every curl to ntfy in any workflow discards the response body: ntfy echoes the message and this log is public (review round 4)', () => {
+    const dirs = ['../.github/workflows', '../templates']
+    const files = []
+    const walk = (dir) => {
+      for (const e of readdirSync(dir, { withFileTypes: true })) {
+        const full = join(dir, e.name)
+        if (e.isDirectory()) { if (e.name !== 'node_modules') walk(full) } else if (/\.ya?ml$/.test(e.name)) files.push(full)
+      }
+    }
+    for (const d of dirs) walk(fileURLToPath(new URL(d, import.meta.url)))
+    let seen = 0
+    for (const f of files) {
+      for (const cmd of curlCommands(readFileSync(f, 'utf8'))) {
+        if (!/ntfy/i.test(cmd)) continue
+        seen += 1
+        assert.match(cmd, /\s-o \/dev\/null\b/, `${f}: a curl to ntfy prints its response into the log`)
+      }
+    }
+    assert.ok(seen >= 1, 'the fleet-status digest is one')
+  })
+  it('the checker itself sees a curl to ntfy that prints, and one that does not (near-miss negatives)', () => {
+    const bad = 'run: |\n  curl -sS --fail \\\n    -H "Authorization: Bearer ${NTFY_TOKEN}" \\\n    --data-binary @f "${NTFY_URL}"\n'
+    const good = 'run: |\n  curl -sS --fail -o /dev/null -w "%{http_code}" \\\n    -H "Authorization: Bearer ${NTFY_TOKEN}" "${NTFY_URL}"\n'
+    assert.equal(curlCommands(bad).length, 1)
+    assert.doesNotMatch(curlCommands(bad)[0], /\s-o \/dev\/null\b/)
+    assert.match(curlCommands(good)[0], /\s-o \/dev\/null\b/)
+    // -o to a file is not a discard.
+    assert.doesNotMatch(curlCommands('curl -o out.json "${NTFY_URL}"')[0], /\s-o \/dev\/null\b/)
+    // A discard on another curl does not cover this one.
+    const two = 'curl -o /dev/null https://example.org\ncurl -H "x" "${NTFY_URL}"\n'
+    assert.equal(curlCommands(two).filter((c) => /ntfy/i.test(c) && /\s-o \/dev\/null\b/.test(c)).length, 0)
+  })
+  it('records the memo into this run\'s own commit, so no commit time says when a threshold was crossed (review round 4)', () => {
+    assert.match(workflow, /echo "committed=yes" >> "\$GITHUB_OUTPUT"/)
+    assert.match(workflow, /COMMITTED: \$\{\{ steps\.publish\.outputs\.committed \}\}/)
+    assert.match(workflow, /elif \[ "\$\{COMMITTED:-\}" = "yes" \]; then\n\s+git commit --amend --no-edit --quiet/)
+    assert.doesNotMatch(workflow, /spend memo \$\(date/)
+  })
+  it('gives the read step and the alert step the memo key, from the ntfy secret', () => {
+    assert.equal((workflow.match(/SPEND_MEMO_KEY: \$\{\{ secrets\.NTFY_TOKEN \}\}/g) ?? []).length, 2)
   })
   it('keeps the figures out of status.json: they go to a file on the runner and into the ntfy digest only', () => {
     assert.match(workflow, /--spend-out "\$\{RUNNER_TEMP\}\/spend\.json"/)
@@ -474,23 +558,25 @@ describe('actions-spend-alert.mjs', () => {
     await new Promise((r) => server.listen(0, 'localhost', r))
     try {
       const file = join(mkdtempSync(join(tmpdir(), 'spend-alert-')), 'status.json')
-      const m71 = withMemo(meter(71), null)
+      const m71 = withMemo(meter(71), null, KEY)
       writeFileSync(join(dirname(file), 'spend.json'), JSON.stringify(m71))
-      writeFileSync(file, JSON.stringify({ ...structuredClone(fixture), actions: publicBlock(m71) }))
-      const env = { NTFY_URL: `http://localhost:${server.address().port}/ops-report`, NTFY_TOKEN: 'tok' }
+      writeFileSync(file, JSON.stringify({ ...structuredClone(fixture), actions: publicBlock(m71, KEY) }))
+      const env = { NTFY_URL: `http://localhost:${server.address().port}/ops-report`, NTFY_TOKEN: 'tok', SPEND_MEMO_KEY: KEY }
       const first = await run(file, env)
       assert.equal(first.code, 0)
-      assert.match(first.out, /pushed \(70%\)/)
+      assert.equal(first.out.trim(), 'actions-spend-alert: alert sent')
+      assert.doesNotMatch(first.out, /70|90|100/, 'the public log never says which band')
       assert.equal(bodies.length, 1)
       assert.equal(bodies[0].auth, 'Bearer tok')
       assert.match(bodies[0].body, /passed 70%/)
-      assert.deepEqual(JSON.parse(readFileSync(file, 'utf8')).actions.fired, [70])
+      assert.deepEqual(readMemo(JSON.parse(readFileSync(file, 'utf8')), '2026-11', KEY).fired, [70])
+      assert.doesNotMatch(readFileSync(file, 'utf8'), /"fired"/)
       // A later run starts from the published file: nothing new to push.
       const status = JSON.parse(readFileSync(file, 'utf8'))
-      const m72 = withMemo(meter(72), status)
+      const m72 = withMemo(meter(72), status, KEY)
       writeFileSync(join(dirname(file), 'spend.json'), JSON.stringify(m72))
-      writeFileSync(file, JSON.stringify({ ...status, actions: publicBlock(m72) }))
-      assert.match((await run(file, env)).out, /none/)
+      writeFileSync(file, JSON.stringify({ ...status, actions: publicBlock(m72, KEY) }))
+      assert.equal((await run(file, env)).out.trim(), 'actions-spend-alert: no alert')
       assert.equal(bodies.length, 1)
       // The public file never gained a figure.
       assert.doesNotMatch(readFileSync(file, 'utf8'), /spendUsd|projectedUsd|usedPct|minutes/)
@@ -500,15 +586,28 @@ describe('actions-spend-alert.mjs', () => {
   })
   it('without a token it warns, pushes nothing and records nothing', async () => {
     const file = join(mkdtempSync(join(tmpdir(), 'spend-alert-')), 'status.json')
-    const m95 = withMemo(meter(95), null)
+    const m95 = withMemo(meter(95), null, KEY)
     writeFileSync(join(dirname(file), 'spend.json'), JSON.stringify(m95))
-    const before = JSON.stringify({ ...structuredClone(fixture), actions: publicBlock(m95) })
+    const before = JSON.stringify({ ...structuredClone(fixture), actions: publicBlock(m95, KEY) })
     writeFileSync(file, before)
     const r = await run(file, { NTFY_URL: '', NTFY_TOKEN: '' })
-    assert.match(r.out, /push-failed/)
+    assert.equal(r.out.trim(), 'actions-spend-alert: no alert')
     assert.equal(readFileSync(file, 'utf8'), before)
   })
 })
+
+/** Each `curl ...` command in a workflow's text, with its backslash-continued lines joined. */
+function curlCommands(text) {
+  const out = []
+  const lines = text.split('\n')
+  for (let i = 0; i < lines.length; i += 1) {
+    if (!/\bcurl\b/.test(lines[i]) || /^\s*#/.test(lines[i])) continue
+    let cmd = lines[i]
+    while (/\\\s*$/.test(lines[i]) && i + 1 < lines.length) { i += 1; cmd += ` ${lines[i].trim()}` }
+    out.push(cmd)
+  }
+  return out
+}
 
 const fig = (m) => ({ capUsd: m.capUsd, minutes: m.minutes, spendUsd: m.spendUsd, projectedUsd: m.projectedUsd, usedPct: m.usedPct, projectedPct: m.projectedPct })
 

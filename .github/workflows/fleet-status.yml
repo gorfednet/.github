@@ -63,6 +63,8 @@ jobs:
           # Optional. The billing read needs the Plan permission (read); when this secret is set it is used for
           # that one call, else FLEET_READ_TOKEN is. Unset and unpermitted: the spend reads "unknown", not zero.
           BILLING_READ_TOKEN: ${{ secrets.BILLING_READ_TOKEN }}
+          # Signs the memo of which spend lines were pushed, so the public status.json holds no threshold.
+          SPEND_MEMO_KEY: ${{ secrets.NTFY_TOKEN }}
           EVENT: ${{ github.event_name }}
         run: |
           set +e
@@ -169,6 +171,7 @@ jobs:
             echo "status unchanged"
           else
             git commit -m "fleet-status $(date -u +%Y-%m-%dT%H:%MZ)"
+            echo "committed=yes" >> "$GITHUB_OUTPUT"
           fi
           git push --force-with-lease origin status
 
@@ -182,19 +185,27 @@ jobs:
         env:
           NTFY_URL: https://ntfy.gorfed.net/ops-report
           NTFY_TOKEN: ${{ secrets.NTFY_TOKEN }}
+          SPEND_MEMO_KEY: ${{ secrets.NTFY_TOKEN }}
         run: node "${RUNNER_TEMP}/tools/scripts/actions-spend-alert.mjs" --in status.json --spend "${RUNNER_TEMP}/spend.json"
 
-      # The line it pushed is recorded in status.json (`actions.fired`) on the status branch, so the next run
-      # starts from it. If this push fails the next run pushes the line once more: noise, never a lost alert.
+      # The line it pushed is recorded in status.json (`actions.memo`, opaque) on the status branch, so the next run
+      # starts from it. It amends this run's Publish commit (or makes the run's only commit when Publish found
+      # nothing to commit), so the branch history holds one commit per run and no commit time says when a
+      # threshold was crossed. If this push fails the next run pushes the line once more: noise, never a lost alert.
       - name: Record the pushed spend lines on the status branch
         if: ${{ !cancelled() && steps.publish.outcome == 'success' }}
+        env:
+          COMMITTED: ${{ steps.publish.outputs.committed }}
         run: |
           set -euo pipefail
           git add status.json
           if git diff --cached --quiet; then
             echo "spend memo unchanged"
+          elif [ "${COMMITTED:-}" = "yes" ]; then
+            git commit --amend --no-edit --quiet
+            git push --force-with-lease origin status
           else
-            git commit -m "fleet-status spend memo $(date -u +%Y-%m-%dT%H:%MZ)"
+            git commit -m "fleet-status $(date -u +%Y-%m-%dT%H:%MZ)"
             git push --force-with-lease origin status
           fi
 
@@ -212,7 +223,9 @@ jobs:
             echo "::warning::NTFY_TOKEN missing, digest not posted"
             exit 0
           fi
-          curl -sS --fail --max-time 15 \
+          # ntfy answers a publish with the message as JSON, and this log is public: the body goes nowhere and only
+          # the status code is printed. The digest carries the private spend figures.
+          curl -sS --fail --max-time 15 -o /dev/null -w 'ntfy digest: HTTP %{http_code}\n' \
             -H "User-Agent: gorfednet-fleet-status (+https://github.com/gorfednet/.github)" \
             -H "Title: Fleet status" -H "Priority: default" -H "Tags: bar_chart" \
             -H "Authorization: Bearer ${NTFY_TOKEN}" \

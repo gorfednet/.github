@@ -8,14 +8,14 @@ Replan row N6. Owner rule: hosted Actions minutes have a hard cap of US$100 a mo
 
 The projection is "about", not exact. It runs on gross dollars, because net reads 0 for as long as the included minutes cover usage, so an early overflow would not move it. The rate for the days left is the larger of the month's average and the last 7 days', so a late spike counts. The discount applied so far is subtracted, and it is at most the whole allowance, so the figure leans high. The first day counts as a whole day.
 
-**Nothing with a figure is published.** The public `status` branch gets a state only: `ok` under 70% of the cap, `alert` from there, `unknown` when unread, plus `fired`, the thresholds already pushed this month. The figures go to two private places:
+**Nothing with a figure is published.** The public `status` branch gets a state only: `ok` under 70% of the cap, `alert` from there, `unknown` when unread, plus `memo`, an opaque HMAC of the thresholds already pushed this month (under a key kept in the repository's secrets), so the public file holds no band. The figures go to two private places:
 
 - ntfy `ops-report`, which is authenticated: one line at 70%, 90% and 100% of the cap (a jump past several pushes the highest, and records them all), and the daily digest's second line.
 - a local run of `fleet-status` (`--include-private`), in its own view, when that Mac's login can read billing. When it cannot, the local run falls back to the published state, if that is a known reading of this month under a day old. A hosted run never falls back: its unknown stays unknown.
 
-The full reading is written to a file on the runner (`--spend-out`) and never into `status.json`. `scripts/actions-spend-alert.mjs` reads it, posts the lines and records them in `actions.fired`.
+The full reading is written to a file on the runner (`--spend-out`) and never into `status.json`. `scripts/actions-spend-alert.mjs` reads it, posts the lines and records them in `actions.memo`. It prints only "alert sent" or "no alert": this repository's Actions log is public, so neither the log nor the ntfy publish's response (which echoes the message) may name a band or a figure. Every workflow `curl` to ntfy discards the response body (`-o /dev/null`), and a test fails when one does not.
 
-Order matters. The alert runs after Publish, and only when Publish succeeded, so a failed Publish cannot repeat a line every 2 hours. It then records what it pushed with a second small commit to the `status` branch; if that push fails the next run pushes the line once more (noise, not a lost alert). A push that fails records nothing and retries on the next run. A new calendar month starts with nothing fired, and a reading that falls back under a threshold re-arms it.
+Order matters. The alert runs after Publish, and only when Publish succeeded, so a failed Publish cannot repeat a line every 2 hours. It then records what it pushed by amending this run's own commit on the `status` branch, so the history holds one commit per run and no commit time says when a threshold was crossed. If that push fails the next run pushes the line once more (noise, not a lost alert). A push that fails records nothing and retries on the next run. A new calendar month starts with nothing fired, and a reading that falls back under a threshold re-arms it. A memo that cannot be read (no key, a damaged file) is not "nothing fired": the thresholds the reading has already passed are taken as sent, which can lose a line and never repeats one.
 
 The last published `status.json` is the memo. A `status` branch that does not exist yet is a first run. One that exists but cannot be fetched, or reads as damaged, is not "nothing fired": the run publishes nothing, skips the alerts and fails.
 
@@ -29,7 +29,7 @@ A `--from` run keeps the earlier file's block and reads no billing.
 
 ## The token
 
-The read is `GET /users/<owner>/settings/billing/usage` (the account is a user; the organization path is the fallback). It needs the fine-grained permission **Plan: Read** (account permissions), or a classic token with the `user` scope. GitHub answers 404 to a token without it, so a refusal reads as "unknown ... needs the Plan permission".
+The read is `GET /users/<owner>/settings/billing/usage` (the account is a user; the organization path is the fallback). It needs the fine-grained permission **Plan: Read** (account permissions), or a classic token with the `user` scope. GitHub answers 404 to a token without it, so a 404 reads as "unknown, and not zero: the billing read found nothing (404): GitHub answers this to a token without the Plan permission (read)". A 403 names the permission or the rate limit, and a 401 says the token is not accepted.
 
 The workflow uses `BILLING_READ_TOKEN` for that one call when the secret exists, and `FLEET_READ_TOKEN` otherwise. Adding Plan: Read to `FLEET_READ_TOKEN` is enough.
 
