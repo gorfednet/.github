@@ -11,7 +11,9 @@ The wiring is its own change, run from the Mac's private job (the capacity job's
 - reads the month's billing usage report with `readMeter` and `ghJson`;
 - takes the cap from a private file (`loadCap`), never from this repository;
 - keeps the memo in a private file (`readMemo`, `withMemo`, and the memo `applyAlert` returns);
-- pushes one ntfy line at 70%, 90% and 100% of the cap (`applyAlert`, `alertText`).
+- pushes one ntfy line at 70%, 90% and 100% of the cap (`applyAlert`, `alertText`);
+- pushes the "meter is blind" line (`applyAlert`, `blindText`) and writes the memo `applyAlert` returns on every run, including a run whose reading is unknown: without it an expired token or a refused permission mid-month looks the same as "under 70%". The wiring must not skip the push or the write for an unknown reading;
+- calls `ghJson`, whose 60 second ceiling kills a stalled `gh`, so the job always exits and the next run starts.
 
 ## What the library does
 
@@ -23,7 +25,7 @@ Thresholds fire once each a month. A jump past several pushes only the highest a
 
 ## Unknown is not zero
 
-If the report cannot be read, or looks wrong (no `usageItems`, no Actions row, a non-numeric amount), the reading is `unknown` with a fixed reason and no numbers. The reason is never the call's own text, since a JSON error can quote part of the report: it names a status code (401 token not accepted, 403 permission or rate limit, 404 which GitHub also answers to a token without the permission), an over-large report, or a body that was not JSON. An empty report in the first day of a month is "not reported yet" (the report lags by hours), still unknown and never 0. An unknown reading pushes nothing and leaves the memo as it was.
+If the report cannot be read, or looks wrong (no `usageItems`, no Actions row, a non-numeric amount), the reading is `unknown` with a fixed reason and no numbers. The reason is never the call's own text, since a JSON error can quote part of the report: it names a status code (401 token not accepted, 403 permission or rate limit, 404 which GitHub also answers to a token without the permission), an over-large report, or a body that was not JSON. An empty report in the first day of a month is "not reported yet" (the report lags by hours), still unknown and never 0. An unknown reading pushes no threshold line and leaves the thresholds as they were. It does start a clock: the memo records `unknownSince`, and once the readings have been unknown for 24 hours one "meter is blind" line goes out, once a month (`blindSent`). It carries no figure, only that no threshold can fire until the meter reads again. A reading that works ends the run of unknowns, and a new month starts clean. The first day of a month is not counted, because an empty report is normal then. A `gh` call that stalls is killed at 60 seconds and reads as unknown, so a launchd job always exits.
 
 No per-repository figure is kept anywhere, because the report lists a repository on every row.
 

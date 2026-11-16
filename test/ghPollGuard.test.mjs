@@ -171,6 +171,6 @@ test('fails open on input it cannot read', () => {
 test('a hook that never returns fails the test instead of hanging it', () => {
   // Through the same helper every other test uses: a process that sleeps past a short ceiling must throw from spawnHook itself.
   const started = Date.now();
-  assert.throws(() => spawnHook('{}', { args: ['-I', '-c', 'import time; time.sleep(30)'], ceilingMs: 500 }), /did not finish within 500 ms/);
+  assert.throws(() => spawnHook('{}', { args: ['-I', '-c', 'import time; time.sleep(30)'], ceilingMs: 500 }), /did not finish within 500 ms.*ETIMEDOUT/);
   assert.ok(Date.now() - started < 10_000, 'the kill came at the ceiling, not after the sleep');
 });

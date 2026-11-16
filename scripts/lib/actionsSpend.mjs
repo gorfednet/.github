@@ -100,8 +100,8 @@ export function meterFromReport(report, { now, cap }) {
   const recentDays = Math.max(1, Math.min(7, elapsedDays))
   const rate = Math.max(gross / elapsedDays, recentGross / recentDays)
   const discount = Math.max(0, gross - net)
-  // gross + rate * daysLeft is at least gross, so this is at least net: nothing to clamp.
-  const projected = gross + rate * daysLeft - discount
+  // A report whose net exceeds its gross is inconsistent; the larger of the two is the base, so the projection never reads below what is already billed.
+  const projected = Math.max(gross, net) + rate * daysLeft - discount
   return {
     ...base,
     minutes: Math.round(minutes),
@@ -119,6 +119,7 @@ export function meterFromReport(report, { now, cap }) {
 export function readFailure(cause) {
   if (cause instanceof SyntaxError) return 'the billing read returned something that was not JSON'
   const text = String(cause?.stderr || cause?.message || cause)
+  if (/ETIMEDOUT/.test(`${cause?.code} ${text}`)) return 'the billing read timed out'
   if (/ENOBUFS|maxBuffer/i.test(text)) return 'the billing report was larger than the read buffer'
   const status = /HTTP (\d{3})/.exec(text)?.[1]
   if (status === '401') return 'the billing read was refused (401): the token is not accepted'
@@ -148,53 +149,91 @@ export function readMeter({ owner, now = new Date(), cap, json }) {
   return { month, readAt: now.toISOString(), capUsd: cap, unknown: failure }
 }
 
+/** An unknown reading this long, with no known one between, is a meter that has gone blind (an expired token, a refused permission). */
+export const BLIND_AFTER_MS = 24 * 3600 * 1000
+
 /**
- * The memo is a private file `{ "month": "2026-11", "fired": [70, 90] }`: the thresholds already pushed this month.
- * No memo, or a memo of another month, is a fresh month. A memo that is not that shape is `readable: false`.
+ * The memo is a private file `{ "month": "2026-11", "fired": [70, 90], "unknownSince": "<iso>", "blindSent": true }`:
+ * the thresholds already pushed this month, when the current run of unknown readings began (absent while the reading
+ * is known), and whether this month's "meter is blind" line has gone out. The last two are optional. No memo, or a memo
+ * of another month, is a fresh month. A memo that is not that shape is `readable: false`.
  */
 export function readMemo(memo, month) {
-  if (memo === null || memo === undefined) return { fired: [], readable: true }
-  if (typeof memo !== 'object' || typeof memo.month !== 'string') return { fired: [], readable: false }
-  if (memo.month !== month) return { fired: [], readable: true }
-  if (!Array.isArray(memo.fired) || memo.fired.some((t) => !SPEND_THRESHOLDS.includes(t))) return { fired: [], readable: false }
-  return { fired: [...memo.fired].sort((x, y) => x - y), readable: true }
+  const fresh = { fired: [], unknownSince: undefined, blindSent: false }
+  if (memo === null || memo === undefined) return { ...fresh, readable: true }
+  if (typeof memo !== 'object' || typeof memo.month !== 'string') return { ...fresh, readable: false }
+  if (memo.month !== month) return { ...fresh, readable: true }
+  if (!Array.isArray(memo.fired) || memo.fired.some((t) => !SPEND_THRESHOLDS.includes(t))) return { ...fresh, readable: false }
+  if (memo.unknownSince !== undefined && (typeof memo.unknownSince !== 'string' || !Number.isFinite(Date.parse(memo.unknownSince)))) return { ...fresh, readable: false }
+  if (memo.blindSent !== undefined && memo.blindSent !== true) return { ...fresh, readable: false }
+  return { fired: [...memo.fired].sort((x, y) => x - y), unknownSince: memo.unknownSince, blindSent: memo.blindSent === true, readable: true }
 }
 
 /**
  * Attach the memo to a fresh meter. A reading under a threshold drops it (credits applied, a correction); an
- * unknown reading keeps what was carried, so a failed read neither re-arms nor fires. A memo that cannot be read
- * is not "nothing fired": it would push every due line again. The thresholds the reading has already passed are
- * taken as sent (`memoUnreadable`), which at worst loses a line and never repeats one.
+ * unknown reading keeps what was carried, so a failed read neither re-arms nor fires, and starts the clock on how
+ * long the meter has been blind (`unknownSince`; not on the first day of a month, when an empty report is normal).
+ * A known reading ends that run. A memo that cannot be read is not "nothing fired": it would push every due line
+ * again. The thresholds the reading has already passed are taken as sent (`memoUnreadable`), which at worst loses
+ * a line and never repeats one.
  */
 export function withMemo(meter, memo) {
-  const { fired, readable } = readMemo(memo, meter.month)
-  // `stored` is what the memo file holds for this month, as read. applyAlert compares it with the thresholds the run ends on.
-  if (meter.unknown !== undefined) return { ...meter, fired, stored: fired, ...(readable ? {} : { memoUnreadable: true }) }
-  if (!readable) return { ...meter, fired: SPEND_THRESHOLDS.filter((t) => t <= meter.usedPct), stored: [], memoUnreadable: true }
-  return { ...meter, fired: fired.filter((t) => meter.usedPct >= t), stored: fired }
+  const r = readMemo(memo, meter.month)
+  // `stored` is what the memo file holds for this month, as read. applyAlert compares it with what the run ends on.
+  const stored = { fired: r.fired, unknownSince: r.unknownSince, blindSent: r.blindSent }
+  if (meter.unknown !== undefined) {
+    const unknownSince = meter.early ? undefined : (r.unknownSince ?? meter.readAt)
+    return { ...meter, fired: r.fired, unknownSince, blindSent: r.blindSent, stored, ...(r.readable ? {} : { memoUnreadable: true }) }
+  }
+  if (!r.readable) return { ...meter, fired: SPEND_THRESHOLDS.filter((t) => t <= meter.usedPct), blindSent: false, stored: { fired: [], unknownSince: undefined, blindSent: false }, memoUnreadable: true }
+  return { ...meter, fired: r.fired.filter((t) => meter.usedPct >= t), blindSent: r.blindSent, stored }
 }
 
 /** BILLING_READ_TOKEN, when set, stands in for the usual token on the billing call alone. */
 export const billingEnv = (env) => (env.BILLING_READ_TOKEN ? { ...env, GH_TOKEN: env.BILLING_READ_TOKEN } : env)
 
-/** `json(args)` for readMeter: runs `gh` and parses its output. 64 MiB of buffer: the report has a row per day, repository and SKU and grows through the month, so the default 1 MiB would fail on the days the thresholds matter. */
-export const ghJson = (env = process.env) => (args) =>
-  JSON.parse(execFileSync('gh', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], env: billingEnv(env), maxBuffer: 64 * 1024 * 1024 }))
+/** `json(args)` for readMeter: runs `gh` and parses its output, with a 60 second ceiling. 64 MiB of buffer: the report has a row per day, repository and SKU and grows through the month, so the default 1 MiB would fail on the days the thresholds matter. */
+export const GH_TIMEOUT_MS = 60_000
+// A stalled call must not hold a LaunchAgent job open: the job never exits, so no later run starts. A kill reads as unknown.
+export const ghJson = (env = process.env, { timeoutMs = GH_TIMEOUT_MS } = {}) => (args) =>
+  JSON.parse(execFileSync('gh', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], env: billingEnv(env), maxBuffer: 64 * 1024 * 1024, timeout: timeoutMs, killSignal: 'SIGKILL' }))
 
 export const alertText = (meter, threshold) =>
   `Hosted Actions spend is at ${meter.usedPct}% of the ${usd(meter.capUsd)} cap for ${monthName(meter.month)} (${threshold >= 100 ? 'cap reached' : `passed ${threshold}%`}): ${usd(meter.spendUsd)} so far, ${meter.minutes} hosted minutes, on course for about ${usd(meter.projectedUsd)} by month end.`
 
+/** The "meter is blind" line: no figure, no band, only that no threshold can fire until it reads again. */
+export const blindText = (meter) => `Hosted Actions spend meter is blind: no usable reading since ${meter.unknownSince} (${meter.unknown}). No threshold line can fire until it reads again.`
+
+/** The memo file for a run that ends on `fired`, `unknownSince` and `blindSent`. */
+const memoFile = (month, fired, unknownSince, blindSent) => ({ month, fired, ...(unknownSince ? { unknownSince } : {}), ...(blindSent ? { blindSent: true } : {}) })
+const sameMemo = (a, b) => JSON.stringify([a?.fired ?? [], a?.unknownSince ?? null, a?.blindSent === true]) === JSON.stringify([b?.fired ?? [], b?.unknownSince ?? null, b?.blindSent === true])
+
 /**
  * Push at most one line, for the highest threshold newly crossed, then record every threshold up to it. The memo
  * records a threshold only after `push(text, threshold)` resolved true, so a failed push retries next run.
- * `meter` is a reading with `fired` and `stored` (from withMemo). Returns what happened and `memo`: the file to write,
- * or null when the file already says what the run ends on. It is written when a line was pushed, when the file was
- * unreadable (repaired from the reading, or it would stay corrupt and be read as "everything so far was sent"
- * on every later run, silencing the thresholds still to come), and when a threshold was dropped (a re-arm that is
- * only in memory is lost at the next run). An unknown reading writes nothing.
+ * `meter` is a reading from withMemo (`fired`, `stored`, `blindSent`, `unknownSince`). Returns what happened and `memo`:
+ * the file to write, or null when the file already says what the run ends on. It is written when a line was pushed,
+ * when the file was unreadable (repaired from the reading, or it would stay corrupt and be read as "everything so far
+ * was sent" on every later run, silencing the thresholds still to come), when a threshold was dropped (a re-arm that
+ * is only in memory is lost at the next run), and when a run of unknown readings starts or ends.
+ *
+ * An unknown reading pushes no threshold line, so an expired token or a refused permission mid-month would look the
+ * same as "under 70%". Once the readings have been unknown for 24 hours (`BLIND_AFTER_MS`), one "meter is blind" line
+ * goes out, once a month, and `blindSent` records it. A read that works again clears the clock.
  */
 export async function applyAlert(meter, push) {
-  if (meter?.unknown !== undefined || !Number.isFinite(meter?.usedPct)) return { action: 'unknown', memo: null }
+  if (!meter) return { action: 'unknown', memo: null }
+  if (meter.unknown !== undefined) {
+    if (meter.memoUnreadable) return { action: 'unknown', memo: null }
+    let blindSent = meter.blindSent === true
+    let action = 'unknown'
+    if (!blindSent && meter.unknownSince && Date.parse(meter.readAt) - Date.parse(meter.unknownSince) >= BLIND_AFTER_MS) {
+      if (await push(blindText(meter), 'blind')) { blindSent = true; action = 'blind-sent' } else action = 'push-failed'
+    }
+    const next = memoFile(meter.month, meter.fired ?? [], meter.unknownSince, blindSent)
+    return { action, memo: sameMemo(next, meter.stored) ? null : next }
+  }
+  if (!Number.isFinite(meter.usedPct)) return { action: 'unknown', memo: null }
   const due = pendingSpendThreshold(meter.usedPct, meter.fired ?? [])
   let action = 'none'
   let fired = [...(meter.fired ?? [])]
@@ -204,7 +243,7 @@ export async function applyAlert(meter, push) {
       fired = [...new Set([...fired, ...SPEND_THRESHOLDS.filter((t) => t <= due)])].sort((x, y) => x - y)
     } else action = 'push-failed'
   }
-  const same = fired.length === (meter.stored ?? []).length && fired.every((t, i) => t === meter.stored[i])
-  const memo = meter.memoUnreadable || !same ? { month: meter.month, fired } : null
+  const next = memoFile(meter.month, fired, undefined, meter.blindSent === true)
+  const memo = meter.memoUnreadable || !sameMemo(next, meter.stored) ? next : null
   return due === null ? { action, memo } : { action, due, memo }
 }

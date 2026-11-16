@@ -9,7 +9,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, it } from 'node:test'
 
-import { alertText, applyAlert, billingEnv, ghJson, loadCap, meterFromReport, readFailure, readMemo, readMeter, withMemo } from '../scripts/lib/actionsSpend.mjs'
+import { BLIND_AFTER_MS, GH_TIMEOUT_MS, alertText, applyAlert, billingEnv, blindText, ghJson, loadCap, meterFromReport, readFailure, readMemo, readMeter, withMemo } from '../scripts/lib/actionsSpend.mjs'
 import { digest, render } from '../scripts/write-status-md.mjs'
 
 const fixture = JSON.parse(readFileSync(new URL('./fixtures/status.fixture.json', import.meta.url), 'utf8'))
@@ -77,6 +77,11 @@ describe('meterFromReport', () => {
     assert.equal(m.spendUsd, 104)
     // The month average (104 / 27 = 3.85 a day) would project 104 + 3 * 3.85 = 115.6. The last 7 days (1 + 1 + 1 + 1 + 40 + 20 + 20 = 84 over 7 days = 12 a day) give 104 + 36 = 140.
     assert.equal(m.projectedUsd, 140)
+  })
+  it('a report whose net is above its gross never projects below what is already billed', () => {
+    const m = meterFromReport({ usageItems: [row({ netAmount: 40, grossAmount: 10, discountAmount: 0 })] }, { now: NOW, cap: CAP })
+    assert.equal(m.spendUsd, 40)
+    assert.ok(m.projectedUsd >= 40, `${m.projectedUsd} is below the 40 already billed`)
   })
   it('a row with no usable date still counts in the month, just not in the last 7 days', () => {
     const m = meterFromReport({ usageItems: [row({ date: undefined, netAmount: 30 }), row({ date: 'soon', netAmount: 0 })] }, { now: NOW, cap: CAP })
@@ -190,10 +195,10 @@ describe('readMeter', () => {
 
 describe('the threshold memo', () => {
   it('reads back what was pushed this month, and starts empty in a new month or with nothing written', () => {
-    for (const fired of [[], [70], [70, 90], [70, 90, 100]]) assert.deepEqual(readMemo(memo(fired), '2026-11'), { fired, readable: true })
-    assert.deepEqual(readMemo(memo([70, 90], '2026-10'), '2026-11'), { fired: [], readable: true })
-    assert.deepEqual(readMemo(null, '2026-11'), { fired: [], readable: true })
-    assert.deepEqual(readMemo(undefined, '2026-11'), { fired: [], readable: true })
+    for (const fired of [[], [70], [70, 90], [70, 90, 100]]) assert.deepEqual(readMemo(memo(fired), '2026-11'), { fired, unknownSince: undefined, blindSent: false, readable: true })
+    assert.deepEqual(readMemo(memo([70, 90], '2026-10'), '2026-11'), { fired: [], unknownSince: undefined, blindSent: false, readable: true })
+    assert.deepEqual(readMemo(null, '2026-11'), { fired: [], unknownSince: undefined, blindSent: false, readable: true })
+    assert.deepEqual(readMemo(undefined, '2026-11'), { fired: [], unknownSince: undefined, blindSent: false, readable: true })
   })
   it('is unreadable, never "nothing fired", when it is not the shape the meter writes', () => {
     for (const bad of ['text', 7, {}, { month: '2026-11' }, { month: '2026-11', fired: 'x' }, { month: '2026-11', fired: [70, 33] }, { month: 7, fired: [] }]) assert.equal(readMemo(bad, '2026-11').readable, false, JSON.stringify(bad))
@@ -289,8 +294,13 @@ describe('applyAlert', () => {
     // A partial drop is written too, and an unchanged reading writes nothing.
     assert.deepEqual((await applyAlert(withMemo(meter(80), memo([70, 90])), recorder().push)).memo, { month: '2026-11', fired: [70] })
     assert.equal((await applyAlert(withMemo(meter(80), memo([70])), recorder().push)).memo, null)
-    // A drop and a push in one run write the result of both.
-    assert.deepEqual((await applyAlert(withMemo(meter(75), memo([70, 90])), recorder().push)).memo, { month: '2026-11', fired: [70] })
+    // A drop and a push in one run write the result of both: 90 is dropped at 75%, and 70 is due and pushed (review round 10).
+    const dropAndPush = recorder()
+    const both2 = await applyAlert(withMemo(meter(75), memo([90])), dropAndPush.push)
+    assert.equal(both2.action, 'pushed')
+    assert.equal(both2.due, 70)
+    assert.equal(dropAndPush.sent.length, 1)
+    assert.deepEqual(both2.memo, { month: '2026-11', fired: [70] })
     // A failed push with nothing dropped writes nothing, and retries next run.
     const failed = await applyAlert(withMemo(meter(75), memo([])), recorder(false).push)
     assert.equal(failed.action, 'push-failed')
@@ -319,6 +329,109 @@ describe('applyAlert', () => {
     assert.match(text, /US\$91\.00 so far/)
     assert.match(text, /7500 hosted minutes/)
     assert.match(text, /on course for about US\$188\.28/)
+  })
+})
+
+describe('a blind meter (review round 10)', () => {
+  const HOUR = 3600_000
+  const at = (hours) => new Date(NOW.getTime() + hours * HOUR)
+  const blindRead = (hours, memoFile) => withMemo(meterFromReport({}, { now: at(hours), cap: CAP }), memoFile)
+  const goodRead = (hours, net, memoFile) => withMemo(meterFromReport(report(net), { now: at(hours), cap: CAP }), memoFile)
+  const recorder = (ok = true) => {
+    const sent = []
+    return { sent, push: async (text, kind) => { sent.push([text, kind]); return ok } }
+  }
+  it('starts a clock on the first unknown reading, pushes nothing yet, and writes it', async () => {
+    const r = recorder()
+    const first = await applyAlert(blindRead(0, null), r.push)
+    assert.equal(first.action, 'unknown')
+    assert.deepEqual(first.memo, { month: '2026-11', fired: [], unknownSince: NOW.toISOString() })
+    assert.equal(r.sent.length, 0)
+    // Twelve hours on, still inside the window: nothing pushed, nothing to write.
+    const twelve = await applyAlert(blindRead(12, first.memo), r.push)
+    assert.equal(twelve.action, 'unknown')
+    assert.equal(twelve.memo, null)
+    assert.equal(r.sent.length, 0)
+  })
+  it('pushes one "meter is blind" line after 24 hours, once a month', async () => {
+    const r = recorder()
+    const start = (await applyAlert(blindRead(0, null), r.push)).memo
+    assert.equal(BLIND_AFTER_MS, 24 * HOUR)
+    const late = await applyAlert(blindRead(25, start), r.push)
+    assert.equal(late.action, 'blind-sent')
+    assert.equal(r.sent.length, 1)
+    assert.equal(r.sent[0][1], 'blind')
+    assert.match(r.sent[0][0], /meter is blind: no usable reading since 2026-11-15/)
+    assert.doesNotMatch(r.sent[0][0], /US\$|%/, 'no figure in the line')
+    assert.deepEqual(late.memo, { month: '2026-11', fired: [], unknownSince: NOW.toISOString(), blindSent: true })
+    // Still blind two days later: no second line.
+    assert.equal((await applyAlert(blindRead(48, late.memo), r.push)).memo, null)
+    assert.equal(r.sent.length, 1)
+    assert.match(blindText(blindRead(25, start)), /no threshold line can fire/i)
+  })
+  it('a failed push retries on the next run, and the thresholds are left alone', async () => {
+    const start = (await applyAlert(blindRead(0, memo([70])), recorder().push)).memo
+    assert.deepEqual(start.fired, [70])
+    const down = await applyAlert(blindRead(25, start), recorder(false).push)
+    assert.equal(down.action, 'push-failed')
+    assert.equal(down.memo, null)
+    const up = recorder()
+    assert.equal((await applyAlert(blindRead(27, start), up.push)).action, 'blind-sent')
+    assert.equal(up.sent.length, 1)
+  })
+  it('a reading that works again ends the run but keeps this month\'s line sent', async () => {
+    const r = recorder()
+    const blind = { month: '2026-11', fired: [], unknownSince: NOW.toISOString(), blindSent: true }
+    const back = await applyAlert(goodRead(30, 40, blind), r.push)
+    assert.equal(back.action, 'none')
+    assert.deepEqual(back.memo, { month: '2026-11', fired: [], blindSent: true })
+    // Blind again later in the same month: the clock restarts, and no second line goes out.
+    const again = await applyAlert(blindRead(40, back.memo), r.push)
+    assert.deepEqual(again.memo, { month: '2026-11', fired: [], unknownSince: at(40).toISOString(), blindSent: true })
+    assert.equal((await applyAlert(blindRead(80, again.memo), r.push)).memo, null)
+    assert.equal(r.sent.length, 0)
+  })
+  it('a new month starts clean, so the line can go out again', async () => {
+    const old = { month: '2026-10', fired: [70], unknownSince: '2026-10-30T00:00:00.000Z', blindSent: true }
+    const next = await applyAlert(withMemo(meterFromReport({}, { now: new Date('2026-11-15T00:00:00Z'), cap: CAP }), old), recorder().push)
+    assert.deepEqual(next.memo, { month: '2026-11', fired: [], unknownSince: '2026-11-15T00:00:00.000Z' })
+  })
+  it('the first day of a month is not blind: an empty report there starts no clock', async () => {
+    const first = withMemo(meterFromReport({ usageItems: [] }, { now: new Date('2026-12-01T01:00:00Z'), cap: CAP }), null)
+    assert.equal(first.early, true)
+    assert.equal(first.unknownSince, undefined)
+    assert.equal((await applyAlert(first, recorder().push)).memo, null)
+  })
+  it('an unreadable memo with an unknown reading writes and pushes nothing', async () => {
+    const r = recorder()
+    const m = withMemo(meterFromReport({}, { now: at(40), cap: CAP }), { month: '2026-11' })
+    assert.equal((await applyAlert(m, r.push)).memo, null)
+    assert.equal(r.sent.length, 0)
+  })
+  it('the memo fields are checked: a bad unknownSince or blindSent is unreadable', () => {
+    for (const bad of [{ unknownSince: 7 }, { unknownSince: 'soon' }, { blindSent: false }, { blindSent: 'yes' }]) assert.equal(readMemo({ month: '2026-11', fired: [], ...bad }, '2026-11').readable, false, JSON.stringify(bad))
+    assert.deepEqual(readMemo({ month: '2026-11', fired: [], unknownSince: NOW.toISOString(), blindSent: true }, '2026-11'), { fired: [], unknownSince: NOW.toISOString(), blindSent: true, readable: true })
+  })
+})
+
+describe('a stalled gh call', () => {
+  const fakeGh = (script) => {
+    const dir = mkdtempSync(join(tmpdir(), 'slow-gh-'))
+    const gh = join(dir, 'gh')
+    writeFileSync(gh, `#!/bin/sh\n${script}\n`)
+    chmodSync(gh, 0o755)
+    return { ...process.env, PATH: `${dir}:${process.env.PATH}` }
+  }
+  it('is killed at the ceiling and reads as unknown, so a LaunchAgent job can exit (review round 10)', () => {
+    const started = Date.now()
+    const m = readMeter({ owner: 'acct', now: NOW, cap: CAP, json: ghJson(fakeGh('sleep 20'), { timeoutMs: 300 }) })
+    assert.equal(m.unknown, 'the billing read timed out')
+    assert.equal('spendUsd' in m, false)
+    assert.ok(Date.now() - started < 10_000, 'it returned at the ceiling, not after the sleep')
+  })
+  it('the default ceiling is 60 seconds', () => assert.equal(GH_TIMEOUT_MS, 60_000))
+  it('readFailure names a timeout and nothing else from the call', () => {
+    assert.equal(readFailure(Object.assign(new Error('spawnSync gh ETIMEDOUT secret-owner/private-repo'), { code: 'ETIMEDOUT' })), 'the billing read timed out')
   })
 })
 
