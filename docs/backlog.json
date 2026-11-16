@@ -798,7 +798,7 @@
       "status": "confirmed-bug",
       "assignee": "main-model",
       "userSymptom": "papers.4thcltr.com's main and its weekly release went red on the wordmark specs with no code change, the night the owner wanted the release live.",
-      "evidence": "Same commit passed on a hosted runner with 1 Playwright worker and failed on the pool with 6 (papers run 43755371742, attempts 1 and 2). Inside a pool container os.cpus() is 12, availableParallelism() 2, cpu.max 200000 100000 (probed 15 November 2026). 4thcltr.com hit the same cause on 4 October 2026 (91259c9). Plan and briefs: docs/plans/ci-parallelism.md, briefs/ci-par-*.md.",
+      "evidence": "Same commit passed on a hosted runner with 1 Playwright worker and failed on the pool with 6 (papers run 43755371742, attempts 1 and 2). Inside a pool container os.cpus() is 12, availableParallelism() 2, cpu.max 200000 100000 (probed 15 November 2026). 4thcltr.com hit the same cause on 4 October 2026 (91259c9). Plan and briefs: docs/plans/ci-parallelism.md, ops control/briefs/ci-par-*.md.",
       "note": "Fixed for papers alone by papers PR 43. The fleet fix is the plan's waves 1 to 3.",
       "reviewBy": "2026-11-27",
       "created": "2026-11-15",

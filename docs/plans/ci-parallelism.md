@@ -1,6 +1,6 @@
 # CI parallelism sized from the container's cpus: fleet fix
 
-Written 15 November 2026 by the session that fixed papers.4thcltr.com's red `main` (papers PR 43). Approved by the owner the same evening. One brief per item is in `briefs/ci-par-*.md`. Each session reads this file and its own brief, nothing else.
+Written 15 November 2026 by the session that fixed papers.4thcltr.com's red `main` (papers PR 43). Approved by the owner the same evening. One brief per item is in ops `control/briefs/ci-par-*.md`. Each session reads this file and its own brief, nothing else.
 
 ## Context
 
@@ -10,7 +10,7 @@ The owner asked for the root causes fixed for every current and future repositor
 
 ## What was verified (15 November 2026)
 
-- **The technical cause.** Inside a pool container (probed on dapyllil on 15 November 2026, Node 26, libuv 1.52): `os.cpus().length` is 12, `nproc` is 8 (the cpuset), `os.availableParallelism()` is 2, `cpu.max` is `200000 100000`. Playwright sizes from `os.cpus()`, so it is the exposed tool. Vitest and `node --test` size from `availableParallelism()`, which honours the quota on a recent Node.
+- **The technical cause.** Inside a pool container (probed on the pool host on 15 November 2026, Node 26, libuv 1.52): `os.cpus().length` is 12, `nproc` is 8 (the cpuset), `os.availableParallelism()` is 2, `cpu.max` is `200000 100000`. Playwright sizes from `os.cpus()`, so it is the exposed tool. Vitest and `node --test` size from `availableParallelism()`, which honours the quota on a recent Node.
 - **No shared fix.** The helper exists only in 4thcltr.com (`scripts/playwright-workers.mjs`) and now papers' PR 43. MoonMan has a third copy for Vitest (`scripts/lib/cpu-budget.mjs`). Nothing checks a config.
 - **The template is unsafe.** `templates/playwright.config.ts` in `gorfednet/.github` leaves workers to Playwright's default, and the bootstrap skill and `register-repo.mjs` say nothing about it. New repositories inherit the problem.
 - **No test before a move to the pool.** A session set `HEAVY_RUNS_ON` on 11 repositories on 15 November by hand. `docs/plans/ci-resourcing.md` records "Pool job seen running", not passing. Papers went red 20 seconds later.
@@ -65,7 +65,7 @@ Every pull request gets the Claude reviewer (Fable). Desk labels. Builders run a
 | 2.6 | Turn the gate's check from a warning into a failure. `fleet-audit` (scheduled) lists any repository not converted, and any whose `HEAVY_RUNS_ON` is hosted while it has a pool row. | **Fable**, small PR. It changes what CI enforces |
 | 2.7 | Move heuristics back to the pool with `pool-flip`. Re-run it for the other 10 repositories moved on 15 November, so each has a passing pool run on record. | **Haiku runner.** It runs one script per repository and reports the output |
 | 2.8 | BinderCurve: axe jobs and Vitest take their count from the kit, and `pools.conf`'s comment is corrected. | **Sonnet builder.** Priority 6, so it goes last and waits when the pool is busy |
-| 2.9 | `gate-run` (in `ops`, `hosts/gorfpael/herdr/bin/`) exports `PLAYWRIGHT_WORKERS=2` when `builder-ok` says the Mac is loaded, so the written rule is enforced. | **Sonnet builder**, small PR |
+| 2.9 | `gate-run` (in `ops`, `hosts/<the Mac host>/herdr/bin/`) exports `PLAYWRIGHT_WORKERS=2` when `builder-ok` says the Mac is loaded, so the written rule is enforced. | **Sonnet builder**, small PR |
 | 2.10 | Any repository whose log line from 1.2 shows `availableParallelism()` above its usable cpus gets `maxWorkers` from the kit in its Vitest config. | **Sonnet builder**, only if the logs show it |
 
 In 2.1, papers' `check` job is also read against its 10-minute limit now that it runs 1 worker. PR 43's pool run took about 6 minutes.
