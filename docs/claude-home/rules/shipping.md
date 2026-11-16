@@ -40,7 +40,7 @@ Every CI job in every repository runs on our self-hosted runners on dapyllil by 
 
 - Hosted minutes have a hard cap of US$100 a month across all repositories (owner, 13 November 2026: "Yes, US$100 hard cap"). November 2026 may reach US$150 (owner: "if this month goes to 150 cause of the mistakes and transitions its ok but let's aim for 100 tops"). A GitHub billing budget on Actions stops usage at the cap.
 - Hosted is allowed for the reviewer, roll-ups, the pool-liveness preflight (it must run off the pool to notice the pool is down) and light gates on heuristics, papers and gorfed.net.
-- Overflow is automatic (owner, 2026-10-30: "hosted runners when backed up yes"). When the pool heartbeat is stale or the oldest queued job has waited over 15 minutes, priority 1 to 5 work goes hosted. BinderCurve waits. The pool setting comes back once the queue clears.
+- Overflow is automatic (owner, 2026-10-30: "hosted runners when backed up yes"). When the pool heartbeat is stale or the oldest queued job has waited over 15 minutes, priority 1 to 5 work goes hosted. BinderCurve waits. The pool setting comes back once the queue clears. A job lost to its runner (the host dropped out of Linux or lost its connection mid-job) is the exception, with the same rule in every repository, BinderCurve included (owner, 15 November 2026, 20:02 ET: "Yes, lost jobs only", "same rules for all repos"). It reruns once with first claim on the remaining hosts. If no slot frees within 15 minutes, it goes hosted. The host it dropped from takes no new jobs until its heartbeat returns. A second loss of the same job stays red.
 - Overflow minutes are reported in the daily digest, not to the owner each time.
 - A repository that runs heavy jobs hosted outside these cases is a bug to fix.
 
