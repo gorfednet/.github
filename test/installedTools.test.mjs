@@ -172,6 +172,34 @@ describe('LaunchAgents on another tool\'s Node', () => {
   })
 })
 
+describe('a Node that is not the one check.sh passed on (plan row 1.22a)', () => {
+  const setup = (version, recorded) => {
+    const f = fixture()
+    const node = join(f.home, 'opt', 'bin', 'node')
+    put(node, `#!/bin/sh\necho ${version}\n`, 0o755)
+    mkdirSync(f.agents, { recursive: true })
+    put(join(f.agents, 'net.gorfed.ship-bot.plist'), `<?xml version="1.0" encoding="UTF-8"?>\n<plist version="1.0"><dict><key>Label</key><string>net.gorfed.ship-bot</string><key>ProgramArguments</key><array><string>${node}</string><string>${join(f.home, '.ship-bot', 'app', 'ship-bot.mjs')}</string></array></dict></plist>\n`)
+    if (recorded !== null) put(join(f.home, '.ship-bot', 'app.node-version'), `${recorded}\n`)
+    return f
+  }
+  const nodeRows = (f) => run(f).behind.filter((b) => b.tool.startsWith('Node version'))
+  it('is quiet when the agent\'s Node reports the recorded version', () => {
+    assert.deepEqual(nodeRows(setup('v22.23.1', 'v22.23.1')), [])
+  })
+  it('flags a changed version, naming both', () => {
+    const hit = nodeRows(setup('v24.1.0', 'v22.23.1'))
+    assert.equal(hit.length, 1)
+    assert.equal(hit[0].tool, 'Node version net.gorfed.ship-bot')
+    assert.match(hit[0].detail, /runs Node v24\.1\.0, but check\.sh passed on v22\.23\.1: rerun the installer from origin\/main/)
+  })
+  it('flags an installed agent with no record, and ignores an agent that is not installed', () => {
+    const hit = nodeRows(setup('v22.23.1', null))
+    assert.equal(hit.length, 1)
+    assert.match(hit[0].detail, /no check\.sh pass is recorded/)
+    assert.deepEqual(nodeRows(fixture()), [])
+  })
+})
+
 describe('gate scripts and the ~/.claude mirror (plan row 1.18)', () => {
   const commitFile = (f, rel, body) => {
     const c = rel.startsWith('control/') ? f.ops : f.clone

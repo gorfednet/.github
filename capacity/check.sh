@@ -2,7 +2,10 @@
 # Run the capacity tests and require that enough ran (a skipped suite exits 0).
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-NODE_BIN="${NODE_BIN:-$(node -p 'process.execPath')}"
+# The Node the installer would pick (scripts/lib/resolve-node.sh), not whatever `node` is first on PATH.
+# shellcheck source=../scripts/lib/resolve-node.sh
+source "${HERE}/../scripts/lib/resolve-node.sh"
+NODE_BIN="$(resolve_node)" || { echo "capacity/check.sh: no usable Node." >&2; exit 1; }
 MIN_TESTS=20
 status=0
 report="$("${NODE_BIN}" --test --test-reporter=tap "${HERE}"/test/*.test.mjs 2>&1)" || status=$?

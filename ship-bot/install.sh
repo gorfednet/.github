@@ -133,6 +133,9 @@ rm -rf "${APP_DIR}.old"
 if [[ -d "${APP_DIR}" ]]; then mv "${APP_DIR}" "${APP_DIR}.old"; fi
 mv "${APP_DIR}.new" "${APP_DIR}"
 rm -rf "${APP_DIR}.old"
+# The Node check.sh passed on, beside the app (not in it: the app is compared with origin/main). The installed-tools
+# row flags the agent when its Node reports another version (plan row 1.22a).
+"${NODE_BIN}" --version >"${APP_DIR}.node-version"
 
 xml() { sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g' <<<"$1"; }
 
