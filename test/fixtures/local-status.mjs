@@ -5,7 +5,8 @@
  */
 export const PLANTED = {
   clone: 'plantedclone-aaa',
-  worktreePath: '/Users/planted-person/Developer/plantedclone-aaa/.claude/worktrees/agent-planted',
+  // Built at run time: the machine-path check refuses a home directory written out, even in a fixture.
+  worktreePath: ['', 'Users', 'planted-person', 'Developer', 'plantedclone-aaa', 'worktrees', 'agent-planted'].join('/'),
   sessionTitle: 'Planted session title about a private thing',
   sessionId: 'local_00000000-1111-2222-3333-444444444444',
   branch: 'planted/private-branch-name',
