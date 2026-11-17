@@ -172,6 +172,11 @@ node ~/.ship-bot/app/patch-config.mjs <patch.json>
 It backs the config up, refuses a slug the config already has, validates the result and prints
 slugs and key names only. A patch's row should set `live: false`; `--set-repo-live` turns it on.
 
+A top-level key such as `ntfy` goes in the patch's `"set": {"ntfy": {...}}`, with `null` to remove
+one. `set` refuses `repos` and `live`: rows go through `add` and `repos`, and `--set-live` turns
+merging on or off. A key a public patch sets must match `config.example.json` (a test fails when
+the two differ).
+
 A public repository's patch lives in `patches/` beside an identical row in `config.example.json`
 (a test fails when the two differ). A row for a private repository outside the privacy guard's
 allowlist never goes in this public repository: the guard fails the pull request.

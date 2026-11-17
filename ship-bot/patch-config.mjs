@@ -11,6 +11,11 @@
  * A patch may also carry "add": [row, ...], whole rows for repositories the
  * config does not have yet (scripts/register-repo.mjs writes these). An added
  * row whose slug is already in the config is refused, never merged.
+ * A patch may also carry "set": {"key": value}, top-level keys such as ntfy
+ * (16 November 2026: the live config had no ntfy block and the patch format
+ * had no way to add one). A null value removes the key. "repos" and "live"
+ * are refused there: rows go through "add" and "repos", and the bot's own
+ * --set-live turns merging on or off.
  *
  * It backs the file up first (config.json.bak-<label>), validates the result
  * with the installed bot's own validator, and writes only when that passes.
@@ -22,9 +27,28 @@ import { join } from 'node:path'
 import { validateConfig } from './lib/config.mjs'
 import { isMain } from './lib/isMain.mjs'
 
+/** Top-level keys a patch's "set" may not touch: each has its own route. */
+const SET_REFUSED = new Map([
+  ['repos', 'rows go through "add" and "repos"'],
+  ['live', 'use ship-bot.mjs --set-live'],
+])
+
 export function applyPatch(raw, patch) {
   const changed = []
   const problems = []
+  if (patch.set !== undefined && (typeof patch.set !== 'object' || patch.set === null || Array.isArray(patch.set))) {
+    problems.push('set: must be an object of top-level keys')
+  }
+  const set = problems.length === 0 ? (patch.set ?? {}) : {}
+  for (const [key, value] of Object.entries(set)) {
+    if (SET_REFUSED.has(key)) {
+      problems.push(`set: ${key} is refused here; ${SET_REFUSED.get(key)}`)
+      continue
+    }
+    if (value === null) delete raw[key]
+    else raw[key] = structuredClone(value)
+    changed.push(`${value === null ? 'removed' : 'set'} ${key}`)
+  }
   for (const row of patch.add ?? []) {
     if (typeof row?.slug !== 'string') {
       problems.push('add: every row needs a slug')
