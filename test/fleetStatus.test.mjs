@@ -4,14 +4,15 @@
  */
 import { strict as assert } from 'node:assert'
 import { spawnSync } from 'node:child_process'
-import { mkdtempSync, readFileSync } from 'node:fs'
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, it } from 'node:test'
 
-import { aheadCounts, ciState, collectRepo, dependabotRed, isPrivateRepo, latestDeploy, nextItem, recentLines, redactRepo, repoList } from '../scripts/fleet-status.mjs'
+import { behindClones, collectLocal, dirtyClones, duplicatePrs, idlePrs, idleSessions, oldWorktrees } from '../scripts/lib/hygiene.mjs'
+import { aheadCounts, alertsOverdue, carryMap, ciState, collectRepo, mapLimit, dependabotRed, overdueAlerts, isPrivateRepo, latestDeploy, nextItem, PLAN_SOURCE, readPlanOfRecord, recentLines, redactRepo, repoList, dormantRepos } from '../scripts/fleet-status.mjs'
 import { workflowTriggers } from '../scripts/lib/workflowTriggers.mjs'
-import { digest, etStamp, lowerMeridiem, render, summaryLine } from '../scripts/write-status-md.mjs'
+import { digest, etStamp, hygiene, lowerMeridiem, render, summaryLine } from '../scripts/write-status-md.mjs'
 
 const fixture = JSON.parse(readFileSync(new URL('./fixtures/status.fixture.json', import.meta.url), 'utf8'))
 const schema = JSON.parse(readFileSync(new URL('../scripts/lib/status.schema.json', import.meta.url), 'utf8'))
@@ -50,6 +51,36 @@ describe('status.json schema', () => {
     bad.repos[1].surprise = 1
     const errors = validate(bad, schema)
     assert.equal(errors.length, 3, errors.join('\n'))
+  })
+})
+
+describe('status.json schema: installed tools', () => {
+  const withTools = (list) => ({ ...structuredClone(fixture), local: { ...structuredClone(fixture).local, installedTools: list } })
+  it('accepts an aggregate finding with items and an ahead finding (plan row 1.18)', () => {
+    const behind = { tool: '~/.claude mirror', source: '~/.claude', behind: 1, detail: 'mirror of gorfednet.github/docs/claude-home: 1 files behind', items: ['rules/shipping.md'] }
+    const ahead = { tool: '~/.claude mirror', source: '~/.claude', behind: null, ahead: true, detail: 'mirror of gorfednet.github/docs/claude-home: 1 files ahead of main or unmirrored (not behind)', items: ['rules/new.md'] }
+    assert.deepEqual(validate(withTools([behind, ahead]), schema), [])
+    assert.equal(validate(withTools([{ ...behind, surprise: 1 }]), schema).length, 1, 'an unknown field is still refused')
+  })
+})
+
+describe('status.json schema: local counts (replan row N7)', async () => {
+  const { reduceStatus } = await import('../scripts/lib/localCounts.mjs')
+  const { fullStatus } = await import('./fixtures/local-status.mjs')
+  const withCounts = (counts) => ({ ...structuredClone(fixture), localCounts: counts })
+  it('accepts the counts the publisher writes, with null rows, and refuses an extra key or a string count', () => {
+    const { counts } = reduceStatus(fullStatus(), { kept: 1 })
+    assert.deepEqual(validate(withCounts(counts), schema), [])
+    const partial = structuredClone(counts)
+    partial.rows.idleSessions = { count: null, measuredAt: null }
+    partial.inventory.job = { total: null, orphans: null, measuredAt: null }
+    assert.deepEqual(validate(withCounts(partial), schema), [])
+    const extra = structuredClone(counts)
+    extra.rows.dirtyClones.surprise = 1
+    assert.equal(validate(withCounts(extra), schema).length, 1)
+    const text = structuredClone(counts)
+    text.rows.dirtyClones.count = 'three'
+    assert.equal(validate(withCounts(text), schema).length, 1)
   })
 })
 
@@ -137,6 +168,16 @@ describe('helpers', () => {
     const list = repoList({ projects: [{ slug: 'a/x' }] }, { repos: [{ slug: 'a/x' }, { slug: 'a/y' }] })
     assert.deepEqual(list, ['a/x', 'a/y'])
   })
+  it('repoList leaves dormant projects out, even when ship-bot still has a row for them', () => {
+    const fleet = { projects: [{ slug: 'a/x' }, { slug: 'a/z', monitorClass: 'dormant' }] }
+    assert.deepEqual(repoList(fleet, { repos: [{ slug: 'a/z' }, { slug: 'a/y' }] }), ['a/x', 'a/y'])
+    assert.deepEqual(dormantRepos(fleet), ['a/z'])
+  })
+  it('render names the dormant repositories once, and only when there are some', () => {
+    const md = render({ ...fixture, dormant: ['gorfednet/TowIt', 'gorfednet/wychwood'] })
+    assert.match(md, /^Dormant, not tracked: TowIt, wychwood\.$/m)
+    assert.doesNotMatch(render(fixture), /Dormant/)
+  })
 })
 
 describe('--from', () => {
@@ -168,7 +209,7 @@ describe('STATUS.md', () => {
     assert.ok(isPrivateRepo({ private: false }), 'unknown visibility counts as private')
     assert.ok(!isPrivateRepo({ private: false, visibility: 'public' }))
     const row = redactRepo(full)
-    assert.deepEqual(row, { slug: full.slug, redacted: true, mainRed: false, openPrCount: 2, lapsedBacklogCount: 1, dependabotRedCount: 1 })
+    assert.deepEqual(row, { slug: full.slug, redacted: true, mainRed: false, openPrCount: 2, lapsedBacklogCount: 1, noPrCount: 1, idlePrCount: 1, duplicatePrCount: 0, dependabotRedCount: 1, kitVersion: null, alertsOverdue: 1 })
     const text = JSON.stringify(row)
     for (const leak of ['title', 'branch', 'url', 'next', 'Fix the nav', 'feat/old', 'stale-entry', 'actions/runs']) assert.ok(!text.includes(leak), leak)
     assert.deepEqual(validate({ generatedAt: 'x', renderedAt: 'x', repos: [row] }, schema), [])
@@ -211,7 +252,7 @@ describe('STATUS.md', () => {
   it('summarizes the fixture', () => {
     assert.equal(
       summaryLine(fixture),
-      '5 open PRs, oldest 5 days (4thcltr.com #212), 1 red mains, 2 lapsed backlog items, 2 dependabot red, 1 waiting on the owner, 1 repos unreadable.',
+      '5 open PRs, oldest 5 days (4thcltr.com #212), 1 red mains, 2 lapsed backlog items, 2 dependabot red, Dependabot alerts past target UNKNOWN (3 counted, 1 repos not read), 1 waiting on the owner, 1 repos unreadable.',
     )
   })
   it('renders every repository, the unavailable row, escaped pipes and the dirty clones', () => {
@@ -235,12 +276,132 @@ describe('STATUS.md', () => {
   })
 })
 
+describe('Dependabot alerts past target (plan row 3.20l)', () => {
+  const now = new Date('2026-11-16T12:00:00Z')
+  const ago = (hours) => new Date(now - hours * 3_600_000).toISOString()
+  /** A planted alert, with the package and advisory a leak would show up in. */
+  const alert = (severity, hours, extra = {}) => ({
+    number: 1,
+    state: 'open',
+    created_at: ago(hours),
+    dependency: { package: { ecosystem: 'npm', name: 'secret-pkg-name' }, manifest_path: 'private/path/package.json' },
+    security_advisory: { ghsa_id: 'GHSA-xxxx-yyyy-zzzz', cve_id: 'CVE-2026-0001', severity, summary: 'secret advisory summary' },
+    ...extra,
+  })
+
+  it('counts critical and high past 72 hours, the rest past 7 days, and nothing inside its target', () => {
+    assert.equal(overdueAlerts([alert('critical', 73)], now), 1)
+    assert.equal(overdueAlerts([alert('high', 73)], now), 1)
+    assert.equal(overdueAlerts([alert('critical', 71), alert('high', 72)], now), 0)
+    assert.equal(overdueAlerts([alert('medium', 7 * 24 + 1), alert('low', 8 * 24)], now), 2)
+    assert.equal(overdueAlerts([alert('medium', 80), alert('low', 7 * 24 - 1)], now), 0, 'a medium alert at 80 hours is inside its 7 days')
+    assert.equal(overdueAlerts([alert('critical', 73), alert('medium', 80), alert('low', 9 * 24)], now), 2)
+    assert.equal(overdueAlerts([], now), 0)
+  })
+  it('counts an alert it cannot date, because it cannot show it is inside its target', () => {
+    assert.equal(overdueAlerts([alert('high', 1, { created_at: undefined })], now), 1)
+    assert.equal(overdueAlerts([alert('high', 1, { created_at: 'soon' })], now), 1)
+    // An unknown severity gets the longer window rather than none.
+    assert.equal(overdueAlerts([alert('mystery', 80)], now), 1)
+    assert.equal(overdueAlerts([alert('mystery', 60)], now), 0)
+    assert.equal(overdueAlerts([alert(undefined, 80, { security_advisory: {} })], now), 1)
+  })
+
+  const fakeJson = (visibility, alertsAnswer) => (args) => {
+    const path = args[0] === 'pr' ? 'pr list' : args[args.length - 1]
+    if (path === 'repos/o/p') return { private: visibility !== 'public', visibility, default_branch: 'main' }
+    if (path === 'pr list') return []
+    if (path.includes('/branches')) return [[]]
+    if (path.includes('/contents/')) throw Object.assign(new Error('gh: Not Found (HTTP 404)'), { stderr: 'gh: Not Found (HTTP 404)' })
+    if (path.endsWith('/workflows?per_page=100')) return { workflows: [] }
+    if (path.endsWith('/commits/main')) return { sha: 'abc' }
+    if (path.includes('/actions/runs?')) return [{ workflow_runs: [] }]
+    if (path.endsWith('/status')) return { state: 'pending', statuses: [] }
+    if (path.includes('/dependabot/alerts?')) return alertsAnswer()
+    throw new Error(`unexpected call ${args.join(' ')}`)
+  }
+
+  it('a planted overdue alert counts 1 in a public repository row and in a private one, and neither row names it', async () => {
+    const planted = () => [[alert('critical', 100), alert('high', 10)]]
+    for (const visibility of ['public', 'private']) {
+      const row = await collectRepo('o/p', now, { json: fakeJson(visibility, planted), log: () => {} })
+      assert.equal(row.alertsOverdue, 1, visibility)
+      const text = JSON.stringify(row)
+      for (const leak of ['secret-pkg-name', 'GHSA', 'CVE-', 'secret advisory', 'private/path']) assert.ok(!text.includes(leak), `${visibility} row leaked ${leak}`)
+      assert.deepEqual(validate({ generatedAt: 'x', renderedAt: 'x', repos: [row] }, schema), [])
+    }
+  })
+  it('reads every page of alerts', async () => {
+    const asked = []
+    const json = (args) => {
+      asked.push(args.join(' '))
+      return [[alert('critical', 100)], [alert('critical', 100)]]
+    }
+    assert.equal(alertsOverdue('o/p', now, json), 2)
+    assert.match(asked[0], /--paginate --slurp .*dependabot\/alerts\?state=open&per_page=100/)
+  })
+  it('a token that cannot read the alerts gives UNKNOWN (null), never 0, and the row still renders', async () => {
+    const denied = () => {
+      throw Object.assign(new Error('x'), { stderr: 'gh: Resource not accessible by personal access token (HTTP 403)' })
+    }
+    const logged = []
+    const row = await collectRepo('o/p', now, { json: fakeJson('public', denied), log: (l) => logged.push(l) })
+    assert.equal(row.unavailable, undefined, 'the repository row survives')
+    assert.strictEqual(row.alertsOverdue, null)
+    assert.ok(logged.some((l) => /Dependabot alerts for o\/p/.test(l) && /HTTP 403/.test(l)), logged.join('\n'))
+    assert.deepEqual(validate({ generatedAt: 'x', renderedAt: 'x', repos: [row] }, schema), [])
+    const md = render({ generatedAt: '2026-11-16T12:00:00Z', renderedAt: '2026-11-16T12:00:00Z', repos: [row] })
+    assert.match(md, /Dependabot alerts past target UNKNOWN/)
+    assert.doesNotMatch(md, /0 Dependabot alerts past target/)
+  })
+  it('renders the count per repository, UNKNOWN where unread, and the fleet total with its unknowns', () => {
+    const md = render(fixture)
+    assert.match(md, /· 1 Dependabot alerts past target · kit none/)
+    assert.match(md, /career-portfolio.*\n\nmain \*\*red\*\*.*· Dependabot alerts past target UNKNOWN ·/)
+    assert.match(md, /\(private, counts only\).* · 2 Dependabot alerts past target/)
+    assert.match(summaryLine(fixture), /Dependabot alerts past target UNKNOWN \(3 counted, 1 repos not read\)/)
+    assert.match(digest(fixture), /Dependabot alerts past target UNKNOWN \(3 counted, 1 repos not read\)/)
+  })
+  it('an older snapshot without the field reads UNKNOWN, not 0', () => {
+    const old = structuredClone(fixture)
+    for (const r of old.repos) delete r.alertsOverdue
+    assert.match(summaryLine(old), /dependabot red, Dependabot alerts past target UNKNOWN \(0 counted, \d+ repos not read\), /)
+    assert.doesNotMatch(render(old), /\b0 Dependabot alerts past target/)
+  })
+  it('one repository at 0 and others unread does not lead with 0', () => {
+    const mixed = { generatedAt: 'x', renderedAt: 'x', repos: [0, null, null, null].map((n, i) => ({ slug: `o/r${i}`, redacted: true, mainRed: false, openPrCount: 0, lapsedBacklogCount: 0, dependabotRedCount: 0, alertsOverdue: n })) }
+    assert.match(summaryLine(mixed), /dependabot red, Dependabot alerts past target UNKNOWN \(0 counted, 3 repos not read\), /)
+    assert.doesNotMatch(summaryLine(mixed), /, 0 Dependabot alerts past target/)
+  })
+  it('a failed alert read on a private repository logs only the HTTP status, never the error text', async () => {
+    const SECRET = 'secret-repo-detail'
+    const denied = () => {
+      throw Object.assign(new Error('x'), { stderr: `gh: ${SECRET}: Dependabot alerts are disabled for this repository. (HTTP 403)` })
+    }
+    const priv = []
+    await collectRepo('o/p', now, { json: fakeJson('private', denied), log: (l) => priv.push(l) })
+    assert.ok(priv.some((l) => /Dependabot alerts for o\/p: HTTP 403$/.test(l)), priv.join('\n'))
+    assert.ok(!priv.join('\n').includes(SECRET))
+    const pub = []
+    await collectRepo('o/p', now, { json: fakeJson('public', denied), log: (l) => pub.push(l) })
+    assert.ok(pub.join('\n').includes(SECRET), 'a public repository keeps the detail')
+    const local = []
+    await collectRepo('o/p', now, { json: fakeJson('private', denied), log: (l) => local.push(l), includePrivate: true })
+    assert.ok(local.join('\n').includes(SECRET), '--include-private (the local wrapper) keeps the detail')
+  })
+  it('a fleet with every repository read and none overdue says 0', () => {
+    const clean = { generatedAt: 'x', renderedAt: 'x', repos: [{ slug: 'o/a', redacted: true, mainRed: false, openPrCount: 0, lapsedBacklogCount: 0, dependabotRedCount: 0, alertsOverdue: 0 }] }
+    assert.match(summaryLine(clean), /0 Dependabot alerts past target, /)
+  })
+})
+
 describe('fleet-status.yml', () => {
   const text = readFileSync(new URL('../.github/workflows/fleet-status.yml', import.meta.url), 'utf8')
-  it('runs daily at 06:30 UTC and on demand, never on a pull request', () => {
+  it('runs every 2 hours at :30 and on demand, never on a pull request', () => {
     const triggers = workflowTriggers(text)
     assert.deepEqual(triggers.events, ['schedule', 'workflow_dispatch'])
-    assert.match(text, /cron: '30 6 \* \* \*'/)
+    assert.match(text, /cron: '30 \*\/2 \* \* \*'/)
+    assert.match(text, /--carry-branches/, 'the 2-hourly run is light')
   })
   it('uses the read token, force-with-lease and the ops-report topic', () => {
     assert.match(text, /secrets\.FLEET_READ_TOKEN/)
@@ -252,6 +413,242 @@ describe('fleet-status.yml', () => {
     const names = steps.map((s) => s.split('\n')[0])
     assert.ok(steps.length >= 7, names.join(', '))
     // checkout, setup-node, the token check and the read itself run only when everything before them passed.
-    for (const step of steps.slice(4)) assert.match(step, /if: \$\{\{ !cancelled\(\) \}\}/, step.split('\n')[0])
+    // The ntfy digest adds one condition: it goes out only on the run that did the full read.
+    for (const step of steps.slice(4)) assert.match(step, /if: \$\{\{ !cancelled\(\)( && steps\.read\.outputs\.digest != 'no')? \}\}/, step.split('\n')[0])
+  })
+})
+
+describe('hygiene rows', () => {
+  const now = Date.parse('2026-11-13T12:00:00Z')
+  it('a hosted run has no local object: the Mac rows say "not measured", never 0', () => {
+    const hosted = structuredClone(fixture)
+    delete hosted.local
+    delete hosted.dirtyLocal
+    const rows = Object.fromEntries(hygiene(hosted).map((h) => [h.row, h.count]))
+    for (const row of ['Dirty clones', 'Clones behind origin', 'Installed tools behind main', 'Worktrees over 7 days', 'Sessions idle over 24 h']) assert.equal(rows[row], null, row)
+    assert.equal(rows['PRs idle over 3 days'], 1)
+    assert.match(render(hosted), /\| Dirty clones \| not measured \|/)
+  })
+  it('an older snapshot without a hosted field is not measured, not 0', () => {
+    const old = structuredClone(fixture)
+    delete old.repos[1].idlePrs
+    assert.equal(hygiene(old).find((h) => h.row === 'PRs idle over 3 days').count, null)
+  })
+  it('counts the fixture and a null local row stays not measured', () => {
+    const rows = Object.fromEntries(hygiene(fixture).map((h) => [h.row, h.count]))
+    assert.deepEqual(rows, { 'Dirty clones': 1, 'Clones behind origin': 1, 'Installed tools behind main': 1, 'Branches with no PR': 2, 'Worktrees over 7 days': 1, 'PRs idle over 3 days': 1, 'Sessions idle over 24 h': null, 'Backlog entries past reviewBy': 2, 'Duplicate PRs per backlog id': 1 })
+    assert.match(render(fixture), /Sessions idle over 24 h: not measured/)
+    assert.match(render(fixture), /Installed tools behind main: capacity check \(~\/\.desk\/capacity-app\/capacity\.mjs: 3 behind, copy of gorfednet\.github\/capacity\/capacity\.mjs\)/)
+    assert.match(render(fixture), /\| Installed tools behind main \| 1 \|/)
+  })
+  it('idlePrs keeps only PRs untouched over 3 days', () => {
+    const at = (d) => new Date(now - d * 86_400_000).toISOString()
+    assert.equal(idlePrs([{ number: 1, updatedAt: at(3.5) }], now).length, 1, '3.5 days is over 3')
+    assert.equal(idlePrs([{ number: 1, updatedAt: at(3) }, { number: 2, updatedAt: at(2.9) }], now).length, 0, 'exactly 3 days is not over 3')
+    assert.equal(idlePrs([{ number: 1, updatedAt: at(4) }, { number: 2, updatedAt: at(1) }], now).length, 1)
+  })
+  it('duplicatePrs needs two PRs naming the same whole backlog id, and ignores short or partial ids', () => {
+    const prs = [
+      { number: 1, title: 'fix fleet-registry-sync', headRefName: 'a' },
+      { number: 2, title: 'x', headRefName: 'claude/fleet-registry-sync' },
+      { number: 3, title: 'fleet-registry-sync-v2 docs', headRefName: 'b' },
+      { number: 4, title: 'ci pool', headRefName: 'c' },
+      { number: 5, title: 'ci pool again', headRefName: 'd' },
+    ]
+    assert.deepEqual(duplicatePrs(prs, ['fleet-registry-sync', 'ci-pool', 'pool']), [{ id: 'fleet-registry-sync', prs: [1, 2] }])
+  })
+  it('idleSessions is null for a missing store or no readable file, and skips archived and recent sessions', () => {
+    assert.equal(idleSessions(join(tmpdir(), 'no-such-sessions-dir'), now), null)
+    const dir = mkdtempSync(join(tmpdir(), 'sessions-'))
+    mkdirSync(join(dir, 'a', 'b'), { recursive: true })
+    assert.equal(idleSessions(dir, now), null)
+    const put = (name, s) => writeFileSync(join(dir, 'a', 'b', name), JSON.stringify(s))
+    put('local_old.json', { sessionId: 'local_old', title: 't', lastActivityAt: now - 30 * 3_600_000 })
+    put('local_new.json', { sessionId: 'local_new', lastActivityAt: now - 3_600_000 })
+    put('local_arch.json', { sessionId: 'local_arch', isArchived: true, lastActivityAt: now - 99 * 3_600_000 })
+    assert.deepEqual(idleSessions(dir, now), [{ id: 'local_old', title: 't', idleHours: 30 }])
+    symlinkSync('/nonexistent-dir', join(dir, 'a', 'dangling'))
+    assert.equal(idleSessions(dir, now), null, 'a dangling entry makes the row not measured, not a throw')
+    rmSync(join(dir, 'a', 'dangling'))
+    if (process.getuid?.() !== 0) {
+      mkdirSync(join(dir, 'a', 'locked'))
+      chmodSync(join(dir, 'a', 'locked'), 0o000)
+      assert.equal(idleSessions(dir, now), null, 'an unreadable session directory makes the row not measured, not a throw')
+      chmodSync(join(dir, 'a', 'locked'), 0o755)
+      rmSync(join(dir, 'a', 'locked'), { recursive: true })
+    }
+    put('local_bad.json', { sessionId: 'local_bad', lastActivityAt: 'yesterday' })
+    assert.equal(idleSessions(dir, now), null, 'one session with an unreadable time makes the row not measured')
+  })
+  it('dirty, behind and old-worktree rows read real git state', () => {
+    const root = mkdtempSync(join(tmpdir(), 'clones-'))
+    const sh = (cwd, ...a) => spawnSync('git', ['-c', 'user.email=a@b.c', '-c', 'user.name=t', ...a], { cwd, encoding: 'utf8' })
+    const origin = join(root, 'origin.git')
+    sh(root, 'init', '-q', '--bare', '-b', 'main', origin)
+    const clones = join(root, 'clones')
+    mkdirSync(clones)
+    const c = join(clones, 'c')
+    sh(clones, 'clone', '-q', origin, 'c')
+    sh(c, 'commit', '-q', '--allow-empty', '-m', 'one')
+    sh(c, 'push', '-q', 'origin', 'main')
+    assert.deepEqual(dirtyClones(clones).dirty, [])
+    assert.deepEqual(behindClones(clones).behind, [])
+    // planted: an untracked file, a second clone pushing ahead, and a worktree
+    writeFileSync(join(c, 'x'), 'x')
+    assert.equal(dirtyClones(clones).dirty[0].uncommitted, 1)
+    const other = join(root, 'other')
+    sh(root, 'clone', '-q', origin, 'other')
+    sh(other, 'commit', '-q', '--allow-empty', '-m', 'two')
+    sh(other, 'push', '-q', 'origin', 'main')
+    assert.deepEqual(behindClones(clones).behind, [{ dir: 'c', branch: 'main', behind: 1 }])
+    const wt = join(root, 'wt')
+    sh(c, 'worktree', 'add', '-q', '-b', 'w', wt)
+    assert.deepEqual(oldWorktrees(clones, Date.now()).old, [])
+    assert.equal(oldWorktrees(clones, Date.now() + 7.5 * 86_400_000).old.length, 1, '7.5 days is over 7')
+    assert.deepEqual(oldWorktrees(clones, Date.now() + 6.9 * 86_400_000).old, [])
+    const later = oldWorktrees(clones, Date.now() + 8 * 86_400_000).old
+    assert.equal(later.length, 1)
+    assert.ok(later[0].ageDays >= 8)
+    // a clone with no local default branch is skipped, not unreadable
+    const nb = join(clones, 'nb')
+    sh(clones, 'clone', '-q', origin, 'nb')
+    sh(nb, 'checkout', '-q', '-b', 'x')
+    sh(nb, 'branch', '-q', '-D', 'main')
+    assert.deepEqual(behindClones(clones, { fetch: false }).unread, [])
+    assert.deepEqual(behindClones(clones, { fetch: false }).behind.map((b) => b.dir), ['c'])
+    rmSync(nb, { recursive: true })
+    // a linked worktree that sits beside the clones is one worktree, not another clone to count behind
+    sh(c, 'worktree', 'add', '-q', '-b', 'w2', join(clones, 'w2'))
+    assert.deepEqual(behindClones(clones, { fetch: false }).behind.map((b) => b.dir), ['c'])
+    assert.equal(oldWorktrees(clones, Date.now() + 8 * 86_400_000).old.length, 2)
+    // a clone git cannot read is reported unread, not clean
+    mkdirSync(join(clones, 'broken', '.git'), { recursive: true })
+    assert.deepEqual(behindClones(clones, { fetch: false }).unread, ['broken'])
+    assert.deepEqual(oldWorktrees(clones).unread, ['broken'])
+    assert.deepEqual(dirtyClones(clones).unread, ['broken'])
+  })
+  it('collectLocal nulls every row it could not trust: broken clone, failed fetch, no fetch, empty root', () => {
+    const root = mkdtempSync(join(tmpdir(), 'collect-'))
+    const none = join(root, 'no-sessions')
+    assert.deepEqual(Object.values(collectLocal(root, { sessionsDir: none })).slice(1, 3), [null, null], 'an empty clone root is not a clean fleet')
+    const sh = (cwd, ...a) => spawnSync('git', ['-c', 'user.email=a@b.c', '-c', 'user.name=t', ...a], { cwd, encoding: 'utf8' })
+    const clones = join(root, 'clones')
+    mkdirSync(clones)
+    sh(clones, 'init', '-q', '-b', 'main', 'c')
+    sh(join(clones, 'c'), 'commit', '-q', '--allow-empty', '-m', 'one')
+    // no origin: the fetch fails, so behind is not measured; the other rows are
+    const failed = collectLocal(clones, { sessionsDir: none })
+    assert.equal(failed.behindClones, null)
+    assert.deepEqual(failed.behindFetchFailed, ['c'])
+    assert.equal(failed.idleSessions, null)
+    assert.ok(Array.isArray(failed.dirtyClones))
+    assert.equal(collectLocal(clones, { fetch: false, sessionsDir: none }).behindClones, null, 'refs not refreshed is not a measurement')
+    mkdirSync(join(clones, 'broken', '.git'), { recursive: true })
+    const broke = collectLocal(clones, { sessionsDir: none })
+    assert.equal(broke.dirtyClones, null)
+    assert.equal(broke.oldWorktrees, null)
+    assert.ok(broke.unread.includes('broken'))
+  })
+  it('the digest line leads with the not-measured count and is not cut', () => {
+    const line = digest(fixture).split('\n').find((l) => l.startsWith('Hygiene:'))
+    assert.match(line, /^Hygiene: 1 rows not measured; /)
+    assert.ok(line.length > 150 && /reviewBy/.test(line), line)
+  })
+})
+
+describe('the 2-hourly light run (plan row 1.14)', () => {
+  it('STATUS.md says when the carried branch list was read', () => {
+    const light = { ...fixture, carried: true, branchesReadAt: '2026-11-13T11:30:00Z' }
+    assert.match(render(light), /Branches with no PR are as of /)
+    assert.doesNotMatch(render({ ...fixture, carried: false, branchesReadAt: '2026-11-13T11:30:00Z' }), /Branches with no PR are as of/)
+  })
+  const notFound = () => Object.assign(new Error('HTTP 404'), { stderr: 'HTTP 404' })
+  const fakeJson = (calls) => (args) => {
+    calls.push(args.join(' '))
+    const path = args[0] === 'pr' ? 'pr list' : args[args.length - 1]
+    if (path === 'repos/o/p') return { private: false, visibility: 'public', default_branch: 'main' }
+    if (path === 'pr list') return []
+    if (path.includes('/branches')) return [[{ name: 'main' }, { name: 'old' }]]
+    if (path.includes('/contents/')) throw notFound()
+    if (path.endsWith('/workflows?per_page=100')) return { workflows: [] }
+    if (path.includes('/commits/main')) return { sha: 'abc' }
+    if (path.includes('/actions/runs') ) return [{ workflow_runs: [] }]
+    if (path.includes('/status')) return { state: 'success', statuses: [] }
+    throw new Error(`unexpected call ${args.join(' ')}`)
+  }
+  it('keeps the earlier branch list and never lists or compares branches', async () => {
+    const calls = []
+    const carried = [{ branch: 'old', ahead: 3 }]
+    const row = await collectRepo('o/p', new Date('2026-11-13T12:00:00Z'), { json: fakeJson(calls), log: () => {}, carryBranches: carried })
+    assert.deepEqual(row.branchesAhead, carried)
+    // A branch that has since gained a PR drops out of the carried list.
+    const withPr = (args) => (args[0] === 'pr' ? [{ number: 9, title: 't', createdAt: '2026-11-13T00:00:00Z', updatedAt: '2026-11-13T00:00:00Z', labels: [], isDraft: false, headRefName: 'old', headRefOid: 'f'.repeat(40), body: '', author: { login: 'x' } }] : args.includes('--paginate') && String(args.at(-1)).includes('/comments') ? [[]] : fakeJson([])(args))
+    const row2 = await collectRepo('o/p', new Date('2026-11-13T12:00:00Z'), { json: withPr, log: () => {}, carryBranches: carried })
+    assert.deepEqual(row2.branchesAhead, [])
+    assert.ok(!calls.some((c) => c.includes('/branches')), calls.join('\n'))
+  })
+  it('a prior read older than 23 hours is not carried: the run is full and says so', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'fs-carry-'))
+    const prior = join(dir, 'prior.json')
+    writeFileSync(prior, JSON.stringify({ branchesReadAt: '2020-01-01T00:00:00Z', repos: [] }))
+    const r = spawnSync(process.execPath, ['scripts/fleet-status.mjs', '--only', 'nobody/nothing', '--carry-branches', prior, '--out', join(dir, 'o.json')], { encoding: 'utf8', env: { ...process.env, GH_TOKEN: '' } })
+    assert.equal(r.status, 0, r.stderr) // zero repos matched: an empty full read
+    const out = JSON.parse(readFileSync(join(dir, 'o.json'), 'utf8'))
+    assert.equal(out.carried, false)
+    assert.ok(Date.now() - Date.parse(out.branchesReadAt) < 60000)
+  })
+  it('a redacted private row is carried by its count, so private repositories cost no branch calls either', () => {
+    const m = carryMap({ repos: [{ slug: 'o/private', redacted: true, noPrCount: 2 }, { slug: 'o/pub', branchesAhead: [{ branch: 'b', ahead: 1 }] }, { slug: 'o/gone', unavailable: 'x' }] })
+    assert.equal(m.get('o/private').length, 2)
+    assert.deepEqual(redactRepo({ slug: 'o/private', branchesAhead: m.get('o/private'), openPrs: [], lapsedBacklog: [], idlePrs: [], duplicatePrs: [], lastDeploy: null, incidents7d: 0, dependabotRed: [], kitVersion: null, mainRed: false, defaultBranch: 'main' }).noPrCount, 2)
+    assert.equal(m.get('o/pub').length, 1)
+    assert.equal(m.get('o/gone'), undefined)
+  })
+  it('a full run (no carry) does list branches', async () => {
+    const calls = []
+    await collectRepo('o/p', new Date('2026-11-13T12:00:00Z'), { json: fakeJson(calls), log: () => {} }).catch(() => {})
+    assert.ok(calls.some((c) => c.includes('/branches')))
+  })
+  it('mapLimit keeps input order and never runs more than the limit at once', async () => {
+    let live = 0
+    let peak = 0
+    const out = await mapLimit([5, 1, 4, 2, 3, 0], 2, async (n) => {
+      live += 1
+      peak = Math.max(peak, live)
+      await new Promise((r) => setTimeout(r, n))
+      live -= 1
+      return n * 10
+    })
+    assert.deepEqual(out, [50, 10, 40, 20, 30, 0])
+    assert.equal(peak, 2)
+  })
+})
+
+describe('the plan of record comes from gorfednet/ops (plan row 1.30)', () => {
+  const b64 = (t) => ({ encoding: 'base64', content: Buffer.from(t).toString('base64') })
+  const notFound = () => Object.assign(new Error('gh: Not Found (HTTP 404)'), { stderr: 'gh: Not Found (HTTP 404)' })
+  const reader = (answers, calls = []) => (args) => {
+    calls.push(args[1])
+    const a = answers[args[1]]
+    if (a instanceof Error) throw a
+    if (a === undefined) throw notFound()
+    return b64(a)
+  }
+  const url = (ref) => `repos/${PLAN_SOURCE.slug}/contents/${PLAN_SOURCE.path}?ref=${ref}`
+
+  it('reads desk-log first, where Desk edits it', () => {
+    const calls = []
+    assert.deepEqual(readPlanOfRecord(reader({ [url('desk-log')]: '| 1.30 | x |', [url('main')]: 'stale' }, calls), () => {}), { text: '| 1.30 | x |', ref: 'desk-log' })
+    assert.deepEqual(calls, [url('desk-log')])
+  })
+  it('falls back to main when desk-log has no copy, and to null when neither does', () => {
+    assert.deepEqual(readPlanOfRecord(reader({ [url('main')]: 'main copy' }), () => {}), { text: 'main copy', ref: 'main' })
+    assert.equal(readPlanOfRecord(reader({}), () => {}), null)
+  })
+  it('warns on an error that is not a 404 and still tries the next ref', () => {
+    const logs = []
+    const r = readPlanOfRecord(reader({ [url('desk-log')]: new Error('gh: Bad credentials (HTTP 401)'), [url('main')]: 'main copy' }), (l) => logs.push(l))
+    assert.equal(r.ref, 'main')
+    assert.match(logs[0], /::warning::inventory: plan of record unreadable at gorfednet\/ops@desk-log: gh: Bad credentials/)
   })
 })

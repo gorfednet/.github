@@ -114,6 +114,15 @@ export const VERIFICATION_INPUTS = {
         type: string
         default: "300000"`,
 
+  'og-content-addressed': `      og-content-addressed:
+        description: >-
+          When "true", the social card's file name must carry a content hash
+          (og-card-<hash12>.png). The host serves images immutable for a year, so
+          a card replaced at a fixed name reaches nobody.
+        required: false
+        type: string
+        default: "false"`,
+
   'require-jsonld': `      require-jsonld:
         description: >-
           When "true", every checked page must carry a JSON-LD block. Off by
@@ -137,6 +146,15 @@ export const VERIFICATION_INPUTS = {
           Space-separated strings from this site's own design that must appear in
           each error page. Without one, "the file exists" is the whole assertion,
           and a placeholder added to turn a check green satisfies it.
+        required: false
+        type: string
+        default: ""`,
+
+  'sitemap-origin': `      sitemap-origin:
+        description: >-
+          Production base URL the sitemap lists, no trailing slash. Opts the
+          site in to check-sitemap-pages (V77) against publish-root. Empty
+          skips it; turn it on per site once the site is clean.
         required: false
         type: string
         default: ""`,
@@ -170,9 +188,11 @@ export const GATE_ARGUMENTS = {
   'metadata-pages': 'metadata-pages',
   'publish-root': 'publish-root',
   'og-max-bytes': 'og-max-bytes',
+  'og-content-addressed': 'og-content-addressed',
   'require-jsonld': 'require-jsonld',
   'error-page-root': 'error-page-root',
   'error-page-markers': 'error-page-markers',
+  'sitemap-origin': 'sitemap-origin',
   'allow-machine-paths': 'allow-machine-paths',
 }
 

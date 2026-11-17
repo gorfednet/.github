@@ -1,0 +1,23 @@
+# Exemptions for scripts/privacy-guard.mjs. The guard reads this file from the base (main's
+# tip), so a pull request that adds an exemption gets it only after that pull request has
+# merged. A waiting pull request gets it on its next run, with no merge of main.
+# The guard flags a change to this file, its script or its workflow: read every line.
+#
+#   email <domain-or-address>     an address, or a domain and its subdomains
+#   path <glob> <rule,rule | *>   the named rules are not applied to matching files
+#   repo <name>                   a private repository whose name public files may use
+#   commit <sha>                  a commit (the full 40 hex) whose own diff and message are exempt.
+#                                 A pushed commit cannot be rewritten, so this clears a false
+#                                 positive in one that is not the tip. The net diff is still read.
+#
+# Rules: private-ip, session-id, tailnet-name, internal-host, private-repo, email,
+# owner-quote, new-file. The reserved example domains need no line: they are built in.
+
+# Public workflows and scripts here read the private ops repository by design, and its
+# name is already in dozens of files. The pull request check's secret leaves it out; this
+# line does the same for the local pre-push hook, which lists every private repository.
+repo ops
+
+# Test fixtures hold planted bad values on purpose. Only this directory, so a folder
+# named fixtures somewhere else is not a way round the guard.
+path test/fixtures/** *

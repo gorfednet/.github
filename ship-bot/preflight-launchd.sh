@@ -90,7 +90,6 @@ cat >"${PLIST}" <<EOF
   </dict>
   <key>StandardOutPath</key><string>$(xml_escape "${OUT}")</string>
   <key>StandardErrorPath</key><string>$(xml_escape "${OUT}")</string>
-  <key>ProcessType</key><string>Background</string>
 </dict>
 </plist>
 EOF

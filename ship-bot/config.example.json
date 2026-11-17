@@ -125,6 +125,9 @@
       "mode": "deploy",
       "claudeReview": true,
       "live": false,
+      "coveredChecks": [
+        "browser-compat / compat ("
+      ],
       "expectedChecks": [
         "check / check",
         "browser-compat / compat-success"
@@ -132,10 +135,20 @@
       "envFiles": [
         ".deploy-env"
       ],
+      "env": {
+        "WORK_CONTENT_DIR": "../career-portfolio/content",
+        "WORK_EXPLORE_DIR": "~/Developer/gorfednet/career-portfolio/staging/explore/owner",
+        "WORK_PREVIEWS_DIR": "~/Developer/gorfednet/career-portfolio/staging/previews"
+      },
       "siblings": [
         {
           "dir": "gorfednet.github",
           "slug": "gorfednet/.github",
+          "branch": "main"
+        },
+        {
+          "dir": "career-portfolio",
+          "slug": "gorfednet/career-portfolio",
           "branch": "main"
         }
       ],
@@ -159,7 +172,7 @@
           "timeoutMinutes": 20
         }
       ],
-      "note": "make deploy builds dist/ (npm scripts + python3), requires WEB3FORMS_ACCESS_KEY from .deploy-env, rsyncs, restarts the static nginx container on dapyllil and compares the live index.html byte for byte (nas-ssh-deploy.sh)."
+      "note": "make deploy builds dist/ (npm scripts + python3), with /work/ from career-portfolio main (a sibling) and the owner-only archive from the owner's gitignored staging/ (deploy.sh refuses a fixture build: 13 November 2026, PR 140), requires WEB3FORMS_ACCESS_KEY from .deploy-env, rsyncs, restarts the static nginx container on dapyllil and compares the live index.html byte for byte (nas-ssh-deploy.sh)."
     },
     {
       "slug": "gorfednet/gorfmusic.com",
@@ -167,6 +180,9 @@
       "mode": "deploy",
       "claudeReview": true,
       "live": false,
+      "coveredChecks": [
+        "browser-compat / compat ("
+      ],
       "expectedChecks": [
         "check / check",
         "browser-compat / compat-success",
@@ -183,7 +199,16 @@
           "branch": "main"
         }
       ],
-      "setup": [],
+      "setup": [
+        {
+          "name": "install",
+          "command": [
+            "npm",
+            "ci"
+          ],
+          "note": "make deploy runs web3forms-preflight, which imports vite, before its own install: without this the cleaned workspace has no node_modules (12 November 2026, PR 49)."
+        }
+      ],
       "deploy": [
         {
           "name": "site",
@@ -202,6 +227,9 @@
       "mode": "deploy",
       "claudeReview": true,
       "live": false,
+      "coveredChecks": [
+        "browser-compat / compat ("
+      ],
       "expectedChecks": [
         "check / check",
         "browser-compat / compat-success"
@@ -244,6 +272,9 @@
       "mode": "deploy",
       "claudeReview": true,
       "live": false,
+      "coveredChecks": [
+        "browser-compat / compat ("
+      ],
       "expectedChecks": [
         "check / check",
         "browser-compat / compat-success",
@@ -258,6 +289,9 @@
           "slug": "gorfednet/.github",
           "branch": "main"
         }
+      ],
+      "pausedIfChanged": [
+        "deploy/"
       ],
       "setup": [
         {
@@ -325,7 +359,9 @@
       "expectedChecks": [
         "check / check"
       ],
-      "envFiles": [],
+      "envFiles": [
+        ".deploy-env"
+      ],
       "siblings": [
         {
           "dir": "gorfednet.github",
@@ -344,7 +380,7 @@
           "timeoutMinutes": 20
         }
       ],
-      "note": "deploy.sh writes route directories (404/, 500/, <page>/index.html) into the checkout before rsyncing it with --delete; the next deploy's git clean removes them. The owner's clone has no .deploy-env, so this deploys with the shared helper's defaults, as a manual deploy from that clone does today; accepted by the main session 2026-10-09."
+      "note": "deploy.sh writes route directories (404/, 500/, <page>/index.html) into the checkout before rsyncing it with --delete; the next deploy's git clean removes them. site-deploy.sh needs SITE from .deploy-env: without envFiles the cleaned workspace had none and the deploy refused (13 November 2026, PR 29)."
     },
     {
       "slug": "gorfednet/rowanmcarthur.com",
@@ -414,6 +450,9 @@
       "mode": "deploy",
       "claudeReview": true,
       "live": false,
+      "coveredChecks": [
+        "browser-compat / compat ("
+      ],
       "expectedChecks": [
         "check / check",
         "browser-compat / compat-success"
@@ -478,13 +517,27 @@
         "axe-firefox",
         "axe-webkit"
       ],
-      "note": "Check names confirmed against #396. heavy-runner-preflight is left out: a pool preflight that label re-runs duplicate; e2e-success and axe-chromium/firefox/webkit prove the full tier ran, after the label (requireChecksAfterLabel)."
+      "note": "Check names confirmed against #396. heavy-runner-preflight is left out: a pool preflight that label re-runs duplicate; e2e-success and axe-chromium/firefox/webkit prove the full tier ran, after the label (requireChecksAfterLabel). coveredChecks: e2e matrix, e2e-extra and e2e-visual sit behind e2e-success; mutation-canary shards behind mutation-canary-success; axe-${{ and e2e-${{ are matrix jobs cancelled or skipped before their matrix expanded, which GitHub posts under the template name; prune-dist and deploy-check-alert are cleanup and alert jobs; rerun-full-browser-gates is the label re-run helper; review is the Claude reviewer (gate d reads its verdict); smoke is the dispatch-only runner-smoke.",
+      "coveredChecks": [
+        "e2e-chromium-",
+        "e2e-firefox-",
+        "e2e-webkit-",
+        "e2e-extra-",
+        "e2e-visual",
+        "mutation-canary",
+        "axe-${{",
+        "e2e-${{",
+        "prune-dist",
+        "deploy-check-alert",
+        "rerun-full-browser-gates",
+        "review",
+        "smoke"
+      ]
     },
     {
       "slug": "gorfednet/4thcltr.com",
       "dir": "4thcltr.com",
-      "mode": "merge-only",
-      "reason": "it ships on a release tag, and the bot deploys merge commits, which are never tagged",
+      "mode": "deploy",
       "claudeReview": true,
       "live": false,
       "requireChecksAfterLabel": true,
@@ -501,7 +554,75 @@
         "e2e (8)",
         "e2e-gate"
       ],
-      "note": "The e2e sweep runs only when the PR carries ready-to-merge (CI listens for `labeled`). e2e-gate passes when e2e was skipped, so each shard is listed and must be a success, and the checks must post-date the label. heavy-runner-preflight is left out (a pool preflight, duplicated by label re-runs); the shards and e2e-gate prove the sweep ran. Deploy stays a session's job until the bot can deploy a tag (README, Deploy automation plan): make deploy refuses any HEAD that is not on an exact release tag, so a deploy of the merge commit would be refused every time."
+      "envFiles": [
+        ".deploy-env"
+      ],
+      "release": {
+        "tagPrefix": "v"
+      },
+      "siblings": [
+        {
+          "dir": "gorfednet.github",
+          "slug": "gorfednet/.github",
+          "branch": "main"
+        }
+      ],
+      "setup": [
+        {
+          "name": "build",
+          "command": [
+            "make",
+            "build"
+          ],
+          "timeoutMinutes": 30,
+          "note": "make build = npm ci, then npm run build (typecheck, i18n, routes, release:check, Vite, analytics, urls, build stamp). It runs after the bot has tagged the merge commit, because the build stamps the version from git describe."
+        },
+        {
+          "name": "recommendations check",
+          "command": [
+            "npm",
+            "run",
+            "--silent",
+            "recommendations:check"
+          ],
+          "timeoutMinutes": 10
+        }
+      ],
+      "deploy": [
+        {
+          "name": "upload",
+          "command": [
+            "./deploy.sh"
+          ],
+          "timeoutMinutes": 20,
+          "note": "deploy.sh runs require-release-tag.sh (HEAD on an exact tag, clean tree), then the shared engine: refuses anything but the merged tip of origin/main and an upload not built from HEAD, uploads an immutable release, switches current, prunes, and compares the live index.html byte for byte (switching back itself on a mismatch)."
+        },
+        {
+          "name": "live check",
+          "command": [
+            "npm",
+            "run",
+            "headers:live"
+          ],
+          "timeoutMinutes": 15,
+          "note": "DEPLOY.md runs this after every release. It reads the live site through Cloudflare, so a header change that needs a cache purge can fail it on a good release; a first live week may show a false alarm."
+        }
+      ],
+      "rollback": [
+        {
+          "name": "previous release",
+          "command": [
+            "make",
+            "rollback"
+          ],
+          "timeoutMinutes": 10,
+          "onlyAfterFailureOf": [
+            "live check"
+          ],
+          "note": "Switches current back to the previous release. Only after the live check fails, the one step that fails after the release went live; a failure in upload either published nothing or switched itself back. The default (redeploy the previous commit) cannot work for this engine."
+        }
+      ],
+      "note": "A pull request is a release only when its description has a line `Release: X.Y.Z One sentence.` (lib/release.mjs). The bot then merges, tags the merge commit with that sentence (annotated, pushed, never forced, never deleted), builds, deploys and creates the GitHub release, as `npm run release` plus `make deploy` do by hand. A pull request with no such line is merged and nothing else. The version must be higher than the newest tag. `npm run rates` is not run by the bot: the labelling session commits it in the pull request first (DEPLOY.md, step 1). The e2e sweep runs only when the PR carries ready-to-merge (CI listens for `labeled`). e2e-gate passes when e2e was skipped, so each shard is listed and must be a success, and the checks must post-date the label. heavy-runner-preflight is left out (a pool preflight, duplicated by label re-runs)."
     },
     {
       "slug": "gorfednet/ACID2REAPER",
@@ -536,8 +657,10 @@
       "claudeReview": true,
       "live": false,
       "expectedChecks": [
-        "kit"
-      ]
+        "kit",
+        "guard"
+      ],
+      "note": "guard is the privacy-guard.yml job (plan row 1.30). A pull request whose workflow never starts shows no check run at all, so it has to be expected by name."
     },
     {
       "slug": "gorfednet/assess",
@@ -666,6 +789,7 @@
       "slug": "gorfednet/papers.4thcltr.com",
       "dir": "papers.4thcltr.com",
       "mode": "deploy",
+      "needsHeadroom": true,
       "claudeReview": true,
       "live": false,
       "expectedChecks": [
@@ -734,7 +858,7 @@
         }
       ],
       "rollback": [],
-      "note": "Observation first (live false). Equivalent to make deploy (verify, check-release, indexnow plan, upload, ping), split so the pre-upload gates are setup. rollback is an explicit empty list: nothing after the upload can fail the release (the ping ends in || true, and the engine switches itself back on a live mismatch), so a failure anywhere is reported and the repository blocked, never a redeploy of the previous commit (the engine refuses it) and never a make rollback that would step a verified release back. A ping that hangs past its timeout is such a failure: the release stands, the log says why."
+      "note": "Observation first (live false). Equivalent to make deploy (verify, check-release, indexnow plan, upload, ping), split so the pre-upload gates are setup. rollback is an explicit empty list: nothing after the upload can fail the release (the ping ends in || true, and the engine switches itself back on a live mismatch), so a failure anywhere is reported and the repository blocked, never a redeploy of the previous commit (the engine refuses it) and never a make rollback that would step a verified release back. A ping that hangs past its timeout is such a failure: the release stands, the log says why. needsHeadroom: make verify runs the full Playwright suite on this Mac, and its frame-timing specs fail when the load is above the core count (papers 35, 13 November 2026)."
     },
     {
       "slug": "gorfednet/TowIt",
@@ -751,8 +875,23 @@
     {
       "slug": "gorfednet/ops",
       "dir": "ops",
-      "mode": "off",
-      "note": "Stage 1 wants merge-only here, but ops has no pull-request CI: its only workflow is the Claude review caller, and its last 3 merged pull requests (#44, #43, #42) carried no check at all, so there is no expectedChecks list to gate on and assert-checks-started would refuse every head. Switch to merge-only once ops has a pull_request workflow that posts a check."
+      "mode": "merge-only",
+      "reason": "host configuration and installers; applying them on dapyllil stays a session's job (owner, 11 November 2026: merge-only, gated on the Claude review check)",
+      "claudeReview": true,
+      "live": false,
+      "expectedChecks": [],
+      "note": "ops has no test CI. Its one workflow is the Claude review caller, whose review / review check attaches only when a pull request opens, so it is not an expected check (a push after ready left ops 62, 74, 76 and 77 waiting on it). The verdict comes from review-status.mjs (claudeReview); a check that does appear must still pass."
+    },
+    {
+      "slug": "gorfednet/scratch-bootstrap-5-6",
+      "dir": "scratch-bootstrap-5-6",
+      "mode": "merge-only",
+      "reason": "a new repository: deploy steps come in a later patch, once it has something to deploy",
+      "claudeReview": true,
+      "live": false,
+      "expectedChecks": [
+        "check / check"
+      ]
     }
   ]
 }

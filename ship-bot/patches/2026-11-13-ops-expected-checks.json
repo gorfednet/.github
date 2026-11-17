@@ -1,0 +1,9 @@
+{
+  "label": "2026-11-13-ops-expected-checks",
+  "note": "ops 62, 74, 76 and 77 sat on 'required checks never appeared: review / review'. The reviewer's check attaches only when a PR opens, so a push after ready never gets it. The review verdict comes from review-status. Needs the ship-bot from this pull request installed first: its validator refuses a reviewer check as an expected check and allows an empty list when claudeReview is true.",
+  "repos": {
+    "gorfednet/ops": {
+      "expectedChecks": []
+    }
+  }
+}

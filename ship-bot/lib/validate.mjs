@@ -9,9 +9,13 @@
  * Read-only: it lists pull requests, check runs and commit statuses, nothing
  * else, so it runs the same in dry, observe and live.
  */
+import { READY_LABEL } from './config.mjs'
 import { latestPerContext, latestPerName } from './gates.mjs'
 
 export const VALIDATE_SAMPLE = 3
+
+/** Conclusions of a check run that gated nothing. */
+const NON_GATING = new Set(['skipped', 'neutral'])
 
 /**
  * @param {{config: object, github: object, repoNames?: string[], selectRepos: Function, sample?: number}} deps
@@ -22,27 +26,53 @@ export async function validateExpectedChecks({ config, github, repoNames, select
   const results = []
   for (const repo of selectRepos(config.repos, repoNames)) {
     if (repo.mode === 'off') continue
+    const covered = repo.coveredChecks ?? []
     const result = { slug: repo.slug, sampled: [], missing: [], unexpected: [], ok: false }
     results.push(result)
     try {
-      const pulls = await github.listMergedPulls(repo.slug, sample)
+      // A repository that runs its full gate only after the ready label is
+      // sampled on labelled pull requests alone: an unlabelled merge (a
+      // dependency bot's, or a hand merge) never ran the tier the bot waits for.
+      const pulls = repo.requireChecksAfterLabel
+        ? await github.listMergedPulls(repo.slug, sample, READY_LABEL)
+        : await github.listMergedPulls(repo.slug, sample)
       if (pulls.length === 0) {
         result.error = 'no merged pull request to sample'
         continue
       }
       const seenOn = new Map()
+      // On how many sampled pull requests each check gated something: a run
+      // that was skipped or neutral decided nothing, so it is not an
+      // unexpected required check. Statuses have no skipped state.
+      const gatedOn = new Map()
       for (const pr of pulls) {
         result.sampled.push(pr.number)
         const sha = pr.head?.sha ?? pr.merge_commit_sha
         const [runs, statuses] = await Promise.all([github.listCheckRuns(repo.slug, sha), github.listStatuses(repo.slug, sha)])
         const names = new Set([...latestPerName(runs).map((r) => r.name), ...latestPerContext(statuses).map((s) => s.context)])
         for (const name of names) seenOn.set(name, (seenOn.get(name) ?? 0) + 1)
+        const gated = new Set([
+          ...latestPerName(runs).filter((r) => !NON_GATING.has(r.conclusion)).map((r) => r.name),
+          ...latestPerContext(statuses).map((s) => s.context),
+        ])
+        for (const name of gated) gatedOn.set(name, (gatedOn.get(name) ?? 0) + 1)
       }
-      // Missing: an expected check that any sampled pull request merged without.
-      result.missing = repo.expectedChecks.filter((name) => (seenOn.get(name) ?? 0) < pulls.length).map((name) => `${name} (on ${seenOn.get(name) ?? 0} of ${pulls.length})`)
+      // Missing: an expected check that gated less than every sampled pull
+      // request: absent, or skipped or neutral, which the merge gate accepts
+      // as passing although it decided nothing.
+      result.missing = repo.expectedChecks
+        .filter((name) => (gatedOn.get(name) ?? 0) < pulls.length)
+        .map((name) => {
+          const seen = seenOn.get(name) ?? 0
+          const gated = gatedOn.get(name) ?? 0
+          const skipped = seen > gated ? `, skipped or neutral on ${seen - gated}` : ''
+          return `${name} (on ${gated} of ${pulls.length}${skipped})`
+        })
       // Unexpected: a check CI posts that no one listed, minus the agreed exclusions.
       result.unexpected = [...seenOn.keys()]
         .filter((name) => !repo.expectedChecks.includes(name) && !ignored.has(name))
+        .filter((name) => (gatedOn.get(name) ?? 0) > 0)
+        .filter((name) => !covered.some((c) => name === c || name.startsWith(c)))
         .sort()
         .map((name) => `${name} (on ${seenOn.get(name)} of ${pulls.length})`)
       result.ok = result.missing.length === 0 && result.unexpected.length === 0

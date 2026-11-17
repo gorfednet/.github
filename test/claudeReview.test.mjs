@@ -233,13 +233,75 @@ describe('the verdict and the tools', () => {
   })
 
   it('ends with the verdict line that review-status.mjs parses', () => {
-    const line = /<!-- claude-review head=\$\{\{ steps\.pr\.outputs\.head \}\} findings=N -->/.exec(workflow)
+    const line = /<!-- claude-review head=\$\{\{ steps\.pr\.outputs\.head \}\} findings=N blocking=M -->/.exec(workflow)
     assert.ok(line, 'verdict line present')
     const head = 'c'.repeat(40)
-    const rendered = line[0].replace('${{ steps.pr.outputs.head }}', head).replace('N', '2')
+    const rendered = line[0].replace('${{ steps.pr.outputs.head }}', head).replace('N', '2').replace('M', '1')
     const verdict = claudeReviewVerdict([{ body: `Reviewed.\n${rendered}`, user: { login: REVIEW_BOT_LOGIN } }], head)
     assert.equal(verdict.state, 'findings')
     assert.equal(verdict.findings, 2)
+  })
+})
+
+describe('review round cap (plan row 5.8)', () => {
+  const HEAD = 'd'.repeat(40)
+  const sha = (n) => String(n).repeat(40).slice(0, 40)
+  const bot = (body, created_at) => ({ body, user: { login: REVIEW_BOT_LOGIN }, html_url: 'https://x/1', created_at })
+  /** A planted pull request: `rounds` verdicts, the last on HEAD with the given counts. */
+  const planted = (rounds, findings, blocking) =>
+    Array.from({ length: rounds }, (_, i) => {
+      const last = i === rounds - 1
+      const head = last ? HEAD : sha(i + 1)
+      const f = last ? findings : 1
+      const b = last ? blocking : 1
+      return bot(`Reviewed.\n<!-- claude-review head=${head} findings=${f} blocking=${b} -->`, `2026-11-13T10:0${i}:00Z`)
+    })
+
+  it('prints the round and the cap', () => {
+    const verdict = claudeReviewVerdict(planted(5, 0, 0), HEAD)
+    assert.equal(verdict.round, 5)
+    assert.equal(verdict.cap, 4)
+  })
+
+  it('reads a Low-only round 5 as clean, triage by reply', () => {
+    const verdict = claudeReviewVerdict(planted(5, 2, 0), HEAD)
+    assert.equal(verdict.state, 'clean')
+    assert.equal(verdict.triageOnly, true)
+  })
+
+  it('still reads a Medium in round 5 as findings', () => {
+    const verdict = claudeReviewVerdict(planted(5, 2, 1), HEAD)
+    assert.equal(verdict.state, 'findings')
+    assert.equal(verdict.triageOnly, false)
+  })
+
+  it('keeps a Low-only round 4 as findings: the cap is after round 4', () => {
+    assert.equal(claudeReviewVerdict(planted(4, 2, 0), HEAD).state, 'findings')
+  })
+
+  it('counts distinct heads: repeat reviews of one head are one round', () => {
+    const comments = Array.from({ length: 5 }, (_, i) => bot(`Reviewed.\n<!-- claude-review head=${HEAD} findings=1 blocking=0 -->`, `2026-11-13T10:0${i}:00Z`))
+    const verdict = claudeReviewVerdict(comments, HEAD)
+    assert.equal(verdict.round, 1)
+    assert.equal(verdict.state, 'findings')
+  })
+
+  it('gives a verdict line without blocking no relief', () => {
+    const comments = planted(5, 2, 0)
+    comments[4].body = `Reviewed.\n<!-- claude-review head=${HEAD} findings=2 -->`
+    assert.equal(claudeReviewVerdict(comments, HEAD).state, 'findings')
+  })
+
+  it('review-status.mjs prints round, cap and triage by reply for a planted 5-round PR', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'rs-'))
+    after(() => rmSync(dir, { recursive: true, force: true }))
+    const gh = join(dir, 'gh')
+    const comments = JSON.stringify([planted(5, 2, 0)])
+    writeFileSync(gh, `#!/bin/sh\ncase "$*" in\n  *pulls/*) echo ${HEAD} ;;\n  *comments*) cat <<'EOF'\n${comments}\nEOF\n ;;\nesac\n`, { mode: 0o755 })
+    const out = execFileSync('node', ['scripts/review-status.mjs', '--pr', '9', '--repo', 'o/r'], { encoding: 'utf8', env: { ...process.env, PATH: `${dir}:${process.env.PATH}` } })
+    assert.match(out, /clean/)
+    assert.match(out, /round 5 of 4/)
+    assert.match(out, /triage by reply/)
   })
 })
 
@@ -365,6 +427,45 @@ describe('where the shared reviewer runs', () => {
     assert.ok(runsOn.length >= 1, 'found runs-on lines')
     for (const value of runsOn) assert.equal(value, 'ubuntu-latest')
     assert.doesNotMatch(jobs, /inputs\.runs-on/)
+  })
+})
+
+describe('the action accepts the ship-bot App as actor, and no other bot', () => {
+  // claude-code-action refuses a Bot actor that is not in `allowed_bots` ("Add bot to allowed_bots
+  // list or use '*'"; ops run 43786723140, ops 105, 15 November 2026). This mirrors the action's
+  // own isAllowedBot (src/github/validation/actor.ts at the pinned commit).
+  const SHIP_BOT = 'gorfednet-ship-bot'
+  const isAllowedBot = (actor, allowed) => {
+    const trimmed = allowed.trim()
+    if (trimmed === '*') return true
+    if (!trimmed) return false
+    const list = trimmed.split(',').map((b) => b.trim().toLowerCase().replace(/\[bot\]$/, '')).filter(Boolean)
+    return list.includes(actor.toLowerCase().replace(/\[bot\]$/, ''))
+  }
+  const allowedBotsOf = (text) => /^\s+allowed_bots: (.*)$/m.exec(step(text, 'Review'))?.[1]?.trim() ?? ''
+
+  it('without the line the ship-bot actor is refused (the workflow as it was before the fix)', () => {
+    const before = workflow.replace(/^\s+allowed_bots: .*\n/m, '')
+    assert.notEqual(before, workflow, 'the line was present to remove')
+    assert.equal(allowedBotsOf(before), '')
+    assert.equal(isAllowedBot(`${SHIP_BOT}[bot]`, allowedBotsOf(before)), false)
+  })
+
+  it('allows the ship-bot App, with or without the [bot] suffix', () => {
+    assert.equal(isAllowedBot(SHIP_BOT, allowedBotsOf(workflow)), true)
+    assert.equal(isAllowedBot(`${SHIP_BOT}[bot]`, allowedBotsOf(workflow)), true)
+  })
+
+  it('still refuses every other bot, including near misses', () => {
+    for (const other of ['dependabot[bot]', 'github-actions[bot]', 'gorfednet-ship-bot-2[bot]', 'ship-bot[bot]', 'evil-gorfednet-ship-bot[bot]']) {
+      assert.equal(isAllowedBot(other, allowedBotsOf(workflow)), false, other)
+    }
+  })
+
+  it('names one exact login, never a wildcard or a list', () => {
+    const value = allowedBotsOf(workflow)
+    assert.equal(value, SHIP_BOT)
+    assert.doesNotMatch(value, /[*,]/)
   })
 })
 

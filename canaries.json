@@ -6,8 +6,8 @@
       "guards": "The tempting repair when the shared rules document tripped the share-mount guard was to stop scanning markdown. Prose is in scope on purpose: a README telling someone to mount a share is a deploy path even though it cannot execute. Only the fleet's own rules document, identical in every repository and incapable of carrying a project's deploy instructions, is excused.",
       "command": "node --test 'test/noSmbGuard.test.mjs'",
       "file": "scripts/no-smb-guard.sh",
-      "find": "  --glob '!docs/verification-rules.md'\n  --glob '!**/docs/verification-rules.md'",
-      "replace": "  --glob '!**/*.md'"
+      "find": "    */docs/verification-rules.md) return 0 ;;",
+      "replace": "    *.md) return 0 ;;"
     },
     {
       "id": "backlog-accepts-vague-symptom",
@@ -608,6 +608,406 @@
       "file": "templates/verification-kit/bin/report-outbound-links.mjs",
       "find": "kind: GONE_STATUS.has(answer.status) ? 'gone' : 'unverified'",
       "replace": "kind: 'gone'"
+    },
+    {
+      "id": "sitemap-canonical-compared-loosely",
+      "guards": "A listed URL must be its own canonical to the character. Ignoring the trailing slash lets denseware.com and ssatcy.com pass: they listed /x/ while the page said /x, nginx 301s /x to /x/, and the client sent the reader back.",
+      "command": "node --test 'templates/verification-kit/test/sitemapPages.test.mjs'",
+      "file": "templates/verification-kit/bin/check-sitemap-pages.mjs",
+      "find": "} else if (canonicals[0] !== loc) {",
+      "replace": "} else if (canonicals[0].replace(/\\/+$/, '') !== loc.replace(/\\/+$/, '')) {"
+    },
+    {
+      "id": "rules-drift-excuses-everything-retired",
+      "guards": "check-rules-drift fails on a retired term in a rule, skill, agent or memory file. Excusing every line that names a retired term turns the guard into a list of files it read and nothing else (plan row 5.4).",
+      "command": "node --test 'test/rulesDrift.test.mjs'",
+      "file": "scripts/check-rules-drift.mjs",
+      "find": "const text = excuseRetirements ? line.replace(RETIREMENT_LINE.pattern, ' ') : line",
+      "replace": "const text = excuseRetirements ? '' : line"
+    },
+    {
+      "id": "privacy-guard-trusts-git-binary-detection",
+      "guards": "A file git still calls binary (a .gitattributes -diff line in the change) that gave no readable lines is read whole, not skipped and not refused. Skipped, the change switches its own check off for that file. --text alone no longer carries this: dropping it leaves the whole-file read, which is the reason this canary mutates the read and not the flag (plan row 1.30a review, 1.30f).",
+      "command": "node --test --test-name-pattern='checkCounts' test/privacyGuard.test.mjs",
+      "file": "scripts/privacy-guard.mjs",
+      "find": "if (got === 0 && !nothingToRead) unread.push(path)",
+      "replace": "if (false) unread.push(path)"
+    },
+    {
+      "id": "privacy-guard-reads-allowlist-from-the-change",
+      "guards": "The allowlist comes from the base revision. Read from the head, a change that adds a path exemption for itself passes with private detail in it.",
+      "command": "node --test --test-name-pattern='widen its own exemptions' test/privacyGuard.test.mjs",
+      "file": "scripts/privacy-guard.mjs",
+      "find": "git(dir, ['show', `${baseSha}:${ALLOWLIST_PATH}`])",
+      "replace": "git(dir, ['show', `${args.head}:${ALLOWLIST_PATH}`])"
+    },
+    {
+      "id": "privacy-guard-takes-added-line-for-a-header",
+      "guards": "An added line that begins with ++ shows up as +++ and is content. Taken for a file header it drops the next lines, and a planted value after it passes.",
+      "command": "node --test --test-name-pattern='starts with \\+\\+' test/privacyGuard.test.mjs",
+      "file": "scripts/privacy-guard.mjs",
+      "find": "} else if (!inHunk && row.startsWith('+++ ')) {",
+      "replace": "} else if (row.startsWith('+++ ')) {"
+    },
+    {
+      "id": "privacy-guard-stops-checking-private-ips",
+      "guards": "A plain private address added to a file must fail the guard.",
+      "command": "node --test --test-name-pattern='private-ip' test/privacyGuard.test.mjs",
+      "file": "scripts/privacy-guard.mjs",
+      "find": "if (on('private-ip')) add('private-ip', all(PRIVATE_IP, svg ? stripSvgData(text) : text))",
+      "replace": "if (false) add('private-ip', all(PRIVATE_IP, svg ? stripSvgData(text) : text))"
+    },
+    {
+      "id": "privacy-guard-runs-the-head-copy-of-itself",
+      "guards": "The workflow runs the guard from the base commit. Run from the head, a pull request that edits the script (for example to exit 0 at once) switches its own check off.",
+      "command": "node --test --test-name-pattern='merge base with full history' test/privacyGuard.test.mjs",
+      "file": ".github/workflows/privacy-guard.yml",
+      "find": "git show \"$BASE_SHA:scripts/privacy-guard.mjs\" > \"$guard\"",
+      "replace": "cp scripts/privacy-guard.mjs \"$guard\""
+    },
+    {
+      "id": "privacy-guard-held-at-base-is-a-substring",
+      "guards": "A value counts as already held only when the same rule finds the same whole value in the base file. As a substring test, a file holding a longer public name lets a shorter private one through.",
+      "command": "node --test --test-name-pattern='longer or shorter' test/privacyGuard.test.mjs",
+      "file": "scripts/privacy-guard.mjs",
+      "find": "return textCache.get(cacheKey).has(`${rule}\\0${value.toLowerCase()}`)",
+      "replace": "return [...textCache.get(cacheKey)].some((h) => h.includes(value.toLowerCase()))"
+    },
+    {
+      "id": "privacy-guard-splits-commit-log-on-a-control-character",
+      "guards": "The commit log is split on NUL (git log -z). Split on a control character a message can hold, a message with that byte hides text from the scan and can print it as a sha.",
+      "command": "node --test --test-name-pattern='control characters' test/privacyGuard.test.mjs",
+      "file": "scripts/privacy-guard.mjs",
+      "find": "messages.split('\\0').filter((e) => e.trim() !== '')",
+      "replace": "messages.split(/[\\0\\x01]/).filter((e) => e.trim() !== '')"
+    },
+    {
+      "id": "privacy-guard-skips-files-by-extension",
+      "guards": "No file is skipped by name. A text file called notes.png that holds a private address must still fail; skipping image names lets a change hide a value behind a file name it picks.",
+      "command": "node --test --test-name-pattern='image name' test/privacyGuard.test.mjs",
+      "file": "scripts/privacy-guard.mjs",
+      "find": "  for (const { path, line, text } of added) {\n",
+      "replace": "  for (const { path, line, text } of added) {\n    if (/\\.(?:png|ico|woff2?)$/i.test(path)) continue\n"
+    },
+    {
+      "id": "privacy-guard-merge-skips-added-paths",
+      "guards": "A merge commit is read for the added or renamed paths it wrote itself. Skipped, a file a merge adds by hand whose name holds a value passes.",
+      "command": "node --test --test-name-pattern='merge commit is read' test/privacyGuard.test.mjs",
+      "file": "scripts/privacy-guard.mjs",
+      "find": "files: inEvery((d) => d.files.filter((f) => ADDED.includes(f.status)), (f) => f.path).map(noFrom),",
+      "replace": "files: [],"
+    },
+    {
+      "id": "privacy-guard-merge-skips-new-files",
+      "guards": "A merge commit is read for new files in forbidden directories. Skipped, a runbook added inside a merge passes.",
+      "command": "node --test --test-name-pattern='merge commit is read' test/privacyGuard.test.mjs",
+      "file": "scripts/privacy-guard.mjs",
+      "find": "newFiles: inEvery((d) => d.newFiles, (f) => f.path).map(noFrom),",
+      "replace": "newFiles: [],"
+    },
+    {
+      "id": "privacy-guard-merge-skips-its-lines",
+      "guards": "A merge commit is read for the lines it wrote itself. Skipped, a value hand-added in a merge and removed by the next commit passes.",
+      "command": "node --test --test-name-pattern='merge commit is read' test/privacyGuard.test.mjs",
+      "file": "scripts/privacy-guard.mjs",
+      "find": "added: inEvery((d) => d.added, (r) => `${r.path}\\0${r.text}`),",
+      "replace": "added: [],"
+    },
+    {
+      "id": "privacy-guard-prints-a-path-that-holds-a-value",
+      "guards": "A file whose own name holds a value is shown as a hash of its path. Printed, the value reaches the public log.",
+      "command": "node --test --test-name-pattern='never reaches the log' test/privacyGuard.test.mjs",
+      "file": "scripts/privacy-guard.mjs",
+      "find": "const place = secret ? `path hash ${shortHash(f.path)}` : f.path",
+      "replace": "const place = f.path"
+    },
+    {
+      "id": "privacy-guard-ignores-the-commit-exemption",
+      "guards": "The allowlist can exempt one commit message. Ignored, a message with a value is red for good, because force push is denied.",
+      "command": "node --test --test-name-pattern='cannot be rewritten' test/privacyGuard.test.mjs",
+      "file": "scripts/privacy-guard.mjs",
+      "find": "const exempt = allow.commits.includes(full.toLowerCase())",
+      "replace": "const exempt = false"
+    },
+    {
+      "id": "privacy-guard-sets-rename-origin-after-the-scan",
+      "guards": "A rename in a diff is known before its lines are read. Set after, a commit that renames a file and adds a value the file already held goes red with no way to clear it.",
+      "command": "node --test --test-name-pattern='rename that also adds' test/privacyGuard.test.mjs",
+      "file": "scripts/privacy-guard.mjs",
+      "find": "  for (const f of files) if (f.from) origin.set(f.path, origin.get(f.from) ?? f.from)\n",
+      "replace": ""
+    },
+    {
+      "id": "privacy-guard-calls-a-restored-file-new",
+      "guards": "A file the merge base already holds is restored, not new. Called new, deleting and restoring a file under a forbidden directory goes red for good.",
+      "command": "node --test --test-name-pattern='restored' test/privacyGuard.test.mjs",
+      "file": "scripts/privacy-guard.mjs",
+      "find": "&& !base.exists(f.path)) flag(f.path, 1, 'new-file', '')",
+      "replace": ") flag(f.path, 1, 'new-file', '')"
+    },
+    {
+      "id": "privacy-guard-watches-names-the-repo-already-says",
+      "guards": "A bare name is watched only while the merge base has never said it. Always watched, nearly every mention of a site name is red, with no way out but a rewrite.",
+      "command": "node --test --test-name-pattern='stops watching a name' test/privacyGuard.test.mjs",
+      "file": "scripts/privacy-guard.mjs",
+      "find": "const unsaid = open.filter((n) => !namedAtBase(dir, mergeBase, n))",
+      "replace": "const unsaid = open"
+    },
+    {
+      "id": "privacy-guard-takes-a-symlinked-run-for-an-import",
+      "guards": "Started through a symlink, or under --preserve-symlinks-main, the script must still run. Compared by raw path it takes itself for an import and exits 0 having read nothing.",
+      "command": "node --test --test-name-pattern='through a symlink|symlinked path' test/privacyGuard.test.mjs",
+      "file": "scripts/privacy-guard.mjs",
+      "find": "return realpathSync(started) === realpathSync(here)",
+      "replace": "return started === here"
+    },
+    {
+      "id": "privacy-guard-refuses-a-deleted-binary",
+      "guards": "A deleted or purely renamed binary file has nothing to read. Treated as unread, the change can never pass.",
+      "command": "node --test --test-name-pattern='deleted or renamed file git calls binary' test/privacyGuard.test.mjs",
+      "file": "scripts/privacy-guard.mjs",
+      "find": "const nothingToRead = f && (f.status === 'D' || (f.status === 'R' && f.similarity === 100))",
+      "replace": "const nothingToRead = false"
+    },
+    {
+      "id": "privacy-guard-reads-an-npm-tag-as-an-email",
+      "guards": "A package version tag (a name, an at sign, then a dotted version) is not an address. Read as one, the check goes red on a package.json.",
+      "command": "node --test --test-name-pattern='npm tag' test/privacyGuard.test.mjs",
+      "file": "scripts/privacy-guard.mjs",
+      "find": "!versionLikeDomain(m) && ",
+      "replace": ""
+    },
+    {
+      "id": "privacy-guard-reads-svg-path-data",
+      "guards": "Numbers in minified SVG path data are not addresses. Read, a logo goes red.",
+      "command": "node --test --test-name-pattern='SVG path data' test/privacyGuard.test.mjs",
+      "file": "scripts/privacy-guard.mjs",
+      "find": "const stripSvgData = (text) => text.replace(SVG_DATA, ' ')",
+      "replace": "const stripSvgData = (text) => text"
+    },
+    {
+      "id": "privacy-guard-skips-bare-names-in-messages",
+      "guards": "A bare name in a commit message is a disclosure like any other.",
+      "command": "node --test --test-name-pattern='in a commit message' test/privacyGuard.test.mjs",
+      "file": "scripts/privacy-guard.mjs",
+      "find": "scanText(text, ctx, COMMIT_RULES, 'word')",
+      "replace": "scanText(text, ctx, COMMIT_RULES)"
+    },
+    {
+      "id": "privacy-guard-skips-bare-names-in-paths",
+      "guards": "A directory or a file named for a private repository discloses it.",
+      "command": "node --test --test-name-pattern='directory and as a file name' test/privacyGuard.test.mjs",
+      "file": "scripts/privacy-guard.mjs",
+      "find": "scanText(f.path, ctx, PATH_RULES, 'path')",
+      "replace": "scanText(f.path, ctx, PATH_RULES)"
+    },
+    {
+      "id": "privacy-guard-diffs-a-root-commit-against-the-wrong-tree",
+      "guards": "A root commit that a merge brings in is diffed against the empty tree. A wrong id makes the diff fail, and the guard exits 2 on a branch that has one.",
+      "command": "node --test --test-name-pattern='root commit' test/privacyGuard.test.mjs",
+      "file": "scripts/privacy-guard.mjs",
+      "find": "const EMPTY_TREE = '4b825dc642cb6eb9a060e54bf8d69288fbee4904'",
+      "replace": "const EMPTY_TREE = '4b825dc642cb6eb9a060e54bf8d69288fbbc4904'"
+    },
+    {
+      "id": "privacy-guard-reads-bare-names-in-list-files-only",
+      "guards": "A bare name is read in every file, not only in list files: an unsaid name in prose, a YAML value or a command line is a disclosure.",
+      "command": "node --test --test-name-pattern='bare names, in more shapes' test/privacyGuard.test.mjs",
+      "file": "scripts/privacy-guard.mjs",
+      "find": "export const bareScope = () => 'word'",
+      "replace": "export const bareScope = (path) => (/\\.(?:tsv|csv|tab|txt|list|lst)$/i.test(path) ? 'word' : null)"
+    },
+    {
+      "id": "privacy-guard-allows-a-repo-line-for-an-unsaid-name",
+      "guards": "A repo line in the allowlist names a name that is public already. For a name the repository never said it would disclose it with a green check.",
+      "command": "node --test --test-name-pattern='allowlist add a' test/privacyGuard.test.mjs",
+      "file": "scripts/privacy-guard.mjs",
+      "find": "const unsaid = open.filter((n) => !namedAtBase(dir, mergeBase, n))",
+      "replace": "const unsaid = []"
+    },
+    {
+      "id": "privacy-guard-excuses-any-letter-before-an-address",
+      "guards": "A letter before a dotted number is no excuse: a flag, a host name, an escape. Excused, an address written right after a letter passes.",
+      "command": "node --test --test-name-pattern='take a version for an address' test/privacyGuard.test.mjs",
+      "file": "scripts/privacy-guard.mjs",
+      "find": "'(?<![\\\\d.])(?:' +",
+      "replace": "'(?<![\\\\d.])(?<![A-Za-z])(?:' +"
+    },
+    {
+      "id": "privacy-guard-strips-svg-data-everywhere",
+      "guards": "Drawing data is dropped only in an svg file or on a path tag. Dropped everywhere, an address can hide in a d or points attribute of any file.",
+      "command": "node --test --test-name-pattern='SVG path data' test/privacyGuard.test.mjs",
+      "file": "scripts/privacy-guard.mjs",
+      "find": "export const svgContext = (path, text) => /\\.svg$/i.test(path) || /<(?:path|polygon|polyline)\\b/i.test(text)",
+      "replace": "export const svgContext = () => true"
+    },
+    {
+      "id": "privacy-guard-does-not-decode-quoted-paths",
+      "guards": "A path with a quote, backslash or tab is C-quoted in a diff header. Not decoded, the count check fails for good, and the error can print the path.",
+      "command": "node --test --test-name-pattern='quote, a backslash or a tab' test/privacyGuard.test.mjs",
+      "file": "scripts/privacy-guard.mjs",
+      "find": "if (t.length < 2 || !t.startsWith('\"') || !t.endsWith('\"')) return t",
+      "replace": "return t"
+    },
+    {
+      "id": "privacy-guard-takes-a-name-inside-a-longer-one-as-said",
+      "guards": "A name the base only says inside a longer name or a host is still unsaid. Taken as said, a new list of bare names passes.",
+      "command": "node --test --test-name-pattern='longer name or a host' test/privacyGuard.test.mjs",
+      "file": "scripts/privacy-guard.mjs",
+      "find": "return lines.some((line) => line.match(word))",
+      "replace": "return lines.some((line) => line.length > 0)"
+    },
+    {
+      "id": "privacy-guard-compares-text-after-a-held-quote",
+      "guards": "The owner-quote value ends at the closing quote. Run to the end of the line, editing text after a quote the base already holds goes red for good.",
+      "command": "node --test --test-name-pattern='owner quote in a file whose marker' test/privacyGuard.test.mjs",
+      "file": "scripts/privacy-guard.mjs",
+      "find": "[:,]\\\\s*[\"“][^\"”\\\\n]{0,200}[\"”]?' +",
+      "replace": "[:,]\\\\s*[\"“][^\\\\n]{0,200}' +"
+    },
+    {
+      "id": "privacy-guard-excuses-a-v-before-an-address",
+      "guards": "A v before a four-part address is not a version. Every private IPv4 address has four parts, so excusing a v let v10 and three more parts through.",
+      "command": "node --test --test-name-pattern='take a version for an address' test/privacyGuard.test.mjs",
+      "file": "scripts/privacy-guard.mjs",
+      "find": "'(?<![\\\\d.])(?:' +",
+      "replace": "'(?<![\\\\d.])(?<!(?<![A-Za-z0-9])[vV])(?:' +"
+    },
+    {
+      "id": "privacy-guard-takes-code-for-an-owner-quote",
+      "guards": "Code punctuation before the date means code: a destructured owner beside n: 2 and a string is not a quote. Any text before the digit takes it for one.",
+      "command": "node --test --test-name-pattern='near misses that must stay clean' test/privacyGuard.test.mjs",
+      "file": "scripts/privacy-guard.mjs",
+      "find": "[A-Za-z .,]{0,30}?\\\\d",
+      "replace": "[^\"“\\\\n]{0,60}?\\\\d"
+    },
+    {
+      "id": "privacy-guard-takes-a-key-for-an-owner-quote",
+      "guards": "The colon shape skips owner as a key: first on its line, or after a brace or a comma. Without that, an object literal with a two-word value reads as a quote.",
+      "command": "node --test --test-name-pattern='near misses that must stay clean' test/privacyGuard.test.mjs",
+      "file": "scripts/privacy-guard.mjs",
+      "find": "'|(?<!(?:^|[{,\\\\n])[ \\\\t]*)\\\\bowner:",
+      "replace": "'|\\\\bowner:"
+    },
+    {
+      "id": "privacy-guard-reads-only-a-plain-date-in-an-owner-quote",
+      "guards": "An owner quote dated with an ordinal (7th November), a weekday, on, or a slashed date is still a quote. Read only as a day then a space, all four pass.",
+      "command": "node --test --test-name-pattern='owner quote with (an ordinal|a weekday|on before|a slashed)' test/privacyGuard.test.mjs",
+      "file": "scripts/privacy-guard.mjs",
+      "find": "[A-Za-z .,]{0,30}?\\\\d[^\"“\\\\n]{0,60}?",
+      "replace": "\\\\d{1,2}\\\\s[^\"“\\\\n]{0,60}?"
+    },
+    {
+      "id": "privacy-guard-skips-an-owner-quote-first-on-its-line",
+      "guards": "An owner quote first on its line (a note, an indented bullet) is a quote. Only a key whose value ends the line with a comma or brace is code.",
+      "command": "node --test --test-name-pattern='colon form first on' test/privacyGuard.test.mjs",
+      "file": "scripts/privacy-guard.mjs",
+      "find": "'|(?<=(?:^|\\\\n)[ \\\\t]*)\\\\bowner:",
+      "replace": "'|(?!)(?<=(?:^|\\\\n)[ \\\\t]*)\\\\bowner:"
+    },
+    {
+      "id": "privacy-guard-takes-a-line-start-key-for-an-owner-quote",
+      "guards": "A key first on its line whose quoted value ends the line with a comma or a brace is an object literal, not a quote.",
+      "command": "node --test --test-name-pattern='near misses that must stay clean' test/privacyGuard.test.mjs",
+      "file": "scripts/privacy-guard.mjs",
+      "find": "(?![^\"”\\\\n]*[\"”][ \\\\t]*[,}][ \\\\t]*(?:\\\\n|$))",
+      "replace": ""
+    },
+    {
+      "id": "privacy-guard-ignores-said-names-on-a-private-line",
+      "guards": "A name the base already says is public as a name, not as a private repository. A line that pairs it with private (the 14 November inventory: name, date, private) discloses that, and passes if said names are never read.",
+      "command": "node --test --test-name-pattern='says it is private' test/privacyGuard.test.mjs",
+      "file": "scripts/privacy-guard.mjs",
+      "find": "const SAYS_PRIVATE = /\\b(?:private|visibility)\\b/i",
+      "replace": "const SAYS_PRIVATE = /(?!)/"
+    },
+    {
+      "id": "privacy-guard-takes-privately-for-private",
+      "guards": "Private only as a whole word: privately or a_private_key beside a said name says nothing about which repositories are private.",
+      "command": "node --test --test-name-pattern='only as part of a word' test/privacyGuard.test.mjs",
+      "file": "scripts/privacy-guard.mjs",
+      "find": "const SAYS_PRIVATE = /\\b(?:private|visibility)\\b/i",
+      "replace": "const SAYS_PRIVATE = /(?:private|visibility)/i"
+    },
+    {
+      "id": "privacy-guard-misses-a-name-with-a-file-extension",
+      "guards": "An unsaid name written as a file name in prose (name.md) is the name. Read only as a bare word, it passes.",
+      "command": "node --test --test-name-pattern='a file name in prose' test/privacyGuard.test.mjs",
+      "file": "scripts/privacy-guard.mjs",
+      "find": "${NAME_EXT}?(?!",
+      "replace": "(?!"
+    },
+    {
+      "id": "privacy-guard-takes-a-host-for-a-name-with-an-extension",
+      "guards": "One file extension, then nothing: name.md.example.com is a host, not the name. Without the end check after the extension it reads as one.",
+      "command": "node --test --test-name-pattern='inside a host or before a second extension' test/privacyGuard.test.mjs",
+      "file": "scripts/privacy-guard.mjs",
+      "find": "${NAME_EXT}?(?![A-Za-z0-9-]|\\\\.[A-Za-z0-9])",
+      "replace": "${NAME_EXT}?(?![A-Za-z0-9-])"
+    },
+    {
+      "id": "privacy-guard-misses-a-wiki-name",
+      "guards": "name.wiki and name.wiki.git are the repository's wiki. Without the wiki suffix both pass.",
+      "command": "node --test --test-name-pattern='a wiki' test/privacyGuard.test.mjs",
+      "file": "scripts/privacy-guard.mjs",
+      "find": "(?:${alt})(?:\\\\.wiki)?(?:\\\\.git)?${NAME_EXT}",
+      "replace": "(?:${alt})(?:\\\\.git)?${NAME_EXT}"
+    },
+    {
+      "id": "privacy-guard-takes-an-underscore-for-part-of-a-name",
+      "guards": "An underscore is a boundary: name_notes and OLD_name say the name. Taken as part of a longer word, both pass.",
+      "command": "node --test --test-name-pattern='underscore' test/privacyGuard.test.mjs",
+      "file": "scripts/privacy-guard.mjs",
+      "find": "`(?<![A-Za-z0-9.-])(?:${alt})",
+      "replace": "`(?<![A-Za-z0-9_.-])(?:${alt})"
+    },
+    {
+      "id": "privacy-guard-refuses-new-design-notes",
+      "guards": "main holds public design notes under docs/plans, and plan row 1.30 moves the plan of record, not those. Refused, every later design note PR goes red.",
+      "command": "node --test --test-name-pattern='design note under docs/plans' test/privacyGuard.test.mjs",
+      "file": "scripts/privacy-guard.mjs",
+      "find": "export const FORBIDDEN_NEW_DIRS = ['docs/desk/', 'docs/handoff/', 'briefs/']",
+      "replace": "export const FORBIDDEN_NEW_DIRS = ['docs/desk/', 'docs/handoff/', 'docs/plans/', 'briefs/']"
+    },
+    {
+      "id": "privacy-guard-ignores-a-commit-exemption-for-its-diff",
+      "guards": "A commit line in main's allowlist exempts that commit's own diff. Ignored, a false positive in a commit that is not the tip is red for good: fixing forward leaves it in history, and force push is denied.",
+      "command": "node --test --test-name-pattern='cleared without a rewrite' test/privacyGuard.test.mjs",
+      "file": "scripts/privacy-guard.mjs",
+      "find": "if (allow.commits.includes(c.sha)) {",
+      "replace": "if (false) {"
+    },
+    {
+      "id": "privacy-guard-reads-the-allowlist-from-the-merge-base",
+      "guards": "The allowlist is read from the base revision. Read from the merge base, a commit line merged to main after the branch forked does nothing until the branch merges main, so a stuck pull request stays red.",
+      "command": "node --test --test-name-pattern='allowlist PR merged after the branch forked' test/privacyGuard.test.mjs",
+      "file": "scripts/privacy-guard.mjs",
+      "find": "allowText = git(dir, ['show', `${baseSha}:${ALLOWLIST_PATH}`])",
+      "replace": "allowText = git(dir, ['show', `${mergeBase}:${ALLOWLIST_PATH}`])"
+    },
+    {
+      "id": "privacy-guard-takes-a-short-commit-prefix",
+      "guards": "A commit exemption names the full 40-hex id. A short prefix can be matched by a commit made to share it, which would exempt a leak.",
+      "command": "node --test --test-name-pattern='short or not hex' test/privacyGuard.test.mjs",
+      "file": "scripts/privacy-guard.mjs",
+      "find": "/^[0-9a-f]{40}$/i.test(value)",
+      "replace": "/^[0-9a-f]{7,40}$/i.test(value)"
+    },
+    {
+      "id": "privacy-guard-hides-the-way-out-of-a-stuck-commit",
+      "guards": "A finding in a commit that is not the tip gets the full id and the allowlist way out. Without it, the advice is to rewrite a branch that cannot be force pushed.",
+      "command": "node --test --test-name-pattern='stays red after a fix forward' test/privacyGuard.test.mjs",
+      "file": "scripts/privacy-guard.mjs",
+      "find": "if (own.length > 0) stuck.add(c.sha)",
+      "replace": "if (false) stuck.add(c.sha)"
+    },
+    {
+      "id": "privacy-guard-decodes-a-path-by-code-unit",
+      "guards": "A quoted path is decoded by code point. By code unit a character outside the BMP breaks, the diff path never matches the count, and the guard exits 2 for good.",
+      "command": "node --test --test-name-pattern='quote, a backslash or a tab' test/privacyGuard.test.mjs",
+      "file": "scripts/privacy-guard.mjs",
+      "find": "const inner = [...t.slice(1, -1)]",
+      "replace": "const inner = t.slice(1, -1)"
     }
   ]
 }
