@@ -66,6 +66,16 @@ describe('fleet-kit-versions CLI', () => {
   it('does not fail a stale vendored copy behind an @main pin', () => {
     assert.equal(run([{ slug: 'o/a', kitVersion: '0.49.0', kitPin: { ref: 'main' } }, { slug: 'o/b', kitVersion: null, kitPin: { ref: 'main' } }]).status, 0)
   })
+  it('the fix advice fits the pin kind', () => {
+    const say = (repos) => run(repos).stderr
+    assert.match(say([{ slug: 'o/r', kitPin: { ref: 'abc1234', version: '0.49.0' } }]), /Move its workflows' gorfednet\/\.github refs to main/)
+    const vendored = say([{ slug: 'o/v', kitPin: { vendored: true, version: '0.49.0' } }])
+    assert.match(vendored, /node verification-kit\/bin\/refresh-kit\.mjs/)
+    assert.doesNotMatch(vendored, /refs to main/)
+    const err = say([{ slug: 'o/e', kitPin: { error: 'workflow list empty' } }, { slug: 'o/m', kitPin: { ref: 'main' } }])
+    assert.match(err, /workflow list empty/)
+    assert.doesNotMatch(err, /refs to main|refresh-kit/)
+  })
   it('exits 1 for an unreadable pin', () => {
     assert.equal(run([{ slug: 'o/a', kitPin: { error: 'no workflow pins gorfednet/.github' } }, { slug: 'o/b', kitPin: { ref: 'main' } }]).status, 1)
   })

@@ -250,9 +250,9 @@ export const runsVendoredKit = (body) => runCommands(body).some((c) => VENDORED_
 
 /**
  * The ref a repository's workflows pin the shared gate to, read from the `uses: gorfednet/.github/...@ref`
- * lines (the gate runs this repository's kit at that ref, not the repository's vendored copy). Reads only
- * workflow files the run already listed, caller-like names first, and stops at the first file that calls a
- * gate-bearing target (other shared actions never end the search). Answers `{ ref }`; with no active gate
+ * lines (the gate runs this repository's kit at that ref, not the repository's vendored copy). Reads the
+ * workflow files the run already listed, caller-like names first, and takes the pin from the files that call a
+ * gate-bearing target (other shared actions say nothing about the kit). Every active file is read; differing refs across files are an error. Answers `{ ref }`; with no active gate
  * caller, `{ vendored: true }` when a workflow runs the repository's own verification-kit/bin (the vendored
  * kit is what runs there), else `{ none: true }` for a tier-0 repository (fleet.json: gate off) or
  * `{ untiered: true }` for one fleet.json does not list (informational, never a failure); `{ error }` for
@@ -265,6 +265,7 @@ export function readKitPin(workflows, text, { tier } = {}) {
   const files = workflows.filter((w) => w.state === 'active' && /^\.github\/workflows\/[^/]+\.ya?ml$/.test(w.path ?? '')).sort(callerFirst)
   let unread = 0
   let vendored = false
+  const found = new Set()
   for (const w of files) {
     const body = text(w.path)
     if (body === null) {
@@ -279,9 +280,12 @@ export function readKitPin(workflows, text, { tier } = {}) {
     const refs = [...new Set(gate.map((u) => u.ref))]
     if (refs.length !== 1) return { error: `a workflow pins the gate at ${refs.length} different refs` }
     if (!SAFE_REF.test(refs[0])) return { error: 'a workflow pins the gate at an unreadable ref' }
-    return { ref: refs[0] }
+    found.add(refs[0])
   }
+  // Every file is read: two gate-bearing files can pin different refs, and an unread file might be one of them.
   if (unread > 0) return { error: `${unread} workflow file(s) could not be read` }
+  if (found.size > 1) return { error: `workflows pin the gate at ${found.size} different refs` }
+  if (found.size === 1) return { ref: [...found][0] }
   if (vendored) return { vendored: true }
   if (tier === 0) return { none: true }
   if (tier === undefined) return { untiered: true }
@@ -297,7 +301,9 @@ export function resolveKitPin(pin, json, cache = new Map()) {
       const body = fileText(KIT_SOURCE.slug, `${KIT_SOURCE.manifest}?ref=${encodeURIComponent(pin.ref)}`, json)
       outcome = body === null ? { error: `ref ${pin.ref} has no kit manifest` } : { version: JSON.parse(body).version ?? '' }
     } catch (cause) {
-      outcome = { error: `ref ${pin.ref} unreadable` }
+      // A rate limit is the run's problem, not the ref's: let the row go unavailable. Any other failure answers this row only and is not cached.
+      if (/rate limit/i.test(String(cause.stderr || cause.message))) throw cause
+      return { ref: pin.ref, error: `ref ${pin.ref} unreadable` }
     }
     cache.set(pin.ref, outcome)
   }

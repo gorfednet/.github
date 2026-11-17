@@ -14,6 +14,13 @@ import { readFileSync } from 'node:fs'
 import { isMain } from '../templates/verification-kit/lib/isMain.mjs'
 import { kitFailures } from './lib/kit-version.mjs'
 
+/** One error line, with the fix that fits the pin's kind: a ref pin moves to main, a vendored copy is refreshed, an error row repeats its own cause. */
+export function kitAdvice(r, canonical) {
+  if (r.kind === 'vendored') return `${r.slug} runs its own kit copy: ${r.pin}, canonical kit is ${canonical} (${r.gap}). Run node verification-kit/bin/refresh-kit.mjs there.`
+  if (r.kind === 'error') return `${r.slug} gate pin could not be established: ${r.pin} (${r.gap}). Fix that cause; nothing is assumed current.`
+  return `${r.slug} gate pin is ${r.pin}, canonical kit is ${canonical} (${r.gap}). Move its workflows' gorfednet/.github refs to main.`
+}
+
 if (isMain(import.meta.url)) {
   const at = process.argv.indexOf('--in')
   const status = JSON.parse(readFileSync(at !== -1 ? process.argv[at + 1] : 'status.json', 'utf8'))
@@ -29,7 +36,7 @@ if (isMain(import.meta.url)) {
   const projects = JSON.parse(readFileSync(fleetPath, 'utf8')).projects
   const bad = kitFailures(status.repos, canonical, projects)
   for (const r of bad) {
-    console.error(`::error title=Kit out of date::${r.slug} gate pin is ${r.pin}, canonical kit is ${canonical} (${r.gap}). Move its workflows' gorfednet/.github refs to main.`)
+    console.error(`::error title=Kit out of date::${kitAdvice(r, canonical)}`)
   }
   if (bad.length > 0) process.exit(1)
   console.log(`fleet-kit-versions: ${measured.length} repositories pinned within one minor of ${canonical}`)

@@ -19,12 +19,13 @@ describe('readKitPin', () => {
     assert.deepEqual(readKitPin([wf('.github/workflows/ci.yml')], () => gate(SHA)), { ref: SHA })
     assert.deepEqual(readKitPin([wf('.github/workflows/ci.yml')], () => gate('v0.49.0')), { ref: 'v0.49.0' })
   })
-  it('tries caller-like workflow files first and stops at the first that pins', () => {
+  it('reads every active workflow file, caller-like names first', () => {
     const asked = []
     const texts = { '.github/workflows/zz-misc.yml': 'on: push\n', '.github/workflows/pr-check.yml': gate('main') }
-    const pin = readKitPin([wf('.github/workflows/zz-misc.yml'), wf('.github/workflows/pr-check.yml'), wf('.github/workflows/other.yml')], (p) => { asked.push(p); return texts[p] ?? null })
+    const pin = readKitPin([wf('.github/workflows/zz-misc.yml'), wf('.github/workflows/pr-check.yml'), wf('.github/workflows/other.yml')], (p) => { asked.push(p); return texts[p] ?? 'on: push\n' })
     assert.deepEqual(pin, { ref: 'main' })
-    assert.deepEqual(asked, ['.github/workflows/pr-check.yml'])
+    assert.equal(asked[0], '.github/workflows/pr-check.yml')
+    assert.equal(asked.length, 3)
   })
   it('skips disabled workflows and files outside .github/workflows', () => {
     const asked = []
@@ -44,12 +45,12 @@ describe('readKitPin', () => {
     assert.deepEqual(pin, { ref: SHA })
     assert.equal(asked.length, 3)
   })
-  it('a pr-check reusable workflow call is gate-bearing and ends the search', () => {
+  it('a pr-check reusable workflow call is gate-bearing', () => {
     const text = `jobs:\n  g:\n    uses: gorfednet/.github/.github/workflows/pr-check-static.yml@${SHA}\n`
     const asked = []
     const pin = readKitPin([wf('.github/workflows/pr-check.yml'), wf('.github/workflows/ci.yml')], (p) => { asked.push(p); return text })
     assert.deepEqual(pin, { ref: SHA })
-    assert.equal(asked.length, 1)
+    assert.equal(asked.length, 2)
   })
   it('quoted uses lines are read: an old pin does not slip into none', () => {
     for (const q of ['"', "'"]) {
@@ -344,5 +345,41 @@ describe('vendored rows through the published path, and the summary count', () =
     const repos = [{ slug: 'o/a', kitPin: { ref: 'main' } }, { slug: 'o/v', kitPin: { vendored: true, version: '0.65.0' } }]
     assert.match(kitSummary(repos, '0.65.0'), /all 1 repos pin the gate at main \(0\.65\.0\), 1 run their own kit copy/)
     assert.match(kitSummary([repos[0], { slug: 'o/v', kitPin: { vendored: true, version: '0.61.0' } }], '0.65.0'), /o\/v vendored kit 0\.61\.0 \(far-behind\)/)
+  })
+})
+
+describe('round 4: every gate file is read, tier-1 none fails, rate limits are not cached', () => {
+  it('two gate-bearing files that pin different refs are an error row, whichever is read first', () => {
+    const texts = {
+      '.github/workflows/ci.yml': gate('main'),
+      '.github/workflows/pr-check.yml': `jobs:\n  g:\n    uses: gorfednet/.github/.github/workflows/pr-check-static.yml@${SHA}\n`,
+    }
+    for (const order of [Object.keys(texts), Object.keys(texts).reverse()]) {
+      const pin = readKitPin(order.map((p) => wf(p)), (p) => texts[p])
+      assert.match(pin.error, /2 different refs/)
+    }
+    const same = { ...texts, '.github/workflows/pr-check.yml': gate('main') }
+    assert.deepEqual(readKitPin(Object.keys(same).map((p) => wf(p)), (p) => same[p]), { ref: 'main' })
+  })
+  it('an unread file beside a pin is an error: it could hold a different ref', () => {
+    const pin = readKitPin([wf('.github/workflows/ci.yml'), wf('.github/workflows/other.yml')], (p) => (p.endsWith('ci.yml') ? gate('main') : null))
+    assert.match(pin.error, /could not be read/)
+  })
+  it('a tier-1 row carrying none fails in kitFailures, whoever wrote it; tier 0 passes', () => {
+    const row = { slug: 'o/t1', kitPin: { none: true } }
+    assert.deepEqual(kitFailures([row], '0.61.0', [{ slug: 'o/t1', tier: 1 }]).map((r) => r.gap), ['error'])
+    assert.deepEqual(kitFailures([row], '0.61.0', [{ slug: 'o/t1', tier: 0 }]), [])
+    assert.deepEqual(kitFailures([row], '0.61.0', []), [])
+  })
+  it('a rate limit while reading a ref manifest is rethrown and not cached; another failure is a row error and not cached', () => {
+    const limited = () => { throw Object.assign(new Error('x'), { stderr: 'gh: API rate limit exceeded (HTTP 403)' }) }
+    const cache = new Map()
+    assert.throws(() => resolveKitPin({ ref: SHA }, limited, cache), /x/)
+    assert.equal(cache.size, 0)
+    const boom = () => { throw new Error('HTTP 500') }
+    assert.match(resolveKitPin({ ref: SHA }, boom, cache).error, /unreadable/)
+    assert.equal(cache.size, 0)
+    const ok = () => ({ encoding: 'base64', content: Buffer.from(JSON.stringify({ version: '0.49.0' })).toString('base64') })
+    assert.deepEqual(resolveKitPin({ ref: SHA }, ok, cache), { ref: SHA, version: '0.49.0' })
   })
 })

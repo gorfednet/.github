@@ -74,7 +74,13 @@ export function kitFailures(repos, canonical, projects = []) {
   return repos
     .filter(measured)
     .filter((r) => byslug.get(r.slug)?.monitorClass !== 'dormant')
-    .map((r) => ({ slug: r.slug, pin: pinLabel(r), gap: pinGap(r, canonical) }))
+    .map((r) => {
+      let gap = pinGap(r, canonical)
+      // Defence in depth: `none` is only for tier 0. At tier 1 and above a row with no gate caller fails whatever wrote it.
+      if (gap === 'none' && (byslug.get(r.slug)?.tier ?? 0) >= 1) gap = 'error'
+      const kind = r.kitPin?.vendored === true ? 'vendored' : r.kitPin?.error || typeof r.kitPin?.ref !== 'string' ? 'error' : 'ref'
+      return { slug: r.slug, pin: gap === 'error' && r.kitPin?.none === true ? 'no gate caller at tier 1 or above' : pinLabel(r), gap, kind }
+    })
     .filter((r) => ['far-behind', 'ahead', 'unknown', 'error'].includes(r.gap))
 }
 
