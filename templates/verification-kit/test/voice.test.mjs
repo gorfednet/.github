@@ -592,3 +592,88 @@ describe('check-voice template literals with substitutions', () => {
     assert.deepEqual(hits("const P = lazy(() => import('./Surface'))\n"), [])
   })
 })
+
+describe('check-voice register (warnings, 17 November 2026)', () => {
+  const rulesOf = (t, kind = 'text') => checkString(t, kind).map((h) => h.rule).filter((r) => /^i-|^commas$/.test(r))
+  const leads = (name, src) => checkFile(name, src).hits.filter((h) => h.rule === 'i-lead')
+
+  it('i-run: 3 sentences in a row open with "I"', () => {
+    assert.deepEqual(rulesOf("I'm Michael. I've designed products for 27 years. I run 4th Culture."), ['i-run'])
+  })
+  it('i-run near miss: 2 then a break, other pronouns, headings', () => {
+    assert.deepEqual(rulesOf('I lead every engagement myself. Agents do much of the building under my direction. I bring in partners I trust.'), [])
+    assert.deepEqual(rulesOf("It's ready. If you ask, I'll read it. In 3 days I'll reply."), [])
+    assert.deepEqual(rulesOf('I design. I build. I ship.', 'heading'), [])
+    assert.deepEqual(rulesOf('I design. I build. I ship.', 'label'), [])
+  })
+
+  it('i-share: half of 4 or more sentences open with "I"', () => {
+    assert.deepEqual(rulesOf('I examine public pages. Each page is read at 3 sizes. I read every site from Toronto. Every analysis lists its sizes.'), ['i-share'])
+  })
+  it('i-share near miss: 1 of 4, 2 of 5, 2 of 3', () => {
+    assert.deepEqual(rulesOf('I examine public pages. Each page is read at 3 sizes. The engine reads most sites. Every analysis lists its sizes.'), [])
+    assert.deepEqual(rulesOf('I examine public pages. Each page is read at 3 sizes. The engine reads most sites. Every analysis lists its sizes. I sign each one.'), [])
+    assert.deepEqual(rulesOf('I examine public pages. Each page is read at 3 sizes. I read every site from Toronto.'), [])
+  })
+  it('i-share stays quiet where i-run fired', () => {
+    assert.deepEqual(rulesOf('I design. I build. I ship. The sites say so.'), ['i-run'])
+  })
+
+  it('i-join: "I" again after ", and", ", but" or ", so"', () => {
+    assert.deepEqual(rulesOf("I don't score a site, and I don't rank one site against another."), ['i-join'])
+    assert.deepEqual(rulesOf('I publish each analysis for review, so I write it for the product team.'), ['i-join'])
+  })
+  it('i-join near miss: another subject, no comma, "only I"', () => {
+    assert.deepEqual(rulesOf('A browser measures what it can, and I level every finding.'), [])
+    assert.deepEqual(rulesOf('I read it and I sign it.'), [])
+    assert.deepEqual(rulesOf('I set the price, and only I can change it.'), [])
+  })
+
+  it('commas: 2 commas that are not a list', () => {
+    assert.deepEqual(rulesOf("It isn't a full audit, because it covers only the pages I examined, and I don't test every device."), ['commas'])
+    assert.deepEqual(rulesOf("It isn't a full audit, because it covers only the pages I examined, and it skips some devices."), ['commas'])
+  })
+  it('commas near miss: one comma, lists, series of clauses, digit groups, fragments', () => {
+    assert.deepEqual(rulesOf('When a site refuses an automated visitor, I read it by hand.'), [])
+    assert.deepEqual(rulesOf('Each finding gives its status, company, sector, heuristic, level and dates.'), [])
+    assert.deepEqual(rulesOf('If bot protection, a firewall, a country block or a login stops the assessment, the fee is not refunded.'), [])
+    assert.deepEqual(rulesOf('Apple turns off pinch zoom, Compare leaves its selects unnamed, and 11 shop pages stay 1024 px wide.'), [])
+    assert.deepEqual(rulesOf('It reached 1,500 facilities, and LogistiCare paid $57,500,000 for it.'), [])
+    assert.deepEqual(rulesOf('Product Manager, TD Direct Investing, worked together'), [])
+    assert.deepEqual(rulesOf('Director of design at the agency in Toronto, working on the KINETiQ platform for life sciences clients, across several brands over many years'), [])
+    assert.deepEqual(rulesOf('Director of design at the agency in Toronto, working on the KINETiQ platform for life sciences clients, across several brands over many years.'), ['commas'])
+    assert.deepEqual(rulesOf('The label "Shop by room, size, or colour" opens a 404.'), [])
+  })
+  it('register warnings read body text and summaries, never headings or labels', () => {
+    assert.deepEqual(rulesOf('It was late, because the build on the pool ran long, but it shipped on time, so nobody left early.', 'heading'), [])
+    assert.deepEqual(rulesOf('It was late, because the build on the pool ran long, but it shipped on time, so nobody left early.', 'label'), [])
+    assert.deepEqual(rulesOf('It was late, because the build on the pool ran long, but it shipped on time, so nobody left early.', 'summary'), ['commas'])
+  })
+
+  it('i-lead: 3 body paragraphs in a row open with "I", headings between them skipped', () => {
+    const html = '<h2>TD</h2><p>I managed people at TD Invent.</p><h3>UX lead</h3><p>I was the UX lead there.</p><p>I directed product design on KINETiQ.</p>'
+    const found = leads('a.html', html)
+    assert.equal(found.length, 1)
+    assert.equal(found[0].level, 'warn')
+    assert.equal(leads('a.md', 'I managed people at TD Invent.\n\nI was the UX lead there.\n\nI directed product design on KINETiQ.\n').length, 1)
+    assert.equal(leads('a.tsx', 'export const A = () => <div><p>I managed people at TD Invent.</p><p>I was the UX lead there.</p><p>I directed product design.</p></div>\n').length, 1)
+  })
+  it('i-lead: one hit for a run of 5, and a short string does not break or count', () => {
+    const five = ['I managed people at TD.', 'I was the UX lead.', 'I directed product design.', 'I ran a skate shop.', 'I took contract work then.'].map((t) => `<p>${t}</p>`).join('')
+    assert.equal(leads('a.html', five).length, 1)
+    assert.equal(leads('a.html', '<p>I managed people at TD Invent.</p><p>I was the UX lead there.</p><p>See below.</p><p>I directed product design.</p>').length, 1)
+  })
+  it('i-lead near miss: the third opens with a place, a quoted "I", JSON and TS keys', () => {
+    assert.equal(leads('a.html', '<p>I managed people at TD Invent.</p><p>I was the UX lead there.</p><p>At Klick I directed product design.</p>').length, 0)
+    assert.equal(leads('a.html', '<p>I managed people at TD Invent.</p><p>I was the UX lead there.</p><p>"I directed" is how the page opens its history.</p>').length, 0)
+    assert.equal(leads('a.json', '{"a":"I managed people at TD Invent.","b":"I was the UX lead there.","c":"I directed product design."}').length, 0)
+    assert.equal(leads('a.ts', "export const t = { a: 'I managed people at TD Invent.', b: 'I was the UX lead there.', c: 'I directed product design.' }\n").length, 0)
+  })
+
+  it('the CLI prints the register warnings and exits 0', () => {
+    const dir = project({ 'a.md': "# A\n\nI'm Michael. I've designed products for 27 years. I run 4th Culture.\n" })
+    const r = run(dir, ['a.md'])
+    assert.equal(r.status, 0, r.stdout + r.stderr)
+    assert.match(r.stdout, /a\.md:L3: warning rule i-run "3 sentences in a row open with "I""/)
+  })
+})
