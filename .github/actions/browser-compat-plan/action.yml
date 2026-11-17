@@ -1,0 +1,20 @@
+name: browser-compat plan
+description: Emit the browser-compat matrix as JSON (webkit alone can be sharded)
+inputs:
+  webkit-shards:
+    description: Number of webkit shards, "1" to "8". "1" is the unsharded matrix.
+    required: false
+    default: "1"
+outputs:
+  matrix:
+    description: JSON matrix for the compat job
+    value: ${{ steps.plan.outputs.matrix }}
+runs:
+  using: composite
+  steps:
+    - name: Build matrix
+      id: plan
+      shell: bash
+      env:
+        WEBKIT_SHARDS: ${{ inputs.webkit-shards }}
+      run: node "${{ github.action_path }}/plan.mjs"

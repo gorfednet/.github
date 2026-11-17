@@ -78,15 +78,45 @@ on:
         required: false
         type: string
         default: always
+      webkit-shards:
+        description: >-
+          How many Playwright shards to split webkit into, "1" to "8". "1" (default) is the
+          unsharded matrix: three jobs named `compat (chromium)`, `compat (firefox)` and
+          `compat (webkit)`, as before. Above 1, only webkit splits, into jobs named
+          `compat (webkit 1 of N)` ... `compat (webkit N of N)`, each running
+          `--shard=i/N` with one worker. Chromium and firefox never shard. Each shard must run
+          at least one test, and min-tests then applies to the sum across the shards, never
+          divided. A caller that opts in must update its required checks: `compat (webkit)`
+          no longer exists.
+        required: false
+        type: string
+        default: "1"
 
 jobs:
+  # Emits the matrix. A bad webkit-shards value fails here, and compat is then skipped, which
+  # compat-success reports as red.
+  plan:
+    runs-on: ${{ fromJSON(inputs.runs-on != '' && inputs.runs-on || '"ubuntu-latest"') }}
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+    steps:
+      - uses: gorfednet/.github/.github/actions/setup-node@main
+        with:
+          node-version: ${{ inputs.node-version }}
+      - id: plan
+        uses: gorfednet/.github/.github/actions/browser-compat-plan@main
+        with:
+          webkit-shards: ${{ inputs.webkit-shards }}
+
   compat:
+    name: compat (${{ matrix.label }})
+    needs: plan
     runs-on: ${{ fromJSON(inputs.runs-on != '' && inputs.runs-on || '"ubuntu-latest"') }}
     timeout-minutes: 25
     strategy:
       fail-fast: false
-      matrix:
-        browser: [chromium, firefox, webkit]
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: gorfednet/.github/.github/actions/setup-node@main
@@ -103,16 +133,16 @@ jobs:
         with:
           browsers: ${{ matrix.browser }}
           system-deps: ${{ inputs.system-deps }}
-      - name: Playwright smoke (${{ matrix.browser }})
+      - name: Playwright smoke (${{ matrix.label }})
         run: >-
           ${{ inputs.playwright-test-command }} --project=${{ matrix.browser }}
-          --reporter=list,json
+          ${{ matrix.shard_arg }} --reporter=list,json
         env:
           CI: true
           PLAYWRIGHT_WORKERS: 1
           # Off stdout, so `list` still prints something a person can read when
           # a browser fails. A report only a machine sees is no use at 2am.
-          PLAYWRIGHT_JSON_OUTPUT_NAME: compat-${{ matrix.browser }}.json
+          PLAYWRIGHT_JSON_OUTPUT_NAME: ${{ matrix.report }}
 
       # A failing browser job must leave its evidence behind: traces, screenshots and
       # error context under test-results/. Without this, a Linux-only failure can only
@@ -121,7 +151,7 @@ jobs:
         if: ${{ failure() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: playwright-${{ matrix.browser }}-${{ github.run_id }}-${{ github.run_attempt }}
+          name: playwright-${{ matrix.label }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: test-results/
           if-no-files-found: ignore
           retention-days: 7
@@ -131,15 +161,19 @@ jobs:
       # a path that stops matching produces three green jobs in about forty
       # seconds — and cross-browser coverage is exactly the kind that nobody
       # reproduces by hand before shipping.
-      - name: Assert ${{ matrix.browser }} actually ran the specs
+      # A sharded entry asserts at least 1 here (a shard that ran nothing fails); the floor
+      # itself is held on the sum in compat-success. An unsharded entry asserts min-tests.
+      - name: Assert ${{ matrix.label }} actually ran the specs
         if: ${{ !cancelled() }}
+        env:
+          MIN_HERE: ${{ matrix.shards != '' && '1' || inputs.min-tests }}
         run: |
           set -euo pipefail
-          report="compat-${{ matrix.browser }}.json"
+          report="${{ matrix.report }}"
           if [ -n "${{ inputs.verification-kit }}" ]; then
             node "${{ inputs.verification-kit }}/bin/assert-tests-executed.mjs" \
-              --report "$report" --min "${{ inputs.min-tests }}" \
-              --label "compat ${{ matrix.browser }}"
+              --report "$report" --min "$MIN_HERE" \
+              --label "compat ${{ matrix.label }}"
           else
             # Non-skipped results, not specs: a fully skipped suite is the
             # condition this exists to catch, and counting specs would pass it.
@@ -152,25 +186,56 @@ jobs:
                 + walk(x.suites ?? []), 0);
               console.log(walk(r.suites ?? []));
             ")
-            echo "${{ matrix.browser }} executed $count test(s)"
-            if [ "$count" -lt "${{ inputs.min-tests }}" ]; then
-              echo "::error::${{ matrix.browser }} executed $count test(s)," \
-                   "expected at least ${{ inputs.min-tests }}. A selection that" \
+            echo "${{ matrix.label }} executed $count test(s)"
+            if [ "$count" -lt "$MIN_HERE" ]; then
+              echo "::error::${{ matrix.label }} executed $count test(s)," \
+                   "expected at least $MIN_HERE. A selection that" \
                    "matches nothing exits 0 having proven nothing."
               exit 1
             fi
           fi
 
+      # Sharded entries only: their reports go to compat-success, which sums them.
+      - name: Upload shard report
+        if: ${{ !cancelled() && matrix.shards != '' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: compat-report-${{ matrix.report }}-${{ github.run_attempt }}
+          path: ${{ matrix.report }}
+          if-no-files-found: error
+          retention-days: 1
+
   compat-success:
     runs-on: ${{ fromJSON(inputs.runs-on != '' && inputs.runs-on || '"ubuntu-latest"') }}
     timeout-minutes: 5
-    needs: compat
+    needs: [plan, compat]
     if: always()
     steps:
       - name: Require all browser jobs
         run: |
-          if [[ "${{ needs.compat.result }}" != "success" ]]; then
-            echo "Browser compatibility matrix failed"
+          if [[ "${{ needs.plan.result }}" != "success" || "${{ needs.compat.result }}" != "success" ]]; then
+            echo "Browser compatibility matrix failed (plan: ${{ needs.plan.result }}, compat: ${{ needs.compat.result }})"
             exit 1
           fi
           echo "All browsers passed"
+
+      # Sharded browsers: every shard's report must be here, and their sum must meet the
+      # floor. Fails closed on a missing report. No-op when webkit-shards is 1.
+      - name: Download shard reports
+        if: ${{ !cancelled() && inputs.webkit-shards != '1' && needs.plan.result == 'success' }}
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          pattern: compat-report-*-${{ github.run_attempt }}
+          merge-multiple: true
+          path: shard-reports
+      - uses: gorfednet/.github/.github/actions/setup-node@main
+        if: ${{ !cancelled() && inputs.webkit-shards != '1' && needs.plan.result == 'success' }}
+        with:
+          node-version: ${{ inputs.node-version }}
+      - name: Sum sharded executed tests against the floor
+        if: ${{ !cancelled() && inputs.webkit-shards != '1' && needs.plan.result == 'success' }}
+        uses: gorfednet/.github/.github/actions/browser-compat-rollup@main
+        with:
+          matrix: ${{ needs.plan.outputs.matrix }}
+          report-dir: shard-reports
+          min-tests: ${{ inputs.min-tests }}
