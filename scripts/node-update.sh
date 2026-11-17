@@ -136,9 +136,12 @@ else
 fi
 
 # npm's global prefix lives in the install's etc/npmrc; keep the line's setting (prefix=~/.local).
-if [[ -n "${previous}" && -f "${ROOT}/${previous}/etc/npmrc" && ! -e "${ROOT}/${latest}/etc/npmrc" ]]; then
+# When the install being repaired is the one the stable link names, its files are in the .bad copy by now.
+npmrc_from="${ROOT}/${previous}"
+[[ "${previous}" == "${latest}" ]] && npmrc_from="${ROOT}/${latest}.bad"
+if [[ -n "${previous}" && -f "${npmrc_from}/etc/npmrc" && ! -e "${ROOT}/${latest}/etc/npmrc" ]]; then
   mkdir -p "${ROOT}/${latest}/etc"
-  cp "${ROOT}/${previous}/etc/npmrc" "${ROOT}/${latest}/etc/npmrc"
+  cp "${npmrc_from}/etc/npmrc" "${ROOT}/${latest}/etc/npmrc"
 fi
 
 reports "${ROOT}/${latest}" || { echo "node-update: ${ROOT}/${latest} does not report ${latest}. Link not changed." >&2; exit 1; }

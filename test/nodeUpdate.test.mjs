@@ -160,6 +160,19 @@ describe('node-update.sh', () => {
     assert.ok(!existsSync(join(e.root, 'v24.22.4.bad')), 'the set-aside copy is removed')
   })
 
+  it('repairing the install the stable link names carries its npmrc over (read from the set-aside copy)', () => {
+    const e = env()
+    dist(e.top, 24, 'v24.22.3')
+    assert.equal(e.run('24').status, 0)
+    mkdirSync(join(e.root, 'v24.22.3', 'etc'), { recursive: true })
+    writeFileSync(join(e.root, 'v24.22.3', 'etc', 'npmrc'), 'prefix=/kept\n')
+    writeFileSync(join(e.root, 'v24.22.3', 'bin', 'node'), '#!/bin/sh\nexit 1\n') // broken: fails the version check
+    const r = e.run('24')
+    assert.equal(r.status, 0, r.stderr)
+    assert.equal(readFileSync(join(e.root, 'v24.22.3', 'etc', 'npmrc'), 'utf8'), 'prefix=/kept\n')
+    assert.equal(spawnSync(join(e.root, '24', 'bin', 'node'), ['--version'], { encoding: 'utf8' }).stdout.trim(), 'v24.22.3')
+  })
+
   it('puts a set-aside broken install back when the replacement cannot be fetched, so the stable link never dangles', () => {
     const e = env()
     dist(e.top, 24, 'v24.22.3')
