@@ -218,6 +218,21 @@ describe('the wrapper does not guess', () => {
   })
 })
 
+describe('a broken guard is not "some repositories unreadable"', () => {
+  it('maps a guard that throws (exit 1) to exit 4, and reads nothing', () => {
+    const f = fixture({ remaining: 4000 })
+    try {
+      writeFileSync(join(f.repo, 'scripts', 'lib', 'quotaGuard.mjs'), "throw new Error('x')\n")
+      const r = f.run()
+      assert.equal(r.status, 4, r.stderr)
+      assert.match(r.stderr, /quota guard failed \(exit 1\)/)
+      assert.equal(f.ran(), false)
+    } finally {
+      f.cleanup()
+    }
+  })
+})
+
 describe('the real guard against the real reader', () => {
   /** A fake gh first on PATH that answers `api rate_limit` and nothing else. */
   function realGuard(remaining) {

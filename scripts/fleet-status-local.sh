@@ -51,7 +51,9 @@ mode=reuse
 carry=""
 if [ ${#from[@]} -eq 0 ]; then
   plan="$(node scripts/lib/quotaGuard.mjs --cache "$cache/status.json" ${full[@]+"${full[@]}"})" || code=$?
-  if [ "$code" -ne 0 ]; then exit "$code"; fi
+  # The guard owns only 3 (refused) and 4 (quota not read). Any other failure, such as a throw while it loads,
+  # is a broken guard, not "some repositories unreadable", which is what exit 1 means here.
+  case "$code" in 0) ;; 3) exit 3 ;; *) echo "fleet-status: the quota guard failed (exit $code), so nothing was run." >&2; exit 4 ;; esac
   mode="$(sed -n 's/^mode=//p' <<<"$plan")"
   carry="$(sed -n 's/^carry=//p' <<<"$plan")"
   case "$mode" in light|full) ;; *) echo "fleet-status: the quota guard named no mode, so nothing was run." >&2; exit 4 ;; esac
