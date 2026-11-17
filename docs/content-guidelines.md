@@ -23,7 +23,7 @@ A product team that owns the page we are describing, a founder deciding whether 
 
 A signed credit on an About page may name the maker in the third person ("MoonMan is made by Michael Duncan McArthur"). It's the one exception to the product row above. MoonMan and BinderCurve both have one, and MoonMan's was kept on 30 October 2026 after a "we" version of the bio made false claims.
 
-On heuristics.4thcltr.com the method and limits lines say "I", because Michael built the method and signs the reviewed tiers. One "I" in a paragraph does that. The analysis, the browser and the page are the subjects of the other sentences (see Register). A finding keeps the page element as its subject ("The Sort control hides 3 of the 7 options at 390 px"), because the finding is about the page, not about the reviewer.
+On heuristics.4thcltr.com the method and limits lines say "I", because Michael built the method and signs the reviewed tiers. One "I" opener in a paragraph is enough. The analysis, the browser and the page are the subjects of the other sentences (see Register). A finding keeps the page element as its subject ("The Sort control hides 3 of the 7 options at 390 px"), because the finding is about the page, not about the reviewer.
 
 ## Voice
 
@@ -41,7 +41,7 @@ On heuristics.4thcltr.com the method and limits lines say "I", because Michael b
 
 ## Sound like a person
 
-Model-written copy has a shape a reader recognizes before they can say why. These are the tells, with the fix after each. The lint catches 4 of them in part (see Enforcement). The editor catches the others.
+Model-written copy has a shape a reader recognizes before they can say why. These are the tells, with the fix after each. The lint catches 5 of them in part (see Enforcement). The editor catches the others.
 
 | Tell | Example from the sites, 30 October 2026 | Fix |
 |------|------|-----|
@@ -51,7 +51,7 @@ Model-written copy has a shape a reader recognizes before they can say why. Thes
 | Colon-led statements | "The commitment: use the tools without handing them the decisions." | Write the sentence. "I use the tools and make the decisions myself." A colon introduces a list or a label, never a punchline. |
 | Abstract nouns for concrete things | "Differentiation begins before the interface."; judgment, intent, posture, craft, clarity, "the space between". | Name the client, the page, the month, the number. A sentence's subject is a person or a thing. |
 | Summaries that restate | A paragraph that explains the template problem, then ends "Deciding what deserves to exist is still a person's job." | End on a fact or on what happens next. Cut the closing line. |
-| No speaker | "A person sets the intent, judges the work and accepts the consequences." | Put the speaker in, once. "I set the direction, judge the work and accept the consequences." One "I" is enough for a paragraph (see Register). |
+| No speaker | "A person sets the intent, judges the work and accepts the consequences." | Put the speaker in, once. "I set the direction, judge the work and accept the consequences." One "I" opener is enough for a paragraph (see Register). |
 | Anaphora | "The same rounded card. The same gradient hero. The same three-column feature grid." | One sentence with one list. Never start 2 sentences in a row with the same words. Register has the rule for "I". |
 | Headings as sentences | "Work over posture." "The principal stays in the work." | A noun phrase with no full stop: "What I've shipped". |
 
@@ -62,12 +62,12 @@ The tell is density, not the device. One "X, not Y" on a page is a sentence; one
 The October baseline measured 373 sentences Michael wrote before 2023 (median 20 words, 21% over 30) and told writers to match them. On 6 November 2026 he said that read as long-winded and AI-like. These replace it.
 
 - **Short sentences.** Median 10 to 14 words in prose. None over 22. A run of 3 sentences of the same length is a sign to cut one down or join two.
-- **1 comma per sentence**, not counting the commas inside a list. No semicolons, no ellipses, no em dashes. When a sentence needs a second comma, it's 2 sentences.
+- **1 comma per sentence**, not counting the commas inside a list. No semicolons, no ellipses, no em dashes. When a sentence needs a second comma, make it 2 sentences, or a colon and a list (see Register).
 - **Bullets over paragraphs.** Where a section lists achievements, features or facts, write a 1-line opener and then bullets. Each bullet is one fact. It starts with a verb or a name and has no full stop unless it holds 2 sentences.
 - **Outcome first.** Say what happened, then how. "GIC trading went digital" before the order ticket that made it possible.
 - **Leader, then maker.** On his own pages and profiles, show the people he led or the partners he lined up, then the hands-on part. He's an executive who still designs and codes.
 - **Tell what happened, in order.** Name the client, the deliverable, the month and year, the duration and the count: "9 months at the agency", "upwards of 50 clients".
-- **Plain, concrete words.** Built, designed, launched, led, directed, ran, brought on, co-founded. "Bandaid" and "duct tape" are allowed when they are the right word.
+- **Plain, concrete words.** Made, built, designed, launched, led, directed, ran, worked with, brought on, co-founded. "Bandaid" and "duct tape" are allowed when they are the right word.
 - **No trailing asides.** No "or what have you", "and so on", "amongst other things", and no parenthetical jokes. Parentheses hold dates, qualifiers and abbreviations only.
 - **Contractions.** I'm, I've, I'll, it's, don't, didn't, can't, where speech would use them. "I am Michael" is a form; "I'm Michael" is a person.
 - **The user's side for behaviour.** On product pages and in the assessment: "Tapping the profile picture will take you to the Edit Profile screen." "If the page can't be reached, I'll email you what to allow."
@@ -77,14 +77,14 @@ The October baseline measured 373 sentences Michael wrote before 2023 (median 20
 
 ### Register
 
-Added 17 November 2026. The copy was short and plain but it still read young. It had 2 causes. Sentence after sentence opened with "I did", "I built" or "I've made". Commas joined 2 sentences where a full stop belonged. The speaker is still "I". These rules say where it goes.
+Added 17 November 2026. The copy was short and plain but it still read young. There were 2 causes. Sentence after sentence opened with "I did", "I built" or "I've made". Commas joined 2 sentences where a full stop belonged. The speaker is still "I". These rules say where it goes.
 
-- **"I" is for decisions.** Use it where he decides, judges, promises or gives an opinion. A fact about the work takes the work as its subject: the product, the client, the page or the number.
-- **Open with the thing.** At most 1 sentence in 4 on a page opens with "I", "I've", "I'm" or "I'll". Never 3 in a row, whether they're sentences, paragraphs, bullets or cards.
-- **Move "I" back.** Open with the time, the place, the client or the result. "At Klick I directed UX and UI." "For 27 years I've designed digital products." A short opening phrase takes no comma.
+- **"I" is for what he decided or answers for.** Use it where he decides, judges, promises, gives an opinion, names his role or states a limit of his own work. A result takes the work as its subject: the product, the client, the page or the number.
+- **Open with the thing.** At most 1 sentence in 4 on a page opens with "I", "I've", "I'm", "I'll" or "I'd". At most 1 in a paragraph. Never 3 in a row, whether they're sentences, paragraphs, bullets or cards.
+- **Move "I" back.** Open with the time, the place, the client or the result. "At Klick I directed product design on KINETiQ." "For 27 years I've designed digital products." A short opening phrase takes no comma.
 - **One "I" per sentence.** Don't repeat it after "and", "but" or "so". "I read every brief and reply myself."
-- **Name the role.** No "I did", "I worked on", "I helped with" or "I was involved in". Name the role, or use a verb that says what he was accountable for. "I was the UX lead" becomes "UX lead".
-- **Entries under a heading drop "I".** A role entry, a bullet or a card already has a heading that names its subject. Start it with the verb or the role: "Directed product design on KINETiQ."
+- **Name the role.** No "I did", "I worked on", "I helped with" or "I was involved in". Name the role, or use a verb that says what he was accountable for. "I was the UX lead" becomes "UX lead" in an entry.
+- **Entries under a heading drop "I".** A role entry, an achievement bullet or a card already has a heading that names its subject. A paragraph of prose keeps its subject. Start it with the verb or the role: "Directed product design on KINETiQ."
 - **A comma marks 1 pause.** It never joins 2 sentences. Where "and", "but" or "so" follows a comma between 2 full sentences, use a full stop. Or drop the comma and the repeated subject.
 - **A colon before conditions.** A second comma often opens a list of conditions. Use a colon there. "This analysis covers public pages only: signed out, on the date shown, at the sizes listed."
 
@@ -132,7 +132,7 @@ Lines 1 to 8 as they read on 30 October 2026, rewritten under the 6 November bas
    - After: "What I've shipped" as the heading, then bullets: "2 patent filings at TD" · "Canada's top-ranked digital brokerage (3 years running)" · "A health-transport product, acquired for $57.5M".
 2. Same tenet, the TowIt sentence
    - Before: "Some of it started from nothing: TowIt, co-founded and named one of the 12 best apps made in Canada, and Klick's KINETiQ platform."
-   - After: "Some of it started from nothing. TowIt was named one of the 12 best apps made in Canada. I co-founded it. KINETiQ at Klick began as a blank page too."
+   - After: "Some of it started from nothing. The TowIt app I co-founded was named one of the 12 best apps made in Canada. KINETiQ at Klick began as a blank page too."
 3. Bio opening (`whoBio.leadItalic`)
    - Before: "I am Michael Duncan McArthur. For {years} years I have shaped complex, regulated and closely scrutinised products."
    - After: "I'm Michael Duncan McArthur. For {years} years I've shaped products that are complex, regulated and closely scrutinized."
@@ -141,7 +141,7 @@ Lines 1 to 8 as they read on 30 October 2026, rewritten under the 6 November bas
    - After: "I set the direction and still build. These days I direct agents across the interface, the services and the infrastructure."
 5. Section "who" lede
    - Before: "Michael leads every engagement directly, directs the agents that do much of the building, and brings in trusted partners only when the work calls for them."
-   - After: "I lead every engagement myself. Agents do much of the building under my direction. Partners I trust join when the work needs them."
+   - After: "On every engagement I lead the work myself. Agents do much of the building under my direction. When the work needs them I bring in trusted partners."
 6. Home hero lede
    - Before: "Products that stand apart get chosen, and kept. {studio} finds what sets yours apart and takes it from strategy to shipped software."
    - After: "People choose products that stand apart. I'll find what sets yours apart and take it from strategy to shipped software."
@@ -153,7 +153,7 @@ Lines 1 to 8 as they read on 30 October 2026, rewritten under the 6 November bas
    - After: "This analysis covers public pages only: signed out, on the date shown, at the sizes listed. I didn't observe real users. A browser took the measurements. Each finding gives its numbers."
 9. Home page card under the heading "Music" (gorfed.net)
    - Before: "I've produced as Gorf since 2003, with Denseware and SSATCY alongside. I've logged 47 performances since 2004."
-   - After: "Producing as Gorf since 2003, with Denseware and SSATCY alongside. The log since 2004 has 47 performances."
+   - After: "Producing as Gorf since 2003, with Denseware and SSATCY alongside. Logged 47 performances since 2004."
 10. Role entry under its job title (gorfed.net)
     - Before: "I managed people in TD Invent's Human-Centered Design Practice. I led design teams across Wealth, on WebBroker, Web Business Banking, TD Asset Management and EasyWeb."
     - After: "Managed people in TD Invent's Human-Centered Design Practice. Led design teams across Wealth, on WebBroker, Web Business Banking, TD Asset Management and EasyWeb."
@@ -170,7 +170,7 @@ Lines 1 to 8 as they read on 30 October 2026, rewritten under the 6 November bas
 
 ## Enforcement
 
-`check-voice` runs in every repository's test suite over built pages, content files and JSX source. It fails on the phrase lists in rules 4, 6, 8, 9 and 10 (every phrase the lint bans is named in those rules), on the praise-then-pivot shape in summaries, on "Learn more"/"Click here"/"Get started"/"Read more" as link text, and on a summary over four sentences. It also fails on antithesis (rule 3) and on a colon-led statement. It warns on long sentences (`rhythm`) and on abstract nouns (`abstract`). A warning prints and never fails the run.
+`check-voice` runs in every repository's test suite over built pages, content files and JSX source. It fails on the phrase lists in rules 4, 6, 8, 9 and 10 (every phrase the lint bans is named in those rules), on the praise-then-pivot shape in summaries, on "Learn more"/"Click here"/"Get started"/"Read more" as link text, and on a summary over four sentences. Antithesis (rule 3) and a colon-led statement fail too. Long sentences (`rhythm`) and abstract nouns (`abstract`) only warn. A warning prints and never fails the run.
 
 Register has 5 more warnings. They read body text and summaries, never headings or link text. An "I" opener is a sentence that starts with "I", "I've", "I'm", "I'll" or "I'd".
 
@@ -180,8 +180,8 @@ Register has 5 more warnings. They read body text and summaries, never headings 
 | `i-share` | A string has 4 or more sentences and at least half are "I" openers. It stays quiet where `i-run` fired. |
 | `i-lead` | In an HTML, Markdown or JSX file, 3 or more body strings in a row start with an "I" opener. Headings, link text, summaries and strings under 4 words are passed over. |
 | `i-join` | An "I" opener repeats "I" after ", and", ", but" or ", so". |
-| `commas` | A sentence that ends in a full stop has 2 or more commas outside a list. |
+| `commas` | A sentence that ends in a full stop, "?" or "!" has 2 or more commas outside a list. |
 
-For `commas`, an item of 4 words or fewer between 2 commas makes both of them list commas. A comma is a list comma too when 1 to 4 words and then "and" or "or" follow it. A series that closes with ", and" or ", or" is a list. It isn't one when a part after a comma starts with a clause word: "because", "so", "which" or "with". Commas inside parentheses and inside numbers aren't counted.
+For `commas`, an item of 4 words or fewer between 2 commas makes both of them list commas. A comma is a list comma too when 1 to 4 words and then "and" or "or" follow it. A series that closes with ", and" or ", or" is a list. It isn't one when a part after a comma starts with a clause word such as "because", "so", "which" or "with" (the lint has 17). Commas inside parentheses and inside numbers aren't counted.
 
-An allowlist entry names the string, the reason and a review date. The allowlist can only shrink between releases. A finding the lint cannot see is still the editor's to catch. That covers most of Sound like a person. It also covers the Register rules on roles and on what "I" is for.
+An allowlist entry names the string, the reason and a review date. The allowlist can only shrink between releases. A finding the lint cannot see is still the editor's to catch. That covers most of Sound like a person. It also covers 4 Register rules: roles, what "I" is for, the 1 in 4 share on a page and a second "I" with no comma before it.

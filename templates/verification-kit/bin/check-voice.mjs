@@ -71,16 +71,19 @@
  *     fire on short uniform sentences too, which the baseline now asks for.
  *   - `abstract`, "judgment", "intent", "posture", "craft", "clarity", "the
  *     space between", "at scale", "end-to-end": warning.
- *   - the register warnings (guideline, 17 November 2026): `i-run` (3 sentences
- *     in a row open with "I", "I've", "I'm", "I'll" or "I'd"), `i-share` (4 or
- *     more sentences, at least half open with "I"; quiet where `i-run` fired),
- *     `i-lead` (3 body strings in a row start with such an opener, in HTML,
- *     Markdown and JSX only, because JSON and TS keys are not in page order;
- *     headings, labels, summaries and strings under 4 words are passed over),
- *     `i-join` (an "I" opener that says "I" again after ", and", ", but" or
- *     ", so") and `commas` (a sentence ending in a full stop with 2 or more
- *     commas outside a list; see `nonListCommas`). Headings and link text are
- *     never read.
+ * Five register warnings (v0.64.0, guideline of 17 November 2026):
+ *   - `i-run`: 3 sentences in a row open with "I", "I've", "I'm", "I'll" or
+ *     "I'd".
+ *   - `i-share`: 4 or more sentences, at least half open with "I". Quiet where
+ *     `i-run` fired.
+ *   - `i-lead`: 3 body strings in a row start with such an opener, in HTML,
+ *     Markdown and JSX only, because JSON and TS keys are not in page order.
+ *     Headings, labels, summaries and strings under 4 words are passed over.
+ *   - `i-join`: an "I" opener that says "I" again after ", and", ", but" or
+ *     ", so".
+ *   - `commas`: a sentence ending in a full stop, "?" or "!" with 2 or more
+ *     commas outside a list (see `nonListCommas`).
+ *   None of the 5 reads a heading or link text.
  * A warning prints as `path:where: warning rule X "text"` and never fails the
  * run. The allowlist covers both levels, and an entry for a warning also has to
  * name its string, reason and review date.
@@ -145,10 +148,10 @@ const HINTS = {
   rhythm: 'long sentences: split any sentence over 22 words and keep the median near 10 to 14',
   abstract: 'abstract noun: name the concrete thing',
   'i-run': 'three sentences in a row open with "I": open with the thing, the place or the result',
-  'i-share': 'half the sentences open with "I": give the work, the client or the number the subject',
-  'i-lead': 'three paragraphs in a row open with "I": entries under a heading start with the verb or the role',
+  'i-share': 'half the sentences open with "I": make the work, the client or the number the subject',
+  'i-lead': 'three paragraphs in a row open with "I": open with the thing, the place or the result; an entry under a heading starts with the verb or the role',
   'i-join': 'one "I" per sentence: drop the second after "and", "but" or "so"',
-  commas: 'a comma that joins two sentences or opens a list of conditions: use a full stop or a colon',
+  commas: 'a comma that joins 2 sentences or opens a list of conditions: use a full stop or a colon',
 }
 
 // "X, not Y" and "not X but Y". The words after "not" that make it an ordinary
