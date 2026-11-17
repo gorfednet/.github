@@ -572,20 +572,34 @@ describe('install-git-hooks.sh: a failed install leaves the hooks that were ther
     assert.deepEqual(read(), before)
   })
 
-  it('links pre-push and the receive-side hooks only, until a clone under AUDIT_ROOT has a hook of another name, and drops a link nothing needs', () => {
+  it('links every client and receive-side hook name but five, so a repository outside AUDIT_ROOT keeps its own hooks of any name', () => {
     const w = world()
-    const linked = () => readdirSync(w.hooks).filter((f) => lstatSync(join(w.hooks, f)).isSymbolicLink()).sort()
-    const always = ['post-receive', 'post-update', 'pre-push', 'pre-receive', 'update']
-    assert.deepEqual(linked(), always, 'no clone has a hook, so only pre-push and the receive-side hooks are linked')
+    const linked = () => readdirSync(w.hooks).filter((f) => lstatSync(join(w.hooks, f)).isSymbolicLink())
+    for (const h of ['pre-commit', 'commit-msg', 'post-checkout', 'post-merge', 'post-commit', 'pre-rebase', 'prepare-commit-msg', 'pre-push', 'pre-receive', 'update', 'post-receive', 'post-update', 'sendemail-validate', 'p4-pre-submit']) assert.ok(linked().includes(h), `${h} is not linked`)
+    for (const h of ['push-to-checkout', 'proc-receive', 'fsmonitor-watchman']) assert.ok(!linked().includes(h), `${h} must not be linked`)
+    // The two names that fire on nearly every git command wait for a clone under AUDIT_ROOT that has one.
+    for (const h of ['reference-transaction', 'post-index-change']) assert.ok(!linked().includes(h), `${h} is linked with no clone that needs it`)
+    // No clone is under AUDIT_ROOT, and its hooks were added after the install: they still run.
     const r = repo(w)
     const hook = join(r.dir, '.git', 'hooks', 'pre-commit')
-    writeFileSync(hook, '#!/bin/sh\nexit 0\n')
+    writeFileSync(hook, '#!/bin/sh\nexit 1\n')
     chmodSync(hook, 0o755)
+    assert.notEqual(git(r.dir, r.w, 'commit', '--allow-empty', '-m', 'x').status, 0)
+    const post = join(r.dir, '.git', 'hooks', 'post-commit')
+    writeFileSync(hook, '#!/bin/sh\nexit 0\n')
+    writeFileSync(post, `#!/bin/sh\n: > "${join(w.dir, 'post-commit-ran')}"\n`)
+    chmodSync(post, 0o755)
+    ok(r.dir, r.w, 'commit', '--allow-empty', '-m', 'y')
+    assert.ok(existsSync(join(w.dir, 'post-commit-ran')))
+    // A clone under AUDIT_ROOT with a reference-transaction hook links that one name, and the link goes when nothing needs it.
+    const rt = join(r.dir, '.git', 'hooks', 'reference-transaction')
+    writeFileSync(rt, '#!/bin/sh\nexit 0\n')
+    chmodSync(rt, 0o755)
     reinstall(w)
-    assert.deepEqual(linked(), ['post-receive', 'post-update', 'pre-commit', 'pre-push', 'pre-receive', 'update'], 'reference-transaction and the rest stay unlinked')
-    rmSync(hook)
+    assert.ok(linked().includes('reference-transaction') && !linked().includes('post-index-change'))
+    rmSync(rt)
     reinstall(w)
-    assert.deepEqual(linked(), always, 'a link the last install made and nothing needs is removed')
+    assert.ok(!linked().includes('reference-transaction'), 'a link the last install made and nothing needs is removed')
   })
 
   it('does not link push-to-checkout, which would override the default working-tree update', () => {

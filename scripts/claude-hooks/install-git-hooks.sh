@@ -34,11 +34,13 @@ printf '%s\n' "$NODE_BIN" > "$tmp/node-path"
 for f in public-push-guard.mjs privacy-guard.mjs hook node-path; do
   mv -f "$tmp/$f" "$dest/$f"
 done
-# pre-push is always linked, and so are the four receive-side hooks, which fire only inside the repository being pushed
-# to (a local bare repository keeps its own pre-receive, update, post-receive, post-update). Any other hook name is
-# linked only when a clone under AUDIT_ROOT has its own hook of that name to chain to: every linked name runs the
-# dispatcher on each git command that fires it (reference-transaction fires on every ref update, post-index-change on
-# every index write), which made git-heavy suites several times slower for nothing.
+# Every client and receive-side hook name is linked: a global core.hooksPath hides every repository's .git/hooks, so a
+# name left out stops running in any clone, including clones outside AUDIT_ROOT and hooks added after the install. The
+# dispatcher leaves at once when the repository has no hook of that name. Two names are the exception because they fire
+# on nearly every git command (reference-transaction on each ref update, post-index-change on each index write), which
+# made git-heavy suites several times slower for nothing: they are linked only when a clone under AUDIT_ROOT has one.
+# Never linked: push-to-checkout (it would replace git's own working-tree update), proc-receive (a two-way protocol)
+# and fsmonitor-watchman (git expects its output). `git help hooks` lists the names.
 root=${AUDIT_ROOT:-$HOME/Developer/gorfednet}
 has_hook() {
   for d in "$root"/*/; do
@@ -47,8 +49,8 @@ has_hook() {
   done
   return 1
 }
-for h in applypatch-msg pre-applypatch post-applypatch pre-commit pre-merge-commit prepare-commit-msg commit-msg post-commit pre-rebase post-checkout post-merge pre-push pre-auto-gc post-rewrite post-index-change reference-transaction sendemail-validate pre-receive update post-receive post-update; do
-  case "$h" in pre-push | pre-receive | update | post-receive | post-update) always=1 ;; *) always=0 ;; esac
+for h in applypatch-msg pre-applypatch post-applypatch pre-commit pre-merge-commit prepare-commit-msg commit-msg post-commit pre-rebase post-checkout post-merge pre-push pre-auto-gc post-rewrite post-index-change reference-transaction sendemail-validate p4-changelist p4-prepare-changelist p4-post-changelist p4-pre-submit pre-receive update post-receive post-update; do
+  case "$h" in post-index-change | reference-transaction) always=0 ;; *) always=1 ;; esac
   if [ "$always" = 1 ] || has_hook "$h"; then
     ln -sf hook "$dest/$h"
   elif [ -L "$dest/$h" ]; then
