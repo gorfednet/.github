@@ -908,6 +908,19 @@ describe('public-push-guard: the fourth review', () => {
     sh(q.dir, q.w, 'remote', 'set-url', '--push', 'origin', URL_OF('privaterepo'))
     assert.equal(hook('git push origin feature', { r: q, vis }).out, '', 'the push goes to the private repository')
   })
+  it('reads the fetch URL for a gh write, which is the repository gh picks', () => {
+    // public fetch URL, pushurl "no_push" or a private repository: gh still posts to the public one
+    const vis = { [`${ORG}/privaterepo`]: 'PRIVATE', [`${ORG}/testrepo`]: 'PUBLIC' }
+    for (const push of ['no_push', URL_OF('privaterepo')]) {
+      const r = repo({ urls: [URL_OF('privaterepo')] })
+      sh(r.dir, r.w, 'remote', 'set-url', '--push', 'origin', push)
+      const x = hook(`gh pr comment 3 --body "${IP}"`, { r, vis })
+      assert.ok(denied(x), `${push}: ${x.out}`)
+    }
+    const q = repo({ slug: 'privaterepo' })
+    sh(q.dir, q.w, 'remote', 'set-url', '--push', 'origin', 'no_push')
+    assert.equal(hook(`gh pr comment 3 --body "${IP}"`, { r: q, vis }).out, '', 'near miss: a private fetch URL')
+  })
   it('subtracts what the push URL holds, not what the fetch URL holds', () => {
     // origin fetches from a repository that already holds the commit and pushes to a public one that does not
     const r = repo({ outgoing: { 'x.md': `${IP}\n` } })

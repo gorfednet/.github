@@ -699,7 +699,7 @@ function must(target, args, what, opts) {
 }
 
 /** Remotes a push could go to. `spec` is a name, a URL, or null for the repository default. */
-function remotesFor(target, spec, branch) {
+function remotesFor(target, spec, branch, { fetchToo = false } = {}) {
   const cfg = (key) => {
     const r = git(target, ['config', '--get', key])
     return r.ok ? r.stdout.trim() : ''
@@ -720,6 +720,13 @@ function remotesFor(target, spec, branch) {
       if (configured.ok) configured.stdout.split('\n').filter(Boolean).forEach((u) => urls.add(u))
       const expanded = git(target, ['remote', 'get-url', '--push', '--all', name])
       if (expanded.ok) expanded.stdout.split('\n').filter(Boolean).forEach((u) => urls.add(u))
+      if (fetchToo) {
+        // gh names the repository from the fetch URL (the pushurl only when the fetch URL isn't GitHub), so a gh write reads both.
+        const f = git(target, ['config', '--get-all', `remote.${name}.url`])
+        if (f.ok) f.stdout.split('\n').filter(Boolean).forEach((u) => urls.add(u))
+        const fx = git(target, ['remote', 'get-url', '--all', name])
+        if (fx.ok) fx.stdout.split('\n').filter(Boolean).forEach((u) => urls.add(u))
+      }
       return { name, urls: [...urls] }
     }
     return { name, urls: [name], isUrl: true }
@@ -1249,7 +1256,7 @@ async function main() {
     const fromDir = new Set()
     if (isRepo) {
       for (const name of must(target, ['remote'], 'list the remotes').split('\n').filter(Boolean)) {
-        for (const r of remotesFor(target, { text: name, open: false }, '')) publicSlugs(r, cache).slugs.forEach((x) => fromDir.add(x))
+        for (const r of remotesFor(target, { text: name, open: false }, '', { fetchToo: true })) publicSlugs(r, cache).slugs.forEach((x) => fromDir.add(x))
       }
     }
     // gh acts on the repository --repo, GH_REPO or an endpoint names, not on the working directory's, so a private
