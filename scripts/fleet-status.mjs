@@ -256,22 +256,20 @@ export const runsVendoredKit = (body) => runCommands(body).some((c) => VENDORED_
  * caller, `{ vendored: true }` when a workflow runs the repository's own verification-kit/bin (the vendored
  * kit is what runs there), else `{ none: true }` for a tier-0 repository (fleet.json: gate off) or
  * `{ untiered: true }` for one fleet.json does not list (informational, never a failure); `{ error }` for
- * everything else: an empty or unreadable list, an unreadable file, a gate call with a mixed or unparseable
+ * everything else: an empty or unreadable list, a gate call with a mixed or unparseable
  * ref, or no gate caller at tier 1 and above. Never a silent "current". Error text names no path, so it can be published.
- * `text` is (path) => string | null (null: the file is not there).
+ * `text` is (path) => string | null (null: the file is not on the default branch, so it is skipped; a read that throws propagates).
  */
 export function readKitPin(workflows, text, { tier } = {}) {
   if (!Array.isArray(workflows) || workflows.length === 0) return { error: 'workflow list empty' }
   const files = workflows.filter((w) => w.state === 'active' && /^\.github\/workflows\/[^/]+\.ya?ml$/.test(w.path ?? '')).sort(callerFirst)
-  let unread = 0
   let vendored = false
   const found = new Set()
   for (const w of files) {
     const body = text(w.path)
-    if (body === null) {
-      unread += 1
-      continue
-    }
+    // Not on the default branch (renamed, deleted, or only ever seen on a PR branch): it pins nothing there, so skip it.
+    // A read that throws is not this case; it reaches the caller's catch and the row goes unavailable or error.
+    if (body === null) continue
     const gate = pinnedRefs([body]).filter((u) => gateBearing(u.target))
     if (gate.length === 0) {
       if (runsVendoredKit(body)) vendored = true
@@ -282,8 +280,6 @@ export function readKitPin(workflows, text, { tier } = {}) {
     if (!SAFE_REF.test(refs[0])) return { error: 'a workflow pins the gate at an unreadable ref' }
     found.add(refs[0])
   }
-  // Every file is read: two gate-bearing files can pin different refs, and an unread file might be one of them.
-  if (unread > 0) return { error: `${unread} workflow file(s) could not be read` }
   if (found.size > 1) return { error: `workflows pin the gate at ${found.size} different refs` }
   if (found.size === 1) return { ref: [...found][0] }
   if (vendored) return { vendored: true }

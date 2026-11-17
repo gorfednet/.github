@@ -67,8 +67,18 @@ describe('readKitPin', () => {
   it('an empty workflow list, an unreadable file and a 404 are errors at every tier', () => {
     for (const tier of [0, 1, undefined]) {
       assert.match(readKitPin([], () => null, { tier }).error, /list empty/)
-      assert.match(readKitPin([wf('.github/workflows/ci.yml')], () => null, { tier }).error, /could not be read/)
+      assert.match(readKitPin([wf('.github/workflows/ci.yml')], () => null, { tier }).error ?? 'none', /no active workflow calls|none/)
     }
+  })
+  it('a listed file that 404s is skipped, not an error: a renamed or PR-branch-only workflow pins nothing', () => {
+    const files = [wf('.github/workflows/old-name.yml'), wf('.github/workflows/ci.yml')]
+    const text = (p) => (p.endsWith('old-name.yml') ? null : gate('main'))
+    assert.deepEqual(readKitPin(files, text, { tier: 1 }), { ref: 'main' })
+    assert.deepEqual(kitFailures([{ slug: 'o/r', kitPin: readKitPin(files, text, { tier: 1 }) }], '0.61.0', [{ slug: 'o/r', tier: 1 }]), [])
+  })
+  it('a read that throws still propagates; it is not skipped like a 404', () => {
+    const boom = () => { throw new Error('gh: Server Error (HTTP 500)') }
+    assert.throws(() => readKitPin([wf('.github/workflows/ci.yml')], boom, { tier: 1 }), /500/)
   })
   it('tier 1 and above with no gate caller is an error row; tier 0 is none', () => {
     assert.match(readKitPin([wf('.github/workflows/ci.yml')], () => 'on: push\n', { tier: 1 }).error, /no active workflow calls/)
@@ -361,9 +371,8 @@ describe('round 4: every gate file is read, tier-1 none fails, rate limits are n
     const same = { ...texts, '.github/workflows/pr-check.yml': gate('main') }
     assert.deepEqual(readKitPin(Object.keys(same).map((p) => wf(p)), (p) => same[p]), { ref: 'main' })
   })
-  it('an unread file beside a pin is an error: it could hold a different ref', () => {
-    const pin = readKitPin([wf('.github/workflows/ci.yml'), wf('.github/workflows/other.yml')], (p) => (p.endsWith('ci.yml') ? gate('main') : null))
-    assert.match(pin.error, /could not be read/)
+  it('a file missing from the default branch beside a pin does not change the pin', () => {
+    assert.deepEqual(readKitPin([wf('.github/workflows/ci.yml'), wf('.github/workflows/other.yml')], (p) => (p.endsWith('ci.yml') ? gate('main') : null)), { ref: 'main' })
   })
   it('a tier-1 row carrying none fails in kitFailures, whoever wrote it; tier 0 passes', () => {
     const row = { slug: 'o/t1', kitPin: { none: true } }

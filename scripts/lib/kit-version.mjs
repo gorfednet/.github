@@ -95,7 +95,7 @@ export function kitSummary(repos, canonical) {
   const off = [...pinned, ...vendored].filter((r) => pinGap(r, canonical) !== 'current')
   const parts = [
     off.length === 0
-      ? `Kit: all ${pinned.length} repos pin the gate at main (${canonical})${vendored.length ? `, ${vendored.length} run their own kit copy` : ''}`
+      ? `Kit: ${pinned.every((r) => r.kitPin?.ref === 'main') ? `all ${pinned.length} repos pin the gate at main` : `all ${pinned.length} repos on the canonical kit, ${pinned.filter((r) => r.kitPin?.ref === 'main').length} at main and ${pinned.filter((r) => r.kitPin?.ref !== 'main').length} pinned to a fixed ref`} (${canonical})${vendored.length ? `, ${vendored.length} run their own kit copy` : ''}`
       : `Kit: canonical ${canonical}; gate pin not current: ${off.map((r) => `${r.slug.replace(/^gorfednet\//, '')} ${pinLabel(r)} (${pinGap(r, canonical)})`).join(', ')}`,
   ]
   if (untiered) parts.push(`${untiered} untiered repo${untiered === 1 ? '' : 's'} not checked`)

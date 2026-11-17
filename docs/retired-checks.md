@@ -4,6 +4,22 @@ A check taken out on purpose is a recorded decision, not a weakening
 (`~/.claude/rules/shipping.md`, "When CI is red"). Each entry says what the
 check caught, why it went, and what still catches that class. Newest first.
 
+## 2026-11-17: vendored-kit version and missing-kit failures in fleet-status (plan row 2.9)
+
+**Replaced, not dropped.** `fleet-kit-versions` used to fail on the vendored `verification-kit/` copy a repository carries. It now fails on the gate ref the repository's workflows pin, because that ref is the kit that runs.
+
+**What the two removed failures caught:**
+- A vendored copy far behind or ahead of the canonical kit (`kitVersion` against canonical), for a repository whose workflows call the shared gate. The copy was not what ran there, so the failure named the wrong thing.
+- The `missing` gap: a repository at tier 1 or above with no vendored kit at all.
+
+**Why they went:** the shared gate runs the kit at the pinned ref, not the vendored copy. A stale copy behind an `@main` pin changed nothing a gate ran, and a repository with no copy but a current pin was reported red.
+
+**What catches that class now:**
+- A repository whose workflows call the gate fails when the pin is far behind, ahead of canonical, unreadable, or at mixed refs.
+- A tier 1 or above repository with no gate caller and no vendored kit run fails as an error row (`kitFailures` turns a `none` pin at tier 1 or above into `error`).
+- A repository that runs its own `verification-kit/bin` is reported as `vendored` and still fails on its copy's gap.
+- `check-kit-drift` compares a vendored copy with its own manifest. A stale vendored copy behind a current pin is no longer reported anywhere; it affects nothing that runs.
+
 ## 2026-11-16: two Node checks narrowed for the user-owned Node (plan row 3.20k)
 
 **Narrowed, not dropped.** Both stay in force. Each now has one exception, written so a patch needs no sudo and no reinstall of the agents. The ledger line is in `ship-bot/INCIDENTS.md` (16 November 2026, plan row 3.20k).

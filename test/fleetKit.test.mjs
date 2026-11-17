@@ -103,6 +103,9 @@ describe('kit drift is read from the pin, not the vendored copy (plan row 2.9)',
     const repos = [{ slug: 'o/b', kitVersion: '0.49.0', kitPin: { ref: 'main' } }]
     assert.deepEqual(kitFailures(repos, '0.61.0'), [])
     assert.match(kitSummary(repos, '0.61.0'), /all 1 repos pin the gate at main/)
+    const sha = [{ slug: 'o/a', kitPin: { ref: 'abc1234', version: '0.61.0' } }]
+    assert.doesNotMatch(kitSummary(sha, '0.61.0'), /pin the gate at main/)
+    assert.match(kitSummary(sha, '0.61.0'), /0 at main and 1 pinned to a fixed ref/)
   })
   it('near miss: a caller pinned to an old sha really is behind, whatever its vendored copy says', () => {
     const repos = [{ slug: 'o/b', kitVersion: '0.61.0', kitPin: { ref: 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678', version: '0.49.0' } }]
