@@ -162,6 +162,8 @@ describe('config validation', () => {
       ops: 'merge-only',
       // Plan row 5.6's scratch repository, registered by scripts/register-repo.mjs (13 November 2026).
       'scratch-bootstrap-5-6': 'merge-only',
+      // Public, no deploy: its release workflow only publishes a GitHub Release on a v* tag (plan row 5.6a, 17 November 2026).
+      'ai-use-levels': 'merge-only',
     })
   })
 

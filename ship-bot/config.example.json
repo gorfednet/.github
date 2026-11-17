@@ -892,6 +892,18 @@
       "expectedChecks": [
         "check / check"
       ]
+    },
+    {
+      "slug": "gorfednet/ai-use-levels",
+      "dir": "ai-use-levels",
+      "mode": "merge-only",
+      "reason": "no deploy workflow: the one release workflow runs on a pushed v* tag and only creates a GitHub Release, so nothing ships from a merge (Desk decision 17 November 2026, plan row 5.6a)",
+      "claudeReview": true,
+      "live": false,
+      "expectedChecks": [
+        "ci / test"
+      ],
+      "note": "ci / test is the one CI check. review / review and review / trigger come from the Claude reviewer caller (claudeReview): until its workflow (ai-use-levels pull request 25) is on main, review-status.mjs reads not-run and the bot holds each pull request."
     }
   ]
 }

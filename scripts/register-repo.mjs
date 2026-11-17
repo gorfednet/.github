@@ -238,6 +238,7 @@ export function main(argv) {
   for (const k of kept) console.log(`kept ${k}`)
   if (!opts.dryRun) execFileSync(process.execPath, [join(opts.githubDir, 'scripts/write-fleet-md.mjs')], { cwd: opts.githubDir, stdio: 'inherit' })
   if (!opts.opsDir) console.log('register-repo: no --ops-dir, so no Herdr job or space tab was written')
+  console.log(`register-repo: docs/plan-ranking.json must place ${opts.slug} in a tier too (test/planOfRecord.test.mjs fails without it)`)
   console.log(`register-repo: ship-bot's tests pin the repository list on purpose. Add ${opts.name} to the modes in ship-bot/test/config.test.mjs and raise the count in ship-bot/test/support.test.mjs`)
   console.log('\nFor the owner, when each is his next step:')
   for (const line of ownerLines(opts, patchFile)) console.log(`- ${line}`)
