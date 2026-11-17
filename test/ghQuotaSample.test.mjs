@@ -5,7 +5,7 @@ import { spawnSync } from 'node:child_process'
 import { chmodSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { CALLER, SPIKE, makeSample, redact } from '../scripts/gh-quota-sample.mjs'
+import { CALLER, SPIKE, makeSample, redact, trimLog } from '../scripts/gh-quota-sample.mjs'
 
 test('a drop of SPIKE or more in one window carries the callers; a quiet minute or a new window does not', () => {
   const ps = () => ['1 00:10 gh run watch 5 --interval 60']
@@ -76,4 +76,23 @@ test('the sampler redacts tokens in a process line before saving it, and writes 
   assert.equal(r.status, 0, r.stderr)
   assert.equal(statSync(file).mode & 0o077, 0)
   assert.equal(statSync(join(dir, 'sub')).mode & 0o077, 0)
+})
+
+test('the sample log is cut to its last lines once it passes the size limit, and left alone under it', () => {
+  const file = join(mkdtempSync(join(tmpdir(), 'ghsamples-')), 'samples.jsonl')
+  const lines = Array.from({ length: 50 }, (_, i) => JSON.stringify({ n: i }))
+  writeFileSync(file, `${lines.join('\n')}\n`)
+  assert.equal(trimLog(file, { maxBytes: 1_000_000, keep: 10 }), false)
+  assert.equal(readFileSync(file, 'utf8').trim().split('\n').length, 50)
+  assert.equal(trimLog(file, { maxBytes: 100, keep: 10 }), true)
+  const kept = readFileSync(file, 'utf8').trim().split('\n').map((l) => JSON.parse(l).n)
+  assert.deepEqual(kept, [40, 41, 42, 43, 44, 45, 46, 47, 48, 49])
+  assert.equal(statSync(file).mode & 0o777, 0o600)
+  assert.equal(trimLog(join(tmpdir(), 'no-such-samples-file.jsonl')), false)
+})
+
+test('the sampler imports isMain from beside itself, so the installed copy needs only lib/isMain.mjs', () => {
+  const s = readFileSync(new URL('../scripts/gh-quota-sample.mjs', import.meta.url), 'utf8')
+  assert.match(s, /from '\.\/lib\/isMain\.mjs'/)
+  assert.ok(!s.includes('templates/verification-kit'))
 })

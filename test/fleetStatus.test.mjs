@@ -245,6 +245,13 @@ describe('STATUS.md', () => {
     const dark = await collectRepo('o/p', new Date(), { json: () => { throw new Error('HTTP 500: boom') }, log })
     assert.deepEqual(dark, { slug: 'o/p', unavailable: 'unreadable' })
   })
+  it('says a rate limit by name, even for a private repository, because that text names no file', async () => {
+    const limited = () => { throw new Error('gh: API rate limit exceeded for user ID 1. (HTTP 403)') }
+    const logged = []
+    const row = await collectRepo('o/p', new Date(), { json: limited, log: (l) => logged.push(l) })
+    assert.deepEqual(row, { slug: 'o/p', unavailable: 'GitHub rate limit exceeded' })
+    assert.ok(!logged[0].includes('user ID'), logged[0])
+  })
   it('shows when the data was read and when it was rendered', () => {
     const later = { ...fixture, renderedAt: '2026-11-08T14:00:00.000Z' }
     assert.match(render(later), /Data from 7 November 2026, 6:30 am ET, rendered 8 November 2026, 9:00 am ET\./)
@@ -447,9 +454,12 @@ describe('fleet-status.yml', () => {
     const steps = text.split(/\n {6}- /).slice(1)
     const names = steps.map((s) => s.split('\n')[0])
     assert.ok(steps.length >= 7, names.join(', '))
-    // checkout, setup-node, the token check and the read itself run only when everything before them passed.
-    // The ntfy digest adds one condition: it goes out only on the run that did the full read.
-    for (const step of steps.slice(4)) assert.match(step, /if: \$\{\{ !cancelled\(\)( && steps\.read\.outputs\.digest != 'no')? \}\}/, step.split('\n')[0])
+    // Everything up to and including the read itself (checkout, setup-node, the token check, the quota note
+    // before the read, the read) runs only when everything before it passed. After the read, every step
+    // runs even when one failed. The ntfy digest adds one condition: it goes out only on the run that did the full read.
+    const read = names.findIndex((n) => n.startsWith('name: Read the fleet'))
+    assert.ok(read >= 4, names.join(', '))
+    for (const step of steps.slice(read + 1)) assert.match(step, /if: \$\{\{ !cancelled\(\)( && steps\.read\.outputs\.digest != 'no')? \}\}/, step.split('\n')[0])
   })
 })
 
