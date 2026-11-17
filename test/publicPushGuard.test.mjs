@@ -511,9 +511,49 @@ describe("pre-push: the allowlist is the remote default branch's tip, as it is n
   }
 })
 
+describe('pre-push: bare private names in ref names and tag messages', () => {
+  const BARE = SECRET.split('/')[1]
+  const OPEN = PUBLIC.split('/')[1]
+
+  it('refuses an annotated tag whose message names a private repository bare', () => {
+    const r = repo(world())
+    ok(r.dir, r.w, 'tag', '-a', 'v1', '-m', `notes on ${BARE} work`)
+    const x = push(r, 'origin', 'v1')
+    assert.ok(refused(x) && /tag v1/.test(x.stderr), x.stderr)
+    assert.ok(!remoteHas(r, 'refs/tags/v1'))
+  })
+
+  it('refuses a branch whose name holds a private repository name as a path part', () => {
+    const r = repo(world())
+    ok(r.dir, r.w, 'checkout', '-q', '-b', `notes/${BARE}`)
+    const x = push(r, 'origin', `notes/${BARE}`)
+    assert.ok(refused(x) && /branch or tag name/.test(x.stderr), x.stderr)
+    assert.ok(!remoteHas(r, `refs/heads/notes/${BARE}`))
+  })
+
+  it('passes a public repository name, and a private name the remote default branch already says', () => {
+    const r = repo(world(), { baseFiles: { 'docs/a.md': `${BARE} is a site\n` } })
+    ok(r.dir, r.w, 'tag', '-a', 'v1', '-m', `${OPEN} and ${BARE} work`)
+    ok(r.dir, r.w, 'checkout', '-q', '-b', `notes/${BARE}`)
+    ok(r.dir, r.w, 'checkout', '-q', '-b', `notes/${OPEN}`)
+    assert.equal(push(r, 'origin', 'v1').status, 0, 'tag')
+    assert.equal(push(r, 'origin', `notes/${OPEN}`).status, 0, 'public branch name')
+    assert.equal(push(r, 'origin', `notes/${BARE}`).status, 0, 'a said name in a branch name')
+  })
+})
+
 describe('pre-push: a push that publishes nothing, or goes to a repository made since the list was cut', () => {
   it('lets a local path remote through, planted value and all', () => {
     const r = repo(world(), { remoteUrl: 'local', outgoing: { 'x.md': `${IP}\n` } })
+    const x = push(r, 'origin', 'feature')
+    assert.equal(x.status, 0, x.stderr)
+    assert.ok(remoteHas(r, 'refs/heads/feature'))
+  })
+
+  it('passes a push to a local path when the private list is missing', () => {
+    const w = world({ listOut: 'FAIL' })
+    const r = repo(w, { remoteUrl: 'local', outgoing: { 'x.md': `${IP}\n` } })
+    assert.ok(!existsSync(join(w.hooks, 'private-repos.txt')), 'the list exists')
     const x = push(r, 'origin', 'feature')
     assert.equal(x.status, 0, x.stderr)
     assert.ok(remoteHas(r, 'refs/heads/feature'))
