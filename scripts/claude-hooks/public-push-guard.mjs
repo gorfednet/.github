@@ -53,9 +53,17 @@ const must = (args, what) => {
   return r.stdout
 }
 
-/** owner/name from a GitHub URL (https, ssh or scp form), lowercase; null for anything else. */
+// The host is matched whole, straight after the scheme and any userinfo (or at the start of an scp-style URL).
+const GITHUB_URL = /^[a-z][a-z0-9+.-]*:\/\/(?:[^@/\s]+@)?(?:ssh\.)?github\.com(?::\d+)?\/+([^/\s]+)\/([^/\s]+?)(?:\.git)?\/?$/i
+const GITHUB_SCP = /^(?:[^@/:\s]+@)?(?:ssh\.)?github\.com:\/*([^/\s]+)\/([^/\s]+?)(?:\.git)?\/?$/i
+
+/**
+ * owner/name from a GitHub URL, lowercase; null for anything else: ssh://, https:// (with userinfo or a port) or
+ * scp-style on github.com. A github.com that only appears inside another host's name or in a path is not GitHub.
+ */
 export const slugOf = (url) => {
-  const m = /github\.com[:/]+([^/\s]+)\/([^/\s]+?)(?:\.git)?\/?$/i.exec(String(url ?? '').trim())
+  const u = String(url ?? '').trim()
+  const m = GITHUB_URL.exec(u) ?? GITHUB_SCP.exec(u)
   return m ? `${m[1]}/${m[2]}`.toLowerCase() : null
 }
 

@@ -14,6 +14,7 @@ import { chmodSync, existsSync, lstatSync, mkdirSync, readdirSync, mkdtempSync, 
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { slugOf } from '../scripts/claude-hooks/public-push-guard.mjs'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 const INSTALL = join(ROOT, 'scripts', 'claude-hooks', 'install-git-hooks.sh')
@@ -70,7 +71,7 @@ function reinstall(w) {
 function repo(w, { outgoing = { 'a.md': 'clean\n' }, slug = PUBLIC, remoteUrl = `https://github.com/${slug}.git`, baseFiles = {} } = {}) {
   const bare = join(w.dir, `remote-${(seq += 1)}.git`)
   spawnSync('git', ['init', '-q', '--bare', '-b', 'main', bare], { env: envOf(w) })
-  if (remoteUrl.startsWith('https://github.com/')) writeFileSync(w.cfg, `${readFileSync(w.cfg, 'utf8')}[url "${bare}"]\n\tinsteadOf = ${remoteUrl}\n`)
+  if (remoteUrl.startsWith('https://')) writeFileSync(w.cfg, `${readFileSync(w.cfg, 'utf8')}[url "${bare}"]\n\tinsteadOf = ${remoteUrl}\n`)
   const dir = join(w.dir, `work-${seq}`)
   mkdirSync(dir)
   ok(dir, w, 'init', '-q', '-b', 'main')
@@ -81,7 +82,7 @@ function repo(w, { outgoing = { 'a.md': 'clean\n' }, slug = PUBLIC, remoteUrl = 
   }
   ok(dir, w, 'add', '-A')
   ok(dir, w, 'commit', '-q', '-m', 'base')
-  ok(dir, w, 'remote', 'add', 'origin', remoteUrl.startsWith('https://github.com/') ? remoteUrl : bare)
+  ok(dir, w, 'remote', 'add', 'origin', remoteUrl.startsWith('https://') ? remoteUrl : bare)
   ok(dir, w, '-c', 'core.hooksPath=/dev/null', 'push', '-q', 'origin', 'main') // setting up the fake remote is not a push under test
   ok(dir, w, 'checkout', '-q', '-b', 'feature')
   commit(dir, w, outgoing)
@@ -378,6 +379,43 @@ describe('pre-push: it fails closed once the remote is public, and chains to the
     chmodSync(hook, 0o755)
     reinstall(r.w)
     assert.notEqual(git(r.dir, r.w, 'commit', '--allow-empty', '-m', 'x').status, 0)
+  })
+})
+
+describe('slugOf: only a GitHub host gives a slug', () => {
+  it('reads the three real forms, with userinfo, a port, .git or a trailing slash', () => {
+    assert.equal(slugOf('git@github.com:Owner/Repo.git'), 'owner/repo')
+    assert.equal(slugOf('github.com:owner/repo'), 'owner/repo')
+    assert.equal(slugOf('ssh://git@github.com/owner/repo.git'), 'owner/repo')
+    assert.equal(slugOf('ssh://git@github.com:22/owner/repo'), 'owner/repo')
+    assert.equal(slugOf('ssh://git@ssh.github.com:443/owner/repo.git'), 'owner/repo')
+    assert.equal(slugOf('https://github.com/owner/repo'), 'owner/repo')
+    assert.equal(slugOf('https://GitHub.com/owner/repo.git/'), 'owner/repo')
+    assert.equal(slugOf('https://user:tok@github.com:443/owner/repo.git'), 'owner/repo')
+  })
+
+  it('gives null for another host, whichever way github.com appears in the URL', () => {
+    for (const u of [
+      'https://evilgithub.com/owner/repo',
+      'https://gitlab.com/github.com/owner/repo.git',
+      'https://github.com.evil.example/owner/repo',
+      'https://github.com@evil.example/owner/repo.git',
+      'git@evilgithub.com:owner/repo.git',
+      'git@gitlab.com:github.com/owner/repo.git',
+      'ssh://git@gitlab.com/github.com:owner/repo.git',
+      'https://example.test/?u=github.com/owner/repo',
+    ]) assert.equal(slugOf(u), null, u)
+  })
+
+  it('reads a push to a private name on another host, so the remote is scanned, not skipped', () => {
+    for (const remoteUrl of [`https://evilgithub.com/${PRIVATE}.git`, `https://gitlab.com/github.com/${PRIVATE}.git`]) {
+      const r = repo(world(), { remoteUrl, outgoing: { 'docs/note.md': `see ${IP}\n` } })
+      // git would hand the hook the rewritten (local) URL here, so run the hook with the URL the push names.
+      const sha = ok(r.dir, r.w, 'rev-parse', 'HEAD').trim()
+      const x = spawnSync(process.execPath, [join(r.w.hooks, 'public-push-guard.mjs'), 'origin', remoteUrl], { cwd: r.dir, encoding: 'utf8', env: envOf(r.w), input: `refs/heads/feature ${sha} refs/heads/feature ${'0'.repeat(40)}\n` })
+      assert.ok(refused(x), `${remoteUrl}: ${x.stderr}`)
+      assert.match(x.stderr, /private-ip/, remoteUrl)
+    }
   })
 })
 
