@@ -1,16 +1,24 @@
 /**
- * Which verification-kit version each fleet repository carries, and how far
+ * Which verification-kit version each fleet repository's gate runs, and how far
  * that is from the canonical one in this repository.
+ *
+ * The gate runs this repository's kit at the ref each caller workflow pins
+ * (`uses: gorfednet/.github/...@<ref>`), not the copy vendored under the
+ * caller's `verification-kit/`. So drift is read from the pin (plan row 2.9):
+ * `@main` is the canonical kit itself, any other ref is compared by the kit
+ * version at that ref. The vendored manifest stays in status.json as
+ * `kitVersion`, shown for information only and never failing anything.
  *
  * Read on a schedule (fleet-status.yml), never per pull request: a pull
  * request cannot change what upstream released, so a per-PR drift gate fails
  * for reasons the author cannot fix (rule 5, docs/verification-rules.md
  * "2026-10 right-sizing"). `check-kit-drift` still holds a repository's copy to
- * its own manifest; this is the half that notices a copy nobody has refreshed.
+ * its own manifest; this is the half that notices a pin nobody has moved.
  *
- * "Far behind" is more than one minor, or any major. Unknown (an unreadable
- * version) fails, and so does no kit in a repository the fleet lists at tier 1
- * or above (kitFailures): nothing here treats "could not tell" as current.
+ * "Far behind" is more than one minor, or any major. A pin that cannot be read
+ * (no workflow pins the gate, an unreadable ref, a ref with no kit) is an
+ * error row that fails, as does an unreadable version: nothing here treats
+ * "could not tell" as current.
  */
 export function parseVersion(text) {
   const m = /^(\d+)\.(\d+)\.(\d+)$/.exec(String(text ?? '').trim())
@@ -18,8 +26,8 @@ export function parseVersion(text) {
 }
 
 /** 'current' | 'behind' (one minor or a patch) | 'far-behind' | 'ahead' | 'unknown'. */
-export function kitGap(vendored, canonical) {
-  const v = parseVersion(vendored)
+export function kitGap(pinned, canonical) {
+  const v = parseVersion(pinned)
   const c = parseVersion(canonical)
   if (v === null || c === null) return 'unknown'
   if (v.major !== c.major) return c.major > v.major ? 'far-behind' : 'ahead'
@@ -28,36 +36,43 @@ export function kitGap(vendored, canonical) {
   return 'current'
 }
 
+/** A row's gap, from its pin: `main` is current by definition, an error or a missing pin is 'error', another ref is compared by the version found there. */
+export function pinGap(row, canonical) {
+  const pin = row.kitPin
+  if (!pin || pin.error || typeof pin.ref !== 'string' || pin.ref === '') return 'error'
+  if (pin.ref === 'main') return 'current'
+  return kitGap(pin.version, canonical)
+}
+
+/** What the row says it is pinned to, for messages. */
+export const pinLabel = (row) => {
+  const pin = row.kitPin
+  if (!pin || pin.error) return `unreadable pin${pin?.error ? ` (${pin.error})` : ''}`
+  if (typeof pin.ref !== 'string' || pin.ref === '') return 'unreadable pin'
+  return pin.ref === 'main' ? '@main' : `@${pin.ref.length > 12 ? pin.ref.slice(0, 7) : pin.ref} (kit ${pin.version || 'unreadable'})`
+}
+
+const measured = (r) => !r.unavailable && r.kitPin !== undefined
+
 /**
- * Rows that must fail: far behind, ahead of canonical, an unreadable version, or no kit at
- * all in a repository the fleet lists at tier 1 or above. A dormant repository (fleet.json
- * monitorClass) is reported but never fails, so a standing exemption cannot bury a real alert.
- * `projects` is fleet.json's list; a repository it does not name is held to the version rule only.
+ * Rows that must fail: pinned far behind, ahead of canonical, an unreadable version, or a pin that could
+ * not be read. A dormant repository (fleet.json monitorClass) is reported but never fails, so a standing
+ * exemption cannot bury a real alert. `projects` is fleet.json's list.
  */
 export function kitFailures(repos, canonical, projects = []) {
   const byslug = new Map(projects.map((p) => [p.slug, p]))
   return repos
-    .filter((r) => !r.unavailable && r.kitVersion !== undefined)
+    .filter(measured)
     .filter((r) => byslug.get(r.slug)?.monitorClass !== 'dormant')
-    .map((r) => ({
-      slug: r.slug,
-      version: r.kitVersion,
-      gap: r.kitVersion === null ? ((byslug.get(r.slug)?.tier ?? 0) >= 1 ? 'missing' : 'current') : kitGap(r.kitVersion, canonical),
-    }))
-    .filter((r) => ['far-behind', 'ahead', 'unknown', 'missing'].includes(r.gap))
+    .map((r) => ({ slug: r.slug, pin: pinLabel(r), gap: pinGap(r, canonical) }))
+    .filter((r) => ['far-behind', 'ahead', 'unknown', 'error'].includes(r.gap))
 }
 
-/** One line for STATUS.md. Repositories with no kit (null) are listed apart: they have not adopted. */
+/** One line for STATUS.md: the gate's pin, not the vendored copy. */
 export function kitSummary(repos, canonical) {
-  const ok = repos.filter((r) => !r.unavailable && r.kitVersion !== undefined)
-  const withKit = ok.filter((r) => r.kitVersion !== null)
-  const off = withKit.filter((r) => kitGap(r.kitVersion, canonical) !== 'current')
-  const none = ok.filter((r) => r.kitVersion === null).map((r) => r.slug.replace(/^gorfednet\//, ''))
-  const parts = [
-    off.length === 0
-      ? `Kit: all ${withKit.length} adopting repos on ${canonical}`
-      : `Kit: canonical ${canonical}; not current: ${off.map((r) => `${r.slug.replace(/^gorfednet\//, '')} ${r.kitVersion || '(unreadable)'} (${kitGap(r.kitVersion, canonical)})`).join(', ')}`,
-  ]
-  if (none.length) parts.push(`no kit: ${none.join(', ')}`)
-  return `${parts.join('; ')}.`
+  const ok = repos.filter(measured)
+  const off = ok.filter((r) => pinGap(r, canonical) !== 'current')
+  return off.length === 0
+    ? `Kit: all ${ok.length} repos pin the gate at main (${canonical}).`
+    : `Kit: canonical ${canonical}; gate pin not current: ${off.map((r) => `${r.slug.replace(/^gorfednet\//, '')} ${pinLabel(r)} (${pinGap(r, canonical)})`).join(', ')}.`
 }

@@ -363,7 +363,7 @@ describe('Dependabot alerts past target (plan row 3.20l)', () => {
   })
   it('renders the count per repository, UNKNOWN where unread, and the fleet total with its unknowns', () => {
     const md = render(fixture)
-    assert.match(md, /· 1 Dependabot alerts past target · kit none/)
+    assert.match(md, /· 1 Dependabot alerts past target · vendored kit none/)
     assert.match(md, /career-portfolio.*\n\nmain \*\*red\*\*.*· Dependabot alerts past target UNKNOWN \(token cannot read alerts\) ·/)
     assert.match(md, /\(private, counts only\).* · 2 Dependabot alerts past target/)
     assert.match(summaryLine(fixture), /Dependabot alerts past target UNKNOWN \(3 counted, 2 repos not read\)/)

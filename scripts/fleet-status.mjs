@@ -31,7 +31,7 @@ import { promisify } from 'node:util'
 import { CARRY_HOURS } from './lib/carryHours.mjs'
 
 import { isMain } from '../templates/verification-kit/lib/isMain.mjs'
-import { lapsedBacklog } from './fleet-report.mjs'
+import { lapsedBacklog, pinnedRefs } from './fleet-report.mjs'
 import { backlogIds, collectLocal, duplicatePrs, idlePrs } from './lib/hygiene.mjs'
 import { LOCAL_COUNTS_SOURCE, readLocalCounts } from './lib/localCounts.mjs'
 import { collectPrCost } from './lib/prCost.mjs'
@@ -199,8 +199,8 @@ const execFileAsync = promisify(execFile)
  * Asks each such workflow for its own latest success, so a busy repository's other runs can't push it out of a page.
  * `api` takes a path and returns parsed JSON.
  */
-export function latestDeploy(slug, api) {
-  const workflows = api(`repos/${slug}/actions/workflows?per_page=100`).workflows ?? []
+export function latestDeploy(slug, api, listed = null) {
+  const workflows = listed ?? api(`repos/${slug}/actions/workflows?per_page=100`).workflows ?? []
   let best = null
   for (const w of workflows) {
     if (w.state !== 'active' || !/deploy/i.test(`${w.name} ${w.path}`)) continue
@@ -208,6 +208,55 @@ export function latestDeploy(slug, api) {
     if (run && (!best || run.updated_at > best.at)) best = { name: w.name, at: run.updated_at, url: run.html_url }
   }
   return best
+}
+
+
+/** The repository whose kit every caller's gate runs, and where its manifest lives. */
+export const KIT_SOURCE = { slug: 'gorfednet/.github', manifest: 'templates/verification-kit/MANIFEST.json' }
+const SAFE_REF = /^[A-Za-z0-9][A-Za-z0-9._/-]*$/
+
+/** Workflow files most likely to call the shared gate come first, so the read usually stops after one or two. */
+const callerLike = (w) => /pr-check|verif|gate|ci|test/i.test(w.path)
+const callerFirst = (a, b) => Number(callerLike(b)) - Number(callerLike(a))
+
+/**
+ * The ref a repository's workflows pin the shared gate to, read from the `uses: gorfednet/.github/...@ref`
+ * lines (the gate runs this repository's kit at that ref, not the repository's vendored copy). Reads only
+ * workflow files the run already listed, caller-like names first, and stops at the first file that pins
+ * anything. Answers `{ ref }`, or `{ error }` when no pin can be read: never a silent "current".
+ * `text` is (path) => string | null.
+ */
+export function readKitPin(workflows, text) {
+  const files = workflows.filter((w) => w.state === 'active' && /^\.github\/workflows\/[^/]+\.ya?ml$/.test(w.path ?? '')).sort(callerFirst)
+  for (const w of files) {
+    const body = text(w.path)
+    if (body === null) continue
+    const uses = pinnedRefs([body])
+    if (uses.length === 0) continue
+    const gate = uses.filter((u) => u.target === '.github/actions/verification-gate')
+    const refs = [...new Set((gate.length ? gate : uses).map((u) => u.ref))]
+    if (refs.length !== 1) return { error: `${w.path} pins ${refs.length} different refs` }
+    if (!SAFE_REF.test(refs[0])) return { error: `${w.path} pins an unreadable ref` }
+    return { ref: refs[0] }
+  }
+  return { error: 'no workflow pins gorfednet/.github' }
+}
+
+/** A pin with the kit version at its ref: `main` is the canonical kit itself (no call); any other ref's manifest is read once per run. */
+export function resolveKitPin(pin, json, cache = new Map()) {
+  if (pin.error || pin.ref === 'main') return pin
+  if (!cache.has(pin.ref)) {
+    let outcome
+    try {
+      const body = fileText(KIT_SOURCE.slug, `${KIT_SOURCE.manifest}?ref=${encodeURIComponent(pin.ref)}`, json)
+      outcome = body === null ? { error: `ref ${pin.ref} has no kit manifest` } : { version: JSON.parse(body).version ?? '' }
+    } catch (cause) {
+      outcome = { error: `ref ${pin.ref} unreadable` }
+    }
+    cache.set(pin.ref, outcome)
+  }
+  const got = cache.get(pin.ref)
+  return got.error ? { ref: pin.ref, error: got.error } : { ref: pin.ref, version: got.version }
 }
 
 /** ahead_by for each branch against base (null when the branch shares no history with it), 8 requests at a time (a repository can hold hundreds of branches). */
@@ -263,6 +312,8 @@ export function redactRepo(full) {
     dependabotRedCount: full.dependabotRed,
     // A version number is not private; the fleet-wide check needs it from every row.
     kitVersion: full.kitVersion,
+    // A ref and a version number name nothing private; the gate's version is what the fleet-wide check reads.
+    ...(full.kitPin ? { kitPin: full.kitPin } : {}),
     // A count (or null for UNKNOWN) names no package or advisory.
     alertsOverdue: full.alertsOverdue,
   }
@@ -274,7 +325,7 @@ export function redactRepo(full) {
  * private repository that then fails to read publishes only the word "unreadable" (an error message can
  * quote the file it choked on). `json` and `log` are injectable for tests.
  */
-export async function collectRepo(slug, now = new Date(), { includePrivate = false, json = ghJson, log = console.error, kitPath = KIT_MANIFEST, carryBranches } = {}) {
+export async function collectRepo(slug, now = new Date(), { includePrivate = false, json = ghJson, log = console.error, kitPath = KIT_MANIFEST, carryBranches, pinCache } = {}) {
   let repo
   let isPrivate = true
   try {
@@ -285,7 +336,7 @@ export async function collectRepo(slug, now = new Date(), { includePrivate = fal
   }
   try {
     if (repo instanceof Error) throw repo
-    return await gatherRepo(slug, now, { includePrivate, json, repo, kitPath, carryBranches, log })
+    return await gatherRepo(slug, now, { includePrivate, json, repo, kitPath, carryBranches, log, pinCache })
   } catch (cause) {
     const detail = String(cause.stderr || cause.message).trim().split('\n')[0]
     // A rate-limit answer names no file, so it is safe to say even for a private repository: without it, 18 rows
@@ -305,7 +356,7 @@ function ciForCommit(slug, sha, json) {
   return ciState(runs, status)
 }
 
-export async function gatherRepo(slug, now = new Date(), { includePrivate = false, json = ghJson, repo = null, kitPath = KIT_MANIFEST, carryBranches, log = console.error } = {}) {
+export async function gatherRepo(slug, now = new Date(), { includePrivate = false, json = ghJson, repo = null, kitPath = KIT_MANIFEST, carryBranches, log = console.error, pinCache = new Map() } = {}) {
   const today = now.toISOString().slice(0, 10)
   if (repo === null) repo = json(['api', `repos/${slug}`])
   const base = repo.default_branch
@@ -348,7 +399,8 @@ export async function gatherRepo(slug, now = new Date(), { includePrivate = fals
   const backlogText = fileText(slug, 'docs/backlog.json', json)
   const backlog = backlogText === null ? null : JSON.parse(backlogText)
   const lapsed = backlog === null ? [] : lapsedBacklog(backlog, today)
-  const deploy = latestDeploy(slug, (path) => json(['api', path]))
+  const workflows = json(['api', `repos/${slug}/actions/workflows?per_page=100`]).workflows ?? []
+  const deploy = latestDeploy(slug, (path) => json(['api', path]), workflows)
   let incidents = 0
   for (const path of INCIDENT_FILES) {
     const text = fileText(slug, path, json)
@@ -360,6 +412,14 @@ export async function gatherRepo(slug, now = new Date(), { includePrivate = fals
   // null: the repository carries no kit. An unreadable manifest is a thrown error, so the row is `unavailable`, never null.
   const manifestText = fileText(slug, kitPath, json)
   const kitVersion = manifestText === null ? null : (JSON.parse(manifestText).version ?? '')
+  // The gate runs the kit at the ref the callers pin, so that ref (not the vendored manifest above) is the drift to report.
+  let kitPin
+  try {
+    kitPin = resolveKitPin(readKitPin(workflows, (path) => fileText(slug, path, json)), json, pinCache)
+  } catch (cause) {
+    if (/rate limit/i.test(String(cause.stderr || cause.message))) throw cause
+    kitPin = { error: 'workflow files unreadable' }
+  }
   const mainSha = json(['api', `repos/${slug}/commits/${base}`]).sha
   const mainRed = ciForCommit(slug, mainSha, json) === 'red'
   const alerts = readAlerts(slug, now, json, log, isPrivate && !includePrivate)
@@ -377,6 +437,7 @@ export async function gatherRepo(slug, now = new Date(), { includePrivate = fals
     incidents7d: incidents,
     dependabotRed: dependabotRed(openPrs),
     kitVersion,
+    kitPin,
     alertsOverdue: alerts.count,
     // Public rows only: which private repositories have alerts switched off is not published.
     ...(alerts.why ? { alertsUnread: alerts.why } : {}),
