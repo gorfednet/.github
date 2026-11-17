@@ -1,12 +1,12 @@
 {
-  "generatedAt": "2026-11-17T10:32:24.384Z",
-  "renderedAt": "2026-11-17T10:32:24.384Z",
+  "generatedAt": "2026-11-17T12:34:49.394Z",
+  "renderedAt": "2026-11-17T12:34:49.394Z",
   "repos": [
     {
       "slug": "gorfednet/bindercurve.com",
       "redacted": true,
       "mainRed": true,
-      "openPrCount": 10,
+      "openPrCount": 11,
       "lapsedBacklogCount": 16,
       "noPrCount": 79,
       "idlePrCount": 2,
@@ -32,7 +32,7 @@
       "slug": "gorfednet/gorfed.net",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 6,
+      "openPrCount": 8,
       "lapsedBacklogCount": 3,
       "noPrCount": 4,
       "idlePrCount": 0,
@@ -151,6 +151,18 @@
       "mainRed": false,
       "openPrs": [
         {
+          "number": 243,
+          "title": "browser-compat: optional webkit shards",
+          "ageDays": 0,
+          "labels": [],
+          "draft": false,
+          "review": "clean",
+          "headSha": "e6dc80fdc48f6500020612a63ea23dc26ea22124",
+          "ci": "green",
+          "next": "Narrow Fable re-read of 78d4581 and e6dc80f, mark ready, clean review on the head, then merge",
+          "author": "gorfednet"
+        },
+        {
           "number": 242,
           "title": "Bump the actions group across 3 directories with 6 updates",
           "ageDays": 0,
@@ -193,12 +205,14 @@
           "number": 230,
           "title": "Quota fixes for local fleet-status (row 1.17): refuse unaffordable runs, light runs from a cache, sampler on launchd",
           "ageDays": 0,
-          "labels": [],
-          "draft": true,
-          "review": "findings",
-          "headSha": "f7c4f31a8f5d12e22db6b7d40b6165d277350b1e",
+          "labels": [
+            "ready-to-merge"
+          ],
+          "draft": false,
+          "review": "clean",
+          "headSha": "3a2d37542e8ba7449c18a31fb191ee8f6c26fdea",
           "ci": "green",
-          "next": "Merge once Desk has done the Fable read and labelled it (`scripts/` is control plane)",
+          "next": "Merge: gates clean on head 3a2d375 (suite 1,231 passing, verification-kit and privacy-guard green, `claude review` clean at round 5, Fable read done with both Mediums fixed). Control plane: Desk labels",
           "author": "gorfednet"
         },
         {
@@ -565,7 +579,7 @@
       "idlePrs": [],
       "duplicatePrs": [],
       "lastDeploy": null,
-      "incidents7d": 2,
+      "incidents7d": 3,
       "dependabotRed": 1,
       "kitVersion": "0.63.0",
       "alertsOverdue": null,
@@ -578,7 +592,7 @@
       "openPrCount": 4,
       "lapsedBacklogCount": 2,
       "noPrCount": 46,
-      "idlePrCount": 0,
+      "idlePrCount": 1,
       "duplicatePrCount": 0,
       "dependabotRedCount": 0,
       "kitVersion": null,
@@ -688,7 +702,7 @@
       "slug": "gorfednet/ops",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 14,
+      "openPrCount": 15,
       "lapsedBacklogCount": 0,
       "noPrCount": 1,
       "idlePrCount": 1,
@@ -750,11 +764,11 @@
     }
   },
   "inventory": {
-    "measuredAt": "2026-11-17T10:32:24.384Z",
+    "measuredAt": "2026-11-17T12:34:49.394Z",
     "counts": {
       "pr": {
-        "total": 126,
-        "orphans": 61
+        "total": 131,
+        "orphans": 64
       },
       "session": null,
       "worktree": null,
@@ -765,6 +779,14 @@
       }
     },
     "orphans": [
+      {
+        "kind": "pr",
+        "repo": "gorfednet/.github",
+        "ref": "#243",
+        "label": "browser-compat: optional webkit shards",
+        "private": false,
+        "lapsed": false
+      },
       {
         "kind": "pr",
         "repo": "gorfednet/ai-use-levels",
@@ -806,13 +828,13 @@
         "lapsed": true
       }
     ],
-    "hiddenPrivate": 58,
+    "hiddenPrivate": 60,
     "privateReposNotItemised": 18,
     "planRead": true
   },
   "dotgithub": {
-    "measuredAt": "2026-11-17T10:33:05.367Z",
-    "branches": 38,
+    "measuredAt": "2026-11-17T12:35:25.445Z",
+    "branches": 39,
     "merged": 2,
     "exposedFiles": 61,
     "rulesNotChecked": [],
