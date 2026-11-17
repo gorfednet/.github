@@ -1,12 +1,12 @@
 {
-  "generatedAt": "2026-11-17T12:34:49.394Z",
-  "renderedAt": "2026-11-17T12:34:49.394Z",
+  "generatedAt": "2026-11-17T14:32:04.818Z",
+  "renderedAt": "2026-11-17T14:32:04.818Z",
   "repos": [
     {
       "slug": "gorfednet/bindercurve.com",
       "redacted": true,
       "mainRed": true,
-      "openPrCount": 11,
+      "openPrCount": 13,
       "lapsedBacklogCount": 16,
       "noPrCount": 79,
       "idlePrCount": 2,
@@ -19,10 +19,10 @@
       "slug": "gorfednet/4thcltr.com",
       "redacted": true,
       "mainRed": true,
-      "openPrCount": 23,
+      "openPrCount": 21,
       "lapsedBacklogCount": 20,
       "noPrCount": 13,
-      "idlePrCount": 19,
+      "idlePrCount": 16,
       "duplicatePrCount": 0,
       "dependabotRedCount": 1,
       "kitVersion": "0.63.0",
@@ -32,7 +32,7 @@
       "slug": "gorfednet/gorfed.net",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 8,
+      "openPrCount": 7,
       "lapsedBacklogCount": 3,
       "noPrCount": 4,
       "idlePrCount": 0,
@@ -151,20 +151,8 @@
       "mainRed": false,
       "openPrs": [
         {
-          "number": 243,
-          "title": "browser-compat: optional webkit shards",
-          "ageDays": 0,
-          "labels": [],
-          "draft": false,
-          "review": "clean",
-          "headSha": "e6dc80fdc48f6500020612a63ea23dc26ea22124",
-          "ci": "green",
-          "next": "Narrow Fable re-read of 78d4581 and e6dc80f, mark ready, clean review on the head, then merge",
-          "author": "gorfednet"
-        },
-        {
-          "number": 242,
-          "title": "Bump the actions group across 3 directories with 6 updates",
+          "number": 244,
+          "title": "build(deps): bump the actions group across 3 directories with 7 updates",
           "ageDays": 0,
           "labels": [
             "dependencies",
@@ -172,7 +160,7 @@
           ],
           "draft": false,
           "review": "not-run",
-          "headSha": "96c497a306b54f2e4ac0e3c4314afbb0e427370d",
+          "headSha": "99c7f951a12d55b8530caa22e99a5bc6c3e85520",
           "ci": "red",
           "next": null,
           "author": "app/dependabot"
@@ -184,7 +172,7 @@
           "labels": [],
           "draft": true,
           "review": "not-run",
-          "headSha": "cffa3ed5e3bb09751470b65b3ba48926b90db5dd",
+          "headSha": "9875671bd892194d654233412aa39c1cc403bb5f",
           "ci": "green",
           "next": "Fable read of the diff (Desk), including the last commit, which no review round covered. Label if clean. Hold until then: it can refuse a push.",
           "author": "gorfednet"
@@ -199,20 +187,6 @@
           "headSha": "3ce51fca8ac0611439ac346aaf94e167c33c655d",
           "ci": "red",
           "next": "Merge on a clean review (control-plane path).",
-          "author": "gorfednet"
-        },
-        {
-          "number": 230,
-          "title": "Quota fixes for local fleet-status (row 1.17): refuse unaffordable runs, light runs from a cache, sampler on launchd",
-          "ageDays": 0,
-          "labels": [
-            "ready-to-merge"
-          ],
-          "draft": false,
-          "review": "clean",
-          "headSha": "3a2d37542e8ba7449c18a31fb191ee8f6c26fdea",
-          "ci": "green",
-          "next": "Merge: gates clean on head 3a2d375 (suite 1,231 passing, verification-kit and privacy-guard green, `claude review` clean at round 5, Fable read done with both Mediums fixed). Control plane: Desk labels",
           "author": "gorfednet"
         },
         {
@@ -239,18 +213,6 @@
           "headSha": "5d127ba95e6530a7b14d20c0a2556574bf14e9fc",
           "ci": "green",
           "next": "Superseded by plan row 1.30g (a real git pre-push hook). Kept open, on hold, for its tests and its `checkPush` patterns, which 1.30g reuses. Desk closes this pull request once 1.30g merges. Do not merge, review or push here.",
-          "author": "gorfednet"
-        },
-        {
-          "number": 189,
-          "title": "Plan: move the fleet into one GitHub organization (assessment only)",
-          "ageDays": 2,
-          "labels": [],
-          "draft": true,
-          "review": "findings",
-          "headSha": "87092f1b035d206c0d5f24d8830c5cc7b5815734",
-          "ci": "green",
-          "next": "Fable review, then Desk asks the owner (path, org name, Team plan, cutover sitting)",
           "author": "gorfednet"
         },
         {
@@ -637,25 +599,25 @@
       "slug": "gorfednet/career-portfolio",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 6,
+      "openPrCount": 7,
       "lapsedBacklogCount": 1,
       "noPrCount": 1,
       "idlePrCount": 2,
       "duplicatePrCount": 0,
-      "dependabotRedCount": 1,
+      "dependabotRedCount": 3,
       "kitVersion": "0.61.0",
       "alertsOverdue": null
     },
     {
       "slug": "gorfednet/heuristics.4thcltr.com",
       "redacted": true,
-      "mainRed": false,
-      "openPrCount": 12,
+      "mainRed": true,
+      "openPrCount": 13,
       "lapsedBacklogCount": 16,
       "noPrCount": 6,
       "idlePrCount": 8,
       "duplicatePrCount": 4,
-      "dependabotRedCount": 0,
+      "dependabotRedCount": 2,
       "kitVersion": "0.61.0",
       "alertsOverdue": null
     },
@@ -663,12 +625,12 @@
       "slug": "gorfednet/papers.4thcltr.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 2,
+      "openPrCount": 3,
       "lapsedBacklogCount": 0,
       "noPrCount": 4,
       "idlePrCount": 1,
       "duplicatePrCount": 0,
-      "dependabotRedCount": 0,
+      "dependabotRedCount": 2,
       "kitVersion": "0.61.0",
       "alertsOverdue": null
     },
@@ -689,12 +651,12 @@
       "slug": "gorfednet/assess",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 5,
+      "openPrCount": 6,
       "lapsedBacklogCount": 6,
       "noPrCount": 3,
       "idlePrCount": 2,
       "duplicatePrCount": 0,
-      "dependabotRedCount": 1,
+      "dependabotRedCount": 3,
       "kitVersion": "0.61.0",
       "alertsOverdue": null
     },
@@ -702,10 +664,10 @@
       "slug": "gorfednet/ops",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 15,
+      "openPrCount": 12,
       "lapsedBacklogCount": 0,
       "noPrCount": 1,
-      "idlePrCount": 1,
+      "idlePrCount": 0,
       "duplicatePrCount": 0,
       "dependabotRedCount": 1,
       "kitVersion": "0.61.0",
@@ -754,7 +716,8 @@
       "worktree": {
         "total": null,
         "orphans": null,
-        "measuredAt": null
+        "measuredAt": null,
+        "janitorOwned": null
       },
       "job": {
         "total": null,
@@ -764,11 +727,11 @@
     }
   },
   "inventory": {
-    "measuredAt": "2026-11-17T12:34:49.394Z",
+    "measuredAt": "2026-11-17T14:32:04.818Z",
     "counts": {
       "pr": {
-        "total": 131,
-        "orphans": 64
+        "total": 129,
+        "orphans": 57
       },
       "session": null,
       "worktree": null,
@@ -779,14 +742,6 @@
       }
     },
     "orphans": [
-      {
-        "kind": "pr",
-        "repo": "gorfednet/.github",
-        "ref": "#243",
-        "label": "browser-compat: optional webkit shards",
-        "private": false,
-        "lapsed": false
-      },
       {
         "kind": "pr",
         "repo": "gorfednet/ai-use-levels",
@@ -828,12 +783,12 @@
         "lapsed": true
       }
     ],
-    "hiddenPrivate": 60,
+    "hiddenPrivate": 54,
     "privateReposNotItemised": 18,
     "planRead": true
   },
   "dotgithub": {
-    "measuredAt": "2026-11-17T12:35:25.445Z",
+    "measuredAt": "2026-11-17T14:32:59.219Z",
     "branches": 39,
     "merged": 2,
     "exposedFiles": 61,
