@@ -57,16 +57,18 @@ export function sumCounts(list) {
 }
 
 /**
- * Which units to run, most overdue first: never run, then changed (source or
- * test hash differs), then expired, oldest first. Fresh ones are skipped.
+ * Which units to run, most overdue first: never run (ones that failed to
+ * report after the rest), then changed (source or test hash differs), then
+ * expired, each oldest first. Fresh ones are skipped.
  */
 export function dueUnits(units, state, { hashes, today, maxAgeDays = 14 }) {
   const age = (d) => (Date.parse(today) - Date.parse(d)) / 86400000
   const scored = []
   for (const u of units) {
     const r = state.units?.[unitKey(u)]
-    if (!r) scored.push([0, 0, u])
-    else if (r.hash !== hashes[u.file] || r.testsHash !== hashes.__tests) scored.push([1, 0, u])
+    const failedOn = state.failed?.[unitKey(u)]
+    if (!r) scored.push(failedOn ? [0.5, -age(failedOn), u] : [0, 0, u])
+    else if (r.hash !== hashes[u.file] || r.testsHash !== hashes.__tests) scored.push([1, -age(r.ranOn), u])
     else if (age(r.ranOn) >= maxAgeDays) scored.push([2, -age(r.ranOn), u])
   }
   return scored.sort((a, b) => a[0] - b[0] || a[1] - b[1] || unitKey(a[2]).localeCompare(unitKey(b[2]))).map((s) => s[2])
@@ -81,20 +83,29 @@ export function totals(state, liveKeys) {
 }
 
 /**
- * The digest, at most 8 lines (janitor-notify allows 10): the score, the last
- * nights, the planted canary, and the top 10 survivors two to a line.
+ * The digest, at most 10 lines (janitor-notify's limit): the score, the last
+ * nights, the planted canary, tonight's run and failures, a warning if any,
+ * and the top survivors two to a line, as many as fit.
  */
-export function digest({ date, total, units, nights, planted }) {
+export function digest({ date, total, units, nights, planted, tonight = null, warning = null }) {
   const lines = []
   const s = total.score === null ? 'no score yet' : `${total.score}%`
   lines.push(`Ship-bot mutation ${date}: ${s} (${total.counts.killed + total.counts.timeout} caught, ${total.counts.survived + total.counts.noCoverage} survived), ${total.covered}/${units} units measured. Report only, not a gate.`)
   const recent = nights.slice(-5).map((n) => `${n.date.slice(5)} ${n.score === null ? '-' : n.score + '%'}`)
   lines.push(`Last nights: ${recent.join(', ') || 'none'}`)
   lines.push(planted.ok ? 'Planted dead assertion: listed as surviving (canary ok)' : 'Planted dead assertion: NOT listed, the mutation run itself is broken')
+  if (tonight) lines.push(`Tonight: ${tonight.ran} run, ${tonight.failed} no report`)
+  if (warning) lines.push(`WARNING: ${warning}`)
   const top = rank(total.survivors, 10).map((s) => `${s.file.replace(/^ship-bot\//, '')}:${s.line} ${s.mutator}`)
-  for (let i = 0; i < top.length; i += 2) lines.push(`${i === 0 ? 'Top survivors: ' : ''}${top.slice(i, i + 2).join(' | ')}`)
+  for (let i = 0; i < top.length && lines.length < 10; i += 2) lines.push(`${i === 0 ? 'Top survivors: ' : ''}${top.slice(i, i + 2).join(' | ')}`)
   return lines.join('\n') + '\n'
 }
+
+/** The canary is ok only if the dead assertion's mutant survives and the tests kill something else. */
+export const plantedOk = (summary) => plantedListed(summary.survivors) && summary.counts.killed > 0
+
+/** Today's date in Toronto, YYYY-MM-DD. */
+export const torontoDate = (d = new Date()) => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Toronto', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d)
 
 /** True when the planted fixture's `>=` mutant is among the survivors. */
 export function plantedListed(survivors) {

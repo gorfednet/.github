@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import { readFileSync, readdirSync } from 'node:fs'
-import { digest, dueUnits, plantedListed, rank, score, scoredTests, summarize, testCommand, totals, unitKey, unitsFor } from '../mutation/lib.mjs'
+import { digest, dueUnits, plantedListed, plantedOk, rank, score, scoredTests, summarize, testCommand, torontoDate, totals, unitKey, unitsFor } from '../mutation/lib.mjs'
 
 const m = (status, line, mutatorName = 'ConditionalExpression') => ({ status, mutatorName, location: { start: { line } }, replacement: 'x' })
 
@@ -88,5 +88,48 @@ describe('mutation lib', () => {
     assert.match(nightly, /testCommand\(testFiles\)/)
     assert.doesNotMatch(nightly, /ship-bot\/test\/\*/)
     assert.ok(files.includes('mutation.test.mjs') && !scoredTests(files).includes('mutation.test.mjs'))
+  })
+
+  it('runs the oldest changed unit first, not the first by name', () => {
+    const units = ['a', 'b', 'z'].map((f) => ({ file: f, from: 1, to: 9 }))
+    const r = (ranOn) => ({ counts: {}, hash: 'old', testsHash: 'T', ranOn })
+    const state = { units: { 'a:1-9': r('2026-11-16'), 'b:1-9': r('2026-11-10'), 'z:1-9': r('2026-11-01') } }
+    const due = dueUnits(units, state, { hashes: { a: 'a', b: 'b', z: 'z', __tests: 'T' }, today: '2026-11-17' })
+    assert.deepEqual(due.map((u) => u.file), ['z', 'b', 'a'])
+  })
+
+  it('puts a unit that failed to report after the other never-run units', () => {
+    const units = ['a', 'b', 'c'].map((f) => ({ file: f, from: 1, to: 9 }))
+    const state = { units: {}, failed: { 'a:1-9': '2026-11-16' } }
+    const due = dueUnits(units, state, { hashes: { __tests: 'T' }, today: '2026-11-17' })
+    assert.deepEqual(due.map((u) => u.file), ['b', 'c', 'a'])
+  })
+
+  it('digest says how many ran and how many gave no report, and carries a warning, in 10 lines', () => {
+    const survivors = Array.from({ length: 14 }, (_, i) => ({ file: `ship-bot/lib/f${i}.mjs`, line: i + 1, mutator: 'EqualityOperator' }))
+    const total = { counts: { killed: 8, timeout: 0, survived: 14, noCoverage: 0 }, survivors, covered: 3, score: 36 }
+    const nights = Array.from({ length: 7 }, (_, i) => ({ date: `2026-11-1${i}`, score: 70 }))
+    const text = digest({ date: '2026-11-17', total, units: 9, nights, planted: { ok: true }, tonight: { ran: 2, failed: 1 }, warning: 'no ntfy token, digest not sent' })
+    assert.match(text, /^Tonight: 2 run, 1 no report$/m)
+    assert.match(text, /^WARNING: no ntfy token/m)
+    assert.ok(text.trim().split('\n').length <= 10)
+  })
+
+  it('does not call the canary ok when the tests kill nothing', () => {
+    const survivors = [{ file: 'planted.mjs', line: 2 }]
+    assert.equal(plantedOk({ survivors, counts: { killed: 3 } }), true)
+    assert.equal(plantedOk({ survivors, counts: { killed: 0 } }), false)
+  })
+
+  it('dates the night in Toronto, not UTC', () => {
+    assert.equal(torontoDate(new Date('2026-11-17T03:00:00Z')), '2026-11-16')
+    assert.equal(torontoDate(new Date('2026-11-17T06:00:00Z')), '2026-11-17')
+  })
+
+  it('reinstalls the tool when the lockfile changes, hands children a scrubbed env, and checks the notify token', () => {
+    const n = readFileSync(new URL('../mutation/nightly.mjs', import.meta.url), 'utf8')
+    assert.match(n, /\.lock-hash/)
+    assert.match(n, /env = \{ PATH: process\.env\.PATH, HOME: home/)
+    assert.match(n, /digest not sent/)
   })
 })

@@ -21,7 +21,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync
 import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { digest, dueUnits, plantedListed, rank, scoredTests, summarize, testCommand, totals, unitKey, unitsFor } from './lib.mjs'
+import { digest, dueUnits, plantedOk, torontoDate, rank, scoredTests, summarize, testCommand, totals, unitKey, unitsFor } from './lib.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = resolve(HERE, '../..')
@@ -32,7 +32,7 @@ const stateDir = resolve(opt('state-dir', join(homedir(), '.ship-bot', 'mutation
 const budgetMs = Number(opt('budget-min', 240)) * 60000
 const concurrency = Number(opt('concurrency', 2))
 const unitLines = Number(opt('unit-lines', 300))
-const today = new Date().toISOString().slice(0, 10)
+const today = torontoDate()
 const started = Date.now()
 const sha = (s) => createHash('sha1').update(s).digest('hex')
 const log = (m) => console.log(`[mutation ${new Date().toISOString()}] ${m}`)
@@ -48,7 +48,12 @@ function sh(cmd, args, o = {}) {
 const tool = join(stateDir, 'tool')
 mkdirSync(tool, { recursive: true })
 for (const f of ['package.json', 'package-lock.json']) writeFileSync(join(tool, f), readFileSync(join(HERE, f)))
-if (!existsSync(join(tool, 'node_modules/.bin/stryker'))) sh('npm', ['ci', '--ignore-scripts', '--no-audit', '--no-fund'], { cwd: tool })
+const lockHash = sha(readFileSync(join(tool, 'package-lock.json')) + readFileSync(join(tool, 'package.json')))
+const lockStamp = join(tool, '.lock-hash')
+if (!existsSync(join(tool, 'node_modules/.bin/stryker')) || !existsSync(lockStamp) || readFileSync(lockStamp, 'utf8') !== lockHash) {
+  sh('npm', ['ci', '--ignore-scripts', '--no-audit', '--no-fund'], { cwd: tool })
+  writeFileSync(lockStamp, lockHash)
+}
 const stryker = join(tool, 'node_modules/.bin/stryker')
 
 // The source: a fresh checkout of origin/main unless --src names one.
@@ -73,7 +78,10 @@ function runStryker({ cwd, mutate, command, name, timeoutMs, extraIgnore = [] })
     coverageAnalysis: 'off', concurrency, timeoutMS: 60000, tempDirName: join(stateDir, `.stryker-tmp-${name}`), cleanTempDir: true,
     ignorePatterns: ['.git', '**/node_modules', ...extraIgnore], disableTypeChecks: true, htmlReporter: undefined, allowConsoleColors: false,
   }))
-  const r = spawnSync(process.execPath, [stryker, 'run', cfg], { cwd, encoding: 'utf8', timeout: timeoutMs, killSignal: 'SIGKILL', maxBuffer: 64 << 20 })
+  const home = join(stateDir, 'home')
+  mkdirSync(home, { recursive: true })
+  const env = { PATH: process.env.PATH, HOME: home, LANG: 'C.UTF-8' }
+  const r = spawnSync(process.execPath, [stryker, 'run', cfg], { cwd, env, encoding: 'utf8', timeout: timeoutMs, killSignal: 'SIGKILL', maxBuffer: 64 << 20 })
   if (!existsSync(report)) { log(`${name}: no report (exit ${r.status ?? r.signal}) ${(r.stderr || r.stdout || "").slice(0, 600)}`); return null }
   return JSON.parse(readFileSync(report, 'utf8'))
 }
@@ -83,13 +91,14 @@ const plantedDir = join(src, 'ship-bot/mutation/fixtures/planted')
 let planted = { ok: false }
 {
   const rep = runStryker({ cwd: plantedDir, mutate: ['planted.mjs'], command: 'node --test planted.test.mjs', name: 'planted', timeoutMs: 10 * 60000 })
-  if (rep) { const s = summarize(rep); planted = { ok: plantedListed(s.survivors), survivors: s.survivors } }
+  if (rep) { const s = summarize(rep); planted = { ok: plantedOk(s), survivors: s.survivors } }
   log(`planted dead assertion listed: ${planted.ok}`)
 }
 
 // 2. State, units and what is due.
 const statePath = join(stateDir, 'state.json')
 const state = existsSync(statePath) ? JSON.parse(readFileSync(statePath, 'utf8')) : { units: {}, nights: [] }
+state.failed ??= {}
 const libDir = join(src, 'ship-bot/lib')
 const files = readdirSync(libDir).filter((f) => f.endsWith('.mjs')).sort().map((f) => `ship-bot/lib/${f}`)
 const testFiles = readdirSync(join(src, 'ship-bot/test'))
@@ -106,12 +115,16 @@ log(`${units.length} units, ${queue.length} due`)
 
 // 3. Run due units until the budget is spent. Save after each one.
 const command = testCommand(testFiles)
+let ranN = 0
+let failedN = 0
 for (const u of queue) {
   const left = budgetMs - (Date.now() - started)
   if (left < 5 * 60000) { log('budget spent, resuming tomorrow'); break }
   const key = unitKey(u)
   const rep = runStryker({ cwd: src, mutate: [`${u.file}:${u.from}-${u.to}`], command, name: 'unit', timeoutMs: Math.min(left, 90 * 60000), extraIgnore: ['ship-bot/mutation'] })
-  if (!rep) continue
+  if (!rep) { state.failed[key] = today; failedN++; writeFileSync(statePath, JSON.stringify(state)); continue }
+  ranN++
+  delete state.failed[key]
   const { counts, survivors } = summarize(rep)
   state.units[key] = { ranOn: today, hash: hashes[u.file], testsHash: hashes.__tests, counts, survivors }
   writeFileSync(statePath, JSON.stringify(state))
@@ -122,7 +135,12 @@ for (const u of queue) {
 const total = totals(state, liveKeys)
 state.nights = [...(state.nights ?? []).filter((n) => n.date !== today), { date: today, score: total.score, covered: total.covered }].slice(-30)
 writeFileSync(statePath, JSON.stringify(state))
-const text = digest({ date: today, total, units: units.length, nights: state.nights, planted })
+let warning = null
+if (flag('notify') && !['.fleet-janitor/ntfy.token', '.ship-bot/ntfy.token'].some((f) => existsSync(join(homedir(), f)))) {
+  warning = 'no ntfy token, digest not sent'
+  console.log(`WARNING: ${warning}`)
+}
+const text = digest({ date: today, total, units: units.length, nights: state.nights, planted, tonight: { ran: ranN, failed: failedN }, warning })
 writeFileSync(join(stateDir, 'digest.txt'), text)
 writeFileSync(join(stateDir, 'report.json'), JSON.stringify({ date: today, score: total.score, counts: total.counts, covered: total.covered, units: units.length, planted: planted.ok, top10: rank(total.survivors, 10), nights: state.nights }, null, 2))
 process.stdout.write(text)
