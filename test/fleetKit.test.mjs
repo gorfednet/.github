@@ -63,8 +63,13 @@ describe('fleet-kit-versions CLI', () => {
     assert.equal(run([{ slug: 'o/a', kitPin: { ref: 'main' } }, { slug: 'o/b', kitPin: { ref: 'abc1234', version: '0.49.0' } }]).status, 1)
     assert.equal(run([{ slug: 'o/a', kitPin: { ref: 'main' } }, { slug: 'o/b', kitPin: { ref: 'abc1234', version: '0.60.0' } }]).status, 0)
   })
-  it('does not fail a stale vendored copy behind an @main pin', () => {
-    assert.equal(run([{ slug: 'o/a', kitVersion: '0.49.0', kitPin: { ref: 'main' } }, { slug: 'o/b', kitVersion: null, kitPin: { ref: 'main' } }]).status, 0)
+  it('round 8: fails a far-behind vendored copy behind an @main pin, with the refresh advice; a current or absent copy passes', () => {
+    const stale = run([{ slug: 'o/a', kitVersion: '0.49.0', kitPin: { ref: 'main' } }, { slug: 'o/b', kitVersion: null, kitPin: { ref: 'main' } }])
+    assert.equal(stale.status, 1)
+    assert.match(stale.stderr, /o\/a .*vendored kit 0\.49\.0.*refresh-kit\.mjs/)
+    assert.doesNotMatch(stale.stderr, /o\/b/)
+    assert.doesNotMatch(stale.stderr, /refs to main/)
+    assert.equal(run([{ slug: 'o/a', kitVersion: '0.61.0', kitPin: { ref: 'main' } }, { slug: 'o/b', kitVersion: null, kitPin: { ref: 'main' } }]).status, 0)
   })
   it('the fix advice fits the pin kind', () => {
     const say = (repos) => run(repos).stderr
@@ -99,10 +104,27 @@ describe('kitPathFor', () => {
 })
 
 describe('kit drift is read from the pin, not the vendored copy (plan row 2.9)', () => {
-  it('a vendored 0.49.0 behind an @main pin is current', () => {
+  it('round 8: a vendored 0.49.0 behind an @main pin has a current gate but a failing copy (production-healthcheck still runs it)', () => {
     const repos = [{ slug: 'o/b', kitVersion: '0.49.0', kitPin: { ref: 'main' } }]
-    assert.deepEqual(kitFailures(repos, '0.61.0'), [])
+    assert.deepEqual(kitFailures(repos, '0.61.0'), [{ slug: 'o/b', pin: 'vendored kit 0.49.0', gap: 'far-behind', kind: 'vendored' }])
     assert.match(kitSummary(repos, '0.61.0'), /all 1 repos pin the gate at main/)
+    assert.match(kitSummary(repos, '0.61.0'), /vendored copy not current: o\/b 0\.49\.0 \(far-behind\)/)
+    // Ahead of canonical and unreadable fail too; a dormant repository never does.
+    assert.deepEqual(kitFailures([{ slug: 'o/c', kitVersion: '0.70.0', kitPin: { ref: 'main' } }, { slug: 'o/d', kitVersion: '', kitPin: { ref: 'main' } }], '0.61.0').map((r) => r.gap), ['ahead', 'unknown'])
+    assert.deepEqual(kitFailures(repos, '0.61.0', [{ slug: 'o/b', monitorClass: 'dormant' }]), [])
+  })
+  it('round 8 near miss: a current, one-minor-behind or absent vendored copy behind an @main pin passes', () => {
+    for (const kitVersion of ['0.61.0', '0.60.3', null, undefined]) {
+      const repos = [{ slug: 'o/b', kitVersion, kitPin: { ref: 'main' } }]
+      assert.deepEqual(kitFailures(repos, '0.61.0'), [], String(kitVersion))
+      assert.doesNotMatch(kitSummary(repos, '0.61.0'), /vendored copy/, String(kitVersion))
+    }
+  })
+  it('round 8: a row failing on its pin is reported once, for the pin', () => {
+    const repos = [{ slug: 'o/b', kitVersion: '0.49.0', kitPin: { ref: 'abc1234', version: '0.49.0' } }]
+    assert.deepEqual(kitFailures(repos, '0.61.0').map((r) => r.kind), ['ref'])
+  })
+  it('sha pins at the canonical version are not described as main', () => {
     const sha = [{ slug: 'o/a', kitPin: { ref: 'abc1234', version: '0.61.0' } }]
     assert.doesNotMatch(kitSummary(sha, '0.61.0'), /pin the gate at main/)
     assert.match(kitSummary(sha, '0.61.0'), /0 at main and 1 pinned to a fixed ref/)

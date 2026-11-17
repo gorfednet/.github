@@ -6,8 +6,15 @@
  * (`uses: gorfednet/.github/...@<ref>`), not the copy vendored under the
  * caller's `verification-kit/`. So drift is read from the pin (plan row 2.9):
  * `@main` is the canonical kit itself, any other ref is compared by the kit
- * version at that ref. The vendored manifest stays in status.json as
- * `kitVersion`, shown for information only and never failing anything.
+ * version at that ref.
+ *
+ * The vendored copy is still held to the canonical version too (`kitVersion`,
+ * the rule from before row 2.9): the gate no longer runs it, but the shared
+ * production-healthcheck workflow still runs scripts from the caller's own
+ * `verification-kit/bin`, so a copy far behind is old code running in the
+ * live monitor. Any repository that carries a copy is held, whatever its
+ * workflows call: a copy that exists can be run. A repository with no copy
+ * is not failed for that (the old `missing` gap is gone).
  *
  * Read on a schedule (fleet-status.yml), never per pull request: a pull
  * request cannot change what upstream released, so a per-PR drift gate fails
@@ -63,10 +70,17 @@ export const pinLabel = (row) => {
 }
 
 const measured = (r) => !r.unavailable && r.kitPin !== undefined
+const FAILING = ['far-behind', 'ahead', 'unknown', 'error']
+
+/** The vendored copy's gap when the row carries one and its pin is not already that copy; null when there is none to hold. */
+export function copyGap(row, canonical) {
+  if (typeof row.kitVersion !== 'string' || row.kitPin?.vendored === true) return null
+  return kitGap(row.kitVersion, canonical)
+}
 
 /**
  * Rows that must fail: pinned far behind, ahead of canonical, an unreadable version, or a pin that could
- * not be read. A dormant repository (fleet.json monitorClass) is reported but never fails, so a standing
+ * not be read; and, where the pin passes, a vendored copy far behind, ahead or unreadable (kind `vendored`). A dormant repository (fleet.json monitorClass) is reported but never fails, so a standing
  * exemption cannot bury a real alert. `projects` is fleet.json's list.
  */
 export function kitFailures(repos, canonical, projects = []) {
@@ -79,9 +93,12 @@ export function kitFailures(repos, canonical, projects = []) {
       // Defence in depth: `none` is only for tier 0. At tier 1 and above a row with no gate caller fails whatever wrote it.
       if (gap === 'none' && (byslug.get(r.slug)?.tier ?? 0) >= 1) gap = 'error'
       const kind = r.kitPin?.vendored === true ? 'vendored' : r.kitPin?.error || typeof r.kitPin?.ref !== 'string' ? 'error' : 'ref'
+      // One line per repository: the pin's failure first, else the copy's.
+      const copy = copyGap(r, canonical)
+      if (!FAILING.includes(gap) && FAILING.includes(copy)) return { slug: r.slug, pin: `vendored kit ${r.kitVersion || 'unreadable'}`, gap: copy, kind: 'vendored' }
       return { slug: r.slug, pin: gap === 'error' && r.kitPin?.none === true ? 'no gate caller at tier 1 or above' : pinLabel(r), gap, kind }
     })
-    .filter((r) => ['far-behind', 'ahead', 'unknown', 'error'].includes(r.gap))
+    .filter((r) => FAILING.includes(r.gap))
 }
 
 /** One line for STATUS.md: the gate's pin, not the vendored copy. */
@@ -98,6 +115,8 @@ export function kitSummary(repos, canonical) {
       ? `Kit: ${pinned.every((r) => r.kitPin?.ref === 'main') ? `all ${pinned.length} repos pin the gate at main` : `all ${pinned.length} repos on the canonical kit, ${pinned.filter((r) => r.kitPin?.ref === 'main').length} at main and ${pinned.filter((r) => r.kitPin?.ref !== 'main').length} pinned to a fixed ref`} (${canonical})${vendored.length ? `, ${vendored.length} run their own kit copy` : ''}`
       : `Kit: canonical ${canonical}; gate pin not current: ${off.map((r) => `${r.slug.replace(/^gorfednet\//, '')} ${pinLabel(r)} (${pinGap(r, canonical)})`).join(', ')}`,
   ]
+  const stale = ok.filter((r) => FAILING.includes(copyGap(r, canonical)))
+  if (stale.length) parts.push(`vendored copy not current: ${stale.map((r) => `${r.slug.replace(/^gorfednet\//, '')} ${r.kitVersion || '(unreadable)'} (${copyGap(r, canonical)})`).join(', ')}`)
   if (untiered) parts.push(`${untiered} untiered repo${untiered === 1 ? '' : 's'} not checked`)
   if (none.length) parts.push(`no shared gate: ${none.map((r) => r.slug.replace(/^gorfednet\//, '')).join(', ')}`)
   return `${parts.join('; ')}.`

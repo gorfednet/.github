@@ -6,20 +6,20 @@ check caught, why it went, and what still catches that class. Newest first.
 
 ## 2026-11-17: vendored-kit version and missing-kit failures in fleet-status (plan row 2.9)
 
-**Replaced, not dropped.** `fleet-kit-versions` used to fail on the vendored `verification-kit/` copy a repository carries. It now fails on the gate ref the repository's workflows pin, because that ref is the kit that runs.
+**One failure removed, one check added.** `fleet-kit-versions` used to fail only on the vendored `verification-kit/` copy a repository carries. It now also fails on the gate ref the repository's workflows pin, because that ref is the kit the gate runs. The vendored-copy failure stays. The `missing` failure is the one retired.
 
-**What the two removed failures caught:**
-- A vendored copy far behind or ahead of the canonical kit (`kitVersion` against canonical), for a repository whose workflows call the shared gate. The copy was not what ran there, so the failure named the wrong thing.
-- The `missing` gap: a repository at tier 1 or above with no vendored kit at all.
+**What the removed failure caught:** the `missing` gap, a repository at tier 1 or above with no vendored kit at all.
 
-**Why they went:** the shared gate runs the kit at the pinned ref, not the vendored copy. A stale copy behind an `@main` pin changed nothing a gate ran, and a repository with no copy but a current pin was reported red.
+**Why it went:** the shared gate runs the kit at the pinned ref, not the vendored copy, so a repository with no copy but a current pin was reported red for nothing.
+
+**What stays:** a vendored copy far behind, ahead of or unreadable against the canonical kit still fails, in any repository that carries one. The gate no longer runs that copy, but `production-healthcheck.yml` still runs `verification-kit/bin/check-live-og-image.mjs` and `verification-kit/bin/assert-tests-executed.mjs` from the caller's checkout, so a stale copy is old code in the live monitor. The failure can go once that workflow runs the kit from its own checkout.
 
 **What catches that class now:**
 - A repository whose workflows call the gate fails when the pin is far behind, ahead of canonical, unreadable, or at mixed refs.
 - A tier 1 or above repository with no gate caller and no vendored kit run fails as an error row (`kitFailures` turns a `none` pin at tier 1 or above into `error`).
 - A call of a `pr-check-*` reusable workflow counts as a gate caller only when it passes a non-empty `verification-kit` at `@main`. Without that input the workflow skips its gate step, so the call is no caller and the row above applies (the old `missing` case). At any other ref the row fails as an error: the gate a pr-check workflow runs at that ref can't be read from the caller, and before the gate step existed it ran none.
 - A repository that runs its own `verification-kit/bin` is reported as `vendored` and still fails on its copy's gap.
-- `check-kit-drift` compares a vendored copy with its own manifest. A stale vendored copy behind a current pin is no longer reported anywhere; it affects nothing that runs.
+- `check-kit-drift` compares a vendored copy with its own manifest.
 
 ## 2026-11-16: two Node checks narrowed for the user-owned Node (plan row 3.20k)
 

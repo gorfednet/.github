@@ -201,12 +201,14 @@ describe('a repository row carries the pin and drift follows it', () => {
     throw new Error(`unexpected call ${args.join(' ')}`)
   }
 
-  it('vendored 0.49.0 with an @main pin reports current', async () => {
+  it('vendored 0.49.0 with an @main pin: the gate pin is main, and the stale copy fails on its own', async () => {
     const calls = []
     const row = await collectRepo('o/site', now, { json: fake({ vendored: '0.49.0', pinTo: 'main', calls }), log: () => {} })
     assert.equal(row.kitVersion, '0.49.0')
     assert.deepEqual(row.kitPin, { ref: 'main' })
-    assert.deepEqual(kitFailures([row], '0.62.0'), [])
+    assert.deepEqual(kitFailures([row], '0.62.0').map((r) => [r.kind, r.gap]), [['vendored', 'far-behind']])
+    const fresh = await collectRepo('o/site', now, { json: fake({ vendored: '0.62.0', pinTo: 'main', calls: [] }), log: () => {} })
+    assert.deepEqual(kitFailures([fresh], '0.62.0'), [])
     // The workflow listing is read once and shared with the deploy lookup.
     assert.equal(calls.filter((c) => c.endsWith('/workflows?per_page=100')).length, 1)
   })

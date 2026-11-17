@@ -2,7 +2,8 @@
 /**
  * Fails when the gate ref a fleet repository's workflows pin carries a kit more
  * than one minor behind this repository's canonical kit, or ahead of it, or
- * when the pin cannot be read. The vendored copy is not what the gate runs.
+ * when the pin cannot be read. Also fails a vendored copy that far out: the
+ * gate does not run it, but production-healthcheck.yml still does.
  *
  *   node scripts/fleet-kit-versions.mjs [--in status.json]
  *
@@ -16,7 +17,7 @@ import { kitFailures } from './lib/kit-version.mjs'
 
 /** One error line, with the fix that fits the pin's kind: a ref pin moves to main, a vendored copy is refreshed, an error row repeats its own cause. */
 export function kitAdvice(r, canonical) {
-  if (r.kind === 'vendored') return `${r.slug} runs its own kit copy: ${r.pin}, canonical kit is ${canonical} (${r.gap}). Run node verification-kit/bin/refresh-kit.mjs there.`
+  if (r.kind === 'vendored') return `${r.slug} carries its own kit copy that its workflows can run: ${r.pin}, canonical kit is ${canonical} (${r.gap}). Run node verification-kit/bin/refresh-kit.mjs there.`
   if (r.kind === 'error') return `${r.slug} gate pin could not be established: ${r.pin} (${r.gap}). Fix that cause; nothing is assumed current.`
   return `${r.slug} gate pin is ${r.pin}, canonical kit is ${canonical} (${r.gap}). Move its workflows' gorfednet/.github refs to main.`
 }
