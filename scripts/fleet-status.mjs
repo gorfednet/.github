@@ -219,30 +219,41 @@ const SAFE_REF = /^[A-Za-z0-9][A-Za-z0-9._/-]*$/
 const callerLike = (w) => /pr-check|verif|gate|ci|test/i.test(w.path)
 const callerFirst = (a, b) => Number(callerLike(b)) - Number(callerLike(a))
 
+/** A `uses:` target that is the shared gate itself: the verification-gate action or a pr-check reusable workflow. setup-node, claude-review and the like say nothing about the kit. */
+const gateBearing = (target) => target === '.github/actions/verification-gate' || /^\.github\/workflows\/pr-check-[^/]+\.ya?ml$/.test(target)
+
 /**
  * The ref a repository's workflows pin the shared gate to, read from the `uses: gorfednet/.github/...@ref`
  * lines (the gate runs this repository's kit at that ref, not the repository's vendored copy). Reads only
- * workflow files the run already listed, caller-like names first, and stops at the first file that pins
- * anything. Answers `{ ref }`; `{ none: true }` when no workflow calls the shared gate at all (informational, e.g. a repository on its own gate); `{ error }` when a call's ref cannot be read: never a silent "current".
- * `text` is (path) => string | null.
+ * workflow files the run already listed, caller-like names first, and stops at the first file that calls a
+ * gate-bearing target (other shared actions never end the search). Answers `{ ref }`; `{ none: true }` only
+ * for a tier-0 repository (fleet.json: gate off) with no active gate caller; `{ error }` for everything else:
+ * an empty or unreadable list, an unreadable file, a gate call with a mixed or unparseable ref, or no gate
+ * caller at tier 1 and above. Never a silent "current". Error text names no path, so it can be published.
+ * `text` is (path) => string | null (null: the file is not there).
  */
-export function readKitPin(workflows, text) {
+export function readKitPin(workflows, text, { tier } = {}) {
+  if (!Array.isArray(workflows) || workflows.length === 0) return { error: 'workflow list empty' }
   const files = workflows.filter((w) => w.state === 'active' && /^\.github\/workflows\/[^/]+\.ya?ml$/.test(w.path ?? '')).sort(callerFirst)
+  let unread = 0
   for (const w of files) {
     const body = text(w.path)
-    if (body === null) continue
-    const uses = pinnedRefs([body])
-    if (uses.length === 0) continue
-    const gate = uses.filter((u) => u.target === '.github/actions/verification-gate')
-    const refs = [...new Set((gate.length ? gate : uses).map((u) => u.ref))]
-    if (refs.length !== 1) return { error: `${w.path} pins ${refs.length} different refs` }
-    if (!SAFE_REF.test(refs[0])) return { error: `${w.path} pins an unreadable ref` }
+    if (body === null) {
+      unread += 1
+      continue
+    }
+    const gate = pinnedRefs([body]).filter((u) => gateBearing(u.target))
+    if (gate.length === 0) continue
+    const refs = [...new Set(gate.map((u) => u.ref))]
+    if (refs.length !== 1) return { error: `a workflow pins the gate at ${refs.length} different refs` }
+    if (!SAFE_REF.test(refs[0])) return { error: 'a workflow pins the gate at an unreadable ref' }
     return { ref: refs[0] }
   }
-  return { none: true }
+  if (unread > 0) return { error: `${unread} workflow file(s) could not be read` }
+  return tier === 0 ? { none: true } : { error: 'no active workflow calls the shared gate' }
 }
 
-/** A pin with the kit version at its ref: `main` is the canonical kit itself (no call); any other ref's manifest is read once per run. */
+/** A pin with the kit version at its ref: `main` is the canonical kit itself (no call); any other ref's manifest is read once per process (the cache is shared within one process only). */
 export function resolveKitPin(pin, json, cache = new Map()) {
   if (pin.error || pin.none || pin.ref === 'main') return pin
   if (!cache.has(pin.ref)) {
@@ -298,6 +309,14 @@ function fileText(slug, path, json = ghJson) {
 /** True when the repository API says the repository is not public. Unknown visibility counts as private. */
 export const isPrivateRepo = (repo) => repo.private === true || (repo.visibility ?? 'private') !== 'public'
 
+/** A private repository's pin as ref, version and state only: no file path or message from its workflows. */
+export const redactPin = (pin) => ({
+  ...(typeof pin.ref === 'string' ? { ref: pin.ref } : {}),
+  ...(typeof pin.version === 'string' ? { version: pin.version } : {}),
+  ...(pin.none === true ? { none: true } : {}),
+  ...(pin.error ? { error: 'unreadable' } : {}),
+})
+
 /** The slug and counts only: no title, branch, next line, backlog id or run URL leaves a private repository. */
 export function redactRepo(full) {
   return {
@@ -313,7 +332,7 @@ export function redactRepo(full) {
     // A version number is not private; the fleet-wide check needs it from every row.
     kitVersion: full.kitVersion,
     // A ref and a version number name nothing private; the gate's version is what the fleet-wide check reads.
-    ...(full.kitPin ? { kitPin: full.kitPin } : {}),
+    ...(full.kitPin ? { kitPin: redactPin(full.kitPin) } : {}),
     // A count (or null for UNKNOWN) names no package or advisory.
     alertsOverdue: full.alertsOverdue,
   }
@@ -325,7 +344,7 @@ export function redactRepo(full) {
  * private repository that then fails to read publishes only the word "unreadable" (an error message can
  * quote the file it choked on). `json` and `log` are injectable for tests.
  */
-export async function collectRepo(slug, now = new Date(), { includePrivate = false, json = ghJson, log = console.error, kitPath = KIT_MANIFEST, carryBranches, pinCache } = {}) {
+export async function collectRepo(slug, now = new Date(), { includePrivate = false, json = ghJson, log = console.error, kitPath = KIT_MANIFEST, carryBranches, pinCache, tier } = {}) {
   let repo
   let isPrivate = true
   try {
@@ -336,7 +355,7 @@ export async function collectRepo(slug, now = new Date(), { includePrivate = fal
   }
   try {
     if (repo instanceof Error) throw repo
-    return await gatherRepo(slug, now, { includePrivate, json, repo, kitPath, carryBranches, log, pinCache })
+    return await gatherRepo(slug, now, { includePrivate, json, repo, kitPath, carryBranches, log, pinCache, tier })
   } catch (cause) {
     const detail = String(cause.stderr || cause.message).trim().split('\n')[0]
     // A rate-limit answer names no file, so it is safe to say even for a private repository: without it, 18 rows
@@ -356,7 +375,7 @@ function ciForCommit(slug, sha, json) {
   return ciState(runs, status)
 }
 
-export async function gatherRepo(slug, now = new Date(), { includePrivate = false, json = ghJson, repo = null, kitPath = KIT_MANIFEST, carryBranches, log = console.error, pinCache = new Map() } = {}) {
+export async function gatherRepo(slug, now = new Date(), { includePrivate = false, json = ghJson, repo = null, kitPath = KIT_MANIFEST, carryBranches, log = console.error, pinCache = new Map(), tier } = {}) {
   const today = now.toISOString().slice(0, 10)
   if (repo === null) repo = json(['api', `repos/${slug}`])
   const base = repo.default_branch
@@ -415,7 +434,7 @@ export async function gatherRepo(slug, now = new Date(), { includePrivate = fals
   // The gate runs the kit at the ref the callers pin, so that ref (not the vendored manifest above) is the drift to report.
   let kitPin
   try {
-    kitPin = resolveKitPin(readKitPin(workflows, (path) => fileText(slug, path, json)), json, pinCache)
+    kitPin = resolveKitPin(readKitPin(workflows, (path) => fileText(slug, path, json), { tier }), json, pinCache)
   } catch (cause) {
     if (/rate limit/i.test(String(cause.stderr || cause.message))) throw cause
     kitPin = { error: 'workflow files unreadable' }
@@ -570,7 +589,7 @@ if (isMain(import.meta.url)) {
     if (carry) extra.push('--carry-branches', arg('--carry-branches'))
     carriedFrom = carry ? earlier.branchesReadAt : null
     const rows = await mapLimit(slugs, 10, async (slug) => {
-      if (slugs.length === 1) return collectRepo(slug, now, { includePrivate: process.argv.includes('--include-private'), carryBranches: carry?.get(slug), kitPath: kitPathFor(fleet.projects.find((p) => p.slug === slug)) })
+      if (slugs.length === 1) return collectRepo(slug, now, { includePrivate: process.argv.includes('--include-private'), carryBranches: carry?.get(slug), kitPath: kitPathFor(fleet.projects.find((p) => p.slug === slug)), tier: fleet.projects.find((p) => p.slug === slug)?.tier })
       try {
         const tmp = join(mkdtempSync(join(tmpdir(), 'fleet-status-')), 'one.json')
         await execFileAsync(process.execPath, [fileURLToPath(import.meta.url), '--only', slug, '--out', tmp, ...extra], { env: process.env, maxBuffer: 1 << 26 })

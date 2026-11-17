@@ -2,7 +2,8 @@
 import { strict as assert } from 'node:assert'
 import { describe, it } from 'node:test'
 
-import { collectRepo, readKitPin, resolveKitPin } from '../scripts/fleet-status.mjs'
+import { collectRepo, readKitPin, redactPin, resolveKitPin } from '../scripts/fleet-status.mjs'
+import { pinnedRefs } from '../scripts/fleet-report.mjs'
 import { kitFailures } from '../scripts/lib/kit-version.mjs'
 
 const SHA = '0123456789abcdef0123456789abcdef01234567'
@@ -29,13 +30,50 @@ describe('readKitPin', () => {
     const asked = []
     const pin = readKitPin([wf('.github/workflows/ci.yml', 'disabled_manually'), wf('dynamic/copilot')], (p) => { asked.push(p); return gate('main') })
     assert.equal(asked.length, 0)
-    assert.deepEqual(pin, { none: true })
+    assert.match(pin.error, /no active workflow calls the shared gate/)
+    assert.deepEqual(readKitPin([wf('.github/workflows/ci.yml', 'disabled_manually')], () => gate('main'), { tier: 0 }), { none: true })
+  })
+  it('a workflow calling only other shared actions never ends the search: the gate caller after it is still read', () => {
+    const texts = {
+      '.github/workflows/ci.yml': 'steps:\n  - uses: gorfednet/.github/.github/actions/setup-node@main\n',
+      '.github/workflows/claude-review-pr.yml': 'jobs:\n  r:\n    uses: gorfednet/.github/.github/workflows/claude-review.yml@main\n',
+      '.github/workflows/zz-build.yml': gate(SHA),
+    }
+    const asked = []
+    const pin = readKitPin(Object.keys(texts).map((p) => wf(p)), (p) => { asked.push(p); return texts[p] })
+    assert.deepEqual(pin, { ref: SHA })
+    assert.equal(asked.length, 3)
+  })
+  it('a pr-check reusable workflow call is gate-bearing and ends the search', () => {
+    const text = `jobs:\n  g:\n    uses: gorfednet/.github/.github/workflows/pr-check-static.yml@${SHA}\n`
+    const asked = []
+    const pin = readKitPin([wf('.github/workflows/pr-check.yml'), wf('.github/workflows/ci.yml')], (p) => { asked.push(p); return text })
+    assert.deepEqual(pin, { ref: SHA })
+    assert.equal(asked.length, 1)
+  })
+  it('quoted uses lines are read: an old pin does not slip into none', () => {
+    for (const q of ['"', "'"]) {
+      const text = `steps:\n  - uses: ${q}gorfednet/.github/.github/actions/verification-gate@${SHA}${q}\n`
+      assert.deepEqual(pinnedRefs([text]), [{ target: '.github/actions/verification-gate', ref: SHA }])
+      assert.deepEqual(readKitPin([wf('.github/workflows/ci.yml')], () => text), { ref: SHA })
+    }
+  })
+  it('an empty workflow list, an unreadable file and a 404 are errors at every tier', () => {
+    for (const tier of [0, 1, undefined]) {
+      assert.match(readKitPin([], () => null, { tier }).error, /list empty/)
+      assert.match(readKitPin([wf('.github/workflows/ci.yml')], () => null, { tier }).error, /could not be read/)
+    }
+  })
+  it('tier 1 and above with no gate caller is an error row; tier 0 is none', () => {
+    assert.match(readKitPin([wf('.github/workflows/ci.yml')], () => 'on: push\n', { tier: 1 }).error, /no active workflow calls/)
+    assert.match(readKitPin([wf('.github/workflows/ci.yml')], () => 'on: push\n').error, /no active workflow calls/)
+    assert.deepEqual(readKitPin([wf('.github/workflows/ci.yml')], () => 'on: push\n', { tier: 0 }), { none: true })
   })
   it('prefers the verification-gate pin when a file pins other actions elsewhere', () => {
     const text = `${gate('main')}      - uses: gorfednet/.github/.github/actions/no-smb-guard@${SHA}\n`
     assert.deepEqual(readKitPin([wf('.github/workflows/ci.yml')], () => text), { ref: 'main' })
   })
-  it('is an error, never current, with no uses line, an unreadable ref, a ref expression or mixed refs', () => {
+  it('is an error, never current, with an unreadable ref, a ref expression or mixed refs on the gate call', () => {
         assert.match(readKitPin([wf('.github/workflows/ci.yml')], () => gate('${{ inputs.ref }}')).error, /unreadable ref/)
     assert.match(readKitPin([wf('.github/workflows/ci.yml')], () => gate('../x')).error, /unreadable ref/)
     const mixed = `${gate('main')}      - uses: gorfednet/.github/.github/actions/verification-gate@${SHA}\n`
@@ -44,9 +82,8 @@ describe('readKitPin', () => {
 })
 
 describe('no shared gate', () => {
-  it('a repository whose workflows never call gorfednet/.github is none, not an error', () => {
-    assert.deepEqual(readKitPin([wf('.github/workflows/ci.yml')], () => 'on: push\n'), { none: true })
-    assert.deepEqual(readKitPin([], () => null), { none: true })
+  it('a tier-0 repository whose workflows never call gorfednet/.github is none, not an error', () => {
+    assert.deepEqual(readKitPin([wf('.github/workflows/ci.yml')], () => 'on: push\n', { tier: 0 }), { none: true })
     assert.deepEqual(resolveKitPin({ none: true }, () => { throw new Error('no call') }), { none: true })
   })
 })
@@ -110,15 +147,22 @@ describe('a repository row carries the pin and drift follows it', () => {
     assert.deepEqual(row.kitPin, { ref: SHA, version: '0.49.0' })
     assert.deepEqual(kitFailures([row], '0.62.0').map((r) => [r.slug, r.gap]), [['o/site', 'far-behind']])
   })
-  it('a repository whose workflows call no shared gate reports none and never fails', async () => {
+  it('a tier-0 repository whose workflows call no shared gate reports none and never fails; at tier 1 it is an error row', async () => {
     const json = (args) => {
       const path = args[args.length - 1]
       if (path.endsWith('/workflows?per_page=100')) return { workflows: [] }
       return fake({ vendored: '0.62.0', pinTo: 'main', calls: [] })(args)
     }
-    const row = await collectRepo('o/site', now, { json, log: () => {} })
-    assert.deepEqual(row.kitPin, { none: true })
-    assert.deepEqual(kitFailures([row], '0.62.0'), [])
+    const row = await collectRepo('o/site', now, { json, log: () => {}, tier: 0 })
+    assert.deepEqual(row.kitPin, { error: 'workflow list empty' })
+    const wfs = { workflows: [{ id: 1, name: 'x', path: '.github/workflows/x.yml', state: 'active' }] }
+    const none = (args) => (args[args.length - 1].endsWith('/workflows?per_page=100') ? wfs : args[args.length - 1].endsWith('/contents/.github/workflows/x.yml') ? file('on: push\n') : json(args))
+    const t0 = await collectRepo('o/site', now, { json: none, log: () => {}, tier: 0 })
+    assert.deepEqual(t0.kitPin, { none: true })
+    assert.deepEqual(kitFailures([t0], '0.62.0'), [])
+    const t1 = await collectRepo('o/site', now, { json: none, log: () => {}, tier: 1 })
+    assert.match(t1.kitPin.error, /no active workflow calls/)
+    assert.deepEqual(kitFailures([t1], '0.62.0').map((r) => r.gap), ['error'])
   })
   it('adds one request for the pinned workflow file and none for @main; a sha pin adds one more', async () => {
     const base = []
@@ -127,5 +171,61 @@ describe('a repository row carries the pin and drift follows it', () => {
     await collectRepo('o/site', now, { json: fake({ vendored: '0.62.0', pinTo: SHA, calls: sha }), log: () => {} })
     assert.equal(base.filter((c) => c.includes('contents/.github/workflows/')).length, 1)
     assert.equal(sha.length - base.length, 1)
+  })
+})
+
+describe('fail closed when the workflow files cannot be read', () => {
+  const now = new Date('2026-11-17T12:00:00Z')
+  const wfsOnly = { workflows: [{ id: 1, name: 'x', path: '.github/workflows/pr-check.yml', state: 'active' }] }
+  const base = (visibility, failure) => (args) => {
+    const path = args[0] === 'pr' ? 'pr list' : args[args.length - 1]
+    if (path === 'repos/o/site') return { private: visibility !== 'public', visibility, default_branch: 'main' }
+    if (path === 'pr list') return []
+    if (path.includes('/branches')) return [[]]
+    if (path.endsWith('/workflows?per_page=100')) return wfsOnly
+    if (path.endsWith('/contents/.github/workflows/pr-check.yml')) throw failure
+    if (path.includes('/contents/')) throw Object.assign(new Error('gh: Not Found (HTTP 404)'), { stderr: 'gh: Not Found (HTTP 404)' })
+    if (path.endsWith('/commits/main')) return { sha: 'abc' }
+    if (path.includes('/actions/runs?')) return [{ workflow_runs: [] }]
+    if (path.endsWith('/status')) return { state: 'success', statuses: [] }
+    if (path.includes('/dependabot/alerts?')) return [[]]
+    throw new Error(`unexpected call ${args.join(' ')}`)
+  }
+  it('a failed read of a listed workflow gives an error row, not none and not current', async () => {
+    const row = await collectRepo('o/site', now, { json: base('public', Object.assign(new Error('boom'), { stderr: 'gh: Server Error (HTTP 500)' })), log: () => {}, tier: 0 })
+    assert.deepEqual(row.kitPin, { error: 'workflow files unreadable' })
+    assert.deepEqual(kitFailures([row], '0.62.0').map((r) => r.gap), ['error'])
+  })
+  it('a rate limit is rethrown, so the repository row is unavailable rather than an error pin', async () => {
+    const row = await collectRepo('o/site', now, { json: base('public', Object.assign(new Error('x'), { stderr: 'gh: API rate limit exceeded (HTTP 403)' })), log: () => {}, tier: 1 })
+    assert.equal(row.unavailable, 'GitHub rate limit exceeded')
+  })
+})
+
+describe('a private repository publishes ref, version and state only', () => {
+  it('redactPin drops every path and message', () => {
+    assert.deepEqual(redactPin({ ref: SHA, version: '0.49.0' }), { ref: SHA, version: '0.49.0' })
+    assert.deepEqual(redactPin({ none: true }), { none: true })
+    assert.deepEqual(redactPin({ error: 'secret/path.yml could not be read', path: '.github/workflows/secret.yml' }), { error: 'unreadable' })
+  })
+  it('a private row from a planted unreadable workflow carries no path or file name', async () => {
+    const now = new Date('2026-11-17T12:00:00Z')
+    const json = (args) => {
+      const path = args[0] === 'pr' ? 'pr list' : args[args.length - 1]
+      if (path === 'repos/o/hidden') return { private: true, visibility: 'private', default_branch: 'main' }
+      if (path === 'pr list') return []
+      if (path.includes('/branches')) return [[]]
+      if (path.endsWith('/workflows?per_page=100')) return { workflows: [{ id: 1, name: 'x', path: '.github/workflows/internal-secret-name.yml', state: 'active' }] }
+      if (path.includes('/contents/')) throw Object.assign(new Error('gh: Not Found (HTTP 404)'), { stderr: 'gh: Not Found (HTTP 404)' })
+      if (path.endsWith('/commits/main')) return { sha: 'abc' }
+      if (path.includes('/actions/runs?')) return [{ workflow_runs: [] }]
+      if (path.endsWith('/status')) return { state: 'success', statuses: [] }
+      if (path.includes('/dependabot/alerts?')) return [[]]
+      throw new Error(`unexpected call ${args.join(' ')}`)
+    }
+    const row = await collectRepo('o/hidden', now, { json, log: () => {}, tier: 1 })
+    assert.equal(row.redacted, true)
+    assert.deepEqual(row.kitPin, { error: 'unreadable' })
+    assert.ok(!JSON.stringify(row).includes('internal-secret-name'))
   })
 })

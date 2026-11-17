@@ -16,9 +16,11 @@
  * its own manifest; this is the half that notices a pin nobody has moved.
  *
  * "Far behind" is more than one minor, or any major. A pin that cannot be read
- * (no workflow pins the gate, an unreadable ref, a ref with no kit) is an
- * error row that fails, as does an unreadable version: nothing here treats
- * "could not tell" as current.
+ * (an empty or unreadable workflow list, an unreadable ref, a ref with no kit,
+ * or no gate caller in a repository at tier 1 or above) is an error row that
+ * fails, as does an unreadable version: nothing here treats "could not tell"
+ * as current. Only a tier-0 repository with no gate caller reads as
+ * `none` (informational, never a failure).
  */
 export function parseVersion(text) {
   const m = /^(\d+)\.(\d+)\.(\d+)$/.exec(String(text ?? '').trim())
