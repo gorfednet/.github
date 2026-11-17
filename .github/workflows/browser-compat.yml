@@ -106,7 +106,7 @@ jobs:
         with:
           node-version: ${{ inputs.node-version }}
       - id: plan
-        uses: gorfednet/.github/.github/actions/browser-compat-plan@main
+        uses: gorfednet/.github/.github/actions/browser-compat-plan@claude/browser-compat-webkit-shards-trial
         with:
           webkit-shards: ${{ inputs.webkit-shards }}
 
@@ -120,7 +120,7 @@ jobs:
       matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: gorfednet/.github/.github/actions/setup-node@main
+      - uses: gorfednet/.github/.github/actions/setup-node@claude/browser-compat-webkit-shards-trial
         with:
           node-version: ${{ inputs.node-version }}
       - name: Build
@@ -130,7 +130,7 @@ jobs:
       # bump is a miss: ssatcy.com#18 and gorfed.net#57 lost their chromium jobs to the
       # 25-minute limit inside this step (2026-10-01). The cache key already carries the
       # browser slug, so each browser caches on its own.
-      - uses: gorfednet/.github/.github/actions/setup-playwright@main
+      - uses: gorfednet/.github/.github/actions/setup-playwright@claude/browser-compat-webkit-shards-trial
         with:
           browsers: ${{ matrix.browser }}
           system-deps: ${{ inputs.system-deps }}
@@ -236,7 +236,7 @@ jobs:
           node-version: ${{ inputs.node-version }}
       - name: Sum sharded executed tests against the floor
         if: ${{ !cancelled() && inputs.webkit-shards != '1' && needs.plan.result == 'success' }}
-        uses: gorfednet/.github/.github/actions/browser-compat-rollup@main
+        uses: gorfednet/.github/.github/actions/browser-compat-rollup@claude/browser-compat-webkit-shards-trial
         with:
           matrix: ${{ needs.plan.outputs.matrix }}
           report-dir: shard-reports
