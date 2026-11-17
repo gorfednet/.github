@@ -1,0 +1,11 @@
+{
+  "label": "2026-11-16-ntfy",
+  "note": "The live config has no top-level ntfy block, so every ntfy send since go-live returned false and the self-install notices stayed queued (INCIDENTS.md, 16 November 2026). The mac token is already in ~/.ship-bot/ntfy.token (ops hosts/dapyllil/ntfy/README.md, Mac senders). This adds the block config.example.json carries.",
+  "set": {
+    "ntfy": {
+      "url": "https://ntfy.gorfed.net",
+      "topic": "ops-report",
+      "tokenFile": "~/.ship-bot/ntfy.token"
+    }
+  }
+}
