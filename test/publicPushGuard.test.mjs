@@ -895,6 +895,38 @@ describe('public-push-guard: the fourth review', () => {
     assert.equal(hook('git push origin feature', { r, vis }).out, '', 'the configured remote is private')
     assert.ok(denied(hook(`git -c remote.origin.pushurl=https://github.com/${ORG}/testrepo.git push origin feature`, { r, vis })))
   })
+  it('reads the push URL, not the fetch URL, for the visibility check', () => {
+    // fetch from a private repository, push to a public one: the push is the public one
+    const r = repo({ outgoing: { 'x.md': `${IP}\n` }, slug: 'privaterepo', urls: [URL_OF('testrepo')] })
+    const vis = { [`${ORG}/privaterepo`]: 'PRIVATE', [`${ORG}/testrepo`]: 'PUBLIC' }
+    assert.equal(hook('git push origin feature', { r, vis }).out, '', 'the configured remote is private')
+    sh(r.dir, r.w, 'remote', 'set-url', '--push', 'origin', URL_OF('testrepo'))
+    const x = hook('git push origin feature', { r, vis })
+    assert.ok(denied(x), x.out)
+    // near miss: fetch from public, push to private, so nothing public is pushed
+    const q = repo({ outgoing: { 'x.md': `${IP}\n` }, slug: 'testrepo', urls: [URL_OF('privaterepo')] })
+    sh(q.dir, q.w, 'remote', 'set-url', '--push', 'origin', URL_OF('privaterepo'))
+    assert.equal(hook('git push origin feature', { r: q, vis }).out, '', 'the push goes to the private repository')
+  })
+  it('subtracts what the push URL holds, not what the fetch URL holds', () => {
+    // origin fetches from a repository that already holds the commit and pushes to a public one that does not
+    const r = repo({ outgoing: { 'x.md': `${IP}\n` } })
+    sh(r.dir, r.w, 'push', '-q', 'origin', 'feature') // the fetch side now holds the commit
+    const other = join(r.w.dir, 'other.git')
+    sh(r.dir, r.w, 'init', '-q', '--bare', other)
+    writeFileSync(r.w.cfg, `${readFileSync(r.w.cfg, 'utf8')}[url "${other}"]\n\tinsteadOf = ${URL_OF('publicrepo')}\n`)
+    const vis = { [`${ORG}/testrepo`]: 'PRIVATE', [`${ORG}/publicrepo`]: 'PUBLIC' }
+    assert.equal(hook('git push origin feature', { r, vis }).out, '', 'near miss: with one URL the commit is already held')
+    sh(r.dir, r.w, 'remote', 'set-url', '--push', 'origin', URL_OF('publicrepo'))
+    const x = hook('git push origin feature', { r, vis })
+    assert.ok(denied(x), x.out)
+  })
+  it('refuses git send-pack, which pushes and which the hook cannot read', () => {
+    const r = repo({ outgoing: { 'x.md': `${IP}\n` } })
+    for (const c of ['git send-pack origin feature', `git send-pack https://github.com/${ORG}/testrepo.git feature`, 'git send-pack --all origin']) assert.ok(denied(hook(c, { r })), c)
+    assert.equal(hook('git log --oneline -3', { r }).out, '', 'near miss: no send-pack')
+    assert.equal(hook('grep -rn send-pack docs/ | head', { r }).out, '', 'near miss: only text')
+  })
   it('reads the text of gh pr reopen and gh issue reopen', () => {
     const r = repo()
     for (const c of [`gh pr reopen 5 -R ${ORG}/testrepo -c "${IP}"`, `gh issue reopen 5 -R ${ORG}/testrepo --comment "${IP}"`]) assert.ok(denied(hook(c, { r })), c)

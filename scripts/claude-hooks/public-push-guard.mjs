@@ -711,11 +711,13 @@ function remotesFor(target, spec, branch) {
   else chosen = [cfg(`branch.${branch}.pushRemote`) || cfg('remote.pushDefault') || cfg(`branch.${branch}.remote`) || (all.includes('origin') ? 'origin' : all[0]) || 'origin']
   return chosen.map((name) => {
     if (all.includes(name)) {
+      // A push goes to the push URLs: the pushurl when one is set, else the url, never the fetch URL when
+      // a pushurl exists. Both the configured value and git's expansion of it (insteadOf) are read.
       const urls = new Set()
-      for (const key of [`remote.${name}.url`, `remote.${name}.pushurl`]) {
-        const r = git(target, ['config', '--get-all', key])
-        if (r.ok) r.stdout.split('\n').filter(Boolean).forEach((u) => urls.add(u))
-      }
+      const push = git(target, ['config', '--get-all', `remote.${name}.pushurl`])
+      const key = push.ok && push.stdout.trim() ? `remote.${name}.pushurl` : `remote.${name}.url`
+      const configured = git(target, ['config', '--get-all', key])
+      if (configured.ok) configured.stdout.split('\n').filter(Boolean).forEach((u) => urls.add(u))
       const expanded = git(target, ['remote', 'get-url', '--push', '--all', name])
       if (expanded.ok) expanded.stdout.split('\n').filter(Boolean).forEach((u) => urls.add(u))
       return { name, urls: [...urls] }
@@ -799,13 +801,19 @@ function refsToSend(target, flags, refspecs) {
 /** Commits the remote lacks: reachable from the sent refs, not from anything the remote holds now. */
 function outgoing(target, remote, sent) {
   if (sent.length === 0) return { commits: [], boundary: [], tips: [] }
-  const ls = git(target, ['ls-remote', remote.name], { timeout: 25_000 })
-  if (!ls.ok) deny(`public-push-guard: could not read what ${remote.isUrl ? 'the remote' : remote.name} already holds (git ls-remote failed), so the outgoing commits can't be told apart from published ones and this push is refused. Check the network and credentials, then try again.`)
-  const known = []
-  for (const line of ls.stdout.split('\n')) {
-    const sha = line.split(/\s+/)[0]
-    if (/^[0-9a-f]{40,64}$/.test(sha) && git(target, ['cat-file', '-e', `${sha}^{commit}`]).ok) known.push(sha)
+  // Read what each place the push goes to holds, not the fetch URL. A commit counts as published only when every one of them holds it.
+  let known = null
+  for (const where of remote.isUrl || remote.urls.length === 0 ? [remote.name] : remote.urls) {
+    const ls = git(target, ['ls-remote', where], { timeout: 25_000 })
+    if (!ls.ok) deny(`public-push-guard: could not read what ${remote.isUrl ? 'the remote' : remote.name} already holds (git ls-remote failed), so the outgoing commits can't be told apart from published ones and this push is refused. Check the network and credentials, then try again.`)
+    const here = new Set()
+    for (const line of ls.stdout.split('\n')) {
+      const sha = line.split(/\s+/)[0]
+      if (/^[0-9a-f]{40,64}$/.test(sha) && git(target, ['cat-file', '-e', `${sha}^{commit}`]).ok) here.add(sha)
+    }
+    known = known === null ? here : new Set([...known].filter((x) => here.has(x)))
   }
+  known = [...(known ?? [])]
   const tips = [...new Set(sent.map((x) => x.sha))]
   const rest = [...tips, ...(known.length ? ['--not', ...known] : [])]
   const commits = must(target, ['rev-list', '--reverse', '--topo-order', ...rest], 'list the outgoing commits', { timeout: 30_000 }).split('\n').filter(Boolean)
@@ -1075,6 +1083,7 @@ function plain(parsed) {
   if (parsed.stdinRedirect && basename(sts[0].words[0].text) === 'gh') refuse('it feeds a file into gh through an input redirect, which the hook can\'t read')
   // A git subcommand that is not a push can still run one: rebase -x, bisect run, submodule foreach, -c alias.x=push.
   // Any word that could hold a push, a gh call, or git behind an expansion, in a command that isn't itself a push, is refused.
+  if (basename(sts[0].words[0].text) === 'git' && gitSubcommand(sts[0].words) === 'send-pack') refuse('git send-pack pushes, and the hook reads only git push')
   if (basename(sts[0].words[0].text) === 'git' && gitSubcommand(sts[0].words) !== 'push') {
     const hides = sts[0].words.slice(1).some((w) => {
       const t = w.text.replace(/[\\'"]/g, '')
@@ -1094,7 +1103,7 @@ async function main() {
   try {
     payload = JSON.parse(raw)
   } catch {
-    if (/push|gh/.test(raw)) deny('public-push-guard: could not read the hook input, and it mentions a push or gh, so this call is refused.')
+    if (/push|send-pack|gh/.test(raw)) deny('public-push-guard: could not read the hook input, and it mentions a push or gh, so this call is refused.')
     return
   }
   if ((payload.tool_name ?? 'Bash') !== 'Bash') return
@@ -1106,7 +1115,7 @@ async function main() {
   // Could this push or write to GitHub anywhere in it? Quotes and backslashes are dropped first.
   const stripped = command.replace(/\\\n/g, '').replace(/[\\'"]/g, '')
   const expands = /[$`]/.test(command)
-  const pushText = /push/.test(stripped) || (/\bgit\b/.test(stripped) && expands)
+  const pushText = /push|send-pack/.test(stripped) || (/\bgit\b/.test(stripped) && expands)
   const ghText = /\bgh\b/.test(stripped) && (GH_WRITE.test(stripped) || (/\bapi\b/.test(stripped) && GH_API_WRITE.test(stripped)) || expands)
   if (!pushText && !ghText) return
 
