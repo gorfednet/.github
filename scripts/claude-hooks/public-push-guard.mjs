@@ -9,7 +9,8 @@
  *
  * - A repository on the local private list passes untouched. Any other remote counts as public.
  * - The list is a local file (private-repos.txt, one owner/name per line), refreshed from gh
- *   at install and about once a day. A push never calls gh to learn visibility.
+ *   at install and, at most once a day, by the first push after it goes stale (a failure is
+ *   ignored). A push never asks gh about one repository.
  * - Outgoing commits are those reachable from the sent shas and not from anything the remote
  *   holds now (`git ls-remote`, not tracking refs, which go stale). scripts/privacy-guard.mjs
  *   reads them (messages, every commit's diff, the net diff). Ref names and annotated tag
@@ -20,7 +21,7 @@
  * `git push --no-verify` skips every git hook; the deny entry for it lives in ops control/claude-home.
  */
 import { spawnSync } from 'node:child_process'
-import { existsSync, readFileSync, realpathSync, renameSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, realpathSync, renameSync, statSync, utimesSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
@@ -51,28 +52,47 @@ export const slugOf = (url) => {
   return m ? `${m[1]}/${m[2]}`.toLowerCase() : null
 }
 
-/** Refresh the private list from gh. False when gh can't answer; the list on disk then stands. */
+/** Refresh the private list from gh. False when gh can't answer or the write fails; the list on disk then stands. */
 export function refresh() {
-  const r = run('gh', ['repo', 'list', 'gorfednet', '--visibility', 'private', '--limit', '1000', '--json', 'nameWithOwner', '--jq', '.[].nameWithOwner'], { timeout: 20_000 })
-  if (r.status !== 0 || !r.stdout.trim()) return false
-  writeFileSync(`${LIST}.tmp`, r.stdout.toLowerCase(), { mode: 0o600 })
-  renameSync(`${LIST}.tmp`, LIST)
-  return true
+  try {
+    const r = run('gh', ['repo', 'list', 'gorfednet', '--visibility', 'private', '--limit', '1000', '--json', 'nameWithOwner', '--jq', '.[].nameWithOwner'], { timeout: 20_000 })
+    if (r.status !== 0 || !r.stdout.trim()) return false
+    const tmp = `${LIST}.${process.pid}.tmp`
+    writeFileSync(tmp, r.stdout.toLowerCase(), { mode: 0o600 })
+    renameSync(tmp, LIST)
+    return true
+  } catch {
+    return false
+  }
 }
 
 /** The private repositories, as owner/name. A missing list is an error, never an empty one. */
 export function privateList() {
-  if (existsSync(LIST) && Date.now() - statSync(LIST).mtimeMs > REFRESH_AFTER_MS) refresh() // best effort, never blocks
+  if (existsSync(LIST) && Date.now() - statSync(LIST).mtimeMs > REFRESH_AFTER_MS && !refresh()) {
+    // The one place a push may call gh, at most once a day. If gh can't answer, the list stands and the next try is in an hour.
+    try {
+      const retry = new Date(Date.now() - REFRESH_AFTER_MS + 60 * 60 * 1000)
+      utimesSync(LIST, retry, retry)
+    } catch {
+      // a list we can't touch is still a list
+    }
+  }
   if (!existsSync(LIST)) refuse(`the private repository list (${LIST}) is missing, so this push can't be classified. Run install-git-hooks.sh.`)
   const lines = readFileSync(LIST, 'utf8').split('\n').map((l) => l.trim().toLowerCase()).filter((l) => l && !l.startsWith('#'))
   if (lines.length === 0) refuse(`the private repository list (${LIST}) is empty, so this push can't be classified. Run install-git-hooks.sh.`)
   return new Set(lines)
 }
 
-/** The slug a push goes to. URL rewrites (insteadOf) are undone by also reading the configured URL. */
+/**
+ * The slug a push goes to. An insteadOf rewrite hides it from the URL git passes, so a configured URL
+ * counts only when its rewritten form is the very URL this push goes to (git runs the hook once per push URL).
+ */
 export function remoteSlug(name, url, cwd) {
-  const configured = ['url', 'pushurl'].flatMap((k) => git(['config', '--get-all', `remote.${name}.${k}`], { cwd }).stdout.split('\n'))
-  return slugOf(url) ?? configured.map(slugOf).find(Boolean) ?? null
+  const direct = slugOf(url)
+  if (direct) return direct
+  const configured = ['url', 'pushurl'].flatMap((k) => git(['config', '--get-all', `remote.${name}.${k}`], { cwd }).stdout.split('\n')).filter(Boolean)
+  const same = configured.find((raw) => raw === url || git(['ls-remote', '--get-url', raw], { cwd }).stdout.trim() === url)
+  return same ? slugOf(same) : null
 }
 
 /** privacy-guard's own functions, plus the scanning context for names and messages. */

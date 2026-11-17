@@ -38,9 +38,9 @@ A `PostToolUse` hook on Bash. After a commit or push on a feature branch it remi
 Keeps private detail (private addresses, session ids, tailnet and internal host names, private repository names, owner quotes) out of pushes to public repositories. It replaces the shell-text parser of .github 216, which refused everyday commands.
 
 - Git runs it, so the shell spelling of the push doesn't matter. It reads the remote URL and the refs and shas git is about to send: branches, tags, `--all`, `--mirror`, a push from a worktree.
-- Outgoing commits are those reachable from the sent shas and not from the shas the remote reports for the same refs or this remote's tracking refs. `scripts/privacy-guard.mjs` reads them (messages, every commit's diff, the net diff). The hook itself reads ref names and annotated tag messages. A delete sends no commits and passes.
+- Outgoing commits are those reachable from the sent shas and not from anything the remote holds now. The hook asks the remote with `git ls-remote` (tracking refs go stale, or point at another repository after a `set-url`) and refuses the push when it can't. `scripts/privacy-guard.mjs` reads them (messages, every commit's diff, the net diff). The hook itself reads ref names and annotated tag messages. A delete sends no commits and passes.
 - A repository on the local private list passes untouched. Any other remote, including one it has never heard of, counts as public.
-- The list is `~/.claude/git-hooks/private-repos.txt`, one `owner/name` a line. It is refreshed from `gh repo list` at install and about once a day, best effort. A push never calls `gh`. It can't live in this public repository because it names private ones.
+- The list is `~/.claude/git-hooks/private-repos.txt`, one `owner/name` a line. It is refreshed from `gh repo list` at install and, at most once a day, by the first push after it goes stale. A failed refresh is ignored (the list stands, retry in an hour). A push never asks `gh` about a single repository. It can't live in this public repository because it names private ones.
 - Once the remote is public it fails closed: a missing or empty list, a missing guard script, a root commit with no published ancestor or a crash all refuse. Exit 1 blocks the push.
 
 Install it (copies from origin/main, never a working tree):

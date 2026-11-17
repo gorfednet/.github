@@ -11,7 +11,7 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -119,6 +119,28 @@ describe('pre-push: a public remote is read, and a private one is never refused'
     const x = push(r, '-u', 'origin', 'feature')
     assert.equal(x.status, 0, x.stderr)
     assert.ok(remoteHas(r, 'refs/heads/feature'))
+  })
+
+  it('does not take a private url for a different push URL: a public mirror added to a private clone is read', () => {
+    const r = repo(world(), { slug: PRIVATE, outgoing: { 'x.md': `${IP}\n` } })
+    const mirror = join(r.w.dir, 'mirror.git')
+    spawnSync('git', ['init', '-q', '--bare', '-b', 'main', mirror], { env: envOf(r.w) })
+    ok(r.dir, r.w, 'remote', 'set-url', '--add', '--push', 'origin', `https://github.com/${PRIVATE}.git`)
+    ok(r.dir, r.w, 'remote', 'set-url', '--add', '--push', 'origin', mirror)
+    ok(r.dir, r.w, '-c', 'core.hooksPath=/dev/null', 'push', '-q', 'origin', 'main:main') // seed the mirror
+    const x = push(r, 'origin', 'feature')
+    assert.ok(refused(x), x.stderr)
+    assert.ok(!remoteHas({ bare: mirror, w: r.w }, 'refs/heads/feature'))
+  })
+
+  it('survives a stale list when gh is down: the list stands, nothing crashes, a private push passes', () => {
+    const w = world()
+    const r = repo(w, { slug: PRIVATE, outgoing: { 'x.md': `${IP}\n` } })
+    writeFileSync(join(w.bin, 'gh'), '#!/bin/sh\nexit 1\n')
+    const old = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000)
+    utimesSync(join(w.hooks, 'private-repos.txt'), old, old)
+    assert.equal(push(r, 'origin', 'feature').status, 0)
+    assert.equal(push(r, 'origin', 'feature').status, 0, 'and again, with the retry pushed an hour out')
   })
 
   it('counts a remote it has no entry for as public', () => {
