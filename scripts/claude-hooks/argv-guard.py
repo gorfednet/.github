@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Refuse the git and gh commands settings.json denies, in every argv spelling (plan row 5.14).
 
-Claude Code user-level PreToolUse hook on Bash. Live copy:
+Claude Code user-level PreToolUse hook on Bash and Monitor. Live copy:
 ~/.claude/hooks/argv-guard.py. Record copy: scripts/claude-hooks/ in
 gorfednet/.github.
 
@@ -51,11 +51,18 @@ import sys
 DYN = "\x00"  # stands for text only the shell knows: $(...), `...`, ${...}
 MAX_DEPTH = 6
 
-_HEREDOC = re.compile(r"<<(-?)[ \t]*(?:'([^'\n]*)'|\"([^\"\n]*)\"|\\?([A-Za-z_][\w.-]*))")
+_HEREDOC = re.compile(r"<<(-?)[ \t]*(?:'([^'\n]*)'|\"([^\"\n]*)\"|(\\?)([A-Za-z_][\w.-]*))")
 _ASSIGN = re.compile(r"^[A-Za-z_]\w*\+?=")
 _KEYWORDS = {"if", "then", "else", "elif", "do", "while", "until", "!", "{", "}", "time", "fi", "done"}
 _SHELLS = {"bash", "sh", "zsh", "dash", "ksh"}
-_PREFIXES = {"env", "command", "exec", "nohup", "sudo", "builtin", "nice", "caffeinate", "noglob"}
+_PREFIXES = {"env", "command", "exec", "nohup", "sudo", "builtin", "nice", "caffeinate", "noglob", "timeout"}
+# options that take the next word as their value, per wrapper (the value is not the command)
+_PREFIX_VALUES = {
+    "env": {"-u", "-C", "-S", "--unset", "--chdir", "--split-string"},
+    "nice": {"-n", "--adjustment"},
+    "sudo": {"-u", "-g", "-C", "-h", "-p", "-r", "-t", "-D", "-T", "-U", "--user", "--group", "--host", "--chdir"},
+    "timeout": {"-s", "-k", "--signal", "--kill-after"},
+}
 
 
 class Unparsed(Exception):
@@ -67,7 +74,7 @@ def _skip_heredoc(text: str, m: re.Match) -> int:
     line_end = text.find("\n", m.end())
     if line_end < 0:
         raise Unparsed
-    delim = m.group(2) or m.group(3) or m.group(4) or ""
+    delim = m.group(2) or m.group(3) or m.group(5) or ""
     tabs = "\t*" if m.group(1) else ""
     end = re.compile(rf"^{tabs}{re.escape(delim)}$", re.M).search(text, line_end + 1)
     if not end:
@@ -138,6 +145,27 @@ def _close_paren(text: str, i: int) -> int:
     raise Unparsed
 
 
+def _heredoc_substitutions(body: str, out: list, depth: int) -> None:
+    """An unquoted heredoc body is data, except `$(...)` and backticks, which the shell runs (`\\` and `\\$` escape them)."""
+    i, n = 0, len(body)
+    while i < n:
+        c = body[i]
+        if c == "\\":
+            i += 2
+        elif c == "$" and body.startswith("$((", i):
+            i = _close_paren(body, i + 2) + 1
+        elif c == "$" and body.startswith("$(", i):
+            k = _close_paren(body, i + 2)
+            parse(body[i + 2 : k], out, True, depth)
+            i = k + 1
+        elif c == "`":
+            k = _close_tick(body, i + 1)
+            parse(body[i + 1 : k], out, True, depth)
+            i = k + 1
+        else:
+            i += 1
+
+
 def parse(text: str, out: list, captured: bool = False, depth: int = 0) -> None:
     """Append (words, captured) to `out` for every simple command in `text`.
 
@@ -152,7 +180,7 @@ def parse(text: str, out: list, captured: bool = False, depth: int = 0) -> None:
     words: list[str] = []
     cur: list[str] | None = None
     skip_word = False  # the next word is a redirection target
-    pending: list[tuple[str, bool, bool]] = []  # heredocs opened on this line
+    pending: list[tuple[str, bool, bool, bool]] = []  # heredocs opened on this line
 
     def end_word() -> None:
         nonlocal cur, skip_word
@@ -247,7 +275,7 @@ def parse(text: str, out: list, captured: bool = False, depth: int = 0) -> None:
         elif c == "\n":
             end_command()
             i += 1
-            for delim, strip_tabs, is_code in pending:
+            for delim, strip_tabs, is_code, quoted in pending:
                 body: list[str] = []
                 closed = False
                 while i < n:
@@ -263,6 +291,8 @@ def parse(text: str, out: list, captured: bool = False, depth: int = 0) -> None:
                     raise Unparsed
                 if is_code:
                     parse("\n".join(body), out, captured, depth + 1)
+                elif not quoted:
+                    _heredoc_substitutions("\n".join(body), out, depth + 1)
             pending = []
         elif c == "#" and cur is None:
             j = text.find("\n", i)
@@ -283,7 +313,8 @@ def parse(text: str, out: list, captured: bool = False, depth: int = 0) -> None:
             elif text.startswith("<<", i) and _HEREDOC.match(text, i):
                 m = _HEREDOC.match(text, i)
                 first = words[0].rsplit("/", 1)[-1] if words else ""
-                pending.append((m.group(2) or m.group(3) or m.group(4) or "", m.group(1) == "-", first in _SHELLS))
+                quoted = m.group(2) is not None or m.group(3) is not None or bool(m.group(4))
+                pending.append((m.group(2) or m.group(3) or m.group(5) or "", m.group(1) == "-", first in _SHELLS, quoted))
                 i = m.end()
             elif text[i + 1 : i + 2] == "(":
                 i += 1  # <(cmd) or >(cmd): the `(` starts a command
@@ -361,6 +392,11 @@ _LOG_VALUES = ("--grep", "--author", "--committer", "--since", "--until", "--aft
 _GIT_GLOBAL_VALUES = {"-C", "--git-dir", "--work-tree", "--namespace", "--super-prefix"}
 
 
+def _scp_url(ref: str) -> bool:
+    """`user@host:path`, the scp-style remote URL. `@:main` and `HEAD@{0}:main` are refspecs: `@` alone means HEAD."""
+    return re.match(r"^[^@:/\s{}]+@[^@:/\s{}]+:", ref) is not None
+
+
 def _push(args: list[str]) -> str | None:
     longs, shorts, positional = scan(args, ("--push-option", "--repo", "--recurse-submodules", "--exec", "--receive-pack"), "o")
     hit = _has(longs, "--force", "--force-with-lease", "--force-if-includes")
@@ -381,7 +417,7 @@ def _push(args: list[str]) -> str | None:
             return f"`git push {ref}` is a force push (the leading +)"
         if ref.startswith(":"):
             return f"`git push {ref}` deletes a remote ref (an empty source)"
-        if ":" in ref and "://" not in ref and "@" not in ref:
+        if ":" in ref and "://" not in ref and not _scp_url(ref):
             dst = ref.rsplit(":", 1)[1]
             for lead in ("refs/heads/", "heads/"):
                 if dst.startswith(lead):
@@ -584,15 +620,25 @@ def judge(words: list[str], captured: bool = False, depth: int = 0) -> str | Non
         return judge_gh(args, captured)
     if name in _PREFIXES:
         j = 0
+        takes = _PREFIX_VALUES.get(name, ())
         while j < len(args) and (args[j].startswith("-") or _ASSIGN.match(args[j])):
-            j += 1
+            j += 2 if args[j] in takes else 1
+        if name == "timeout":
+            j += 1  # the duration
         return judge(args[j:], captured, depth + 1)
     if name in _SHELLS:
-        for j, a in enumerate(args):
+        j = 0
+        while j < len(args):
+            a = args[j]
+            if not a:
+                break
             if a.startswith("-") and not a.startswith("--") and "c" in a:
                 return judge_text(args[j + 1] if j + 1 < len(args) else "", captured, depth + 1)
-            if not a.startswith("-"):
+            if a[:1] in "-+" and not a.startswith(("--", "++")) and a[-1:] in "oO":
+                j += 1  # -o pipefail, -euo pipefail, -O extglob: the next word is the option's value
+            elif a[:1] not in "-+":
                 break
+            j += 1
         return None
     if name == "eval":
         return judge_text(" ".join(args), captured, depth + 1)
@@ -605,7 +651,10 @@ def judge(words: list[str], captured: bool = False, depth: int = 0) -> str | Non
         return None
     if name == "hc":
         if args[:1] and args[0] in ("run", "exec") and "--" in args:
-            return judge(args[args.index("--") + 1 :], captured, depth + 1)
+            inner = args[args.index("--") + 1 :]
+            if len(inner) == 1 and re.search(r"\s", inner[0]):
+                return judge_text(inner[0], captured, depth + 1)  # hc run -- 'git push -f ...'
+            return judge(inner, captured, depth + 1)
         return None
     if name == "gate-run":
         inner = args[1:]
@@ -647,7 +696,7 @@ MESSAGE = (
 def main() -> int:
     try:
         payload = json.load(sys.stdin)
-        if payload.get("tool_name", "Bash") != "Bash":
+        if payload.get("tool_name", "Bash") not in ("Bash", "Monitor"):
             return 0
         command = (payload.get("tool_input") or {}).get("command") or ""
         why = verdict(command) if isinstance(command, str) else None

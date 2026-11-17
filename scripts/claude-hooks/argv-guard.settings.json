@@ -2,11 +2,11 @@
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "Bash",
+        "matcher": "Bash|Monitor",
         "hooks": [
           {
             "type": "command",
-            "command": "python3 -I ~/.claude/hooks/argv-guard.py",
+            "command": "python3 -I ~/.claude/hooks/argv-guard.py || true",
             "timeout": 5
           }
         ]

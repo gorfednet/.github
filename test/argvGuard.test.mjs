@@ -3,7 +3,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { readFileSync, mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
@@ -145,6 +146,7 @@ test('git global options and a path to git do not hide the subcommand', () => {
 test('wrappers are read through', () => {
   blocked('hc run --bg --name n --cwd /a -- git push --forc origin x');
   blocked('hc run -- gh pr merge 5');
+  blocked("hc run --bg --name n -- 'git push --force origin x'");
   blocked("hc run --bg --name n -- bash -lc 'cd /a && git reset --hard origin/main'");
   blocked("gate-run repo 'git push origin HEAD:main'");
   blocked('gate-run repo git push origin :x --quiet');
@@ -155,6 +157,17 @@ test('wrappers are read through', () => {
   blocked('env GIT_TRACE=1 git push --mirror');
   blocked('command git push -f origin x');
   blocked('ssh -t host "cd /a && git push --force origin x"');
+  blocked("bash -o pipefail -c 'git push -f origin x'");
+  blocked("bash -euo pipefail -c 'git push -f origin x'");
+  blocked('env -u FOO git push -f origin x');
+  blocked('env -C /a -u FOO git reset --hard');
+  blocked('nice -n 5 git push --force origin x');
+  blocked('sudo -u me git reset --hard');
+  blocked('timeout 600 git push -f origin x');
+  blocked('timeout -s KILL 600 git clean -fd');
+  allowed("bash -o pipefail -c 'git status'");
+  allowed('env -u FOO git status');
+  allowed('timeout 600 git push -u origin build/x');
   allowed('hc run --bg --name n -- gh run watch 1 --interval 60 --exit-status');
   allowed('hc run --bg --name gate --cwd /a builder "git push --force is refused: write the test"'); // a roster template's task text
   allowed("gate-run repo 'npm run verify'");
@@ -177,6 +190,12 @@ test('every command in a chain, a subshell or a substitution is read', () => {
   blocked('FOO=1 BAR=2 git push --prune origin');
   blocked('git push origin x 2>&1 | tail -1; git push -q -f origin y 2>/dev/null');
   blocked('bash <<EOF\ngit push --force origin x\nEOF');
+  // an unquoted heredoc runs its substitutions; a quoted one or an escaped one doesn't
+  blocked('cat <<EOF\n$(git reset --hard origin/main)\nEOF');
+  blocked('git commit -m "$(cat <<EOF\nfix `git push -f origin x`\nEOF\n)"');
+  allowed('cat <<EOF\n\\$(git reset --hard) and \\`git push -f`\nEOF');
+  allowed("cat <<'EOF'\n$(git reset --hard)\nEOF");
+  allowed('cat <<EOF\n$(git status) $((1+2))\nEOF');
   allowed("git add -A && git commit -m 'a; b | c -f --force' && git push -u origin build/x");
   allowed('git push origin build/x 2>&1 | tail -2 && git log --oneline -1 > /tmp/out.txt');
 });
@@ -191,6 +210,9 @@ test('push to main: every refspec that writes another ref onto it, deletes it or
   blocked('git push origin +main', /force push/);
   blocked('git push origin +HEAD:main');
   blocked('git push -u origin build/x feat:main');
+  blocked('git push origin @:main'); // `@` alone is HEAD
+  blocked('git push origin HEAD@{0}:main');
+  blocked('git push origin x@{u}:refs/heads/main');
   blocked('git push origin "$(git branch --show-current):main"');
   blocked('git push origin -- HEAD:main');
   allowed('git push origin main'); // the release steps push main itself
@@ -201,6 +223,7 @@ test('push to main: every refspec that writes another ref onto it, deletes it or
   allowed('git push origin v1.2.3');
   allowed('git push https://github.com/o/r.git build/x');
   allowed('git push git@github.com:o/main.git build/x');
+  allowed('git push origin @:build/x');
 });
 
 test('gh: the denied subcommands and flags, wherever the flags sit', () => {
@@ -309,6 +332,8 @@ test('it never fails closed: what it cannot read passes to the settings list and
     assert.equal(r.status, 0, input);
     assert.equal(r.stdout, '', input);
   }
+  // Monitor runs shell commands too
+  assert.ok(run('git push --forc origin x', { tool_name: 'Monitor' }));
   // another tool's input is not a shell command
   assert.equal(run('git push --force origin x', { tool_name: 'Write' }), null);
   // deep nesting stops reading, it does not raise
@@ -319,4 +344,20 @@ test('the refusal says what to do instead', () => {
   const reason = blocked('git push --forc origin x');
   assert.match(reason, /ship-bot is the only merger/);
   assert.match(reason, /Write tool/);
+});
+
+test('fail open: a missing hook file lets the command through, and the registered command is the fail-open one', () => {
+  const snippet = JSON.parse(readFileSync(join(here, '..', 'scripts', 'claude-hooks', 'argv-guard.settings.json'), 'utf8'));
+  const [entry] = snippet.hooks.PreToolUse;
+  assert.equal(entry.matcher, 'Bash|Monitor');
+  const command = entry.hooks[0].command;
+  assert.equal(command, 'python3 -I ~/.claude/hooks/argv-guard.py || true');
+  const home = mkdtempSync(join(tmpdir(), 'argv-guard-home-')); // no ~/.claude/hooks here
+  const r = spawnSync('sh', ['-c', command.replace('~', home)], { input: '{"tool_name":"Bash","tool_input":{"command":"git status"}}', encoding: 'utf8', timeout: HOOK_TIMEOUT_MS });
+  assert.equal(r.status, 0, `a missing hook file must not block the call: ${r.stderr}`);
+  assert.equal(r.stdout, '');
+  // a deny is exit 0 plus JSON on stdout, so `|| true` never hides one
+  const deny = spawnSync('sh', ['-c', `python3 -I ${HOOK} || true`], { input: '{"tool_name":"Bash","tool_input":{"command":"git push -f o x"}}', encoding: 'utf8', timeout: HOOK_TIMEOUT_MS });
+  assert.equal(deny.status, 0);
+  assert.equal(JSON.parse(deny.stdout).hookSpecificOutput.permissionDecision, 'deny');
 });
