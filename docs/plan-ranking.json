@@ -11,6 +11,7 @@
       { "slug": "gorfednet/heuristics.4thcltr.com", "dir": "heuristics.4thcltr.com" },
       { "slug": "gorfednet/assess", "dir": "assess" },
       { "slug": "gorfednet/papers.4thcltr.com", "dir": "papers.4thcltr.com" },
+      { "slug": "gorfednet/ai-use-levels", "dir": "ai-use-levels" },
       { "slug": "gorfednet/intake", "dir": "intake" },
       { "slug": "gorfednet/propose", "dir": "propose" },
       { "slug": "gorfednet/broadcast", "dir": "broadcast" }
