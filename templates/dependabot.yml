@@ -1,4 +1,6 @@
 # Monthly dependency PRs — copy to each repo as `.github/dependabot.yml`.
+# The `*-security` groups (applies-to: security-updates) make one advisory wave one PR per
+# ecosystem. Drop the npm entry for a repository with no package.json.
 
 version: 2
 updates:
@@ -16,6 +18,10 @@ updates:
           - minor
           - patch
           - major
+      npm-security:
+        applies-to: security-updates
+        patterns:
+          - '*'
 
   - package-ecosystem: github-actions
     directory: /
@@ -31,3 +37,7 @@ updates:
           - minor
           - patch
           - major
+      actions-security:
+        applies-to: security-updates
+        patterns:
+          - '*'
