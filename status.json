@@ -1,42 +1,45 @@
 {
-  "generatedAt": "2026-11-16T22:32:04.158Z",
-  "renderedAt": "2026-11-16T22:32:04.158Z",
+  "generatedAt": "2026-11-17T00:46:11.639Z",
+  "renderedAt": "2026-11-17T00:46:11.639Z",
   "repos": [
     {
       "slug": "gorfednet/bindercurve.com",
       "redacted": true,
-      "mainRed": true,
-      "openPrCount": 7,
+      "mainRed": false,
+      "openPrCount": 11,
       "lapsedBacklogCount": 16,
       "noPrCount": 79,
-      "idlePrCount": 1,
+      "idlePrCount": 2,
       "duplicatePrCount": 0,
-      "dependabotRedCount": 0,
-      "kitVersion": "0.61.0"
+      "dependabotRedCount": 3,
+      "kitVersion": "0.61.0",
+      "alertsOverdue": null
     },
     {
       "slug": "gorfednet/4thcltr.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 20,
+      "openPrCount": 22,
       "lapsedBacklogCount": 20,
       "noPrCount": 13,
       "idlePrCount": 19,
       "duplicatePrCount": 0,
-      "dependabotRedCount": 0,
-      "kitVersion": "0.61.0"
+      "dependabotRedCount": 1,
+      "kitVersion": "0.61.0",
+      "alertsOverdue": null
     },
     {
       "slug": "gorfednet/gorfed.net",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 0,
+      "openPrCount": 5,
       "lapsedBacklogCount": 3,
       "noPrCount": 4,
       "idlePrCount": 0,
       "duplicatePrCount": 0,
-      "dependabotRedCount": 0,
-      "kitVersion": "0.61.0"
+      "dependabotRedCount": 4,
+      "kitVersion": "0.61.0",
+      "alertsOverdue": null
     },
     {
       "slug": "gorfednet/subrythm.com",
@@ -48,7 +51,8 @@
       "idlePrCount": 1,
       "duplicatePrCount": 0,
       "dependabotRedCount": 0,
-      "kitVersion": "0.61.0"
+      "kitVersion": "0.61.0",
+      "alertsOverdue": null
     },
     {
       "slug": "gorfednet/anal0g.org",
@@ -60,7 +64,8 @@
       "idlePrCount": 2,
       "duplicatePrCount": 1,
       "dependabotRedCount": 0,
-      "kitVersion": "0.61.0"
+      "kitVersion": "0.61.0",
+      "alertsOverdue": null
     },
     {
       "slug": "gorfednet/blackpixelrecords.com",
@@ -72,43 +77,47 @@
       "idlePrCount": 2,
       "duplicatePrCount": 0,
       "dependabotRedCount": 0,
-      "kitVersion": "0.61.0"
+      "kitVersion": "0.61.0",
+      "alertsOverdue": null
     },
     {
       "slug": "gorfednet/denseware.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 0,
+      "openPrCount": 1,
       "lapsedBacklogCount": 0,
       "noPrCount": 2,
       "idlePrCount": 0,
       "duplicatePrCount": 0,
       "dependabotRedCount": 0,
-      "kitVersion": "0.61.0"
+      "kitVersion": "0.61.0",
+      "alertsOverdue": null
     },
     {
       "slug": "gorfednet/gorfmusic.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 2,
+      "openPrCount": 3,
       "lapsedBacklogCount": 2,
       "noPrCount": 2,
       "idlePrCount": 2,
       "duplicatePrCount": 0,
       "dependabotRedCount": 0,
-      "kitVersion": "0.61.0"
+      "kitVersion": "0.61.0",
+      "alertsOverdue": null
     },
     {
       "slug": "gorfednet/promptboi.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 2,
+      "openPrCount": 3,
       "lapsedBacklogCount": 2,
       "noPrCount": 20,
       "idlePrCount": 2,
       "duplicatePrCount": 0,
       "dependabotRedCount": 0,
-      "kitVersion": "0.61.0"
+      "kitVersion": "0.61.0",
+      "alertsOverdue": null
     },
     {
       "slug": "gorfednet/rowanmcarthur.com",
@@ -120,25 +129,63 @@
       "idlePrCount": 0,
       "duplicatePrCount": 0,
       "dependabotRedCount": 0,
-      "kitVersion": "0.61.0"
+      "kitVersion": "0.61.0",
+      "alertsOverdue": null
     },
     {
       "slug": "gorfednet/ssatcy.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 7,
+      "openPrCount": 8,
       "lapsedBacklogCount": 2,
       "noPrCount": 1,
       "idlePrCount": 6,
       "duplicatePrCount": 3,
       "dependabotRedCount": 0,
-      "kitVersion": "0.61.0"
+      "kitVersion": "0.61.0",
+      "alertsOverdue": null
     },
     {
       "slug": "gorfednet/.github",
       "defaultBranch": "main",
       "mainRed": false,
       "openPrs": [
+        {
+          "number": 235,
+          "title": "fleet-status: unreadable repos count as not read, say why alerts are unread",
+          "ageDays": 0,
+          "labels": [],
+          "draft": false,
+          "review": "clean",
+          "headSha": "b1fe0eebfe80a66aad1ad8c0ffbe8952c21b4a33",
+          "ci": "green",
+          "next": "merge",
+          "author": "gorfednet"
+        },
+        {
+          "number": 234,
+          "title": "Add dependabot.yml, group security updates in the template",
+          "ageDays": 0,
+          "labels": [],
+          "draft": false,
+          "review": "findings",
+          "headSha": "23e9f7246fe9ecd9eda8c409142ffa57b1249663",
+          "ci": "green",
+          "next": "merge",
+          "author": "gorfednet"
+        },
+        {
+          "number": 232,
+          "title": "3.20k: user-owned Node on the Mac, patched without sudo",
+          "ageDays": 0,
+          "labels": [],
+          "draft": false,
+          "review": "clean",
+          "headSha": "0ab7e29a0a4cbd36bead69cfe624929a7186e97a",
+          "ci": "green",
+          "next": "merge, together with gorfednet/ops#134 (ship-bot: `scripts/` and `resolve-node.sh` are control-plane and hand-install paths, so it needs `review-status.mjs` clean on this head; merging reaches no agent by itself)",
+          "author": "gorfednet"
+        },
         {
           "number": 230,
           "title": "Quota fixes for local fleet-status (row 1.17): refuse unaffordable runs, light runs from a cache, sampler on launchd",
@@ -166,13 +213,13 @@
         {
           "number": 216,
           "title": "Public push guard: check a push or gh text before it reaches a public repository (plan row 1.30 f)",
-          "ageDays": 0,
+          "ageDays": 1,
           "labels": [],
           "draft": false,
-          "review": "clean",
-          "headSha": "d71c0094dd11fa8461dde66dfcea6739533ff8be",
-          "ci": "pending",
-          "next": "merge: Desk labels it once the review of the new head is clean. Known gap, deferred: a push spelled in pieces inside inline code. Backlog entry `public-push-guard-spelled-in-pieces`.",
+          "review": "findings",
+          "headSha": "e8f9d87d1418fb85482ebab51d021ef4a8d3f5d0",
+          "ci": "green",
+          "next": "merge: Desk labels it once the review of the new head is clean. The last two pushes (b58ddba, 0d813b4) merged main and changed test files and a backlog entry only (the guard's wording moved, GITHUB_ACTIONS leaked into the tests in CI, and the backlog check refuses an in-review entry about its own pull request); the hook code is the same as at 34a0935, which reviewed clean. kit and guard were green on 0d813b4. Round 18 (2dabd1c) added the release new and repo new aliases after a sweep of gh's ALIASES lines. Desk's Fable read (e8f9d87) fixed the false refusals: only a statement that can push or publish is held to the one-plain-command rule, --repo or GH_REPO replaces the working directory as the target, and $( closes past a ) in a here-document. Round 19 (15e0733) reads gh boolean flags in their =true/=false form once, before any rule matches. A later finding that is only another spelling of an already-refused action is deferred to a backlog row, not fixed here. Known gap, deferred: a push spelled in pieces inside inline code. Backlog entry `public-push-guard-spelled-in-pieces`.",
           "author": "gorfednet"
         },
         {
@@ -530,19 +577,21 @@
       "lastDeploy": null,
       "incidents7d": 2,
       "dependabotRed": 0,
-      "kitVersion": "0.63.0"
+      "kitVersion": "0.63.0",
+      "alertsOverdue": null
     },
     {
       "slug": "gorfednet/MoonMan",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 3,
+      "openPrCount": 4,
       "lapsedBacklogCount": 2,
       "noPrCount": 46,
       "idlePrCount": 0,
       "duplicatePrCount": 0,
       "dependabotRedCount": 0,
-      "kitVersion": null
+      "kitVersion": null,
+      "alertsOverdue": null
     },
     {
       "slug": "gorfednet/ACID2REAPER",
@@ -575,43 +624,47 @@
       "lastDeploy": null,
       "incidents7d": 0,
       "dependabotRed": 0,
-      "kitVersion": null
+      "kitVersion": null,
+      "alertsOverdue": null
     },
     {
       "slug": "gorfednet/career-portfolio",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 4,
+      "openPrCount": 6,
       "lapsedBacklogCount": 1,
       "noPrCount": 1,
       "idlePrCount": 2,
       "duplicatePrCount": 0,
-      "dependabotRedCount": 0,
-      "kitVersion": "0.61.0"
+      "dependabotRedCount": 1,
+      "kitVersion": "0.61.0",
+      "alertsOverdue": null
     },
     {
       "slug": "gorfednet/heuristics.4thcltr.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 11,
-      "lapsedBacklogCount": 15,
+      "openPrCount": 12,
+      "lapsedBacklogCount": 16,
       "noPrCount": 6,
       "idlePrCount": 8,
       "duplicatePrCount": 4,
       "dependabotRedCount": 0,
-      "kitVersion": "0.61.0"
+      "kitVersion": "0.61.0",
+      "alertsOverdue": null
     },
     {
       "slug": "gorfednet/papers.4thcltr.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 1,
+      "openPrCount": 2,
       "lapsedBacklogCount": 0,
       "noPrCount": 4,
       "idlePrCount": 1,
       "duplicatePrCount": 0,
       "dependabotRedCount": 0,
-      "kitVersion": "0.61.0"
+      "kitVersion": "0.61.0",
+      "alertsOverdue": null
     },
     {
       "slug": "gorfednet/scratch-bootstrap-5-6",
@@ -623,31 +676,34 @@
       "idlePrCount": 0,
       "duplicatePrCount": 0,
       "dependabotRedCount": 0,
-      "kitVersion": "0.62.0"
+      "kitVersion": "0.62.0",
+      "alertsOverdue": null
     },
     {
       "slug": "gorfednet/assess",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 3,
+      "openPrCount": 5,
       "lapsedBacklogCount": 6,
       "noPrCount": 3,
       "idlePrCount": 2,
       "duplicatePrCount": 0,
-      "dependabotRedCount": 0,
-      "kitVersion": "0.61.0"
+      "dependabotRedCount": 1,
+      "kitVersion": "0.61.0",
+      "alertsOverdue": null
     },
     {
       "slug": "gorfednet/ops",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 13,
+      "openPrCount": 14,
       "lapsedBacklogCount": 0,
       "noPrCount": 1,
       "idlePrCount": 1,
       "duplicatePrCount": 0,
       "dependabotRedCount": 0,
-      "kitVersion": "0.61.0"
+      "kitVersion": "0.61.0",
+      "alertsOverdue": null
     }
   ],
   "dormant": [
@@ -702,11 +758,11 @@
     }
   },
   "inventory": {
-    "measuredAt": "2026-11-16T22:32:04.158Z",
+    "measuredAt": "2026-11-17T00:46:11.639Z",
     "counts": {
       "pr": {
-        "total": 97,
-        "orphans": 46
+        "total": 126,
+        "orphans": 63
       },
       "session": null,
       "worktree": null,
@@ -717,6 +773,22 @@
       }
     },
     "orphans": [
+      {
+        "kind": "pr",
+        "repo": "gorfednet/.github",
+        "ref": "#235",
+        "label": "fleet-status: unreadable repos count as not read, say why alerts are unread",
+        "private": false,
+        "lapsed": false
+      },
+      {
+        "kind": "pr",
+        "repo": "gorfednet/.github",
+        "ref": "#234",
+        "label": "Add dependabot.yml, group security updates in the template",
+        "private": false,
+        "lapsed": false
+      },
       {
         "kind": "pr",
         "repo": "gorfednet/ai-use-levels",
@@ -766,13 +838,13 @@
         "lapsed": true
       }
     ],
-    "hiddenPrivate": 42,
+    "hiddenPrivate": 57,
     "privateReposNotItemised": 18,
     "planRead": true
   },
   "dotgithub": {
-    "measuredAt": "2026-11-16T22:32:35.879Z",
-    "branches": 35,
+    "measuredAt": "2026-11-17T00:46:53.049Z",
+    "branches": 38,
     "merged": 2,
     "exposedFiles": 61,
     "rulesNotChecked": [],
