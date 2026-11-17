@@ -45,7 +45,7 @@ export const COPIES = [
   // 13 November 2026). The hooks are code with tests, so they stayed here in scripts/claude-hooks/. Every mirrored file is
   // compared; files only in ~/.claude (no mirror yet) are not measured here.
   { tool: '~/.claude mirror', mirrorDir: '.claude', clone: 'ops', sourceDir: 'control/claude-home', include: ['rules', 'agents', 'skills', 'CLAUDE.md', 'settings.json'] },
-  // The fleet-janitor scheduled task is a copy of janitor/SKILL.md (plan row 3.20f). The live file matches no committed version of janitor/SKILL.md, so the reader's copy branch reports it ahead ("matches no committed version"), not behind.
+  // The fleet-janitor scheduled task is a copy of janitor/SKILL.md (plan row 3.20f). A live file that matches no committed version is reported ahead ("matches no committed version"), not behind.
   { tool: 'fleet-janitor task', copy: '.claude/scheduled-tasks/fleet-janitor/SKILL.md', clone: 'gorfednet.github', source: 'janitor/SKILL.md' },
   { tool: '~/.claude hooks', mirrorDir: '.claude/hooks', clone: 'gorfednet.github', sourceDir: 'scripts/claude-hooks', include: ['gh-poll-guard.py', 'always-pr-remind.py'] },
 ]

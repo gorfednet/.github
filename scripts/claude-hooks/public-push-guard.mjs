@@ -19,8 +19,8 @@
  *   itself, and a branch cut before an exemption landed still sees it.
  * - Outgoing commits are those reachable from the sent shas and not from anything the remote
  *   holds now (`git ls-remote`, not tracking refs, which go stale). scripts/privacy-guard.mjs
- *   reads them (messages, every commit's diff, the net diff). Ref names and annotated tag
- *   messages are read here.
+ *   reads them (messages, every commit's diff, the net diff). Ref names, and an annotated tag's
+ *   own name and message, are read here.
  * - It fails closed once the remote is public: any error ends in a refusal (exit 1).
  *
  * Installed by install-git-hooks.sh into ~/.claude/git-hooks, with privacy-guard.mjs beside it.
@@ -54,7 +54,8 @@ const must = (args, what) => {
 }
 
 // The host is matched whole, straight after the scheme and any userinfo (or at the start of an scp-style URL).
-const GITHUB_URL = /^[a-z][a-z0-9+.-]*:\/\/(?:[^@/\s]+@)?(?:ssh\.)?github\.com(?::\d+)?\/+([^/\s]+)\/([^/\s]+?)(?:\.git)?\/?$/i
+// Userinfo holds no `?`, `#` or backslash: an https URL with a `#` before the at sign has its host before the `#`, and the rest is a fragment.
+const GITHUB_URL = /^[a-z][a-z0-9+.-]*:\/\/(?:[^@/?#\\\s]+@)?(?:ssh\.)?github\.com(?::\d+)?\/+([^/\s]+)\/([^/\s]+?)(?:\.git)?\/?$/i
 const GITHUB_SCP = /^(?:[^@/:\s]+@)?(?:ssh\.)?github\.com:\/*([^/\s]+)\/([^/\s]+?)(?:\.git)?\/?$/i
 
 /**
@@ -201,14 +202,20 @@ async function scan({ sets, mod, ctx, names, where, updates, allowText, scratch 
   const allowFile = join(scratch, 'allow.txt')
   writeFileSync(allowFile, allowText)
   const fail = (what) => refuse(`${what} would publish private detail to ${where}, which is public (or not known to be private).\nNothing was sent.`)
+  // A name is read both ways: as path parts (`notes/<name>.md`) and as words, which also split on `_` and other joins (`notes/<name>_v2`).
+  // A hyphen joins a longer name in both readings, as in the CI guard, so `<name>-v2` is not the name.
+  const nameHolds = (text) => ['path', 'word'].some((mode) => mod.scanText(text, ctx, NAME_RULES, mode).length > 0)
   for (const u of updates) {
     // Branch and tag names are public too, and so is an annotated tag's message.
-    if (mod.scanText(u.rref, ctx, NAME_RULES, 'path').length > 0) fail('a branch or tag name in this push')
+    if (nameHolds(u.rref)) fail('a branch or tag name in this push')
     // Read the objects being sent, not the local ref: a push of `<sha>:refs/tags/v1` has no local ref name. A tag can point at a tag.
     let obj = u.sha
     for (let depth = 0; depth < 20 && git(['cat-file', '-t', obj]).stdout.trim() === 'tag'; depth += 1) {
       const [header, ...message] = must(['cat-file', 'tag', obj], 'read a tag').split('\n\n')
-      if (mod.scanText(message.join('\n\n'), ctx, [...NAME_RULES, 'owner-quote'], 'word').length > 0) fail(`the message of tag ${u.rref.replace(/^refs\/tags\//, '').slice(0, 40)}`)
+      const shown = u.rref.replace(/^refs\/tags\//, '').slice(0, 40)
+      // The tag object carries its own name, which a push under another ref name (`<tag>:refs/tags/v1`) still publishes.
+      if (nameHolds(/^tag (.*)$/m.exec(header)?.[1] ?? '')) fail(`the name inside tag ${shown}`)
+      if (mod.scanText(message.join('\n\n'), ctx, [...NAME_RULES, 'owner-quote'], 'word').length > 0) fail(`the message of tag ${shown}`)
       obj = /^object (\S+)/.exec(header)?.[1] ?? refuse('a tag object has no target, so it can\'t be read.')
     }
   }
