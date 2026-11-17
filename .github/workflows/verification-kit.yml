@@ -93,6 +93,14 @@ jobs:
         if: ${{ !cancelled() }}
         run: bash scripts/test-site-deploy-build-stamp.sh
 
+      # The Cloudflare Pages backend: which backend a fleet.json row selects, the
+      # upload guard (what nginx denies and Pages cannot), the token file, the
+      # analytics origin and the wrangler pin. wrangler is a stand-in; nothing is
+      # contacted. The suite asserts its own executed-check floor.
+      - name: Site deploy Cloudflare Pages backend
+        if: ${{ !cancelled() }}
+        run: bash scripts/test-site-deploy-pages.sh
+
       # The gate wrappers on PATH: GITHUB_REPOSITORY and GH_TOKEN derived from the
       # clone, and --repo passed to every gate so none of them can read another repo.
       - name: Gate wrappers derive the repository and pass --repo

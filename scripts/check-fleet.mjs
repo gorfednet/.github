@@ -58,6 +58,43 @@ const TIER_EVIDENCE = {
 // scripts/tier-two-wiring.mjs — kept there so the matchers can be tested
 // directly rather than only through a run that needs an organisation token.
 
+/** What is wrong with a row's "pages" key. The rules are pages_row's in scripts/site-deploy.sh. */
+function pagesRowProblems(row) {
+  if (row === null || typeof row !== 'object' || Array.isArray(row)) return ['must be an object']
+  const out = []
+  const unknown = Object.keys(row).filter((key) => !['project', 'targets', 'live', 'allow'].includes(key))
+  if (unknown.length > 0) out.push(`unknown key ${unknown.sort().join(', ')}`)
+  if (typeof row.project !== 'string' || !/^[a-z0-9][a-z0-9-]{0,56}[a-z0-9]$/.test(row.project)) {
+    out.push('project must match ^[a-z0-9][a-z0-9-]{0,56}[a-z0-9]$')
+  }
+  if (!Array.isArray(row.targets) || row.targets.length === 0) {
+    out.push('targets must be a non-empty list')
+  } else if (row.targets.some((target) => target !== 'nginx' && target !== 'pages')) {
+    out.push('targets may only name "nginx" and "pages"')
+  } else if (new Set(row.targets).size !== row.targets.length) {
+    out.push('targets names a backend twice')
+  } else if (row.live !== undefined && (!['nginx', 'pages'].includes(row.live) || !row.targets.includes(row.live))) {
+    // Which target serves the domain now. Absent: nginx while it is a target.
+    out.push('live must be "nginx" or "pages", and one of the targets')
+  }
+  if (row.allow !== undefined) {
+    if (!Array.isArray(row.allow)) {
+      out.push('allow must be a list of globs')
+    } else {
+      for (const glob of row.allow) {
+        if (typeof glob !== 'string' || !/^(\/[A-Za-z0-9._*-]+)+$/.test(glob) || glob.split('/').includes('..')) {
+          out.push(`allow glob ${JSON.stringify(glob)} must be /segment/segment of letters, digits and ._-*`)
+        } else if (/[*]/.test(glob.split('/').pop()) || glob.split('/').pop().startsWith('.')) {
+          // An entry lifts the upload guard for what it matches, so it must name a file:
+          // "/*" or "/x/*.json" would lift it for everything there, and no dotfile is ever liftable.
+          out.push(`allow glob ${JSON.stringify(glob)} must end in a full file name: no * in it, and never a dotfile`)
+        }
+      }
+    }
+  }
+  return out
+}
+
 function parseArgs(argv) {
   return {
     offline: argv.includes('--offline'),
@@ -254,6 +291,12 @@ for (const project of projects) {
     problems.push(`${where}: buildStamp must be true or absent, got ${JSON.stringify(project.buildStamp)}`)
   } else if (project.buildStamp === true && project.archetype === 'static-no-npm') {
     problems.push(`${where}: buildStamp is true but a static-no-npm site has no build to write dist/.build-sha`)
+  }
+  // scripts/site-deploy.sh reads this key to choose where a deploy goes (the nginx host,
+  // Cloudflare Pages or both) and refuses a malformed one at deploy time. The same
+  // rules here, so a bad row fails its pull request and never a release.
+  if (project.pages !== undefined) {
+    for (const problem of pagesRowProblems(project.pages)) problems.push(`${where}: pages: ${problem}`)
   }
   if (!Number.isInteger(project.tier) || project.tier < 0 || project.tier > 3) {
     problems.push(`${where}: tier must be 0-3, got ${project.tier}`)

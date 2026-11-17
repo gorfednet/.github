@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync, writeFileSync, readFileSync, existsSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, writeFileSync, readFileSync, existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, it } from 'node:test'
@@ -7,9 +7,40 @@ import { Redactor, parseEnvValues, tail } from '../lib/redact.mjs'
 import { guardCommands, run } from '../lib/runner.mjs'
 import { StateStore, acquireLock } from '../lib/state.mjs'
 import { evaluateChecks, parseReviewStatus } from '../lib/gates.mjs'
-import { pathMatches, selectSteps } from '../lib/deploy.mjs'
+import { pagesSecrets, pathMatches, selectSteps } from '../lib/deploy.mjs'
 
 const tmp = () => mkdtempSync(join(tmpdir(), 'ship-bot-support-'))
+
+describe('the Cloudflare Pages secrets', () => {
+  it('returns the token without whitespace and every config value, the host with and without its scheme', () => {
+    const dir = tmp()
+    writeFileSync(join(dir, 'cloudflare-pages.token'), '  pages-token-value-1234\n')
+    writeFileSync(join(dir, 'cloudflare-pages.env'), '# config\nCLOUDFLARE_ACCOUNT_ID=0123456789abcdef0123456789abcdef\nPLAUSIBLE_ORIGIN="https://stats.example.test"\n')
+    const values = pagesSecrets(dir)
+    assert.deepEqual(values, [
+      'pages-token-value-1234',
+      '0123456789abcdef0123456789abcdef',
+      'https://stats.example.test',
+      'stats.example.test',
+    ])
+    const out = new Redactor(values).apply('token pages-token-value-1234 to stats.example.test for 0123456789abcdef0123456789abcdef')
+    assert.equal(out, 'token [REDACTED] to [REDACTED] for [REDACTED]')
+  })
+
+  it('returns nothing when the files are absent, and survives one it cannot read', () => {
+    const dir = tmp()
+    assert.deepEqual(pagesSecrets(dir), [])
+    mkdirSync(join(dir, 'cloudflare-pages.token'))
+    writeFileSync(join(dir, 'cloudflare-pages.env'), 'PLAUSIBLE_ORIGIN=https://stats.example.test\n')
+    assert.deepEqual(pagesSecrets(dir), ['https://stats.example.test', 'stats.example.test'])
+  })
+
+  it('reads the paths it is given in place of the state directory', () => {
+    const dir = tmp()
+    writeFileSync(join(dir, 'other.token'), 'another-token-value')
+    assert.deepEqual(pagesSecrets(join(dir, 'nowhere'), undefined, { token: join(dir, 'other.token') }), ['another-token-value'])
+  })
+})
 
 describe('redaction', () => {
   it('masks known secrets, token shapes, auth headers, secret assignments and LAN addresses', () => {

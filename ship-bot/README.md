@@ -534,6 +534,48 @@ pass logs an error and falls back to `gh auth token`.
 Passwords, keys and tokens are blanked out (`[REDACTED]`) in all of these and
 in every comment.
 
+### Sites on Cloudflare Pages
+
+A site whose `fleet.json` row has a `pages` key deploys to Cloudflare Pages, to
+dapyllil, or to both. The deploy engine (`scripts/site-deploy.sh`) does the
+upload; its header has the details. The bot's part is two files in
+`~/.ship-bot/`:
+
+- `cloudflare-pages.token`: the Cloudflare API token, alone, mode 600. Only the
+  engine uses it, and only to start wrangler. Nobody needs to open it, and no
+  session should. The bot reads it at the start of each pass for one purpose:
+  to blank it out wherever a deploy might print it.
+- `cloudflare-pages.env`: `PLAUSIBLE_ORIGIN=https://<analytics host>` and,
+  if wanted, `CLOUDFLARE_ACCOUNT_ID=<id>`. Not secret, but not public either,
+  so the bot blanks these values out too.
+
+The bot looks for both in its state directory, which is `~/.ship-bot` unless
+the config moves `stateDir`. The engine always reads `~/.ship-bot`, so leave
+`stateDir` where it is on a machine that deploys to Pages.
+
+With both targets, dapyllil goes first. If Pages then fails, the deploy fails
+and its last lines say that dapyllil has the new release and Pages doesn't.
+Pages has no automatic rollback: the message says how to roll back in the
+Cloudflare dashboard.
+
+The row's `live` says which of the two serves the domain now: `nginx` until the
+domain points at Pages, `pages` from the change that moves it. Only the one that
+serves the domain is checked there. While `live` is `pages`, the upload to
+dapyllil is switched but not checked, and the deploy says so.
+
+`rollback` (a site's `make rollback`, and the bot's default rollback) switches
+dapyllil only. Once `live` is `pages`, that changes nothing a visitor sees. To
+take visitors back then:
+
+- roll back on Pages: in the Cloudflare dashboard, the previous production
+  deployment, or
+- point the domain's CNAME back at the tunnel, after rolling dapyllil to the
+  release you want if it isn't on it already. Then set `live` back to `nginx`.
+
+The engine installs its pinned wrangler under `~/.cache/gorfednet-site-deploy/`,
+outside every clone, the first time a Pages deploy runs. That one install needs
+`npm` on the bot's `PATH`.
+
 ## After a failed deploy
 
 The bot comments on the pull request, notifies you, and stops merging in that
