@@ -1,9 +1,28 @@
 # Monthly dependency PRs for this repository's workflows, everything grouped into one.
 # Security updates are grouped too (applies-to: security-updates), so one advisory
-# wave is one PR. This repository has no package.json, so there is no npm entry.
+# wave is one PR. The only npm project is the ship-bot mutation harness.
 
 version: 2
 updates:
+  - package-ecosystem: npm
+    directory: /ship-bot/mutation
+    schedule:
+      interval: monthly
+      day: monday
+    open-pull-requests-limit: 1
+    groups:
+      npm:
+        patterns:
+          - '*'
+        update-types:
+          - minor
+          - patch
+          - major
+      npm-security:
+        applies-to: security-updates
+        patterns:
+          - '*'
+
   - package-ecosystem: github-actions
     directories: ["/", "/.github/actions/*"]
     schedule:
