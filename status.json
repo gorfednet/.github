@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-11-17T02:32:13.702Z",
-  "renderedAt": "2026-11-17T02:32:13.702Z",
+  "generatedAt": "2026-11-17T04:31:28.635Z",
+  "renderedAt": "2026-11-17T04:31:28.635Z",
   "repos": [
     {
       "slug": "gorfednet/bindercurve.com",
@@ -151,41 +151,42 @@
       "mainRed": false,
       "openPrs": [
         {
-          "number": 235,
-          "title": "fleet-status: unreadable repos count as not read, say why alerts are unread",
-          "ageDays": 0,
-          "labels": [],
-          "draft": false,
-          "review": "clean",
-          "headSha": "ecda70bc39c162b85d4312e7f002080f8eaf129a",
-          "ci": "green",
-          "next": "merge",
-          "author": "gorfednet"
-        },
-        {
-          "number": 234,
-          "title": "Add dependabot.yml, group security updates in the template",
-          "ageDays": 0,
-          "labels": [],
-          "draft": false,
-          "review": "findings",
-          "headSha": "23e9f7246fe9ecd9eda8c409142ffa57b1249663",
-          "ci": "green",
-          "next": "merge",
-          "author": "gorfednet"
-        },
-        {
-          "number": 232,
-          "title": "3.20k: user-owned Node on the Mac, patched without sudo",
+          "number": 242,
+          "title": "Bump the actions group across 3 directories with 6 updates",
           "ageDays": 0,
           "labels": [
-            "ready-to-merge"
+            "dependencies",
+            "github_actions"
           ],
           "draft": false,
+          "review": "not-run",
+          "headSha": "96c497a306b54f2e4ac0e3c4314afbb0e427370d",
+          "ci": "red",
+          "next": null,
+          "author": "app/dependabot"
+        },
+        {
+          "number": 241,
+          "title": "1.30g: public-push guard as a git pre-push hook",
+          "ageDays": 0,
+          "labels": [],
+          "draft": true,
+          "review": "not-run",
+          "headSha": "cffa3ed5e3bb09751470b65b3ba48926b90db5dd",
+          "ci": "pending",
+          "next": "Fable read of the diff (Desk), including the last commit, which no review round covered. Label if clean. Hold until then: it can refuse a push.",
+          "author": "gorfednet"
+        },
+        {
+          "number": 239,
+          "title": "3.20f: ops install paths are control plane; fleet-janitor task joins COPIES",
+          "ageDays": 0,
+          "labels": [],
+          "draft": false,
           "review": "clean",
-          "headSha": "f63b862141df4bce442e83d968f3b69fc4b690bf",
-          "ci": "green",
-          "next": "merge, together with gorfednet/ops#134 (ship-bot: `scripts/` and `resolve-node.sh` are control-plane and hand-install paths, so it needs `review-status.mjs` clean on this head; merging reaches no agent by itself)",
+          "headSha": "3ce51fca8ac0611439ac346aaf94e167c33c655d",
+          "ci": "red",
+          "next": "Merge on a clean review (control-plane path).",
           "author": "gorfednet"
         },
         {
@@ -216,12 +217,14 @@
           "number": 216,
           "title": "Public push guard: check a push or gh text before it reaches a public repository (plan row 1.30 f)",
           "ageDays": 1,
-          "labels": [],
+          "labels": [
+            "hold"
+          ],
           "draft": false,
           "review": "findings",
-          "headSha": "0133e94de546d98fad16505bfc8e731c2150d6bf",
-          "ci": "pending",
-          "next": "merge: Desk labels it once the review of the new head is clean. The last two pushes (b58ddba, 0d813b4) merged main and changed test files and a backlog entry only (the guard's wording moved, GITHUB_ACTIONS leaked into the tests in CI, and the backlog check refuses an in-review entry about its own pull request); the hook code is the same as at 34a0935, which reviewed clean. kit and guard were green on 0d813b4. Round 18 (2dabd1c) added the release new and repo new aliases after a sweep of gh's ALIASES lines. Desk's Fable read (e8f9d87) fixed the false refusals: only a statement that can push or publish is held to the one-plain-command rule, --repo or GH_REPO replaces the working directory as the target, and $( closes past a ) in a here-document. Round 19 (15e0733) reads gh boolean flags in their =true/=false form once, before any rule matches. A later finding that is only another spelling of an already-refused action is deferred to a backlog row, not fixed here. Known gap, deferred: a push spelled in pieces inside inline code. Backlog entry `public-push-guard-spelled-in-pieces`.",
+          "headSha": "5d127ba95e6530a7b14d20c0a2556574bf14e9fc",
+          "ci": "green",
+          "next": "Superseded by plan row 1.30g (a real git pre-push hook). Kept open, on hold, for its tests and its `checkPush` patterns, which 1.30g reuses. Desk closes this pull request once 1.30g merges. Do not merge, review or push here.",
           "author": "gorfednet"
         },
         {
@@ -234,21 +237,6 @@
           "headSha": "87092f1b035d206c0d5f24d8830c5cc7b5815734",
           "ci": "green",
           "next": "Fable review, then Desk asks the owner (path, org name, Team plan, cutover sitting)",
-          "author": "gorfednet"
-        },
-        {
-          "number": 117,
-          "title": "Handoff: fleet close-out plan and 4-week assessment (11 Nov)",
-          "ageDays": 5,
-          "labels": [
-            "ready-to-merge",
-            "needs-fix"
-          ],
-          "draft": false,
-          "review": "findings",
-          "headSha": "e2a05068bbc3f8c3004f0292e10f12dd5f936a82",
-          "ci": "green",
-          "next": "Merge when checks are green (docs-only).",
           "author": "gorfednet"
         },
         {
@@ -578,9 +566,10 @@
       "duplicatePrs": [],
       "lastDeploy": null,
       "incidents7d": 2,
-      "dependabotRed": 0,
+      "dependabotRed": 1,
       "kitVersion": "0.63.0",
-      "alertsOverdue": null
+      "alertsOverdue": null,
+      "alertsUnread": "no-token-access"
     },
     {
       "slug": "gorfednet/MoonMan",
@@ -627,7 +616,8 @@
       "incidents7d": 0,
       "dependabotRed": 0,
       "kitVersion": null,
-      "alertsOverdue": null
+      "alertsOverdue": null,
+      "alertsUnread": "no-token-access"
     },
     {
       "slug": "gorfednet/career-portfolio",
@@ -698,12 +688,12 @@
       "slug": "gorfednet/ops",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 14,
+      "openPrCount": 16,
       "lapsedBacklogCount": 0,
       "noPrCount": 1,
       "idlePrCount": 1,
       "duplicatePrCount": 0,
-      "dependabotRedCount": 0,
+      "dependabotRedCount": 1,
       "kitVersion": "0.61.0",
       "alertsOverdue": null
     }
@@ -713,7 +703,7 @@
     "gorfednet/wychwood"
   ],
   "branchesReadAt": "2026-11-17T02:32:13.702Z",
-  "carried": false,
+  "carried": true,
   "localCounts": {
     "rows": {
       "dirtyClones": {
@@ -760,11 +750,11 @@
     }
   },
   "inventory": {
-    "measuredAt": "2026-11-17T02:32:13.702Z",
+    "measuredAt": "2026-11-17T04:31:28.635Z",
     "counts": {
       "pr": {
-        "total": 124,
-        "orphans": 62
+        "total": 126,
+        "orphans": 59
       },
       "session": null,
       "worktree": null,
@@ -777,33 +767,9 @@
     "orphans": [
       {
         "kind": "pr",
-        "repo": "gorfednet/.github",
-        "ref": "#235",
-        "label": "fleet-status: unreadable repos count as not read, say why alerts are unread",
-        "private": false,
-        "lapsed": false
-      },
-      {
-        "kind": "pr",
-        "repo": "gorfednet/.github",
-        "ref": "#234",
-        "label": "Add dependabot.yml, group security updates in the template",
-        "private": false,
-        "lapsed": false
-      },
-      {
-        "kind": "pr",
         "repo": "gorfednet/ai-use-levels",
         "ref": "#23",
         "label": "Spec 1.2.1: a site footer mark, and ordering a long Tool list",
-        "private": false,
-        "lapsed": false
-      },
-      {
-        "kind": "pr",
-        "repo": "gorfednet/.github",
-        "ref": "#117",
-        "label": "Handoff: fleet close-out plan and 4-week assessment (11 Nov)",
         "private": false,
         "lapsed": false
       },
@@ -845,8 +811,8 @@
     "planRead": true
   },
   "dotgithub": {
-    "measuredAt": "2026-11-17T02:33:04.283Z",
-    "branches": 37,
+    "measuredAt": "2026-11-17T04:32:10.001Z",
+    "branches": 38,
     "merged": 2,
     "exposedFiles": 61,
     "rulesNotChecked": [],
