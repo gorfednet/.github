@@ -1,0 +1,22 @@
+name: browser-compat roll-up
+description: Sum a sharded browser's executed tests across its shard reports and hold it to the floor
+inputs:
+  matrix:
+    description: The plan job's matrix JSON
+    required: true
+  report-dir:
+    description: Directory holding the downloaded per-shard reports
+    required: true
+  min-tests:
+    description: Executed-test floor for the browser as a whole
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Sum shard reports
+      shell: bash
+      env:
+        MATRIX: ${{ inputs.matrix }}
+        REPORT_DIR: ${{ inputs.report-dir }}
+        MIN_TESTS: ${{ inputs.min-tests }}
+      run: node "${{ github.action_path }}/cli.mjs"
