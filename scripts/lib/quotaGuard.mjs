@@ -52,7 +52,9 @@ export function chooseMode({ cacheFile, full = false, now = Date.now(), read = (
   try {
     const status = read(cacheFile)
     const readAt = Date.parse(status.branchesReadAt)
-    return { light: Number.isFinite(readAt) && now - readAt < CARRY_HOURS * 3600 * 1000, status }
+    const age = now - readAt
+    // Whole means a repos list to carry from, and a read time that is neither in the future nor too old.
+    return { light: Array.isArray(status.repos) && Number.isFinite(readAt) && age >= -60_000 && age < CARRY_HOURS * 3600 * 1000, status }
   } catch {
     return { light: false, status: null }
   }

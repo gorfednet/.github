@@ -29,7 +29,7 @@ describe('quota guard arithmetic', () => {
   })
 
   it('carries a cache only while its branch read is under the carry age', () => {
-    const read = (hours) => () => ({ branchesReadAt: ago(hours) })
+    const read = (hours) => () => ({ branchesReadAt: ago(hours), repos: [] })
     const f = 'cache.json'
     // existsSync is real, so write a file for the cases that need one
     const dir = mkdtempSync(join(tmpdir(), 'qg-'))
@@ -39,6 +39,8 @@ describe('quota guard arithmetic', () => {
       assert.equal(chooseMode({ cacheFile: file, now: NOW, read: read(CARRY_HOURS - 0.1) }).light, true)
       assert.equal(chooseMode({ cacheFile: file, now: NOW, read: read(CARRY_HOURS + 0.1) }).light, false)
       assert.equal(chooseMode({ cacheFile: file, now: NOW, read: () => ({}) }).light, false) // no branchesReadAt
+      assert.equal(chooseMode({ cacheFile: file, now: NOW, read: () => ({ branchesReadAt: ago(1) }) }).light, false) // no repos list to carry
+      assert.equal(chooseMode({ cacheFile: file, now: NOW, read: () => ({ branchesReadAt: ago(-5), repos: [] }) }).light, false) // dated in the future
       assert.equal(chooseMode({ cacheFile: file, now: NOW, read: () => { throw new Error('bad json') } }).light, false)
       assert.equal(chooseMode({ cacheFile: file, full: true, now: NOW, read: read(1) }).light, false)
       assert.equal(chooseMode({ cacheFile: join(dir, 'absent.json'), now: NOW, read: read(1) }).light, false)
@@ -194,6 +196,21 @@ describe('fleet-status-local.sh quota guard', () => {
       const r = f.run()
       assert.equal(r.status, 4, 'exit 1 is the wrapper\'s "some repositories unreadable", which the janitor retries')
       assert.match(r.stderr, /could not read the GitHub quota/)
+      assert.equal(f.ran(), false)
+    } finally {
+      f.cleanup()
+    }
+  })
+})
+
+describe('the wrapper does not guess', () => {
+  it('stops with exit 4 when the guard exits 0 without naming a mode, and reads nothing', () => {
+    const f = fixture({ remaining: 4000 })
+    try {
+      writeFileSync(join(f.repo, 'scripts', 'lib', 'quotaGuard.mjs'), "console.error('silent guard')\n")
+      const r = f.run()
+      assert.equal(r.status, 4, r.stderr)
+      assert.match(r.stderr, /named no mode/)
       assert.equal(f.ran(), false)
     } finally {
       f.cleanup()
