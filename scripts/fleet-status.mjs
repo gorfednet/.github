@@ -8,7 +8,8 @@
  * `## Next` line), branches ahead of the default branch with no pull request, lapsed
  * backlog dates, the last successful deploy run, incident lines dated in the last
  * 7 days, dependabot pull requests that are red or unreviewed, and whether the
- * default branch is red. `--local` adds the Mac rows (`local`: dirty clones,
+ * default branch is red, and the count of open Dependabot alerts past their target
+ * (`alertsOverdue`, null when the alerts could not be read). `--local` adds the Mac rows (`local`: dirty clones,
  * clones behind origin, worktrees over 7 days, sessions idle over 24 h; `--no-fetch` skips the git fetch).
  * Hosted rows per repository: `idlePrs` (untouched over 3 days) and `duplicatePrs` (two open PRs naming one backlog id). `--from` reuses an earlier status.json for the
  * repositories (so --local can be added to a fresh copy without asking GitHub again).
@@ -117,6 +118,40 @@ export function dependabotRed(prs) {
   return prs.filter((p) => isDependabot(p.author) && (p.ci === 'red' || p.review !== 'clean')).length
 }
 
+const HOUR = 3_600_000
+
+/**
+ * Open Dependabot alerts past their target: critical or high older than 72 hours, every other severity
+ * older than 7 days (docs/maintenance.md in ops, plan row 3.20l). `alerts` is the REST list for
+ * `state=open`. Counts only: nothing about a package, an advisory or a path leaves this function.
+ * An alert whose age or severity can't be read counts as overdue, because it can't be shown to be within target.
+ */
+export function overdueAlerts(alerts, now = new Date()) {
+  let count = 0
+  for (const alert of Array.isArray(alerts) ? alerts : []) {
+    const severity = String(alert?.security_advisory?.severity ?? alert?.security_vulnerability?.severity ?? '').toLowerCase()
+    const limit = severity === 'critical' || severity === 'high' ? 72 * HOUR : 7 * 24 * HOUR
+    const age = now - Date.parse(alert?.created_at)
+    if (!Number.isFinite(age) || age > limit) count += 1
+  }
+  return count
+}
+
+/**
+ * The overdue count for one repository, or null (UNKNOWN) when the alerts can't be read: a token without
+ * the Dependabot alerts permission answers 403 or 404, and alerts switched off answer 403. Never 0 then,
+ * because 0 would read as "nothing is overdue". The reason is logged, not published.
+ */
+export function alertsOverdue(slug, now, json, log = console.error) {
+  try {
+    const pages = json(['api', '--paginate', '--slurp', `repos/${slug}/dependabot/alerts?state=open&per_page=100`])
+    return overdueAlerts(pages.flat(), now)
+  } catch (cause) {
+    log(`::warning::fleet-status could not read Dependabot alerts for ${slug}: ${String(cause.stderr || cause.message).trim().split('\n')[0]}`)
+    return null
+  }
+}
+
 /** The repositories to cover: fleet.json plus any ship-bot repo it lacks. */
 /** Where a repository keeps the kit manifest: fleet.json's evidencePaths where it moves the file (this repository holds the canonical copy under templates/). */
 export const KIT_MANIFEST = 'verification-kit/MANIFEST.json'
@@ -204,6 +239,8 @@ export function redactRepo(full) {
     dependabotRedCount: full.dependabotRed,
     // A version number is not private; the fleet-wide check needs it from every row.
     kitVersion: full.kitVersion,
+    // A count (or null for UNKNOWN) names no package or advisory.
+    alertsOverdue: full.alertsOverdue,
   }
 }
 
@@ -224,7 +261,7 @@ export async function collectRepo(slug, now = new Date(), { includePrivate = fal
   }
   try {
     if (repo instanceof Error) throw repo
-    return await gatherRepo(slug, now, { includePrivate, json, repo, kitPath, carryBranches })
+    return await gatherRepo(slug, now, { includePrivate, json, repo, kitPath, carryBranches, log })
   } catch (cause) {
     const detail = String(cause.stderr || cause.message).trim().split('\n')[0]
     const reason = isPrivate && !includePrivate ? 'unreadable' : detail
@@ -241,7 +278,7 @@ function ciForCommit(slug, sha, json) {
   return ciState(runs, status)
 }
 
-export async function gatherRepo(slug, now = new Date(), { includePrivate = false, json = ghJson, repo = null, kitPath = KIT_MANIFEST, carryBranches } = {}) {
+export async function gatherRepo(slug, now = new Date(), { includePrivate = false, json = ghJson, repo = null, kitPath = KIT_MANIFEST, carryBranches, log = console.error } = {}) {
   const today = now.toISOString().slice(0, 10)
   if (repo === null) repo = json(['api', `repos/${slug}`])
   const base = repo.default_branch
@@ -312,6 +349,7 @@ export async function gatherRepo(slug, now = new Date(), { includePrivate = fals
     incidents7d: incidents,
     dependabotRed: dependabotRed(openPrs),
     kitVersion,
+    alertsOverdue: alertsOverdue(slug, now, json, log),
   }
   return isPrivate && !includePrivate ? redactRepo(full) : full
 }
