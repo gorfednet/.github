@@ -88,4 +88,13 @@ describe('control-plane PRs need a clean review for Medium and High threads (row
     assert.equal(merges((await run(['control/claude-home/rules/x.md'], 'High: x', { slug: 'gorfednet/ops' })).gh).length, 0)
     assert.equal(merges((await run(['control/handoff/x.md'], 'High: x', { slug: 'gorfednet/ops' })).gh).length, 1)
   })
+  it('in gorfednet/ops everything an install puts on a host is such a path (plan row 3.20f); the plan, docs and tests are ordinary', async () => {
+    for (const file of ['hosts/installs.json', 'infra/expiry-watch/install.sh', 'hosts/house-common/update-ops.sh', 'hosts/pool-host/ops-drift/ops-drift.service', 'scripts/expiry-watch.mjs', 'scripts/ops-drift.mjs', 'scripts/lib/opsInstalls.mjs', 'credentials.json', 'rotations.json', 'crawler-policy.json', 'cta-sites.json', 'inventory-patches/x.json', 'control/ship-bot-patches/x.json']) {
+      assert.equal(merges((await run([file], 'High: x', { slug: 'gorfednet/ops' })).gh).length, 0, file)
+    }
+    for (const file of ['docs/maintenance.md', 'test/opsInstalls.test.mjs', 'README.md', 'docs/credentials.json', 'hostsx/a.md']) {
+      assert.equal(merges((await run([file], 'High: x', { slug: 'gorfednet/ops' })).gh).length, 1, file)
+    }
+    assert.equal(merges((await run(['hosts/installs.json'], 'High: x')).gh).length, 1, 'only in ops')
+  })
 })
