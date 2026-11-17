@@ -407,6 +407,10 @@ describe('slugOf: only a GitHub host gives a slug', () => {
       at('git#gitlab.com:github.com/owner/repo.git'),
       at('ssh://git#gitlab.com/github.com:owner/repo.git'),
       'https://example.test/?u=github.com/owner/repo',
+      // Plan row 1.30h: userinfo holds no fragment, query or backslash, so the host is the one before them.
+      'https://evil.example#' + '@github.com/o/r',
+      'https://evil.example?' + '@github.com/o/r',
+      'https://evil.example\\' + '@github.com/o/r',
     ]) assert.equal(slugOf(u), null, u)
   })
 
@@ -539,6 +543,72 @@ describe('pre-push: bare private names in ref names and tag messages', () => {
     assert.equal(push(r, 'origin', 'v1').status, 0, 'tag')
     assert.equal(push(r, 'origin', `notes/${OPEN}`).status, 0, 'public branch name')
     assert.equal(push(r, 'origin', `notes/${BARE}`).status, 0, 'a said name in a branch name')
+  })
+
+  // Plan row 1.30h: the near misses on each side of the line.
+  it('refuses a private name joined by an underscore, which path parts alone do not split on, and one with an extension words alone miss', () => {
+    const r = repo(world())
+    for (const branch of [`notes/${BARE}_v2`, `OLD_${BARE}`, `notes/${BARE}.bak`]) {
+      ok(r.dir, r.w, 'branch', branch)
+      const x = push(r, 'origin', branch)
+      assert.ok(refused(x) && /branch or tag name/.test(x.stderr), `${branch}: ${x.stderr}`)
+      assert.ok(!remoteHas(r, `refs/heads/${branch}`), branch)
+    }
+  })
+
+  it('passes a hyphen-joined private name: a longer name is another name, as in the CI guard', () => {
+    const r = repo(world())
+    for (const branch of [`notes/${BARE}-v2`, `fix-${BARE}`]) {
+      ok(r.dir, r.w, 'branch', branch)
+      const x = push(r, 'origin', branch)
+      assert.equal(x.status, 0, `${branch}: ${x.stderr}`)
+    }
+  })
+
+  it('refuses a branch named after a private repository plus a slash, on a remote that has never named it, and passes it once the default branch says it', () => {
+    const fresh = repo(world())
+    ok(fresh.dir, fresh.w, 'branch', `${BARE}/fix`)
+    const x = push(fresh, 'origin', `${BARE}/fix`)
+    assert.ok(refused(x) && /branch or tag name/.test(x.stderr), x.stderr)
+    const said = repo(world(), { baseFiles: { 'docs/a.md': `${BARE} is a site\n` } })
+    ok(said.dir, said.w, 'branch', `${BARE}/fix`)
+    assert.equal(push(said, 'origin', `${BARE}/fix`).status, 0)
+  })
+
+  it('refuses a said name in a tag message on a line that says private, and passes it on a line that does not', () => {
+    const r = repo(world(), { baseFiles: { 'docs/a.md': `${BARE} is a site\n` } })
+    ok(r.dir, r.w, 'tag', '-a', 'v1', '-m', `${BARE} work`)
+    ok(r.dir, r.w, 'tag', '-a', 'v2', '-m', `${BARE} is private now`)
+    assert.equal(push(r, 'origin', 'v1').status, 0, 'said, no private')
+    const x = push(r, 'origin', 'v2')
+    assert.ok(refused(x) && /message of tag v2/.test(x.stderr), x.stderr)
+  })
+
+  it("reads the tag object's own name, which a push under another ref name still publishes", () => {
+    const r = repo(world())
+    for (const name of [`notes/${BARE}`, `${BARE}_rc`]) {
+      ok(r.dir, r.w, 'tag', '-a', name, '-m', 'clean')
+      const x = push(r, 'origin', `refs/tags/${name}:refs/tags/v7`)
+      assert.ok(refused(x) && /name inside tag v7/.test(x.stderr), `${name}: ${x.stderr}`)
+      assert.ok(!remoteHas(r, 'refs/tags/v7'), name)
+    }
+    ok(r.dir, r.w, 'tag', '-a', `${BARE}_inner`, '-m', 'clean')
+    ok(r.dir, r.w, 'tag', '-a', 'outer', '-m', 'clean', `${BARE}_inner`)
+    const inner = push(r, 'origin', 'refs/tags/outer:refs/tags/v9')
+    assert.ok(refused(inner) && /name inside tag v9/.test(inner.stderr), `a named tag under a clean one: ${inner.stderr}`)
+    ok(r.dir, r.w, 'tag', '-a', `${BARE}-rc`, '-m', 'clean')
+    assert.equal(push(r, 'origin', `refs/tags/${BARE}-rc:refs/tags/v8`).status, 0, 'a hyphen-joined name in the header passes')
+  })
+})
+
+describe('pre-push: a tag chain is read to its end', () => {
+  it('refuses a chain of more than 20 tags rather than leave the rest unread, and passes one of 20', () => {
+    const r = repo(world())
+    ok(r.dir, r.w, 'tag', '-a', 't1', '-m', 'clean')
+    for (let i = 2; i <= 21; i += 1) ok(r.dir, r.w, 'tag', '-a', `t${i}`, '-m', 'clean', `t${i - 1}`)
+    assert.equal(push(r, 'origin', 'refs/tags/t20:refs/tags/t20').status, 0, '20 deep')
+    const x = push(r, 'origin', 'refs/tags/t21:refs/tags/t21')
+    assert.ok(refused(x) && /more than 20 tags/.test(x.stderr), x.stderr)
   })
 })
 
