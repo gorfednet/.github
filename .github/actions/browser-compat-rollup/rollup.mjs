@@ -46,17 +46,3 @@ export function rollup({ matrix, dir, min }) {
   }
   return { ok: errors.length === 0, lines, errors }
 }
-
-if (import.meta.url === `file://${process.argv[1]}`) {
-  let matrix
-  try {
-    matrix = JSON.parse(process.env.MATRIX ?? '')
-  } catch {
-    console.log('::error::browser-compat roll-up: the plan matrix is missing or not JSON')
-    process.exit(1)
-  }
-  const r = rollup({ matrix, dir: process.env.REPORT_DIR ?? '.', min: process.env.MIN_TESTS })
-  for (const l of r.lines) console.log(l)
-  for (const e of r.errors) console.log(`::error::${e}`)
-  process.exit(r.ok ? 0 : 1)
-}

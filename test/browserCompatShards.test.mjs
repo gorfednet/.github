@@ -5,7 +5,7 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -61,7 +61,7 @@ describe('plan: bad values fail closed', () => {
   }
   it('the script exits non-zero and writes no matrix on a bad value', () => {
     const out = join(mkdtempSync(join(tmpdir(), 'compat-plan-')), 'out')
-    const r = spawnSync('node', [join(ROOT, '.github/actions/browser-compat-plan/plan.mjs')], {
+    const r = spawnSync('node', [join(ROOT, '.github/actions/browser-compat-plan/cli.mjs')], {
       env: { ...process.env, WEBKIT_SHARDS: 'nope', GITHUB_OUTPUT: out },
       encoding: 'utf8',
     })
@@ -69,7 +69,7 @@ describe('plan: bad values fail closed', () => {
   })
   it('the script writes the matrix to GITHUB_OUTPUT', () => {
     const out = join(mkdtempSync(join(tmpdir(), 'compat-plan-')), 'out')
-    const r = spawnSync('node', [join(ROOT, '.github/actions/browser-compat-plan/plan.mjs')], {
+    const r = spawnSync('node', [join(ROOT, '.github/actions/browser-compat-plan/cli.mjs')], {
       env: { ...process.env, WEBKIT_SHARDS: '2', GITHUB_OUTPUT: out },
       encoding: 'utf8',
     })
@@ -125,7 +125,7 @@ describe('roll-up', () => {
   })
   it('the script exits 1 on a missing report and 0 on a good set', () => {
     const run = (dir, min) =>
-      spawnSync('node', [join(ROOT, '.github/actions/browser-compat-rollup/rollup.mjs')], {
+      spawnSync('node', [join(ROOT, '.github/actions/browser-compat-rollup/cli.mjs')], {
         env: { ...process.env, MATRIX: JSON.stringify(matrix), REPORT_DIR: dir, MIN_TESTS: min },
         encoding: 'utf8',
       }).status
@@ -169,5 +169,61 @@ describe('workflow wiring', () => {
   })
   it('webkit-shards defaults to "1"', () => {
     assert.match(WORKFLOW, /webkit-shards:\n(?:        .*\n)+?        type: string\n        default: "1"/)
+  })
+})
+
+describe('entry points run however they are invoked', () => {
+  // The `import.meta.url === file://${argv[1]}` idiom loads the module, runs nothing and exits 0
+  // under a symlinked path (scripts/lib/isMain.mjs). These entries must run unconditionally.
+  const linked = (action) => {
+    const dir = mkdtempSync(join(tmpdir(), 'compat-link-'))
+    symlinkSync(join(ROOT, '.github/actions', action), join(dir, 'via-link'))
+    return join(dir, 'via-link/cli.mjs')
+  }
+  it('plan fails on a bad value, and succeeds on a good one, through a symlinked path', () => {
+    const cli = linked('browser-compat-plan')
+    assert.notEqual(spawnSync('node', [cli], { env: { ...process.env, WEBKIT_SHARDS: 'nope' }, encoding: 'utf8' }).status, 0)
+    const ok = spawnSync('node', [cli], { env: { ...process.env, WEBKIT_SHARDS: '2', GITHUB_OUTPUT: '' }, encoding: 'utf8' })
+    assert.equal(ok.status, 0, ok.stderr)
+    assert.match(ok.stdout, /^matrix=\{.*webkit 2 of 2/m)
+  })
+  it('roll-up fails on a missing report through a symlinked path', () => {
+    const cli = linked('browser-compat-rollup')
+    const r = spawnSync('node', [cli], {
+      env: { ...process.env, MATRIX: JSON.stringify(buildPlan('2')), REPORT_DIR: dirWith({}), MIN_TESTS: '1' },
+      encoding: 'utf8',
+    })
+    assert.equal(r.status, 1)
+    assert.match(r.stdout, /missing or unreadable/)
+  })
+  it('no action file guards on import.meta.url === file://', () => {
+    for (const f of ['browser-compat-plan/cli.mjs', 'browser-compat-plan/plan.mjs', 'browser-compat-rollup/cli.mjs', 'browser-compat-rollup/rollup.mjs']) {
+      assert.doesNotMatch(readFileSync(join(ROOT, '.github/actions', f), 'utf8'), /import\.meta\.url\s*===/, f)
+    }
+  })
+})
+
+describe('workflow: node setup, reruns, floor', () => {
+  const jobBlock = (name) => {
+    const m = WORKFLOW.match(new RegExp(`^  ${name}:\\n([\\s\\S]*?)(?=^  [a-z-]+:\\n|(?![\\s\\S]))`, 'm'))
+    assert.ok(m)
+    return m[1]
+  }
+  it('plan and compat-success never use the npm-ci setup-node composite (no checkout there)', () => {
+    for (const job of ['plan', 'compat-success']) {
+      const b = jobBlock(job)
+      assert.doesNotMatch(b, /actions\/checkout/, `${job} has no checkout`)
+      assert.doesNotMatch(b, /\.github\/actions\/setup-node@/, `${job} must not run the composite that does npm ci`)
+      assert.match(b, /uses: actions\/setup-node@[0-9a-f]{40} # v/, `${job} uses the pinned plain setup-node`)
+      assert.doesNotMatch(b, /cache: npm/)
+    }
+  })
+  it('shard report artifacts survive a failed-jobs-only rerun: no attempt in the name, overwrite, plain pattern', () => {
+    assert.doesNotMatch(WORKFLOW, /compat-report-[^\n]*run_attempt/)
+    assert.match(jobBlock('compat'), /name: compat-report-\$\{\{ matrix\.report \}\}\n          overwrite: true/)
+    assert.match(jobBlock('compat-success'), /pattern: compat-report-\*\n/)
+  })
+  it('the per-job floor is min-tests for unsharded entries and 1 only for sharded ones', () => {
+    assert.match(jobBlock('compat'), /MIN_HERE: \$\{\{ matrix\.shards != '' && '1' \|\| inputs\.min-tests \}\}/)
   })
 })

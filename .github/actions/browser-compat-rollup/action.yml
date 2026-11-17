@@ -19,4 +19,4 @@ runs:
         MATRIX: ${{ inputs.matrix }}
         REPORT_DIR: ${{ inputs.report-dir }}
         MIN_TESTS: ${{ inputs.min-tests }}
-      run: node "${{ github.action_path }}/rollup.mjs"
+      run: node "${{ github.action_path }}/cli.mjs"

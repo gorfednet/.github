@@ -101,7 +101,8 @@ jobs:
     outputs:
       matrix: ${{ steps.plan.outputs.matrix }}
     steps:
-      - uses: gorfednet/.github/.github/actions/setup-node@main
+      # Plain setup-node: no checkout here, so no package-lock.json to cache on or `npm ci`.
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: ${{ inputs.node-version }}
       - id: plan
@@ -200,7 +201,8 @@ jobs:
         if: ${{ !cancelled() && matrix.shards != '' }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: compat-report-${{ matrix.report }}-${{ github.run_attempt }}
+          name: compat-report-${{ matrix.report }}
+          overwrite: true
           path: ${{ matrix.report }}
           if-no-files-found: error
           retention-days: 1
@@ -225,10 +227,10 @@ jobs:
         if: ${{ !cancelled() && inputs.webkit-shards != '1' && needs.plan.result == 'success' }}
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
         with:
-          pattern: compat-report-*-${{ github.run_attempt }}
+          pattern: compat-report-*
           merge-multiple: true
           path: shard-reports
-      - uses: gorfednet/.github/.github/actions/setup-node@main
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         if: ${{ !cancelled() && inputs.webkit-shards != '1' && needs.plan.result == 'success' }}
         with:
           node-version: ${{ inputs.node-version }}

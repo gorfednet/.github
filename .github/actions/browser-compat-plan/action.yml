@@ -17,4 +17,4 @@ runs:
       shell: bash
       env:
         WEBKIT_SHARDS: ${{ inputs.webkit-shards }}
-      run: node "${{ github.action_path }}/plan.mjs"
+      run: node "${{ github.action_path }}/cli.mjs"
