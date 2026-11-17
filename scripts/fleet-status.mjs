@@ -222,8 +222,31 @@ const callerFirst = (a, b) => Number(callerLike(b)) - Number(callerLike(a))
 /** A `uses:` target that is the shared gate itself: the verification-gate action or a pr-check reusable workflow. setup-node, claude-review and the like say nothing about the kit. */
 const gateBearing = (target) => target === '.github/actions/verification-gate' || /^\.github\/workflows\/pr-check-[^/]+\.ya?ml$/.test(target)
 
-/** A workflow line (not a comment) that runs a script from the repository's own vendored kit. */
-export const runsVendoredKit = (body) => body.split('\n').some((line) => !/^\s*#/.test(line) && /\bverification-kit\/bin\/[\w.-]+\.mjs/.test(line))
+const VENDORED_RUN = /^(?:(?:then|do|else)\s+)?node(?:\s+--?[\w-]+(?:=\S+)?)*\s+(?:\.\/)?verification-kit\/bin\/[\w.-]+\.mjs(?:\s|$)/
+
+/** The commands in a `run:` value (inline, or the indented lines of a block scalar), comments cut, split on && ; || and |. */
+function runCommands(body) {
+  const lines = body.split('\n')
+  const out = []
+  const split = (text) => text.replace(/\s#.*$/, '').split(/&&|\|\||;|\|/).map((c) => c.trim()).filter(Boolean)
+  for (let i = 0; i < lines.length; i++) {
+    const m = /^(\s*)(?:-\s+)?run:\s*(.*)$/.exec(lines[i])
+    if (!m || /^\s*#/.test(lines[i])) continue
+    const rest = m[2].trim()
+    if (/^[|>][+-]?\d*\s*(#.*)?$/.test(rest)) {
+      const keyIndent = lines[i].match(/^(\s*)(?:-\s+)?/)[0].length
+      for (let j = i + 1; j < lines.length; j++) {
+        const indent = lines[j].match(/^(\s*)/)[1].length
+        if (lines[j].trim() !== '' && indent < keyIndent + (/^\s*-\s/.test(lines[i]) ? 0 : 1)) break
+        if (lines[j].trim() !== '' && !/^\s*#/.test(lines[j])) out.push(...split(lines[j]))
+      }
+    } else if (rest !== '') out.push(...split(rest.replace(/^(["'])(.*)\1$/, '$2')))
+  }
+  return out
+}
+
+/** True when a `run:` value invokes `node` on a script in the repository's own vendored kit (verification-kit/bin/, exactly). */
+export const runsVendoredKit = (body) => runCommands(body).some((c) => VENDORED_RUN.test(c))
 
 /**
  * The ref a repository's workflows pin the shared gate to, read from the `uses: gorfednet/.github/...@ref`

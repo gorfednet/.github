@@ -241,6 +241,33 @@ describe('vendored and untiered repositories', () => {
   it('a workflow that runs verification-kit/bin from the repository is vendored, at any tier', () => {
     for (const tier of [0, 1, 3, undefined]) assert.deepEqual(readKitPin([wf('.github/workflows/ci.yml')], () => vendoredRun, { tier }), { vendored: true })
   })
+  it('real node invocations of the vendored kit are vendored, inline, multi-line and with flags', () => {
+    const yes = [
+      'steps:\n  - run: node verification-kit/bin/verify-all.mjs\n',
+      'steps:\n  - run: node ./verification-kit/bin/verify-all.mjs --strict\n',
+      'steps:\n  - run: node --no-warnings verification-kit/bin/x.mjs # why\n',
+      'steps:\n  - name: gate\n    run: |\n      npm ci\n      node verification-kit/bin/x.mjs\n',
+      'steps:\n  - run: cd . && node verification-kit/bin/x.mjs\n',
+      'steps:\n  - run: "node verification-kit/bin/x.mjs"\n',
+    ]
+    for (const text of yes) assert.deepEqual(readKitPin([wf('.github/workflows/ci.yml')], () => text, { tier: 3 }), { vendored: true }, text)
+  })
+  it('near misses are not vendored: echo, test, if [ -f ], paths, comments, prefixed paths, other interpreters', () => {
+    const no = [
+      'steps:\n  - run: echo node verification-kit/bin/x.mjs\n',
+      'steps:\n  - run: test -f verification-kit/bin/x.mjs\n',
+      'steps:\n  - run: if [ -f verification-kit/bin/x.mjs ]; then echo ok; fi\n',
+      'on:\n  push:\n    paths:\n      - verification-kit/bin/x.mjs\n',
+      'steps:\n  - run: npm test # node verification-kit/bin/x.mjs\n',
+      'steps:\n  - run: node docs/verification-kit/bin/x.mjs\n',
+      'steps:\n  - run: node templates/verification-kit/bin/x.mjs\n',
+      'steps:\n  - run: node ../verification-kit/bin/x.mjs\n',
+      'steps:\n  - run: cat verification-kit/bin/x.mjs\n',
+      'steps:\n  - name: node verification-kit/bin/x.mjs\n    run: npm test\n',
+      'steps:\n  - run: |\n      echo "node verification-kit/bin/x.mjs"\n',
+    ]
+    for (const text of no) assert.match(readKitPin([wf('.github/workflows/ci.yml')], () => text, { tier: 3 }).error, /no active workflow calls/, text)
+  })
   it('a commented-out vendored run, or a gate caller, is not vendored', () => {
     assert.match(readKitPin([wf('.github/workflows/ci.yml')], () => '# run: node verification-kit/bin/x.mjs\n', { tier: 3 }).error, /no active workflow calls/)
     assert.deepEqual(readKitPin([wf('.github/workflows/ci.yml')], () => `${vendoredRun}${gate(SHA)}`, { tier: 3 }), { ref: SHA })
@@ -285,5 +312,37 @@ describe('vendored and untiered repositories', () => {
     const u = await collectRepo('o/site', now, { json: mk(review, null), log: () => {} })
     assert.deepEqual(u.kitPin, { untiered: true })
     assert.deepEqual(kitFailures([u], '0.62.0'), [])
+  })
+})
+
+describe('vendored rows through the published path, and the summary count', () => {
+  it('a private repository running its own kit stays {vendored, version} when redacted, never an error row', async () => {
+    const now = new Date('2026-11-17T12:00:00Z')
+    const file = (text) => ({ encoding: 'base64', content: Buffer.from(text).toString('base64') })
+    const json = (args) => {
+      const path = args[0] === 'pr' ? 'pr list' : args[args.length - 1]
+      if (path === 'repos/o/hidden') return { private: true, visibility: 'private', default_branch: 'main' }
+      if (path === 'pr list') return []
+      if (path.includes('/branches')) return [[]]
+      if (path.endsWith('/workflows?per_page=100')) return { workflows: [{ id: 1, name: 'x', path: '.github/workflows/x.yml', state: 'active' }] }
+      if (path.endsWith('/contents/.github/workflows/x.yml')) return file('steps:\n  - run: node verification-kit/bin/verify-all.mjs\n')
+      if (path.endsWith('/contents/verification-kit/MANIFEST.json')) return file(JSON.stringify({ version: '0.61.0' }))
+      if (path.includes('/contents/')) throw Object.assign(new Error('gh: Not Found (HTTP 404)'), { stderr: 'gh: Not Found (HTTP 404)' })
+      if (path.endsWith('/commits/main')) return { sha: 'abc' }
+      if (path.includes('/actions/runs?')) return [{ workflow_runs: [] }]
+      if (path.endsWith('/status')) return { state: 'success', statuses: [] }
+      if (path.includes('/dependabot/alerts?')) return [[]]
+      throw new Error(`unexpected call ${args.join(' ')}`)
+    }
+    const row = await collectRepo('o/hidden', now, { json, log: () => {}, tier: 3 })
+    assert.equal(row.redacted, true)
+    assert.deepEqual(row.kitPin, { vendored: true, version: '0.61.0' })
+    assert.deepEqual(redactPin({ vendored: true, version: '0.61.0' }), { vendored: true, version: '0.61.0' })
+    assert.deepEqual(kitFailures([row], '0.65.0').map((r) => r.gap), ['far-behind'])
+  })
+  it('vendored rows are not counted among the repos that pin the gate at main', () => {
+    const repos = [{ slug: 'o/a', kitPin: { ref: 'main' } }, { slug: 'o/v', kitPin: { vendored: true, version: '0.65.0' } }]
+    assert.match(kitSummary(repos, '0.65.0'), /all 1 repos pin the gate at main \(0\.65\.0\), 1 run their own kit copy/)
+    assert.match(kitSummary([repos[0], { slug: 'o/v', kitPin: { vendored: true, version: '0.61.0' } }], '0.65.0'), /o\/v vendored kit 0\.61\.0 \(far-behind\)/)
   })
 })

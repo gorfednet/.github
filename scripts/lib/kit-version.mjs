@@ -84,11 +84,12 @@ export function kitSummary(repos, canonical) {
   const none = ok.filter((r) => pinGap(r, canonical) === 'none')
   // Untiered repositories (not in the public fleet.json) are counted, never named: the status branch is public.
   const untiered = ok.filter((r) => pinGap(r, canonical) === 'untiered').length
-  const pinned = ok.filter((r) => !['none', 'untiered'].includes(pinGap(r, canonical)))
-  const off = pinned.filter((r) => pinGap(r, canonical) !== 'current')
+  const vendored = ok.filter((r) => r.kitPin?.vendored === true)
+  const pinned = ok.filter((r) => !['none', 'untiered'].includes(pinGap(r, canonical)) && !vendored.includes(r))
+  const off = [...pinned, ...vendored].filter((r) => pinGap(r, canonical) !== 'current')
   const parts = [
     off.length === 0
-      ? `Kit: all ${pinned.length} repos pin the gate at main (${canonical})`
+      ? `Kit: all ${pinned.length} repos pin the gate at main (${canonical})${vendored.length ? `, ${vendored.length} run their own kit copy` : ''}`
       : `Kit: canonical ${canonical}; gate pin not current: ${off.map((r) => `${r.slug.replace(/^gorfednet\//, '')} ${pinLabel(r)} (${pinGap(r, canonical)})`).join(', ')}`,
   ]
   if (untiered) parts.push(`${untiered} untiered repo${untiered === 1 ? '' : 's'} not checked`)
