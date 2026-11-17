@@ -143,8 +143,12 @@ export function privateInterpreters(home, launchAgents) {
       out.push({ agent, program, real: program, missing: true }) // a dangling program: the agent can't start
       continue
     }
-    const rel = relative(homeReal, real)
-    if (!rel.startsWith('..') && !rel.startsWith(sep) && /^\.[^/]+\//.test(rel.split(sep).join('/'))) out.push({ agent, program, real })
+    const rel = relative(homeReal, real).split(sep).join('/')
+    // The installs scripts/node-update.sh makes (plan row 3.20k) are ours, but only when the agent names the stable
+    // link ~/.local/share/node/<major>/bin/node and it resolves into a v<version> directory there. The shell's
+    // ~/.local/bin/node resolves into the same folder and is still another consumer's Node.
+    if (isStableNodeLink(home, program) && /^\.local\/share\/node\/v\d+\.\d+\.\d+\/bin\/node$/.test(rel)) continue
+    if (!rel.startsWith('..') && !rel.startsWith('/') && /^\.[^/]+\//.test(rel)) out.push({ agent, program, real })
   }
   return out
 }
@@ -168,6 +172,20 @@ function nodeVersion(program) {
   }
 }
 
+/** `vMAJOR.MINOR.PATCH` as [major, minor, patch], or null when it isn't one. */
+const nodeParts = (v) => {
+  const m = /^v(\d+)\.(\d+)\.(\d+)$/.exec(v ?? '')
+  return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null
+}
+/** The user-owned stable link scripts/node-update.sh moves (plan row 3.20k). Only it may move within a major. */
+const isStableNodeLink = (home, program) => {
+  const homes = [home]
+  try {
+    homes.push(realpathSync(home))
+  } catch {}
+  return homes.some((h) => program.startsWith(`${h}${sep}`) && /^\.local\/share\/node\/\d{2}\/bin\/node$/.test(program.slice(h.length + 1).split(sep).join('/')))
+}
+
 /**
  * Installed agents whose Node reports a version other than the recorded one; recorded is null when there is no record.
  * `now` is null when the program exists but its --version fails or times out: that agent is unread, and still gets a row.
@@ -188,7 +206,13 @@ export function nodeVersionDrift(home, launchAgents) {
     const recorded = existsSync(file) ? readFileSync(file, 'utf8').trim() : null
     const now = nodeVersion(program)
     if (now === null && !existsSync(program)) continue // a missing program is already reported by privateInterpreters
-    if (now === null || recorded !== now) out.push({ agent, program, recorded, now })
+    // A newer patch or minor inside the recorded major is not drift, but only on the stable user-owned link, which
+    // scripts/node-update.sh swaps without sudo (plan row 3.20k). Any other program, a different major, a downgrade,
+    // an unreadable version or no record still is: exact comparison stays for everything else.
+    const a = nodeParts(recorded)
+    const b = nodeParts(now)
+    const sameLine = isStableNodeLink(home, program) && a !== null && b !== null && a[0] === b[0] && (b[1] > a[1] || (b[1] === a[1] && b[2] >= a[2]))
+    if (now === null || (recorded !== now && !sameLine)) out.push({ agent, program, recorded, now })
   }
   return out
 }

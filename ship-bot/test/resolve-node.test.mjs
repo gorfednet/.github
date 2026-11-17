@@ -3,7 +3,7 @@
 // that tool would stop the only merger.
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs'
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { describe, it } from 'node:test'
@@ -81,6 +81,76 @@ describe('resolve_node', () => {
     fake(old, '20')
     const r = resolve(home, { RESOLVE_NODE_CANDIDATES: old })
     assert.notEqual(r.status, 0)
+  })
+
+  it('takes the user-owned ~/.local/share/node/24 install first, and prints the stable link, not the versioned directory (plan row 3.20k)', () => {
+    const home = mac()
+    const keg = join(home, '.local', 'share', 'node', 'v24.22.3', 'bin', 'node')
+    fake(keg, '24')
+    symlinkSync(join(home, '.local', 'share', 'node', 'v24.22.3'), join(home, '.local', 'share', 'node', '24'))
+    const stable = join(home, '.local', 'share', 'node', '24', 'bin', 'node')
+    const old = join(home, 'usr', 'local', 'bin', 'node')
+    fake(old, '24')
+    const r = resolve(home, { RESOLVE_NODE_CANDIDATES: `${stable} ${old}` })
+    assert.equal(r.status, 0, r.stderr)
+    assert.equal(r.stdout.trim(), stable)
+    // The default list starts with that same path under $HOME.
+    const d = resolve(home, {})
+    assert.equal(d.stdout.trim(), stable, d.stderr)
+  })
+
+  it('refuses the shell\'s ~/.local/bin/node link into the user-owned folder, a 24 link into another tool, a .. path and a dangling 24 link', () => {
+    const home = mac()
+    // The Mac's real layout: ~/.local/bin/node -> ~/.local/share/node/v22.x, first on PATH, no 24 install yet.
+    fake(join(home, '.local', 'share', 'node', 'v22.23.1', 'bin', 'node'), '22')
+    rmSync(join(home, '.local', 'bin', 'node'))
+    symlinkSync(join(home, '.local', 'share', 'node', 'v22.23.1', 'bin', 'node'), join(home, '.local', 'bin', 'node'))
+    const viaPath = resolve(home, { RESOLVE_NODE_CANDIDATES: join(home, 'no-such-node') })
+    assert.notEqual(viaPath.status, 0, 'PATH node must not become the agents\' Node')
+    assert.equal(viaPath.stdout, '')
+    assert.match(viaPath.stderr, /another tool's private folder/)
+    // A 24 link that points into another tool, a near-miss folder name, and a .. path.
+    const nodeishBin = join(home, '.local', 'share', 'nodeish', 'bin')
+    fake(join(nodeishBin, 'node'), '24')
+    symlinkSync(join(home, '.local', 'share', 'nodeish'), join(home, '.local', 'share', 'node', '24'))
+    const link = join(home, '.local', 'share', 'node', '24', 'bin', 'node')
+    assert.notEqual(resolve(home, { RESOLVE_NODE_CANDIDATES: link }).status, 0)
+    // A candidate that reaches the real stable install only through `..` must not match the exemption's exact
+    // pattern (loosening it to `[0-9]*/bin/node` lets this one through, as the realpath is a v<version> directory).
+    fake(join(home, '.local', 'share', 'node', 'v24.9.9', 'bin', 'node'), '24')
+    rmSync(join(home, '.local', 'share', 'node', '24'))
+    symlinkSync('v24.9.9', join(home, '.local', 'share', 'node', '24'))
+    const viaDots = resolve(home, { RESOLVE_NODE_CANDIDATES: `${join(home, '.local', 'share', 'node', '24')}/../24/bin/node` }) // not join(): it would normalise the dots away
+    assert.notEqual(viaDots.status, 0, viaDots.stdout)
+    assert.match(viaDots.stderr, /another tool's private folder/)
+    // Put the 24 link back at the other tool, as the cases below expect.
+    rmSync(join(home, '.local', 'share', 'node', '24'))
+    symlinkSync(join(home, '.local', 'share', 'nodeish'), join(home, '.local', 'share', 'node', '24'))
+    assert.notEqual(resolve(home, { RESOLVE_NODE_CANDIDATES: join(nodeishBin, 'node') }).status, 0)
+    // A dangling stable link is an error, not a quiet fall through to the next candidate.
+    rmSync(join(home, '.local', 'share', 'node', '24'))
+    rmSync(join(home, '.local', 'share', 'node', 'v24.9.9'), { recursive: true })
+    symlinkSync('v24.9.9', join(home, '.local', 'share', 'node', '24'))
+    const sys = join(home, 'usr', 'bin', 'node')
+    fake(sys, '24')
+    const d = resolve(home, { RESOLVE_NODE_CANDIDATES: `${join(home, '.local', 'share', 'node', '24', 'bin', 'node')} ${sys}` })
+    assert.notEqual(d.status, 0)
+    assert.match(d.stderr, /link to nothing/)
+  })
+
+  it('an install directory with no bin/node is an error too, not a quiet fall through to the next Node', () => {
+    const home = mac()
+    mkdirSync(join(home, '.local', 'share', 'node', 'v24.22.3'), { recursive: true })
+    symlinkSync('v24.22.3', join(home, '.local', 'share', 'node', '24'))
+    const sys = join(home, 'usr', 'bin', 'node')
+    fake(sys, '24')
+    const stable = join(home, '.local', 'share', 'node', '24', 'bin', 'node')
+    const r = resolve(home, { RESOLVE_NODE_CANDIDATES: `${stable} ${sys}` })
+    assert.notEqual(r.status, 0, r.stdout)
+    assert.match(r.stderr, /has no bin\/node/)
+    // No 24 install at all is still the pre-migration state: the next candidate is used.
+    rmSync(join(home, '.local', 'share', 'node', '24'))
+    assert.equal(resolve(home, { RESOLVE_NODE_CANDIDATES: `${stable} ${sys}` }).stdout.trim(), sys)
   })
 
   it('NODE_BIN overrides the private-folder refusal, but not the version floor or a missing file', () => {

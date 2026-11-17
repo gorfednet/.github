@@ -4,6 +4,22 @@ A check taken out on purpose is a recorded decision, not a weakening
 (`~/.claude/rules/shipping.md`, "When CI is red"). Each entry says what the
 check caught, why it went, and what still catches that class. Newest first.
 
+## 2026-11-16: two Node checks narrowed for the user-owned Node (plan row 3.20k)
+
+**Narrowed, not dropped.** Both stay in force. Each now has one exception, written so a patch needs no sudo and no reinstall of the agents. The ledger line is in `ship-bot/INCIDENTS.md` (16 November 2026, plan row 3.20k).
+
+**1. The private-folder refusal** (`scripts/lib/resolve-node.sh`, and `privateInterpreters` in `scripts/lib/installed-tools.mjs`).
+- **What it caught:** a LaunchAgent running on another tool's Node, the 14 November class: ship-bot's agent ran Hermes Agent's `~/.hermes/node/bin/node` through the shell's `~/.local/bin/node` link, so archiving Hermes would have stopped the only merger.
+- **Why it changed:** the Node the owner now wants lives in `~/.local/share/node/`, a dot-folder of home, so the blanket refusal would reject the very install it exists to make patchable.
+- **What it allows:** one candidate, spelled exactly `~/.local/share/node/<major>/bin/node`, that resolves to a `v<version>` directory there. A stable link into any other tool, a dangling link, a damaged install with no `bin/node` and a `..` spelling all still refuse (tests in `ship-bot/test/resolve-node.test.mjs` and `test/installedTools.test.mjs`, each watched failing with the exception widened).
+- **What catches that class now:** the same refusal for every other path, including `~/.local/bin/node` (it points into the same folder and is still refused), and the "Installed tools behind main" row on fleet-status, which flags any agent whose program resolves into a private folder other than that exact link.
+
+**2. The "Node version" drift row** (`nodeVersionDrift` in `scripts/lib/installed-tools.mjs`).
+- **What it caught:** an agent running a Node that `check.sh` never passed on, because the recorded `app.node-version` and the running version differed (16 November 2026, plan row 1.22a).
+- **Why it changed:** every patch of the user-owned Node would make the row fire until the installers were rerun, which taught the owner to ignore it.
+- **What it allows:** on the stable link only, a patch or minor at or above the recorded version, within the same major. A different major, a downgrade, any other program path or no record still fires.
+- **What catches a patch or minor now:** `node-update.sh` runs the new `node --version` before and after the link swap and puts the old link back on failure. A Node that can't run ship-bot or capacity stops their heartbeats and healthchecks.io emails the owner (ship-bot period 2 min, grace 10 min, `docs/heartbeats.md`). `scripts/node-update.sh <major> --check` reads installed against latest. `app.node-version` stays at the version `check.sh` passed on and the next installer run refreshes it.
+
 ## 2026-11-15: per-PR rules drift on the `~/.claude` copy, Desk's brief and handoffs
 
 **Moved, not dropped:** plan row 1.30 moved `docs/claude-home/` (rules, agents, skills), `docs/desk/brief.md` and `docs/handoff/` to the private ops repository, under `control/`. This repository's CI ran `check-rules-drift.mjs` on them per PR. It can't now: the files are gone, and ops has no CI beyond its reviewer.
