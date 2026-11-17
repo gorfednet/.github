@@ -1,8 +1,10 @@
 /** The nightly mutation run's pure parts (plan row 1.35). It is a report, never a gate. */
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { readFileSync, readdirSync } from 'node:fs'
-import { digest, dueUnits, plantedListed, plantedOk, rank, score, scoredTests, summarize, testCommand, torontoDate, totals, unitKey, unitsFor } from '../mutation/lib.mjs'
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { childEnv, digest, dueUnits, notifyTokenPresent, plantedListed, plantedOk, rank, score, scoredTests, summarize, testCommand, toolNeedsInstall, torontoDate, totals, unitKey, unitsFor } from '../mutation/lib.mjs'
 
 const m = (status, line, mutatorName = 'ConditionalExpression') => ({ status, mutatorName, location: { start: { line } }, replacement: 'x' })
 
@@ -126,10 +128,39 @@ describe('mutation lib', () => {
     assert.equal(torontoDate(new Date('2026-11-17T06:00:00Z')), '2026-11-17')
   })
 
-  it('reinstalls the tool when the lockfile changes, hands children a scrubbed env, and checks the notify token', () => {
+  it('puts a failing changed unit after the other changed units', () => {
+    const units = ['a', 'b', 'c'].map((f) => ({ file: f, from: 1, to: 9 }))
+    const r = (ranOn) => ({ counts: {}, hash: 'old', testsHash: 'T', ranOn })
+    const state = { units: { 'a:1-9': r('2026-11-01'), 'b:1-9': r('2026-11-05'), 'c:1-9': r('2026-11-10') }, failed: { 'a:1-9': '2026-11-16' } }
+    const due = dueUnits(units, state, { hashes: { a: 'a', b: 'b', c: 'c', __tests: 'T' }, today: '2026-11-17' })
+    assert.deepEqual(due.map((u) => u.file), ['b', 'c', 'a'])
+  })
+
+  it('hands a child only PATH, its own HOME and LANG', () => {
+    assert.deepEqual(childEnv({ PATH: '/p', GH_TOKEN: 'x', HOME: '/real' }, '/h'), { PATH: '/p', HOME: '/h', LANG: 'C.UTF-8' })
+    assert.match(readFileSync(new URL('../mutation/nightly.mjs', import.meta.url), 'utf8'), /childEnv\(process\.env, home\)[\s\S]{0,200}\{ cwd, env,/)
+  })
+
+  it('wires the install and token checks into the nightly run', () => {
     const n = readFileSync(new URL('../mutation/nightly.mjs', import.meta.url), 'utf8')
-    assert.match(n, /\.lock-hash/)
-    assert.match(n, /env = \{ PATH: process\.env\.PATH, HOME: home/)
-    assert.match(n, /digest not sent/)
+    assert.match(n, /if \(toolNeedsInstall\(/)
+    assert.match(n, /flag\('notify'\) && !notifyTokenPresent\(homedir\(\)\)/)
+  })
+
+  it('reinstalls the tool when it is missing, unstamped or the lockfile changed', () => {
+    assert.equal(toolNeedsInstall({ hasBin: true, stamp: 'h', hash: 'h' }), false)
+    assert.equal(toolNeedsInstall({ hasBin: false, stamp: 'h', hash: 'h' }), true)
+    assert.equal(toolNeedsInstall({ hasBin: true, stamp: null, hash: 'h' }), true)
+    assert.equal(toolNeedsInstall({ hasBin: true, stamp: 'old', hash: 'h' }), true)
+  })
+
+  it('finds an ntfy token only when the file is non-empty', () => {
+    const home = mkdtempSync(join(tmpdir(), 'ntfy-'))
+    assert.equal(notifyTokenPresent(home), false)
+    mkdirSync(join(home, '.ship-bot'))
+    writeFileSync(join(home, '.ship-bot/ntfy.token'), '')
+    assert.equal(notifyTokenPresent(home), false)
+    writeFileSync(join(home, '.ship-bot/ntfy.token'), 'tk\n')
+    assert.equal(notifyTokenPresent(home), true)
   })
 })

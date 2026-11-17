@@ -13,7 +13,7 @@ or can't fail.
 - Resumable: source is cut into 300-line units. Each night runs the units never run,
   then changed ones (source or tests), then the oldest, until the budget is spent.
   Each result is saved as the unit finishes.
-- The digest (at most 8 lines, posted to ntfy `ops-report` through
+- The digest (at most 10 lines, posted to ntfy `ops-report` through
   `scripts/janitor-notify.sh`) has the score, the last 5 nights and the top 10
   survivors. `report.json` has the same.
 - Canary: `fixtures/planted/` holds a dead assertion that can't fail. It runs first

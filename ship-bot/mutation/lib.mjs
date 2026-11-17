@@ -3,6 +3,7 @@
  * units, fold Stryker JSON reports into one score, rank survivors, write the
  * digest. A report, never a gate: nothing here sets an exit code for a PR.
  */
+import { statSync } from 'node:fs'
 
 const LIVE = new Set(['Killed', 'Timeout', 'Survived', 'NoCoverage'])
 // Mutators whose survivors usually mean an assertion is missing. Text and
@@ -67,9 +68,10 @@ export function dueUnits(units, state, { hashes, today, maxAgeDays = 14 }) {
   for (const u of units) {
     const r = state.units?.[unitKey(u)]
     const failedOn = state.failed?.[unitKey(u)]
-    if (!r) scored.push(failedOn ? [0.5, -age(failedOn), u] : [0, 0, u])
-    else if (r.hash !== hashes[u.file] || r.testsHash !== hashes.__tests) scored.push([1, -age(r.ranOn), u])
-    else if (age(r.ranOn) >= maxAgeDays) scored.push([2, -age(r.ranOn), u])
+    const late = failedOn ? 0.5 : 0 // a unit that gave no report goes after the others of its kind
+    if (!r) scored.push([0 + late, failedOn ? -age(failedOn) : 0, u])
+    else if (r.hash !== hashes[u.file] || r.testsHash !== hashes.__tests) scored.push([1 + late, -age(r.ranOn), u])
+    else if (age(r.ranOn) >= maxAgeDays) scored.push([2 + late, -age(r.ranOn), u])
   }
   return scored.sort((a, b) => a[0] - b[0] || a[1] - b[1] || unitKey(a[2]).localeCompare(unitKey(b[2]))).map((s) => s[2])
 }
@@ -121,3 +123,14 @@ export function plantedListed(survivors) {
 export const TOOLING_TESTS = ['mutation.test.mjs']
 export const scoredTests = (files) => files.filter((f) => f.endsWith('.test.mjs') && !TOOLING_TESTS.includes(f)).sort()
 export const testCommand = (files) => `node --test ${scoredTests(files).map((f) => `ship-bot/test/${f}`).join(' ')}`
+
+/** The only environment a Stryker child gets: no tokens, its own HOME. */
+export const childEnv = (env, home) => ({ PATH: env.PATH, HOME: home, LANG: 'C.UTF-8' })
+
+/** The tool is reinstalled when it is missing, unstamped, or stamped with another lockfile hash. */
+export const toolNeedsInstall = ({ hasBin, stamp, hash }) => !hasBin || stamp === null || stamp !== hash
+
+/** An ntfy token file counts only when non-empty, as janitor-notify.sh checks (-s). */
+export function notifyTokenPresent(home, stat = statSync) {
+  return ['.fleet-janitor/ntfy.token', '.ship-bot/ntfy.token'].some((f) => { try { return stat(`${home}/${f}`).size > 0 } catch { return false } })
+}

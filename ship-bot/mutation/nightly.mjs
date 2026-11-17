@@ -21,7 +21,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync
 import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { digest, dueUnits, plantedOk, torontoDate, rank, scoredTests, summarize, testCommand, totals, unitKey, unitsFor } from './lib.mjs'
+import { childEnv, digest, dueUnits, notifyTokenPresent, plantedOk, toolNeedsInstall, torontoDate, rank, scoredTests, summarize, testCommand, totals, unitKey, unitsFor } from './lib.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = resolve(HERE, '../..')
@@ -50,7 +50,7 @@ mkdirSync(tool, { recursive: true })
 for (const f of ['package.json', 'package-lock.json']) writeFileSync(join(tool, f), readFileSync(join(HERE, f)))
 const lockHash = sha(readFileSync(join(tool, 'package-lock.json')) + readFileSync(join(tool, 'package.json')))
 const lockStamp = join(tool, '.lock-hash')
-if (!existsSync(join(tool, 'node_modules/.bin/stryker')) || !existsSync(lockStamp) || readFileSync(lockStamp, 'utf8') !== lockHash) {
+if (toolNeedsInstall({ hasBin: existsSync(join(tool, 'node_modules/.bin/stryker')), stamp: existsSync(lockStamp) ? readFileSync(lockStamp, 'utf8') : null, hash: lockHash })) {
   sh('npm', ['ci', '--ignore-scripts', '--no-audit', '--no-fund'], { cwd: tool })
   writeFileSync(lockStamp, lockHash)
 }
@@ -80,7 +80,7 @@ function runStryker({ cwd, mutate, command, name, timeoutMs, extraIgnore = [] })
   }))
   const home = join(stateDir, 'home')
   mkdirSync(home, { recursive: true })
-  const env = { PATH: process.env.PATH, HOME: home, LANG: 'C.UTF-8' }
+  const env = childEnv(process.env, home)
   const r = spawnSync(process.execPath, [stryker, 'run', cfg], { cwd, env, encoding: 'utf8', timeout: timeoutMs, killSignal: 'SIGKILL', maxBuffer: 64 << 20 })
   if (!existsSync(report)) { log(`${name}: no report (exit ${r.status ?? r.signal}) ${(r.stderr || r.stdout || "").slice(0, 600)}`); return null }
   return JSON.parse(readFileSync(report, 'utf8'))
@@ -136,7 +136,7 @@ const total = totals(state, liveKeys)
 state.nights = [...(state.nights ?? []).filter((n) => n.date !== today), { date: today, score: total.score, covered: total.covered }].slice(-30)
 writeFileSync(statePath, JSON.stringify(state))
 let warning = null
-if (flag('notify') && !['.fleet-janitor/ntfy.token', '.ship-bot/ntfy.token'].some((f) => existsSync(join(homedir(), f)))) {
+if (flag('notify') && !notifyTokenPresent(homedir())) {
   warning = 'no ntfy token, digest not sent'
   console.log(`WARNING: ${warning}`)
 }
