@@ -74,8 +74,8 @@ const REPO_EXTRA = {
   // Ops installs run as root on the house hosts (plan row 3.20f): `update-ops` runs the install steps in hosts/ and infra/, and
   // they copy scripts/, the inventory and the policy files to the hosts' /opt and systemd. A change to any of them changes what
   // root runs on a host once the owner installs it, so it merges only on a clean review of its head. A host README under
-  // hosts/ counts too: prefixes can't tell it from an install step.
-  'gorfednet/ops': ['control/claude-home/', 'hosts/', 'infra/', 'scripts/', 'inventory-patches/', 'credentials.json', 'rotations.json', 'crawler-policy.json', 'cta-sites.json'],
+  // hosts/ counts too, and so do control/ship-bot-patches/ rows, which the owner applies to the live ship-bot config: prefixes can't tell it from an install step.
+  'gorfednet/ops': ['control/claude-home/', 'control/ship-bot-patches/', 'hosts/', 'infra/', 'scripts/', 'inventory-patches/', 'credentials.json', 'rotations.json', 'crawler-policy.json', 'cta-sites.json'],
 }
 
 export function touchesControlPlane(path, slug = '') {
