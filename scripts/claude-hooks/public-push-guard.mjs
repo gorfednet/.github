@@ -1136,12 +1136,13 @@ async function main() {
     if (!probe.ok) continue // not a repository: git itself will refuse
     const flags = { all: false, mirror: false, tags: false, matching: false, configured: [] }
     const positional = []
+    let repoOption = null
     let delete_ = false
     const args = c.args
     for (let k = 0; k < args.length; k += 1) {
       const t = args[k].text
-      if (t.startsWith('--repo=')) positional.unshift({ text: t.slice(7), open: false })
-      else if (t === '--repo') positional.unshift(args[(k += 1)]) // --repo names the remote
+      if (t.startsWith('--repo=')) repoOption = { text: t.slice(7), open: false }
+      else if (t === '--repo') repoOption = args[(k += 1)] // --repo names the remote, unless a repository is also given
       else if (['-o', '--push-option', '--receive-pack', '--exec'].includes(t)) k += 1
       else if (t === '--recurse-submodules') {
         if (['check', 'on-demand', 'only', 'no'].includes(args[k + 1]?.text)) k += 1
@@ -1154,6 +1155,7 @@ async function main() {
       else if (t.startsWith('-') && t !== '-') deny(`public-push-guard: this push has an option the hook doesn't know (${t.slice(0, 30)}), so it is refused. Drop it, or run the push without it.`)
       else positional.push(args[k])
     }
+    if (repoOption && positional.length === 0) positional.unshift(repoOption) // as in git push, a repository on the command line wins over --repo
     if (delete_) continue // deleting a remote ref publishes nothing
     const branchR = git(target, ['rev-parse', '--abbrev-ref', 'HEAD'])
     const branch = branchR.ok ? branchR.stdout.trim() : ''

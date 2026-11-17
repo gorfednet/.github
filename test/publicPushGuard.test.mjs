@@ -380,6 +380,13 @@ describe('public-push-guard: more than HEAD can be sent', () => {
     sh(r.dir, r.w, 'checkout', '-q', 'feature-b')
     assert.ok(denied(hook('git push --repo origin', { r })))
   })
+  it('lets a positional repository win over --repo, as git does', () => {
+    const r = repo({ outgoing: { 'x.md': `${IP}\n` } })
+    sh(r.dir, r.w, 'remote', 'add', 'backup', URL_OF('privaterepo'))
+    const vis = { [`${ORG}/privaterepo`]: 'PRIVATE', [`${ORG}/testrepo`]: 'PUBLIC' }
+    for (const c of ['git push --repo=backup origin feature', 'git push --repo backup origin feature', 'git push origin --repo=backup feature']) assert.ok(denied(hook(c, { r, vis })), c)
+    assert.equal(hook('git push --repo=backup', { r, vis }).out, '', 'near miss: --repo alone names the private remote, and nothing public is pushed')
+  })
 })
 
 describe('public-push-guard: the remote may be spelled many ways', () => {
