@@ -1,15 +1,15 @@
 {
-  "generatedAt": "2026-11-17T14:32:04.818Z",
-  "renderedAt": "2026-11-17T14:32:04.818Z",
+  "generatedAt": "2026-11-17T16:31:52.234Z",
+  "renderedAt": "2026-11-17T16:31:52.234Z",
   "repos": [
     {
       "slug": "gorfednet/bindercurve.com",
       "redacted": true,
       "mainRed": true,
-      "openPrCount": 13,
+      "openPrCount": 12,
       "lapsedBacklogCount": 16,
       "noPrCount": 79,
-      "idlePrCount": 2,
+      "idlePrCount": 1,
       "duplicatePrCount": 0,
       "dependabotRedCount": 3,
       "kitVersion": "0.61.0",
@@ -18,11 +18,11 @@
     {
       "slug": "gorfednet/4thcltr.com",
       "redacted": true,
-      "mainRed": true,
+      "mainRed": false,
       "openPrCount": 21,
       "lapsedBacklogCount": 20,
       "noPrCount": 13,
-      "idlePrCount": 16,
+      "idlePrCount": 17,
       "duplicatePrCount": 0,
       "dependabotRedCount": 1,
       "kitVersion": "0.63.0",
@@ -32,7 +32,7 @@
       "slug": "gorfednet/gorfed.net",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 7,
+      "openPrCount": 6,
       "lapsedBacklogCount": 3,
       "noPrCount": 4,
       "idlePrCount": 0,
@@ -136,11 +136,11 @@
       "slug": "gorfednet/ssatcy.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 8,
+      "openPrCount": 7,
       "lapsedBacklogCount": 2,
       "noPrCount": 1,
       "idlePrCount": 6,
-      "duplicatePrCount": 3,
+      "duplicatePrCount": 2,
       "dependabotRedCount": 0,
       "kitVersion": "0.61.0",
       "alertsOverdue": null
@@ -150,6 +150,18 @@
       "defaultBranch": "main",
       "mainRed": false,
       "openPrs": [
+        {
+          "number": 249,
+          "title": "Dependabot: group security updates (plan row 3.20l)",
+          "ageDays": 0,
+          "labels": [],
+          "draft": false,
+          "review": "clean",
+          "headSha": "48dda91a422d200ea4969c7710f49d61054364e8",
+          "ci": "green",
+          "next": "merge",
+          "author": "gorfednet"
+        },
         {
           "number": 244,
           "title": "build(deps): bump the actions group across 3 directories with 7 updates",
@@ -170,29 +182,17 @@
           "title": "1.30g: public-push guard as a git pre-push hook",
           "ageDays": 0,
           "labels": [],
-          "draft": true,
-          "review": "not-run",
-          "headSha": "9875671bd892194d654233412aa39c1cc403bb5f",
-          "ci": "green",
-          "next": "Fable read of the diff (Desk), including the last commit, which no review round covered. Label if clean. Hold until then: it can refuse a push.",
-          "author": "gorfednet"
-        },
-        {
-          "number": 239,
-          "title": "3.20f: ops install paths are control plane; fleet-janitor task joins COPIES",
-          "ageDays": 0,
-          "labels": [],
           "draft": false,
-          "review": "clean",
-          "headSha": "3ce51fca8ac0611439ac346aaf94e167c33c655d",
+          "review": "not-run",
+          "headSha": "6f8613396341af40f8225c3c84fd296af587734e",
           "ci": "red",
-          "next": "Merge on a clean review (control-plane path).",
+          "next": "Install from `origin/main` after merge and push once to a public test repository",
           "author": "gorfednet"
         },
         {
           "number": 228,
           "title": "site-deploy: Cloudflare Pages backend, shared analytics Function, upload guard (plan row 3.13, B0)",
-          "ageDays": 0,
+          "ageDays": 1,
           "labels": [],
           "draft": false,
           "review": "clean",
@@ -543,7 +543,7 @@
       "lastDeploy": null,
       "incidents7d": 3,
       "dependabotRed": 1,
-      "kitVersion": "0.63.0",
+      "kitVersion": "0.64.0",
       "alertsOverdue": null,
       "alertsUnread": "no-token-access"
     },
@@ -551,12 +551,12 @@
       "slug": "gorfednet/MoonMan",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 4,
+      "openPrCount": 6,
       "lapsedBacklogCount": 2,
       "noPrCount": 46,
       "idlePrCount": 1,
       "duplicatePrCount": 0,
-      "dependabotRedCount": 0,
+      "dependabotRedCount": 3,
       "kitVersion": null,
       "alertsOverdue": null
     },
@@ -568,7 +568,7 @@
         {
           "number": 8,
           "title": "Drain: Acid3 sample fixtures",
-          "ageDays": 3,
+          "ageDays": 4,
           "labels": [],
           "draft": true,
           "review": "not-run",
@@ -584,7 +584,7 @@
       "idlePrs": [
         {
           "number": 8,
-          "idleDays": 3
+          "idleDays": 4
         }
       ],
       "duplicatePrs": [],
@@ -611,8 +611,8 @@
     {
       "slug": "gorfednet/heuristics.4thcltr.com",
       "redacted": true,
-      "mainRed": true,
-      "openPrCount": 13,
+      "mainRed": false,
+      "openPrCount": 14,
       "lapsedBacklogCount": 16,
       "noPrCount": 6,
       "idlePrCount": 8,
@@ -664,7 +664,7 @@
       "slug": "gorfednet/ops",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 12,
+      "openPrCount": 11,
       "lapsedBacklogCount": 0,
       "noPrCount": 1,
       "idlePrCount": 0,
@@ -727,11 +727,11 @@
     }
   },
   "inventory": {
-    "measuredAt": "2026-11-17T14:32:04.818Z",
+    "measuredAt": "2026-11-17T16:31:52.234Z",
     "counts": {
       "pr": {
         "total": 129,
-        "orphans": 57
+        "orphans": 56
       },
       "session": null,
       "worktree": null,
@@ -783,13 +783,13 @@
         "lapsed": true
       }
     ],
-    "hiddenPrivate": 54,
+    "hiddenPrivate": 53,
     "privateReposNotItemised": 18,
     "planRead": true
   },
   "dotgithub": {
-    "measuredAt": "2026-11-17T14:32:59.219Z",
-    "branches": 39,
+    "measuredAt": "2026-11-17T16:32:29.911Z",
+    "branches": 41,
     "merged": 2,
     "exposedFiles": 61,
     "rulesNotChecked": [],
