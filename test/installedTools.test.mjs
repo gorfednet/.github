@@ -548,6 +548,14 @@ describe('the public-push guard install (plan row 1.30i): missing is drift, once
     assert.deepEqual(guard(f).map((b) => b.items), [['core.hooksPath', 'pre-push']])
   })
 
+  it('a dispatcher that is not executable is missing: git skips it', () => {
+    const f = fixture()
+    ship(f, 'g1')
+    install(f, 'g1')
+    chmodSync(join(dir(f), 'hook'), 0o644)
+    assert.deepEqual(guard(f).map((b) => b.items), [['hook (not executable)']])
+  })
+
   it('a copy left behind by a merge has its count, and a hand-edited one is ahead, never both in one entry', () => {
     const f = fixture()
     ship(f, 'g1')

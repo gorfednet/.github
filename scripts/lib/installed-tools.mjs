@@ -22,7 +22,7 @@
  * one in a repository a tool comes from) means the result is not a measurement, and the row is null.
  */
 import { execFileSync } from 'node:child_process'
-import { existsSync, lstatSync, readdirSync, readlinkSync, realpathSync, statSync, readFileSync } from 'node:fs'
+import { accessSync, constants, existsSync, lstatSync, readdirSync, readlinkSync, realpathSync, statSync, readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join, relative, resolve, sep } from 'node:path'
 
@@ -509,6 +509,11 @@ export function gitHookDrift(home, clone) {
     // no link
   }
   if (!linked) missing.push(g.link)
+  try {
+    accessSync(join(dir, 'hook'), constants.X_OK)
+  } catch {
+    if (existsSync(join(dir, 'hook'))) missing.push('hook (not executable)') // git skips a hook it can't run, so it guards nothing
+  }
   let worst = 0
   const items = []
   const aheadItems = []

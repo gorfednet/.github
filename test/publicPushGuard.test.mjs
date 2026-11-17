@@ -14,7 +14,8 @@ import { chmodSync, existsSync, lstatSync, mkdirSync, readdirSync, mkdtempSync, 
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { slugOf } from '../scripts/claude-hooks/public-push-guard.mjs'
+import { nameReadings, slugOf } from '../scripts/claude-hooks/public-push-guard.mjs'
+import * as privacyGuard from '../scripts/privacy-guard.mjs'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 const INSTALL = join(ROOT, 'scripts', 'claude-hooks', 'install-git-hooks.sh')
@@ -607,9 +608,9 @@ describe('pre-push: dot joins, a dotted private name, the tagger line and odd ta
   const dottedWorld = () => world({ listOut: `gorfednet/ops\n${SECRET}\ngorfednet/${DOTTED}\n` })
   const TAIL = ['box', 'tail1234', 'ts', 'net'].join('.')
 
-  it('refuses a private name joined by a dot, which word and path parts take for a host', () => {
-    const r = repo(world())
-    for (const branch of [`release/v2.${BARE}`, `${BARE}.migration`]) {
+  it('refuses a private name joined by a dot, which word and path parts take for a host, a dotted one too, and a mixed join', () => {
+    const r = repo(dottedWorld())
+    for (const branch of [`release/v2.${BARE}`, `${BARE}.migration`, `release/v2.${DOTTED}`, `${DOTTED}.migration`, `release/v2.${BARE}_x`, `x_${BARE}.migration`]) {
       ok(r.dir, r.w, 'branch', branch)
       const x = push(r, 'origin', branch)
       assert.ok(refused(x) && /branch or tag name/.test(x.stderr), `${branch}: ${x.stderr}`)
@@ -634,11 +635,38 @@ describe('pre-push: dot joins, a dotted private name, the tagger line and odd ta
     assert.ok(refused(t) && /name inside tag v4/.test(t.stderr), t.stderr)
   })
 
-  it('refuses a said name beside the word private in a ref name', () => {
+  it('refuses a said name beside the word private in a ref name, joined by a slash or a dot', () => {
     const r = repo(world(), { baseFiles: { 'docs/a.md': `${BARE} is a site\n` } })
-    ok(r.dir, r.w, 'branch', `private/${BARE}`)
-    const x = push(r, 'origin', `private/${BARE}`)
-    assert.ok(refused(x) && /branch or tag name/.test(x.stderr), x.stderr)
+    for (const branch of [`private/${BARE}`, `private.${BARE}`, `private/${BARE}.bak`]) {
+      ok(r.dir, r.w, 'branch', branch)
+      const x = push(r, 'origin', branch)
+      assert.ok(refused(x) && /branch or tag name/.test(x.stderr), `${branch}: ${x.stderr}`)
+    }
+  })
+
+  // The dots reading finds every case, so each push test above that only it finds goes red without it. The path and word
+  // readings find a subset and stay as a second stop: no name reaches them alone, so removing either can't turn a test red.
+  it('nameReadings: the dots reading finds every pinned case, and alone finds the dot joins', () => {
+    const pg = privacyGuard
+    const names = [BARE, DOTTED, 'ops']
+    const ctx = (said) => ({
+      privateRepo: pg.privateRepoPattern(names),
+      bareNames: pg.bareNamePatterns(names.filter((n) => !said.includes(n))),
+      saidNames: pg.bareNamePatterns(said).word,
+      allow: pg.parseAllowlist(''),
+    })
+    const read = (text, said = []) => nameReadings(pg, ctx(said), names.join(','), text)
+    assert.deepEqual(read(`notes/${DOTTED}.bak`), ['path', 'dots'])
+    assert.deepEqual(read(`notes/${DOTTED}`), ['path', 'word', 'dots'])
+    assert.deepEqual(read(`notes/${BARE}_v2`), ['word', 'dots'])
+    assert.deepEqual(read(`private/${BARE}`, [BARE]), ['word', 'dots'])
+    for (const t of [`private/${BARE}.bak`, `release/v2.${BARE}`, `${BARE}.migration`, `release/v2.${DOTTED}`, `${DOTTED}.migration`, `release/v2.${BARE}_x`, `x_${BARE}.migration`, `private.${BARE}`]) {
+      assert.deepEqual(read(t, t.startsWith('private') ? [BARE] : []), ['dots'], t)
+    }
+    for (const t of ['release/1.2', 'kit/v0.27.0', `${BARE}-v1.2.3`, `fix-${BARE}`, `v2.${DOTTED}-x`, `notmy${DOTTED}`]) {
+      assert.deepEqual(read(t), [], t)
+    }
+    assert.deepEqual(read(`notes/${BARE}`, [BARE]), [], 'a said name with no private beside it')
   })
 
   it('refuses a tagger line that holds a host name, and passes one at a domain that shares a private name', () => {
@@ -647,8 +675,10 @@ describe('pre-push: dot joins, a dotted private name, the tagger line and odd ta
     const x = push(r, 'origin', 'v5')
     assert.ok(refused(x) && /tagger line of tag v5/.test(x.stderr), x.stderr)
     assert.ok(!x.stderr.includes(TAIL))
-    ok(r.dir, r.w, '-c', `user.email=me@${BARE}.test`, 'tag', '-a', 'v6', '-m', 'clean')
-    assert.equal(push(r, 'origin', 'v6').status, 0, 'a domain that shares a private name')
+    const d = repo(dottedWorld())
+    // A word reading would find the dotted name here, so this fails if private names are ever read in the tagger line.
+    ok(d.dir, d.w, '-c', `user.email=me@${DOTTED}`, 'tag', '-a', 'v6', '-m', 'clean')
+    assert.equal(push(d, 'origin', 'v6').status, 0, 'a domain that is a private name')
   })
 
   // Git can't peel such a tag to its commit, so the outgoing-commit step refuses it before the name line is read.

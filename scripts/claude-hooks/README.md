@@ -47,7 +47,7 @@ Keeps private detail (private addresses, session ids, tailnet and internal host 
 
 ### How names are read in refs and tags (plan rows 1.30h and 1.30i)
 
-- A ref name and a tag's own name are read three ways for a private repository name. As path parts with any extension (`notes/<name>.bak`). As words, which also split on `_`, `@`, `+`, `=` and `,` (`notes/<name>_v2`). As path parts again with every dot read as a slash (`v2.<name>`, `<name>.migration`). A dotted private name (a site's) is read whole by the first two.
+- A ref name and a tag's own name are read three ways for a private repository name. As path parts with any extension (`notes/<name>.bak`). As words, which also split on `_`, `@`, `+`, `=` and `,` (`notes/<name>_v2`). As words again with every dot read as a slash, except a dotted private name's own dots (`v2.<name>`, `<site>.migration`, `v2.<name>_x`, `private.<name>`). The third reading finds everything the first two do. They stay as a second stop.
 - A name the target's default branch already says counts only on a line that says `private` or `visibility`, as in the CI guard. So `private/<name>` is refused on such a repository and `notes/<name>` passes.
 - A tag message is read as words, with the owner-quote rule too.
 - The tagger line is read for addresses, session ids and host names, since a default git identity is built from the machine's host name. Private repository names aren't read there, because an everyday address can sit at a domain that shares one.
@@ -56,7 +56,7 @@ Keeps private detail (private addresses, session ids, tailnet and internal host 
 
 - A hyphen join passes by design: `fix-<name>`, `<name>-v2`, `<name>-v1.2.3`. In every reading a hyphen makes a longer name, as in the CI guard. Refusing it would refuse every public repository whose name extends a private one.
 - Commit author and committer lines aren't read, here or in the CI guard. A commit made under a default identity publishes the host name.
-- A private name that is also a common word is refused in a ref on a public repository that has never said it, for example `docs/<word>_notes`. A session that hits this renames its branch, or the repository gets a `repo` line in its allowlist.
+- A private name that is also a common word is refused in a ref on a public repository that has never said it, for example `docs/<word>_notes`, `<word>.test.mjs` or `<word>.md-fix`. A session that hits this renames its branch, or the repository gets a `repo` line in its allowlist.
 - The guard's own check for a tag with no `tag` line is a second stop. Git can't peel such a tag, so the outgoing-commit step refuses it first.
 
 Install it (copies from origin/main, never a working tree):

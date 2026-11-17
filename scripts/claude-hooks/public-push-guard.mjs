@@ -199,16 +199,33 @@ export async function checkPush(remote, url, updates) {
   }
 }
 
+const HELD = '\u0001' // stands in for a dotted private name's own dots while every other dot is read as a slash (scanText drops NUL, not this)
+
+/**
+ * Which readings find a private repository name in a ref or tag name: [] when none does.
+ *   path  path parts with any extension (`notes/<name>.bak`); a dotted name is read whole
+ *   word  words, which also split on `_`, `@`, `+`, `=` and `,` (`notes/<name>_v2`); a said name counts beside `private`
+ *   dots  words again, with every dot read as a slash except a dotted private name's own (`v2.<name>`, `<site>.migration`,
+ *         `v2.<name>_x`, `private.<name>`), since the other two take a dot join for a host
+ * A hyphen joins a longer name in every reading, as in the CI guard, so `<name>-v2` is not the name.
+ */
+export function nameReadings(mod, ctx, names, text) {
+  const dotted = String(names).split(',').filter((n) => n.includes('.')).sort((a, b) => b.length - a.length)
+  let held = text
+  for (const n of dotted) held = held.replace(new RegExp(n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'), (m) => m.replaceAll('.', HELD))
+  const split = held.replace(/\./g, '/').replaceAll(HELD, '.')
+  const out = []
+  if (mod.scanText(text, ctx, NAME_RULES, 'path').length > 0) out.push('path')
+  if (mod.scanText(text, ctx, NAME_RULES, 'word').length > 0) out.push('word')
+  if (mod.scanText(split, ctx, NAME_RULES, 'word').length > 0) out.push('dots')
+  return out
+}
+
 async function scan({ sets, mod, ctx, names, where, updates, allowText, scratch }) {
   const allowFile = join(scratch, 'allow.txt')
   writeFileSync(allowFile, allowText)
   const fail = (what) => refuse(`${what} would publish private detail to ${where}, which is public (or not known to be private).\nNothing was sent.`)
-  // A name is read three ways: as path parts (`notes/<name>.md`), as words, which also split on `_` and other joins (`notes/<name>_v2`),
-  // and as path parts again with every dot read as a slash (`v2.<name>`, `<name>.migration`), which the other two take for a host.
-  // The dotted private names are still read whole by the first two. A hyphen joins a longer name in every reading, as in the CI guard,
-  // so `<name>-v2` is not the name.
-  const nameHolds = (text) =>
-    mod.scanText(text, ctx, NAME_RULES, 'path').length > 0 || mod.scanText(text, ctx, NAME_RULES, 'word').length > 0 || mod.scanText(text.replace(/\./g, '/'), ctx, NAME_RULES, 'path').length > 0
+  const nameHolds = (text) => nameReadings(mod, ctx, names, text).length > 0
   for (const u of updates) {
     // Branch and tag names are public too, and so is an annotated tag's message.
     if (nameHolds(u.rref)) fail('a branch or tag name in this push')
