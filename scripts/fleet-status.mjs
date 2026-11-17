@@ -28,7 +28,7 @@ import { homedir, tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
-import { CARRY_HOURS } from './lib/quotaGuard.mjs'
+import { CARRY_HOURS } from './lib/carryHours.mjs'
 
 import { isMain } from '../templates/verification-kit/lib/isMain.mjs'
 import { lapsedBacklog } from './fleet-report.mjs'

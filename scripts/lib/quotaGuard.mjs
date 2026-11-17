@@ -10,7 +10,8 @@
  *   node scripts/lib/quotaGuard.mjs [--cache <file>] [--full]
  *
  * stdout: `mode=light|full`, then `carry=<file>` for a light run. stderr: the numbers. Exit 3: refused.
- * Exit 1: the quota could not be read (nothing is spent on a guess).
+ * Exit 4: the quota could not be read (nothing is spent on a guess). Not 1, which the wrapper keeps for
+ * "some repositories were unreadable, the file was still written".
  *
  * A light run reuses the branch lists of the last full local read (the cache) while that read is under
  * CARRY_HOURS old, which is what the hosted run does too. Only `--full` or an absent or stale cache reads
@@ -19,10 +20,11 @@
 import { execFileSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
 
+import { CARRY_HOURS } from './carryHours.mjs'
 import { isMain } from './isMain.mjs'
 
-/** A carried branch read is used while it is under this many hours old (fleet-status.mjs reads the same number). */
-export const CARRY_HOURS = 23
+/** A carried branch read is used while it is under this many hours old. The number lives in its own module: fleet-status.mjs reads it too, and importing the guard from there made a cycle. */
+export { CARRY_HOURS }
 /** Left over after the run, for the other sessions, the CI watches and the pool. */
 export const MARGIN = 1000
 /** Requests per repository (repo, branch pages, backlog, workflows and deploy, incident files, kit manifest, main and its CI), per open PR (comments, runs, status), and for the inventory and local rows. */
@@ -94,7 +96,7 @@ if (isMain(import.meta.url)) {
     remaining = coreRemaining()
   } catch (cause) {
     console.error(`fleet-status: could not read the GitHub quota (${String(cause.message).split('\n')[0]}), so nothing was run.`)
-    process.exit(1)
+    process.exit(4)
   }
   const d = decide({ remaining, repos: repoList(fleet, ship).length, cacheFile: arg('--cache'), full: process.argv.includes('--full'), now: Date.now() })
   console.error(describe(d))

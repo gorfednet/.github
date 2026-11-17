@@ -7,6 +7,7 @@ import { strict as assert } from 'node:assert'
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { spawnSync } from 'node:child_process'
 import { describe, it } from 'node:test'
 
@@ -74,6 +75,7 @@ function fixture({ remaining, gh = 'ok' } = {}) {
   chmodSync(join(repo, 'scripts', 'fleet-status-local.sh'), 0o755)
   copy('scripts/lib/quotaGuard.mjs')
   copy('scripts/lib/isMain.mjs')
+  copy('scripts/lib/carryHours.mjs')
   writeFileSync(join(repo, 'fleet.json'), '{"projects":[]}')
   writeFileSync(join(repo, 'ship-bot', 'config.example.json'), '{}')
   const argv = join(root, 'argv.json')
@@ -190,11 +192,49 @@ describe('fleet-status-local.sh quota guard', () => {
     const f = fixture({ gh: 'broken' })
     try {
       const r = f.run()
-      assert.equal(r.status, 1)
+      assert.equal(r.status, 4, 'exit 1 is the wrapper\'s "some repositories unreadable", which the janitor retries')
       assert.match(r.stderr, /could not read the GitHub quota/)
       assert.equal(f.ran(), false)
     } finally {
       f.cleanup()
     }
+  })
+})
+
+describe('the real guard against the real reader', () => {
+  /** A fake gh first on PATH that answers `api rate_limit` and nothing else. */
+  function realGuard(remaining) {
+    const root = mkdtempSync(join(tmpdir(), 'real-guard-'))
+    const bin = join(root, 'bin')
+    mkdirSync(bin)
+    writeFileSync(join(bin, 'gh'), `#!/bin/sh\nif [ "$1 $2" = "api rate_limit" ]; then echo '{"resources":{"core":{"remaining":${remaining}}}}'; exit 0; fi\necho "unexpected gh call: $@" >&2; exit 99\n`)
+    chmodSync(join(bin, 'gh'), 0o755)
+    const run = (...args) =>
+      spawnSync(process.execPath, [fileURLToPath(new URL('../scripts/lib/quotaGuard.mjs', import.meta.url)), '--cache', join(root, 'none.json'), ...args], { encoding: 'utf8', env: { ...process.env, PATH: `${bin}:${process.env.PATH}` }, timeout: 30_000 })
+    return { run, cleanup: () => rmSync(root, { recursive: true, force: true }) }
+  }
+
+  it('runs to its decision: the guard and fleet-status.mjs do not wait on each other (PR 230 review)', () => {
+    const g = realGuard(4000)
+    try {
+      const r = g.run()
+      assert.equal(r.status, 0, r.stderr) // 13 was "Detected unsettled top-level await"
+      assert.match(r.stdout, /^mode=full$/m)
+      const refused = realGuard(100)
+      try {
+        const n = refused.run()
+        assert.equal(n.status, 3, n.stderr)
+      } finally {
+        refused.cleanup()
+      }
+    } finally {
+      g.cleanup()
+    }
+  })
+
+  it('the reader takes the carry age from the module the guard also uses, not from the guard', () => {
+    const reader = readFileSync(new URL('../scripts/fleet-status.mjs', import.meta.url), 'utf8')
+    assert.match(reader, /from '\.\/lib\/carryHours\.mjs'/)
+    assert.doesNotMatch(reader, /quotaGuard/)
   })
 })

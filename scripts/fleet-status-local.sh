@@ -8,7 +8,9 @@
 #     --dry-run     print the mode and the quota numbers, then stop. Nothing is read.
 # Quota (16 November 2026): the owner's core quota is 5,000 an hour, shared by every session. Before any
 # live read the free `gh api rate_limit` is compared with the run's estimated cost plus 1,000, and both
-# numbers are printed; the run is refused when the quota cannot afford it (exit 3). Test against a saved
+# numbers are printed; the run is refused when the quota cannot afford it (exit 3), and stopped when the
+# quota cannot be read at all (exit 4). Exit 1 stays what it was: some repository was unreadable and the file
+# was still written. Test against a saved
 # status.json or a fake `gh`, never repeated live runs. Symlink ~/.local/bin/fleet-status to the copy in
 # the gates-main worktree (ship-bot advances it), never a working checkout.
 set -euo pipefail
