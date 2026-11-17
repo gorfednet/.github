@@ -9,6 +9,7 @@ import { kitFailures, kitSummary } from '../scripts/lib/kit-version.mjs'
 const SHA = '0123456789abcdef0123456789abcdef01234567'
 const wf = (path, state = 'active') => ({ id: 1, name: path, path, state })
 const gate = (ref) => `jobs:\n  gate:\n    steps:\n      - uses: gorfednet/.github/.github/actions/setup-node@${ref}\n      - uses: gorfednet/.github/.github/actions/verification-gate@${ref}\n`
+const prCheck = (ref, kit) => `jobs:\n  g:\n    uses: gorfednet/.github/.github/workflows/pr-check-static.yml@${ref}\n    with:\n      build-command: make\n      verification-kit: ${kit}\n`
 
 describe('readKitPin', () => {
   it('reads @main from the caller workflow', () => {
@@ -45,17 +46,55 @@ describe('readKitPin', () => {
     assert.deepEqual(pin, { ref: SHA })
     assert.equal(asked.length, 3)
   })
-  it('a pr-check reusable workflow call is gate-bearing', () => {
-    const text = `jobs:\n  g:\n    uses: gorfednet/.github/.github/workflows/pr-check-static.yml@${SHA}\n`
+  it('a pr-check call at main that passes verification-kit is gate-bearing and reads main', () => {
     const asked = []
-    const pin = readKitPin([wf('.github/workflows/pr-check.yml'), wf('.github/workflows/ci.yml')], (p) => { asked.push(p); return text })
-    // Every reusable pr-check workflow calls verification-gate@main, so a caller pinned at a sha still runs main's kit.
+    const pin = readKitPin([wf('.github/workflows/pr-check.yml'), wf('.github/workflows/ci.yml')], (p) => { asked.push(p); return prCheck('main', 'verification-kit') }, { tier: 1 })
+    // Every reusable pr-check workflow calls verification-gate@main, and runs that step only when verification-kit is not empty.
     assert.deepEqual(pin, { ref: 'main' })
     assert.equal(asked.length, 2)
   })
-  it('a pr-check call at a sha beside a direct gate call at another ref is a mixed pin', () => {
+  it('round 7: a pr-check call that passes no verification-kit runs no gate, so it is not a pin', () => {
+    // The reviewer's example: the reusable workflow defaults verification-kit to "" and skips its gate step.
+    const bare = 'jobs:\n  g:\n    uses: gorfednet/.github/.github/workflows/pr-check-static.yml@main\n'
+    const one = (text, tier) => readKitPin([wf('.github/workflows/ci.yml')], () => text, { tier })
+    assert.match(one(bare, 1).error, /no active workflow calls the shared gate/)
+    assert.deepEqual(one(bare, 0), { none: true })
+    const empties = [
+      'with:\n      build-command: make',
+      'with:\n      verification-kit: ""',
+      "with:\n      verification-kit: ''",
+      'with:\n      verification-kit:',
+      'with:\n      verification-kit: # not yet',
+      'with:\n      # verification-kit: verification-kit',
+      'with: { build-command: make }',
+      'with: { verification-kit: "" }',
+    ]
+    for (const w of empties) assert.match(one(`${bare}    ${w}\n`, 2).error, /no active workflow calls/, w)
+    // Another job's verification-kit does not lend itself to this call.
+    const neighbour = `${bare}  other:\n    uses: octo/x/.github/workflows/y.yml@main\n    with:\n      verification-kit: verification-kit\n`
+    assert.match(one(neighbour, 1).error, /no active workflow calls/)
+    // It still falls through to the vendored rule.
+    assert.deepEqual(readKitPin([wf('.github/workflows/ci.yml'), wf('.github/workflows/x.yml')], (p) => (p.endsWith('ci.yml') ? bare : 'steps:\n  - run: node verification-kit/bin/verify-all.mjs\n'), { tier: 1 }), { vendored: true })
+  })
+  it('round 7 near miss: the same call with verification-kit set reads main, however the block is written', () => {
+    const one = (text) => readKitPin([wf('.github/workflows/ci.yml')], () => text, { tier: 1 })
+    assert.deepEqual(one(prCheck('main', 'verification-kit')), { ref: 'main' })
+    assert.deepEqual(one(prCheck('main', '"verification-kit" # the vendored path')), { ref: 'main' })
+    assert.deepEqual(one(prCheck('main', '${{ vars.KIT }}')), { ref: 'main' })
+    assert.deepEqual(one('jobs:\n  g:\n    with:\n      verification-kit: verification-kit\n    uses: gorfednet/.github/.github/workflows/pr-check-vite-spa.yml@main\n'), { ref: 'main' })
+    assert.deepEqual(one('jobs:\n  g:\n    uses: gorfednet/.github/.github/workflows/pr-check-static.yml@main\n    with: { build-command: make, verification-kit: verification-kit }\n'), { ref: 'main' })
+  })
+  it('round 7: a pr-check call at any ref but main that passes verification-kit is an error, never current', () => {
+    // What gate the reusable workflow calls at that ref is not in the caller: before the gate step existed it called none.
+    const pin = readKitPin([wf('.github/workflows/ci.yml')], () => prCheck(SHA, 'verification-kit'), { tier: 1 })
+    assert.match(pin.error, /pr-check workflow at a ref other than main/)
+    assert.equal(pin.ref, undefined)
+    // Without verification-kit it runs no gate at any ref, so the ref says nothing.
+    assert.match(readKitPin([wf('.github/workflows/ci.yml')], () => `jobs:\n  g:\n    uses: gorfednet/.github/.github/workflows/pr-check-static.yml@${SHA}\n`, { tier: 1 }).error, /no active workflow calls/)
+  })
+  it('a pr-check call at main beside a direct gate call at another ref is a mixed pin', () => {
     const texts = {
-      '.github/workflows/pr-check.yml': `jobs:\n  g:\n    uses: gorfednet/.github/.github/workflows/pr-check-static.yml@${SHA}\n`,
+      '.github/workflows/pr-check.yml': prCheck('main', 'verification-kit'),
       '.github/workflows/ci.yml': gate('v0.49.0'),
     }
     assert.match(readKitPin(Object.keys(texts).map((p) => wf(p)), (p) => texts[p]).error, /different refs/)

@@ -219,8 +219,50 @@ const SAFE_REF = /^[A-Za-z0-9][A-Za-z0-9._/-]*$/
 const callerLike = (w) => /pr-check|verif|gate|ci|test/i.test(w.path)
 const callerFirst = (a, b) => Number(callerLike(b)) - Number(callerLike(a))
 
-/** A `uses:` target that is the shared gate itself: the verification-gate action or a pr-check reusable workflow. setup-node, claude-review and the like say nothing about the kit. */
-const gateBearing = (target) => target === '.github/actions/verification-gate' || /^\.github\/workflows\/pr-check-[^/]+\.ya?ml$/.test(target)
+/** A `uses:` target that is the verification-gate action itself. setup-node, claude-review and the like say nothing about the kit. */
+const gateAction = (target) => target === '.github/actions/verification-gate'
+
+const PR_CHECK_USES = /^([ \t]*)uses:[ \t]*["']?gorfednet\/\.github\/\.github\/workflows\/pr-check-[^/@\s]+\.ya?ml@([^\s#"']+)/
+const emptyValue = (raw) => ['', '""', "''", '~', 'null'].includes(raw.replace(/(^|\s)#.*$/, '').trim())
+
+/**
+ * The refs of the pr-check reusable-workflow calls in a workflow that pass a non-empty `verification-kit`.
+ * Each pr-check workflow defaults that input to "" and runs its gate step only when it is not empty, so a call
+ * without it runs no kit and is not a pin. The `with:` read is the call's own job only: the lines around the
+ * `uses:` key at its indent or deeper.
+ */
+function prCheckGateRefs(body) {
+  const lines = body.split('\n')
+  const indentOf = (line) => line.match(/^[ \t]*/)[0].length
+  const skip = (line) => line.trim() === '' || /^\s*#/.test(line)
+  const refs = []
+  for (let i = 0; i < lines.length; i++) {
+    const m = PR_CHECK_USES.exec(lines[i])
+    if (!m) continue
+    const indent = m[1].length
+    let from = i
+    while (from > 0 && (skip(lines[from - 1]) || indentOf(lines[from - 1]) >= indent)) from--
+    let to = i
+    while (to + 1 < lines.length && (skip(lines[to + 1]) || indentOf(lines[to + 1]) >= indent)) to++
+    let passes = false
+    for (let j = from; j <= to; j++) {
+      const w = /^([ \t]*)with:[ \t]*(.*)$/.exec(lines[j])
+      if (!w || w[1].length !== indent) continue
+      const flow = /^\{(.*)\}\s*(#.*)?$/.exec(w[2].trim())
+      if (flow) {
+        const kit = /(?:^|,)\s*["']?verification-kit["']?\s*:\s*([^,]*)/.exec(flow[1])
+        if (kit && !emptyValue(kit[1])) passes = true
+        continue
+      }
+      for (let k = j + 1; k <= to && (skip(lines[k]) || indentOf(lines[k]) > indent); k++) {
+        const kit = /^[ \t]*["']?verification-kit["']?[ \t]*:(.*)$/.exec(lines[k])
+        if (kit && !skip(lines[k]) && !emptyValue(kit[1])) passes = true
+      }
+    }
+    if (passes) refs.push(m[2])
+  }
+  return refs
+}
 
 const VENDORED_RUN = /^(?:(?:then|do|else)\s+)?node(?:\s+--?[\w-]+(?:=\S+)?)*\s+(?:\.\/)?verification-kit\/bin\/[\w.-]+\.mjs(?:\s|$)/
 
@@ -251,8 +293,9 @@ export const runsVendoredKit = (body) => runCommands(body).some((c) => VENDORED_
 /**
  * The ref a repository's workflows pin the shared gate to, read from the `uses: gorfednet/.github/...@ref`
  * lines (the gate runs this repository's kit at that ref, not the repository's vendored copy). Reads the
- * workflow files the run already listed, caller-like names first, and takes the pin from the files that call a
- * gate-bearing target (other shared actions say nothing about the kit). Every active file is read; differing refs across files are an error. Answers `{ ref }`; with no active gate
+ * workflow files the run already listed, caller-like names first, and takes the pin from the files that call the
+ * verification-gate action, or a pr-check reusable workflow at main with a non-empty `verification-kit` (which
+ * calls the action at main; without that input it runs no gate and is no pin; at another ref it is an error). Every active file is read; differing refs across files are an error. Answers `{ ref }`; with no active gate
  * caller, `{ vendored: true }` when a workflow runs the repository's own verification-kit/bin (the vendored
  * kit is what runs there), else `{ none: true }` for a tier-0 repository (fleet.json: gate off) or
  * `{ untiered: true }` for one fleet.json does not list (informational, never a failure); `{ error }` for
@@ -272,9 +315,13 @@ export function readKitPin(workflows, text, { tier } = {}) {
     // Not on the default branch (renamed, deleted, or only ever seen on a PR branch): it pins nothing there, so skip it.
     // A read that throws is not this case; it reaches the caller's catch and the row goes unavailable or error.
     if (body === null) continue
-    // A pr-check-*.yml reusable workflow calls verification-gate@main itself (every one in this repository does), so a caller
-    // pinned at any ref still runs main's kit. Only a direct call of the action runs the kit at the ref written.
-    const gate = pinnedRefs([body]).filter((u) => gateBearing(u.target)).map((u) => (u.target.startsWith('.github/workflows/') ? { ...u, ref: 'main' } : u))
+    // A direct call of the action runs the kit at the ref written. A pr-check-*.yml reusable workflow calls
+    // verification-gate@main itself, but only when the caller passes verification-kit, and only main's copy is known to:
+    // what a pr-check workflow at another ref calls (nothing at all before the gate step existed) is not in the caller's
+    // text, so that is an error rather than a guess. No fleet caller pins pr-check anywhere but main.
+    const viaPrCheck = prCheckGateRefs(body)
+    if (viaPrCheck.some((ref) => ref !== 'main')) return { error: 'a workflow calls a pr-check workflow at a ref other than main, so the gate it runs cannot be read' }
+    const gate = [...pinnedRefs([body]).filter((u) => gateAction(u.target)), ...viaPrCheck.map((ref) => ({ ref }))]
     if (gate.length === 0) {
       if (runsVendoredKit(body)) vendored = true
       continue

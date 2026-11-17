@@ -17,6 +17,7 @@ check caught, why it went, and what still catches that class. Newest first.
 **What catches that class now:**
 - A repository whose workflows call the gate fails when the pin is far behind, ahead of canonical, unreadable, or at mixed refs.
 - A tier 1 or above repository with no gate caller and no vendored kit run fails as an error row (`kitFailures` turns a `none` pin at tier 1 or above into `error`).
+- A call of a `pr-check-*` reusable workflow counts as a gate caller only when it passes a non-empty `verification-kit` at `@main`. Without that input the workflow skips its gate step, so the call is no caller and the row above applies (the old `missing` case). At any other ref the row fails as an error: the gate a pr-check workflow runs at that ref can't be read from the caller, and before the gate step existed it ran none.
 - A repository that runs its own `verification-kit/bin` is reported as `vendored` and still fails on its copy's gap.
 - `check-kit-drift` compares a vendored copy with its own manifest. A stale vendored copy behind a current pin is no longer reported anywhere; it affects nothing that runs.
 
