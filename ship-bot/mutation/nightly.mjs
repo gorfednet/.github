@@ -6,7 +6,7 @@
  * request, and exits 0 whatever it finds. Exit 1 means the harness itself broke.
  *
  *   node ship-bot/mutation/nightly.mjs [--state-dir D] [--src DIR] [--budget-min 240]
- *        [--concurrency 2] [--unit-lines 300] [--notify] [--planted-only]
+ *        [--concurrency 2] [--unit-lines 300] [--max-units N] [--notify] [--planted-only]
  *
  * ship-bot's source is cut into 300-line units. Each night runs the most overdue
  * units (never run, then changed, then oldest) until the time budget is spent. A
@@ -21,7 +21,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync
 import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { digest, dueUnits, plantedListed, rank, summarize, totals, unitKey, unitsFor } from './lib.mjs'
+import { digest, dueUnits, plantedListed, rank, scoredTests, summarize, testCommand, totals, unitKey, unitsFor } from './lib.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = resolve(HERE, '../..')
@@ -92,7 +92,8 @@ const statePath = join(stateDir, 'state.json')
 const state = existsSync(statePath) ? JSON.parse(readFileSync(statePath, 'utf8')) : { units: {}, nights: [] }
 const libDir = join(src, 'ship-bot/lib')
 const files = readdirSync(libDir).filter((f) => f.endsWith('.mjs')).sort().map((f) => `ship-bot/lib/${f}`)
-const hashes = { __tests: sha(readdirSync(join(src, 'ship-bot/test')).sort().map((f) => sha(readFileSync(join(src, 'ship-bot/test', f)))).join()) }
+const testFiles = readdirSync(join(src, 'ship-bot/test'))
+const hashes = { __tests: sha(scoredTests(testFiles).map((f) => sha(readFileSync(join(src, 'ship-bot/test', f)))).join()) }
 const units = []
 for (const f of files) {
   const text = readFileSync(join(src, f), 'utf8')
@@ -100,11 +101,11 @@ for (const f of files) {
   units.push(...unitsFor(f, text.split('\n').length, unitLines))
 }
 const liveKeys = units.map(unitKey)
-const queue = flag('planted-only') ? [] : dueUnits(units, state, { hashes, today })
+const queue = flag('planted-only') ? [] : dueUnits(units, state, { hashes, today }).slice(0, Number(opt('max-units', Infinity)))
 log(`${units.length} units, ${queue.length} due`)
 
 // 3. Run due units until the budget is spent. Save after each one.
-const command = 'node --test ship-bot/test/*.test.mjs'
+const command = testCommand(testFiles)
 for (const u of queue) {
   const left = budgetMs - (Date.now() - started)
   if (left < 5 * 60000) { log('budget spent, resuming tomorrow'); break }

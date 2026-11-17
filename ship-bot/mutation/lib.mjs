@@ -100,3 +100,13 @@ export function digest({ date, total, units, nights, planted }) {
 export function plantedListed(survivors) {
   return survivors.some((s) => s.file.endsWith('planted.mjs') && s.line === 2)
 }
+
+/**
+ * The test files a mutant is scored against. The mutation tooling's own tests
+ * (`mutation.test.mjs`) import `../mutation/lib.mjs`, which the sandbox leaves
+ * out, so one of them in the command fails the dry run and the unit gets no
+ * report. They test the tooling, not ship-bot, so they stay out of the score.
+ */
+export const TOOLING_TESTS = ['mutation.test.mjs']
+export const scoredTests = (files) => files.filter((f) => f.endsWith('.test.mjs') && !TOOLING_TESTS.includes(f)).sort()
+export const testCommand = (files) => `node --test ${scoredTests(files).map((f) => `ship-bot/test/${f}`).join(' ')}`

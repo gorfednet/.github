@@ -1,7 +1,8 @@
 /** The nightly mutation run's pure parts (plan row 1.35). It is a report, never a gate. */
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { digest, dueUnits, plantedListed, rank, score, summarize, totals, unitKey, unitsFor } from '../mutation/lib.mjs'
+import { readFileSync, readdirSync } from 'node:fs'
+import { digest, dueUnits, plantedListed, rank, score, scoredTests, summarize, testCommand, totals, unitKey, unitsFor } from '../mutation/lib.mjs'
 
 const m = (status, line, mutatorName = 'ConditionalExpression') => ({ status, mutatorName, location: { start: { line } }, replacement: 'x' })
 
@@ -73,5 +74,19 @@ describe('mutation lib', () => {
     assert.match(text, /canary ok/)
     assert.equal(text.match(/f\d+\.mjs:\d+ EqualityOperator/g).length, 10)
     assert.match(digest({ date: 'd', total, units: 1, nights: [], planted: { ok: false } }), /NOT listed/)
+  })
+
+  it('scores against no test that imports the mutation tooling, which the sandbox leaves out', () => {
+    const dir = new URL('.', import.meta.url)
+    const files = readdirSync(dir)
+    const cmd = testCommand(files)
+    assert.doesNotMatch(cmd, /mutation\.test/)
+    assert.doesNotMatch(cmd, /\*/)
+    assert.ok(scoredTests(files).length > 10)
+    for (const f of scoredTests(files)) assert.doesNotMatch(readFileSync(new URL(f, dir), 'utf8'), /from '\.\.\/mutation\//, f)
+    const nightly = readFileSync(new URL('../mutation/nightly.mjs', import.meta.url), 'utf8')
+    assert.match(nightly, /testCommand\(testFiles\)/)
+    assert.doesNotMatch(nightly, /ship-bot\/test\/\*/)
+    assert.ok(files.includes('mutation.test.mjs') && !scoredTests(files).includes('mutation.test.mjs'))
   })
 })
