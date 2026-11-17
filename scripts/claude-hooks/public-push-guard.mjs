@@ -119,9 +119,12 @@ export async function checkPush(remote, url, updates) {
   for (const u of updates) {
     // Branch and tag names are public too, and so is an annotated tag's message.
     if (mod.scanText(u.rref, ctx, NAME_RULES).length > 0) fail('a branch or tag name in this push')
-    if (git(['cat-file', '-t', u.sha]).stdout.trim() === 'tag') {
-      const tag = must(['for-each-ref', '--format=%(contents)', u.ref], 'read a tag message')
-      if (mod.scanText(tag, ctx, [...NAME_RULES, 'owner-quote']).length > 0) fail(`the message of tag ${u.ref.replace(/^refs\/tags\//, '').slice(0, 40)}`)
+    // Read the objects being sent, not the local ref: a push of `<sha>:refs/tags/v1` has no local ref name. A tag can point at a tag.
+    let obj = u.sha
+    for (let depth = 0; depth < 20 && git(['cat-file', '-t', obj]).stdout.trim() === 'tag'; depth += 1) {
+      const [header, ...message] = must(['cat-file', 'tag', obj], 'read a tag').split('\n\n')
+      if (mod.scanText(message.join('\n\n'), ctx, [...NAME_RULES, 'owner-quote']).length > 0) fail(`the message of tag ${u.rref.replace(/^refs\/tags\//, '').slice(0, 40)}`)
+      obj = /^object (\S+)/.exec(header)?.[1] ?? refuse('a tag object has no target, so it can\'t be read.')
     }
   }
   for (const { tip, base, count } of outgoing(url, updates)) {

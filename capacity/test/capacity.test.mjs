@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { errorRecord, classify, parseVmStat, countWorking, run, message, afterRun, loadHelpers } from '../capacity.mjs'
+import { errorRecord, classify, parseTmutil, parseTopIdle, detectBackup, parseVmStat, countWorking, run, message, afterRun, loadHelpers } from '../capacity.mjs'
 
 const base = { cores: 10, freeGb: 8, working: 2, load1: 3 }
 
@@ -47,7 +47,7 @@ function harness(prevState, inputs) {
     get written() { return written },
     deps: {
       now: 0,
-      read: () => ({ load1: inputs.load1, cores: inputs.cores, freeGb: inputs.freeGb }),
+      read: () => ({ load1: inputs.load1, cores: inputs.cores, freeGb: inputs.freeGb, backup: inputs.backup, idlePct: inputs.idlePct }),
       working: () => inputs.working,
       queue: () => 3,
       readPrevious: () => (prevState ? { state: prevState } : null),
@@ -107,6 +107,66 @@ test('a failed first push (lastPushedState null) is retried', async () => {
 test('unknown session count never reports headroom', () => {
   assert.equal(classify({ ...base, working: null }).state, 'steady')
   assert.equal(classify({ ...base, working: null, load1: 11 }).state, 'hold')
+})
+// A backup's disk waits inflate the load average (16 November 2026: load 25 to 38 on 10 cores, CPU 56% idle).
+const backingUp = { ...base, load1: 30, backup: 'Time Machine', idlePct: 56, freeGb: 35 }
+test('backup, high load, idle CPU: headroom (load is ignored)', () => {
+  assert.deepEqual(classify(backingUp), { state: 'headroom', freeSlots: 2 })
+  assert.equal(classify({ ...backingUp, backup: 'Backblaze' }).state, 'headroom')
+  assert.equal(classify({ ...backingUp, idlePct: 40 }).state, 'headroom') // 40% is the floor, as in builder-ok
+  assert.equal(classify({ ...backingUp, working: 5 }).state, 'steady') // slots still cap it
+  assert.equal(classify({ ...backingUp, working: null }).state, 'steady')
+})
+test('backup, busy CPU or low memory: hold', () => {
+  assert.equal(classify({ ...backingUp, idlePct: 39.9 }).state, 'hold')
+  assert.equal(classify({ ...backingUp, backup: 'Backblaze', idlePct: 10 }).state, 'hold')
+  assert.equal(classify({ ...backingUp, load1: 1, idlePct: 10 }).state, 'hold') // low load does not rescue a busy CPU
+  assert.equal(classify({ ...backingUp, freeGb: 3.9 }).state, 'hold')
+})
+test('no backup, high load: hold, whatever the idle figure says', () => {
+  assert.equal(classify({ ...base, load1: 30, idlePct: 56 }).state, 'hold')
+  assert.equal(classify({ ...base, load1: 30, backup: null, idlePct: 56 }).state, 'hold')
+})
+test('backup running but idle unreadable: the load rule applies', () => {
+  assert.equal(classify({ ...backingUp, idlePct: null }).state, 'hold')
+  assert.equal(classify({ ...backingUp, idlePct: undefined }).state, 'hold')
+  assert.equal(classify({ ...backingUp, idlePct: NaN }).state, 'hold')
+  assert.equal(classify({ ...backingUp, idlePct: '56' }).state, 'hold') // not a number
+  assert.equal(classify({ ...backingUp, load1: 3, idlePct: null }).state, 'headroom') // and a low load still passes it
+})
+test('tmutil status: Running = 1 only', () => {
+  assert.equal(parseTmutil('Backup session status:\n{\n    ClientID = "com.apple.backupd";\n    Running = 1;\n}'), true)
+  assert.equal(parseTmutil('{\n    Running = 0;\n}'), false)
+  assert.equal(parseTmutil('{\n    Running = 10;\n}'), false)
+  assert.equal(parseTmutil(''), false)
+  assert.equal(parseTmutil(undefined), false)
+})
+test('top: idle from the second CPU usage line', () => {
+  const t = 'Processes: 1\nCPU usage: 10.0% user, 5.0% sys, 85.0% idle\nPhysMem: 1G\nProcesses: 1\nCPU usage: 30.2% user, 13.8% sys, 56.0% idle\n'
+  assert.equal(parseTopIdle(t), 56)
+  assert.equal(parseTopIdle('nothing here'), null)
+  assert.equal(parseTopIdle(''), null)
+})
+test('detectBackup: Time Machine, then Backblaze; any failed probe is not a backup', () => {
+  const run = (tm, bz) => detectBackup((cmd) => {
+    const v = cmd === 'tmutil' ? tm : bz
+    if (v instanceof Error) throw v
+    return v
+  })
+  assert.equal(run('Running = 1;', new Error('none')), 'Time Machine')
+  assert.equal(run('Running = 0;', '4242\n'), 'Backblaze')
+  assert.equal(run(new Error('tmutil failed'), '4242\n'), 'Backblaze')
+  assert.equal(run('Running = 0;', new Error('exit 1')), null)
+  assert.equal(run(new Error('tmutil failed'), new Error('pgrep failed')), null)
+  assert.equal(run('Running = 0;', ''), null)
+})
+test('run reports the backup and idle figure, and the backup lifts the hold', async () => {
+  const h = harness('hold', backingUp)
+  const out = await run(h.deps)
+  assert.equal(out.state, 'headroom')
+  assert.equal(out.backup, 'Time Machine')
+  assert.equal(out.idlePct, 56)
+  assert.equal((await run(harness('hold', base).deps)).backup, null)
 })
 test('a failed push is retried next run; a successful one is not repeated', async () => {
   const h = harness('steady', base)

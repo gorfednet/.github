@@ -183,6 +183,15 @@ describe('pre-push: tags and --mirror are read', () => {
     assert.ok(!remoteHas(r, 'refs/tags/v1'))
   })
 
+  it('reads a tag message when the push names the tag object by sha, or the tag points at another tag', () => {
+    const r = repo(world())
+    ok(r.dir, r.w, 'tag', '-a', 'inner', '-m', `on ${IP}`)
+    ok(r.dir, r.w, 'tag', '-a', 'outer', '-m', 'clean', 'inner')
+    const sha = ok(r.dir, r.w, 'rev-parse', 'inner').trim()
+    assert.ok(refused(push(r, 'origin', `${sha}:refs/tags/v1`)), 'by sha')
+    assert.ok(refused(push(r, 'origin', 'outer')), 'a tag of a tag')
+  })
+
   it('reads the names and tag messages of every ref, not only the first', () => {
     const r = repo(world())
     ok(r.dir, r.w, 'tag', 'v0', 'main')
