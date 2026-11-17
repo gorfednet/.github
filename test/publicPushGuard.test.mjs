@@ -418,7 +418,7 @@ describe('public-push-guard: pull request text and other writes to a public repo
   const bodyCases = (r) => [
     `gh pr create --title t --body "has ${IP} in it"`,
     `gh pr new --title t --body "has ${IP}"`,
-    `gh pr create --fill --body "$(cat <<'EOF'\nsee ${SESSION_ID}\nEOF\n)"`,
+    `gh pr create --fill --body-file - <<'EOF'\nsee ${SESSION_ID}\nEOF`,
     `gh pr edit 3 --body "${IP}"`,
     `gh pr comment 3 --body "${IP}"`,
     `gh issue create --title t --body "${IP}"`,
@@ -1202,6 +1202,78 @@ describe('public-push-guard: round 13', () => {
     const x = hook('git push origin feature', { r, env: { TMPDIR: cache } })
     assert.ok(denied(x), 'the guard still runs and finds the plant')
     assert.deepEqual(readdirSync(cache).filter((n) => n.startsWith('public-push-guard-nocache')), [], 'no predictable fallback directory is created')
+  })
+})
+
+describe('public-push-guard: everyday work is not refused', () => {
+  const vis = { [`${ORG}/secret-repo`]: 'PRIVATE', [`${ORG}/testrepo`]: 'PUBLIC' }
+  it('checks the repository --repo or GH_REPO names, not the working directory too', () => {
+    const r = repo() // a public working directory
+    assert.equal(hook(`gh pr edit 12 --repo ${ORG}/secret-repo --add-label ready-to-merge`, { r, vis }).out, '', '--repo')
+    assert.equal(hook(`GH_REPO=${ORG}/secret-repo gh pr edit 12 --add-label ready-to-merge`, { r, vis }).out, '', 'GH_REPO')
+    assert.equal(hook(`gh pr comment 3 -R ${ORG}/secret-repo --body "see ${ORG}/secret-repo"`, { r, vis }).out, '', '-R, private target')
+    assert.ok(denied(hook(`gh pr comment 3 --repo ${ORG}/testrepo --body "${IP}"`, { r, vis })), 'near miss: a public --repo is still read')
+    assert.ok(denied(hook(`gh pr comment 3 --body "see ${ORG}/secret-repo"`, { r, vis })), 'near miss: no --repo, so the public working directory is read')
+  })
+  it('lets everyday git and gh work through, in chains and pipes, when nothing in it can push', () => {
+    const r = repo()
+    for (const c of [
+      "git add -A && git commit -m \"$(cat <<'EOF'\nfix the parser\nEOF\n)\"",
+      "git ls-files | grep '\\.md$'",
+      'git diff $(git merge-base origin/main HEAD)',
+      'gh pr list --label ready-to-merge | head',
+      'git log --oneline | head -5',
+      'git status && git diff --stat',
+      'gh pr view 12 --json state | cat',
+      'gh run list --limit 3 | head',
+      'gh pr view 12 --json files --jq ".files[].path" | grep push',
+    ]) assert.equal(hook(c, { r }).out, '', c)
+    // near misses: the same shapes with something that can push or write in them
+    const bad = repo({ outgoing: { 'x.md': `${IP}\n` } })
+    assert.ok(denied(hook('git add -A && git push origin feature', { r: bad })), 'a push chained to an add')
+    assert.ok(denied(hook('git diff $(git push origin feature)', { r: bad })), 'a push in a substitution')
+    assert.ok(denied(hook('git ls-files | xargs git push', { r: bad })), 'a push behind xargs')
+    assert.ok(denied(hook('gh pr list | gh pr comment 3 --body-file -', { r })), 'a gh write in a pipe')
+  })
+  it('does not close $( at a ) inside a here-document', () => {
+    const r = repo()
+    for (const c of [
+      "git commit -m \"$(cat <<'EOF'\nfix: 1) parser\nEOF\n)\"",
+      "git commit -m \"$(cat <<'EOF'\nit's fine (really)\nEOF\n)\"",
+      "git commit -m \"$(cat <<'EOF'\nline one\n\nsee a) and b)\nEOF\n)\"",
+    ]) assert.equal(hook(c, { r }).out, '', c)
+  })
+  it('reads a command with no git or gh before it refuses a glob or a variable', () => {
+    const r = repo()
+    for (const c of ['grep -n push scripts/*.mjs', 'grep -rn push src/ | head', "rg push 'src/**'", 'ls *.md | grep push', 'cat notes-$(date +%F).md | grep push']) assert.equal(hook(c, { r }).out, '', c)
+    assert.ok(denied(hook('git push origin feat*', { r: repo({ outgoing: { 'x.md': `${IP}\n` } }) })), 'near miss: a glob in a push')
+  })
+})
+
+describe('public-push-guard: failures end in a decision, and the limits hold', () => {
+  it('refuses input it cannot parse when it mentions a push or gh, and ignores it otherwise', () => {
+    const r = repo()
+    assert.ok(denied(hook('x', { r, input: '{not json: git push origin main' })))
+    assert.equal(hook('x', { r, input: '{not json at all' }).out, '')
+  })
+  it('refuses a push that carries more commits than the cap', () => {
+    const r = repo({ outgoing: { 'a.md': 'one\n' } })
+    commit(r.dir, r.w, { 'b.md': 'two\n' })
+    commit(r.dir, r.w, { 'c.md': 'three\n' })
+    const x = hook('git push origin feature', { r, env: { PUBLIC_PUSH_GUARD_MAX_COMMITS: '2' } })
+    assert.ok(denied(x), x.out)
+    assert.match(reason(x), /more than the 2/)
+    assert.equal(hook('git push origin feature', { r, env: { PUBLIC_PUSH_GUARD_MAX_COMMITS: '10' } }).out, '', 'near miss: under the cap')
+  })
+  it('denies when the check crashes, and passes a command the wrapper filters out', () => {
+    const r = repo({ outgoing: { 'x.md': `${IP}\n` } })
+    const crash = tmp('crash')
+    writeFileSync(join(crash, 'node'), '#!/bin/sh\nexit 7\n')
+    chmodSync(join(crash, 'node'), 0o755)
+    const x = hook('git push origin feature', { r, env: { PATH: `${crash}:${process.env.PATH}` } })
+    assert.ok(denied(x), x.out)
+    assert.match(reason(x), /crashed \(exit 7\)/)
+    assert.equal(hook('ls -la', { r, env: { PATH: `${crash}:${process.env.PATH}` } }).out, '', 'near miss: the wrapper filters it out before node')
   })
 })
 

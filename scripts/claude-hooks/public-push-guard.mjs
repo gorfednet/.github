@@ -41,13 +41,13 @@ import { pathToFileURL } from 'node:url'
 const BUDGET_MS = 150_000
 const started = Date.now()
 const EMPTY_TREE = '4b825dc642cb6eb9a060e54bf8d69288fbee4904'
-const MAX_COMMITS = 150
 const TEXT_RULES = ['private-ip', 'session-id', 'tailnet-name', 'internal-host', 'private-repo', 'owner-quote']
 const PRIVATE_TTL_MS = 5 * 60 * 1000
 const PRIVATE_GRACE_MS = 60 * 60 * 1000 // when gh is down, a repository seen private within the hour passes
 const GUARD_TTL_MS = 30 * 60 * 1000
 // The test overrides below are honoured only when this is set, never in a live session.
 const TEST_MODE = process.env.PUBLIC_PUSH_GUARD_TEST === '1'
+const MAX_COMMITS = TEST_MODE && Number(process.env.PUBLIC_PUSH_GUARD_MAX_COMMITS) > 0 ? Number(process.env.PUBLIC_PUSH_GUARD_MAX_COMMITS) : 150
 
 class Deny extends Error {}
 const deny = (message) => {
@@ -301,19 +301,14 @@ function readShell(source, state) {
       return end < 0 ? src.length : end + 1
     }
     if (src[at + 1] === '(') {
-      let depth = 1
-      let j = at + 2
-      while (j < src.length && depth > 0) {
-        if (src[j] === '(') depth += 1
-        else if (src[j] === ')') depth -= 1
-        j += 1
-      }
-      if (depth > 0) out.uncertain = true
-      nested(src.slice(at + 2, depth > 0 ? src.length : j - 1))
+      const close = matchParen(src, at + 2)
+      if (close < 0) out.uncertain = true
+      const inner = src.slice(at + 2, close < 0 ? src.length : close)
+      nested(inner)
       w.open = true
-      w.subst = [...(w.subst ?? []), src.slice(at + 2, depth > 0 ? src.length : j - 1).trim()]
+      w.subst = [...(w.subst ?? []), inner.trim()]
       w.text += '$('
-      return j
+      return close < 0 ? src.length : close + 1
     }
     if (src[at + 1] === "'" || src[at + 1] === '"') {
       w.open = true // $'...' (ANSI-C quoting) and $"..." can spell anything
@@ -338,6 +333,62 @@ function readShell(source, state) {
     } else w.text += val
     return at + m[0].length
   }
+}
+
+/**
+ * Index of the ) that closes a $( whose body starts at `from`, or -1. A ) inside a quote, a comment or a
+ * here-document body (a commit message saying "1) parser") does not close it.
+ */
+function matchParen(src, from) {
+  let depth = 1
+  let j = from
+  let pending = [] // here-document delimiters waiting for the next newline
+  while (j < src.length) {
+    const c = src[j]
+    if (c === '\\') j += 2
+    else if (c === "'") {
+      const end = src.indexOf("'", j + 1)
+      j = end < 0 ? src.length : end + 1
+    } else if (c === '"') {
+      j += 1
+      while (j < src.length && src[j] !== '"') {
+        if (src[j] === '\\') j += 2
+        else if (src[j] === '$' && src[j + 1] === '(') {
+          const inner = matchParen(src, j + 2)
+          j = inner < 0 ? src.length : inner + 1
+        } else j += 1
+      }
+      j += 1
+    } else if (c === '#' && (j === from || /\s/.test(src[j - 1]))) {
+      while (j < src.length && src[j] !== '\n') j += 1
+    } else if (c === '<' && src[j + 1] === '<' && src[j + 2] !== '<') {
+      const m = /^<<(-?)[ \t]*(['"]?)([A-Za-z0-9_.-]+)\2/.exec(src.slice(j))
+      if (m) {
+        pending.push({ delim: m[3], dash: m[1] === '-' })
+        j += m[0].length
+      } else j += 2
+    } else if (c === '\n' && pending.length > 0) {
+      j += 1
+      for (const { delim, dash } of pending) {
+        for (;;) {
+          if (j >= src.length) break
+          const eol = src.indexOf('\n', j)
+          const line = src.slice(j, eol < 0 ? src.length : eol)
+          j = eol < 0 ? src.length : eol + 1
+          if ((dash ? line.replace(/^\t+/, '') : line) === delim) break
+        }
+      }
+      pending = []
+    } else if (c === '(') {
+      depth += 1
+      j += 1
+    } else if (c === ')') {
+      depth -= 1
+      if (depth === 0) return j
+      j += 1
+    } else j += 1
+  }
+  return -1
 }
 
 /** Index after one shell word starting at `at` (used to drop a redirection's target). */
@@ -912,8 +963,6 @@ function runsInline(x) {
   return rest.some((w) => /^-(?:[a-zA-Z]*[ceErpP]|-eval|-exec)\b/.test(w.text) || /^-[ceErpP]$/.test(w.text))
 }
 
-// Subcommands that take no command to run: a commit message or tag message that says "push" is routine.
-const SAFE_GIT = new Set(['add', 'commit', 'log', 'status', 'diff', 'show', 'branch', 'checkout', 'switch', 'restore', 'reset', 'tag', 'merge', 'stash', 'rev-parse', 'rev-list', 'ls-files', 'remote', 'worktree', 'config', 'mv', 'rm', 'revert', 'cherry-pick', 'describe', 'blame', 'init'])
 
 /** True when a git command carries -c or --config-env before its subcommand: it can set an alias or a pager. */
 function gitConfigPairs(words) {
@@ -941,19 +990,74 @@ const GH_WRITE = /\b(?:create|new|edit|comment|review|merge|close|reopen|upload)
 // -fbody=x and -Fbody=x carry the value on the flag itself, so nothing may be required after the letter.
 const GH_API_WRITE = /(?:-X|--method)[ =]*(?:POST|PATCH|PUT|DELETE)|\s(?:-[fF]|--field|--raw-field|--input)/i
 
+// Git subcommands that run a command they are given. Each is harmful only in the spelling that runs one.
+const GIT_RUNS = [
+  ['rebase', (a) => /^(?:-x|--exec)/.test(a)],
+  ['bisect', (a) => a === 'run'],
+  ['submodule', (a) => a === 'foreach'],
+  ['grep', (a) => /^(?:-O|--open-files-in-pager)/.test(a)],
+  ['fetch', (a) => /^(?:--upload-pack|--receive-pack|--exec|-u$)/.test(a)],
+  ['pull', (a) => /^(?:--upload-pack|--receive-pack|--exec|-u$)/.test(a)],
+  ['clone', (a) => /^(?:--upload-pack|--receive-pack|--exec|-u$)/.test(a)],
+  ['ls-remote', (a) => /^(?:--upload-pack|--receive-pack|--exec)/.test(a)],
+  ['archive', (a) => /^(?:--exec|--remote)/.test(a)],
+  ['filter-branch', () => true],
+  ['difftool', () => true],
+  ['mergetool', () => true],
+  ['daemon', () => true],
+  ['instaweb', () => true],
+  ['send-pack', () => true],
+  ['receive-pack', () => true],
+  ['upload-pack', () => true],
+  ['web--browse', () => true],
+  ['help', () => true],
+]
+const GH_READ_VERBS = new Set(['list', 'ls', 'view', 'status', 'checks', 'diff', 'checkout', 'co', 'clone', 'download', 'watch', 'browse', 'get'])
+const GH_READ_GROUPS = new Set(['status', 'search', 'browse', 'completion', 'version', 'help'])
+const GH_API_WRITE_ARGS = /(?:^|\s)(?:-X|--method)[ =]*(?:POST|PATCH|PUT|DELETE)|(?:^|\s)(?:-[fF]|--field|--raw-field|--input)/i
+
+/** A word that could carry a push, a gh call, or git behind an expansion (quotes and backslashes dropped). */
+function hidesPush(w) {
+  const t = w.text.replace(/[\\'"]/g, '')
+  return /push|\bgh\b/.test(t) || (/\bgit\b/.test(t) && /[$`]/.test(t))
+}
+
+function ghMayWrite(x) {
+  const args = normalizeBooleans(x.words.slice(1))
+  const pos = ghAction(args)
+  if (pos.length === 0) return false // gh --version
+  if (pos[0] === 'api') return /^graphql/.test(pos[1] ?? '') || GH_API_WRITE_ARGS.test(args.map((w) => w.text).join(' '))
+  if (GH_READ_GROUPS.has(pos[0]) || (pos[0] === 'auth' && pos[1] === 'status')) return false
+  return !(pos.length >= 2 && GH_READ_VERBS.has(pos[1]))
+}
+
+/** Can this statement push or write to GitHub? git push, a gh write, anything that runs one, or code the hook can't read. */
+function canPublish(x) {
+  const first = x.words[0]
+  if (!first) return false
+  if (first.open) return true
+  const cmd = basename(first.text)
+  if (cmd === 'git') {
+    const sub = gitSubcommand(x.words)
+    if (sub === null || sub === 'push' || gitConfigPairs(x.words)) return true
+    const runs = GIT_RUNS.find(([name]) => name === sub)
+    return runs ? x.words.slice(1).some((w) => runs[1](w.text)) : false
+  }
+  if (cmd === 'gh') return ghMayWrite(x)
+  if (INERT.has(cmd)) return false
+  if (x.words.some((w) => ['git', 'gh'].includes(basename(w.text)))) return true // git or gh behind a wrapper
+  return runsInline(x) || x.words.slice(1).some(holdsPush)
+}
+
 /**
  * Anything that could push or write to GitHub is checked only when it is one plain command the
  * hook has fully read: git or gh as the first word, a literal directory, nothing it has no value
- * for. Anything else is refused: a session can always rephrase, and a false refusal costs little.
- * Returns false when the command holds no git or gh at all (a push word in an echo).
+ * for. Anything else that could publish is refused: a session can always rephrase. A command in which
+ * nothing can push or publish (a commit, a pipe through grep, a gh list) is not the hook's business,
+ * whatever it holds: returns false.
  */
 function plain(parsed) {
-  // A git command whose subcommand is a plain word other than push (commit, log, ...) can't push, whatever its
-  // arguments hold: a commit message from a here-document or a variable is routine. Only when nothing else in
-  // the command, a substitution included, mentions git or gh.
-  const top = parsed.statements.filter((x) => !x.nested)
-  const gitish = (x) => x.words.some((w) => ['git', 'gh'].includes(basename(w.text)) || holdsPush(w)) || runsInline(x)
-  if (!parsed.uncertain && top.length === 1 && basename(top[0].words[0].text) === 'git' && SAFE_GIT.has(gitSubcommand(top[0].words)) && !gitConfigPairs(top[0].words) && parsed.statements.every((x) => x === top[0] || !gitish(x))) return false
+  if (!parsed.uncertain && !parsed.statements.some(canPublish)) return false
   const refuse = (why) => deny(`public-push-guard: this command could push or write to GitHub, and the hook checks only one plain command it can read in full (${why}). Run the push or gh write as one plain command from the target directory, with a literal --body-file.`)
   const sts = parsed.statements
   if (parsed.uncertain) refuse('it holds something the hook can\'t read')
@@ -1137,7 +1241,9 @@ async function main() {
         for (const r of remotesFor(target, { text: name, open: false }, '')) publicSlugs(r, cache).slugs.forEach((x) => fromDir.add(x))
       }
     }
-    let slugs = [...new Set([...hard, ...fromDir, ...soft])]
+    // gh acts on the repository --repo, GH_REPO or an endpoint names, not on the working directory's, so a private
+    // target named from a public clone (Desk labelling an ops pull request) is read as the private one it is.
+    let slugs = [...new Set([...hard, ...(hard.size > 0 ? [] : fromDir), ...soft])]
     // A write that names no repository (graphql, orgs/..., from a directory that isn't a repository): read as public.
     if (fromDir.size === 0 && hard.size === 0 && writesApi && !isGraphqlRead) slugs = ['(unattributed gh api write)', ...soft]
     for (const slug of slugs) {
