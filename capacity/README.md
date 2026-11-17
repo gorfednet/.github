@@ -6,9 +6,12 @@ A token-free LaunchAgent (`net.gorfed.capacity`, every 15 minutes) that writes `
 |-------|------|-----------|
 | `headroom` | 1-minute load under 0.7 x cores, at least 4 GB free, fewer than 5 working sessions | 5 minus working, capped at 2 (the builder rule) |
 | `hold` | load over cores, or under 4 GB free | 0 |
+| during a backup | CPU idle under 40% or under 4 GB free is `hold`; load is ignored. Otherwise `headroom` if fewer than 5 sessions are working | as `headroom` |
 | `steady` | anything between | 0 |
 
 Inputs: `os.loadavg()` against `sysctl -n hw.ncpu`; free plus inactive pages from `vm_stat`; working sessions = non-archived files under the Claude app's `claude-code-sessions` store with `lastActivityAt` in the last 10 minutes (the store has no explicit running flag, so this is a proxy).
+
+Backups: Time Machine (`tmutil status` shows `Running = 1`) and Backblaze (a `bztransmit` process) make the load average count their disk waits, so while either runs the CPU idle figure (second `top` sample) replaces the load test. This is the rule of ops `builder-ok`. If the backup or the idle figure can't be read, the load rule applies. `capacity.json` carries `backup` and `idlePct`. After a change here, rerun `capacity/install.sh`.
 
 Pool queue: set `CAPACITY_QUEUE_CMD` to a command that prints one number (one cached read of the pool, never per repo). Unset, `poolQueue` is `null` and the message says "unknown queued". Weekly usage has no local source, so `weeklyUsage` is always `null`.
 
