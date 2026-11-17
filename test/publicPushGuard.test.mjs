@@ -601,6 +601,70 @@ describe('pre-push: bare private names in ref names and tag messages', () => {
   })
 })
 
+describe('pre-push: dot joins, a dotted private name, the tagger line and odd tag objects (plan row 1.30i)', () => {
+  const BARE = SECRET.split('/')[1]
+  const DOTTED = 'quiet' + '.example' // an invented private repository whose name has a dot, like a site's
+  const dottedWorld = () => world({ listOut: `gorfednet/ops\n${SECRET}\ngorfednet/${DOTTED}\n` })
+  const TAIL = ['box', 'tail1234', 'ts', 'net'].join('.')
+
+  it('refuses a private name joined by a dot, which word and path parts take for a host', () => {
+    const r = repo(world())
+    for (const branch of [`release/v2.${BARE}`, `${BARE}.migration`]) {
+      ok(r.dir, r.w, 'branch', branch)
+      const x = push(r, 'origin', branch)
+      assert.ok(refused(x) && /branch or tag name/.test(x.stderr), `${branch}: ${x.stderr}`)
+    }
+  })
+
+  it('passes version names and hyphen joins with dots in them', () => {
+    const r = repo(world())
+    for (const name of ['release/1.2', 'kit/v0.27.0', `${BARE}-v1.2.3`]) {
+      ok(r.dir, r.w, 'branch', name)
+      assert.equal(push(r, 'origin', name).status, 0, name)
+    }
+  })
+
+  it('reads a dotted private name whole, as a path part with any extension, in a ref name and in a tag header', () => {
+    const r = repo(dottedWorld())
+    ok(r.dir, r.w, 'branch', `notes/${DOTTED}.bak`)
+    const x = push(r, 'origin', `notes/${DOTTED}.bak`)
+    assert.ok(refused(x) && /branch or tag name/.test(x.stderr), x.stderr)
+    ok(r.dir, r.w, 'tag', '-a', `notes/${DOTTED}.bak`, '-m', 'clean')
+    const t = push(r, 'origin', `refs/tags/notes/${DOTTED}.bak:refs/tags/v4`)
+    assert.ok(refused(t) && /name inside tag v4/.test(t.stderr), t.stderr)
+  })
+
+  it('refuses a said name beside the word private in a ref name', () => {
+    const r = repo(world(), { baseFiles: { 'docs/a.md': `${BARE} is a site\n` } })
+    ok(r.dir, r.w, 'branch', `private/${BARE}`)
+    const x = push(r, 'origin', `private/${BARE}`)
+    assert.ok(refused(x) && /branch or tag name/.test(x.stderr), x.stderr)
+  })
+
+  it('refuses a tagger line that holds a host name, and passes one at a domain that shares a private name', () => {
+    const r = repo(world())
+    ok(r.dir, r.w, '-c', `user.email=t@${TAIL}`, 'tag', '-a', 'v5', '-m', 'clean')
+    const x = push(r, 'origin', 'v5')
+    assert.ok(refused(x) && /tagger line of tag v5/.test(x.stderr), x.stderr)
+    assert.ok(!x.stderr.includes(TAIL))
+    ok(r.dir, r.w, '-c', `user.email=me@${BARE}.test`, 'tag', '-a', 'v6', '-m', 'clean')
+    assert.equal(push(r, 'origin', 'v6').status, 0, 'a domain that shares a private name')
+  })
+
+  // Git can't peel such a tag to its commit, so the outgoing-commit step refuses it before the name line is read.
+  // The guard's own check of that line is a second stop no push reaches.
+  it('refuses a tag object with no name line, and sends nothing', () => {
+    const r = repo(world())
+    const target = ok(r.dir, r.w, 'rev-parse', 'HEAD').trim()
+    const body = `object ${target}\ntype commit\ntagger t <t@example.test> 1700000000 +0000\n\nno name\n`
+    const sha = spawnSync('git', ['hash-object', '-t', 'tag', '-w', '--literally', '--stdin'], { cwd: r.dir, encoding: 'utf8', env: envOf(r.w), input: body }).stdout.trim()
+    assert.match(sha, /^[0-9a-f]{40}$/)
+    const x = push(r, 'origin', `${sha}:refs/tags/v3`)
+    assert.ok(refused(x), x.stderr)
+    assert.ok(!remoteHas(r, 'refs/tags/v3'))
+  })
+})
+
 describe('pre-push: a tag chain is read to its end', () => {
   it('refuses a chain of more than 20 tags rather than leave the rest unread, and passes one of 20', () => {
     const r = repo(world())
