@@ -372,6 +372,24 @@ const PUSH_ARG_FLAGS = new Set(['-o', '--push-option', '--receive-pack', '--exec
  */
 const GLOB = /[*?[{]/
 
+// gh boolean flags (strconv.ParseBool accepts the true and false spellings below). `--public=true` is read as
+// `--public` and `--public=false` as absent, once, before any rule matches, so no rule needs its own = spelling.
+const GH_BOOLEAN_FLAGS = new Set(['public', 'private', 'internal', 'push', 'clone', 'add-readme', 'disable-issues', 'disable-wiki', 'include-all-branches', 'draft', 'fill', 'fill-first', 'fill-verbose', 'web', 'dry-run', 'prerelease', 'generate-notes', 'verify-tag', 'delete-branch', 'admin', 'auto', 'squash', 'merge', 'rebase', 'accept-visibility-change-consequences', 'no-maintainer-edit'])
+const PARSE_TRUE = new Set(['1', 't', 'T', 'TRUE', 'true', 'True'])
+const PARSE_FALSE = new Set(['0', 'f', 'F', 'FALSE', 'false', 'False'])
+function normalizeBooleans(args) {
+  const out = []
+  for (const w of args) {
+    const m = /^--([A-Za-z][A-Za-z0-9-]*)=(.*)$/s.exec(w.text)
+    if (m && GH_BOOLEAN_FLAGS.has(m[1])) {
+      if (PARSE_TRUE.has(m[2])) out.push({ ...w, text: `--${m[1]}` })
+      else if (PARSE_FALSE.has(m[2])) continue
+      else out.push(w) // gh would reject it; keep the word so any rule still sees it
+    } else out.push(w)
+  }
+  return out
+}
+
 function commandsIn(stmt) {
   const found = []
   const words = stmt.words
@@ -405,7 +423,7 @@ function commandsIn(stmt) {
       // An open word in the subcommand position (git pu${X}sh) could expand to push: read it as one.
       if (words[k]?.text === 'push' || words[k]?.open) found.push({ kind: 'push', dir, gitDir, cfg, unresolvedDir, args: words.slice(k + 1) })
     } else if (prog === 'gh') {
-      const args = words.slice(at + 1)
+      const args = normalizeBooleans(words.slice(at + 1))
       found.push({ kind: 'gh', dir: stmt.cwd, unresolvedDir: stmt.cwd === null, args, env: stmt.env })
     }
   }

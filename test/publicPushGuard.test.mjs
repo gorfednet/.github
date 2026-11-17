@@ -468,6 +468,24 @@ describe('public-push-guard: pull request text and other writes to a public repo
       assert.match(reason(x), /public/)
     }
   })
+  it('reads every refused flag in its = form, and a boolean flag by its value', () => {
+    const r = r0()
+    for (const c of [
+      `gh repo edit ${ORG}/x --visibility=public`,
+      'gh repo create y --public=true --source .',
+      'gh repo new y --public=true --source .',
+      'gh repo create y --public=1 --source .',
+      'gh repo create y --public=T',
+      'gh repo create y --private=false --public=TRUE',
+      `gh api -X PATCH repos/${ORG}/x --field=visibility=public`,
+      `gh api --method=PATCH repos/${ORG}/x -f visibility=public`,
+    ]) {
+      const x = hook(c, { r, vis: 'PRIVATE' })
+      assert.ok(denied(x), c)
+      assert.match(reason(x), /public/, c)
+    }
+    for (const c of ['gh repo create y --public=false --source .', 'gh repo create y --private=true --source .', 'gh repo create y --public=0']) assert.equal(hook(c, { r, vis: 'PRIVATE' }).out, '', c)
+  })
 })
 
 describe('public-push-guard: what it leaves alone', () => {
