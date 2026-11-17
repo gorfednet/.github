@@ -81,6 +81,20 @@ describe('node-update.sh', () => {
     assert.deepEqual(readdirSync(e.root).sort(), ['24', 'v24.22.4', 'v24.22.5'])
   })
 
+  it('a rerun with nothing newer keeps the rollback target and still prints the rollback line', () => {
+    const e = env()
+    for (const v of ['v24.22.3', 'v24.22.4']) {
+      dist(e.top, 24, v)
+      assert.equal(e.run('24').status, 0)
+    }
+    const again = e.run('24')
+    assert.equal(again.status, 0, again.stderr)
+    assert.match(again.stdout, /already unpacked/)
+    assert.ok(existsSync(join(e.root, 'v24.22.3', 'bin', 'node')), 'the patch before the latest is still there to roll back to')
+    assert.match(again.stdout, /rollback: ln -sfn v24\.22\.3 /)
+    assert.equal(readlinkSync(join(e.root, '24')), 'v24.22.4')
+  })
+
   it('is a no-op when already on the latest, and --check reads without writing', () => {
     const e = env()
     dist(e.top, 22, 'v22.23.5')

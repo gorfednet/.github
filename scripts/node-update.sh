@@ -109,10 +109,13 @@ rm -rf "${ROOT:?}/${latest}.part"
 
 # The install this one replaces: the line's current link, else (a first run beside an install made by hand)
 # the newest other v<major>.* directory. Its etc/npmrc (the shell's npm prefix) and its directory both carry over.
+newest_other() { for d in "${ROOT}"/v"${major}".*; do [[ -d "${d}" ]] && basename "${d}"; done | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | grep -vx "${latest}" | sort -t. -k2,2n -k3,3n | tail -1 || true; }
 previous="${current}"
-if [[ -z "${previous}" ]]; then
-  previous="$(for d in "${ROOT}"/v"${major}".*; do basename "${d}"; done | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | grep -vx "${latest}" | sort -t. -k2,2n -k3,3n | tail -1 || true)"
-fi
+[[ -n "${previous}" ]] || previous="$(newest_other)"
+# The rollback target: the install before this one. On a rerun with nothing newer, previous is latest itself,
+# so the rollback is the newest other patch instead; the prune and the printed line both keep it.
+rollback="${previous}"
+[[ -n "${rollback}" && "${rollback}" != "${latest}" ]] || rollback="$(newest_other)"
 
 if [[ ! -e "${ROOT}/${latest}" ]]; then
   echo "downloading ${tarball}"
@@ -160,10 +163,10 @@ fi
 
 rm -rf "${ROOT:?}/${latest}.bad"
 
-# Keep the new patch, the one it replaced, and every directory something still names: a link in the shell
+# Keep the new patch, the rollback target, and every directory something still names: a link in the shell
 # bin (resolved, so a relative link counts), another stable link in ROOT, or a LaunchAgent that spells out
 # a versioned path.
-keep=" ${latest} ${previous} "
+keep=" ${latest} ${previous} ${rollback} "
 real_of() { python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$1" 2>/dev/null || true; }
 root_real="$(real_of "${ROOT}")"
 note_dir() { # note_dir <path>: remember the v<version> directory under ROOT that <path> lives in
@@ -186,6 +189,6 @@ for d in "${ROOT}"/v"${major}".*; do
 done
 
 echo "node ${major}: ${current:-none} -> ${latest} (${link})"
-if [[ -n "${previous}" && "${previous}" != "${latest}" && -d "${ROOT}/${previous}" ]]; then
-  echo "rollback: ln -sfn ${previous} ${link}   (the next run installs the newest patch again)"
+if [[ -n "${rollback}" && -d "${ROOT}/${rollback}" ]]; then
+  echo "rollback: ln -sfn ${rollback} ${link}   (the next run installs the newest patch again)"
 fi
