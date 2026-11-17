@@ -87,6 +87,7 @@
       "incidents7d": 0,
       "dependabotRed": 0,
       "alertsOverdue": null,
+      "alertsUnread": "no-token-access",
       "idlePrs": [],
       "duplicatePrs": [
         {

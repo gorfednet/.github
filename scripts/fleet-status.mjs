@@ -143,14 +143,35 @@ export function overdueAlerts(alerts, now = new Date()) {
  * because 0 would read as "nothing is overdue". The workflow log is public, so for a repository whose row is redacted only the HTTP status is logged, never the error text.
  */
 export function alertsOverdue(slug, now, json, log = console.error, redact = false) {
+  return readAlerts(slug, now, json, log, redact).count
+}
+
+/**
+ * Why a read of the alerts failed, as one of five fixed words (never the error text): GitHub's primary or
+ * secondary rate limit (both answer 403, some 429, and say "rate limit" in the body: checked first, so a
+ * quota that ran out is never read as a token gap), alerts switched off for the repository, an archived
+ * repository, a token without the Dependabot alerts permission (403 or 404 with no other cause), or
+ * anything else. Told apart from GitHub's wording, so a wording change falls
+ * to `no-token-access` or `read-error`, never to a count.
+ */
+export function alertsUnreadReason(text) {
+  if (/rate limit|abuse detection|HTTP 429/i.test(text)) return 'rate-limited'
+  if (/disabled/i.test(text)) return 'alerts-off'
+  if (/archived/i.test(text)) return 'archived'
+  if (/HTTP (403|404)|not accessible|permission/i.test(text)) return 'no-token-access'
+  return 'read-error'
+}
+
+/** `{ count, why }`: the overdue count, or `count: null` with the fixed-word reason it could not be read. */
+export function readAlerts(slug, now, json, log = console.error, redact = false) {
   try {
     const pages = json(['api', '--paginate', '--slurp', `repos/${slug}/dependabot/alerts?state=open&per_page=100`])
-    return overdueAlerts(pages.flat(), now)
+    return { count: overdueAlerts(pages.flat(), now), why: null }
   } catch (cause) {
     const text = String(cause.stderr || cause.message)
     const reason = redact ? (/HTTP (\d{3})/.exec(text)?.[0] ?? 'read failed') : text.trim().split('\n')[0]
     log(`::warning::fleet-status could not read Dependabot alerts for ${slug}: ${reason}`)
-    return null
+    return { count: null, why: alertsUnreadReason(text) }
   }
 }
 
@@ -337,6 +358,7 @@ export async function gatherRepo(slug, now = new Date(), { includePrivate = fals
   const kitVersion = manifestText === null ? null : (JSON.parse(manifestText).version ?? '')
   const mainSha = json(['api', `repos/${slug}/commits/${base}`]).sha
   const mainRed = ciForCommit(slug, mainSha, json) === 'red'
+  const alerts = readAlerts(slug, now, json, log, isPrivate && !includePrivate)
   const full = {
     slug,
     defaultBranch: base,
@@ -351,7 +373,9 @@ export async function gatherRepo(slug, now = new Date(), { includePrivate = fals
     incidents7d: incidents,
     dependabotRed: dependabotRed(openPrs),
     kitVersion,
-    alertsOverdue: alertsOverdue(slug, now, json, log, isPrivate && !includePrivate),
+    alertsOverdue: alerts.count,
+    // Public rows only: which private repositories have alerts switched off is not published.
+    ...(alerts.why ? { alertsUnread: alerts.why } : {}),
   }
   return isPrivate && !includePrivate ? redactRepo(full) : full
 }

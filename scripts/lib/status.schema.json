@@ -53,6 +53,7 @@
           "mainRed": { "type": "boolean" },
           "kitVersion": { "type": ["string", "null"], "$comment": "verification-kit/MANIFEST.json version in the repository; null when it carries no kit." },
           "dependabotRed": { "type": "integer" },
+          "alertsUnread": { "enum": ["rate-limited", "alerts-off", "archived", "no-token-access", "read-error"], "$comment": "Why alertsOverdue is null. Public repositories' rows only." },
           "alertsOverdue": { "type": ["integer", "null"], "$comment": "Open Dependabot alerts past target (critical or high over 72 hours, the rest over 7 days). null means UNKNOWN: the alerts could not be read. A count only, in a private repository's row too." },
           "incidents7d": { "type": "integer" },
           "lastDeploy": {
