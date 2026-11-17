@@ -223,7 +223,7 @@ const callerFirst = (a, b) => Number(callerLike(b)) - Number(callerLike(a))
  * The ref a repository's workflows pin the shared gate to, read from the `uses: gorfednet/.github/...@ref`
  * lines (the gate runs this repository's kit at that ref, not the repository's vendored copy). Reads only
  * workflow files the run already listed, caller-like names first, and stops at the first file that pins
- * anything. Answers `{ ref }`, or `{ error }` when no pin can be read: never a silent "current".
+ * anything. Answers `{ ref }`; `{ none: true }` when no workflow calls the shared gate at all (informational, e.g. a repository on its own gate); `{ error }` when a call's ref cannot be read: never a silent "current".
  * `text` is (path) => string | null.
  */
 export function readKitPin(workflows, text) {
@@ -239,12 +239,12 @@ export function readKitPin(workflows, text) {
     if (!SAFE_REF.test(refs[0])) return { error: `${w.path} pins an unreadable ref` }
     return { ref: refs[0] }
   }
-  return { error: 'no workflow pins gorfednet/.github' }
+  return { none: true }
 }
 
 /** A pin with the kit version at its ref: `main` is the canonical kit itself (no call); any other ref's manifest is read once per run. */
 export function resolveKitPin(pin, json, cache = new Map()) {
-  if (pin.error || pin.ref === 'main') return pin
+  if (pin.error || pin.none || pin.ref === 'main') return pin
   if (!cache.has(pin.ref)) {
     let outcome
     try {

@@ -29,19 +29,25 @@ describe('readKitPin', () => {
     const asked = []
     const pin = readKitPin([wf('.github/workflows/ci.yml', 'disabled_manually'), wf('dynamic/copilot')], (p) => { asked.push(p); return gate('main') })
     assert.equal(asked.length, 0)
-    assert.match(pin.error, /no workflow pins/)
+    assert.deepEqual(pin, { none: true })
   })
   it('prefers the verification-gate pin when a file pins other actions elsewhere', () => {
     const text = `${gate('main')}      - uses: gorfednet/.github/.github/actions/no-smb-guard@${SHA}\n`
     assert.deepEqual(readKitPin([wf('.github/workflows/ci.yml')], () => text), { ref: 'main' })
   })
   it('is an error, never current, with no uses line, an unreadable ref, a ref expression or mixed refs', () => {
-    assert.match(readKitPin([wf('.github/workflows/ci.yml')], () => 'on: push\n').error, /no workflow pins/)
-    assert.match(readKitPin([], () => null).error, /no workflow pins/)
-    assert.match(readKitPin([wf('.github/workflows/ci.yml')], () => gate('${{ inputs.ref }}')).error, /unreadable ref/)
+        assert.match(readKitPin([wf('.github/workflows/ci.yml')], () => gate('${{ inputs.ref }}')).error, /unreadable ref/)
     assert.match(readKitPin([wf('.github/workflows/ci.yml')], () => gate('../x')).error, /unreadable ref/)
     const mixed = `${gate('main')}      - uses: gorfednet/.github/.github/actions/verification-gate@${SHA}\n`
     assert.match(readKitPin([wf('.github/workflows/ci.yml')], () => mixed).error, /2 different refs/)
+  })
+})
+
+describe('no shared gate', () => {
+  it('a repository whose workflows never call gorfednet/.github is none, not an error', () => {
+    assert.deepEqual(readKitPin([wf('.github/workflows/ci.yml')], () => 'on: push\n'), { none: true })
+    assert.deepEqual(readKitPin([], () => null), { none: true })
+    assert.deepEqual(resolveKitPin({ none: true }, () => { throw new Error('no call') }), { none: true })
   })
 })
 
@@ -104,15 +110,15 @@ describe('a repository row carries the pin and drift follows it', () => {
     assert.deepEqual(row.kitPin, { ref: SHA, version: '0.49.0' })
     assert.deepEqual(kitFailures([row], '0.62.0').map((r) => [r.slug, r.gap]), [['o/site', 'far-behind']])
   })
-  it('a repository whose workflows pin nothing reports an error row', async () => {
+  it('a repository whose workflows call no shared gate reports none and never fails', async () => {
     const json = (args) => {
       const path = args[args.length - 1]
       if (path.endsWith('/workflows?per_page=100')) return { workflows: [] }
       return fake({ vendored: '0.62.0', pinTo: 'main', calls: [] })(args)
     }
     const row = await collectRepo('o/site', now, { json, log: () => {} })
-    assert.match(row.kitPin.error, /no workflow pins/)
-    assert.deepEqual(kitFailures([row], '0.62.0').map((r) => r.gap), ['error'])
+    assert.deepEqual(row.kitPin, { none: true })
+    assert.deepEqual(kitFailures([row], '0.62.0'), [])
   })
   it('adds one request for the pinned workflow file and none for @main; a sha pin adds one more', async () => {
     const base = []

@@ -105,6 +105,12 @@ describe('kit drift is read from the pin, not the vendored copy (plan row 2.9)',
     }
     assert.match(kitSummary([{ slug: 'o/a', kitPin: { error: 'no workflow pins gorfednet/.github' } }], '0.61.0'), /o\/a unreadable pin .*\(error\)/)
   })
+  it('a repository with no shared gate (kitPin.none) is informational: never fails, named apart in the summary', () => {
+    const repos = [{ slug: 'o/m', kitPin: { none: true } }, { slug: 'o/a', kitPin: { ref: 'main' } }]
+    assert.deepEqual(kitFailures(repos, '0.61.0'), [])
+    assert.match(kitSummary(repos, '0.61.0'), /no shared gate: o\/m/)
+    assert.doesNotMatch(kitSummary(repos, '0.61.0'), /not current/)
+  })
   it('a row with no kitPin field at all (an older status.json) is not measured', () => {
     assert.deepEqual(kitFailures([{ slug: 'o/a', kitVersion: '0.20.0' }], '0.61.0'), [])
   })

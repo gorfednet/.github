@@ -39,6 +39,7 @@ export function kitGap(pinned, canonical) {
 /** A row's gap, from its pin: `main` is current by definition, an error or a missing pin is 'error', another ref is compared by the version found there. */
 export function pinGap(row, canonical) {
   const pin = row.kitPin
+  if (pin?.none === true) return 'none'
   if (!pin || pin.error || typeof pin.ref !== 'string' || pin.ref === '') return 'error'
   if (pin.ref === 'main') return 'current'
   return kitGap(pin.version, canonical)
@@ -47,6 +48,7 @@ export function pinGap(row, canonical) {
 /** What the row says it is pinned to, for messages. */
 export const pinLabel = (row) => {
   const pin = row.kitPin
+  if (pin?.none === true) return 'no shared gate'
   if (!pin || pin.error) return `unreadable pin${pin?.error ? ` (${pin.error})` : ''}`
   if (typeof pin.ref !== 'string' || pin.ref === '') return 'unreadable pin'
   return pin.ref === 'main' ? '@main' : `@${pin.ref.length > 12 ? pin.ref.slice(0, 7) : pin.ref} (kit ${pin.version || 'unreadable'})`
@@ -71,8 +73,14 @@ export function kitFailures(repos, canonical, projects = []) {
 /** One line for STATUS.md: the gate's pin, not the vendored copy. */
 export function kitSummary(repos, canonical) {
   const ok = repos.filter(measured)
-  const off = ok.filter((r) => pinGap(r, canonical) !== 'current')
-  return off.length === 0
-    ? `Kit: all ${ok.length} repos pin the gate at main (${canonical}).`
-    : `Kit: canonical ${canonical}; gate pin not current: ${off.map((r) => `${r.slug.replace(/^gorfednet\//, '')} ${pinLabel(r)} (${pinGap(r, canonical)})`).join(', ')}.`
+  const none = ok.filter((r) => pinGap(r, canonical) === 'none')
+  const pinned = ok.filter((r) => pinGap(r, canonical) !== 'none')
+  const off = pinned.filter((r) => pinGap(r, canonical) !== 'current')
+  const parts = [
+    off.length === 0
+      ? `Kit: all ${pinned.length} repos pin the gate at main (${canonical})`
+      : `Kit: canonical ${canonical}; gate pin not current: ${off.map((r) => `${r.slug.replace(/^gorfednet\//, '')} ${pinLabel(r)} (${pinGap(r, canonical)})`).join(', ')}`,
+  ]
+  if (none.length) parts.push(`no shared gate: ${none.map((r) => r.slug.replace(/^gorfednet\//, '')).join(', ')}`)
+  return `${parts.join('; ')}.`
 }
