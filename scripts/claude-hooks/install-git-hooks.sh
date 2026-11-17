@@ -20,7 +20,7 @@ for f in scripts/claude-hooks/public-push-guard.mjs scripts/claude-hooks/public-
 done
 git -C "$src" show "$rev:scripts/claude-hooks/git-hooks/hook" > "$dest/hook"
 chmod +x "$dest/hook"
-for h in applypatch-msg pre-applypatch post-applypatch pre-commit pre-merge-commit prepare-commit-msg commit-msg post-commit pre-rebase post-checkout post-merge pre-push pre-auto-gc post-rewrite reference-transaction sendemail-validate; do
+for h in applypatch-msg pre-applypatch post-applypatch pre-commit pre-merge-commit prepare-commit-msg commit-msg post-commit pre-rebase post-checkout post-merge pre-push pre-auto-gc post-rewrite post-index-change reference-transaction sendemail-validate pre-receive update post-receive post-update push-to-checkout; do
   ln -sf hook "$dest/$h"
 done
 if ! PUBLIC_PUSH_GUARD_LIST="$dest/private-repos.txt" node "$dest/public-push-guard.mjs" --refresh; then

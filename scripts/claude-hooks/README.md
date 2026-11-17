@@ -49,7 +49,7 @@ Install it (copies from origin/main, never a working tree):
 sh scripts/claude-hooks/install-git-hooks.sh
 ```
 
-It puts `hook` under every client hook name in `~/.claude/git-hooks` and sets the global `core.hooksPath` there. `hook` runs the repository's own hook of the same name afterwards, with the same arguments and input, because a global `core.hooksPath` hides `.git/hooks`. It stops if `core.hooksPath` already points somewhere else.
+It puts `hook` under every client hook name in `~/.claude/git-hooks` and sets the global `core.hooksPath` there. `hook` runs the repository's own hook of the same name afterwards, with the same arguments and input, because a global `core.hooksPath` hides `.git/hooks`. That includes the receive-side hooks of a local repository you push to. `proc-receive` (a two-way protocol) isn't chained. It stops if `core.hooksPath` already points somewhere else.
 
 - A clone with its own local `core.hooksPath` (husky, `.githooks`) skips the global hook. The installer lists those clones. For a public one, add `node ~/.claude/git-hooks/public-push-guard.mjs "$@"` to its own pre-push hook.
 - `git push --no-verify` skips every git hook. Its deny entry goes in `control/claude-home/settings.json` in `gorfednet/ops`.
@@ -57,4 +57,4 @@ It puts `hook` under every client hook name in `~/.claude/git-hooks` and sets th
 
 ## public-gh-text-guard.mjs: a best-effort PreToolUse hook
 
-Reads the literal text of `gh pr|issue|release create|edit|comment|review`: quoted `--body`, `--title` and `--notes`, heredoc bodies in the same command, and a literal `--body-file`. It refuses only when it finds a private value in text it could read, and only for a repository not on the private list. A command it can't parse, a body from a variable or a script and any error let the command run. A repository it can't classify (an ssh host alias, no clone) is read like a public one, as the push hook reads it. Text can be edited after posting, so this is a first line, not a gate. Settings entry: `public-gh-text-guard.settings.json`. It is installed by the same script.
+Reads the literal text of `gh pr|issue|release create|edit|comment|review`: quoted `--body`, `--title` and `--notes`, heredoc bodies in the same command, and a literal `--body-file`. It refuses only when it finds a private value in text it could read, and only when a GitHub remote of the clone (or `-R`) isn't on the private list. `gh` picks the upstream, github or origin remote, so a clone counts as private only when all its GitHub remotes are. A command it can't parse, a body from a variable or a script and any error let the command run. A repository it can't classify (an ssh host alias, no clone) is read like a public one, as the push hook reads it. Text can be edited after posting, so this is a first line, not a gate. Settings entry: `public-gh-text-guard.settings.json`. It is installed by the same script.

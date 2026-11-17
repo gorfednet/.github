@@ -38,7 +38,7 @@ const refuse = (message) => {
 }
 
 const run = (cmd, args, opts = {}) => spawnSync(cmd, args, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: 40_000, ...opts })
-const git = (args, opts) => run('git', ['-c', 'core.quotepath=false', ...args], opts)
+export const git = (args, opts) => run('git', ['-c', 'core.quotepath=false', ...args], opts)
 /** A git call that must work: a failure reads as "can't tell", never as "nothing there". */
 const must = (args, what) => {
   const r = git(args)

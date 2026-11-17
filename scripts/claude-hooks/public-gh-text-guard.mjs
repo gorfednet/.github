@@ -14,7 +14,7 @@ import { readFileSync } from 'node:fs'
 import { isAbsolute, join } from 'node:path'
 import { pathToFileURL, fileURLToPath } from 'node:url'
 import { realpathSync } from 'node:fs'
-import { slugOf, privateList, remoteSlug } from './public-push-guard.mjs'
+import { slugOf, privateList, remoteSlug, git } from './public-push-guard.mjs'
 
 const WRITE = /\bgh\s+(?:pr|issue|release)\s+(?:create|new|edit|comment|review)\b/
 const TEXT_ARG = /(?:--body|--title|--notes|-b|-t|-n)(?:=|\s+)("(?:[^"\\]|\\.)*"|'[^']*')/g
@@ -43,10 +43,15 @@ export async function check(input) {
   if (typeof command !== 'string' || !WRITE.test(command)) return null
   const cwd = input.cwd || process.cwd()
   const repoFlag = /(?:--repo|-R)(?:=|\s+)(\S+)/.exec(command)?.[1]
-  const slug = repoFlag ? slugOf(`github.com/${repoFlag}`) : remoteSlug('origin', '', cwd)
-  if (slug && privateList().has(slug)) return null
+  // gh picks its target from set-default, then upstream, github, origin: so a clone counts as private only when every GitHub remote in it is.
+  const remotes = git(['remote'], { cwd }).stdout.split('\n').filter(Boolean)
+  const slugs = repoFlag ? [slugOf(`github.com/${repoFlag}`)] : remotes.map((n) => remoteSlug(n, '', cwd))
+  const known = slugs.filter(Boolean)
+  const list = privateList()
+  if (known.length > 0 && known.every((s) => list.has(s))) return null
+  const slug = known.find((s) => !list.has(s)) ?? null
   const mod = await import(pathToFileURL(process.env.PUBLIC_PUSH_GUARD_SCRIPT || new URL('./privacy-guard.mjs', import.meta.url).pathname).href)
-  const names = [...privateList()].map((s) => s.split('/').pop()).join(',')
+  const names = [...list].map((s) => s.split('/').pop()).join(',')
   const ctx = { privateRepo: mod.privateRepoPattern(mod.parsePrivateRepos(names)), allow: mod.parseAllowlist('') }
   const rules = new Set(postedText(command, cwd).flatMap((t) => mod.scanText(t, ctx, RULES).map((h) => h.rule)))
   return rules.size === 0 ? null : `public-gh-text-guard: the text of this command would post private detail to ${slug ?? 'a repository that is not known to be private'} [${[...rules].join(', ')}]. Remove the value or describe it without naming it. The guard doesn't repeat it.`

@@ -328,6 +328,16 @@ describe('pre-push: it fails closed once the remote is public, and chains to the
     }
   })
 
+  it("runs a local repository's receive-side hooks, which a global hooksPath would otherwise hide", () => {
+    const r = repo(world())
+    const hook = join(r.bare, 'hooks', 'update')
+    writeFileSync(hook, '#!/bin/sh\nexit 1\n')
+    chmodSync(hook, 0o755)
+    const x = push(r, 'origin', 'feature')
+    assert.notEqual(x.status, 0, x.stderr)
+    assert.ok(!remoteHas(r, 'refs/heads/feature'))
+  })
+
   it('refuses a push that has no published commit to diff against', () => {
     const r = repo(world())
     ok(r.dir, r.w, 'checkout', '-q', '--orphan', 'fresh')
@@ -414,6 +424,15 @@ describe('public-gh-text-guard: a best-effort read of literal gh text', () => {
   it('reads a --body-file named literally', () => {
     writeFileSync(join(r.dir, 'body.md'), `note ${IP}\n`)
     assert.ok(denied(hook('gh pr comment 3 --body-file body.md')))
+  })
+
+  it('reads the text when a public upstream sits beside a private origin, since gh may post to either', () => {
+    ok(priv.dir, w, 'remote', 'add', 'upstream', `https://github.com/${PUBLIC}.git`)
+    try {
+      assert.ok(denied(hook(`gh pr create --body "see ${IP}"`, priv.dir)))
+    } finally {
+      ok(priv.dir, w, 'remote', 'remove', 'upstream')
+    }
   })
 
   it('passes clean text, a private repository, an explicit private -R, and anything it cannot read', () => {

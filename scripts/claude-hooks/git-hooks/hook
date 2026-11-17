@@ -6,7 +6,7 @@ name=$(basename "$0")
 here=$(dirname "$0")
 own="$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)/hooks/$name"
 case "$name" in
-  pre-push | post-rewrite | reference-transaction) ;; # these read stdin, which the guard and the repo hook both need
+  pre-push | post-rewrite | reference-transaction | pre-receive | post-receive) ;; # these read stdin, which the guard and the repo hook both need
   *) [ -x "$own" ] && exec "$own" "$@"; exit 0 ;;
 esac
 in=$(mktemp) || exit 1
