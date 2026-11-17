@@ -25,13 +25,13 @@ git -C "$src" show "$rev:scripts/lib/resolve-node.sh" > "$tmp/resolve-node.sh"
 source "$tmp/resolve-node.sh"
 NODE_BIN="$(resolve_node)" || { echo "install-git-hooks.sh: no usable Node. Nothing was installed." >&2; exit 1; }
 # Fetch everything first, then move it in: a failure above leaves the installed hooks alone.
-for f in scripts/claude-hooks/public-push-guard.mjs scripts/claude-hooks/public-gh-text-guard.mjs scripts/privacy-guard.mjs; do
+for f in scripts/claude-hooks/public-push-guard.mjs scripts/privacy-guard.mjs; do
   git -C "$src" show "$rev:$f" > "$tmp/$(basename "$f")"
 done
 git -C "$src" show "$rev:scripts/claude-hooks/git-hooks/hook" > "$tmp/hook"
 chmod +x "$tmp/hook"
 printf '%s\n' "$NODE_BIN" > "$tmp/node-path"
-for f in public-push-guard.mjs public-gh-text-guard.mjs privacy-guard.mjs hook node-path; do
+for f in public-push-guard.mjs privacy-guard.mjs hook node-path; do
   mv -f "$tmp/$f" "$dest/$f"
 done
 # Only pre-push is always linked. Any other hook name is linked only when a clone under AUDIT_ROOT has its own hook of

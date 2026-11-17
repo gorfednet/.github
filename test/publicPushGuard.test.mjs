@@ -1,6 +1,5 @@
 /**
- * Plan row 1.30g: the public-push guard as a real git pre-push hook, plus the best-effort
- * gh text hook. Each world is installed through install-git-hooks.sh (a throwaway HOME and
+ * Plan row 1.30g: the public-push guard as a real git pre-push hook. Each world is installed through install-git-hooks.sh (a throwaway HOME and
  * global git config, a stub `gh` that answers the private list), so the hook under test is
  * the one a session gets: git runs it, whatever the shell spelling of the push.
  *
@@ -11,14 +10,13 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, lstatSync, mkdirSync, readdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 const INSTALL = join(ROOT, 'scripts', 'claude-hooks', 'install-git-hooks.sh')
-const GH_TEXT = join(ROOT, 'scripts', 'claude-hooks', 'public-gh-text-guard.mjs')
 
 const IP = ['10', '20', '30', '40'].join('.') // an invented private-range address
 const SECRET = 'gorfednet/' + 'secret-repo' // an invented private repository
@@ -60,6 +58,12 @@ function world({ install = true, listOut = `gorfednet/ops\n${SECRET}\n${PRIVATE}
     w.install = r
   }
   return w
+}
+
+/** Install again with AUDIT_ROOT at the world's directory, after a test has put a hook in a clone: only a hook some clone has is linked. */
+function reinstall(w) {
+  const r = spawnSync('bash', [INSTALL, ROOT], { encoding: 'utf8', env: { ...envOf(w), INSTALL_REV: 'HEAD', GIT_HOOKS_DIR: w.hooks, AUDIT_ROOT: w.dir } })
+  assert.equal(r.status, 0, `reinstall: ${r.stderr}`)
 }
 
 /** A clone whose origin is a fake GitHub URL backed by a bare repository holding main; `outgoing` is committed on `feature`. */
@@ -341,6 +345,7 @@ describe('pre-push: it fails closed once the remote is public, and chains to the
     const hook = join(r.bare, 'hooks', 'update')
     writeFileSync(hook, '#!/bin/sh\nexit 1\n')
     chmodSync(hook, 0o755)
+    reinstall(r.w)
     const x = push(r, 'origin', 'feature')
     assert.notEqual(x.status, 0, x.stderr)
     assert.ok(!remoteHas(r, 'refs/heads/feature'))
@@ -372,6 +377,7 @@ describe('pre-push: it fails closed once the remote is public, and chains to the
     const hook = join(r.dir, '.git', 'hooks', 'pre-commit')
     writeFileSync(hook, '#!/bin/sh\nexit 1\n')
     chmodSync(hook, 0o755)
+    reinstall(r.w)
     assert.notEqual(git(r.dir, r.w, 'commit', '--allow-empty', '-m', 'x').status, 0)
   })
 })
@@ -403,57 +409,6 @@ describe('install-git-hooks.sh', () => {
     const r = spawnSync('bash', [INSTALL, ROOT], { encoding: 'utf8', env: { ...envOf(w), INSTALL_REV: 'HEAD', GIT_HOOKS_DIR: w.hooks, AUDIT_ROOT: root } })
     assert.equal(r.status, 0, r.stderr)
     assert.match(r.stdout, /husky-app\/\.git \.husky/)
-  })
-})
-
-describe('public-gh-text-guard: a best-effort read of literal gh text', () => {
-  const w = world()
-  const r = repo(w) // a public clone, so gh text with no -R is read against origin
-  const priv = repo(w, { slug: PRIVATE })
-  const hook = (command, cwd = r.dir) => {
-    const x = spawnSync('node', [GH_TEXT], {
-      input: JSON.stringify({ tool_name: 'Bash', tool_input: { command }, cwd }),
-      encoding: 'utf8',
-      env: { ...envOf(w), PUBLIC_PUSH_GUARD_LIST: join(w.hooks, 'private-repos.txt'), PUBLIC_PUSH_GUARD_SCRIPT: join(w.hooks, 'privacy-guard.mjs') },
-    })
-    return { status: x.status, out: x.stdout }
-  }
-  const denied = (x) => x.out.includes('"permissionDecision":"deny"')
-
-  it('refuses a literal --body, a --title and a heredoc body that hold a value', () => {
-    assert.ok(denied(hook(`gh pr create --title t --body "see ${IP}"`)))
-    assert.ok(denied(hook(`gh pr create --title "at ${IP}" --body ok`)))
-    const heredoc = `gh pr create --title t --body "$(cat <<'EOF'\n## Summary\nhost "x" is ${IP}\nEOF\n)"`
-    const x = hook(heredoc)
-    assert.ok(denied(x), x.out)
-    assert.ok(!x.out.includes(IP))
-  })
-
-  it('reads a --body-file named literally', () => {
-    writeFileSync(join(r.dir, 'body.md'), `note ${IP}\n`)
-    assert.ok(denied(hook('gh pr comment 3 --body-file body.md')))
-  })
-
-  it('reads the text when a public upstream sits beside a private origin, since gh may post to either', () => {
-    ok(priv.dir, w, 'remote', 'add', 'upstream', `https://github.com/${PUBLIC}.git`)
-    try {
-      assert.ok(denied(hook(`gh pr create --body "see ${IP}"`, priv.dir)))
-    } finally {
-      ok(priv.dir, w, 'remote', 'remove', 'upstream')
-    }
-  })
-
-  it('passes clean text, a private repository, an explicit private -R, and anything it cannot read', () => {
-    assert.equal(hook('gh pr create --title t --body "all clear"').out, '')
-    assert.equal(hook(`gh pr create --body "see ${IP}"`, priv.dir).out, '', 'private origin')
-    assert.equal(hook(`gh pr create -R ${PRIVATE} --body "see ${IP}"`).out, '', 'private -R')
-    assert.ok(denied(hook(`gh pr create -R ${PUBLIC} --body "see ${IP}"`, priv.dir)), 'public -R wins over a private clone')
-    assert.equal(hook('gh pr create --body "$(some-script)"').out, '', 'text it cannot read')
-    assert.equal(hook(`gh pr list --search "${IP}"`).out, '', 'a read, not a write')
-    assert.equal(hook(`git commit -m "${IP}" && git push`).out, '', 'not gh')
-    const bad = spawnSync('node', [GH_TEXT], { input: 'not json', encoding: 'utf8' })
-    assert.equal(bad.status, 0)
-    assert.equal(bad.stdout, '', 'fails open')
   })
 })
 
@@ -580,6 +535,21 @@ describe('install-git-hooks.sh: a failed install leaves the hooks that were ther
     assert.deepEqual(read(), before)
   })
 
+  it('links pre-push only, until a clone under AUDIT_ROOT has a hook of another name, and drops a link nothing needs', () => {
+    const w = world()
+    const linked = () => readdirSync(w.hooks).filter((f) => lstatSync(join(w.hooks, f)).isSymbolicLink()).sort()
+    assert.deepEqual(linked(), ['pre-push'], 'no clone has a hook, so nothing but pre-push is linked')
+    const r = repo(w)
+    const hook = join(r.dir, '.git', 'hooks', 'pre-commit')
+    writeFileSync(hook, '#!/bin/sh\nexit 0\n')
+    chmodSync(hook, 0o755)
+    reinstall(w)
+    assert.deepEqual(linked(), ['pre-commit', 'pre-push'], 'reference-transaction and the rest stay unlinked')
+    rmSync(hook)
+    reinstall(w)
+    assert.deepEqual(linked(), ['pre-push'], 'a link the last install made and nothing needs is removed')
+  })
+
   it('does not link push-to-checkout, which would override the default working-tree update', () => {
     const w = world()
     assert.ok(!existsSync(join(w.hooks, 'push-to-checkout')))
@@ -600,43 +570,3 @@ describe('install-git-hooks.sh: a failed install leaves the hooks that were ther
   })
 })
 
-describe('public-gh-text-guard: where gh will post', () => {
-  const w = world()
-  const pub = repo(w, { baseFiles: ALLOW(SECRET_NAME) })
-  const priv = repo(w, { slug: PRIVATE })
-  const bare = repo(w, { slug: 'gorfednet/' + 'open-two' }) // no allowlist
-  const hook = (command, cwd = pub.dir) => {
-    const x = spawnSync('node', [GH_TEXT], {
-      input: JSON.stringify({ tool_name: 'Bash', tool_input: { command }, cwd }),
-      encoding: 'utf8',
-      env: { ...envOf(w), PUBLIC_PUSH_GUARD_LIST: join(w.hooks, 'private-repos.txt'), PUBLIC_PUSH_GUARD_SCRIPT: join(w.hooks, 'privacy-guard.mjs') },
-    })
-    return { status: x.status, out: x.stdout }
-  }
-  const denied = (x) => x.out.includes('"permissionDecision":"deny"')
-
-  it("honours the clone's allowlist: a name its repo line clears may be written, and no other", () => {
-    assert.equal(hook(`gh pr create --body "see ${SECRET}"`).out, '')
-    assert.ok(denied(hook(`gh pr create --body "see ${SECRET}"`, bare.dir)), 'the same text in a clone with no such line')
-    assert.ok(denied(hook(`gh pr create --body "see ${PRIVATE}"`)), 'a name the allowlist does not clear')
-  })
-
-  it('classifies from a leading cd, not the hook cwd', () => {
-    assert.equal(hook(`cd ${priv.dir} && gh pr create --body "see ${IP}"`).out, '')
-    assert.ok(denied(hook(`cd "${bare.dir}" && gh pr create --body "see ${IP}"`, priv.dir)))
-    assert.equal(hook(`cd ${join(w.dir, 'no-such-dir')} && gh pr create --body "see ${IP}"`).out, '', 'a target it cannot read lets the command run')
-  })
-
-  it('classifies from GH_REPO', () => {
-    assert.equal(hook(`GH_REPO=${PRIVATE} gh pr create --body "see ${IP}"`).out, '')
-    assert.ok(denied(hook(`export GH_REPO=${PUBLIC}; gh pr create --body "see ${IP}"`, priv.dir)))
-  })
-
-  it("reads -R from gh's own words: quoted values parse, and a -R inside a body is only text", () => {
-    assert.equal(hook(`gh pr create -R "${PRIVATE}" --body "see ${IP}"`).out, '', 'quoted private -R')
-    assert.ok(denied(hook(`gh pr create --repo="${PUBLIC}" --body "see ${IP}"`, priv.dir)), 'quoted public --repo=')
-    assert.ok(denied(hook(`gh pr create --body "run it with -R ${PRIVATE} and ${IP}"`)), '-R in a body does not switch the guard off')
-    const heredoc = `gh pr create --title t --body "$(cat <<'EOF'\nuse -R ${PRIVATE}\nat ${IP} "quoted"\nEOF\n)"`
-    assert.ok(denied(hook(heredoc)), 'a heredoc body with quotes and a -R')
-  })
-})
