@@ -210,7 +210,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: No legacy share-mount deploy paths
         uses: gorfednet/.github/.github/actions/no-smb-guard@main
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         if: inputs.python-verify-command != '' || inputs.make-test-command != ''
         with:
           python-version: ${{ inputs.python-version }}
@@ -220,12 +220,12 @@ jobs:
           node-version: ${{ inputs.node-version }}
       - name: Setup Node (verify only)
         if: inputs.node-verify-command != '' && inputs.build-command == ''
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: ${{ inputs.node-version }}
       - name: Install Node (audit only)
         if: inputs.run-audit-gate && inputs.node-verify-command == '' && inputs.build-command == ''
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: ${{ inputs.node-version }}
           cache: npm
