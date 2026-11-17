@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, readdirSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, rmSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, readdirSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, it } from 'node:test'
@@ -156,24 +156,38 @@ describe('node-update.sh', () => {
     assert.equal(r.status, 0, r.stderr)
     assert.equal(spawnSync(join(e.root, '24', 'bin', 'node'), ['--version'], { encoding: 'utf8' }).stdout.trim(), 'v24.22.4')
     assert.ok(!existsSync(join(e.root, 'v24.22.4.part')))
-    assert.ok(!existsSync(join(e.root, 'v24.22.4', 'v24.22.4-darwin-arm64')), 'nothing nested')
+    assert.ok(!existsSync(join(e.root, 'v24.22.4', 'node-v24.22.4-darwin-arm64')), 'nothing nested')
+    assert.ok(!existsSync(join(e.root, 'v24.22.4.bad')), 'the set-aside copy is removed')
+  })
+
+  it('puts a set-aside broken install back when the replacement cannot be fetched, so the stable link never dangles', () => {
+    const e = env()
+    dist(e.top, 24, 'v24.22.3')
+    assert.equal(e.run('24').status, 0)
+    writeFileSync(join(e.root, 'v24.22.3', 'bin', 'node'), '#!/bin/sh\nexit 1\n') // looks broken to the check
+    rmSync(join(e.top, 'dist', 'latest-v24.x', 'node-v24.22.3-darwin-arm64.tar.gz'))
+    const r = e.run('24')
+    assert.notEqual(r.status, 0)
+    assert.ok(existsSync(join(e.root, 'v24.22.3', 'bin', 'node')), 'the install came back')
+    assert.ok(!existsSync(join(e.root, 'v24.22.3.bad')))
+    assert.equal(readlinkSync(join(e.root, '24')), 'v24.22.3')
   })
 
   it('keeps a patch that a relative shell link or a LaunchAgent plist still names', () => {
     const e = env()
-    for (const v of ['v24.22.3', 'v24.22.4', 'v24.22.5']) {
+    for (const v of ['v24.22.3', 'v24.22.4', 'v24.22.5', 'v24.22.6']) {
       dist(e.top, 24, v)
-      if (v === 'v24.22.3') {
+      if (v === 'v24.22.4') {
         assert.equal(e.run('24').status, 0)
-        symlinkSync('../share/node/v24.22.3/bin/node', join(e.bin, 'node'))
+        symlinkSync('../share/node/v24.22.4/bin/node', join(e.bin, 'node'))
         const agents = join(e.top, 'agents')
         mkdirSync(agents)
-        writeFileSync(join(agents, 'net.gorfed.x.plist'), `<string>${e.root}/v24.22.4/bin/node</string>`)
+        writeFileSync(join(agents, 'net.gorfed.x.plist'), `<string>${e.root}/v24.22.3/bin/node</string>`)
       } else {
         assert.equal(e.run('24').status, 0)
       }
     }
-    assert.deepEqual(readdirSync(e.root).sort(), ['24', 'v24.22.3', 'v24.22.4', 'v24.22.5'])
+    assert.deepEqual(readdirSync(e.root).sort(), ['24', 'v24.22.3', 'v24.22.4', 'v24.22.5', 'v24.22.6'])
   })
 
   it('takes only 22 or 24 and never touches /usr/local', () => {

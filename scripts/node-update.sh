@@ -52,7 +52,12 @@ case "${NODE_PLATFORM:-$(uname -s)-$(uname -m)}" in
 esac
 
 work="$(mktemp -d "${TMPDIR:-/tmp}/node-update.XXXXXX")"
-cleanup() { rm -rf "${work}"; }
+cleanup() {
+  rm -rf "${work}"
+  # A directory set aside as broken goes back if its replacement never arrived (a failed download must not
+  # leave the stable link dangling).
+  if [[ -n "${latest:-}" && -d "${ROOT}/${latest}.bad" && ! -e "${ROOT}/${latest}" ]]; then mv "${ROOT}/${latest}.bad" "${ROOT}/${latest}"; fi
+}
 trap cleanup EXIT
 
 # Newest patch of the line and its published checksum.
@@ -96,8 +101,9 @@ reports() { [[ "$("$1/bin/node" --version 2>/dev/null || true)" == "${latest}" ]
 # An unpacked directory is reused only when its node really runs and reports this version; a broken
 # or half-moved one is removed and fetched again, so a bad unpack never gets the stable link.
 if [[ -e "${ROOT}/${latest}" ]] && ! reports "${ROOT}/${latest}"; then
-  echo "${ROOT}/${latest} does not run as ${latest}; removing it and fetching again"
-  rm -rf "${ROOT:?}/${latest}"
+  echo "${ROOT}/${latest} does not run as ${latest}; setting it aside and fetching again"
+  rm -rf "${ROOT:?}/${latest}.bad"
+  mv "${ROOT}/${latest}" "${ROOT}/${latest}.bad"
 fi
 rm -rf "${ROOT:?}/${latest}.part"
 
@@ -105,9 +111,7 @@ rm -rf "${ROOT:?}/${latest}.part"
 # the newest other v<major>.* directory. Its etc/npmrc (the shell's npm prefix) and its directory both carry over.
 previous="${current}"
 if [[ -z "${previous}" ]]; then
-  for d in "${ROOT}"/v"${major}".*; do
-    [[ -d "${d}" && "$(basename "${d}")" != "${latest}" ]] && previous="$(basename "${d}")"
-  done
+  previous="$(for d in "${ROOT}"/v"${major}".*; do basename "${d}"; done | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | grep -vx "${latest}" | sort -t. -k2,2n -k3,3n | tail -1 || true)"
 fi
 
 if [[ ! -e "${ROOT}/${latest}" ]]; then
@@ -150,6 +154,8 @@ if [[ "${link_shell}" -eq 1 ]]; then
   mkdir -p "${BIN}"
   for t in node npm npx; do swap_link "${link}/bin/${t}" "${BIN}/${t}"; done
 fi
+
+rm -rf "${ROOT:?}/${latest}.bad"
 
 # Keep the new patch, the one it replaced, and every directory something still names: a link in the shell
 # bin (resolved, so a relative link counts), another stable link in ROOT, or a LaunchAgent that spells out
