@@ -23,6 +23,24 @@ The refusal tells the session to start one `gh run watch <id> --interval 60 --ex
 
 Install it as a copy of this file at origin/main, never from a working checkout: `git -C <.github clone>/.claude/worktrees/gates-main show HEAD:scripts/claude-hooks/gh-poll-guard.py > ~/.claude/hooks/gh-poll-guard.py`. The entry goes in `~/.claude/settings.json`. fleet-status's "Installed tools behind main" row compares the installed copy with every committed version and reports how far behind it is.
 
+## argv-guard.py (plan row 5.14)
+
+A `PreToolUse` hook on Bash. It refuses the git and gh commands the settings deny list refuses, in spellings a glob can't see. The deny list matches the command text. This hook splits the command into simple commands, strips the quoting and reads the arguments.
+
+- It reads through `git -C <dir>`, `git -c k=v`, a path to `git` or `gh`, `hc run ... --`, `gate-run <repo> '<cmd>'`, `bash -c`, `eval`, `env` and `ssh host "<cmd>"`.
+- It reads every command in a chain (`&&`, `;`, `|`, a new line), a subshell, a `$(...)` and backticks. Backticks inside double quotes run, so they count.
+- A long git option counts at any prefix (`--forc`, `--force-with-l`, `--upl=x`), which is how git resolves it. Short flags are read out of a cluster (`-Af`, `-fu`). A value glued to a flag (`-bfix`, `-o ci.skip`) is not a flag.
+- `git push`: force (`-f`, `--force*`, `+ref`), `--delete`, `:ref`, `--mirror`, `--prune`, `--no-verify`, `--exec`, `--receive-pack`, and any `src:main` refspec (`HEAD:main`, `x:refs/heads/main`). A plain `git push origin main` passes: release steps use it.
+- Other git: `reset --hard`, `clean` with force and no dry run, `-f` or `--force` on `checkout`, `switch`, `add` and `worktree remove`, `switch --discard-changes`, `--upload-pack`, `--output` on the log family, and `-c core.hooksPath=` in any case.
+- gh: `pr merge`, `repo delete`, `repo rename`, `repo edit --visibility`, `run delete`, `release delete`, `label delete`, `label edit`, `label create --force`, `secret` and `variable` `delete` or `remove`, `pr close --delete-branch`, `auth token` and `auth status --show-token`. The last two pass inside `$(...)`, where the token is captured and never printed.
+- `gh api`: `--hostname`, method DELETE, a write to `pulls/N/merge` or `merges`, a merge mutation on `graphql`, and `force` on `git/refs`. A mutation named inside a GraphQL string is text.
+- Text is data. A PR body, a commit message, a heredoc written to a file, a search pattern and an `echo` can all name a refused command.
+- It never fails closed. A variable in flag position, an unbalanced quote, an unknown wrapper or an internal error passes. The settings deny list and the auto-mode classifier still read that command.
+- Settings entry: `argv-guard.settings.json`, merged into the `hooks` block of `~/.claude/settings.json`. The record of that file is in private ops `control/claude-home/`.
+- Tests: `test/argvGuard.test.mjs`. `test/fixtures/argv-guard/cases.json` holds the residual and everyday commands from the settings case table and the 30 most common git and gh commands in the fleet's transcripts. Every residual one is refused. No everyday or fleet one is.
+- Not covered: a script written to a file and run by name, a shell function or alias that wraps `git` or `gh`, `xargs git ...`, and a flag held in a variable.
+- Install it the same way as gh-poll-guard.py: a copy of this file at origin/main.
+
 ## always-pr-remind.py
 
 A `PostToolUse` hook on Bash. After a commit or push on a feature branch it reminds the session to open a PR when the branch has none.
