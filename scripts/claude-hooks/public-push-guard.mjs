@@ -91,6 +91,7 @@ export function remoteSlug(name, url, cwd) {
   const direct = slugOf(url)
   if (direct) return direct
   const configured = ['url', 'pushurl'].flatMap((k) => git(['config', '--get-all', `remote.${name}.${k}`], { cwd }).stdout.split('\n')).filter(Boolean)
+  if (!url) return slugOf(configured[0]) // no push in hand (the gh text hook): the remote's own URL
   const same = configured.find((raw) => raw === url || git(['ls-remote', '--get-url', raw], { cwd }).stdout.trim() === url)
   return same ? slugOf(same) : null
 }
