@@ -1,0 +1,8 @@
+{
+  "name": "ship-bot-mutation",
+  "private": true,
+  "description": "Nightly mutation run on ship-bot (plan row 1.35). A report, never a gate.",
+  "devDependencies": {
+    "@stryker-mutator/core": "10.1.1"
+  }
+}
