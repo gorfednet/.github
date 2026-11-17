@@ -261,7 +261,9 @@ export const runsVendoredKit = (body) => runCommands(body).some((c) => VENDORED_
  * `text` is (path) => string | null (null: the file is not on the default branch, so it is skipped; a read that throws propagates).
  */
 export function readKitPin(workflows, text, { tier } = {}) {
-  if (!Array.isArray(workflows) || workflows.length === 0) return { error: 'workflow list empty' }
+  if (!Array.isArray(workflows)) return { error: 'workflow list empty' }
+  // An empty list is a repository with no workflows (the API answers 200): it falls through to the tier rules below,
+  // so a tier-0 repository reads `none` and a tier-1 one reads an error.
   const files = workflows.filter((w) => w.state === 'active' && /^\.github\/workflows\/[^/]+\.ya?ml$/.test(w.path ?? '')).sort(callerFirst)
   let vendored = false
   const found = new Set()
@@ -270,7 +272,9 @@ export function readKitPin(workflows, text, { tier } = {}) {
     // Not on the default branch (renamed, deleted, or only ever seen on a PR branch): it pins nothing there, so skip it.
     // A read that throws is not this case; it reaches the caller's catch and the row goes unavailable or error.
     if (body === null) continue
-    const gate = pinnedRefs([body]).filter((u) => gateBearing(u.target))
+    // A pr-check-*.yml reusable workflow calls verification-gate@main itself (every one in this repository does), so a caller
+    // pinned at any ref still runs main's kit. Only a direct call of the action runs the kit at the ref written.
+    const gate = pinnedRefs([body]).filter((u) => gateBearing(u.target)).map((u) => (u.target.startsWith('.github/workflows/') ? { ...u, ref: 'main' } : u))
     if (gate.length === 0) {
       if (runsVendoredKit(body)) vendored = true
       continue
@@ -285,7 +289,7 @@ export function readKitPin(workflows, text, { tier } = {}) {
   if (vendored) return { vendored: true }
   if (tier === 0) return { none: true }
   if (tier === undefined) return { untiered: true }
-  return { error: 'no active workflow calls the shared gate' }
+  return { error: workflows.length === 0 ? 'workflow list empty' : 'no active workflow calls the shared gate' }
 }
 
 /** A pin with the kit version at its ref: `main` is the canonical kit itself (no call); any other ref's manifest is read once per process (the cache is shared within one process only). */

@@ -49,8 +49,22 @@ describe('readKitPin', () => {
     const text = `jobs:\n  g:\n    uses: gorfednet/.github/.github/workflows/pr-check-static.yml@${SHA}\n`
     const asked = []
     const pin = readKitPin([wf('.github/workflows/pr-check.yml'), wf('.github/workflows/ci.yml')], (p) => { asked.push(p); return text })
-    assert.deepEqual(pin, { ref: SHA })
+    // Every reusable pr-check workflow calls verification-gate@main, so a caller pinned at a sha still runs main's kit.
+    assert.deepEqual(pin, { ref: 'main' })
     assert.equal(asked.length, 2)
+  })
+  it('a pr-check call at a sha beside a direct gate call at another ref is a mixed pin', () => {
+    const texts = {
+      '.github/workflows/pr-check.yml': `jobs:\n  g:\n    uses: gorfednet/.github/.github/workflows/pr-check-static.yml@${SHA}\n`,
+      '.github/workflows/ci.yml': gate('v0.49.0'),
+    }
+    assert.match(readKitPin(Object.keys(texts).map((p) => wf(p)), (p) => texts[p]).error, /different refs/)
+  })
+  it('an empty workflow list is none at tier 0, untiered when unlisted, an error at tier 1 and above', () => {
+    assert.deepEqual(readKitPin([], () => null, { tier: 0 }), { none: true })
+    assert.deepEqual(readKitPin([], () => null, {}), { untiered: true })
+    assert.deepEqual(readKitPin([], () => null, { tier: 1 }), { error: 'workflow list empty' })
+    assert.deepEqual(readKitPin(undefined, () => null, { tier: 0 }), { error: 'workflow list empty' })
   })
   it('quoted uses lines are read: an old pin does not slip into none', () => {
     for (const q of ['"', "'"]) {
@@ -64,9 +78,9 @@ describe('readKitPin', () => {
     assert.deepEqual(pinnedRefs([text]), [{ target: '.github/actions/verification-gate', ref: 'main' }])
     assert.deepEqual(pinnedRefs([`# uses: gorfednet/.github/.github/actions/verification-gate@${SHA}\n`]), [])
   })
-  it('an empty workflow list, an unreadable file and a 404 are errors at every tier', () => {
+  it('a missing list is an error at every tier, a 404 file is not a pin', () => {
     for (const tier of [0, 1, undefined]) {
-      assert.match(readKitPin([], () => null, { tier }).error, /list empty/)
+      assert.match(readKitPin(undefined, () => null, { tier }).error, /list empty/)
       assert.match(readKitPin([wf('.github/workflows/ci.yml')], () => null, { tier }).error ?? 'none', /no active workflow calls|none/)
     }
   })
@@ -170,7 +184,9 @@ describe('a repository row carries the pin and drift follows it', () => {
       return fake({ vendored: '0.62.0', pinTo: 'main', calls: [] })(args)
     }
     const row = await collectRepo('o/site', now, { json, log: () => {}, tier: 0 })
-    assert.deepEqual(row.kitPin, { error: 'workflow list empty' })
+    assert.deepEqual(row.kitPin, { none: true })
+    const t1empty = await collectRepo('o/site', now, { json, log: () => {}, tier: 1 })
+    assert.deepEqual(t1empty.kitPin, { error: 'workflow list empty' })
     const wfs = { workflows: [{ id: 1, name: 'x', path: '.github/workflows/x.yml', state: 'active' }] }
     const none = (args) => (args[args.length - 1].endsWith('/workflows?per_page=100') ? wfs : args[args.length - 1].endsWith('/contents/.github/workflows/x.yml') ? file('on: push\n') : json(args))
     const t0 = await collectRepo('o/site', now, { json: none, log: () => {}, tier: 0 })
@@ -362,7 +378,7 @@ describe('round 4: every gate file is read, tier-1 none fails, rate limits are n
   it('two gate-bearing files that pin different refs are an error row, whichever is read first', () => {
     const texts = {
       '.github/workflows/ci.yml': gate('main'),
-      '.github/workflows/pr-check.yml': `jobs:\n  g:\n    uses: gorfednet/.github/.github/workflows/pr-check-static.yml@${SHA}\n`,
+      '.github/workflows/pr-check.yml': gate(SHA),
     }
     for (const order of [Object.keys(texts), Object.keys(texts).reverse()]) {
       const pin = readKitPin(order.map((p) => wf(p)), (p) => texts[p])
