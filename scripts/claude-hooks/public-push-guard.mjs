@@ -210,11 +210,14 @@ async function scan({ sets, mod, ctx, names, where, updates, allowText, scratch 
     if (nameHolds(u.rref)) fail('a branch or tag name in this push')
     // Read the objects being sent, not the local ref: a push of `<sha>:refs/tags/v1` has no local ref name. A tag can point at a tag.
     let obj = u.sha
-    for (let depth = 0; depth < 20 && git(['cat-file', '-t', obj]).stdout.trim() === 'tag'; depth += 1) {
+    let depth = 0
+    for (; git(['cat-file', '-t', obj]).stdout.trim() === 'tag'; depth += 1) {
+      if (depth === 20) refuse('a chain of more than 20 tags can\'t be read to its end.')
       const [header, ...message] = must(['cat-file', 'tag', obj], 'read a tag').split('\n\n')
       const shown = u.rref.replace(/^refs\/tags\//, '').slice(0, 40)
       // The tag object carries its own name, which a push under another ref name (`<tag>:refs/tags/v1`) still publishes.
-      if (nameHolds(/^tag (.*)$/m.exec(header)?.[1] ?? '')) fail(`the name inside tag ${shown}`)
+      const own = /^tag (.*)$/m.exec(header)?.[1] ?? refuse('a tag object has no name line, so it can\'t be read.')
+      if (nameHolds(own)) fail(`the name inside tag ${shown}`)
       if (mod.scanText(message.join('\n\n'), ctx, [...NAME_RULES, 'owner-quote'], 'word').length > 0) fail(`the message of tag ${shown}`)
       obj = /^object (\S+)/.exec(header)?.[1] ?? refuse('a tag object has no target, so it can\'t be read.')
     }

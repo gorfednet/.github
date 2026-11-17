@@ -546,9 +546,9 @@ describe('pre-push: bare private names in ref names and tag messages', () => {
   })
 
   // Plan row 1.30h: the near misses on each side of the line.
-  it('refuses a private name joined by an underscore, which path parts alone do not split on', () => {
+  it('refuses a private name joined by an underscore, which path parts alone do not split on, and one with an extension words alone miss', () => {
     const r = repo(world())
-    for (const branch of [`notes/${BARE}_v2`, `OLD_${BARE}`]) {
+    for (const branch of [`notes/${BARE}_v2`, `OLD_${BARE}`, `notes/${BARE}.bak`]) {
       ok(r.dir, r.w, 'branch', branch)
       const x = push(r, 'origin', branch)
       assert.ok(refused(x) && /branch or tag name/.test(x.stderr), `${branch}: ${x.stderr}`)
@@ -592,8 +592,23 @@ describe('pre-push: bare private names in ref names and tag messages', () => {
       assert.ok(refused(x) && /name inside tag v7/.test(x.stderr), `${name}: ${x.stderr}`)
       assert.ok(!remoteHas(r, 'refs/tags/v7'), name)
     }
+    ok(r.dir, r.w, 'tag', '-a', `${BARE}_inner`, '-m', 'clean')
+    ok(r.dir, r.w, 'tag', '-a', 'outer', '-m', 'clean', `${BARE}_inner`)
+    const inner = push(r, 'origin', 'refs/tags/outer:refs/tags/v9')
+    assert.ok(refused(inner) && /name inside tag v9/.test(inner.stderr), `a named tag under a clean one: ${inner.stderr}`)
     ok(r.dir, r.w, 'tag', '-a', `${BARE}-rc`, '-m', 'clean')
     assert.equal(push(r, 'origin', `refs/tags/${BARE}-rc:refs/tags/v8`).status, 0, 'a hyphen-joined name in the header passes')
+  })
+})
+
+describe('pre-push: a tag chain is read to its end', () => {
+  it('refuses a chain of more than 20 tags rather than leave the rest unread, and passes one of 20', () => {
+    const r = repo(world())
+    ok(r.dir, r.w, 'tag', '-a', 't1', '-m', 'clean')
+    for (let i = 2; i <= 21; i += 1) ok(r.dir, r.w, 'tag', '-a', `t${i}`, '-m', 'clean', `t${i - 1}`)
+    assert.equal(push(r, 'origin', 'refs/tags/t20:refs/tags/t20').status, 0, '20 deep')
+    const x = push(r, 'origin', 'refs/tags/t21:refs/tags/t21')
+    assert.ok(refused(x) && /more than 20 tags/.test(x.stderr), x.stderr)
   })
 })
 
