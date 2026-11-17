@@ -71,6 +71,19 @@
  *     fire on short uniform sentences too, which the baseline now asks for.
  *   - `abstract`, "judgment", "intent", "posture", "craft", "clarity", "the
  *     space between", "at scale", "end-to-end": warning.
+ * Five register warnings (v0.64.0, guideline of 17 November 2026):
+ *   - `i-run`: 3 sentences in a row open with "I", "I've", "I'm", "I'll" or
+ *     "I'd".
+ *   - `i-share`: 4 or more sentences, at least half open with "I". Quiet where
+ *     `i-run` fired.
+ *   - `i-lead`: 3 body strings in a row start with such an opener, in HTML,
+ *     Markdown and JSX only, because JSON and TS keys are not in page order.
+ *     Headings, labels, summaries and strings under 4 words are passed over.
+ *   - `i-join`: an "I" opener that says "I" again after ", and", ", but" or
+ *     ", so".
+ *   - `commas`: a sentence ending in a full stop, "?" or "!" with 2 or more
+ *     commas outside a list (see `nonListCommas`).
+ *   None of the 5 reads a heading or link text.
  * A warning prints as `path:where: warning rule X "text"` and never fails the
  * run. The allowlist covers both levels, and an entry for a warning also has to
  * name its string, reason and review date.
@@ -128,12 +141,17 @@ const COMPILED = Object.fromEntries(
 )
 
 /** Words whose hits are warnings, not errors. */
-const WARN_RULES = new Set(['rhythm', 'abstract'])
+const WARN_RULES = new Set(['rhythm', 'abstract', 'i-run', 'i-share', 'i-lead', 'i-join', 'commas'])
 const HINTS = {
   3: 'antithesis: say what each thing is instead of what it is not',
   colon: 'colon-led statement: write one sentence with a subject and a verb',
   rhythm: 'long sentences: split any sentence over 22 words and keep the median near 10 to 14',
   abstract: 'abstract noun: name the concrete thing',
+  'i-run': 'three sentences in a row open with "I": open with the thing, the place or the result',
+  'i-share': 'half the sentences open with "I": make the work, the client or the number the subject',
+  'i-lead': 'three paragraphs in a row open with "I": open with the thing, the place or the result; an entry under a heading starts with the verb or the role',
+  'i-join': 'one "I" per sentence: drop the second after "and", "but" or "so"',
+  commas: 'a comma that joins 2 sentences or opens a list of conditions: use a full stop or a colon',
 }
 
 // "X, not Y" and "not X but Y". The words after "not" that make it an ordinary
@@ -153,6 +171,36 @@ const ABSTRACT = [
   ...words(['judgment', 'judgement', 'intent', 'posture', 'clarity', 'the space between', 'at scale', 'end-to-end']),
 ]
 const ABSTRACT_RE = new RegExp(`(?<![\\w-])(?:${ABSTRACT.join('|')})(?![\\w-])`, 'gi')
+
+// Register (guideline, 17 November 2026). An "I" opener is a sentence that starts
+// with I, I've, I'm, I'll or I'd. `commas` counts the commas that are not part of
+// a list: an item of 4 words or fewer between two commas makes both list commas,
+// and so does 1 to 4 words and then "and" or "or" after a comma. A series closing
+// with ", and" or ", or" is a list unless a part after a comma starts with a clause
+// word. Commas in parentheses and inside numbers are not counted.
+const I_OPEN = /^\(?I(?:'(?:ve|m|ll|d))?(?=[\s,])/
+const I_JOIN = /,\s+(?:and|but|so)\s+I(?:'(?:ve|m|ll|d))?(?=\s)/
+const CLAUSE_WORD = /^\s*(?:because|since|so|but|which|who|with|as|if|when|where|while|then|instead|whatever|including|such)\b/i
+const wordCount = (x) => x.trim().split(/\s+/).filter(Boolean).length
+
+/** Commas in one sentence that are neither list commas nor inside parentheses or numbers. */
+export function nonListCommas(sentence) {
+  if (!/[.!?]["”’)]?$/.test(sentence.trim())) return 0 // a credit line or a fragment, not a sentence
+  const s = sentence.replace(/\([^)]*\)/g, ' ').replace(/(\d),(?=\d)/g, '$1')
+  const segs = s.split(',')
+  const total = segs.length - 1
+  if (total < 2) return total
+  const lastIsSeries = /^\s*(?:and|or)\s/i.test(segs[total])
+  if (lastIsSeries && !segs.slice(1).some((x) => CLAUSE_WORD.test(x.replace(/^\s*(?:and|or)\s+/i, '')))) return 0
+  const list = new Set() // comma k sits between segs[k] and segs[k+1]
+  for (let i = 1; i < segs.length - 1; i++)
+    if (wordCount(segs[i]) <= 4) {
+      list.add(i - 1)
+      list.add(i)
+    }
+  for (let k = 0; k < total; k++) if (/^\s*(?:[^\s,]+\s+){1,4}(?:and|or)\s/.test(segs[k + 1])) list.add(k)
+  return total - list.size
+}
 
 const median = (nums) => {
   const a = [...nums].sort((x, y) => x - y)
@@ -234,6 +282,27 @@ export function checkString(raw, kind, options = {}) {
     }
     ABSTRACT_RE.lastIndex = 0
     for (const m of open.matchAll(ABSTRACT_RE)) hits.push({ rule: 'abstract', text: m[0] })
+  }
+  if (kind === 'text' || kind === 'summary') {
+    const parts = sentences(open).map((x) => x.trim())
+    const flags = parts.map((p) => I_OPEN.test(p))
+    let run = 0
+    let best = 0
+    for (const f of flags) {
+      run = f ? run + 1 : 0
+      best = Math.max(best, run)
+    }
+    const n = flags.filter(Boolean).length
+    if (best >= 3) hits.push({ rule: 'i-run', text: `${best} sentences in a row open with "I"` })
+    else if (parts.length >= 4 && n * 2 >= parts.length)
+      hits.push({ rule: 'i-share', text: `${n} of ${parts.length} sentences open with "I"` })
+    for (const p of parts) if (I_OPEN.test(p) && I_JOIN.test(p)) hits.push({ rule: 'i-join', text: p.slice(0, 80) })
+    // A quoted span reads as one word, so a quoted label holds no commas of its own.
+    const quotedAsWord = text.replace(/[’ʼ]/g, "'").replace(/"[^"\n]*"|“[^”]*”|‘[^’]*’/g, 'Q')
+    for (const p of sentences(stripTerms(quotedAsWord, options.terms)).map((x) => x.trim())) {
+      const c = nonListCommas(p)
+      if (c >= 2) hits.push({ rule: 'commas', text: `${c} commas outside a list: ${p.slice(0, 120)}` })
+    }
   }
   for (const hit of hits) if (WARN_RULES.has(hit.rule)) hit.level = 'warn'
   if (kind === 'label') {
@@ -778,6 +847,29 @@ export function checkFile(rel, src, options = {}) {
           : scriptStrings(src, { jsx: !/^\.[cm]?ts$/.test(ext) })
   const hits = []
   const rationed = new Map()
+  // i-lead reads strings in page order, which JSON and TS keys are not.
+  if (ext !== '.json' && !/^\.[cm]?ts$/.test(ext)) {
+    let run = []
+    const flush = () => {
+      if (run.length >= 3)
+        hits.push({
+          location: `${rel}:${run[2].where}`,
+          rule: 'i-lead',
+          text: `${run.length} paragraphs in a row open with "I": ${run.map((r) => r.first.slice(0, 40)).join(' | ')}`,
+          level: 'warn',
+        })
+      run = []
+    }
+    for (const s of strings) {
+      if (s.kind !== 'text') continue
+      const open = stripTerms(stripQuoted(s.text.replace(/\s+/g, ' ')), options.terms).replace(/[’ʼ]/g, "'")
+      if (wordCount(open) < 4) continue
+      const first = sentences(open)[0]?.trim() ?? ''
+      if (I_OPEN.test(first)) run.push({ where: s.where, first })
+      else flush()
+    }
+    flush()
+  }
   for (const s of strings) {
     for (const hit of checkString(s.text, s.kind, options)) {
       if (hit.rationed) {
