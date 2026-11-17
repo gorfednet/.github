@@ -32,7 +32,7 @@ _rn_private() {
   local home_phys
   home_phys="$(cd "${HOME}" 2>/dev/null && pwd -P)" || home_phys="${HOME}"
   case "$2" in
-    *..*) ;;
+    # The pattern has no wildcard, so a candidate with ".." (or any extra segment) cannot match it.
     "${HOME}"/.local/share/node/[0-9][0-9]/bin/node)
       case "$1" in
         "${HOME}"/.local/share/node/v[0-9]*/bin/node | "${home_phys}"/.local/share/node/v[0-9]*/bin/node) return 1 ;;

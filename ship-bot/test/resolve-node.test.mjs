@@ -115,10 +115,21 @@ describe('resolve_node', () => {
     symlinkSync(join(home, '.local', 'share', 'nodeish'), join(home, '.local', 'share', 'node', '24'))
     const link = join(home, '.local', 'share', 'node', '24', 'bin', 'node')
     assert.notEqual(resolve(home, { RESOLVE_NODE_CANDIDATES: link }).status, 0)
-    assert.notEqual(resolve(home, { RESOLVE_NODE_CANDIDATES: join(home, '.local', 'share', 'node', '..', 'nodeish', 'bin', 'node') }).status, 0)
+    // A candidate that reaches the real stable install only through `..` must not match the exemption's exact
+    // pattern (loosening it to `[0-9]*/bin/node` lets this one through, as the realpath is a v<version> directory).
+    fake(join(home, '.local', 'share', 'node', 'v24.9.9', 'bin', 'node'), '24')
+    rmSync(join(home, '.local', 'share', 'node', '24'))
+    symlinkSync('v24.9.9', join(home, '.local', 'share', 'node', '24'))
+    const viaDots = resolve(home, { RESOLVE_NODE_CANDIDATES: `${join(home, '.local', 'share', 'node', '24')}/../24/bin/node` }) // not join(): it would normalise the dots away
+    assert.notEqual(viaDots.status, 0, viaDots.stdout)
+    assert.match(viaDots.stderr, /another tool's private folder/)
+    // Put the 24 link back at the other tool, as the cases below expect.
+    rmSync(join(home, '.local', 'share', 'node', '24'))
+    symlinkSync(join(home, '.local', 'share', 'nodeish'), join(home, '.local', 'share', 'node', '24'))
     assert.notEqual(resolve(home, { RESOLVE_NODE_CANDIDATES: join(nodeishBin, 'node') }).status, 0)
     // A dangling stable link is an error, not a quiet fall through to the next candidate.
     rmSync(join(home, '.local', 'share', 'node', '24'))
+    rmSync(join(home, '.local', 'share', 'node', 'v24.9.9'), { recursive: true })
     symlinkSync('v24.9.9', join(home, '.local', 'share', 'node', '24'))
     const sys = join(home, 'usr', 'bin', 'node')
     fake(sys, '24')
