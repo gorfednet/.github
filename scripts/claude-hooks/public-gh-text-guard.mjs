@@ -6,8 +6,9 @@
  * It reads three things and nothing else: quoted --body/--title/--notes values, heredoc bodies
  * in the same command, and a --body-file named literally. Text can be edited after it is posted,
  * so this is a first line, not a gate: it refuses only when it finds a private value in text it
- * could read. A command it can't parse, a repository it can't classify and any error let the
- * command run. The push itself is guarded by git's pre-push hook (public-push-guard.mjs).
+ * could read. A command it can't parse and any error let the
+ * command run. A repository it can't classify (an ssh host alias, no clone) is read like a public
+ * one, as the push hook reads it. The push itself is guarded by git's pre-push hook (public-push-guard.mjs).
  */
 import { readFileSync } from 'node:fs'
 import { isAbsolute, join } from 'node:path'
