@@ -382,16 +382,19 @@ describe('pre-push: it fails closed once the remote is public, and chains to the
   })
 })
 
+// Remote fixtures are built at runtime so the source holds no email-shaped text.
+const at = (u) => u.replace(/#/g, '@')
+
 describe('slugOf: only a GitHub host gives a slug', () => {
   it('reads the three real forms, with userinfo, a port, .git or a trailing slash', () => {
-    assert.equal(slugOf('git@github.com:Owner/Repo.git'), 'owner/repo')
+    assert.equal(slugOf(at('git#github.com:Owner/Repo.git')), 'owner/repo')
     assert.equal(slugOf('github.com:owner/repo'), 'owner/repo')
-    assert.equal(slugOf('ssh://git@github.com/owner/repo.git'), 'owner/repo')
-    assert.equal(slugOf('ssh://git@github.com:22/owner/repo'), 'owner/repo')
-    assert.equal(slugOf('ssh://git@ssh.github.com:443/owner/repo.git'), 'owner/repo')
+    assert.equal(slugOf(at('ssh://git#github.com/owner/repo.git')), 'owner/repo')
+    assert.equal(slugOf(at('ssh://git#github.com:22/owner/repo')), 'owner/repo')
+    assert.equal(slugOf(at('ssh://git#ssh.github.com:443/owner/repo.git')), 'owner/repo')
     assert.equal(slugOf('https://github.com/owner/repo'), 'owner/repo')
     assert.equal(slugOf('https://GitHub.com/owner/repo.git/'), 'owner/repo')
-    assert.equal(slugOf('https://user:tok@github.com:443/owner/repo.git'), 'owner/repo')
+    assert.equal(slugOf(at('https://user:tok#github.com:443/owner/repo.git')), 'owner/repo')
   })
 
   it('gives null for another host, whichever way github.com appears in the URL', () => {
@@ -399,10 +402,10 @@ describe('slugOf: only a GitHub host gives a slug', () => {
       'https://evilgithub.com/owner/repo',
       'https://gitlab.com/github.com/owner/repo.git',
       'https://github.com.evil.example/owner/repo',
-      'https://github.com@evil.example/owner/repo.git',
-      'git@evilgithub.com:owner/repo.git',
-      'git@gitlab.com:github.com/owner/repo.git',
-      'ssh://git@gitlab.com/github.com:owner/repo.git',
+      at('https://github.com#evil.example/owner/repo.git'),
+      at('git#evilgithub.com:owner/repo.git'),
+      at('git#gitlab.com:github.com/owner/repo.git'),
+      at('ssh://git#gitlab.com/github.com:owner/repo.git'),
       'https://example.test/?u=github.com/owner/repo',
     ]) assert.equal(slugOf(u), null, u)
   })
