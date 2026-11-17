@@ -478,6 +478,44 @@ describe("pre-push: the target repository's allowlist, as the CI guard reads it"
   })
 })
 
+describe("pre-push: the allowlist is the remote default branch's tip, as it is now", () => {
+  const ALLOW_FILE = '.github/privacy-guard-allow.txt'
+  /** Another clone puts a file on the remote's main, so this clone's tracking refs are behind. */
+  const advanceMain = (r, files) => {
+    const other = join(r.w.dir, `other-${(seq += 1)}`)
+    ok(r.w.dir, r.w, '-c', 'core.hooksPath=/dev/null', 'clone', '-q', r.bare, other)
+    commit(other, r.w, files, 'allowlist')
+    ok(other, r.w, '-c', 'core.hooksPath=/dev/null', 'push', '-q', 'origin', 'HEAD:main')
+  }
+
+  for (const [kind, line, planted] of [
+    ['repo', `repo ${SECRET_NAME}`, `see ${SECRET}\n`],
+    ['path', 'path docs/** private-ip', `see ${IP}\n`],
+  ]) {
+    // A `repo` line names a private repository, so the guard refuses the push that adds it: only a path line can ride a first push.
+    if (kind === 'path') {
+      it(`a ${kind} line pushed to a branch exempts nothing in the next push: only the default branch counts`, () => {
+        const r = repo(world(), { outgoing: { [ALLOW_FILE]: `${line}\n` } })
+        const first = push(r, '-u', 'origin', 'feature')
+        assert.equal(first.status, 0, first.stderr)
+        const sent = ok(r.dir, r.w, 'rev-parse', 'feature').trim()
+        commit(r.dir, r.w, { 'docs/n.md': planted })
+        const x = push(r, 'origin', 'feature')
+        assert.ok(refused(x), x.stderr)
+        assert.equal(ok(r.bare, r.w, 'rev-parse', 'feature').trim(), sent, 'the second push was not sent')
+      })
+    }
+
+    it(`a ${kind} line main gained after this branch was cut still applies`, () => {
+      const r = repo(world(), { outgoing: { 'docs/n.md': planted } })
+      advanceMain(r, { [ALLOW_FILE]: `${line}\n` })
+      const x = push(r, '-u', 'origin', 'feature')
+      assert.equal(x.status, 0, x.stderr)
+      assert.ok(remoteHas(r, 'refs/heads/feature'))
+    })
+  }
+})
+
 describe('pre-push: a push that publishes nothing, or goes to a repository made since the list was cut', () => {
   it('lets a local path remote through, planted value and all', () => {
     const r = repo(world(), { remoteUrl: 'local', outgoing: { 'x.md': `${IP}\n` } })

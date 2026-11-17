@@ -8,12 +8,15 @@
  * push, those lines are what goes out, so nothing here reads a command.
  *
  * - A repository on the local private list passes untouched, and so does a remote that is a path on
- *   this machine. Any other remote counts as public once gh has been asked for the list once more
- *   (a repository made since the list was cut). The target's allowlist `repo` lines apply, read from a
- *   published base as the CI guard reads them.
+ *   this machine. Any other remote counts as public. For a gorfednet repository not on the list, gh is
+ *   asked for the list once more first (a repository made since the list was cut); other owners are
+ *   never looked up.
  * - The list is a local file (private-repos.txt, one owner/name per line), refreshed from gh
- *   at install and, at most once a day, by the first push after it goes stale (a failure is
- *   ignored). A push never asks gh about one repository.
+ *   at install, at most once a day by the first push after it goes stale (a failure is ignored), and
+ *   by that one extra ask. gh is only ever asked for the whole list, never about one repository.
+ * - The target's allowlist is read from the remote's default branch tip, as the remote reports it now,
+ *   never from the push boundary, the working tree or any commit the pusher sent: a change can't clear
+ *   itself, and a branch cut before an exemption landed still sees it.
  * - Outgoing commits are those reachable from the sent shas and not from anything the remote
  *   holds now (`git ls-remote`, not tracking refs, which go stale). scripts/privacy-guard.mjs
  *   reads them (messages, every commit's diff, the net diff). Ref names and annotated tag
@@ -24,7 +27,8 @@
  * `git push --no-verify` skips every git hook; the deny entry for it lives in ops control/claude-home.
  */
 import { spawnSync } from 'node:child_process'
-import { existsSync, readFileSync, realpathSync, renameSync, statSync, utimesSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
@@ -107,16 +111,16 @@ export function remoteSlug(name, url, cwd) {
 const ALLOW_PATH = '.github/privacy-guard-allow.txt'
 
 /**
- * The target repository's allowlist, read the way the CI guard reads it: from a commit that is already
- * published (the base), never from the working tree, so a change can't exempt itself. The first rev that has
- * the file wins; none is no exemptions. Revs are tried in order; the default branch is the fallback.
+ * The target repository's allowlist as the remote's default branch holds it right now. That commit is
+ * fetched when this clone lacks it. A change in the push can't clear itself, and a stale clone still sees
+ * an exemption main gained since. Nothing readable (no HEAD, no file, a failed fetch) is no exemptions.
  */
-export function allowTextAt(revs, cwd) {
-  for (const rev of [...revs, 'refs/remotes/origin/HEAD', 'refs/remotes/origin/main', 'refs/remotes/origin/master']) {
-    const r = git(['show', `${rev}:${ALLOW_PATH}`], { cwd })
-    if (r.status === 0) return r.stdout
-  }
-  return ''
+export function allowTextAtRemote(url, headSha) {
+  if (!headSha) return ''
+  const env = { ...process.env, GIT_TERMINAL_PROMPT: '0' }
+  if (git(['cat-file', '-e', `${headSha}^{commit}`]).status !== 0) git(['fetch', '-q', '--no-tags', '--no-write-fetch-head', url, headSha], { env, timeout: 60_000 })
+  const r = git(['show', `${headSha}:${ALLOW_PATH}`])
+  return r.status === 0 ? r.stdout : ''
 }
 
 /** privacy-guard's own functions, plus the scanning context for names and messages. A name the allowlist's `repo` lines clear is not scanned for. */
@@ -130,17 +134,19 @@ export async function loadGuard(list, allowText = '') {
   return { mod, ctx, names }
 }
 
-/** Commits the remote holds right now, asked of the remote itself: a tracking ref goes stale, or points at another repository after a set-url. */
-function remoteHolds(url, updates) {
+/** What the remote holds right now, asked of the remote itself (a tracking ref goes stale, or points at another repository after a set-url): the commits this clone has, and the default branch tip. */
+function remoteState(url, updates) {
   const r = git(['ls-remote', url], { env: { ...process.env, GIT_TERMINAL_PROMPT: '0' }, timeout: 30_000 })
   if (r.status !== 0) refuse('git could not read what the remote already holds (git ls-remote failed), so the outgoing commits can\'t be told from published ones. Check the network and credentials, then push again.')
-  const shas = [...r.stdout.split('\n').map((l) => l.split(/\s/)[0]), ...updates.map((u) => u.rsha)]
-  return [...new Set(shas)].filter((s) => /^[0-9a-f]{40,64}$/.test(s) && !ZERO.test(s) && git(['cat-file', '-e', `${s}^{commit}`]).status === 0)
+  const lines = r.stdout.split('\n').map((l) => l.split(/\s/))
+  const shas = [...lines.map((l) => l[0]), ...updates.map((u) => u.rsha)]
+  const holds = [...new Set(shas)].filter((s) => /^[0-9a-f]{40,64}$/.test(s) && !ZERO.test(s) && git(['cat-file', '-e', `${s}^{commit}`]).status === 0)
+  return { holds, head: lines.find((l) => l[1] === 'HEAD')?.[0] ?? '' }
 }
 
 /** Sent refs to the commits the remote lacks, per tip, with the published commit nearest them. */
-function outgoing(url, updates) {
-  const rest = ['--not', ...remoteHolds(url, updates)]
+function outgoing(holds, updates) {
+  const rest = ['--not', ...holds]
   const out = []
   for (const tip of new Set(updates.map((u) => must(['rev-parse', '--verify', `${u.sha}^{commit}`], 'resolve a sent ref').trim()))) {
     const commits = must(['rev-list', tip, ...rest], 'list the outgoing commits').split('\n').filter(Boolean)
@@ -160,14 +166,26 @@ export async function checkPush(remote, url, updates) {
   const slug = remoteSlug(remote, url)
   if (slug && list.has(slug)) return // private: never refused
   if (!slug && isLocalPath(url)) return // a path on this machine publishes nothing
-  if (slug && refresh()) {
+  if (slug && slug.startsWith('gorfednet/') && refresh()) {
     // A repository made since the list was cut (`gh repo create --private --push`) is not on it yet: ask once before calling it public.
     list = privateList()
     if (list.has(slug)) return
   }
-  const where = slug ?? url
-  const sets = outgoing(url, updates)
-  const { mod, ctx, names } = await loadGuard(list, allowTextAt(sets.map((s) => s.base)))
+  const { holds, head } = remoteState(url, updates)
+  const sets = outgoing(holds, updates)
+  const allowText = allowTextAtRemote(url, head)
+  const { mod, ctx, names } = await loadGuard(list, allowText)
+  const scratch = mkdtempSync(join(tmpdir(), 'ppg-'))
+  try {
+    await scan({ sets, mod, ctx, names, where: slug ?? url, updates, allowText, scratch })
+  } finally {
+    rmSync(scratch, { recursive: true, force: true })
+  }
+}
+
+async function scan({ sets, mod, ctx, names, where, updates, allowText, scratch }) {
+  const allowFile = join(scratch, 'allow.txt')
+  writeFileSync(allowFile, allowText)
   const fail = (what) => refuse(`${what} would publish private detail to ${where}, which is public (or not known to be private).\nNothing was sent.`)
   for (const u of updates) {
     // Branch and tag names are public too, and so is an annotated tag's message.
@@ -181,7 +199,7 @@ export async function checkPush(remote, url, updates) {
     }
   }
   for (const { tip, base, count } of sets) {
-    const r = run('node', [realpathSync(GUARD), '--base', base, '--head', tip, '--dir', '.'], { timeout: 300_000, env: { ...process.env, PRIVATE_REPOS: names, GITHUB_ACTIONS: '' } })
+    const r = run(process.execPath, [realpathSync(GUARD), '--base', base, '--head', tip, '--dir', '.', '--allow', allowFile], { timeout: 300_000, env: { ...process.env, PRIVATE_REPOS: names, GITHUB_ACTIONS: '' } })
     const out = `${r.stdout}${r.stderr}`.trim()
     if (r.status === 0 && /^privacy-guard: OK/m.test(out)) continue
     refuse(`${count} outgoing commit${count === 1 ? '' : 's'} to ${where}, which is public (or not known to be private), would publish private detail (guard exit ${r.status}).\n${out}\nNothing was sent.`)
