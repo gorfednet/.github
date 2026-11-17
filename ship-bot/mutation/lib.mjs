@@ -96,7 +96,7 @@ export function digest({ date, total, units, nights, planted, tonight = null, wa
   const recent = nights.slice(-5).map((n) => `${n.date.slice(5)} ${n.score === null ? '-' : n.score + '%'}`)
   lines.push(`Last nights: ${recent.join(', ') || 'none'}`)
   lines.push(planted.ok ? 'Planted dead assertion: listed as surviving (canary ok)' : 'Planted dead assertion: NOT listed, the mutation run itself is broken')
-  if (tonight) lines.push(`Tonight: ${tonight.ran} run, ${tonight.failed} no report`)
+  if (tonight) lines.push(`Tonight: ${tonight.ran} run, ${tonight.failed} no report, ${tonight.budget ?? 0} out of time`)
   if (warning) lines.push(`WARNING: ${warning}`)
   const top = rank(total.survivors, 10).map((s) => `${s.file.replace(/^ship-bot\//, '')}:${s.line} ${s.mutator}`)
   for (let i = 0; i < top.length && lines.length < 10; i += 2) lines.push(`${i === 0 ? 'Top survivors: ' : ''}${top.slice(i, i + 2).join(' | ')}`)
@@ -122,7 +122,7 @@ export function plantedListed(survivors) {
  */
 export const TOOLING_TESTS = ['mutation.test.mjs']
 export const scoredTests = (files) => files.filter((f) => f.endsWith('.test.mjs') && !TOOLING_TESTS.includes(f)).sort()
-export const testCommand = (files) => `node --test ${scoredTests(files).map((f) => `ship-bot/test/${f}`).join(' ')}`
+export const testCommand = (files) => `${process.execPath} --test ${scoredTests(files).map((f) => `ship-bot/test/${f}`).join(' ')}`
 
 /** The only environment a Stryker child gets: no tokens, its own HOME. */
 export const childEnv = (env, home) => ({ PATH: env.PATH, HOME: home, LANG: 'C.UTF-8' })
@@ -133,4 +133,15 @@ export const toolNeedsInstall = ({ hasBin, stamp, hash }) => !hasBin || stamp ==
 /** An ntfy token file counts only when non-empty, as janitor-notify.sh checks (-s). */
 export function notifyTokenPresent(home, stat = statSync) {
   return ['.fleet-janitor/ntfy.token', '.ship-bot/ntfy.token'].some((f) => { try { return stat(`${home}/${f}`).size > 0 } catch { return false } })
+}
+
+/**
+ * A unit with no report either failed or was killed because the night's budget
+ * ran out (its timeout was the time left, not the 90-minute cap). Only a failure
+ * is recorded in `state.failed`; an out-of-time unit keeps its place for tomorrow.
+ */
+export function settleNoReport(state, key, today, { timedOut, timeoutMs, left }) {
+  if (timedOut && timeoutMs >= left) return 'budget'
+  state.failed = { ...(state.failed ?? {}), [key]: today }
+  return 'failed'
 }

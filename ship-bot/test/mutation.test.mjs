@@ -4,7 +4,7 @@ import { describe, it } from 'node:test'
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { childEnv, digest, dueUnits, notifyTokenPresent, plantedListed, plantedOk, rank, score, scoredTests, summarize, testCommand, toolNeedsInstall, torontoDate, totals, unitKey, unitsFor } from '../mutation/lib.mjs'
+import { settleNoReport, childEnv, digest, dueUnits, notifyTokenPresent, plantedListed, plantedOk, rank, score, scoredTests, summarize, testCommand, toolNeedsInstall, torontoDate, totals, unitKey, unitsFor } from '../mutation/lib.mjs'
 
 const m = (status, line, mutatorName = 'ConditionalExpression') => ({ status, mutatorName, location: { start: { line } }, replacement: 'x' })
 
@@ -112,7 +112,7 @@ describe('mutation lib', () => {
     const total = { counts: { killed: 8, timeout: 0, survived: 14, noCoverage: 0 }, survivors, covered: 3, score: 36 }
     const nights = Array.from({ length: 7 }, (_, i) => ({ date: `2026-11-1${i}`, score: 70 }))
     const text = digest({ date: '2026-11-17', total, units: 9, nights, planted: { ok: true }, tonight: { ran: 2, failed: 1 }, warning: 'no ntfy token, digest not sent' })
-    assert.match(text, /^Tonight: 2 run, 1 no report$/m)
+    assert.match(text, /^Tonight: 2 run, 1 no report, 0 out of time$/m)
     assert.match(text, /^WARNING: no ntfy token/m)
     assert.ok(text.trim().split('\n').length <= 10)
   })
@@ -162,5 +162,24 @@ describe('mutation lib', () => {
     assert.equal(notifyTokenPresent(home), false)
     writeFileSync(join(home, '.ship-bot/ntfy.token'), 'tk\n')
     assert.equal(notifyTokenPresent(home), true)
+  })
+
+  it('records a unit killed by the night\'s budget as out of time, not failed', () => {
+    const state = { units: {}, failed: {} }
+    const left = 20 * 60000
+    assert.equal(settleNoReport(state, 'a:1-9', '2026-11-17', { timedOut: true, timeoutMs: left, left }), 'budget')
+    assert.deepEqual(state.failed, {})
+    // The 90-minute cap hit with budget to spare, and any other no-report, is a failure.
+    assert.equal(settleNoReport(state, 'b:1-9', '2026-11-17', { timedOut: true, timeoutMs: 90 * 60000, left: 200 * 60000 }), 'failed')
+    assert.equal(settleNoReport(state, 'c:1-9', '2026-11-17', { timedOut: false, timeoutMs: left, left }), 'failed')
+    assert.deepEqual(Object.keys(state.failed), ['b:1-9', 'c:1-9'])
+    const total = { counts: { killed: 1, timeout: 0, survived: 0, noCoverage: 0 }, survivors: [], covered: 1, score: 100 }
+    assert.match(digest({ date: 'd', total, units: 3, nights: [], planted: { ok: true }, tonight: { ran: 1, failed: 2, budget: 1 } }), /^Tonight: 1 run, 2 no report, 1 out of time$/m)
+  })
+
+  it('wires the budget outcome into the nightly loop', () => {
+    const n = readFileSync(new URL('../mutation/nightly.mjs', import.meta.url), 'utf8')
+    assert.match(n, /settleNoReport\(state, key, today, \{ timedOut: lastRun\.timedOut, timeoutMs, left \}\)/)
+    assert.match(n, /budget: budgetN/)
   })
 })

@@ -21,7 +21,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync
 import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { childEnv, digest, dueUnits, notifyTokenPresent, plantedOk, toolNeedsInstall, torontoDate, rank, scoredTests, summarize, testCommand, totals, unitKey, unitsFor } from './lib.mjs'
+import { settleNoReport, childEnv, digest, dueUnits, notifyTokenPresent, plantedOk, toolNeedsInstall, torontoDate, rank, scoredTests, summarize, testCommand, totals, unitKey, unitsFor } from './lib.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = resolve(HERE, '../..')
@@ -66,6 +66,8 @@ else {
   else { sh('git', ['-C', src, 'fetch', '--quiet', '--depth', '1', 'origin', 'main']); sh('git', ['-C', src, 'reset', '--quiet', '--hard', 'origin/main']) }
 }
 
+const lastRun = { timedOut: false }
+
 /** One Stryker run over `mutate`, in `cwd`, returning the parsed JSON report or null. */
 function runStryker({ cwd, mutate, command, name, timeoutMs, extraIgnore = [] }) {
   const out = join(stateDir, 'reports')
@@ -82,6 +84,7 @@ function runStryker({ cwd, mutate, command, name, timeoutMs, extraIgnore = [] })
   mkdirSync(home, { recursive: true })
   const env = childEnv(process.env, home)
   const r = spawnSync(process.execPath, [stryker, 'run', cfg], { cwd, env, encoding: 'utf8', timeout: timeoutMs, killSignal: 'SIGKILL', maxBuffer: 64 << 20 })
+  lastRun.timedOut = r.error?.code === 'ETIMEDOUT'
   if (!existsSync(report)) { log(`${name}: no report (exit ${r.status ?? r.signal}) ${(r.stderr || r.stdout || "").slice(0, 600)}`); return null }
   return JSON.parse(readFileSync(report, 'utf8'))
 }
@@ -117,12 +120,19 @@ log(`${units.length} units, ${queue.length} due`)
 const command = testCommand(testFiles)
 let ranN = 0
 let failedN = 0
+let budgetN = 0
 for (const u of queue) {
   const left = budgetMs - (Date.now() - started)
   if (left < 5 * 60000) { log('budget spent, resuming tomorrow'); break }
   const key = unitKey(u)
-  const rep = runStryker({ cwd: src, mutate: [`${u.file}:${u.from}-${u.to}`], command, name: 'unit', timeoutMs: Math.min(left, 90 * 60000), extraIgnore: ['ship-bot/mutation'] })
-  if (!rep) { state.failed[key] = today; failedN++; writeFileSync(statePath, JSON.stringify(state)); continue }
+  const timeoutMs = Math.min(left, 90 * 60000)
+  const rep = runStryker({ cwd: src, mutate: [`${u.file}:${u.from}-${u.to}`], command, name: 'unit', timeoutMs, extraIgnore: ['ship-bot/mutation'] })
+  if (!rep) {
+    const kind = settleNoReport(state, key, today, { timedOut: lastRun.timedOut, timeoutMs, left })
+    if (kind === 'budget') { budgetN++; log(`${key}: out of time`) } else failedN++
+    writeFileSync(statePath, JSON.stringify(state))
+    continue
+  }
   ranN++
   delete state.failed[key]
   const { counts, survivors } = summarize(rep)
@@ -140,7 +150,7 @@ if (flag('notify') && !notifyTokenPresent(homedir())) {
   warning = 'no ntfy token, digest not sent'
   console.log(`WARNING: ${warning}`)
 }
-const text = digest({ date: today, total, units: units.length, nights: state.nights, planted, tonight: { ran: ranN, failed: failedN }, warning })
+const text = digest({ date: today, total, units: units.length, nights: state.nights, planted, tonight: { ran: ranN, failed: failedN, budget: budgetN }, warning })
 writeFileSync(join(stateDir, 'digest.txt'), text)
 writeFileSync(join(stateDir, 'report.json'), JSON.stringify({ date: today, score: total.score, counts: total.counts, covered: total.covered, units: units.length, planted: planted.ok, top10: rank(total.survivors, 10), nights: state.nights }, null, 2))
 process.stdout.write(text)
