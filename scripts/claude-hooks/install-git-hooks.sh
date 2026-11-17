@@ -34,8 +34,23 @@ printf '%s\n' "$NODE_BIN" > "$tmp/node-path"
 for f in public-push-guard.mjs public-gh-text-guard.mjs privacy-guard.mjs hook node-path; do
   mv -f "$tmp/$f" "$dest/$f"
 done
+# Only pre-push is always linked. Any other hook name is linked only when a clone under AUDIT_ROOT has its own hook of
+# that name to chain to: every linked name runs the dispatcher on each git command that fires it (reference-transaction
+# fires on every ref update), which made git-heavy suites several times slower for nothing.
+root=${AUDIT_ROOT:-$HOME/Developer/gorfednet}
+has_hook() {
+  for d in "$root"/*/; do
+    c=$(git -C "$d" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || continue
+    [ -x "$c/hooks/$1" ] && return 0
+  done
+  return 1
+}
 for h in applypatch-msg pre-applypatch post-applypatch pre-commit pre-merge-commit prepare-commit-msg commit-msg post-commit pre-rebase post-checkout post-merge pre-push pre-auto-gc post-rewrite post-index-change reference-transaction sendemail-validate pre-receive update post-receive post-update; do
-  ln -sf hook "$dest/$h"
+  if [ "$h" = pre-push ] || has_hook "$h"; then
+    ln -sf hook "$dest/$h"
+  elif [ -L "$dest/$h" ]; then
+    rm -f "$dest/$h" # linked by an earlier install, and nothing needs it now
+  fi
 done
 if ! PUBLIC_PUSH_GUARD_LIST="$dest/private-repos.txt" "$NODE_BIN" "$dest/public-push-guard.mjs" --refresh; then
   echo "gh could not list the private repositories, so the guard has no list. Fix gh, then run this again." >&2
@@ -43,7 +58,6 @@ if ! PUBLIC_PUSH_GUARD_LIST="$dest/private-repos.txt" "$NODE_BIN" "$dest/public-
 fi
 git config --global core.hooksPath "$dest"
 echo "Installed in $dest. A clone with its own core.hooksPath (husky and the like) skips it; those are:"
-root=${AUDIT_ROOT:-$HOME/Developer/gorfednet}
 for d in "$root"/*/; do
   p=$(git -C "$d" config --local --get core.hooksPath 2>/dev/null) && echo "$(git -C "$d" rev-parse --path-format=absolute --git-common-dir) $p"
   true # a clone with no hooksPath of its own is not an error

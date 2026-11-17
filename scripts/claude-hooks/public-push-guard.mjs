@@ -112,13 +112,11 @@ const ALLOW_PATH = '.github/privacy-guard-allow.txt'
 
 /**
  * The target repository's allowlist as the remote's default branch holds it right now. That commit is
- * fetched when this clone lacks it. A change in the push can't clear itself, and a stale clone still sees
+ * fetched, when this clone lacks it, while the remote is asked what it holds. A change in the push can't clear itself, and a stale clone still sees
  * an exemption main gained since. Nothing readable (no HEAD, no file, a failed fetch) is no exemptions.
  */
-export function allowTextAtRemote(url, headSha) {
+export function allowTextAtRemote(headSha) {
   if (!headSha) return ''
-  const env = { ...process.env, GIT_TERMINAL_PROMPT: '0' }
-  if (git(['cat-file', '-e', `${headSha}^{commit}`]).status !== 0) git(['fetch', '-q', '--no-tags', '--no-write-fetch-head', url, headSha], { env, timeout: 60_000 })
   const r = git(['show', `${headSha}:${ALLOW_PATH}`])
   return r.status === 0 ? r.stdout : ''
 }
@@ -139,9 +137,12 @@ function remoteState(url, updates) {
   const r = git(['ls-remote', url], { env: { ...process.env, GIT_TERMINAL_PROMPT: '0' }, timeout: 30_000 })
   if (r.status !== 0) refuse('git could not read what the remote already holds (git ls-remote failed), so the outgoing commits can\'t be told from published ones. Check the network and credentials, then push again.')
   const lines = r.stdout.split('\n').map((l) => l.split(/\s/))
+  const head = lines.find((l) => l[1] === 'HEAD')?.[0] ?? ''
+  // The default branch tip is fetched when this clone lacks it (the clone is behind): its history is what a branch cut earlier is measured against, and its allowlist is read.
+  if (/^[0-9a-f]{40,64}$/.test(head) && git(['cat-file', '-e', `${head}^{commit}`]).status !== 0) git(['fetch', '-q', '--no-tags', '--no-write-fetch-head', url, head], { env: { ...process.env, GIT_TERMINAL_PROMPT: '0' }, timeout: 60_000 })
   const shas = [...lines.map((l) => l[0]), ...updates.map((u) => u.rsha)]
   const holds = [...new Set(shas)].filter((s) => /^[0-9a-f]{40,64}$/.test(s) && !ZERO.test(s) && git(['cat-file', '-e', `${s}^{commit}`]).status === 0)
-  return { holds, head: lines.find((l) => l[1] === 'HEAD')?.[0] ?? '' }
+  return { holds, head }
 }
 
 /** Sent refs to the commits the remote lacks, per tip, with the published commit nearest them. */
@@ -173,7 +174,7 @@ export async function checkPush(remote, url, updates) {
   }
   const { holds, head } = remoteState(url, updates)
   const sets = outgoing(holds, updates)
-  const allowText = allowTextAtRemote(url, head)
+  const allowText = allowTextAtRemote(head)
   const { mod, ctx, names } = await loadGuard(list, allowText)
   const scratch = mkdtempSync(join(tmpdir(), 'ppg-'))
   try {
