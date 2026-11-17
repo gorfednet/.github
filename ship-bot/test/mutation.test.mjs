@@ -4,7 +4,7 @@ import { describe, it } from 'node:test'
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { settleNoReport, childEnv, digest, dueUnits, notifyTokenPresent, plantedListed, plantedOk, rank, score, scoredTests, summarize, testCommand, toolNeedsInstall, torontoDate, totals, unitKey, unitsFor } from '../mutation/lib.mjs'
+import { plantedCommand, settleNoReport, childEnv, digest, dueUnits, notifyTokenPresent, plantedListed, plantedOk, rank, score, scoredTests, summarize, testCommand, toolNeedsInstall, torontoDate, totals, unitKey, unitsFor } from '../mutation/lib.mjs'
 
 const m = (status, line, mutatorName = 'ConditionalExpression') => ({ status, mutatorName, location: { start: { line } }, replacement: 'x' })
 
@@ -181,5 +181,13 @@ describe('mutation lib', () => {
     const n = readFileSync(new URL('../mutation/nightly.mjs', import.meta.url), 'utf8')
     assert.match(n, /settleNoReport\(state, key, today, \{ timedOut: lastRun\.timedOut, timeoutMs, left \}\)/)
     assert.match(n, /budget: budgetN/)
+  })
+
+  it('starts the canary and unit test commands with the running node, not a PATH lookup', () => {
+    assert.ok(plantedCommand().startsWith(`${process.execPath} --test `))
+    assert.ok(testCommand(['a.test.mjs']).startsWith(`${process.execPath} --test `))
+    const n = readFileSync(new URL('../mutation/nightly.mjs', import.meta.url), 'utf8')
+    assert.match(n, /command: plantedCommand\(\)/)
+    assert.doesNotMatch(n, /command: 'node /)
   })
 })

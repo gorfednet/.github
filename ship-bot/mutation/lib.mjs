@@ -145,3 +145,6 @@ export function settleNoReport(state, key, today, { timedOut, timeoutMs, left })
   state.failed = { ...(state.failed ?? {}), [key]: today }
   return 'failed'
 }
+
+/** The planted canary's test command: the running node, since a cron or launchd PATH may not have one. */
+export const plantedCommand = () => `${process.execPath} --test planted.test.mjs`

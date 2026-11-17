@@ -21,7 +21,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync
 import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { settleNoReport, childEnv, digest, dueUnits, notifyTokenPresent, plantedOk, toolNeedsInstall, torontoDate, rank, scoredTests, summarize, testCommand, totals, unitKey, unitsFor } from './lib.mjs'
+import { plantedCommand, settleNoReport, childEnv, digest, dueUnits, notifyTokenPresent, plantedOk, toolNeedsInstall, torontoDate, rank, scoredTests, summarize, testCommand, totals, unitKey, unitsFor } from './lib.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = resolve(HERE, '../..')
@@ -93,7 +93,7 @@ function runStryker({ cwd, mutate, command, name, timeoutMs, extraIgnore = [] })
 const plantedDir = join(src, 'ship-bot/mutation/fixtures/planted')
 let planted = { ok: false }
 {
-  const rep = runStryker({ cwd: plantedDir, mutate: ['planted.mjs'], command: 'node --test planted.test.mjs', name: 'planted', timeoutMs: 10 * 60000 })
+  const rep = runStryker({ cwd: plantedDir, mutate: ['planted.mjs'], command: plantedCommand(), name: 'planted', timeoutMs: 10 * 60000 })
   if (rep) { const s = summarize(rep); planted = { ok: plantedOk(s), survivors: s.survivors } }
   log(`planted dead assertion listed: ${planted.ok}`)
 }
