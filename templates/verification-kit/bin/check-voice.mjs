@@ -299,7 +299,9 @@ export function checkString(raw, kind, options = {}) {
       hits.push({ rule: 'i-share', text: `${n} of ${parts.length} sentences open with "I"` })
     for (const p of parts) if (I_OPEN.test(p) && I_JOIN.test(p)) hits.push({ rule: 'i-join', text: p.slice(0, 80) })
     // A quoted span reads as one word, so a quoted label holds no commas of its own.
-    const quotedAsWord = text.replace(/"[^"\n]*"|“[^”]*”|‘[^’]*’/g, 'Q').replace(/[’ʼ]/g, "'")
+    const quotedAsWord = text
+      .replace(/"[^"\n]*"|“[^”]*”|‘[^’]*’/g, (m) => `Q${/[.!?]["”’]$/.exec(m)?.[0][0] ?? ''}`)
+      .replace(/[’ʼ]/g, "'")
     for (const p of sentences(stripTerms(quotedAsWord, options.terms)).map((x) => x.trim())) {
       const c = nonListCommas(p)
       if (c >= 2) hits.push({ rule: 'commas', text: `${c} commas outside a list: ${p.slice(0, 120)}` })

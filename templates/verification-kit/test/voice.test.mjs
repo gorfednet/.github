@@ -651,6 +651,12 @@ describe('check-voice register (warnings, 17 November 2026)', () => {
     assert.deepEqual(rulesOf(`The note read "${label}" that night.`), [])
     assert.deepEqual(rulesOf(`The note read ${label} that night.`), ['commas'])
   })
+  it('commas: a quotation that ends with a full stop still ends or splits its sentence', () => {
+    // Missed before: the quote's full stop vanished, so the sentence had no end.
+    assert.deepEqual(rulesOf('It was late, because the build on the pool ran long, and he said "Stop."'), ['commas'])
+    // False before: no split after the quote, so 2 sentences read as 1 with 3 commas.
+    assert.deepEqual(rulesOf('It shipped, he said "Done." Then, at noon, it broke.'), [])
+  })
   it('register warnings read body text and summaries, never headings or labels', () => {
     assert.deepEqual(rulesOf('It was late, because the build on the pool ran long, but it shipped on time, so nobody left early.', 'heading'), [])
     assert.deepEqual(rulesOf('It was late, because the build on the pool ran long, but it shipped on time, so nobody left early.', 'label'), [])
