@@ -644,6 +644,13 @@ describe('check-voice register (warnings, 17 November 2026)', () => {
     assert.deepEqual(rulesOf('Director of design at the agency in Toronto, working on the KINETiQ platform for life sciences clients, across several brands over many years.'), ['commas'])
     assert.deepEqual(rulesOf('The label "Shop by room, size, or colour" opens a 404.'), [])
   })
+  it('commas: a quoted label holds no commas of its own, in curly single quotes too', () => {
+    const label = 'When the build on the pool ran long, the deploy to the NAS waited, because the lock was held'
+    assert.deepEqual(rulesOf(`The note read ‘${label}’ that night.`), [])
+    assert.deepEqual(rulesOf(`The note read “${label}” that night.`), [])
+    assert.deepEqual(rulesOf(`The note read "${label}" that night.`), [])
+    assert.deepEqual(rulesOf(`The note read ${label} that night.`), ['commas'])
+  })
   it('register warnings read body text and summaries, never headings or labels', () => {
     assert.deepEqual(rulesOf('It was late, because the build on the pool ran long, but it shipped on time, so nobody left early.', 'heading'), [])
     assert.deepEqual(rulesOf('It was late, because the build on the pool ran long, but it shipped on time, so nobody left early.', 'label'), [])
@@ -667,6 +674,8 @@ describe('check-voice register (warnings, 17 November 2026)', () => {
     assert.equal(leads('a.html', '<p>I managed people at TD Invent.</p><p>I was the UX lead there.</p><p>At Klick I directed product design.</p>').length, 0)
     assert.equal(leads('a.html', '<p>I managed people at TD Invent.</p><p>I was the UX lead there.</p><p>"I directed" is how the page opens its history.</p>').length, 0)
     assert.equal(leads('a.json', '{"a":"I managed people at TD Invent.","b":"I was the UX lead there.","c":"I directed product design."}').length, 0)
+    assert.equal(leads('a.js', "export default { a: 'I managed people at TD Invent.', b: 'I was the UX lead there.', c: 'I directed product design.' }\n").length, 0)
+    assert.equal(leads('a.mjs', "export default { a: 'I managed people at TD Invent.', b: 'I was the UX lead there.', c: 'I directed product design.' }\n").length, 0)
     assert.equal(leads('a.ts', "export const t = { a: 'I managed people at TD Invent.', b: 'I was the UX lead there.', c: 'I directed product design.' }\n").length, 0)
   })
 

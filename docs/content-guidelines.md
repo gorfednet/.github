@@ -178,7 +178,7 @@ Register has 5 more warnings. They read body text and summaries, never headings 
 |---------|------------|
 | `i-run` | 3 or more sentences in a row in 1 string are "I" openers. |
 | `i-share` | A string has 4 or more sentences and at least half are "I" openers. It stays quiet where `i-run` fired. |
-| `i-lead` | In an HTML, Markdown or JSX file, 3 or more body strings in a row start with an "I" opener. Headings, link text, summaries and strings under 4 words are passed over. |
+| `i-lead` | In an HTML, Markdown, `.jsx` or `.tsx` file, 3 or more body strings in a row start with an "I" opener. Headings, link text, summaries and strings under 4 words are passed over. |
 | `i-join` | An "I" opener repeats "I" after ", and", ", but" or ", so". |
 | `commas` | A sentence that ends in a full stop, "?" or "!" has 2 or more commas outside a list. |
 
