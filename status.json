@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-11-17T16:31:52.234Z",
-  "renderedAt": "2026-11-17T16:31:52.234Z",
+  "generatedAt": "2026-11-17T18:32:15.851Z",
+  "renderedAt": "2026-11-17T18:32:15.851Z",
   "repos": [
     {
       "slug": "gorfednet/bindercurve.com",
@@ -151,20 +151,8 @@
       "mainRed": false,
       "openPrs": [
         {
-          "number": 249,
-          "title": "Dependabot: group security updates (plan row 3.20l)",
-          "ageDays": 0,
-          "labels": [],
-          "draft": false,
-          "review": "clean",
-          "headSha": "48dda91a422d200ea4969c7710f49d61054364e8",
-          "ci": "green",
-          "next": "merge",
-          "author": "gorfednet"
-        },
-        {
           "number": 244,
-          "title": "build(deps): bump the actions group across 3 directories with 7 updates",
+          "title": "Bump the actions group across 3 directories with 7 updates",
           "ageDays": 0,
           "labels": [
             "dependencies",
@@ -172,22 +160,10 @@
           ],
           "draft": false,
           "review": "not-run",
-          "headSha": "99c7f951a12d55b8530caa22e99a5bc6c3e85520",
+          "headSha": "606de37853e197cb215096480afb1b77007a21d5",
           "ci": "red",
           "next": null,
           "author": "app/dependabot"
-        },
-        {
-          "number": 241,
-          "title": "1.30g: public-push guard as a git pre-push hook",
-          "ageDays": 0,
-          "labels": [],
-          "draft": false,
-          "review": "not-run",
-          "headSha": "6f8613396341af40f8225c3c84fd296af587734e",
-          "ci": "red",
-          "next": "Install from `origin/main` after merge and push once to a public test repository",
-          "author": "gorfednet"
         },
         {
           "number": 228,
@@ -550,7 +526,7 @@
     {
       "slug": "gorfednet/MoonMan",
       "redacted": true,
-      "mainRed": false,
+      "mainRed": true,
       "openPrCount": 6,
       "lapsedBacklogCount": 2,
       "noPrCount": 46,
@@ -664,7 +640,7 @@
       "slug": "gorfednet/ops",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 11,
+      "openPrCount": 12,
       "lapsedBacklogCount": 0,
       "noPrCount": 1,
       "idlePrCount": 0,
@@ -727,11 +703,11 @@
     }
   },
   "inventory": {
-    "measuredAt": "2026-11-17T16:31:52.234Z",
+    "measuredAt": "2026-11-17T18:32:15.851Z",
     "counts": {
       "pr": {
-        "total": 129,
-        "orphans": 56
+        "total": 128,
+        "orphans": 57
       },
       "session": null,
       "worktree": null,
@@ -783,14 +759,14 @@
         "lapsed": true
       }
     ],
-    "hiddenPrivate": 53,
+    "hiddenPrivate": 54,
     "privateReposNotItemised": 18,
     "planRead": true
   },
   "dotgithub": {
-    "measuredAt": "2026-11-17T16:32:29.911Z",
-    "branches": 41,
-    "merged": 2,
+    "measuredAt": "2026-11-17T18:32:53.198Z",
+    "branches": 39,
+    "merged": 3,
     "exposedFiles": 61,
     "rulesNotChecked": [],
     "readmeMissing": [
