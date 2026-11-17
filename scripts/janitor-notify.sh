@@ -19,7 +19,7 @@ if [ -z "$token_file" ]; then
 fi
 curl -sS --fail --max-time 15 -o /dev/null \
   -H "User-Agent: gorfednet-fleet-janitor" \
-  -H "Title: Fleet janitor" -H "Tags: broom" \
+  -H "Title: ${NOTIFY_TITLE:-Fleet janitor}" -H "Tags: broom" \
   -H "Authorization: Bearer $(tr -d '\n' < "$token_file")" \
   --data-binary @"$digest" "https://ntfy.gorfed.net/ops-report"
 echo "janitor-notify: posted $lines lines to ops-report"
