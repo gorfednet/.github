@@ -345,7 +345,6 @@ describe('pre-push: it fails closed once the remote is public, and chains to the
     const hook = join(r.bare, 'hooks', 'update')
     writeFileSync(hook, '#!/bin/sh\nexit 1\n')
     chmodSync(hook, 0o755)
-    reinstall(r.w)
     const x = push(r, 'origin', 'feature')
     assert.notEqual(x.status, 0, x.stderr)
     assert.ok(!remoteHas(r, 'refs/heads/feature'))
@@ -535,19 +534,20 @@ describe('install-git-hooks.sh: a failed install leaves the hooks that were ther
     assert.deepEqual(read(), before)
   })
 
-  it('links pre-push only, until a clone under AUDIT_ROOT has a hook of another name, and drops a link nothing needs', () => {
+  it('links pre-push and the receive-side hooks only, until a clone under AUDIT_ROOT has a hook of another name, and drops a link nothing needs', () => {
     const w = world()
     const linked = () => readdirSync(w.hooks).filter((f) => lstatSync(join(w.hooks, f)).isSymbolicLink()).sort()
-    assert.deepEqual(linked(), ['pre-push'], 'no clone has a hook, so nothing but pre-push is linked')
+    const always = ['post-receive', 'post-update', 'pre-push', 'pre-receive', 'update']
+    assert.deepEqual(linked(), always, 'no clone has a hook, so only pre-push and the receive-side hooks are linked')
     const r = repo(w)
     const hook = join(r.dir, '.git', 'hooks', 'pre-commit')
     writeFileSync(hook, '#!/bin/sh\nexit 0\n')
     chmodSync(hook, 0o755)
     reinstall(w)
-    assert.deepEqual(linked(), ['pre-commit', 'pre-push'], 'reference-transaction and the rest stay unlinked')
+    assert.deepEqual(linked(), ['post-receive', 'post-update', 'pre-commit', 'pre-push', 'pre-receive', 'update'], 'reference-transaction and the rest stay unlinked')
     rmSync(hook)
     reinstall(w)
-    assert.deepEqual(linked(), ['pre-push'], 'a link the last install made and nothing needs is removed')
+    assert.deepEqual(linked(), always, 'a link the last install made and nothing needs is removed')
   })
 
   it('does not link push-to-checkout, which would override the default working-tree update', () => {

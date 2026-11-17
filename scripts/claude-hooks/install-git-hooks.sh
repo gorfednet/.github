@@ -34,9 +34,11 @@ printf '%s\n' "$NODE_BIN" > "$tmp/node-path"
 for f in public-push-guard.mjs privacy-guard.mjs hook node-path; do
   mv -f "$tmp/$f" "$dest/$f"
 done
-# Only pre-push is always linked. Any other hook name is linked only when a clone under AUDIT_ROOT has its own hook of
-# that name to chain to: every linked name runs the dispatcher on each git command that fires it (reference-transaction
-# fires on every ref update), which made git-heavy suites several times slower for nothing.
+# pre-push is always linked, and so are the four receive-side hooks, which fire only inside the repository being pushed
+# to (a local bare repository keeps its own pre-receive, update, post-receive, post-update). Any other hook name is
+# linked only when a clone under AUDIT_ROOT has its own hook of that name to chain to: every linked name runs the
+# dispatcher on each git command that fires it (reference-transaction fires on every ref update, post-index-change on
+# every index write), which made git-heavy suites several times slower for nothing.
 root=${AUDIT_ROOT:-$HOME/Developer/gorfednet}
 has_hook() {
   for d in "$root"/*/; do
@@ -46,7 +48,8 @@ has_hook() {
   return 1
 }
 for h in applypatch-msg pre-applypatch post-applypatch pre-commit pre-merge-commit prepare-commit-msg commit-msg post-commit pre-rebase post-checkout post-merge pre-push pre-auto-gc post-rewrite post-index-change reference-transaction sendemail-validate pre-receive update post-receive post-update; do
-  if [ "$h" = pre-push ] || has_hook "$h"; then
+  case "$h" in pre-push | pre-receive | update | post-receive | post-update) always=1 ;; *) always=0 ;; esac
+  if [ "$always" = 1 ] || has_hook "$h"; then
     ln -sf hook "$dest/$h"
   elif [ -L "$dest/$h" ]; then
     rm -f "$dest/$h" # linked by an earlier install, and nothing needs it now
