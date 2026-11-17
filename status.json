@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-11-17T18:32:15.851Z",
-  "renderedAt": "2026-11-17T18:32:15.851Z",
+  "generatedAt": "2026-11-17T20:32:11.497Z",
+  "renderedAt": "2026-11-17T20:32:11.497Z",
   "repos": [
     {
       "slug": "gorfednet/bindercurve.com",
@@ -19,7 +19,7 @@
       "slug": "gorfednet/4thcltr.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 21,
+      "openPrCount": 22,
       "lapsedBacklogCount": 20,
       "noPrCount": 13,
       "idlePrCount": 17,
@@ -32,7 +32,7 @@
       "slug": "gorfednet/gorfed.net",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 6,
+      "openPrCount": 7,
       "lapsedBacklogCount": 3,
       "noPrCount": 4,
       "idlePrCount": 0,
@@ -151,6 +151,30 @@
       "mainRed": false,
       "openPrs": [
         {
+          "number": 253,
+          "title": "1.30h: public-push guard follow-ups from 241 and 246",
+          "ageDays": 0,
+          "labels": [],
+          "draft": true,
+          "review": "clean",
+          "headSha": "0aa0495218cff1cd1e4c875f36e8eafa18e2c86f",
+          "ci": "pending",
+          "next": "Desk's Fable read of the diff (control-plane path: `scripts/`), then merge on a clean review.",
+          "author": "gorfednet"
+        },
+        {
+          "number": 251,
+          "title": "deps: Dependabot train 2026-11-17",
+          "ageDays": 0,
+          "labels": [],
+          "draft": false,
+          "review": "clean",
+          "headSha": "21a5011730420537b5dd8301580810ee5ef8b631",
+          "ci": "green",
+          "next": "Merge once CI is green and `claude review` is clean on this head.",
+          "author": "gorfednet"
+        },
+        {
           "number": 244,
           "title": "Bump the actions group across 3 directories with 7 updates",
           "ageDays": 0,
@@ -164,18 +188,6 @@
           "ci": "red",
           "next": null,
           "author": "app/dependabot"
-        },
-        {
-          "number": 228,
-          "title": "site-deploy: Cloudflare Pages backend, shared analytics Function, upload guard (plan row 3.13, B0)",
-          "ageDays": 1,
-          "labels": [],
-          "draft": false,
-          "review": "clean",
-          "headSha": "4f76b9ff6f22aa4f1a418e488d95b58580e0a985",
-          "ci": "green",
-          "next": "Merge once the review is clean (control-plane: Desk labels after its Fable read).",
-          "author": "gorfednet"
         },
         {
           "number": 216,
@@ -195,10 +207,7 @@
           "number": 103,
           "title": "Handoff: recovery of 38 failed Herdr jobs",
           "ageDays": 7,
-          "labels": [
-            "ready-to-merge",
-            "needs-fix"
-          ],
+          "labels": [],
           "draft": false,
           "review": "findings",
           "headSha": "91108205bc649c9b985761b45c8c9290a84df676",
@@ -527,7 +536,7 @@
       "slug": "gorfednet/MoonMan",
       "redacted": true,
       "mainRed": true,
-      "openPrCount": 6,
+      "openPrCount": 7,
       "lapsedBacklogCount": 2,
       "noPrCount": 46,
       "idlePrCount": 1,
@@ -575,7 +584,7 @@
       "slug": "gorfednet/career-portfolio",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 7,
+      "openPrCount": 8,
       "lapsedBacklogCount": 1,
       "noPrCount": 1,
       "idlePrCount": 2,
@@ -588,7 +597,7 @@
       "slug": "gorfednet/heuristics.4thcltr.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 14,
+      "openPrCount": 16,
       "lapsedBacklogCount": 16,
       "noPrCount": 6,
       "idlePrCount": 8,
@@ -601,7 +610,7 @@
       "slug": "gorfednet/papers.4thcltr.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 3,
+      "openPrCount": 4,
       "lapsedBacklogCount": 0,
       "noPrCount": 4,
       "idlePrCount": 1,
@@ -624,10 +633,84 @@
       "alertsOverdue": null
     },
     {
+      "slug": "gorfednet/ai-use-levels",
+      "defaultBranch": "main",
+      "mainRed": false,
+      "openPrs": [
+        {
+          "number": 25,
+          "title": "Add REVIEW.md and the Claude review workflow",
+          "ageDays": 4,
+          "labels": [
+            "ready-to-merge"
+          ],
+          "draft": false,
+          "review": "clean",
+          "headSha": "26019ede0469a77a3afe7c8a43438f0a92fa1085",
+          "ci": "green",
+          "next": "Blocked: set the `CLAUDE_CODE_OAUTH_TOKEN` secret on gorfednet/ai-use-levels (owner step; the review job fails with \"CLAUDE_CODE_OAUTH_TOKEN is empty\"). Then comment `claude review`, and merge when clean (plan row 5.3).",
+          "author": "gorfednet"
+        },
+        {
+          "number": 23,
+          "title": "Spec 1.2.1: a site footer mark, and ordering a long Tool list",
+          "ageDays": 5,
+          "labels": [],
+          "draft": true,
+          "review": "not-run",
+          "headSha": "1ed66c421768e052a5a465ba913ea78f4cf2f594",
+          "ci": "green",
+          "next": "Owner confirms the 2 sentences and the draft tag, or corrects them",
+          "author": "gorfednet"
+        },
+        {
+          "number": 3,
+          "title": "Verification kit 0.48.0: the content guidelines and check-voice",
+          "ageDays": 22,
+          "labels": [],
+          "draft": false,
+          "review": "not-run",
+          "headSha": "b65b2918cab1329aed4e982c1af882e6e8bfa21e",
+          "ci": "green",
+          "next": null,
+          "author": "gorfednet"
+        }
+      ],
+      "branchesAhead": [
+        {
+          "branch": "worktree-validated-napping-parnas",
+          "ahead": 1
+        }
+      ],
+      "lapsedBacklog": [],
+      "backlogOpen": [],
+      "idlePrs": [
+        {
+          "number": 25,
+          "idleDays": 3
+        },
+        {
+          "number": 23,
+          "idleDays": 5
+        },
+        {
+          "number": 3,
+          "idleDays": 22
+        }
+      ],
+      "duplicatePrs": [],
+      "lastDeploy": null,
+      "incidents7d": 0,
+      "dependabotRed": 0,
+      "kitVersion": null,
+      "alertsOverdue": null,
+      "alertsUnread": "no-token-access"
+    },
+    {
       "slug": "gorfednet/assess",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 6,
+      "openPrCount": 7,
       "lapsedBacklogCount": 6,
       "noPrCount": 3,
       "idlePrCount": 2,
@@ -640,7 +723,7 @@
       "slug": "gorfednet/ops",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 12,
+      "openPrCount": 15,
       "lapsedBacklogCount": 0,
       "noPrCount": 1,
       "idlePrCount": 0,
@@ -703,11 +786,11 @@
     }
   },
   "inventory": {
-    "measuredAt": "2026-11-17T18:32:15.851Z",
+    "measuredAt": "2026-11-17T20:32:11.497Z",
     "counts": {
       "pr": {
-        "total": 128,
-        "orphans": 57
+        "total": 141,
+        "orphans": 69
       },
       "session": null,
       "worktree": null,
@@ -718,6 +801,14 @@
       }
     },
     "orphans": [
+      {
+        "kind": "pr",
+        "repo": "gorfednet/.github",
+        "ref": "#251",
+        "label": "deps: Dependabot train 2026-11-17",
+        "private": false,
+        "lapsed": false
+      },
       {
         "kind": "pr",
         "repo": "gorfednet/ai-use-levels",
@@ -759,13 +850,13 @@
         "lapsed": true
       }
     ],
-    "hiddenPrivate": 54,
+    "hiddenPrivate": 65,
     "privateReposNotItemised": 18,
     "planRead": true
   },
   "dotgithub": {
-    "measuredAt": "2026-11-17T18:32:53.198Z",
-    "branches": 39,
+    "measuredAt": "2026-11-17T20:32:53.956Z",
+    "branches": 40,
     "merged": 3,
     "exposedFiles": 61,
     "rulesNotChecked": [],
