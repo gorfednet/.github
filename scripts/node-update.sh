@@ -20,7 +20,7 @@
 # The tarball comes from $NODE_DIST_BASE (default https://nodejs.org/dist) and its SHA-256 is checked
 # against that release's SHASUMS256.txt. That list comes from the same host over TLS, so it catches a
 # damaged or swapped file, not a compromise of nodejs.org itself. Nothing here needs sudo, and
-# /usr/local/bin/node is never touched: the owner removes the old .pkg after `ps` shows the new Node.
+# /usr/local/bin/node is never touched: the owner removes the old .pkg after the three agents' plists name this Node (their processes are too short-lived to read with `ps`).
 # Running agents keep their old binary until their next start (ship-bot starts every 2 minutes).
 set -euo pipefail
 

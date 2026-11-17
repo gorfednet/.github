@@ -138,6 +138,21 @@ describe('resolve_node', () => {
     assert.match(d.stderr, /link to nothing/)
   })
 
+  it('an install directory with no bin/node is an error too, not a quiet fall through to the next Node', () => {
+    const home = mac()
+    mkdirSync(join(home, '.local', 'share', 'node', 'v24.22.3'), { recursive: true })
+    symlinkSync('v24.22.3', join(home, '.local', 'share', 'node', '24'))
+    const sys = join(home, 'usr', 'bin', 'node')
+    fake(sys, '24')
+    const stable = join(home, '.local', 'share', 'node', '24', 'bin', 'node')
+    const r = resolve(home, { RESOLVE_NODE_CANDIDATES: `${stable} ${sys}` })
+    assert.notEqual(r.status, 0, r.stdout)
+    assert.match(r.stderr, /has no bin\/node/)
+    // No 24 install at all is still the pre-migration state: the next candidate is used.
+    rmSync(join(home, '.local', 'share', 'node', '24'))
+    assert.equal(resolve(home, { RESOLVE_NODE_CANDIDATES: `${stable} ${sys}` }).stdout.trim(), sys)
+  })
+
   it('NODE_BIN overrides the private-folder refusal, but not the version floor or a missing file', () => {
     const home = mac()
     const priv = join(home, '.hermes', 'node', 'bin', 'node')

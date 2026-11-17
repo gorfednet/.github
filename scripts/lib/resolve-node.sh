@@ -66,9 +66,15 @@ resolve_node() {
   read -r -a candidates <<<"${RESOLVE_NODE_CANDIDATES:-${HOME}/.local/share/node/24/bin/node /usr/local/bin/node /opt/homebrew/bin/node}"
   if cand="$(command -v node 2>/dev/null)" && [[ -n "${cand}" ]]; then candidates+=("${cand}"); fi
   for cand in "${candidates[@]}"; do
-    if [[ "${cand}" == "${HOME}"/.local/share/node/[0-9][0-9]/bin/node && -L "${cand%/bin/node}" && ! -e "${cand%/bin/node}" ]]; then
-      echo "resolve-node: ${cand%/bin/node} is a link to nothing (the install it named is gone). Run scripts/node-update.sh again, or set NODE_BIN=<path>." >&2
-      return 1
+    if [[ "${cand}" == "${HOME}"/.local/share/node/[0-9][0-9]/bin/node && ! -e "${cand}" ]]; then
+      if [[ -L "${cand%/bin/node}" && ! -e "${cand%/bin/node}" ]]; then
+        echo "resolve-node: ${cand%/bin/node} is a link to nothing (the install it named is gone). Run scripts/node-update.sh again, or set NODE_BIN=<path>." >&2
+        return 1
+      fi
+      if [[ -e "${cand%/bin/node}" ]]; then
+        echo "resolve-node: ${cand%/bin/node} exists but has no bin/node (a damaged install). Run scripts/node-update.sh again, or set NODE_BIN=<path>." >&2
+        return 1
+      fi
     fi
     [[ -e "${cand}" ]] || continue
     real="$(_rn_realpath "${cand}")"

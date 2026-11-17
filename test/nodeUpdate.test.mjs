@@ -12,12 +12,13 @@ const script = new URL('../scripts/node-update.sh', import.meta.url).pathname
 const PLAT = 'darwin-arm64'
 
 /** A dist tree with latest-v<major>.x/{SHASUMS256.txt, node-vX-darwin-arm64.tar.gz}; the fake node prints its version. */
-function dist(top, major, version, { badSum = false, lie = false } = {}) {
+function dist(top, major, version, { badSum = false, lie = false, lieViaLink = false } = {}) {
   const dir = join(top, 'dist', `latest-v${major}.x`)
   mkdirSync(dir, { recursive: true })
   const pkg = join(top, 'pkg', `node-${version}-${PLAT}`)
   mkdirSync(join(pkg, 'bin'), { recursive: true })
-  writeFileSync(join(pkg, 'bin', 'node'), `#!/bin/sh\necho ${lie ? 'v0.0.0' : version}\n`)
+  // lieViaLink: runs fine from its own v<version> directory but reports a wrong version when called through the stable <major> link.
+  writeFileSync(join(pkg, 'bin', 'node'), lieViaLink ? `#!/bin/sh\ncase "$0" in */${major}/bin/node) echo v0.0.0 ;; *) echo ${version} ;; esac\n` : `#!/bin/sh\necho ${lie ? 'v0.0.0' : version}\n`)
   chmodSync(join(pkg, 'bin', 'node'), 0o755)
   const tarball = `node-${version}-${PLAT}.tar.gz`
   const r = spawnSync('tar', ['-czf', join(dir, tarball), '-C', join(top, 'pkg'), `node-${version}-${PLAT}`])
@@ -104,6 +105,31 @@ describe('node-update.sh', () => {
     assert.match(r.stderr, /SHA-256 mismatch/)
     assert.equal(readlinkSync(join(e.root, '24')), 'v24.22.3')
     assert.ok(!existsSync(join(e.root, 'v24.22.4')))
+  })
+
+  it('puts the old link back when the node checks out on its own but fails through the stable link', () => {
+    const e = env()
+    dist(e.top, 24, 'v24.22.3')
+    assert.equal(e.run('24').status, 0)
+    dist(e.top, 24, 'v24.22.4', { lieViaLink: true })
+    const r = e.run('24')
+    assert.notEqual(r.status, 0)
+    assert.match(r.stderr, /the link was put back/)
+    assert.equal(readlinkSync(join(e.root, '24')), 'v24.22.3')
+    // First install, nothing to go back to: the link is removed rather than left on a bad node.
+    const f = env()
+    dist(f.top, 24, 'v24.22.3', { lieViaLink: true })
+    assert.notEqual(f.run('24').status, 0)
+    assert.ok(!existsSync(join(f.root, '24')))
+  })
+
+  it('refuses a list that names a version outside the requested line, changing nothing', () => {
+    const e = env()
+    dist(e.top, 24, 'v25.0.0') // published under latest-v24.x
+    const r = e.run('24')
+    assert.equal(r.status, 2)
+    assert.match(r.stderr, /not in line 24/)
+    assert.ok(!existsSync(e.root), 'nothing written')
   })
 
   it('refuses a node that does not report the version the list named', () => {
