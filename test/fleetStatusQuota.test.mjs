@@ -13,7 +13,8 @@ import { describe, it } from 'node:test'
 
 import { CARRY_HOURS, DEFAULT_PRS, MARGIN, chooseMode, coreRemaining, decide, describe as describeDecision, estimateCost, prCount } from '../scripts/lib/quotaGuard.mjs'
 
-const NOW = Date.parse('2026-11-16T18:00:00Z')
+// The shell script under test reads the real clock, so a fixed date here turned red 23 hours after it was written (17 November 2026).
+const NOW = Date.now()
 const ago = (hours) => new Date(NOW - hours * 3600 * 1000).toISOString()
 
 describe('quota guard arithmetic', () => {
