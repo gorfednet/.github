@@ -162,8 +162,9 @@ export const alertsCell = (n) => (Number.isInteger(n) ? `${n} Dependabot alerts 
 
 /** The fleet's total, with UNKNOWN named whenever some repository could not be read. */
 export const alertsPhrase = (s) => {
-  if (s.alertsKnown === 0 && s.alertsUnknown > 0) return 'Dependabot alerts past target UNKNOWN'
-  return `${s.alertsOverdue} Dependabot alerts past target${s.alertsUnknown > 0 ? ` (${s.alertsUnknown} repos UNKNOWN)` : ''}`
+  // With any repository unread the total is a floor, so it never leads the line as a bare number.
+  if (s.alertsUnknown > 0) return `Dependabot alerts past target UNKNOWN (${s.alertsOverdue} counted, ${s.alertsUnknown} repos not read)`
+  return `${s.alertsOverdue} Dependabot alerts past target`
 }
 
 export function summaryLine(status) {

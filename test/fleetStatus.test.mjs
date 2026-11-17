@@ -252,7 +252,7 @@ describe('STATUS.md', () => {
   it('summarizes the fixture', () => {
     assert.equal(
       summaryLine(fixture),
-      '5 open PRs, oldest 5 days (4thcltr.com #212), 1 red mains, 2 lapsed backlog items, 2 dependabot red, 3 Dependabot alerts past target (1 repos UNKNOWN), 1 waiting on the owner, 1 repos unreadable.',
+      '5 open PRs, oldest 5 days (4thcltr.com #212), 1 red mains, 2 lapsed backlog items, 2 dependabot red, Dependabot alerts past target UNKNOWN (3 counted, 1 repos not read), 1 waiting on the owner, 1 repos unreadable.',
     )
   })
   it('renders every repository, the unavailable row, escaped pipes and the dirty clones', () => {
@@ -302,8 +302,9 @@ describe('Dependabot alerts past target (plan row 3.20l)', () => {
     assert.equal(overdueAlerts([alert('high', 1, { created_at: undefined })], now), 1)
     assert.equal(overdueAlerts([alert('high', 1, { created_at: 'soon' })], now), 1)
     // An unknown severity gets the longer window rather than none.
-    assert.equal(overdueAlerts([alert('mystery', 80)], now), 0)
-    assert.equal(overdueAlerts([alert('mystery', 9 * 24)], now), 1)
+    assert.equal(overdueAlerts([alert('mystery', 80)], now), 1)
+    assert.equal(overdueAlerts([alert('mystery', 60)], now), 0)
+    assert.equal(overdueAlerts([alert(undefined, 80, { security_advisory: {} })], now), 1)
   })
 
   const fakeJson = (visibility, alertsAnswer) => (args) => {
@@ -358,14 +359,35 @@ describe('Dependabot alerts past target (plan row 3.20l)', () => {
     assert.match(md, /· 1 Dependabot alerts past target · kit none/)
     assert.match(md, /career-portfolio.*\n\nmain \*\*red\*\*.*· Dependabot alerts past target UNKNOWN ·/)
     assert.match(md, /\(private, counts only\).* · 2 Dependabot alerts past target/)
-    assert.match(summaryLine(fixture), /3 Dependabot alerts past target \(1 repos UNKNOWN\)/)
-    assert.match(digest(fixture), /3 Dependabot alerts past target \(1 repos UNKNOWN\)/)
+    assert.match(summaryLine(fixture), /Dependabot alerts past target UNKNOWN \(3 counted, 1 repos not read\)/)
+    assert.match(digest(fixture), /Dependabot alerts past target UNKNOWN \(3 counted, 1 repos not read\)/)
   })
   it('an older snapshot without the field reads UNKNOWN, not 0', () => {
     const old = structuredClone(fixture)
     for (const r of old.repos) delete r.alertsOverdue
-    assert.match(summaryLine(old), /dependabot red, Dependabot alerts past target UNKNOWN, /)
+    assert.match(summaryLine(old), /dependabot red, Dependabot alerts past target UNKNOWN \(0 counted, \d+ repos not read\), /)
     assert.doesNotMatch(render(old), /\b0 Dependabot alerts past target/)
+  })
+  it('one repository at 0 and others unread does not lead with 0', () => {
+    const mixed = { generatedAt: 'x', renderedAt: 'x', repos: [0, null, null, null].map((n, i) => ({ slug: `o/r${i}`, redacted: true, mainRed: false, openPrCount: 0, lapsedBacklogCount: 0, dependabotRedCount: 0, alertsOverdue: n })) }
+    assert.match(summaryLine(mixed), /dependabot red, Dependabot alerts past target UNKNOWN \(0 counted, 3 repos not read\), /)
+    assert.doesNotMatch(summaryLine(mixed), /, 0 Dependabot alerts past target/)
+  })
+  it('a failed alert read on a private repository logs only the HTTP status, never the error text', async () => {
+    const SECRET = 'secret-repo-detail'
+    const denied = () => {
+      throw Object.assign(new Error('x'), { stderr: `gh: ${SECRET}: Dependabot alerts are disabled for this repository. (HTTP 403)` })
+    }
+    const priv = []
+    await collectRepo('o/p', now, { json: fakeJson('private', denied), log: (l) => priv.push(l) })
+    assert.ok(priv.some((l) => /Dependabot alerts for o\/p: HTTP 403$/.test(l)), priv.join('\n'))
+    assert.ok(!priv.join('\n').includes(SECRET))
+    const pub = []
+    await collectRepo('o/p', now, { json: fakeJson('public', denied), log: (l) => pub.push(l) })
+    assert.ok(pub.join('\n').includes(SECRET), 'a public repository keeps the detail')
+    const local = []
+    await collectRepo('o/p', now, { json: fakeJson('private', denied), log: (l) => local.push(l), includePrivate: true })
+    assert.ok(local.join('\n').includes(SECRET), '--include-private (the local wrapper) keeps the detail')
   })
   it('a fleet with every repository read and none overdue says 0', () => {
     const clean = { generatedAt: 'x', renderedAt: 'x', repos: [{ slug: 'o/a', redacted: true, mainRed: false, openPrCount: 0, lapsedBacklogCount: 0, dependabotRedCount: 0, alertsOverdue: 0 }] }

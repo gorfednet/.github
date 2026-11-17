@@ -124,13 +124,13 @@ const HOUR = 3_600_000
  * Open Dependabot alerts past their target: critical or high older than 72 hours, every other severity
  * older than 7 days (docs/maintenance.md in ops, plan row 3.20l). `alerts` is the REST list for
  * `state=open`. Counts only: nothing about a package, an advisory or a path leaves this function.
- * An alert whose age or severity can't be read counts as overdue, because it can't be shown to be within target.
+ * An alert whose age can't be read, or whose severity isn't one of the four known, counts against the shorter 72-hour target (and an undated one as overdue), because it can't be shown to be within the longer one.
  */
 export function overdueAlerts(alerts, now = new Date()) {
   let count = 0
   for (const alert of Array.isArray(alerts) ? alerts : []) {
     const severity = String(alert?.security_advisory?.severity ?? alert?.security_vulnerability?.severity ?? '').toLowerCase()
-    const limit = severity === 'critical' || severity === 'high' ? 72 * HOUR : 7 * 24 * HOUR
+    const limit = ['medium', 'low'].includes(severity) ? 7 * 24 * HOUR : 72 * HOUR
     const age = now - Date.parse(alert?.created_at)
     if (!Number.isFinite(age) || age > limit) count += 1
   }
@@ -140,14 +140,16 @@ export function overdueAlerts(alerts, now = new Date()) {
 /**
  * The overdue count for one repository, or null (UNKNOWN) when the alerts can't be read: a token without
  * the Dependabot alerts permission answers 403 or 404, and alerts switched off answer 403. Never 0 then,
- * because 0 would read as "nothing is overdue". The reason is logged, not published.
+ * because 0 would read as "nothing is overdue". The workflow log is public, so for a repository whose row is redacted only the HTTP status is logged, never the error text.
  */
-export function alertsOverdue(slug, now, json, log = console.error) {
+export function alertsOverdue(slug, now, json, log = console.error, redact = false) {
   try {
     const pages = json(['api', '--paginate', '--slurp', `repos/${slug}/dependabot/alerts?state=open&per_page=100`])
     return overdueAlerts(pages.flat(), now)
   } catch (cause) {
-    log(`::warning::fleet-status could not read Dependabot alerts for ${slug}: ${String(cause.stderr || cause.message).trim().split('\n')[0]}`)
+    const text = String(cause.stderr || cause.message)
+    const reason = redact ? (/HTTP (\d{3})/.exec(text)?.[0] ?? 'read failed') : text.trim().split('\n')[0]
+    log(`::warning::fleet-status could not read Dependabot alerts for ${slug}: ${reason}`)
     return null
   }
 }
@@ -349,7 +351,7 @@ export async function gatherRepo(slug, now = new Date(), { includePrivate = fals
     incidents7d: incidents,
     dependabotRed: dependabotRed(openPrs),
     kitVersion,
-    alertsOverdue: alertsOverdue(slug, now, json, log),
+    alertsOverdue: alertsOverdue(slug, now, json, log, isPrivate && !includePrivate),
   }
   return isPrivate && !includePrivate ? redactRepo(full) : full
 }
