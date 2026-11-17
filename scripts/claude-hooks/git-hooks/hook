@@ -2,17 +2,24 @@
 # One script, installed under every client hook name (symlinks) in the global core.hooksPath.
 # core.hooksPath replaces .git/hooks, so this runs the repository's own hook of the same name
 # after the guard, with the same arguments and input. pre-push also runs the public-push guard.
-name=$(basename "$0")
-here=$(dirname "$0")
+# It runs on every git operation (reference-transaction fires on each ref update), so a hook with
+# nothing to do leaves before reading its input or making a temp file.
+name=${0##*/}
+here=${0%/*}
 own="$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)/hooks/$name"
 case "$name" in
-  pre-push | post-rewrite | reference-transaction | pre-receive | post-receive) ;; # these read stdin, which the guard and the repo hook both need
+  pre-push) ;;
+  post-rewrite | reference-transaction | pre-receive | post-receive) # these read stdin, which the repository hook needs
+    [ -x "$own" ] || exit 0
+    ;;
   *) [ -x "$own" ] && exec "$own" "$@"; exit 0 ;;
 esac
 in=$(mktemp) || exit 1
 trap 'rm -f "$in"' EXIT
 cat > "$in"
 if [ "$name" = pre-push ]; then
-  node "$here/public-push-guard.mjs" "$@" < "$in" || exit $?
+  node=$(cat "$here/node-path" 2>/dev/null) # the Node the installer picked (scripts/lib/resolve-node.sh)
+  [ -x "$node" ] || node=node
+  "$node" "$here/public-push-guard.mjs" "$@" < "$in" || exit $?
 fi
 if [ -x "$own" ]; then "$own" "$@" < "$in"; fi

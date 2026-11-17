@@ -34,7 +34,7 @@ const tmp = (prefix) => {
 }
 process.on('exit', () => cleanups.forEach((d) => rmSync(d, { recursive: true, force: true })))
 
-const envOf = (w) => ({ ...process.env, HOME: w.dir, GIT_CONFIG_GLOBAL: w.cfg, GIT_CONFIG_SYSTEM: '/dev/null', GIT_TERMINAL_PROMPT: '0', PATH: `${w.bin}:${process.env.PATH}`, GITHUB_ACTIONS: '' })
+const envOf = (w) => ({ ...process.env, HOME: w.dir, GIT_CONFIG_GLOBAL: w.cfg, GIT_CONFIG_SYSTEM: '/dev/null', GIT_TERMINAL_PROMPT: '0', PATH: `${w.bin}:${process.env.PATH}`, GITHUB_ACTIONS: '', NODE_BIN: process.execPath })
 
 function git(cwd, w, ...args) {
   return spawnSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.test', '-c', 'commit.gpgsign=false', ...args], { cwd, encoding: 'utf8', env: envOf(w) })
@@ -55,7 +55,7 @@ function world({ install = true, listOut = `gorfednet/ops\n${SECRET}\n${PRIVATE}
   const w = { dir, bin, cfg: join(dir, 'gitconfig'), hooks: join(dir, 'git-hooks') }
   writeFileSync(w.cfg, '')
   if (install) {
-    const r = spawnSync('sh', [INSTALL, ROOT], { encoding: 'utf8', env: { ...envOf(w), INSTALL_REV: 'HEAD', GIT_HOOKS_DIR: w.hooks, AUDIT_ROOT: join(dir, 'none') } })
+    const r = spawnSync('bash', [INSTALL, ROOT], { encoding: 'utf8', env: { ...envOf(w), INSTALL_REV: 'HEAD', GIT_HOOKS_DIR: w.hooks, AUDIT_ROOT: join(dir, 'none') } })
     assert.equal(r.status, 0, `install: ${r.stderr}`)
     w.install = r
   }
@@ -63,7 +63,7 @@ function world({ install = true, listOut = `gorfednet/ops\n${SECRET}\n${PRIVATE}
 }
 
 /** A clone whose origin is a fake GitHub URL backed by a bare repository holding main; `outgoing` is committed on `feature`. */
-function repo(w, { outgoing = { 'a.md': 'clean\n' }, slug = PUBLIC, remoteUrl = `https://github.com/${slug}.git` } = {}) {
+function repo(w, { outgoing = { 'a.md': 'clean\n' }, slug = PUBLIC, remoteUrl = `https://github.com/${slug}.git`, baseFiles = {} } = {}) {
   const bare = join(w.dir, `remote-${(seq += 1)}.git`)
   spawnSync('git', ['init', '-q', '--bare', '-b', 'main', bare], { env: envOf(w) })
   if (remoteUrl.startsWith('https://github.com/')) writeFileSync(w.cfg, `${readFileSync(w.cfg, 'utf8')}[url "${bare}"]\n\tinsteadOf = ${remoteUrl}\n`)
@@ -71,6 +71,10 @@ function repo(w, { outgoing = { 'a.md': 'clean\n' }, slug = PUBLIC, remoteUrl = 
   mkdirSync(dir)
   ok(dir, w, 'init', '-q', '-b', 'main')
   writeFileSync(join(dir, 'README.md'), 'hello\n')
+  for (const [rel, body] of Object.entries(baseFiles)) {
+    mkdirSync(dirname(join(dir, rel)), { recursive: true })
+    writeFileSync(join(dir, rel), body)
+  }
   ok(dir, w, 'add', '-A')
   ok(dir, w, 'commit', '-q', '-m', 'base')
   ok(dir, w, 'remote', 'add', 'origin', remoteUrl.startsWith('https://github.com/') ? remoteUrl : bare)
@@ -125,8 +129,9 @@ describe('pre-push: a public remote is read, and a private one is never refused'
     const r = repo(world(), { slug: PRIVATE, outgoing: { 'x.md': `${IP}\n` } })
     const mirror = join(r.w.dir, 'mirror.git')
     spawnSync('git', ['init', '-q', '--bare', '-b', 'main', mirror], { env: envOf(r.w) })
+    writeFileSync(r.w.cfg, `${readFileSync(r.w.cfg, 'utf8')}[url "${mirror}"]\n\tinsteadOf = https://github.com/${PUBLIC}-mirror.git\n`)
     ok(r.dir, r.w, 'remote', 'set-url', '--add', '--push', 'origin', `https://github.com/${PRIVATE}.git`)
-    ok(r.dir, r.w, 'remote', 'set-url', '--add', '--push', 'origin', mirror)
+    ok(r.dir, r.w, 'remote', 'set-url', '--add', '--push', 'origin', `https://github.com/${PUBLIC}-mirror.git`)
     ok(r.dir, r.w, '-c', 'core.hooksPath=/dev/null', 'push', '-q', 'origin', 'main:main') // seed the mirror
     const x = push(r, 'origin', 'feature')
     assert.ok(refused(x), x.stderr)
@@ -143,9 +148,12 @@ describe('pre-push: a public remote is read, and a private one is never refused'
     assert.equal(push(r, 'origin', 'feature').status, 0, 'and again, with the retry pushed an hour out')
   })
 
-  it('counts a remote it has no entry for as public', () => {
-    const r = repo(world(), { remoteUrl: 'ssh://git@git.example.test/elsewhere.git', outgoing: { 'x.md': `${IP}\n` } })
-    assert.ok(refused(push(r, 'origin', 'feature')))
+  it('counts a remote it has no entry for as public: it is read, not waved through like a local path', () => {
+    const r = repo(world(), { outgoing: { 'x.md': `${IP}\n` } })
+    const sha = ok(r.dir, r.w, 'rev-parse', 'HEAD').trim()
+    const x = spawnSync('node', [join(r.w.hooks, 'public-push-guard.mjs'), 'origin', 'ssh://git@git.example.test/elsewhere.git'], { cwd: r.dir, input: `refs/heads/feature ${sha} refs/heads/feature ${'0'.repeat(40)}\n`, encoding: 'utf8', env: envOf(r.w) })
+    assert.equal(x.status, 1, x.stderr)
+    assert.match(x.stderr, /public-push-guard refused/)
   })
 
   it('refuses a private repository name from the list, a session id and a tailnet name', () => {
@@ -305,7 +313,7 @@ describe('pre-push: everyday commands pass, whatever the shell spelling', () => 
   it('refuses when it cannot ask the remote what it holds', () => {
     const r = repo(world())
     const sha = ok(r.dir, r.w, 'rev-parse', 'HEAD').trim()
-    const x = spawnSync('node', [join(r.w.hooks, 'public-push-guard.mjs'), 'origin', join(r.w.dir, 'gone.git')], {
+    const x = spawnSync('node', [join(r.w.hooks, 'public-push-guard.mjs'), 'origin', 'ssh://git@git.example.test/gone.git'], {
       cwd: r.dir,
       input: `refs/heads/feature ${sha} refs/heads/feature ${'0'.repeat(40)}\n`,
       encoding: 'utf8',
@@ -372,7 +380,7 @@ describe('install-git-hooks.sh', () => {
   it('refuses to replace a global core.hooksPath that points elsewhere, and writes nothing', () => {
     const w = world({ install: false })
     writeFileSync(w.cfg, '[core]\n\thooksPath = /somewhere/else\n')
-    const r = spawnSync('sh', [INSTALL, ROOT], { encoding: 'utf8', env: { ...envOf(w), INSTALL_REV: 'HEAD', GIT_HOOKS_DIR: w.hooks } })
+    const r = spawnSync('bash', [INSTALL, ROOT], { encoding: 'utf8', env: { ...envOf(w), INSTALL_REV: 'HEAD', GIT_HOOKS_DIR: w.hooks } })
     assert.notEqual(r.status, 0)
     assert.match(r.stderr, /already/)
     assert.ok(!existsSync(w.hooks))
@@ -380,7 +388,7 @@ describe('install-git-hooks.sh', () => {
 
   it('stops, without setting the path, when gh cannot list the private repositories', () => {
     const w = world({ install: false, listOut: 'FAIL' })
-    const r = spawnSync('sh', [INSTALL, ROOT], { encoding: 'utf8', env: { ...envOf(w), INSTALL_REV: 'HEAD', GIT_HOOKS_DIR: w.hooks } })
+    const r = spawnSync('bash', [INSTALL, ROOT], { encoding: 'utf8', env: { ...envOf(w), INSTALL_REV: 'HEAD', GIT_HOOKS_DIR: w.hooks } })
     assert.notEqual(r.status, 0)
     assert.equal(git(w.dir, w, 'config', '--global', '--get', 'core.hooksPath').status, 1)
   })
@@ -392,7 +400,7 @@ describe('install-git-hooks.sh', () => {
     mkdirSync(clone, { recursive: true })
     ok(clone, w, 'init', '-q')
     ok(clone, w, 'config', '--local', 'core.hooksPath', '.husky')
-    const r = spawnSync('sh', [INSTALL, ROOT], { encoding: 'utf8', env: { ...envOf(w), INSTALL_REV: 'HEAD', GIT_HOOKS_DIR: w.hooks, AUDIT_ROOT: root } })
+    const r = spawnSync('bash', [INSTALL, ROOT], { encoding: 'utf8', env: { ...envOf(w), INSTALL_REV: 'HEAD', GIT_HOOKS_DIR: w.hooks, AUDIT_ROOT: root } })
     assert.equal(r.status, 0, r.stderr)
     assert.match(r.stdout, /husky-app\/\.git \.husky/)
   })
@@ -446,5 +454,151 @@ describe('public-gh-text-guard: a best-effort read of literal gh text', () => {
     const bad = spawnSync('node', [GH_TEXT], { input: 'not json', encoding: 'utf8' })
     assert.equal(bad.status, 0)
     assert.equal(bad.stdout, '', 'fails open')
+  })
+})
+
+const ALLOW = (name) => ({ '.github/privacy-guard-allow.txt': `repo ${name}\n` })
+const SECRET_NAME = SECRET.split('/')[1]
+
+describe("pre-push: the target repository's allowlist, as the CI guard reads it", () => {
+  it('lets a branch name hold a private name the base allowlist clears, and refuses it without the line', () => {
+    const named = (extra) => {
+      const r = repo(world(), extra)
+      ok(r.dir, r.w, 'branch', `notes/${SECRET}`)
+      return push(r, 'origin', `notes/${SECRET}`)
+    }
+    assert.equal(named({ baseFiles: ALLOW(SECRET_NAME) }).status, 0)
+    assert.ok(refused(named({ baseFiles: ALLOW('some-other') })), 'a line for another name clears nothing')
+  })
+
+  it('reads the allowlist from the published base, so the pushed change cannot clear itself', () => {
+    const r = repo(world(), { outgoing: { '.github/privacy-guard-allow.txt': `repo ${SECRET_NAME}\n` } })
+    ok(r.dir, r.w, 'branch', `notes/${SECRET}`)
+    assert.ok(refused(push(r, 'origin', `notes/${SECRET}`)))
+  })
+})
+
+describe('pre-push: a push that publishes nothing, or goes to a repository made since the list was cut', () => {
+  it('lets a local path remote through, planted value and all', () => {
+    const r = repo(world(), { remoteUrl: 'local', outgoing: { 'x.md': `${IP}\n` } })
+    const x = push(r, 'origin', 'feature')
+    assert.equal(x.status, 0, x.stderr)
+    assert.ok(remoteHas(r, 'refs/heads/feature'))
+  })
+
+  it('does not read a slug out of a local path that ends in github.com/<owner>/<name>.git', () => {
+    const w = world()
+    const r = repo(w, { remoteUrl: 'local', outgoing: { 'x.md': `${IP}\n` } })
+    const lookalike = join(w.dir, 'github.com', 'gorfednet', 'lookalike.git')
+    mkdirSync(dirname(lookalike), { recursive: true })
+    spawnSync('git', ['init', '-q', '--bare', '-b', 'main', lookalike], { env: envOf(w) })
+    ok(r.dir, w, 'remote', 'set-url', 'origin', lookalike)
+    ok(r.dir, w, '-c', 'core.hooksPath=/dev/null', 'push', '-q', 'origin', 'main')
+    const x = push(r, 'origin', 'feature')
+    assert.equal(x.status, 0, x.stderr)
+  })
+
+  /** A clone whose remote is an empty bare repository behind a fake GitHub URL for `slug`. */
+  const firstPush = (w, slug) => {
+    const bare = join(w.dir, `empty-${(seq += 1)}.git`)
+    spawnSync('git', ['init', '-q', '--bare', '-b', 'main', bare], { env: envOf(w) })
+    writeFileSync(w.cfg, `${readFileSync(w.cfg, 'utf8')}[url "${bare}"]\n\tinsteadOf = https://github.com/${slug}.git\n`)
+    const dir = join(w.dir, `first-${seq}`)
+    mkdirSync(dir)
+    ok(dir, w, 'init', '-q', '-b', 'main')
+    commit(dir, w, { 'x.md': `${IP}\n` })
+    ok(dir, w, 'remote', 'add', 'origin', `https://github.com/${slug}.git`)
+    return { dir, w, bare }
+  }
+  const listing = (w, ...slugs) => writeFileSync(join(w.bin, 'gh'), `#!/bin/sh\nprintf '%s\\n' ${slugs.map((s) => `'${s}'`).join(' ')}\n`, { mode: 0o755 })
+
+  it('asks gh once before calling an unlisted repository public: a repository made after the list was cut passes its first push', () => {
+    const w = world()
+    const fresh = 'gorfednet/' + 'just-made'
+    const r = firstPush(w, fresh)
+    listing(w, 'gorfednet/ops', SECRET, PRIVATE, fresh) // the repository exists now; the list on disk predates it
+    const x = push(r, 'origin', 'main')
+    assert.equal(x.status, 0, x.stderr)
+    assert.ok(remoteHas(r, 'refs/heads/main'))
+  })
+
+  it('still refuses a first push to a repository gh does not list as private', () => {
+    const w = world()
+    const r = firstPush(w, 'gorfednet/' + 'not-private')
+    const x = push(r, 'origin', 'main')
+    assert.ok(refused(x), x.stderr)
+    assert.ok(!remoteHas(r, 'refs/heads/main'))
+  })
+})
+
+describe('install-git-hooks.sh: a failed install leaves the hooks that were there', () => {
+  it('keeps the old files when the second install cannot read its revision', () => {
+    const w = world()
+    const read = () => ['hook', 'public-push-guard.mjs', 'privacy-guard.mjs', 'node-path'].map((f) => readFileSync(join(w.hooks, f), 'utf8'))
+    const before = read()
+    assert.ok(before.every((t) => t.length > 0))
+    const r = spawnSync('bash', [INSTALL, ROOT], { encoding: 'utf8', env: { ...envOf(w), INSTALL_REV: 'no-such-rev', GIT_HOOKS_DIR: w.hooks } })
+    assert.notEqual(r.status, 0)
+    assert.deepEqual(read(), before)
+  })
+
+  it('does not link push-to-checkout, which would override the default working-tree update', () => {
+    const w = world()
+    assert.ok(!existsSync(join(w.hooks, 'push-to-checkout')))
+    assert.ok(existsSync(join(w.hooks, 'pre-push')))
+  })
+
+  it('runs the Node the installer resolved, not the first node on PATH', () => {
+    const w = world({ install: false })
+    const log = join(w.dir, 'node.log')
+    const node = join(w.dir, 'picked-node')
+    writeFileSync(node, `#!/bin/sh\necho run >> '${log}'\nexec '${process.execPath}' "$@"\n`, { mode: 0o755 })
+    const r = spawnSync('bash', [INSTALL, ROOT], { encoding: 'utf8', env: { ...envOf(w), NODE_BIN: node, INSTALL_REV: 'HEAD', GIT_HOOKS_DIR: w.hooks, AUDIT_ROOT: join(w.dir, 'none') } })
+    assert.equal(r.status, 0, r.stderr)
+    const installed = readFileSync(log, 'utf8').split('\n').length
+    const p = repo(w)
+    assert.equal(push(p, 'origin', 'feature').status, 0)
+    assert.ok(readFileSync(log, 'utf8').split('\n').length > installed, 'the hook did not use the resolved node')
+  })
+})
+
+describe('public-gh-text-guard: where gh will post', () => {
+  const w = world()
+  const pub = repo(w, { baseFiles: ALLOW(SECRET_NAME) })
+  const priv = repo(w, { slug: PRIVATE })
+  const bare = repo(w, { slug: 'gorfednet/' + 'open-two' }) // no allowlist
+  const hook = (command, cwd = pub.dir) => {
+    const x = spawnSync('node', [GH_TEXT], {
+      input: JSON.stringify({ tool_name: 'Bash', tool_input: { command }, cwd }),
+      encoding: 'utf8',
+      env: { ...envOf(w), PUBLIC_PUSH_GUARD_LIST: join(w.hooks, 'private-repos.txt'), PUBLIC_PUSH_GUARD_SCRIPT: join(w.hooks, 'privacy-guard.mjs') },
+    })
+    return { status: x.status, out: x.stdout }
+  }
+  const denied = (x) => x.out.includes('"permissionDecision":"deny"')
+
+  it("honours the clone's allowlist: a name its repo line clears may be written, and no other", () => {
+    assert.equal(hook(`gh pr create --body "see ${SECRET}"`).out, '')
+    assert.ok(denied(hook(`gh pr create --body "see ${SECRET}"`, bare.dir)), 'the same text in a clone with no such line')
+    assert.ok(denied(hook(`gh pr create --body "see ${PRIVATE}"`)), 'a name the allowlist does not clear')
+  })
+
+  it('classifies from a leading cd, not the hook cwd', () => {
+    assert.equal(hook(`cd ${priv.dir} && gh pr create --body "see ${IP}"`).out, '')
+    assert.ok(denied(hook(`cd "${bare.dir}" && gh pr create --body "see ${IP}"`, priv.dir)))
+    assert.equal(hook(`cd ${join(w.dir, 'no-such-dir')} && gh pr create --body "see ${IP}"`).out, '', 'a target it cannot read lets the command run')
+  })
+
+  it('classifies from GH_REPO', () => {
+    assert.equal(hook(`GH_REPO=${PRIVATE} gh pr create --body "see ${IP}"`).out, '')
+    assert.ok(denied(hook(`export GH_REPO=${PUBLIC}; gh pr create --body "see ${IP}"`, priv.dir)))
+  })
+
+  it("reads -R from gh's own words: quoted values parse, and a -R inside a body is only text", () => {
+    assert.equal(hook(`gh pr create -R "${PRIVATE}" --body "see ${IP}"`).out, '', 'quoted private -R')
+    assert.ok(denied(hook(`gh pr create --repo="${PUBLIC}" --body "see ${IP}"`, priv.dir)), 'quoted public --repo=')
+    assert.ok(denied(hook(`gh pr create --body "run it with -R ${PRIVATE} and ${IP}"`)), '-R in a body does not switch the guard off')
+    const heredoc = `gh pr create --title t --body "$(cat <<'EOF'\nuse -R ${PRIVATE}\nat ${IP} "quoted"\nEOF\n)"`
+    assert.ok(denied(hook(heredoc)), 'a heredoc body with quotes and a -R')
   })
 })

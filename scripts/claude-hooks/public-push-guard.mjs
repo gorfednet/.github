@@ -7,7 +7,10 @@
  * `<local ref> <local sha> <remote ref> <remote sha>`. Whatever the shell spelling of the
  * push, those lines are what goes out, so nothing here reads a command.
  *
- * - A repository on the local private list passes untouched. Any other remote counts as public.
+ * - A repository on the local private list passes untouched, and so does a remote that is a path on
+ *   this machine. Any other remote counts as public once gh has been asked for the list once more
+ *   (a repository made since the list was cut). The target's allowlist `repo` lines apply, read from a
+ *   published base as the CI guard reads them.
  * - The list is a local file (private-repos.txt, one owner/name per line), refreshed from gh
  *   at install and, at most once a day, by the first push after it goes stale (a failure is
  *   ignored). A push never asks gh about one repository.
@@ -83,25 +86,47 @@ export function privateList() {
   return new Set(lines)
 }
 
+/** A remote that is a path on this machine (or file://), not a host: nothing is published by pushing to it. */
+export const isLocalPath = (url) => /^(?:\/|\.\.?\/|file:\/\/)/.test(String(url ?? ''))
+
 /**
  * The slug a push goes to. An insteadOf rewrite hides it from the URL git passes, so a configured URL
  * counts only when its rewritten form is the very URL this push goes to (git runs the hook once per push URL).
  */
 export function remoteSlug(name, url, cwd) {
-  const direct = slugOf(url)
+  // A path on this machine is never a GitHub repository, even when it ends in github.com/<owner>/<name>.git.
+  const slugOfRemote = (u) => (isLocalPath(u) ? null : slugOf(u))
+  const direct = slugOfRemote(url)
   if (direct) return direct
   const configured = ['url', 'pushurl'].flatMap((k) => git(['config', '--get-all', `remote.${name}.${k}`], { cwd }).stdout.split('\n')).filter(Boolean)
-  if (!url) return slugOf(configured[0]) // no push in hand (the gh text hook): the remote's own URL
+  if (!url) return slugOfRemote(configured[0]) // no push in hand (the gh text hook): the remote's own URL
   const same = configured.find((raw) => raw === url || git(['ls-remote', '--get-url', raw], { cwd }).stdout.trim() === url)
-  return same ? slugOf(same) : null
+  return same ? slugOfRemote(same) : null
 }
 
-/** privacy-guard's own functions, plus the scanning context for names and messages. */
-async function loadGuard(list) {
+const ALLOW_PATH = '.github/privacy-guard-allow.txt'
+
+/**
+ * The target repository's allowlist, read the way the CI guard reads it: from a commit that is already
+ * published (the base), never from the working tree, so a change can't exempt itself. The first rev that has
+ * the file wins; none is no exemptions. Revs are tried in order; the default branch is the fallback.
+ */
+export function allowTextAt(revs, cwd) {
+  for (const rev of [...revs, 'refs/remotes/origin/HEAD', 'refs/remotes/origin/main', 'refs/remotes/origin/master']) {
+    const r = git(['show', `${rev}:${ALLOW_PATH}`], { cwd })
+    if (r.status === 0) return r.stdout
+  }
+  return ''
+}
+
+/** privacy-guard's own functions, plus the scanning context for names and messages. A name the allowlist's `repo` lines clear is not scanned for. */
+export async function loadGuard(list, allowText = '') {
   if (!existsSync(GUARD)) refuse(`${GUARD} is missing, so the guard can't run.`)
   const mod = await import(pathToFileURL(GUARD).href)
   const names = [...list].map((s) => s.split('/').pop()).join(',')
-  const ctx = { privateRepo: mod.privateRepoPattern(mod.parsePrivateRepos(names)), allow: mod.parseAllowlist('') }
+  const allow = mod.parseAllowlist(allowText)
+  const open = mod.parsePrivateRepos(names).filter((n) => !allow.repos.includes(n))
+  const ctx = { privateRepo: mod.privateRepoPattern(open), allow }
   return { mod, ctx, names }
 }
 
@@ -131,11 +156,18 @@ function outgoing(url, updates) {
 }
 
 export async function checkPush(remote, url, updates) {
-  const list = privateList()
+  let list = privateList()
   const slug = remoteSlug(remote, url)
   if (slug && list.has(slug)) return // private: never refused
+  if (!slug && isLocalPath(url)) return // a path on this machine publishes nothing
+  if (slug && refresh()) {
+    // A repository made since the list was cut (`gh repo create --private --push`) is not on it yet: ask once before calling it public.
+    list = privateList()
+    if (list.has(slug)) return
+  }
   const where = slug ?? url
-  const { mod, ctx, names } = await loadGuard(list)
+  const sets = outgoing(url, updates)
+  const { mod, ctx, names } = await loadGuard(list, allowTextAt(sets.map((s) => s.base)))
   const fail = (what) => refuse(`${what} would publish private detail to ${where}, which is public (or not known to be private).\nNothing was sent.`)
   for (const u of updates) {
     // Branch and tag names are public too, and so is an annotated tag's message.
@@ -148,7 +180,7 @@ export async function checkPush(remote, url, updates) {
       obj = /^object (\S+)/.exec(header)?.[1] ?? refuse('a tag object has no target, so it can\'t be read.')
     }
   }
-  for (const { tip, base, count } of outgoing(url, updates)) {
+  for (const { tip, base, count } of sets) {
     const r = run('node', [realpathSync(GUARD), '--base', base, '--head', tip, '--dir', '.'], { timeout: 300_000, env: { ...process.env, PRIVATE_REPOS: names, GITHUB_ACTIONS: '' } })
     const out = `${r.stdout}${r.stderr}`.trim()
     if (r.status === 0 && /^privacy-guard: OK/m.test(out)) continue
