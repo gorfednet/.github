@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-11-17T04:31:28.635Z",
-  "renderedAt": "2026-11-17T04:31:28.635Z",
+  "generatedAt": "2026-11-17T06:37:34.864Z",
+  "renderedAt": "2026-11-17T06:37:34.864Z",
   "repos": [
     {
       "slug": "gorfednet/bindercurve.com",
@@ -19,7 +19,7 @@
       "slug": "gorfednet/4thcltr.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 22,
+      "openPrCount": 23,
       "lapsedBacklogCount": 20,
       "noPrCount": 13,
       "idlePrCount": 19,
@@ -32,7 +32,7 @@
       "slug": "gorfednet/gorfed.net",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 5,
+      "openPrCount": 6,
       "lapsedBacklogCount": 3,
       "noPrCount": 4,
       "idlePrCount": 0,
@@ -173,7 +173,7 @@
           "draft": true,
           "review": "not-run",
           "headSha": "cffa3ed5e3bb09751470b65b3ba48926b90db5dd",
-          "ci": "pending",
+          "ci": "green",
           "next": "Fable read of the diff (Desk), including the last commit, which no review round covered. Label if clean. Hold until then: it can refuse a push.",
           "author": "gorfednet"
         },
@@ -688,7 +688,7 @@
       "slug": "gorfednet/ops",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 16,
+      "openPrCount": 15,
       "lapsedBacklogCount": 0,
       "noPrCount": 1,
       "idlePrCount": 1,
@@ -750,11 +750,11 @@
     }
   },
   "inventory": {
-    "measuredAt": "2026-11-17T04:31:28.635Z",
+    "measuredAt": "2026-11-17T06:37:34.864Z",
     "counts": {
       "pr": {
-        "total": 126,
-        "orphans": 59
+        "total": 127,
+        "orphans": 61
       },
       "session": null,
       "worktree": null,
@@ -806,12 +806,12 @@
         "lapsed": true
       }
     ],
-    "hiddenPrivate": 56,
+    "hiddenPrivate": 58,
     "privateReposNotItemised": 18,
     "planRead": true
   },
   "dotgithub": {
-    "measuredAt": "2026-11-17T04:32:10.001Z",
+    "measuredAt": "2026-11-17T06:38:26.080Z",
     "branches": 38,
     "merged": 2,
     "exposedFiles": 61,
