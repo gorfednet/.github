@@ -10,7 +10,7 @@ import { join } from 'node:path'
 import { describe, it } from 'node:test'
 
 import { behindClones, collectLocal, dirtyClones, duplicatePrs, idlePrs, idleSessions, oldWorktrees } from '../scripts/lib/hygiene.mjs'
-import { aheadCounts, alertsOverdue, carryMap, ciState, collectRepo, mapLimit, dependabotRed, overdueAlerts, isPrivateRepo, latestDeploy, nextItem, PLAN_SOURCE, readPlanOfRecord, recentLines, redactRepo, repoList, dormantRepos } from '../scripts/fleet-status.mjs'
+import { aheadCounts, alertsOverdue, carryMap, ciState, collectRepo, mapLimit, dependabotRed, overdueAlerts, alertsUnreadReason, readAlerts, isPrivateRepo, latestDeploy, nextItem, PLAN_SOURCE, readPlanOfRecord, recentLines, redactRepo, repoList, dormantRepos } from '../scripts/fleet-status.mjs'
 import { workflowTriggers } from '../scripts/lib/workflowTriggers.mjs'
 import { digest, etStamp, hygiene, lowerMeridiem, render, summaryLine } from '../scripts/write-status-md.mjs'
 
@@ -252,7 +252,7 @@ describe('STATUS.md', () => {
   it('summarizes the fixture', () => {
     assert.equal(
       summaryLine(fixture),
-      '5 open PRs, oldest 5 days (4thcltr.com #212), 1 red mains, 2 lapsed backlog items, 2 dependabot red, Dependabot alerts past target UNKNOWN (3 counted, 1 repos not read), 1 waiting on the owner, 1 repos unreadable.',
+      '5 open PRs, oldest 5 days (4thcltr.com #212), 1 red mains, 2 lapsed backlog items, 2 dependabot red, Dependabot alerts past target UNKNOWN (3 counted, 2 repos not read), 1 waiting on the owner, 1 repos unreadable.',
     )
   })
   it('renders every repository, the unavailable row, escaped pipes and the dirty clones', () => {
@@ -301,7 +301,7 @@ describe('Dependabot alerts past target (plan row 3.20l)', () => {
   it('counts an alert it cannot date, because it cannot show it is inside its target', () => {
     assert.equal(overdueAlerts([alert('high', 1, { created_at: undefined })], now), 1)
     assert.equal(overdueAlerts([alert('high', 1, { created_at: 'soon' })], now), 1)
-    // An unknown severity gets the longer window rather than none.
+    // An unknown severity gets the shorter 72-hour window: it can't be shown to be inside the longer one.
     assert.equal(overdueAlerts([alert('mystery', 80)], now), 1)
     assert.equal(overdueAlerts([alert('mystery', 60)], now), 0)
     assert.equal(overdueAlerts([alert(undefined, 80, { security_advisory: {} })], now), 1)
@@ -357,10 +357,10 @@ describe('Dependabot alerts past target (plan row 3.20l)', () => {
   it('renders the count per repository, UNKNOWN where unread, and the fleet total with its unknowns', () => {
     const md = render(fixture)
     assert.match(md, /· 1 Dependabot alerts past target · kit none/)
-    assert.match(md, /career-portfolio.*\n\nmain \*\*red\*\*.*· Dependabot alerts past target UNKNOWN ·/)
+    assert.match(md, /career-portfolio.*\n\nmain \*\*red\*\*.*· Dependabot alerts past target UNKNOWN \(token cannot read alerts\) ·/)
     assert.match(md, /\(private, counts only\).* · 2 Dependabot alerts past target/)
-    assert.match(summaryLine(fixture), /Dependabot alerts past target UNKNOWN \(3 counted, 1 repos not read\)/)
-    assert.match(digest(fixture), /Dependabot alerts past target UNKNOWN \(3 counted, 1 repos not read\)/)
+    assert.match(summaryLine(fixture), /Dependabot alerts past target UNKNOWN \(3 counted, 2 repos not read\)/)
+    assert.match(digest(fixture), /Dependabot alerts past target UNKNOWN \(3 counted, 2 repos not read\)/)
   })
   it('an older snapshot without the field reads UNKNOWN, not 0', () => {
     const old = structuredClone(fixture)
@@ -372,6 +372,32 @@ describe('Dependabot alerts past target (plan row 3.20l)', () => {
     const mixed = { generatedAt: 'x', renderedAt: 'x', repos: [0, null, null, null].map((n, i) => ({ slug: `o/r${i}`, redacted: true, mainRed: false, openPrCount: 0, lapsedBacklogCount: 0, dependabotRedCount: 0, alertsOverdue: n })) }
     assert.match(summaryLine(mixed), /dependabot red, Dependabot alerts past target UNKNOWN \(0 counted, 3 repos not read\), /)
     assert.doesNotMatch(summaryLine(mixed), /, 0 Dependabot alerts past target/)
+  })
+  it('an unreadable repository counts as not read, so a fleet with one never leads with 0', () => {
+    const fleet = { generatedAt: 'x', renderedAt: 'x', repos: [{ slug: 'o/a', redacted: true, mainRed: false, openPrCount: 0, lapsedBacklogCount: 0, dependabotRedCount: 0, alertsOverdue: 0 }, { slug: 'o/b', unavailable: 'unreadable' }] }
+    assert.match(summaryLine(fleet), /Dependabot alerts past target UNKNOWN \(0 counted, 1 repos not read\)/)
+  })
+  it('tells alerts switched off, an archived repository, a token gap and a other failure apart by fixed words', async () => {
+    assert.equal(alertsUnreadReason('gh: Dependabot alerts are disabled for this repository. (HTTP 403)'), 'alerts-off')
+    assert.equal(alertsUnreadReason('gh: Repository was archived so is read-only. (HTTP 403)'), 'archived')
+    assert.equal(alertsUnreadReason('gh: Resource not accessible by personal access token (HTTP 403)'), 'no-token-access')
+    assert.equal(alertsUnreadReason('gh: Not Found (HTTP 404)'), 'no-token-access')
+    assert.equal(alertsUnreadReason('gh: connection reset'), 'read-error')
+    const deny = (text) => () => { throw Object.assign(new Error('x'), { stderr: text }) }
+    const pub = await collectRepo('o/p', now, { json: fakeJson('public', deny('gh: Dependabot alerts are disabled for this repository. (HTTP 403)')), log: () => {} })
+    assert.equal(pub.alertsUnread, 'alerts-off')
+    assert.match(render({ generatedAt: '2026-11-16T12:00:00Z', renderedAt: '2026-11-16T12:00:00Z', repos: [pub] }), /Dependabot alerts past target UNKNOWN \(alerts are off\)/)
+    const priv = await collectRepo('o/p', now, { json: fakeJson('private', deny('gh: Dependabot alerts are disabled for this repository. (HTTP 403)')), log: () => {} })
+    assert.ok(!('alertsUnread' in priv) && priv.alertsOverdue === null, 'a private row says UNKNOWN and nothing about why')
+    assert.deepEqual(validate({ generatedAt: 'x', renderedAt: 'x', repos: [pub, priv] }, schema), [])
+    assert.deepEqual(readAlerts('o/p', now, () => [[]], () => {}), { count: 0, why: null })
+  })
+  it('a private repository failure with no HTTP status logs the fixed words "read failed", never the text', async () => {
+    const logs = []
+    const json = () => { throw Object.assign(new Error('x'), { stderr: 'gh: secret-repo-detail: connection reset' }) }
+    await collectRepo('o/p', now, { json: fakeJson('private', json), log: (l) => logs.push(l) })
+    assert.ok(logs.some((l) => /Dependabot alerts for o\/p: read failed$/.test(l)), logs.join('\n'))
+    assert.ok(!logs.join('\n').includes('secret-repo-detail'))
   })
   it('a failed alert read on a private repository logs only the HTTP status, never the error text', async () => {
     const SECRET = 'secret-repo-detail'

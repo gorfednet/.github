@@ -87,8 +87,8 @@ export function summarize(status) {
     dependabotRed: ok.reduce((n, r) => n + (r.redacted ? r.dependabotRedCount : r.dependabotRed), 0),
     // Alerts past target: a count per repository, or null (UNKNOWN) where the alerts could not be read or the snapshot predates the field.
     alertsOverdue: ok.reduce((n, r) => n + (Number.isInteger(r.alertsOverdue) ? r.alertsOverdue : 0), 0),
-    alertsUnknown: ok.filter((r) => !Number.isInteger(r.alertsOverdue)).length,
-    alertsKnown: ok.filter((r) => Number.isInteger(r.alertsOverdue)).length,
+    // Every row, unreadable repositories included: one the report could not read at all is not one with 0 alerts.
+    alertsUnknown: status.repos.filter((r) => !Number.isInteger(r.alertsOverdue)).length,
     waiting: prs.filter(waitingOnOwner).length,
     unavailable: status.repos.filter((r) => r.unavailable).map((r) => r.slug),
   }
@@ -158,7 +158,8 @@ export function hygiene(status) {
 }
 
 /** "Dependabot alerts past target" for one repository: the count, or UNKNOWN, never 0 for a read that failed. */
-export const alertsCell = (n) => (Number.isInteger(n) ? `${n} Dependabot alerts past target` : 'Dependabot alerts past target UNKNOWN')
+const UNREAD = { 'alerts-off': 'alerts are off', archived: 'archived', 'no-token-access': 'token cannot read alerts', 'read-error': 'read failed' }
+export const alertsCell = (n, why) => (Number.isInteger(n) ? `${n} Dependabot alerts past target` : `Dependabot alerts past target UNKNOWN${UNREAD[why] ? ` (${UNREAD[why]})` : ''}`)
 
 /** The fleet's total, with UNKNOWN named whenever some repository could not be read. */
 export const alertsPhrase = (s) => {
@@ -196,7 +197,7 @@ export function render(status) {
       `last deploy ${r.lastDeploy ? `[${etStamp(r.lastDeploy.at)}](${r.lastDeploy.url})` : 'none found'}`,
       `${r.incidents7d} incident lines in 7 days`,
       `${r.dependabotRed} dependabot red`,
-      alertsCell(r.alertsOverdue),
+      alertsCell(r.alertsOverdue, r.alertsUnread),
       `kit ${r.kitVersion ?? 'none'}`,
     ]
     out.push(facts.join(' · '), '')
