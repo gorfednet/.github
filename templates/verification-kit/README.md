@@ -31,7 +31,7 @@ an ignore rule that did not cover them.
 | `bin/check-tracked-artifacts.mjs` | Generated files reaching `main` under an ignore rule that does not cover them. |
 | `bin/check-kit-drift.mjs` | This copy of the kit silently falling behind the canonical one, or being edited in place. |
 | `bin/mutation-canary.mjs` | A guard nobody has ever seen fail being counted as coverage. |
-| `bin/check-voice.mjs` | Copy drifting back to praise-then-pivot summaries, software metaphors, "delivers value" and "Learn more" links. Enforces the checkable half of [`docs/content-guidelines.md`](../../docs/content-guidelines.md). |
+| `bin/check-voice.mjs` | Copy drifting back to praise-then-pivot summaries, software metaphors, "delivers value" and "Learn more" links, and warns on runs of "I" openers and commas that join sentences. Enforces the checkable half of [`docs/content-guidelines.md`](../../docs/content-guidelines.md). |
 | `bin/check-links.mjs` | A built page linking to a page, asset, font or #fragment the build does not contain. Reads every page and stylesheet under the root, not a sample. Outbound links are not read: someone else's server belongs in a scheduled report. |
 | `bin/check-html.mjs` | A page the browser quietly repairs before axe sees it: a duplicate id, a stray end tag, a link inside a link. Runs the W3C's Nu Html Checker offline from the repository's `vnu-jar` and needs Java 11 or later. Errors fail; warnings are listed. |
 | `bin/report-outbound-links.mjs` | A link to another site that died, found by a visitor first. Scheduled only, never a pull request check: it files a 404, a 410, a dead name, a refused connection or a bad certificate (once a control host shows the runner is online), and lists a bot wall, a timeout or a 5xx without filing it. |
@@ -114,7 +114,11 @@ ratios, step numbers and labels such as "Note:" pass). Warnings, printed as
 sentence over 22 words, or a paragraph of four or more sentences within 4 words
 of a median above 16) and the abstract nouns "judgment", "intent", "posture", "craft",
 "clarity", "the space between", "at scale" and "end-to-end". "best-in-class" is
-already an error under rule 8. The allowlist covers warnings too: a repository
+already an error under rule 8. Five register warnings (guideline, 17 November
+2026) read body text and summaries: `i-run`, `i-share`, `i-lead` and `i-join`
+count sentences and paragraphs that open with "I", and `commas` flags a sentence
+with 2 or more commas outside a list. The guideline's Enforcement section gives
+the exact conditions. The allowlist covers warnings too: a repository
 that keeps a positioning sentence with "judgment" lists it with its reason and
 review date, and the list only shrinks.
 

@@ -21,3 +21,6 @@ repo ops
 # Test fixtures hold planted bad values on purpose. Only this directory, so a folder
 # named fixtures somewhere else is not a way round the guard.
 path test/fixtures/** *
+
+# Commit b642bd3 (PR 241): its diff holds SSH-remote test fixtures for the public-push guard, no real address.
+commit b642bd39924c04e50b4ef17894fe417045b16464
