@@ -147,12 +147,15 @@ export function alertsOverdue(slug, now, json, log = console.error, redact = fal
 }
 
 /**
- * Why a read of the alerts failed, as one of four fixed words (never the error text): alerts switched off
- * for the repository, an archived repository, a token without the Dependabot alerts permission (403 or
- * 404 with no other cause), or anything else. Told apart from GitHub's wording, so a wording change falls
+ * Why a read of the alerts failed, as one of five fixed words (never the error text): GitHub's primary or
+ * secondary rate limit (both answer 403, some 429, and say "rate limit" in the body: checked first, so a
+ * quota that ran out is never read as a token gap), alerts switched off for the repository, an archived
+ * repository, a token without the Dependabot alerts permission (403 or 404 with no other cause), or
+ * anything else. Told apart from GitHub's wording, so a wording change falls
  * to `no-token-access` or `read-error`, never to a count.
  */
 export function alertsUnreadReason(text) {
+  if (/rate limit|abuse detection|HTTP 429/i.test(text)) return 'rate-limited'
   if (/disabled/i.test(text)) return 'alerts-off'
   if (/archived/i.test(text)) return 'archived'
   if (/HTTP (403|404)|not accessible|permission/i.test(text)) return 'no-token-access'

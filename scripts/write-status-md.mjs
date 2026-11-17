@@ -158,7 +158,7 @@ export function hygiene(status) {
 }
 
 /** "Dependabot alerts past target" for one repository: the count, or UNKNOWN, never 0 for a read that failed. */
-const UNREAD = { 'alerts-off': 'alerts are off', archived: 'archived', 'no-token-access': 'token cannot read alerts', 'read-error': 'read failed' }
+const UNREAD = { 'rate-limited': 'rate limit hit', 'alerts-off': 'alerts are off', archived: 'archived', 'no-token-access': 'token cannot read alerts', 'read-error': 'read failed' }
 export const alertsCell = (n, why) => (Number.isInteger(n) ? `${n} Dependabot alerts past target` : `Dependabot alerts past target UNKNOWN${UNREAD[why] ? ` (${UNREAD[why]})` : ''}`)
 
 /** The fleet's total, with UNKNOWN named whenever some repository could not be read. */

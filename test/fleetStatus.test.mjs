@@ -383,6 +383,11 @@ describe('Dependabot alerts past target (plan row 3.20l)', () => {
     assert.equal(alertsUnreadReason('gh: Resource not accessible by personal access token (HTTP 403)'), 'no-token-access')
     assert.equal(alertsUnreadReason('gh: Not Found (HTTP 404)'), 'no-token-access')
     assert.equal(alertsUnreadReason('gh: connection reset'), 'read-error')
+    // Rate limits answer 403 too; each wording is its own case, and none may fall to a token gap.
+    assert.equal(alertsUnreadReason('gh: API rate limit exceeded for user ID 12345. (HTTP 403)'), 'rate-limited')
+    assert.equal(alertsUnreadReason('gh: You have exceeded a secondary rate limit. Please wait a few minutes before you try again. (HTTP 403)'), 'rate-limited')
+    assert.equal(alertsUnreadReason('gh: You have triggered an abuse detection mechanism. (HTTP 403)'), 'rate-limited')
+    assert.equal(alertsUnreadReason('gh: Too Many Requests (HTTP 429)'), 'rate-limited')
     const deny = (text) => () => { throw Object.assign(new Error('x'), { stderr: text }) }
     const pub = await collectRepo('o/p', now, { json: fakeJson('public', deny('gh: Dependabot alerts are disabled for this repository. (HTTP 403)')), log: () => {} })
     assert.equal(pub.alertsUnread, 'alerts-off')
@@ -391,6 +396,10 @@ describe('Dependabot alerts past target (plan row 3.20l)', () => {
     assert.ok(!('alertsUnread' in priv) && priv.alertsOverdue === null, 'a private row says UNKNOWN and nothing about why')
     assert.deepEqual(validate({ generatedAt: 'x', renderedAt: 'x', repos: [pub, priv] }, schema), [])
     assert.deepEqual(readAlerts('o/p', now, () => [[]], () => {}), { count: 0, why: null })
+    const limited = await collectRepo('o/p', now, { json: fakeJson('public', deny('gh: API rate limit exceeded for user ID 12345. (HTTP 403)')), log: () => {} })
+    assert.equal(limited.alertsUnread, 'rate-limited')
+    assert.deepEqual(validate({ generatedAt: 'x', renderedAt: 'x', repos: [limited] }, schema), [])
+    assert.match(render({ generatedAt: '2026-11-16T12:00:00Z', renderedAt: '2026-11-16T12:00:00Z', repos: [limited] }), /Dependabot alerts past target UNKNOWN \(rate limit hit\)/)
   })
   it('a private repository failure with no HTTP status logs the fixed words "read failed", never the text', async () => {
     const logs = []
