@@ -130,13 +130,18 @@ export function allowTextAtRemote(headSha) {
 }
 
 /** privacy-guard's own functions, plus the scanning context for names and messages. A name the allowlist's `repo` lines clear is not scanned for. */
-export async function loadGuard(list, allowText = '') {
+export async function loadGuard(list, allowText = '', head = '') {
   if (!existsSync(GUARD)) refuse(`${GUARD} is missing, so the guard can't run.`)
   const mod = await import(pathToFileURL(GUARD).href)
   const names = [...list].map((s) => s.split('/').pop()).join(',')
   const allow = mod.parseAllowlist(allowText)
   const open = mod.parsePrivateRepos(names).filter((n) => !allow.repos.includes(n))
-  const ctx = { privateRepo: mod.privateRepoPattern(open), allow }
+  // As privacy-guard reads a bare name: watched while the remote's default branch has never said it, and on a line that says private once it has.
+  // Without that commit here nothing counts as said, which watches every name.
+  const known = /^[0-9a-f]{40,64}$/.test(head) && git(['cat-file', '-e', `${head}^{commit}`]).status === 0
+  const unsaid = open.filter((n) => !known || !mod.namedAtBase('.', head, n))
+  const said = open.filter((n) => !unsaid.includes(n))
+  const ctx = { privateRepo: mod.privateRepoPattern(open), bareNames: mod.bareNamePatterns(unsaid), saidNames: mod.bareNamePatterns(said).word, allow }
   return { mod, ctx, names }
 }
 
@@ -171,10 +176,10 @@ function outgoing(holds, updates) {
 }
 
 export async function checkPush(remote, url, updates) {
-  let list = privateList()
   const slug = remoteSlug(remote, url)
+  if (!slug && isLocalPath(url)) return // a path on this machine publishes nothing, whatever the list holds
+  let list = privateList()
   if (slug && list.has(slug)) return // private: never refused
-  if (!slug && isLocalPath(url)) return // a path on this machine publishes nothing
   if (slug && slug.startsWith('gorfednet/') && refresh()) {
     // A repository made since the list was cut (`gh repo create --private --push`) is not on it yet: ask once before calling it public.
     list = privateList()
@@ -183,7 +188,7 @@ export async function checkPush(remote, url, updates) {
   const { holds, head } = remoteState(url, updates)
   const sets = outgoing(holds, updates)
   const allowText = allowTextAtRemote(head)
-  const { mod, ctx, names } = await loadGuard(list, allowText)
+  const { mod, ctx, names } = await loadGuard(list, allowText, head)
   const scratch = mkdtempSync(join(tmpdir(), 'ppg-'))
   try {
     await scan({ sets, mod, ctx, names, where: slug ?? url, updates, allowText, scratch })
@@ -198,12 +203,12 @@ async function scan({ sets, mod, ctx, names, where, updates, allowText, scratch 
   const fail = (what) => refuse(`${what} would publish private detail to ${where}, which is public (or not known to be private).\nNothing was sent.`)
   for (const u of updates) {
     // Branch and tag names are public too, and so is an annotated tag's message.
-    if (mod.scanText(u.rref, ctx, NAME_RULES).length > 0) fail('a branch or tag name in this push')
+    if (mod.scanText(u.rref, ctx, NAME_RULES, 'path').length > 0) fail('a branch or tag name in this push')
     // Read the objects being sent, not the local ref: a push of `<sha>:refs/tags/v1` has no local ref name. A tag can point at a tag.
     let obj = u.sha
     for (let depth = 0; depth < 20 && git(['cat-file', '-t', obj]).stdout.trim() === 'tag'; depth += 1) {
       const [header, ...message] = must(['cat-file', 'tag', obj], 'read a tag').split('\n\n')
-      if (mod.scanText(message.join('\n\n'), ctx, [...NAME_RULES, 'owner-quote']).length > 0) fail(`the message of tag ${u.rref.replace(/^refs\/tags\//, '').slice(0, 40)}`)
+      if (mod.scanText(message.join('\n\n'), ctx, [...NAME_RULES, 'owner-quote'], 'word').length > 0) fail(`the message of tag ${u.rref.replace(/^refs\/tags\//, '').slice(0, 40)}`)
       obj = /^object (\S+)/.exec(header)?.[1] ?? refuse('a tag object has no target, so it can\'t be read.')
     }
   }

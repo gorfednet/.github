@@ -619,7 +619,7 @@ function scanDiff({ files, newFiles, added }, sha, ctx, base, origin) {
  * Does any text file in the merge base's tree already say this name the way the guard reads
  * it: as a whole word? git grep -w also stops at "-", "." and "/", so it only finds candidates.
  */
-function namedAtBase(dir, rev, name) {
+export function namedAtBase(dir, rev, name) {
   let lines
   try {
     lines = git(dir, ['grep', '-I', '-h', '-i', '-F', '-e', name, rev, '--']).split('\n')
