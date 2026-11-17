@@ -278,7 +278,9 @@ bot now takes a draft itself when **all** of these hold:
   `REVIEW.md`, `CLAUDE.md`, `AGENTS.md`, `SKILL.md` or `canaries.json`, and in
   `gorfednet/.github` all of `scripts/`, `templates/`, `fleet.json` and the old
   `docs/claude-home/`, and in `gorfednet/ops` `control/claude-home/` (the
-  reviewed copy of `~/.claude`, which Desk copies into it after merge).
+  reviewed copy of `~/.claude`, which Desk copies into it after merge) and everything an install puts on a host: `hosts/`,
+  `infra/`, `scripts/`, `inventory-patches/`, `credentials.json`, `rotations.json`, `crawler-policy.json` and `cta-sites.json`
+  (plan row 3.20f).
   Matching ignores case, and a rename counts by its old name too. Such a draft
   changes what merges unattended, so the bot comments once per commit naming
   the paths and leaves it to the owning session (plan row 1.12);
