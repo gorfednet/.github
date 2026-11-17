@@ -1,0 +1,158 @@
+#!/usr/bin/env node
+/**
+ * Git pre-push hook: refuse a push that would publish private detail to a PUBLIC repository
+ * (plan row 1.30g; replaces the shell-text parser of .github 216).
+ *
+ * Git hands the hook the remote name, its URL and one line per ref it is about to send:
+ * `<local ref> <local sha> <remote ref> <remote sha>`. Whatever the shell spelling of the
+ * push, those lines are what goes out, so nothing here reads a command.
+ *
+ * - A repository on the local private list passes untouched. Any other remote counts as public.
+ * - The list is a local file (private-repos.txt, one owner/name per line), refreshed from gh
+ *   at install and about once a day. A push never calls gh to learn visibility.
+ * - Outgoing commits are those reachable from the sent shas and not from anything the remote
+ *   holds now (`git ls-remote`, not tracking refs, which go stale). scripts/privacy-guard.mjs
+ *   reads them (messages, every commit's diff, the net diff). Ref names and annotated tag
+ *   messages are read here.
+ * - It fails closed once the remote is public: any error ends in a refusal (exit 1).
+ *
+ * Installed by install-git-hooks.sh into ~/.claude/git-hooks, with privacy-guard.mjs beside it.
+ * `git push --no-verify` skips every git hook; the deny entry for it lives in ops control/claude-home.
+ */
+import { spawnSync } from 'node:child_process'
+import { existsSync, readFileSync, realpathSync, renameSync, statSync, writeFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import { fileURLToPath, pathToFileURL } from 'node:url'
+
+const HERE = dirname(fileURLToPath(import.meta.url))
+const LIST = process.env.PUBLIC_PUSH_GUARD_LIST || join(HERE, 'private-repos.txt')
+const GUARD = process.env.PUBLIC_PUSH_GUARD_SCRIPT || join(HERE, 'privacy-guard.mjs')
+const REFRESH_AFTER_MS = 24 * 60 * 60 * 1000
+const ZERO = /^0+$/
+const NAME_RULES = ['private-ip', 'session-id', 'tailnet-name', 'internal-host', 'private-repo']
+
+class Refuse extends Error {}
+const refuse = (message) => {
+  throw new Refuse(message)
+}
+
+const run = (cmd, args, opts = {}) => spawnSync(cmd, args, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: 40_000, ...opts })
+const git = (args, opts) => run('git', ['-c', 'core.quotepath=false', ...args], opts)
+/** A git call that must work: a failure reads as "can't tell", never as "nothing there". */
+const must = (args, what) => {
+  const r = git(args)
+  if (r.status !== 0) refuse(`git could not ${what}.`)
+  return r.stdout
+}
+
+/** owner/name from a GitHub URL (https, ssh or scp form), lowercase; null for anything else. */
+export const slugOf = (url) => {
+  const m = /github\.com[:/]+([^/\s]+)\/([^/\s]+?)(?:\.git)?\/?$/i.exec(String(url ?? '').trim())
+  return m ? `${m[1]}/${m[2]}`.toLowerCase() : null
+}
+
+/** Refresh the private list from gh. False when gh can't answer; the list on disk then stands. */
+export function refresh() {
+  const r = run('gh', ['repo', 'list', 'gorfednet', '--visibility', 'private', '--limit', '1000', '--json', 'nameWithOwner', '--jq', '.[].nameWithOwner'], { timeout: 20_000 })
+  if (r.status !== 0 || !r.stdout.trim()) return false
+  writeFileSync(`${LIST}.tmp`, r.stdout.toLowerCase(), { mode: 0o600 })
+  renameSync(`${LIST}.tmp`, LIST)
+  return true
+}
+
+/** The private repositories, as owner/name. A missing list is an error, never an empty one. */
+export function privateList() {
+  if (existsSync(LIST) && Date.now() - statSync(LIST).mtimeMs > REFRESH_AFTER_MS) refresh() // best effort, never blocks
+  if (!existsSync(LIST)) refuse(`the private repository list (${LIST}) is missing, so this push can't be classified. Run install-git-hooks.sh.`)
+  const lines = readFileSync(LIST, 'utf8').split('\n').map((l) => l.trim().toLowerCase()).filter((l) => l && !l.startsWith('#'))
+  if (lines.length === 0) refuse(`the private repository list (${LIST}) is empty, so this push can't be classified. Run install-git-hooks.sh.`)
+  return new Set(lines)
+}
+
+/** The slug a push goes to. URL rewrites (insteadOf) are undone by also reading the configured URL. */
+export function remoteSlug(name, url, cwd) {
+  const configured = ['url', 'pushurl'].flatMap((k) => git(['config', '--get-all', `remote.${name}.${k}`], { cwd }).stdout.split('\n'))
+  return slugOf(url) ?? configured.map(slugOf).find(Boolean) ?? null
+}
+
+/** privacy-guard's own functions, plus the scanning context for names and messages. */
+async function loadGuard(list) {
+  if (!existsSync(GUARD)) refuse(`${GUARD} is missing, so the guard can't run.`)
+  const mod = await import(pathToFileURL(GUARD).href)
+  const names = [...list].map((s) => s.split('/').pop()).join(',')
+  const ctx = { privateRepo: mod.privateRepoPattern(mod.parsePrivateRepos(names)), allow: mod.parseAllowlist('') }
+  return { mod, ctx, names }
+}
+
+/** Commits the remote holds right now, asked of the remote itself: a tracking ref goes stale, or points at another repository after a set-url. */
+function remoteHolds(url, updates) {
+  const r = git(['ls-remote', url], { env: { ...process.env, GIT_TERMINAL_PROMPT: '0' }, timeout: 30_000 })
+  if (r.status !== 0) refuse('git could not read what the remote already holds (git ls-remote failed), so the outgoing commits can\'t be told from published ones. Check the network and credentials, then push again.')
+  const shas = [...r.stdout.split('\n').map((l) => l.split(/\s/)[0]), ...updates.map((u) => u.rsha)]
+  return [...new Set(shas)].filter((s) => /^[0-9a-f]{40,64}$/.test(s) && !ZERO.test(s) && git(['cat-file', '-e', `${s}^{commit}`]).status === 0)
+}
+
+/** Sent refs to the commits the remote lacks, per tip, with the published commit nearest them. */
+function outgoing(url, updates) {
+  const rest = ['--not', ...remoteHolds(url, updates)]
+  const out = []
+  for (const tip of new Set(updates.map((u) => must(['rev-parse', '--verify', `${u.sha}^{commit}`], 'resolve a sent ref').trim()))) {
+    const commits = must(['rev-list', tip, ...rest], 'list the outgoing commits').split('\n').filter(Boolean)
+    if (commits.length === 0) continue
+    const bounds = must(['rev-list', '--boundary', tip, ...rest], 'list the published boundary').split('\n').filter((l) => l.startsWith('-')).map((l) => l.slice(1))
+    if (bounds.length === 0) refuse(`${tip.slice(0, 7)} has no published ancestor on the remote to diff against (a root commit, or none of its history is here). Create the repository with its first commit by hand.`)
+    const independent = must(['merge-base', '--independent', ...bounds], 'find the published base').split('\n').filter(Boolean)
+    // Several published bases: one commit that has them all as parents, so none of their history is read again.
+    const base = independent.length === 1 ? independent[0] : must(['-c', 'user.name=guard', '-c', 'user.email=guard@example.invalid', '-c', 'commit.gpgsign=false', 'commit-tree', `${independent[0]}^{tree}`, ...independent.flatMap((b) => ['-p', b]), '-m', 'bases'], 'join the published bases').trim()
+    out.push({ tip, base, count: commits.length })
+  }
+  return out
+}
+
+export async function checkPush(remote, url, updates) {
+  const list = privateList()
+  const slug = remoteSlug(remote, url)
+  if (slug && list.has(slug)) return // private: never refused
+  const where = slug ?? url
+  const { mod, ctx, names } = await loadGuard(list)
+  const fail = (what) => refuse(`${what} would publish private detail to ${where}, which is public (or not known to be private).\nNothing was sent.`)
+  for (const u of updates) {
+    // Branch and tag names are public too, and so is an annotated tag's message.
+    if (mod.scanText(u.rref, ctx, NAME_RULES).length > 0) fail('a branch or tag name in this push')
+    if (git(['cat-file', '-t', u.sha]).stdout.trim() === 'tag') {
+      const tag = must(['for-each-ref', '--format=%(contents)', u.ref], 'read a tag message')
+      if (mod.scanText(tag, ctx, [...NAME_RULES, 'owner-quote']).length > 0) fail(`the message of tag ${u.ref.replace(/^refs\/tags\//, '').slice(0, 40)}`)
+    }
+  }
+  for (const { tip, base, count } of outgoing(url, updates)) {
+    const r = run('node', [realpathSync(GUARD), '--base', base, '--head', tip, '--dir', '.'], { timeout: 300_000, env: { ...process.env, PRIVATE_REPOS: names, GITHUB_ACTIONS: '' } })
+    const out = `${r.stdout}${r.stderr}`.trim()
+    if (r.status === 0 && /^privacy-guard: OK/m.test(out)) continue
+    refuse(`${count} outgoing commit${count === 1 ? '' : 's'} to ${where}, which is public (or not known to be private), would publish private detail (guard exit ${r.status}).\n${out}\nNothing was sent.`)
+  }
+}
+
+async function main(argv) {
+  if (argv[0] === '--refresh') return refresh() ? 0 : 1
+  const [remote = '', url = ''] = argv
+  const updates = readFileSync(0, 'utf8')
+    .split('\n')
+    .filter(Boolean)
+    .map((line) => {
+      const [ref, sha, rref, rsha] = line.split(' ')
+      return { ref, sha, rref, rsha }
+    })
+    .filter((u) => !ZERO.test(u.sha)) // a delete carries no commits
+  if (updates.length > 0) await checkPush(remote, url, updates)
+  return 0
+}
+
+if (process.argv[1] && realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url))) {
+  main(process.argv.slice(2)).then(
+    (code) => process.exit(code),
+    (e) => {
+      console.error(e instanceof Refuse ? `public-push-guard refused: ${e.message}` : `public-push-guard refused: it crashed (${e.message}), so nothing was sent.`)
+      process.exit(1)
+    },
+  )
+}
