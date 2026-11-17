@@ -238,7 +238,7 @@ function repoHasFile(slug, path) {
   } catch (cause) {
     const message = String(cause.stderr ?? cause.message)
     if (/404|Not Found/i.test(message)) return 'absent'
-    return 'present'
+    return 'unknown'
   }
 }
 

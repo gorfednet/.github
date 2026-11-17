@@ -59,7 +59,7 @@ test('the live sitemap and opt-in steps cite V77', () => {
   assert.match(workflow, /soft 404 \(V77\)/)
 })
 
-// The gate step at its proposed level (V77: fail, Fable decides). These run the
+// The gate step at its decided level (V77: fail). These run the
 // step's own shell against the real checker and a built-site fixture, so the
 // level is watched rather than read off the YAML (rule 4).
 const action = readFileSync(
@@ -162,10 +162,12 @@ test('a named sitemap file that is not in the build fails the step', () => {
   assert.match(output, /missing\.xml does not exist/)
 })
 
-test('V77 records the proposed level and the inputs that reach the checker', () => {
+test('V77 records the decided level and the inputs that reach the checker', () => {
   const start = rules.indexOf('**V77.')
   const body = rules.slice(start, rules.indexOf('## Provenance', start))
-  assert.match(body, /proposed, Fable decides/)
+  assert.match(body, /Level: \*\*fail\*\* \(decided\)/)
+  assert.doesNotMatch(body, /Fable decides/)
+  assert.match(body, /fleet dry run/)
   assert.match(body, /sitemap-allow-thin/)
 })
 

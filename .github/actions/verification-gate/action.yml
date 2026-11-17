@@ -169,8 +169,10 @@ runs:
     # checks that remain report with a `::warning` annotation and do not fail
     # the job; docs/verification-rules.md ("2026-10 right-sizing") records, for
     # each one, what still catches its class. What stays enforced is what the
-    # change under review decides: the consumer's own build and tests, and the
-    # executed-count floor that proves they ran.
+    # change under review decides: the consumer's own build and tests, the
+    # executed-count floor that proves they ran, and the sitemap step for a
+    # caller that opts in (V77: a listed noindex or redirected URL is an
+    # unambiguous defect in build output, not a rendered-quality signal).
 
     # When a workflow says `uses: gorfednet/.github/.github/actions/verification-gate@<ref>`
     # the runner downloads this whole repository at <ref> and runs the action
@@ -299,11 +301,17 @@ runs:
         fi
 
     - name: Sitemap lists only pages worth indexing
-      if: ${{ !cancelled() && inputs.sitemap-origin != '' }}
+      if: ${{ !cancelled() && (inputs.sitemap-origin != '' || inputs.sitemap-files != '' || inputs.sitemap-allow-thin != '' || inputs.sitemap-min-words != '') }}
       shell: bash
       run: |
         # Fails the job, unlike the steps around it: the sitemap is build
         # output this pull request changes, so rule 5 allows it (V77).
+        # Any sitemap input opts in, so one set without sitemap-origin cannot
+        # skip silently.
+        if [ -z "${{ inputs.sitemap-origin }}" ]; then
+          echo "::error title=Sitemap check inputs agree::A sitemap input is set but sitemap-origin is empty, so the check cannot say which site the sitemap lists. Set sitemap-origin."
+          exit 1
+        fi
         if [ -z "${{ inputs.publish-root }}" ]; then
           echo "::error title=Sitemap check inputs agree::sitemap-origin is set but publish-root is empty, so there is no built site for the sitemap check to read. Set publish-root."
           exit 1
@@ -314,7 +322,7 @@ runs:
           $(for file in ${{ inputs.sitemap-files }}; do printf -- '--sitemap %s ' "$file"; done) \
           $(for path in ${{ inputs.sitemap-allow-thin }}; do printf -- '--allow-thin %s ' "$path"; done) \
           $(for words in ${{ inputs.sitemap-min-words }}; do printf -- '--min-words %s ' "$words"; done); then
-          echo "::error title=Sitemap lists only pages worth indexing::A sitemap URL is not a page worth indexing (canonical, noindex, redirect or thin content). See this step's log."
+          echo "::error title=Sitemap lists only pages worth indexing::The sitemap check failed or could not run: a listed URL is not a page worth indexing (canonical, noindex, redirect or thin content), or the sitemap file, the build or an option was missing or invalid. See this step's log."
           exit 1
         fi
 

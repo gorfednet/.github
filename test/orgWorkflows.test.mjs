@@ -333,18 +333,39 @@ describe('verification-gate composite action', () => {
     })
 
     it('passes no optional flag when the optional inputs are empty', () => {
-      const { output } = runWith(
+      const { code, output } = runWith(
         'Sitemap lists only pages worth indexing',
-        'console.log(process.argv.slice(2).join("|"))\n',
+        'console.log("CHECKER RAN " + process.argv.slice(2).join("|"))\n',
       )
+      assert.equal(code, 0, output)
+      assert.match(output, /CHECKER RAN --root\|dist\|--origin\|https:\/\/example\.test/)
       assert.doesNotMatch(output, /--sitemap|--allow-thin|--min-words/)
     })
 
-    it('skips the sitemap step unless a site opts in with sitemap-origin', () => {
-      assert.match(
-        text,
-        /- name: Sitemap lists only pages worth indexing\n\s+if: \$\{\{ !cancelled\(\) && inputs\.sitemap-origin != '' \}\}/,
-      )
+    it('fails when a sitemap input is set but sitemap-origin is empty, and does not run the checker', () => {
+      for (const input of ['sitemap-files', 'sitemap-allow-thin', 'sitemap-min-words']) {
+        const { code, output } = runWith(
+          'Sitemap lists only pages worth indexing',
+          'console.log("CHECKER RAN")\n',
+          { 'inputs.sitemap-origin': '', [`inputs.${input}`]: '1' },
+        )
+        assert.equal(code, 1, `${input}: ${output}`)
+        assert.match(output, /sitemap-origin is empty/)
+        assert.doesNotMatch(output, /CHECKER RAN/)
+      }
+    })
+
+    it('runs the sitemap step when any of the four sitemap inputs is set, and for no caller that sets none', () => {
+      const guard = text.match(/- name: Sitemap lists only pages worth indexing\n\s+if: (.*)\n/)
+      assert.ok(guard, 'sitemap step has no if:')
+      for (const input of ['sitemap-origin', 'sitemap-files', 'sitemap-allow-thin', 'sitemap-min-words']) {
+        assert.ok(guard[1].includes(`inputs.${input} != ''`), `${input} does not opt the step in`)
+      }
+      assert.ok(!guard[1].includes('inputs.publish-root'), 'publish-root alone must not opt a caller in')
+    })
+
+    it('names a could-not-run failure as well as a bad page', () => {
+      assert.match(text, /::error title=Sitemap lists only pages worth indexing::The sitemap check failed or could not run/)
     })
 
     it('carries no grace-date logic: a dated tripwire is not something a pull request can change', () => {
