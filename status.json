@@ -1,12 +1,12 @@
 {
-  "generatedAt": "2026-11-17T00:46:11.639Z",
-  "renderedAt": "2026-11-17T00:46:11.639Z",
+  "generatedAt": "2026-11-17T02:32:13.702Z",
+  "renderedAt": "2026-11-17T02:32:13.702Z",
   "repos": [
     {
       "slug": "gorfednet/bindercurve.com",
       "redacted": true,
-      "mainRed": false,
-      "openPrCount": 11,
+      "mainRed": true,
+      "openPrCount": 10,
       "lapsedBacklogCount": 16,
       "noPrCount": 79,
       "idlePrCount": 2,
@@ -157,7 +157,7 @@
           "labels": [],
           "draft": false,
           "review": "clean",
-          "headSha": "b1fe0eebfe80a66aad1ad8c0ffbe8952c21b4a33",
+          "headSha": "ecda70bc39c162b85d4312e7f002080f8eaf129a",
           "ci": "green",
           "next": "merge",
           "author": "gorfednet"
@@ -178,10 +178,12 @@
           "number": 232,
           "title": "3.20k: user-owned Node on the Mac, patched without sudo",
           "ageDays": 0,
-          "labels": [],
+          "labels": [
+            "ready-to-merge"
+          ],
           "draft": false,
           "review": "clean",
-          "headSha": "0ab7e29a0a4cbd36bead69cfe624929a7186e97a",
+          "headSha": "f63b862141df4bce442e83d968f3b69fc4b690bf",
           "ci": "green",
           "next": "merge, together with gorfednet/ops#134 (ship-bot: `scripts/` and `resolve-node.sh` are control-plane and hand-install paths, so it needs `review-status.mjs` clean on this head; merging reaches no agent by itself)",
           "author": "gorfednet"
@@ -217,8 +219,8 @@
           "labels": [],
           "draft": false,
           "review": "findings",
-          "headSha": "e8f9d87d1418fb85482ebab51d021ef4a8d3f5d0",
-          "ci": "green",
+          "headSha": "0133e94de546d98fad16505bfc8e731c2150d6bf",
+          "ci": "pending",
           "next": "merge: Desk labels it once the review of the new head is clean. The last two pushes (b58ddba, 0d813b4) merged main and changed test files and a backlog entry only (the guard's wording moved, GITHUB_ACTIONS leaked into the tests in CI, and the backlog check refuses an in-review entry about its own pull request); the hook code is the same as at 34a0935, which reviewed clean. kit and guard were green on 0d813b4. Round 18 (2dabd1c) added the release new and repo new aliases after a sweep of gh's ALIASES lines. Desk's Fable read (e8f9d87) fixed the false refusals: only a statement that can push or publish is held to the one-plain-command rule, --repo or GH_REPO replaces the working directory as the target, and $( closes past a ) in a here-document. Round 19 (15e0733) reads gh boolean flags in their =true/=false form once, before any rule matches. A later finding that is only another spelling of an already-refused action is deferred to a backlog row, not fixed here. Known gap, deferred: a push spelled in pieces inside inline code. Backlog entry `public-push-guard-spelled-in-pieces`.",
           "author": "gorfednet"
         },
@@ -710,8 +712,8 @@
     "gorfednet/TowIt",
     "gorfednet/wychwood"
   ],
-  "branchesReadAt": "2026-11-16T02:33:23.845Z",
-  "carried": true,
+  "branchesReadAt": "2026-11-17T02:32:13.702Z",
+  "carried": false,
   "localCounts": {
     "rows": {
       "dirtyClones": {
@@ -758,11 +760,11 @@
     }
   },
   "inventory": {
-    "measuredAt": "2026-11-17T00:46:11.639Z",
+    "measuredAt": "2026-11-17T02:32:13.702Z",
     "counts": {
       "pr": {
-        "total": 126,
-        "orphans": 63
+        "total": 124,
+        "orphans": 62
       },
       "session": null,
       "worktree": null,
@@ -838,13 +840,13 @@
         "lapsed": true
       }
     ],
-    "hiddenPrivate": 57,
+    "hiddenPrivate": 56,
     "privateReposNotItemised": 18,
     "planRead": true
   },
   "dotgithub": {
-    "measuredAt": "2026-11-17T00:46:53.049Z",
-    "branches": 38,
+    "measuredAt": "2026-11-17T02:33:04.283Z",
+    "branches": 37,
     "merged": 2,
     "exposedFiles": 61,
     "rulesNotChecked": [],
