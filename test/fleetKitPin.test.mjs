@@ -4,7 +4,7 @@ import { describe, it } from 'node:test'
 
 import { collectRepo, readKitPin, redactPin, resolveKitPin } from '../scripts/fleet-status.mjs'
 import { pinnedRefs } from '../scripts/fleet-report.mjs'
-import { kitFailures } from '../scripts/lib/kit-version.mjs'
+import { kitFailures, kitSummary } from '../scripts/lib/kit-version.mjs'
 
 const SHA = '0123456789abcdef0123456789abcdef01234567'
 const wf = (path, state = 'active') => ({ id: 1, name: path, path, state })
@@ -28,7 +28,7 @@ describe('readKitPin', () => {
   })
   it('skips disabled workflows and files outside .github/workflows', () => {
     const asked = []
-    const pin = readKitPin([wf('.github/workflows/ci.yml', 'disabled_manually'), wf('dynamic/copilot')], (p) => { asked.push(p); return gate('main') })
+    const pin = readKitPin([wf('.github/workflows/ci.yml', 'disabled_manually'), wf('dynamic/copilot')], (p) => { asked.push(p); return gate('main') }, { tier: 1 })
     assert.equal(asked.length, 0)
     assert.match(pin.error, /no active workflow calls the shared gate/)
     assert.deepEqual(readKitPin([wf('.github/workflows/ci.yml', 'disabled_manually')], () => gate('main'), { tier: 0 }), { none: true })
@@ -58,6 +58,11 @@ describe('readKitPin', () => {
       assert.deepEqual(readKitPin([wf('.github/workflows/ci.yml')], () => text), { ref: SHA })
     }
   })
+  it('a commented-out uses line is not a pin', () => {
+    const text = `steps:\n  # - uses: gorfednet/.github/.github/actions/verification-gate@${SHA}\n  - uses: gorfednet/.github/.github/actions/verification-gate@main\n`
+    assert.deepEqual(pinnedRefs([text]), [{ target: '.github/actions/verification-gate', ref: 'main' }])
+    assert.deepEqual(pinnedRefs([`# uses: gorfednet/.github/.github/actions/verification-gate@${SHA}\n`]), [])
+  })
   it('an empty workflow list, an unreadable file and a 404 are errors at every tier', () => {
     for (const tier of [0, 1, undefined]) {
       assert.match(readKitPin([], () => null, { tier }).error, /list empty/)
@@ -66,7 +71,7 @@ describe('readKitPin', () => {
   })
   it('tier 1 and above with no gate caller is an error row; tier 0 is none', () => {
     assert.match(readKitPin([wf('.github/workflows/ci.yml')], () => 'on: push\n', { tier: 1 }).error, /no active workflow calls/)
-    assert.match(readKitPin([wf('.github/workflows/ci.yml')], () => 'on: push\n').error, /no active workflow calls/)
+    assert.match(readKitPin([wf('.github/workflows/ci.yml')], () => 'on: push\n', { tier: 3 }).error, /no active workflow calls/)
     assert.deepEqual(readKitPin([wf('.github/workflows/ci.yml')], () => 'on: push\n', { tier: 0 }), { none: true })
   })
   it('prefers the verification-gate pin when a file pins other actions elsewhere', () => {
@@ -227,5 +232,58 @@ describe('a private repository publishes ref, version and state only', () => {
     assert.equal(row.redacted, true)
     assert.deepEqual(row.kitPin, { error: 'unreadable' })
     assert.ok(!JSON.stringify(row).includes('internal-secret-name'))
+  })
+})
+
+describe('vendored and untiered repositories', () => {
+  const review = 'jobs:\n  r:\n    uses: gorfednet/.github/.github/workflows/claude-review.yml@main\n'
+  const vendoredRun = 'jobs:\n  g:\n    steps:\n      - run: node verification-kit/bin/verify-all.mjs\n'
+  it('a workflow that runs verification-kit/bin from the repository is vendored, at any tier', () => {
+    for (const tier of [0, 1, 3, undefined]) assert.deepEqual(readKitPin([wf('.github/workflows/ci.yml')], () => vendoredRun, { tier }), { vendored: true })
+  })
+  it('a commented-out vendored run, or a gate caller, is not vendored', () => {
+    assert.match(readKitPin([wf('.github/workflows/ci.yml')], () => '# run: node verification-kit/bin/x.mjs\n', { tier: 3 }).error, /no active workflow calls/)
+    assert.deepEqual(readKitPin([wf('.github/workflows/ci.yml')], () => `${vendoredRun}${gate(SHA)}`, { tier: 3 }), { ref: SHA })
+  })
+  it('a repository fleet.json does not list, calling only claude-review, is untiered; a listed one at tier 1 is an error', () => {
+    assert.deepEqual(readKitPin([wf('.github/workflows/r.yml')], () => review), { untiered: true })
+    assert.match(readKitPin([wf('.github/workflows/r.yml')], () => review, { tier: 1 }).error, /no active workflow calls/)
+  })
+  it('untiered never fails and is counted, not named, in the summary; vendored follows its manifest version', () => {
+    const repos = [{ slug: 'o/hidden', kitPin: { untiered: true } }, { slug: 'o/m', kitPin: { ref: 'main' } }]
+    assert.deepEqual(kitFailures(repos, '0.62.0'), [])
+    const line = kitSummary(repos, '0.62.0')
+    assert.match(line, /1 untiered repo not checked/)
+    assert.doesNotMatch(line, /hidden/)
+    assert.deepEqual(kitFailures([{ slug: 'o/v', kitPin: { vendored: true, version: '0.49.0' } }], '0.62.0').map((r) => r.gap), ['far-behind'])
+    assert.deepEqual(kitFailures([{ slug: 'o/v', kitPin: { vendored: true, version: '0.62.0' } }], '0.62.0'), [])
+    assert.deepEqual(kitFailures([{ slug: 'o/v', kitPin: { error: 'vendored kit has no manifest' } }], '0.62.0').map((r) => r.gap), ['error'])
+  })
+  it('a row end to end: vendored takes the repository manifest version, an untiered row carries the flag', async () => {
+    const now = new Date('2026-11-17T12:00:00Z')
+    const file = (text) => ({ encoding: 'base64', content: Buffer.from(text).toString('base64') })
+    const mk = (workflowText, manifest) => (args) => {
+      const path = args[0] === 'pr' ? 'pr list' : args[args.length - 1]
+      if (path === 'repos/o/site') return { private: false, visibility: 'public', default_branch: 'main' }
+      if (path === 'pr list') return []
+      if (path.includes('/branches')) return [[]]
+      if (path.endsWith('/workflows?per_page=100')) return { workflows: [{ id: 1, name: 'x', path: '.github/workflows/x.yml', state: 'active' }] }
+      if (path.endsWith('/contents/.github/workflows/x.yml')) return file(workflowText)
+      if (path.endsWith('/contents/verification-kit/MANIFEST.json') && manifest) return file(JSON.stringify({ version: manifest }))
+      if (path.includes('/contents/')) throw Object.assign(new Error('gh: Not Found (HTTP 404)'), { stderr: 'gh: Not Found (HTTP 404)' })
+      if (path.endsWith('/commits/main')) return { sha: 'abc' }
+      if (path.includes('/actions/runs?')) return [{ workflow_runs: [] }]
+      if (path.endsWith('/status')) return { state: 'success', statuses: [] }
+      if (path.includes('/dependabot/alerts?')) return [[]]
+      throw new Error(`unexpected call ${args.join(' ')}`)
+    }
+    const v = await collectRepo('o/site', now, { json: mk(vendoredRun, '0.49.0'), log: () => {}, tier: 3 })
+    assert.deepEqual(v.kitPin, { vendored: true, version: '0.49.0' })
+    assert.deepEqual(kitFailures([v], '0.62.0').map((r) => r.gap), ['far-behind'])
+    const noManifest = await collectRepo('o/site', now, { json: mk(vendoredRun, null), log: () => {}, tier: 3 })
+    assert.deepEqual(noManifest.kitPin, { error: 'vendored kit has no manifest' })
+    const u = await collectRepo('o/site', now, { json: mk(review, null), log: () => {} })
+    assert.deepEqual(u.kitPin, { untiered: true })
+    assert.deepEqual(kitFailures([u], '0.62.0'), [])
   })
 })

@@ -42,7 +42,7 @@ import { speaksForBranch, workflowTriggers } from './lib/workflowTriggers.mjs'
 /** Every distinct `uses: gorfednet/.github/...@ref` across the given workflow texts. */
 export function pinnedRefs(workflowTexts) {
   const refs = new Map()
-  const pattern = /uses:\s*["']?gorfednet\/\.github\/(\S+?)@([^\s#"']+)/g
+  const pattern = /^[ \t]*(?:-[ \t]+)?uses:[ \t]*["']?gorfednet\/\.github\/(\S+?)@([^\s#"']+)/gm
   for (const text of workflowTexts) {
     for (const [, target, ref] of text.matchAll(pattern)) {
       const key = `${target}@${ref}`

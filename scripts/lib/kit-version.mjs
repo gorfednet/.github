@@ -19,8 +19,10 @@
  * (an empty or unreadable workflow list, an unreadable ref, a ref with no kit,
  * or no gate caller in a repository at tier 1 or above) is an error row that
  * fails, as does an unreadable version: nothing here treats "could not tell"
- * as current. Only a tier-0 repository with no gate caller reads as
- * `none` (informational, never a failure).
+ * as current. Informational and never failing: `none` (a tier-0 repository
+ * with no gate caller) and `untiered` (a repository fleet.json does not list,
+ * counted but never named). `vendored` (a repository whose workflows run its
+ * own verification-kit/bin) is held to its vendored manifest version.
  */
 export function parseVersion(text) {
   const m = /^(\d+)\.(\d+)\.(\d+)$/.exec(String(text ?? '').trim())
@@ -42,6 +44,8 @@ export function kitGap(pinned, canonical) {
 export function pinGap(row, canonical) {
   const pin = row.kitPin
   if (pin?.none === true) return 'none'
+  if (pin?.untiered === true) return 'untiered'
+  if (pin?.vendored === true) return pin.error ? 'error' : kitGap(pin.version, canonical)
   if (!pin || pin.error || typeof pin.ref !== 'string' || pin.ref === '') return 'error'
   if (pin.ref === 'main') return 'current'
   return kitGap(pin.version, canonical)
@@ -51,6 +55,8 @@ export function pinGap(row, canonical) {
 export const pinLabel = (row) => {
   const pin = row.kitPin
   if (pin?.none === true) return 'no shared gate'
+  if (pin?.untiered === true) return 'untiered'
+  if (pin?.vendored === true && !pin.error) return `vendored kit ${pin.version || 'unreadable'}`
   if (!pin || pin.error) return `unreadable pin${pin?.error ? ` (${pin.error})` : ''}`
   if (typeof pin.ref !== 'string' || pin.ref === '') return 'unreadable pin'
   return pin.ref === 'main' ? '@main' : `@${pin.ref.length > 12 ? pin.ref.slice(0, 7) : pin.ref} (kit ${pin.version || 'unreadable'})`
@@ -76,13 +82,16 @@ export function kitFailures(repos, canonical, projects = []) {
 export function kitSummary(repos, canonical) {
   const ok = repos.filter(measured)
   const none = ok.filter((r) => pinGap(r, canonical) === 'none')
-  const pinned = ok.filter((r) => pinGap(r, canonical) !== 'none')
+  // Untiered repositories (not in the public fleet.json) are counted, never named: the status branch is public.
+  const untiered = ok.filter((r) => pinGap(r, canonical) === 'untiered').length
+  const pinned = ok.filter((r) => !['none', 'untiered'].includes(pinGap(r, canonical)))
   const off = pinned.filter((r) => pinGap(r, canonical) !== 'current')
   const parts = [
     off.length === 0
       ? `Kit: all ${pinned.length} repos pin the gate at main (${canonical})`
       : `Kit: canonical ${canonical}; gate pin not current: ${off.map((r) => `${r.slug.replace(/^gorfednet\//, '')} ${pinLabel(r)} (${pinGap(r, canonical)})`).join(', ')}`,
   ]
+  if (untiered) parts.push(`${untiered} untiered repo${untiered === 1 ? '' : 's'} not checked`)
   if (none.length) parts.push(`no shared gate: ${none.map((r) => r.slug.replace(/^gorfednet\//, '')).join(', ')}`)
   return `${parts.join('; ')}.`
 }

@@ -19,7 +19,7 @@ if (isMain(import.meta.url)) {
   const status = JSON.parse(readFileSync(at !== -1 ? process.argv[at + 1] : 'status.json', 'utf8'))
   const manifest = process.env.KIT_CANONICAL_MANIFEST ?? new URL('../templates/verification-kit/MANIFEST.json', import.meta.url)
   const canonical = JSON.parse(readFileSync(manifest, 'utf8')).version
-  const measured = status.repos.filter((r) => !r.unavailable && typeof r.kitPin?.ref === 'string')
+  const measured = status.repos.filter((r) => !r.unavailable && (typeof r.kitPin?.ref === 'string' || (r.kitPin?.vendored === true && typeof r.kitPin.version === 'string')))
   if (measured.length === 0) {
     // A run that measured nothing must not print the tick a clean fleet prints.
     console.error('::error::fleet-kit-versions: status.json carries no kitPin for any repository, so nothing was checked.')

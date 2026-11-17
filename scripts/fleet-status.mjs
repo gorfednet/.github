@@ -222,20 +222,26 @@ const callerFirst = (a, b) => Number(callerLike(b)) - Number(callerLike(a))
 /** A `uses:` target that is the shared gate itself: the verification-gate action or a pr-check reusable workflow. setup-node, claude-review and the like say nothing about the kit. */
 const gateBearing = (target) => target === '.github/actions/verification-gate' || /^\.github\/workflows\/pr-check-[^/]+\.ya?ml$/.test(target)
 
+/** A workflow line (not a comment) that runs a script from the repository's own vendored kit. */
+export const runsVendoredKit = (body) => body.split('\n').some((line) => !/^\s*#/.test(line) && /\bverification-kit\/bin\/[\w.-]+\.mjs/.test(line))
+
 /**
  * The ref a repository's workflows pin the shared gate to, read from the `uses: gorfednet/.github/...@ref`
  * lines (the gate runs this repository's kit at that ref, not the repository's vendored copy). Reads only
  * workflow files the run already listed, caller-like names first, and stops at the first file that calls a
- * gate-bearing target (other shared actions never end the search). Answers `{ ref }`; `{ none: true }` only
- * for a tier-0 repository (fleet.json: gate off) with no active gate caller; `{ error }` for everything else:
- * an empty or unreadable list, an unreadable file, a gate call with a mixed or unparseable ref, or no gate
- * caller at tier 1 and above. Never a silent "current". Error text names no path, so it can be published.
+ * gate-bearing target (other shared actions never end the search). Answers `{ ref }`; with no active gate
+ * caller, `{ vendored: true }` when a workflow runs the repository's own verification-kit/bin (the vendored
+ * kit is what runs there), else `{ none: true }` for a tier-0 repository (fleet.json: gate off) or
+ * `{ untiered: true }` for one fleet.json does not list (informational, never a failure); `{ error }` for
+ * everything else: an empty or unreadable list, an unreadable file, a gate call with a mixed or unparseable
+ * ref, or no gate caller at tier 1 and above. Never a silent "current". Error text names no path, so it can be published.
  * `text` is (path) => string | null (null: the file is not there).
  */
 export function readKitPin(workflows, text, { tier } = {}) {
   if (!Array.isArray(workflows) || workflows.length === 0) return { error: 'workflow list empty' }
   const files = workflows.filter((w) => w.state === 'active' && /^\.github\/workflows\/[^/]+\.ya?ml$/.test(w.path ?? '')).sort(callerFirst)
   let unread = 0
+  let vendored = false
   for (const w of files) {
     const body = text(w.path)
     if (body === null) {
@@ -243,19 +249,25 @@ export function readKitPin(workflows, text, { tier } = {}) {
       continue
     }
     const gate = pinnedRefs([body]).filter((u) => gateBearing(u.target))
-    if (gate.length === 0) continue
+    if (gate.length === 0) {
+      if (runsVendoredKit(body)) vendored = true
+      continue
+    }
     const refs = [...new Set(gate.map((u) => u.ref))]
     if (refs.length !== 1) return { error: `a workflow pins the gate at ${refs.length} different refs` }
     if (!SAFE_REF.test(refs[0])) return { error: 'a workflow pins the gate at an unreadable ref' }
     return { ref: refs[0] }
   }
   if (unread > 0) return { error: `${unread} workflow file(s) could not be read` }
-  return tier === 0 ? { none: true } : { error: 'no active workflow calls the shared gate' }
+  if (vendored) return { vendored: true }
+  if (tier === 0) return { none: true }
+  if (tier === undefined) return { untiered: true }
+  return { error: 'no active workflow calls the shared gate' }
 }
 
 /** A pin with the kit version at its ref: `main` is the canonical kit itself (no call); any other ref's manifest is read once per process (the cache is shared within one process only). */
 export function resolveKitPin(pin, json, cache = new Map()) {
-  if (pin.error || pin.none || pin.ref === 'main') return pin
+  if (pin.error || pin.none || pin.untiered || pin.vendored || pin.ref === 'main') return pin
   if (!cache.has(pin.ref)) {
     let outcome
     try {
@@ -314,6 +326,8 @@ export const redactPin = (pin) => ({
   ...(typeof pin.ref === 'string' ? { ref: pin.ref } : {}),
   ...(typeof pin.version === 'string' ? { version: pin.version } : {}),
   ...(pin.none === true ? { none: true } : {}),
+  ...(pin.untiered === true ? { untiered: true } : {}),
+  ...(pin.vendored === true ? { vendored: true } : {}),
   ...(pin.error ? { error: 'unreadable' } : {}),
 })
 
@@ -435,6 +449,8 @@ export async function gatherRepo(slug, now = new Date(), { includePrivate = fals
   let kitPin
   try {
     kitPin = resolveKitPin(readKitPin(workflows, (path) => fileText(slug, path, json), { tier }), json, pinCache)
+    // A repository that runs its own vendored kit is held to its vendored manifest, as before.
+    if (kitPin.vendored) kitPin = kitVersion === null ? { error: 'vendored kit has no manifest' } : { vendored: true, version: kitVersion }
   } catch (cause) {
     if (/rate limit/i.test(String(cause.stderr || cause.message))) throw cause
     kitPin = { error: 'workflow files unreadable' }

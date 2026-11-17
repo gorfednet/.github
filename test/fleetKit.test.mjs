@@ -69,6 +69,12 @@ describe('fleet-kit-versions CLI', () => {
   it('exits 1 for an unreadable pin', () => {
     assert.equal(run([{ slug: 'o/a', kitPin: { error: 'no workflow pins gorfednet/.github' } }, { slug: 'o/b', kitPin: { ref: 'main' } }]).status, 1)
   })
+  it('exits 1 when only none, untiered or error rows came back: nothing measured is not a tick', () => {
+    assert.equal(run([{ slug: 'o/a', kitPin: { none: true } }, { slug: 'o/b', kitPin: { untiered: true } }]).status, 1)
+  })
+  it('counts a vendored row with a version as measured', () => {
+    assert.equal(run([{ slug: 'o/a', kitPin: { vendored: true, version: '0.61.0' } }]).status, 0)
+  })
   it('exits 1 when nothing carried a pin, rather than printing a tick', () => {
     assert.equal(run([{ slug: 'o/a', kitVersion: '0.61.0' }]).status, 1)
   })
