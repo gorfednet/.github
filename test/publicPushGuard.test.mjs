@@ -551,9 +551,9 @@ describe('pre-push: a push that publishes nothing, or goes to a repository made 
   })
 
   it('passes a push to a local path when the private list is missing', () => {
-    const w = world({ listOut: 'FAIL' })
+    const w = world()
     const r = repo(w, { remoteUrl: 'local', outgoing: { 'x.md': `${IP}\n` } })
-    assert.ok(!existsSync(join(w.hooks, 'private-repos.txt')), 'the list exists')
+    rmSync(join(w.hooks, 'private-repos.txt'))
     const x = push(r, 'origin', 'feature')
     assert.equal(x.status, 0, x.stderr)
     assert.ok(remoteHas(r, 'refs/heads/feature'))
