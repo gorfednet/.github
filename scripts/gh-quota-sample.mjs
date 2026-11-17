@@ -2,14 +2,27 @@
 // One sample of the owner's GitHub core quota (`gh api rate_limit` does not count against it), appended to
 // ~/.gh-quota/samples.jsonl. When the quota fell by SPIKE or more since the last sample, the same line carries a
 // snapshot of the running gh and node commands, so the next burn names its callers (13 November 2026: the third
-// time the quota hit 0, and nothing recorded who was calling). Run every minute by a Herdr command job.
+// time the quota hit 0, and nothing recorded who was calling). Run every minute by the LaunchAgent that
+// scripts/gh-quota-install.sh installs (16 November 2026: no job ran it, so the fourth burn had no sample).
 import { execFileSync } from 'node:child_process'
-import { appendFileSync, chmodSync, existsSync, mkdirSync, readFileSync } from 'node:fs'
+import { appendFileSync, chmodSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { isMain } from '../templates/verification-kit/lib/isMain.mjs'
+import { isMain } from './lib/isMain.mjs'
 
 export const SPIKE = 100
+/** The log is kept to about 3 days of minute samples: past MAX_BYTES it is cut to the last KEEP lines. */
+export const MAX_BYTES = 2 * 1024 * 1024
+export const KEEP = 4000
+
+/** Cut `file` to its last `keep` lines once it passes `maxBytes`; true when it was cut. */
+export function trimLog(file, { maxBytes = MAX_BYTES, keep = KEEP } = {}) {
+  if (!existsSync(file) || statSync(file).size <= maxBytes) return false
+  const lines = readFileSync(file, 'utf8').split('\n').filter(Boolean)
+  writeFileSync(file, `${lines.slice(-keep).join('\n')}\n`, { mode: 0o600 })
+  chmodSync(file, 0o600)
+  return true
+}
 
 // Same patterns as scripts/claude-hooks/gh-poll-guard.py: a process's argv can carry a token
 // (`curl -H "Authorization: token ghp_…"`), and samples.jsonl must not keep one.
@@ -64,5 +77,6 @@ if (isMain(import.meta.url)) {
   mkdirSync(dirname(file), { recursive: true, mode: 0o700 })
   appendFileSync(file, `${JSON.stringify(sample)}\n`, { mode: 0o600 })
   chmodSync(file, 0o600)
+  trimLog(file)
   console.log(`gh-quota: ${sample.remaining} left${sample.spent != null ? `, ${sample.spent} spent since the last sample` : ''}`)
 }

@@ -78,6 +78,20 @@ describe('buildInventory', () => {
     assert.deepEqual(inv.items.find((i) => i.ref === '/w/prune').via, ['janitor prune'])
   })
 
+  it('counts the worktrees held only by the janitor, and renders the count', () => {
+    const w = (path, janitor, over) => ({ clone: 'c', repo: 'gorfednet/.github', path, branch: `b-${path}`, janitor, ...over })
+    const inv = buildInventory(base({
+      prs: [pr({ number: 5, branch: 'b-/w/pr' })],
+      worktrees: [w('/w/a', 'prune'), w('/w/b', 'prune'), w('/w/pr', 'prune'), w('/w/kept', 'keep')],
+    }))
+    assert.equal(inv.counts.worktree.janitorOwned, 2) // /w/pr has its PR as well, so it is not held by the janitor alone
+    assert.equal(inv.counts.worktree.orphans, 1)
+    const shown = renderInventory({ measuredAt: '2026-11-16T12:00:00.000Z', ...summarizeInventory(inv), planRead: true })
+    assert.match(shown, /2 more worktrees are merged and clean and left to the janitor's prune/)
+    const none = buildInventory(base({ worktrees: [w('/w/kept', 'keep')] }))
+    assert.doesNotMatch(renderInventory({ measuredAt: '2026-11-16T12:00:00.000Z', ...summarizeInventory(none) }), /left to the janitor/)
+  })
+
   it('on real repositories only what the janitor would prune is credited to it', () => {
     const top = realpathSync(mkdtempSync(join(tmpdir(), 'inv-wt-')))
     try {
@@ -139,9 +153,19 @@ describe('buildInventory', () => {
     assert.equal(seen.fetch, false)
   })
 
-  it('a dry run that cannot run leaves no worktree credited to the janitor', () => {
-    assert.equal(janitorVerdicts('/nope', { dryRun: () => { throw new Error('boom') } }), null)
-    assert.equal(process.env.GIT_OPTIONAL_LOCKS, undefined)
+  it('a dry run that cannot run leaves no worktree credited to the janitor, and the caller\'s git lock setting comes back', () => {
+    const before = process.env.GIT_OPTIONAL_LOCKS
+    try {
+      delete process.env.GIT_OPTIONAL_LOCKS // whatever the shell running the suite had set
+      assert.equal(janitorVerdicts('/nope', { dryRun: () => { throw new Error('boom') } }), null)
+      assert.equal(process.env.GIT_OPTIONAL_LOCKS, undefined)
+      process.env.GIT_OPTIONAL_LOCKS = '1'
+      janitorVerdicts('/nope', { dryRun: () => { assert.equal(process.env.GIT_OPTIONAL_LOCKS, '0'); return [] } })
+      assert.equal(process.env.GIT_OPTIONAL_LOCKS, '1')
+    } finally {
+      if (before === undefined) delete process.env.GIT_OPTIONAL_LOCKS
+      else process.env.GIT_OPTIONAL_LOCKS = before
+    }
   })
 
   it('a retired Herdr job is finished and is not in flight', () => {

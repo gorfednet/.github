@@ -33,6 +33,34 @@ describe('the strict reader', () => {
     assert.deepEqual(logs, [])
   })
 
+  it('the worktree kind may carry the janitor-owned count, an older file without it is still read, and no other kind may carry it', () => {
+    const c = good()
+    assert.equal(c.inventory.worktree.janitorOwned, null) // the fixture has no count: null, never 0
+    c.inventory.worktree.janitorOwned = 7
+    assert.equal(read(c).out.inventory.worktree.janitorOwned, 7)
+    const old = good()
+    delete old.inventory.worktree.janitorOwned
+    assert.equal(read(old).out.inventory.worktree.janitorOwned, null)
+    const wrongKind = good()
+    wrongKind.inventory.session.janitorOwned = 1
+    assert.deepEqual(read(wrongKind).logs.length, 1)
+    assert.equal(read(wrongKind).out, null)
+    const negative = good()
+    negative.inventory.worktree.janitorOwned = -1
+    assert.equal(read(negative).out, null)
+    const noTotal = good()
+    noTotal.inventory.worktree = { total: null, orphans: null, measuredAt: null, janitorOwned: 2 }
+    assert.equal(read(noTotal).out, null)
+  })
+
+  it('reduceStatus carries the janitor-owned count only when the orphans were matched against a plan', () => {
+    const s = fullStatus()
+    s.inventory.counts.worktree.janitorOwned = 12
+    assert.equal(reduceStatus(s, { kept: 1 }).counts.inventory.worktree.janitorOwned, 12)
+    s.inventory.planRead = false
+    assert.equal(reduceStatus(s, { kept: 1 }).counts.inventory.worktree.janitorOwned, null)
+  })
+
   it('a missing file is not measured, quietly', () => {
     assert.equal(readLocalCounts(null), null)
   })

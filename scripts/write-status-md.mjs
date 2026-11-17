@@ -122,6 +122,7 @@ export function inventoryWithCounts(status) {
     const c = status.localCounts.inventory?.[kind]
     if (!Number.isInteger(c?.total)) continue
     counts[kind] = { total: c.total, orphans: Number.isInteger(c.orphans) ? c.orphans : null }
+    if (kind === 'worktree' && Number.isInteger(c.janitorOwned)) counts[kind].janitorOwned = c.janitorOwned
     stamps[kind] = c.measuredAt ?? null
   }
   return { ...inv, counts, stamps }

@@ -290,3 +290,10 @@ test("janitor step 1 goes on to 1b when repositories are unreadable, and 1b admi
   assert.match(prompt, /go on to step 1b, then step 2/);
   assert.match(prompt, /write only under `\$R`, apart from the one push below/);
 });
+
+test("janitor keeps the first status when the second full read is refused", () => {
+  const step = prompt.match(/\n1\. Read the fleet's status[\s\S]*?\n1b\./)[0];
+  assert.match(step, /first-status\.json/);
+  assert.match(step, /refused with exit 3 or 4: if so, put the two copies back/);
+  assert.match(step, /Exit 3 means the wrapper refused/);
+});

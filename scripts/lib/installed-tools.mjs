@@ -35,6 +35,8 @@ export const COPIES = [
   { tool: 'capacity drift check', copy: '.desk/capacity-app/lib/installedDrift.mjs', clone: 'gorfednet.github', source: 'scripts/lib/installedDrift.mjs' },
   { tool: 'capacity installed-tools helper', copy: '.desk/capacity-app/lib/installed-tools.mjs', clone: 'gorfednet.github', source: 'scripts/lib/installed-tools.mjs' },
   { tool: 'capacity usage helper', copy: '.desk/capacity-app/lib/usageAlert.mjs', clone: 'gorfednet.github', source: 'scripts/lib/usageAlert.mjs' },
+  { tool: 'gh quota sampler', copy: '.desk/gh-quota-app/gh-quota-sample.mjs', clone: 'gorfednet.github', source: 'scripts/gh-quota-sample.mjs' },
+  { tool: 'gh quota sampler isMain helper', copy: '.desk/gh-quota-app/lib/isMain.mjs', clone: 'gorfednet.github', source: 'scripts/lib/isMain.mjs' },
   { tool: 'ship-bot', copyDir: '.ship-bot/app', clone: 'gorfednet.github', sourceDir: 'ship-bot', skip: ['gate-scripts', 'node_modules', 'README.md', 'config.example.json'] }, // code only: install.sh copies the README and the example config too, and a doc merge is not a stale bot (OWN_INSTALL_PATHS leaves them out too)
   // install.sh copies review-status, the two gates and scripts/lib into app/gate-scripts, laid out as scripts/ (its SOURCE file names the commit).
   { tool: 'ship-bot gate scripts', copyDir: '.ship-bot/app/gate-scripts', clone: 'gorfednet.github', sourceDir: 'scripts', skip: ['SOURCE'] },
@@ -161,6 +163,7 @@ export function privateInterpreters(home, launchAgents) {
 export const NODE_RECORDS = [
   { agent: 'net.gorfed.ship-bot', record: '.ship-bot/app.node-version' },
   { agent: 'net.gorfed.capacity', record: '.desk/capacity-app.node-version' },
+  { agent: 'net.gorfed.gh-quota', record: '.desk/gh-quota-app.node-version' },
 ]
 
 /** `<program> --version`, trimmed; null when it will not run. */

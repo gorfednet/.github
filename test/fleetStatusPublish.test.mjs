@@ -75,6 +75,12 @@ describe('step order', () => {
   })
 })
 
+/** The wrapper asks the quota guard before a live read; these stand-in repositories have a guard that always says full. The guard itself is tested in fleetStatusQuota.test.mjs. */
+function standInGuard(repo) {
+  mkdirSync(join(repo, 'scripts', 'lib'), { recursive: true })
+  writeFileSync(join(repo, 'scripts', 'lib', 'quotaGuard.mjs'), "console.log('mode=full')\n")
+}
+
 describe('fleet-status-local.sh', () => {
   it('still prints the report when the read exits 1, and passes the exit code on', () => {
     const root = mkdtempSync(join(tmpdir(), 'fleet-local-'))
@@ -93,8 +99,9 @@ describe('fleet-status-local.sh', () => {
         join(repo, 'scripts', 'write-status-md.mjs'),
         "import { writeFileSync } from 'node:fs'\nconst out = process.argv[process.argv.indexOf('--out') + 1]\nwriteFileSync(out, 'RENDERED-REPORT\\n')\n",
       )
+      standInGuard(repo)
       git(repo, 'init', '-q')
-      const result = spawnSync('bash', [wrapper], { cwd: repo, encoding: 'utf8' })
+      const result = spawnSync('bash', [wrapper], { cwd: repo, encoding: 'utf8', env: { ...process.env, FLEET_STATUS_CACHE: join(root, 'cache') } })
       assert.equal(result.status, 1, result.stderr)
       assert.match(result.stdout, /RENDERED-REPORT/)
     } finally {
@@ -128,9 +135,10 @@ describe('fleet-status-local.sh', () => {
         join(repo, 'scripts', 'write-status-md.mjs'),
         "import { writeFileSync } from 'node:fs'\nwriteFileSync(process.argv[process.argv.indexOf('--out') + 1], 'ok\\n')\n",
       )
+      standInGuard(repo)
       git(repo, 'init', '-q')
       git(repo, 'remote', 'add', 'origin', remote)
-      const result = spawnSync('bash', [wrapper], { cwd: repo, encoding: 'utf8' })
+      const result = spawnSync('bash', [wrapper], { cwd: repo, encoding: 'utf8', env: { ...process.env, FLEET_STATUS_CACHE: join(root, 'cache') } })
       assert.equal(result.status, 0, result.stderr)
       return JSON.parse(readFileSync(argv, 'utf8'))
     } finally {

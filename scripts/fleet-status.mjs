@@ -28,6 +28,7 @@ import { homedir, tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
+import { CARRY_HOURS } from './lib/carryHours.mjs'
 
 import { isMain } from '../templates/verification-kit/lib/isMain.mjs'
 import { lapsedBacklog } from './fleet-report.mjs'
@@ -287,7 +288,10 @@ export async function collectRepo(slug, now = new Date(), { includePrivate = fal
     return await gatherRepo(slug, now, { includePrivate, json, repo, kitPath, carryBranches, log })
   } catch (cause) {
     const detail = String(cause.stderr || cause.message).trim().split('\n')[0]
-    const reason = isPrivate && !includePrivate ? 'unreadable' : detail
+    // A rate-limit answer names no file, so it is safe to say even for a private repository: without it, 18 rows
+    // that all read "unreadable" at once cannot be told from a quota at zero (16 November 2026).
+    const limited = /rate limit/i.test(detail)
+    const reason = limited ? 'GitHub rate limit exceeded' : isPrivate && !includePrivate ? 'unreadable' : detail
     log(`::error::fleet-status could not read ${slug}: ${reason}`)
     return { slug, unavailable: reason }
   }
@@ -500,7 +504,7 @@ if (isMain(import.meta.url)) {
     // Only while that read is under 23 hours old (it carries `branchesReadAt`): a dropped or late daily run
     // makes the next one full, whatever the hour is.
     const earlier = arg('--carry-branches') ? JSON.parse(readFileSync(arg('--carry-branches'), 'utf8')) : null
-    const fresh = earlier?.branchesReadAt && now - Date.parse(earlier.branchesReadAt) < 23 * 3600 * 1000
+    const fresh = earlier?.branchesReadAt && now - Date.parse(earlier.branchesReadAt) < CARRY_HOURS * 3600 * 1000
     const carry = fresh ? carryMap(earlier) : null
     if (carry) extra.push('--carry-branches', arg('--carry-branches'))
     carriedFrom = carry ? earlier.branchesReadAt : null

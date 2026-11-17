@@ -31,12 +31,12 @@ export function strictIso(value) {
 const isCount = (v) => Number.isInteger(v) && v >= 0
 
 const emptyRow = () => ({ count: null, measuredAt: null })
-const emptyKind = () => ({ total: null, orphans: null, measuredAt: null })
+const emptyKind = (kind) => ({ total: null, orphans: null, measuredAt: null, ...(kind === 'worktree' ? { janitorOwned: null } : {}) })
 
 /** The file with every row not measured. */
 export const emptyCounts = () => ({
   rows: Object.fromEntries(ROW_KEYS.map((k) => [k, emptyRow()])),
-  inventory: Object.fromEntries(INVENTORY_KINDS.map((k) => [k, emptyKind()])),
+  inventory: Object.fromEntries(INVENTORY_KINDS.map((k) => [k, emptyKind(k)])),
 })
 
 /**
@@ -65,6 +65,7 @@ export function reduceStatus(status, { kept = null } = {}) {
       continue
     }
     counts.inventory[kind] = { total: c.total, orphans: matched && isCount(c.orphans) ? c.orphans : null, measuredAt: invStamp }
+    if (kind === 'worktree') counts.inventory[kind].janitorOwned = matched && isCount(c.janitorOwned) ? c.janitorOwned : null
     if (counts.inventory[kind].orphans === null) unread.push(`inventory.${kind}.orphans`)
   }
   if (isCount(kept) && invStamp) counts.rows.keptBranches = { count: kept, measuredAt: invStamp }
@@ -143,13 +144,17 @@ export function readLocalCounts(text, { now = Date.now(), log = (m) => console.e
   }
   for (const kind of INVENTORY_KINDS) {
     const e = data.inventory[kind]
-    if (!hasOnly(e, ['total', 'orphans', 'measuredAt'])) return refuse(e && typeof e === 'object' ? keySet(e, ['total', 'orphans', 'measuredAt']) ?? 'shape' : 'shape')
-    if ((e.total !== null && !isCount(e.total)) || (e.orphans !== null && !isCount(e.orphans))) return refuse('count')
-    if (e.total === null && e.orphans !== null) return refuse('count')
+    // The worktree kind may also carry `janitorOwned` (a file written before it existed has three keys and is still read).
+    const allowed = kind === 'worktree' ? ['total', 'orphans', 'measuredAt', 'janitorOwned'] : ['total', 'orphans', 'measuredAt']
+    const shaped = e !== null && typeof e === 'object' && !Array.isArray(e) && ['total', 'orphans', 'measuredAt'].every((k) => Object.hasOwn(e, k)) && Object.keys(e).every((k) => allowed.includes(k))
+    if (!shaped) return refuse(e && typeof e === 'object' ? keySet(e, allowed) ?? 'shape' : 'shape')
+    const owned = e.janitorOwned ?? null
+    if ((e.total !== null && !isCount(e.total)) || (e.orphans !== null && !isCount(e.orphans)) || (owned !== null && !isCount(owned))) return refuse('count')
+    if (e.total === null && (e.orphans !== null || owned !== null)) return refuse('count')
     const bad = checkStamp(e.total, e.measuredAt)
     if (bad) return refuse(bad)
     if (e.total !== null && stale(e.measuredAt)) staleSeen = true
-    else out.inventory[kind] = { total: e.total, orphans: e.orphans, measuredAt: e.measuredAt }
+    else out.inventory[kind] = { total: e.total, orphans: e.orphans, measuredAt: e.measuredAt, ...(kind === 'worktree' ? { janitorOwned: owned } : {}) }
   }
   if (staleSeen) log(`::warning::fleet-status: local-counts.json has rows older than ${STALE_HOURS} h (rule stale); those rows not measured`)
   return out
