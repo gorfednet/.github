@@ -208,6 +208,26 @@ on:
         required: false
         type: string
         default: ""
+      sitemap-files:
+        description: >-
+          Space-separated sitemap files under publish-root (repeated
+          --sitemap). Empty uses sitemap.xml.
+        required: false
+        type: string
+        default: ""
+      sitemap-allow-thin:
+        description: >-
+          Space-separated URL paths allowed to be shorter than the word floor
+          (repeated --allow-thin). Write the reason beside the value.
+        required: false
+        type: string
+        default: ""
+      sitemap-min-words:
+        description: >-
+          Visible-word floor for a listed page. Empty uses the checker's 150.
+        required: false
+        type: string
+        default: ""
 jobs:
   check:
     runs-on: ${{ fromJSON(inputs.runs-on != '' && inputs.runs-on || '"ubuntu-latest"') }}
@@ -275,3 +295,6 @@ jobs:
           allow-machine-paths: ${{ inputs.allow-machine-paths }}
           og-content-addressed: ${{ inputs.og-content-addressed }}
           sitemap-origin: ${{ inputs.sitemap-origin }}
+          sitemap-files: ${{ inputs.sitemap-files }}
+          sitemap-allow-thin: ${{ inputs.sitemap-allow-thin }}
+          sitemap-min-words: ${{ inputs.sitemap-min-words }}

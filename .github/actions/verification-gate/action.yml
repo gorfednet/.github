@@ -120,6 +120,29 @@ inputs:
       publish-root: every listed URL must be self-canonical, carry no noindex or
       meta refresh, and have real content. Empty skips the check. Opt-in because
       a site must be clean first; turn it on per site after a kit refresh.
+      Unlike its neighbours this step fails the job (V77: the sitemap is build
+      output the pull request changes).
+    required: false
+    default: ""
+  sitemap-files:
+    description: >-
+      Space-separated sitemap files under publish-root, passed to the checker
+      as repeated `--sitemap`. A sitemap index is followed. Empty uses the
+      checker's default, `sitemap.xml`.
+    required: false
+    default: ""
+  sitemap-allow-thin:
+    description: >-
+      Space-separated URL paths allowed to have fewer words than
+      sitemap-min-words, passed as repeated `--allow-thin`. Each path needs its
+      reason written in the caller's workflow beside the value.
+    required: false
+    default: ""
+  sitemap-min-words:
+    description: >-
+      Visible-word floor for a listed page, passed as `--min-words`. Empty uses
+      the checker's default of 150. Never raise tolerance to pass; allow-list
+      a path with a reason instead.
     required: false
     default: ""
 
@@ -279,14 +302,20 @@ runs:
       if: ${{ !cancelled() && inputs.sitemap-origin != '' }}
       shell: bash
       run: |
+        # Fails the job, unlike the steps around it: the sitemap is build
+        # output this pull request changes, so rule 5 allows it (V77).
         if [ -z "${{ inputs.publish-root }}" ]; then
-          echo "::warning title=Sitemap check inputs agree::sitemap-origin is set but publish-root is empty, so there is no built site for the sitemap check to read. Set publish-root."
-          exit 0
+          echo "::error title=Sitemap check inputs agree::sitemap-origin is set but publish-root is empty, so there is no built site for the sitemap check to read. Set publish-root."
+          exit 1
         fi
         if ! node "$VERIFICATION_GATE_KIT/bin/check-sitemap-pages.mjs" \
           --root "${{ inputs.publish-root }}" \
-          --origin "${{ inputs.sitemap-origin }}"; then
-          echo "::warning title=Sitemap lists only pages worth indexing::A sitemap URL is not a page worth indexing (canonical, noindex, redirect or thin content). See this step's log."
+          --origin "${{ inputs.sitemap-origin }}" \
+          $(for file in ${{ inputs.sitemap-files }}; do printf -- '--sitemap %s ' "$file"; done) \
+          $(for path in ${{ inputs.sitemap-allow-thin }}; do printf -- '--allow-thin %s ' "$path"; done) \
+          $(for words in ${{ inputs.sitemap-min-words }}; do printf -- '--min-words %s ' "$words"; done); then
+          echo "::error title=Sitemap lists only pages worth indexing::A sitemap URL is not a page worth indexing (canonical, noindex, redirect or thin content). See this step's log."
+          exit 1
         fi
 
     - name: Error pages ship with the site

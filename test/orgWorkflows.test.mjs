@@ -202,7 +202,6 @@ describe('verification-gate composite action', () => {
       ['Page metadata is per-page and correct', 'check-page-metadata.mjs'],
       ['The social card is the image it says it is', 'check-og-image.mjs'],
       ['Error pages ship with the site', 'check-error-pages.mjs'],
-      ['Sitemap lists only pages worth indexing', 'check-sitemap-pages.mjs'],
       ['Paths are derived, not named', 'check-machine-paths.mjs'],
       ['Backlog describes reality', 'check-backlog.mjs'],
     ]
@@ -211,7 +210,7 @@ describe('verification-gate composite action', () => {
       const kit = mkdtempSync(join(tmpdir(), 'gate-kit-'))
       try {
         mkdirSync(join(kit, 'bin'), { recursive: true })
-        for (const [, file] of SOFTENED) {
+        for (const [, file] of [...SOFTENED, ['', 'check-sitemap-pages.mjs']]) {
           writeFileSync(join(kit, 'bin', file), checkerBody, 'utf8')
         }
         let filled = stepScript(text, name)
@@ -224,6 +223,9 @@ describe('verification-gate composite action', () => {
           'inputs.error-page-root': 'dist',
           'inputs.error-page-markers': '',
           'inputs.sitemap-origin': 'https://example.test',
+          'inputs.sitemap-files': '',
+          'inputs.sitemap-allow-thin': '',
+          'inputs.sitemap-min-words': '',
           'inputs.source-dirs': '',
           'inputs.allow-machine-paths': '',
           'inputs.backlog': 'docs/backlog.json',
@@ -285,15 +287,57 @@ describe('verification-gate composite action', () => {
       assert.match(output, /--root\|dist\|--origin\|https:\/\/example\.test/)
     })
 
-    it('says the wiring is wrong, not the pages, when sitemap-origin is set and publish-root is not', () => {
+    it('fails, not warns, when sitemap-origin is set and publish-root is not (V77)', () => {
       const { code, output } = runWith(
         'Sitemap lists only pages worth indexing',
         'console.log("CHECKER RAN"); process.exit(1)\n',
         { 'inputs.publish-root': '' },
       )
+      assert.equal(code, 1, output)
+      assert.match(output, /::error title=Sitemap check inputs agree::sitemap-origin is set but publish-root is empty/)
+      assert.doesNotMatch(output, /CHECKER RAN/)
+    })
+
+    it('the sitemap step fails the job on a finding, keeping the checker output (V77, proposed level)', () => {
+      const { code, output } = runWith(
+        'Sitemap lists only pages worth indexing',
+        'console.log("CHECKER SAID THIS"); process.exit(1)\n',
+      )
+      assert.equal(code, 1, output)
+      assert.match(output, /CHECKER SAID THIS/)
+      assert.match(output, /::error title=Sitemap lists only pages worth indexing/)
+      assert.doesNotMatch(output, /::warning/)
+    })
+
+    it('the sitemap step is quiet and exits 0 when the checker passes', () => {
+      const { code, output } = runWith('Sitemap lists only pages worth indexing', 'console.log("fine")\n')
       assert.equal(code, 0, output)
-      assert.match(output, /sitemap-origin is set but publish-root is empty/)
-      assert.doesNotMatch(output, /CHECKER RAN|worth indexing \(canonical/)
+      assert.doesNotMatch(output, /::warning|::error/)
+    })
+
+    it('passes each sitemap file, thin-page waiver and the word floor as separate arguments', () => {
+      const { code, output } = runWith(
+        'Sitemap lists only pages worth indexing',
+        'console.log(process.argv.slice(2).join("|"))\n',
+        {
+          'inputs.sitemap-files': 'sitemap.xml en/sitemap.xml',
+          'inputs.sitemap-allow-thin': '/legal /contact',
+          'inputs.sitemap-min-words': '80',
+        },
+      )
+      assert.equal(code, 0, output)
+      assert.match(
+        output,
+        /--sitemap\|sitemap\.xml\|--sitemap\|en\/sitemap\.xml\|--allow-thin\|\/legal\|--allow-thin\|\/contact\|--min-words\|80/,
+      )
+    })
+
+    it('passes no optional flag when the optional inputs are empty', () => {
+      const { output } = runWith(
+        'Sitemap lists only pages worth indexing',
+        'console.log(process.argv.slice(2).join("|"))\n',
+      )
+      assert.doesNotMatch(output, /--sitemap|--allow-thin|--min-words/)
     })
 
     it('skips the sitemap step unless a site opts in with sitemap-origin', () => {
