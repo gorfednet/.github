@@ -52,6 +52,7 @@
       },
       "incidents7d": 2,
       "dependabotRed": 1,
+      "alertsOverdue": 1,
       "kitVersion": null,
       "idlePrs": [
         {
@@ -85,6 +86,8 @@
       "lastDeploy": null,
       "incidents7d": 0,
       "dependabotRed": 0,
+      "alertsOverdue": null,
+      "alertsUnread": "no-token-access",
       "idlePrs": [],
       "duplicatePrs": [
         {
@@ -102,7 +105,7 @@
       "mainRed": false,
       "openPrCount": 2,
       "lapsedBacklogCount": 1,
-      "dependabotRedCount": 1,
+      "dependabotRedCount": 1, "alertsOverdue": 2,
       "noPrCount": 1,
       "idlePrCount": 0,
       "duplicatePrCount": 0

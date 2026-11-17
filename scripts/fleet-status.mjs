@@ -8,7 +8,8 @@
  * `## Next` line), branches ahead of the default branch with no pull request, lapsed
  * backlog dates, the last successful deploy run, incident lines dated in the last
  * 7 days, dependabot pull requests that are red or unreviewed, and whether the
- * default branch is red. `--local` adds the Mac rows (`local`: dirty clones,
+ * default branch is red, and the count of open Dependabot alerts past their target
+ * (`alertsOverdue`, null when the alerts could not be read). `--local` adds the Mac rows (`local`: dirty clones,
  * clones behind origin, worktrees over 7 days, sessions idle over 24 h; `--no-fetch` skips the git fetch).
  * Hosted rows per repository: `idlePrs` (untouched over 3 days) and `duplicatePrs` (two open PRs naming one backlog id). `--from` reuses an earlier status.json for the
  * repositories (so --local can be added to a fresh copy without asking GitHub again).
@@ -118,6 +119,63 @@ export function dependabotRed(prs) {
   return prs.filter((p) => isDependabot(p.author) && (p.ci === 'red' || p.review !== 'clean')).length
 }
 
+const HOUR = 3_600_000
+
+/**
+ * Open Dependabot alerts past their target: critical or high older than 72 hours, every other severity
+ * older than 7 days (docs/maintenance.md in ops, plan row 3.20l). `alerts` is the REST list for
+ * `state=open`. Counts only: nothing about a package, an advisory or a path leaves this function.
+ * An alert whose age can't be read, or whose severity isn't one of the four known, counts against the shorter 72-hour target (and an undated one as overdue), because it can't be shown to be within the longer one.
+ */
+export function overdueAlerts(alerts, now = new Date()) {
+  let count = 0
+  for (const alert of Array.isArray(alerts) ? alerts : []) {
+    const severity = String(alert?.security_advisory?.severity ?? alert?.security_vulnerability?.severity ?? '').toLowerCase()
+    const limit = ['medium', 'low'].includes(severity) ? 7 * 24 * HOUR : 72 * HOUR
+    const age = now - Date.parse(alert?.created_at)
+    if (!Number.isFinite(age) || age > limit) count += 1
+  }
+  return count
+}
+
+/**
+ * The overdue count for one repository, or null (UNKNOWN) when the alerts can't be read: a token without
+ * the Dependabot alerts permission answers 403 or 404, and alerts switched off answer 403. Never 0 then,
+ * because 0 would read as "nothing is overdue". The workflow log is public, so for a repository whose row is redacted only the HTTP status is logged, never the error text.
+ */
+export function alertsOverdue(slug, now, json, log = console.error, redact = false) {
+  return readAlerts(slug, now, json, log, redact).count
+}
+
+/**
+ * Why a read of the alerts failed, as one of five fixed words (never the error text): GitHub's primary or
+ * secondary rate limit (both answer 403, some 429, and say "rate limit" in the body: checked first, so a
+ * quota that ran out is never read as a token gap), alerts switched off for the repository, an archived
+ * repository, a token without the Dependabot alerts permission (403 or 404 with no other cause), or
+ * anything else. Told apart from GitHub's wording, so a wording change falls
+ * to `no-token-access` or `read-error`, never to a count.
+ */
+export function alertsUnreadReason(text) {
+  if (/rate limit|abuse detection|HTTP 429/i.test(text)) return 'rate-limited'
+  if (/disabled/i.test(text)) return 'alerts-off'
+  if (/archived/i.test(text)) return 'archived'
+  if (/HTTP (403|404)|not accessible|permission/i.test(text)) return 'no-token-access'
+  return 'read-error'
+}
+
+/** `{ count, why }`: the overdue count, or `count: null` with the fixed-word reason it could not be read. */
+export function readAlerts(slug, now, json, log = console.error, redact = false) {
+  try {
+    const pages = json(['api', '--paginate', '--slurp', `repos/${slug}/dependabot/alerts?state=open&per_page=100`])
+    return { count: overdueAlerts(pages.flat(), now), why: null }
+  } catch (cause) {
+    const text = String(cause.stderr || cause.message)
+    const reason = redact ? (/HTTP (\d{3})/.exec(text)?.[0] ?? 'read failed') : text.trim().split('\n')[0]
+    log(`::warning::fleet-status could not read Dependabot alerts for ${slug}: ${reason}`)
+    return { count: null, why: alertsUnreadReason(text) }
+  }
+}
+
 /** The repositories to cover: fleet.json plus any ship-bot repo it lacks. */
 /** Where a repository keeps the kit manifest: fleet.json's evidencePaths where it moves the file (this repository holds the canonical copy under templates/). */
 export const KIT_MANIFEST = 'verification-kit/MANIFEST.json'
@@ -205,6 +263,8 @@ export function redactRepo(full) {
     dependabotRedCount: full.dependabotRed,
     // A version number is not private; the fleet-wide check needs it from every row.
     kitVersion: full.kitVersion,
+    // A count (or null for UNKNOWN) names no package or advisory.
+    alertsOverdue: full.alertsOverdue,
   }
 }
 
@@ -225,7 +285,7 @@ export async function collectRepo(slug, now = new Date(), { includePrivate = fal
   }
   try {
     if (repo instanceof Error) throw repo
-    return await gatherRepo(slug, now, { includePrivate, json, repo, kitPath, carryBranches })
+    return await gatherRepo(slug, now, { includePrivate, json, repo, kitPath, carryBranches, log })
   } catch (cause) {
     const detail = String(cause.stderr || cause.message).trim().split('\n')[0]
     // A rate-limit answer names no file, so it is safe to say even for a private repository: without it, 18 rows
@@ -245,7 +305,7 @@ function ciForCommit(slug, sha, json) {
   return ciState(runs, status)
 }
 
-export async function gatherRepo(slug, now = new Date(), { includePrivate = false, json = ghJson, repo = null, kitPath = KIT_MANIFEST, carryBranches } = {}) {
+export async function gatherRepo(slug, now = new Date(), { includePrivate = false, json = ghJson, repo = null, kitPath = KIT_MANIFEST, carryBranches, log = console.error } = {}) {
   const today = now.toISOString().slice(0, 10)
   if (repo === null) repo = json(['api', `repos/${slug}`])
   const base = repo.default_branch
@@ -302,6 +362,7 @@ export async function gatherRepo(slug, now = new Date(), { includePrivate = fals
   const kitVersion = manifestText === null ? null : (JSON.parse(manifestText).version ?? '')
   const mainSha = json(['api', `repos/${slug}/commits/${base}`]).sha
   const mainRed = ciForCommit(slug, mainSha, json) === 'red'
+  const alerts = readAlerts(slug, now, json, log, isPrivate && !includePrivate)
   const full = {
     slug,
     defaultBranch: base,
@@ -316,6 +377,9 @@ export async function gatherRepo(slug, now = new Date(), { includePrivate = fals
     incidents7d: incidents,
     dependabotRed: dependabotRed(openPrs),
     kitVersion,
+    alertsOverdue: alerts.count,
+    // Public rows only: which private repositories have alerts switched off is not published.
+    ...(alerts.why ? { alertsUnread: alerts.why } : {}),
   }
   return isPrivate && !includePrivate ? redactRepo(full) : full
 }

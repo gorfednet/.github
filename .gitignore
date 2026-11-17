@@ -3,3 +3,7 @@
 # The mutation canary writes this before breaking a file and reverts from it on
 # the next start. It only exists mid-run, or after a run that was killed.
 .mutation-canary-dirty.json
+
+# Nightly mutation run (plan row 1.35): installed tool, never committed.
+ship-bot/mutation/node_modules/
+.stryker-tmp/

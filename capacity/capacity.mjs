@@ -7,16 +7,51 @@ import path from 'node:path'
 import { execFileSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 
-export const THRESHOLDS = { headroomLoadFactor: 0.7, minFreeGb: 4, maxWorking: 5, maxBuilders: 2, workingWindowMs: 10 * 60 * 1000 }
+export const THRESHOLDS = { headroomLoadFactor: 0.7, minFreeGb: 4, minIdlePct: 40, maxWorking: 5, maxBuilders: 2, workingWindowMs: 10 * 60 * 1000 }
 
-/** Pure: inputs in, state out. */
-export function classify({ load1, cores, freeGb, working }, t = THRESHOLDS) {
-  if (load1 > cores || freeGb < t.minFreeGb) return { state: 'hold', freeSlots: 0 }
+/**
+ * Pure: inputs in, state out.
+ *
+ * While a backup runs (`backup` names it: Time Machine or Backblaze) the load average counts the backup's disk waits, so it says
+ * nothing about the CPU (16 November 2026: load 25 to 38, CPU 56% idle, `hold`, 4 of 5 slots left empty). The same rule as
+ * ops `builder-ok` then applies: hold on CPU idle under 40% or free memory under 4 GB, and ignore load. If the backup or the idle
+ * figure could not be read (`backup` falsy, `idlePct` not a finite number), the load rule applies: fail closed.
+ */
+export function classify({ load1, cores, freeGb, working, backup = null, idlePct = null }, t = THRESHOLDS) {
+  const byIdle = Boolean(backup) && typeof idlePct === 'number' && Number.isFinite(idlePct)
+  if (freeGb < t.minFreeGb) return { state: 'hold', freeSlots: 0 }
+  if (byIdle ? idlePct < t.minIdlePct : load1 > cores) return { state: 'hold', freeSlots: 0 }
   if (working === null) return { state: 'steady', freeSlots: 0 } // session count unknown: never claim headroom
-  if (load1 < t.headroomLoadFactor * cores && working < t.maxWorking) {
+  // The 0.7 x cores margin is a load rule too; during a backup the idle floor above is the whole CPU test, as in builder-ok.
+  if ((byIdle || load1 < t.headroomLoadFactor * cores) && working < t.maxWorking) {
     return { state: 'headroom', freeSlots: Math.min(t.maxWorking - working, t.maxBuilders) }
   }
   return { state: 'steady', freeSlots: 0 }
+}
+
+/** True when `tmutil status` output says a Time Machine backup is running (`Running = 1`). */
+export function parseTmutil(text) {
+  return /Running\s*=\s*1\b/.test(String(text ?? ''))
+}
+
+/** CPU idle percent from the last `CPU usage` line of `top -l 2` output (the first sample is since boot), or null. */
+export function parseTopIdle(text) {
+  const lines = String(text ?? '').split('\n').filter((l) => l.startsWith('CPU usage'))
+  const m = /([0-9.]+)% idle/.exec(lines.at(-1) ?? '')
+  const v = m ? Number(m[1]) : NaN
+  return Number.isFinite(v) ? v : null
+}
+
+/**
+ * Which backup is running, or null. A probe that fails counts as "not running", so the load rule applies.
+ * `exec(cmd, args)` returns stdout and throws on failure (pgrep exits 1 when nothing matches).
+ */
+export function detectBackup(exec) {
+  let tm = false
+  try { tm = parseTmutil(exec('tmutil', ['status'])) } catch { /* unreadable: not proven running */ }
+  if (tm) return 'Time Machine'
+  try { if (String(exec('pgrep', ['-x', 'bztransmit'])).trim() !== '') return 'Backblaze' } catch { /* no match or no pgrep */ }
+  return null
 }
 
 /** Free plus inactive pages from `vm_stat` output, in GB. */
@@ -79,7 +114,7 @@ export async function run(deps) {
   const inputs = { ...read(), working: deps.working() }
   const { state, freeSlots } = classify(inputs)
   const queued = deps.queue()
-  const out = { state, freeSlots, load1: inputs.load1, cores: inputs.cores, freeGb: Number(inputs.freeGb.toFixed(2)), working: inputs.working, sessionsKnown: inputs.working !== null, poolQueue: queued, weeklyUsage: null, at: new Date(now).toISOString() }
+  const out = { state, freeSlots, load1: inputs.load1, cores: inputs.cores, freeGb: Number(inputs.freeGb.toFixed(2)), backup: inputs.backup ?? null, idlePct: inputs.idlePct ?? null, working: inputs.working, sessionsKnown: inputs.working !== null, poolQueue: queued, weeklyUsage: null, at: new Date(now).toISOString() }
   const prev = readPrevious()
   // Compare with the last state a push actually reached, so a failed POST is retried next run.
   let lastPushed = prev && 'lastPushedState' in prev ? prev.lastPushedState : (prev?.state ?? null)
@@ -138,6 +173,16 @@ export async function afterRun({ helpers, home, pushOps, log = console.log, root
   return done
 }
 
+/** Backup state and, only while one runs, CPU idle (a second `top` sample takes about 2 seconds). Any failure leaves the load rule in force. */
+function backupInputs() {
+  const exec = (cmd, args) => execFileSync(cmd, args, { timeout: 10000 }).toString()
+  const backup = detectBackup(exec)
+  if (!backup) return { backup: null, idlePct: null }
+  let idlePct = null
+  try { idlePct = parseTopIdle(exec('top', ['-l', '2', '-n', '0', '-s', '2'])) } catch { /* unreadable: load rule */ }
+  return { backup, idlePct }
+}
+
 async function main() {
   const home = os.homedir()
   const dir = path.join(home, '.desk')
@@ -150,6 +195,7 @@ async function main() {
       load1: os.loadavg()[0],
       cores: Number(execFileSync('sysctl', ['-n', 'hw.ncpu']).toString()),
       freeGb: parseVmStat(execFileSync('vm_stat').toString()),
+      ...backupInputs(),
     }),
     working: () => (fs.existsSync(sessions) ? countWorking(sessions, Date.now()) : null),
     // One optional command printing a number; null when none is configured (README).

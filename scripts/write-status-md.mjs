@@ -85,6 +85,10 @@ export function summarize(status) {
     redMains: ok.filter((r) => r.mainRed).map((r) => r.slug),
     lapsed: ok.reduce((n, r) => n + (r.redacted ? r.lapsedBacklogCount : r.lapsedBacklog.length), 0),
     dependabotRed: ok.reduce((n, r) => n + (r.redacted ? r.dependabotRedCount : r.dependabotRed), 0),
+    // Alerts past target: a count per repository, or null (UNKNOWN) where the alerts could not be read or the snapshot predates the field.
+    alertsOverdue: ok.reduce((n, r) => n + (Number.isInteger(r.alertsOverdue) ? r.alertsOverdue : 0), 0),
+    // Every row, unreadable repositories included: one the report could not read at all is not one with 0 alerts.
+    alertsUnknown: status.repos.filter((r) => !Number.isInteger(r.alertsOverdue)).length,
     waiting: prs.filter(waitingOnOwner).length,
     unavailable: status.repos.filter((r) => r.unavailable).map((r) => r.slug),
   }
@@ -154,11 +158,22 @@ export function hygiene(status) {
   ]
 }
 
+/** "Dependabot alerts past target" for one repository: the count, or UNKNOWN, never 0 for a read that failed. */
+const UNREAD = { 'rate-limited': 'rate limit hit', 'alerts-off': 'alerts are off', archived: 'archived', 'no-token-access': 'token cannot read alerts', 'read-error': 'read failed' }
+export const alertsCell = (n, why) => (Number.isInteger(n) ? `${n} Dependabot alerts past target` : `Dependabot alerts past target UNKNOWN${UNREAD[why] ? ` (${UNREAD[why]})` : ''}`)
+
+/** The fleet's total, with UNKNOWN named whenever some repository could not be read. */
+export const alertsPhrase = (s) => {
+  // With any repository unread the total is a floor, so it never leads the line as a bare number.
+  if (s.alertsUnknown > 0) return `Dependabot alerts past target UNKNOWN (${s.alertsOverdue} counted, ${s.alertsUnknown} repos not read)`
+  return `${s.alertsOverdue} Dependabot alerts past target`
+}
+
 export function summaryLine(status) {
   const s = summarize(status)
   const oldest = s.oldest ? `oldest ${s.oldest.ageDays} days (${short(s.oldest.slug)} #${s.oldest.number})` : 'none open'
   const tail = s.unavailable.length ? `, ${s.unavailable.length} repos unreadable` : ''
-  return `${s.openPrs} open PRs, ${oldest}, ${s.redMains.length} red mains, ${s.lapsed} lapsed backlog items, ${s.dependabotRed} dependabot red, ${s.waiting} waiting on the owner${tail}.`
+  return `${s.openPrs} open PRs, ${oldest}, ${s.redMains.length} red mains, ${s.lapsed} lapsed backlog items, ${s.dependabotRed} dependabot red, ${alertsPhrase(s)}, ${s.waiting} waiting on the owner${tail}.`
 }
 
 export function render(status) {
@@ -175,7 +190,7 @@ export function render(status) {
       continue
     }
     if (r.redacted) {
-      out.push(`(private, counts only) main ${r.mainRed ? '**red**' : 'ok'} · ${r.openPrCount} open PRs · ${r.lapsedBacklogCount} lapsed backlog items · ${r.dependabotRedCount} dependabot red`, '')
+      out.push(`(private, counts only) main ${r.mainRed ? '**red**' : 'ok'} · ${r.openPrCount} open PRs · ${r.lapsedBacklogCount} lapsed backlog items · ${r.dependabotRedCount} dependabot red · ${alertsCell(r.alertsOverdue)}`, '')
       continue
     }
     const facts = [
@@ -183,6 +198,7 @@ export function render(status) {
       `last deploy ${r.lastDeploy ? `[${etStamp(r.lastDeploy.at)}](${r.lastDeploy.url})` : 'none found'}`,
       `${r.incidents7d} incident lines in 7 days`,
       `${r.dependabotRed} dependabot red`,
+      alertsCell(r.alertsOverdue, r.alertsUnread),
       `kit ${r.kitVersion ?? 'none'}`,
     ]
     out.push(facts.join(' · '), '')

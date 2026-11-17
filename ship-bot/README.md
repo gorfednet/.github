@@ -172,6 +172,11 @@ node ~/.ship-bot/app/patch-config.mjs <patch.json>
 It backs the config up, refuses a slug the config already has, validates the result and prints
 slugs and key names only. A patch's row should set `live: false`; `--set-repo-live` turns it on.
 
+A top-level key such as `ntfy` goes in the patch's `"set": {"ntfy": {...}}`, with `null` to remove
+one. `set` refuses `repos` and `live`: rows go through `add` and `repos`, and `--set-live` turns
+merging on or off. A key a public patch sets must match `config.example.json` (a test fails when
+the two differ).
+
 A public repository's patch lives in `patches/` beside an identical row in `config.example.json`
 (a test fails when the two differ). A row for a private repository outside the privacy guard's
 allowlist never goes in this public repository: the guard fails the pull request.
@@ -373,6 +378,20 @@ refusal sends one loud message. Each of these needs a hand install
 - A new version whose dry pass fails, or stops on a repository the installed
   one handles. The dry pass gets one retry first too.
 - A new version that a health check found unhealthy and rolled back.
+
+## Node
+
+Target: the agents run the user-owned Node 24 at `~/.local/share/node/24/bin/node`, a stable link that
+`scripts/node-update.sh 24` moves to each new patch with no sudo (plan row 3.20k). The installers record that
+link, not a versioned directory, so a patch needs no reinstall and no LaunchAgent reload: ship-bot starts a
+fresh process every 2 minutes and picks the new binary up on its next start. Until the owner has run
+`scripts/node-update.sh 24` and rerun the three installers by hand (`resolve-node.sh` is a hand-install path),
+the plists still name `/usr/local/bin/node`, which stays the resolver's fallback until the `.pkg` is removed.
+`scripts/node-update.sh 24 --check` reads the installed and the latest patch without changing anything.
+fleet-status treats a newer patch or minor of the recorded major as current only on that stable link; a new
+major, a downgrade or any other program path is still drift. Only a candidate named exactly
+`~/.local/share/node/<major>/bin/node` is exempt from the private-folder refusal: the shell's
+`~/.local/bin/node` points into the same folder and stays refused.
 
 "Handles" is read from the last 3 complete live passes. A repository counts
 as already broken only when it stopped on an error in each of them.
