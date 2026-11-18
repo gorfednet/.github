@@ -3,6 +3,10 @@
  * janitor runs it. A push is tested for real against a bare repository: git's `url.<base>.insteadOf`
  * (set in the child's environment only) sends the script's fixed ops URL to that directory, so the
  * script itself carries no way to change its target.
+ *
+ * No test here may reach a real remote. Every child run and in-process push gets a default environment that
+ * sends the ops URL (https and both ssh forms) to a path that does not exist, with prompts and credential
+ * helpers off. Only `fakeOps` replaces it, with a local bare repository. See the guard below.
  */
 import { strict as assert } from 'node:assert'
 import { execFileSync, spawnSync } from 'node:child_process'
@@ -29,15 +33,55 @@ afterEach(() => {
 
 const git = (cwd, ...args) => execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
 
+/**
+ * The default environment for every child and in-process push: the ops URL in each form git accepts for
+ * it resolves to a directory that does not exist, nothing may prompt, and no credential helper runs.
+ * insteadOf matches by prefix, so each base also covers the `.git` form.
+ */
+const NO_SUCH_REMOTE = join(tmpdir(), `n7-no-such-remote-${process.pid}`)
+const OPS_BASES = ['https://github.com/gorfednet/ops', 'ssh://git@github.com/gorfednet/ops', 'git@github.com:gorfednet/ops']
+const redirectEnv = () => {
+  const env = { GIT_TERMINAL_PROMPT: '0', GIT_ASKPASS: 'true', SSH_ASKPASS: 'true', GIT_SSH_COMMAND: 'false' }
+  const rules = [...OPS_BASES.map((base) => [`url.${NO_SUCH_REMOTE}.insteadOf`, base]), ['credential.helper', '']]
+  env.GIT_CONFIG_COUNT = String(rules.length)
+  rules.forEach(([key, value], i) => { env[`GIT_CONFIG_KEY_${i}`] = key; env[`GIT_CONFIG_VALUE_${i}`] = value })
+  return env
+}
+// Applied to this process too, so a call that passes no env (the default `process.env`, an in-process
+// pushCounts) is covered the same way.
+Object.assign(process.env, redirectEnv())
+
+/** Throws unless `env` sends the ops URL to the missing path or to a local bare repository. */
+function assertIsolated(env) {
+  const n = Number(env.GIT_CONFIG_COUNT)
+  assert.ok(n >= 1, 'test env has no git config redirect: a push could reach the real ops remote')
+  const targets = []
+  for (let i = 0; i < n; i++) if (/^url\..*\.insteadOf$/.test(env[`GIT_CONFIG_KEY_${i}`])) targets.push([env[`GIT_CONFIG_KEY_${i}`].slice(4, -'.insteadOf'.length), env[`GIT_CONFIG_VALUE_${i}`]])
+  assert.ok(targets.some(([, from]) => from === OPS_REMOTE || OPS_BASES.includes(from)), 'test env does not redirect the ops URL')
+  for (const [to] of targets) assert.ok(!/github\.com/.test(to), `redirect target is remote: ${to}`)
+}
+
+// Before any push in this file: prove the redirect is in force by asking git to list the real ops URL
+// (both forms). It must fail on the missing local path, not reach github.com.
+for (const url of [OPS_REMOTE, 'git@github.com:gorfednet/ops.git']) {
+  assertIsolated(process.env)
+  const probe = spawnSync('git', ['ls-remote', url], { encoding: 'utf8', env: process.env, timeout: 15000 })
+  if (probe.status === 0 || !probe.stderr.includes(NO_SUCH_REMOTE)) {
+    throw new Error(`test isolation is not in force for ${url}: exit ${probe.status}, ${probe.stderr}`)
+  }
+}
+
 /** A bare repository standing in for the ops remote, and the env that sends the fixed URL to it. */
 function fakeOps(root) {
   const bare = join(root, 'ops.git')
   git(root, 'init', '--bare', '-b', 'main', bare)
   const env = { ...process.env, GIT_CONFIG_COUNT: '1', GIT_CONFIG_KEY_0: `url.${bare}.insteadOf`, GIT_CONFIG_VALUE_0: OPS_REMOTE }
+  for (const key of Object.keys(env)) if (/^GIT_CONFIG_(KEY|VALUE)_[1-9]/.test(key)) delete env[key]
   return { bare, env }
 }
 
 function run(root, status, extra = [], env = process.env) {
+  assertIsolated(env)
   const input = join(root, 'status.json')
   writeFileSync(input, JSON.stringify(status))
   const outDir = join(root, 'out')
@@ -52,6 +96,16 @@ const keepFile = (root) => {
   writeFileSync(file, JSON.stringify(keepList()))
   return file
 }
+
+describe('test isolation', () => {
+  it('sends the ops URL, in every form, to a missing local path and never to github.com', () => {
+    for (const url of [OPS_REMOTE, 'https://github.com/gorfednet/ops', 'git@github.com:gorfednet/ops.git', 'ssh://git@github.com/gorfednet/ops.git']) {
+      const r = spawnSync('git', ['ls-remote', url], { encoding: 'utf8', env: process.env, timeout: 15000 })
+      assert.notEqual(r.status, 0, url)
+      assert.ok(r.stderr.includes(NO_SUCH_REMOTE), r.stderr)
+    }
+  })
+})
 
 describe('the counts file', () => {
   it('reduces a full read to integers and fixed keys, with every row stamped, and exits 0', () => {
@@ -211,6 +265,7 @@ describe('the push', () => {
    * `resolveUrl` out.
    */
   function push(text, env, options = {}) {
+    assertIsolated(env)
     const saved = {}
     for (const [k, v] of Object.entries(env)) if (k.startsWith('GIT_')) { saved[k] = process.env[k]; process.env[k] = v }
     try {
