@@ -21,10 +21,34 @@ test("janitor does not rely on gh pr diff --name-only for the allowlist", () => 
 test("janitor step 4 sweeps sessions and guards live ones and owner questions", () => {
   const step = prompt.match(/\n4\. Sessions\.[\s\S]*?(?=\n5\. Worktrees)/);
   assert.ok(step, "step 4 exists");
-  assert.match(step[0], /`merged`: its pull request merged\. Record its cost \(step 4\.7\), then archive it/);
+  // 18 November 2026: a `merged` folder archives only with the session's own pull request merged (the next test).
+  assert.match(step[0], /`merged`: its folder's branch reached the default branch through a merge commit\. With `own` `merged`, its own pull request merged too: record its cost \(step 4\.7\), then archive it/);
   assert.match(step[0], /isRunning/);
   assert.match(step[0], /question or a decision for the owner/);
   assert.match(step[0], /idle over 48 hours/);
+});
+
+test("janitor step 4 archives on the session's own pull request, never on its folder's branch", () => {
+  const step = prompt.match(/\n4\. Sessions\.[\s\S]*?(?=\n5\. Worktrees)/)[0];
+  const leave = step.match(/\n   3\. Leave a session alone[\s\S]*?(?=\n   4\. )/)[0];
+  assert.match(leave, /its `own` is `keep`[^\n]*own pull request is open[^\n]*Nothing below overrides this[^\n]*folder reads `merged` while its own pull request is open is kept/);
+  assert.match(step, /`prNumber`, `prState` and `isRunning` that `list_sessions` gave for that session/);
+  assert.match(step, /Then read its `own` first:/);
+  assert.match(step, /- `closed`: its own pull request closed unmerged\. Propose only[^\n]*never archive it/);
+  assert.match(step, /with `mainCheckout` true: the session shares a main clone, so the folder's `state` and `branch` are the clone's and never the session's\. Never archive it on a `merged` or `fresh` folder alone/);
+  assert.match(step, /With `own` `no-pr`, only its idle time counts: idle over 48 hours/);
+  assert.match(step, /With `own` `no-pr`, treat it as `fresh` in the last bullet: idle time only/);
+  assert.doesNotMatch(step, /`merged`: its pull request merged\./, "a merged folder is not a merged pull request");
+  // `own` is read before any `state` bullet, so no state can archive a kept session.
+  assert.ok(step.indexOf("Then read its `own` first") < step.indexOf("The `state` bullets:"));
+  for (const bullet of ["`merged`: its folder's", "`dirty`:", "`unmerged`, idle", "`unreadable`:", "`fresh`, `missing`"]) assert.ok(step.indexOf("The `state` bullets:") < step.indexOf("- " + bullet), bullet);
+});
+
+test("janitor step 5 deletes no origin branch an open pull request uses", () => {
+  const step = prompt.match(/\n5\. Worktrees\.[^\n]*/)[0];
+  assert.match(step, /the origin branch when that's merged too and no open pull request has it as its head or its base \(one `gh pr list --state open` per repository/);
+  assert.match(step, /`remoteBranchKept`[^\n]*if it says the list failed, name it in the digest/);
+  assert.match(prompt, /origin branch deletes in step 5 and its one `gh pr list --state open` per repository with a branch to delete/);
 });
 
 test("janitor reports last, after the sessions, worktrees and retire tags", () => {

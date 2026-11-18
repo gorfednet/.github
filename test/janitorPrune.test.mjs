@@ -16,7 +16,9 @@ const DAY = 86400000
 
 function fleet() {
   const top = realpathSync(mkdtempSync(join(tmpdir(), 'janitor-prune-')))
-  const origin = join(top, 'origin.git')
+  // A path ending in github.com/<owner>/<name>.git reads as that repository's slug: the prune asks for its open pull requests by it.
+  const origin = join(top, 'github.com', 'gorfednet', 'site.git')
+  mkdirSync(join(top, 'github.com', 'gorfednet'), { recursive: true })
   const root = join(top, 'gorfednet')
   mkdirSync(root)
   execFileSync('git', ['init', '--quiet', '--bare', '-b', 'main', origin])
@@ -122,16 +124,113 @@ describe('janitor-prune', () => {
 
   it('with --apply removes the merged worktree and its local and origin branches, and nothing else', () => {
     const f = fleet()
-    const rows = run({ root: f.root, keep: new Set([f.live]), idleMs: DAY, apply: true, now: Date.now() + 2 * DAY, fetch: false, log: quiet })
+    const asked = []
+    const rows = run({ root: f.root, keep: new Set([f.live]), idleMs: DAY, apply: true, now: Date.now() + 2 * DAY, fetch: false, log: quiet, openBranches: (slug) => (asked.push(slug), ['main', 'feat/unmerged']) })
     const row = rows.find((r) => r.path === f.merged)
     assert.equal(row.removed, true)
     assert.equal(row.localBranchDeleted, true)
     assert.equal(row.remoteBranchDeleted, true)
+    assert.deepEqual(asked, ['gorfednet/site'], 'the open pull requests of the clone\'s own repository, read once')
     assert.ok(!existsSync(f.merged))
     for (const kept of [f.unmerged, f.dirty, f.gates, f.desk, f.live]) assert.ok(existsSync(kept), kept)
     assert.ok(existsSync(join(f.dirty, 'wip.txt')))
     assert.match(git(f.clone, 'ls-remote', 'origin'), /feat\/unmerged/)
     assert.doesNotMatch(git(f.clone, 'ls-remote', 'origin'), /feat\/merged/)
+  })
+
+  // Deleting the base branch of an open pull request closes that pull request (INCIDENTS, 18 November 2026).
+  it('with --apply keeps an origin branch that is the base or the head of an open pull request, reading the list once per repository', () => {
+    const f = fleet()
+    // A second merged, clean worktree in the same clone, so two origin branches are up for deletion.
+    const second = join(f.clone, '.claude', 'worktrees', 'merged2')
+    git(f.clone, 'worktree', 'add', '--quiet', '-b', 'feat/merged2', second, 'main')
+    writeFileSync(join(second, 'm2.txt'), 'm2\n')
+    git(second, 'add', '.')
+    git(second, 'commit', '--quiet', '-m', 'm2')
+    git(second, 'push', '--quiet', '-u', 'origin', 'feat/merged2')
+    git(f.clone, 'merge', '--quiet', '--no-ff', '-m', 'merge 2', 'feat/merged2')
+    git(f.clone, 'push', '--quiet', 'origin', 'main')
+    const third = join(f.clone, '.claude', 'worktrees', 'merged3')
+    git(f.clone, 'worktree', 'add', '--quiet', '-b', 'feat/merged3', third, 'feat/merged2')
+    git(third, 'push', '--quiet', '-u', 'origin', 'feat/merged3')
+    let calls = 0
+    // feat/merged is the base of an open pull request (a stacked one), feat/merged2 the head of another.
+    const openBranches = () => (++calls, ['feat/stacked', 'feat/merged', 'feat/merged2', 'main'])
+    const rows = run({ root: f.root, keep: new Set([f.live]), idleMs: DAY, apply: true, now: Date.now() + 2 * DAY, fetch: false, log: quiet, openBranches })
+    const by = Object.fromEntries(rows.map((r) => [r.branch, r]))
+    for (const b of ['feat/merged', 'feat/merged2']) {
+      assert.equal(by[b].removed, true, `${b}: the worktree itself is merged and clean, so it still goes`)
+      assert.equal(by[b].remoteBranchDeleted, undefined, b)
+      assert.equal(by[b].remoteBranchKept, 'head or base of an open pull request', b)
+    }
+    // The near miss: merged, and no open pull request names it.
+    assert.equal(by['feat/merged3'].remoteBranchDeleted, true)
+    assert.equal(by['feat/merged3'].remoteBranchKept, undefined)
+    assert.equal(calls, 1, 'one pull request list for the repository, not one per branch')
+    const left = git(f.clone, 'ls-remote', '--heads', 'origin')
+    assert.match(left, /refs\/heads\/feat\/merged\n/)
+    assert.match(left, /refs\/heads\/feat\/merged2\n/)
+    assert.doesNotMatch(left, /feat\/merged3/)
+  })
+
+  it('with --apply deletes no origin branch when the open pull request list cannot be read, or origin is not a GitHub repository', () => {
+    const f = fleet()
+    const opts = { root: f.root, keep: new Set([f.live]), idleMs: DAY, apply: true, now: Date.now() + 2 * DAY, fetch: false, log: quiet }
+    const row = run({ ...opts, openBranches: () => { throw new Error('gh: rate limited') } }).find((r) => r.path === f.merged)
+    assert.equal(row.removed, true)
+    assert.equal(row.remoteBranchDeleted, undefined)
+    assert.match(row.remoteBranchKept, /open pull request list failed: gh: rate limited/)
+    assert.match(git(f.clone, 'ls-remote', '--heads', 'origin'), /feat\/merged/)
+    const g = fleet()
+    const moved = join(g.root, '..', 'plain.git')
+    execFileSync('git', ['clone', '--quiet', '--bare', git(g.clone, 'remote', 'get-url', 'origin'), moved], { stdio: 'ignore' })
+    git(g.clone, 'remote', 'set-url', 'origin', moved)
+    let calls = 0
+    const plain = run({ ...opts, root: g.root, keep: new Set([g.live]), openBranches: () => (++calls, []) }).find((r) => r.path === g.merged)
+    assert.match(plain.remoteBranchKept, /not a GitHub repository/)
+    assert.equal(calls, 0)
+    assert.match(git(g.clone, 'ls-remote', '--heads', 'origin'), /feat\/merged/)
+  })
+
+  // The folder's state is the clone's; whether a session is done is its own pull request's (INCIDENTS, 18 November 2026).
+  it('sessions: a merged folder never makes a session archivable while its own pull request is open, running or pinned', () => {
+    const f = fleet()
+    const s = (sessionId, cwd, extra) => ({ sessionId, title: sessionId, cwd, isRunning: false, lastActivityAt: '2026-11-18T01:22:11.430Z', ...extra })
+    const file = join(f.root, 'sessions.json')
+    writeFileSync(file, JSON.stringify([
+      s('open', f.merged, { prNumber: 274, prState: 'OPEN' }),
+      s('merged', f.merged, { prNumber: 9, prState: 'MERGED' }),
+      s('closed', f.merged, { prNumber: 8, prState: 'CLOSED' }),
+      s('none', f.merged, {}),
+      s('null', f.merged, { prNumber: null, prState: null }),
+      s('running', f.merged, { prNumber: 9, prState: 'MERGED', isRunning: true }),
+      s('running-unknown', f.merged, { prNumber: 9, prState: 'MERGED', isRunning: undefined }),
+      s('pinned', f.merged, { prNumber: 9, prState: 'MERGED', isPinned: true }),
+      s('stateless', f.merged, { prNumber: 7 }),
+      s('odd-state', f.merged, { prNumber: 7, prState: 'DRAFT' }),
+      s('state-only', f.merged, { prState: 'MERGED' }),
+      s('main-clone-open', f.clone, { prNumber: 202, prState: 'OPEN' }),
+      s('unmerged-merged', f.unmerged, { prNumber: 5, prState: 'MERGED' }),
+    ]))
+    const out = spawnSync(process.execPath, [new URL('../scripts/janitor-prune.mjs', import.meta.url).pathname, 'sessions', file], { encoding: 'utf8' })
+    assert.equal(out.status, 0, out.stderr)
+    const by = Object.fromEntries(out.stdout.trim().split('\n').map((l) => JSON.parse(l)).map((r) => [r.sessionId, r]))
+    const own = (id) => [by[id].state, by[id].own, by[id].ownReason]
+    // The near miss: the folder reads `merged`, the session's own pull request is open.
+    assert.deepEqual(own('open'), ['merged', 'keep', 'own pull request open'])
+    assert.deepEqual(own('merged'), ['merged', 'merged', undefined])
+    assert.deepEqual(own('closed'), ['merged', 'closed', undefined])
+    assert.deepEqual(own('none'), ['merged', 'no-pr', undefined])
+    assert.deepEqual(own('null'), ['merged', 'no-pr', undefined])
+    assert.deepEqual(own('running'), ['merged', 'keep', 'running'])
+    assert.deepEqual(own('running-unknown'), ['merged', 'keep', 'running'], 'a session whose running flag was not read is taken as running')
+    assert.deepEqual(own('pinned'), ['merged', 'keep', 'pinned'])
+    assert.deepEqual(own('stateless'), ['merged', 'keep', 'own pull request state not known'])
+    assert.deepEqual(own('odd-state'), ['merged', 'keep', 'own pull request state not known'])
+    assert.deepEqual(own('state-only'), ['merged', 'keep', 'own pull request state not known'], 'a state with no number is not a missing pull request')
+    assert.deepEqual([by['main-clone-open'].mainCheckout, by['main-clone-open'].own], [true, 'keep'])
+    assert.deepEqual(own('unmerged-merged'), ['unmerged', 'merged', undefined], 'the folder state is still reported beside it')
+    assert.deepEqual([by.open.prNumber, by.open.prState], [274, 'OPEN'])
   })
 
   it('classifies session folders from git alone: merged, fresh, unmerged, dirty, missing', () => {
