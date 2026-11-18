@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-11-18T12:34:33.573Z",
-  "renderedAt": "2026-11-18T12:34:33.573Z",
+  "generatedAt": "2026-11-18T14:32:11.230Z",
+  "renderedAt": "2026-11-18T14:32:11.230Z",
   "repos": [
     {
       "slug": "gorfednet/bindercurve.com",
@@ -23,7 +23,7 @@
       "slug": "gorfednet/4thcltr.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 36,
+      "openPrCount": 35,
       "lapsedBacklogCount": 21,
       "noPrCount": 18,
       "idlePrCount": 16,
@@ -44,7 +44,7 @@
       "noPrCount": 6,
       "idlePrCount": 0,
       "duplicatePrCount": 0,
-      "dependabotRedCount": 5,
+      "dependabotRedCount": 4,
       "kitVersion": "0.65.0",
       "kitPin": {
         "ref": "main"
@@ -55,10 +55,10 @@
       "slug": "gorfednet/subrythm.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 2,
-      "lapsedBacklogCount": 3,
+      "openPrCount": 1,
+      "lapsedBacklogCount": 0,
       "noPrCount": 1,
-      "idlePrCount": 1,
+      "idlePrCount": 0,
       "duplicatePrCount": 0,
       "dependabotRedCount": 0,
       "kitVersion": "0.61.0",
@@ -87,10 +87,10 @@
       "slug": "gorfednet/blackpixelrecords.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 3,
+      "openPrCount": 2,
       "lapsedBacklogCount": 0,
       "noPrCount": 3,
-      "idlePrCount": 2,
+      "idlePrCount": 1,
       "duplicatePrCount": 0,
       "dependabotRedCount": 0,
       "kitVersion": "0.61.0",
@@ -103,7 +103,7 @@
       "slug": "gorfednet/denseware.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 2,
+      "openPrCount": 3,
       "lapsedBacklogCount": 0,
       "noPrCount": 2,
       "idlePrCount": 0,
@@ -119,12 +119,12 @@
       "slug": "gorfednet/gorfmusic.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 4,
+      "openPrCount": 5,
       "lapsedBacklogCount": 2,
       "noPrCount": 2,
       "idlePrCount": 2,
       "duplicatePrCount": 0,
-      "dependabotRedCount": 1,
+      "dependabotRedCount": 2,
       "kitVersion": "0.61.0",
       "kitPin": {
         "ref": "main"
@@ -135,12 +135,12 @@
       "slug": "gorfednet/promptboi.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 5,
+      "openPrCount": 6,
       "lapsedBacklogCount": 2,
       "noPrCount": 20,
       "idlePrCount": 2,
       "duplicatePrCount": 0,
-      "dependabotRedCount": 2,
+      "dependabotRedCount": 1,
       "kitVersion": "0.61.0",
       "kitPin": {
         "ref": "main"
@@ -190,9 +190,9 @@
           "ageDays": 0,
           "labels": [],
           "draft": false,
-          "review": "findings",
-          "headSha": "ceb8d76bba6cfd7c3e686a50611cced2d7044d6d",
-          "ci": "green",
+          "review": "not-run",
+          "headSha": "5e58b26db78b972f81f78a87ab9e3ba763a934bc",
+          "ci": "pending",
           "next": "Merge once CI is green and `claude review` is clean on this head.",
           "author": "gorfednet"
         },
@@ -206,20 +206,6 @@
           "headSha": "d9c854acb1cef68be281152ea221476815219807",
           "ci": "green",
           "next": "Desk's narrow Fable read of the new head (control-plane paths: `scripts/`), then merge on a clean review.",
-          "author": "gorfednet"
-        },
-        {
-          "number": 216,
-          "title": "Public push guard: check a push or gh text before it reaches a public repository (plan row 1.30 f)",
-          "ageDays": 2,
-          "labels": [
-            "hold"
-          ],
-          "draft": false,
-          "review": "findings",
-          "headSha": "5d127ba95e6530a7b14d20c0a2556574bf14e9fc",
-          "ci": "green",
-          "next": "Superseded by plan row 1.30g (a real git pre-push hook). Kept open, on hold, for its tests and its `checkPush` patterns, which 1.30g reuses. Desk closes this pull request once 1.30g merges. Do not merge, review or push here.",
           "author": "gorfednet"
         },
         {
@@ -578,7 +564,7 @@
       "slug": "gorfednet/MoonMan",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 7,
+      "openPrCount": 8,
       "lapsedBacklogCount": 2,
       "noPrCount": 47,
       "idlePrCount": 0,
@@ -664,7 +650,7 @@
       "slug": "gorfednet/papers.4thcltr.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 2,
+      "openPrCount": 3,
       "lapsedBacklogCount": 0,
       "noPrCount": 5,
       "idlePrCount": 1,
@@ -697,20 +683,6 @@
       "defaultBranch": "main",
       "mainRed": false,
       "openPrs": [
-        {
-          "number": 25,
-          "title": "Add REVIEW.md and the Claude review workflow",
-          "ageDays": 4,
-          "labels": [
-            "ready-to-merge"
-          ],
-          "draft": false,
-          "review": "clean",
-          "headSha": "26019ede0469a77a3afe7c8a43438f0a92fa1085",
-          "ci": "green",
-          "next": "Blocked: set the `CLAUDE_CODE_OAUTH_TOKEN` secret on gorfednet/ai-use-levels (owner step; the review job fails with \"CLAUDE_CODE_OAUTH_TOKEN is empty\"). Then comment `claude review`, and merge when clean (plan row 5.3).",
-          "author": "gorfednet"
-        },
         {
           "number": 23,
           "title": "Spec 1.2.1: a site footer mark, and ordering a long Tool list",
@@ -745,10 +717,6 @@
       "lapsedBacklog": [],
       "backlogOpen": [],
       "idlePrs": [
-        {
-          "number": 25,
-          "idleDays": 4
-        },
         {
           "number": 23,
           "idleDays": 5
@@ -789,7 +757,7 @@
       "slug": "gorfednet/ops",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 17,
+      "openPrCount": 16,
       "lapsedBacklogCount": 0,
       "noPrCount": 3,
       "idlePrCount": 0,
@@ -856,11 +824,11 @@
     }
   },
   "inventory": {
-    "measuredAt": "2026-11-18T12:34:33.573Z",
+    "measuredAt": "2026-11-18T14:32:11.230Z",
     "counts": {
       "pr": {
-        "total": 161,
-        "orphans": 68
+        "total": 154,
+        "orphans": 67
       },
       "session": null,
       "worktree": null,
@@ -871,14 +839,6 @@
       }
     },
     "orphans": [
-      {
-        "kind": "pr",
-        "repo": "gorfednet/.github",
-        "ref": "#261",
-        "label": "ship-bot: milestone releases, no 6-day spacing",
-        "private": false,
-        "lapsed": false
-      },
       {
         "kind": "pr",
         "repo": "gorfednet/ai-use-levels",
@@ -925,8 +885,8 @@
     "planRead": true
   },
   "dotgithub": {
-    "measuredAt": "2026-11-18T12:35:29.560Z",
-    "branches": 41,
+    "measuredAt": "2026-11-18T14:33:08.840Z",
+    "branches": 40,
     "merged": 3,
     "exposedFiles": 61,
     "rulesNotChecked": [],
