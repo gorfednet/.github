@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-11-18T02:32:13.388Z",
-  "renderedAt": "2026-11-18T02:32:13.388Z",
+  "generatedAt": "2026-11-18T04:32:18.606Z",
+  "renderedAt": "2026-11-18T04:32:18.606Z",
   "repos": [
     {
       "slug": "gorfednet/bindercurve.com",
@@ -23,7 +23,7 @@
       "slug": "gorfednet/4thcltr.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 36,
+      "openPrCount": 39,
       "lapsedBacklogCount": 21,
       "noPrCount": 18,
       "idlePrCount": 16,
@@ -39,13 +39,13 @@
       "slug": "gorfednet/gorfed.net",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 7,
+      "openPrCount": 9,
       "lapsedBacklogCount": 3,
       "noPrCount": 6,
       "idlePrCount": 0,
       "duplicatePrCount": 0,
-      "dependabotRedCount": 4,
-      "kitVersion": "0.61.0",
+      "dependabotRedCount": 5,
+      "kitVersion": "0.65.0",
       "kitPin": {
         "ref": "main"
       },
@@ -219,33 +219,6 @@
           "ci": "green",
           "next": "Desk's narrow Fable read of the new head (control-plane paths: `scripts/`), then merge on a clean review.",
           "author": "gorfednet"
-        },
-        {
-          "number": 251,
-          "title": "deps: Dependabot train 2026-11-17",
-          "ageDays": 0,
-          "labels": [],
-          "draft": false,
-          "review": "clean",
-          "headSha": "21a5011730420537b5dd8301580810ee5ef8b631",
-          "ci": "green",
-          "next": "Merge once CI is green and `claude review` is clean on this head.",
-          "author": "gorfednet"
-        },
-        {
-          "number": 244,
-          "title": "Bump the actions group across 3 directories with 7 updates",
-          "ageDays": 0,
-          "labels": [
-            "dependencies",
-            "github_actions"
-          ],
-          "draft": false,
-          "review": "clean",
-          "headSha": "606de37853e197cb215096480afb1b77007a21d5",
-          "ci": "red",
-          "next": null,
-          "author": "app/dependabot"
         },
         {
           "number": 216,
@@ -605,7 +578,7 @@
       "duplicatePrs": [],
       "lastDeploy": null,
       "incidents7d": 3,
-      "dependabotRed": 1,
+      "dependabotRed": 0,
       "kitVersion": "0.65.0",
       "kitPin": {
         "ref": "main"
@@ -671,7 +644,7 @@
       "slug": "gorfednet/career-portfolio",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 8,
+      "openPrCount": 9,
       "lapsedBacklogCount": 1,
       "noPrCount": 1,
       "idlePrCount": 2,
@@ -765,7 +738,7 @@
         {
           "number": 3,
           "title": "Verification kit 0.48.0: the content guidelines and check-voice",
-          "ageDays": 22,
+          "ageDays": 23,
           "labels": [],
           "draft": false,
           "review": "not-run",
@@ -828,7 +801,7 @@
       "slug": "gorfednet/ops",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 17,
+      "openPrCount": 14,
       "lapsedBacklogCount": 0,
       "noPrCount": 3,
       "idlePrCount": 0,
@@ -847,7 +820,7 @@
     "gorfednet/wychwood"
   ],
   "branchesReadAt": "2026-11-18T02:32:13.388Z",
-  "carried": false,
+  "carried": true,
   "localCounts": {
     "rows": {
       "dirtyClones": {
@@ -895,11 +868,11 @@
     }
   },
   "inventory": {
-    "measuredAt": "2026-11-18T02:32:13.388Z",
+    "measuredAt": "2026-11-18T04:32:18.606Z",
     "counts": {
       "pr": {
         "total": 165,
-        "orphans": 73
+        "orphans": 74
       },
       "session": null,
       "worktree": null,
@@ -910,14 +883,6 @@
       }
     },
     "orphans": [
-      {
-        "kind": "pr",
-        "repo": "gorfednet/.github",
-        "ref": "#251",
-        "label": "deps: Dependabot train 2026-11-17",
-        "private": false,
-        "lapsed": false
-      },
       {
         "kind": "pr",
         "repo": "gorfednet/ai-use-levels",
@@ -959,13 +924,13 @@
         "lapsed": true
       }
     ],
-    "hiddenPrivate": 69,
+    "hiddenPrivate": 71,
     "privateReposNotItemised": 18,
     "planRead": true
   },
   "dotgithub": {
-    "measuredAt": "2026-11-18T02:33:23.099Z",
-    "branches": 42,
+    "measuredAt": "2026-11-18T04:33:07.497Z",
+    "branches": 41,
     "merged": 3,
     "exposedFiles": 61,
     "rulesNotChecked": [],
