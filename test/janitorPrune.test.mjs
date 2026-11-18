@@ -205,7 +205,8 @@ describe('janitor-prune', () => {
       s('null', f.merged, { prNumber: null, prState: null }),
       s('running', f.merged, { prNumber: 9, prState: 'MERGED', isRunning: true }),
       s('running-unknown', f.merged, { prNumber: 9, prState: 'MERGED', isRunning: undefined }),
-      s('pinned', f.merged, { prNumber: 9, prState: 'MERGED', isPinned: true }),
+      s('pinned', f.merged, { prNumber: 9, prState: 'MERGED', pinned: true }),
+      s('pinned-legacy', f.merged, { prNumber: 9, prState: 'MERGED', isPinned: true }),
       s('stateless', f.merged, { prNumber: 7 }),
       s('odd-state', f.merged, { prNumber: 7, prState: 'DRAFT' }),
       s('state-only', f.merged, { prState: 'MERGED' }),
@@ -225,6 +226,7 @@ describe('janitor-prune', () => {
     assert.deepEqual(own('running'), ['merged', 'keep', 'running'])
     assert.deepEqual(own('running-unknown'), ['merged', 'keep', 'running'], 'a session whose running flag was not read is taken as running')
     assert.deepEqual(own('pinned'), ['merged', 'keep', 'pinned'])
+    assert.deepEqual(own('pinned-legacy'), ['merged', 'keep', 'pinned'])
     assert.deepEqual(own('stateless'), ['merged', 'keep', 'own pull request state not known'])
     assert.deepEqual(own('odd-state'), ['merged', 'keep', 'own pull request state not known'])
     assert.deepEqual(own('state-only'), ['merged', 'keep', 'own pull request state not known'], 'a state with no number is not a missing pull request')

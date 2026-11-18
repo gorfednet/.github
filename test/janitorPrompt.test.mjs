@@ -229,7 +229,9 @@ test("every value file is written before the first command that reads it", () =>
 });
 
 test("a session with no worktree is archived without it, and what needs one is propose-only", () => {
-  assert.match(prompt, /A session with no `worktree` has no worktree file: it is still handled by its `state` below\. A `merged` one is archived\. An `unmerged` one with an `OPEN` or `CLOSED` pull request is left or proposed as below, never archived\./);
+  assert.match(prompt, /A session with no `worktree` has no worktree file: it is still handled by its `own` below, never by its folder's `state` alone\. An `unmerged` one with an `OPEN` or `CLOSED` pull request is left or proposed as below, never archived\./);
+  assert.doesNotMatch(prompt, /A `merged` one is archived/, "a merged folder alone never archives a session: its own pull request decides");
+  assert.doesNotMatch(prompt, /archive it if its `state` says so/, "the cost step defers to own, not the folder's state");
   assert.doesNotMatch(prompt, /can still be archived as `unmerged`/, "OPEN and CLOSED unmerged sessions are never archived");
   assert.match(prompt, /the `MERGED` `rev-list` check, a rescue\) is propose-only/);
   assert.match(prompt, /with no `--worktree` argument/);
