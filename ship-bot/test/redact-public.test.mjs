@@ -28,10 +28,14 @@ describe('an env value that is a public name', () => {
     assert.equal(redactor.apply('gorfednet/example-site.org#63: ssh to somehostvalue123 failed'), 'gorfednet/example-site.org#63: ssh to [REDACTED] failed')
   })
 
-  it('never takes a repo slug, its owner, its basename or a path segment, whatever the name', () => {
+  it('never takes a repo slug, its owner, its basename or its directory name, whatever the name', () => {
     const names = redact.publicNames([{ ...repo, siblings: [{ slug: 'gorfednet/helper-repo', dir: 'helper-repo', path: '/work/helper-repo' }] }])
-    for (const name of ['gorfednet/example-site.org', 'gorfednet', 'example-site.org', '/src/example-site.org', '/work/example-site.org', 'gorfednet/helper-repo', 'helper-repo']) {
+    for (const name of ['gorfednet/example-site.org', 'gorfednet', 'example-site.org', 'gorfednet/helper-repo', 'helper-repo']) {
       assert.ok(names.includes(name), `${name} is a public name`)
+    }
+    // Host paths are not repo names: neither a whole path nor a segment of one is allowed.
+    for (const name of ['/src/example-site.org', '/work/example-site.org', '/work/helper-repo', 'src', 'work']) {
+      assert.ok(!names.includes(name), `${name} is not a public name`)
     }
     const redactor = new Redactor([], { publicNames: names })
     // Secret by name, public by value: the name loses.
@@ -43,6 +47,21 @@ describe('an env value that is a public name', () => {
     assert.deepEqual([...late.secrets], [API_TOKEN])
     // The near miss: a value that only contains a public name is still a secret.
     assert.equal(new Redactor(['example-site.org-deploy-key'], { publicNames: names }).apply('key example-site.org-deploy-key'), 'key [REDACTED]')
+  })
+
+  it('never allows a segment of an absolute path: the host account name stays masked', () => {
+    const hosted = {
+      ...repo,
+      sourceDir: '/Users/exampleuser/Developer/example-site.org',
+      workDir: '/Users/exampleuser/.ship-bot/work/example-site.org',
+      siblings: [{ slug: 'gorfednet/helper-repo', dir: 'helper-repo', path: '/Users/exampleuser/.ship-bot/work/helper-repo' }],
+    }
+    const names = redact.publicNames([hosted])
+    assert.deepEqual([...names].sort(), ['example-site.org', 'gorfednet', 'gorfednet/example-site.org', 'gorfednet/helper-repo', 'helper-repo'])
+    const redactor = new Redactor([], { publicNames: names })
+    redactor.add(envSecrets(hosted, { exists: (p) => p === `${hosted.sourceDir}/.deploy-env`, read: () => 'NAS_USER=exampleuser\nSITE=example-site.org\nSTATE=.ship-bot\nROOT=Developer\n' }))
+    assert.deepEqual([...redactor.secrets].sort(), ['.ship-bot', 'Developer', 'exampleuser'])
+    assert.equal(redactor.apply('gorfednet/example-site.org#63: ssh exampleuser@nas failed'), 'gorfednet/example-site.org#63: ssh [REDACTED]@nas failed')
   })
 
   it('keeps pattern masking for a secret assignment whatever the known set holds', () => {

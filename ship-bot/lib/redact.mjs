@@ -3,9 +3,9 @@
  *
  * Two layers. Known secrets — the GitHub token and every value in the env files
  * a deploy uses — are replaced wherever they appear, except a value equal to a
- * public name of a configured repo (its slug, owner, basename, directory or a
- * path segment): an env file that repeats the site's name must not mask that
- * name in every notification. Patterns catch the
+ * public name of a configured repo (its slug, owner, basename, name or directory
+ * name, never a segment of a host path): an env file that repeats the site's
+ * name must not mask that name in every notification. Patterns catch the
  * secret-shaped strings nobody told it about: provider tokens, Authorization
  * headers, private keys, NAME=value lines whose name says secret, and LAN
  * addresses (several of these repositories are public, and a PR comment is
@@ -54,7 +54,7 @@ export class Redactor {
   }
 
   /**
-   * Names that must stay readable (repo slugs, their parts, path segments). A
+   * Names that must stay readable (repo slugs, their parts, directory names). A
    * value equal to one is never a known secret, now or later.
    *
    * @param {Iterable<string|undefined|null>} names
@@ -94,8 +94,13 @@ export class Redactor {
 
 /**
  * The public names of the configured repos: each slug, its owner and basename,
- * its directory name, and every segment of its source and work paths (siblings
- * included). The redactor never takes one of these as a known secret.
+ * its name and its directory name (siblings included). The redactor never takes
+ * one of these as a known secret.
+ *
+ * Only names GitHub already publishes. Never `sourceDir`, `workDir` or a
+ * sibling's `path`: those are absolute paths on the bot's host, and their
+ * segments (the local account name among them) are not public. An env value
+ * equal to one must stay masked.
  *
  * @param {Iterable<object>} repos normalized repo rows
  * @returns {string[]}
@@ -103,13 +108,14 @@ export class Redactor {
 export function publicNames(repos = []) {
   const names = new Set()
   const take = (value) => {
-    if (typeof value !== 'string') return
-    if (value) names.add(value)
-    for (const part of value.split('/')) if (part) names.add(part)
+    if (typeof value === 'string' && value) names.add(value)
   }
   for (const repo of repos ?? []) {
     for (const row of [repo, ...(repo.siblings ?? [])]) {
-      for (const key of ['slug', 'name', 'dir', 'sourceDir', 'workDir', 'path']) take(row[key])
+      take(row.slug)
+      if (typeof row.slug === 'string') for (const part of row.slug.split('/')) take(part)
+      take(row.name)
+      take(row.dir)
     }
   }
   return [...names]
