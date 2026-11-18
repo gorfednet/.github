@@ -555,7 +555,8 @@
         "e2e-gate"
       ],
       "envFiles": [
-        ".deploy-env"
+        ".deploy-env",
+        ".env"
       ],
       "release": {
         "tagPrefix": "v"
