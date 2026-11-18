@@ -177,7 +177,7 @@ jobs:
           esac
 
       - name: Review
-        uses: anthropics/claude-code-action@1d6de8cb0c237e7c15e9e1bdf973826ebae490cc # v1.0.248
+        uses: anthropics/claude-code-action@f3b070c88125d33dbae5653df5f143101d4ea9dc # v1.0.276
         with:
           anthropic_api_key: ${{ steps.auth.outputs.kind == 'api' && secrets.CLAUDE_CODE_OAUTH_TOKEN || '' }}
           claude_code_oauth_token: ${{ steps.auth.outputs.kind == 'oauth' && secrets.CLAUDE_CODE_OAUTH_TOKEN || '' }}
@@ -244,4 +244,5 @@ jobs:
             <!-- claude-review head=${{ steps.pr.outputs.head }} findings=N blocking=M -->
           claude_args: |
             --model ${{ steps.model.outputs.model }}
+            --permission-mode default
             --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr view:*),Bash(git show:*),Bash(git log:*),Bash(git diff:*),Read,Grep,Glob"
