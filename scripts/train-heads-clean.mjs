@@ -15,6 +15,7 @@
  * yet; with --request, wait for the verdicts and run it again). Exit 2: GitHub cannot be read.
  */
 import { execFileSync } from 'node:child_process'
+import { isMain } from './lib/isMain.mjs'
 import { claudeReviewVerdict } from './lib/reviewVerdict.mjs'
 
 /**
@@ -35,7 +36,7 @@ function gh(args) {
   return execFileSync('gh', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (isMain(import.meta.url)) {
   const repo = arg('repo')
   const prs = (arg('prs') ?? '').split(',').filter(Boolean)
   if (!repo || prs.length === 0 || prs.some((n) => !/^\d+$/.test(n))) {

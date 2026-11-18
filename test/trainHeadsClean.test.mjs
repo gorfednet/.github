@@ -4,7 +4,12 @@
  * (2026-11-17, three carried heads). The guard reads the same verdict as the merge gate.
  */
 import { strict as assert } from 'node:assert'
+import { spawnSync } from 'node:child_process'
+import { cpSync, mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { dirname, join } from 'node:path'
 import { describe, it } from 'node:test'
+import { fileURLToPath } from 'node:url'
 import { trainHeadsVerdict } from '../scripts/train-heads-clean.mjs'
 
 describe('trainHeadsVerdict', () => {
@@ -22,4 +27,37 @@ describe('trainHeadsVerdict', () => {
   it('blocks an empty list, since nothing was checked', () => {
     assert.equal(trainHeadsVerdict([]).ok, false)
   })
+})
+
+// The CLI must run however node was pointed at it. A skipped CLI block exits 0, which this
+// script documents as "every carried head is clean". With no arguments a running CLI exits 2
+// (arguments missing), so exit 0 here means the guard silently did nothing.
+describe('CLI entry point', () => {
+  const scripts = join(dirname(fileURLToPath(import.meta.url)), '..', 'scripts')
+  const run = (script) => spawnSync(process.execPath, [script], { encoding: 'utf8' })
+  const scratch = realpathSync(mkdtempSync(join(tmpdir(), 'heads gate ')))
+  const copy = join(scratch, 'my scripts é')
+  cpSync(scripts, copy, { recursive: true, dereference: true, filter: (src) => !src.includes('node_modules') })
+  const linked = join(scratch, 'linked')
+  symlinkSync(copy, linked)
+  const fileLink = join(scratch, 'heads-link.mjs')
+  symlinkSync(join(copy, 'train-heads-clean.mjs'), fileLink)
+
+  it('runs when started by its real path', () => {
+    assert.equal(run(join(scripts, 'train-heads-clean.mjs')).status, 2)
+  })
+  it('runs through a symlinked directory', () => {
+    assert.equal(run(join(linked, 'train-heads-clean.mjs')).status, 2)
+  })
+  it('runs through a symlink to the file', () => {
+    assert.equal(run(fileLink).status, 2)
+  })
+  it('runs from a directory with a space and a non-ASCII character in its name', () => {
+    assert.equal(run(join(copy, 'train-heads-clean.mjs')).status, 2)
+  })
+  it('does not run its CLI when imported', () => {
+    const r = spawnSync(process.execPath, ['--input-type=module', '-e', `import(${JSON.stringify(join(linked, 'train-heads-clean.mjs'))})`], { encoding: 'utf8' })
+    assert.equal(r.status, 0)
+  })
+  process.on('exit', () => rmSync(scratch, { recursive: true, force: true }))
 })
