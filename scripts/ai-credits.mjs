@@ -6,25 +6,26 @@
  *   node scripts/ai-credits.mjs build  --repo PATH [--ref origin/main] [--name NAME] [--config FILE]
  *                                      [--transcripts INDEX] [--cursor-models FILE] [--out FILE] [--strict]
  *   node scripts/ai-credits.mjs verify --repo PATH --ledger FILE [--config FILE]
- *   node scripts/ai-credits.mjs check-tags --ledger FILE --record FILE
+ *   node scripts/ai-credits.mjs check-tags --ledger FILE --record FILE [--order]
  *
  * `index` reads every Claude Code transcript under `~/.claude/projects` once (model ids, timestamps and working folders
  * only; never a word of a message) and writes counts to a private cache, `~/.cache/ai-credits/transcripts.json`.
  * `build` reads one repository's history from its first commit to `--ref` and writes the ledger (default
  * `docs/ai-use/credits.json` in the repository) with per-month and per-page entries and the evidence for each credit.
  * `verify` rebuilds the git part of a ledger at the head it names and says where it differs (transcripts are local and are not
- * rechecked). `check-tags` fails when a tag drops a tool the ledger records or states, names one it doesn't, or breaks the
- * biggest-hand-first order.
+ * rechecked), and checks that `tagTools` is what the ledger's own evidence and statements derive. `check-tags` fails when a
+ * tag drops a tool the ledger records or states, names one it doesn't, or while the ledger has open items (a co-author nothing
+ * classifies, a conflicting AI-Use line, an empty page group). `--order` also fails an order the ledger doesn't give.
+ * A rebuild keeps the larger transcript count from the ledger it replaces, since transcripts get cleaned up.
  *
- * Reads git and local files. Makes no network call. Exit 0 ok, 1 problems found, 2 bad argument, 3 `--strict` and a
- * co-author name that no rule classifies.
+ * Reads git and local files. Makes no network call. Exit 0 ok, 1 problems found, 2 bad argument, 3 `--strict` and the ledger has open items.
  */
 import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
 
-import { buildLedger, checkRecord, dayOf, monthOf, parseGitLog, underSource } from './lib/aiCredits.mjs'
+import { buildLedger, checkRecord, dayOf, deriveTagTools, monthOf, openProblems, parseGitLog, underSource } from './lib/aiCredits.mjs'
 import { isMain } from './lib/isMain.mjs'
 import { DEFAULT_PROJECTS, listTranscripts, scanFile } from './lib/prCost.mjs'
 
@@ -38,6 +39,7 @@ function parseArgs(argv) {
   for (let i = 0; i < rest.length; i++) {
     const a = rest[i]
     if (a === '--strict') opts.strict = true
+    else if (a === '--order') opts.order = true
     else if (takes.has(a)) {
       const v = rest[++i]
       if (v === undefined) throw new Error(`${a} needs a value`)
@@ -110,19 +112,26 @@ function loadJson(path, what) {
   }
 }
 
-export function ledgerFor({ repo, ref = 'origin/main', name, config = {}, index = null, cursorModels = null, command = '', script = '', now = new Date() }) {
+export function ledgerFor({ repo, ref = 'origin/main', name, config = {}, index = null, prior = null, cursorModels = null, command = '', script = '', now = new Date() }) {
   const given = realpathSync(resolve(repo))
   const repoDir = rootOf(given) ?? given // a worktree of a clone is that clone, so its transcripts are too
   const head = git(given, ['rev-parse', ref]).trim()
-  const commits = parseGitLog(git(given, ['log', head, '--reverse', '--name-only', `--format=${FORMAT}`]))
+  const commits = parseGitLog(git(given, ['log', head, '--reverse', '--name-status', '-M', `--format=${FORMAT}`]))
   const transcripts = index ? rowsFor(index, repoDir, config.cwdRoots ?? []) : null
   const readInfo = index ? { indexedAt: index.indexedAt, files: index.files, earliest: index.earliest ? dayOf(index.earliest) : null, scope: 'Claude Code transcripts on one Mac, matched by working folder' } : null
-  return buildLedger({ commits, meta: { repo: name ?? basename(repoDir), ref, head, command, script }, config, transcripts, readInfo, cursorModels, generated: now.toISOString() })
+  return buildLedger({ commits, meta: { repo: name ?? basename(repoDir), ref, head, command, script }, config, transcripts, readInfo, prior, cursorModels, generated: now.toISOString() })
 }
 
+/** The part of a ledger that git and the config alone decide. Transcripts and Cursor's model list are local or external. */
 const stable = (ledger) => {
-  const { generated, transcripts, tools, transcriptOnlyTools, tagTools, inferred, months, ...rest } = ledger
-  return JSON.stringify({ ...rest, tools: tools.map((t) => ({ tool: t.tool, trailer: t.evidence.find((e) => e.kind === 'trailer') })).filter((t) => t.trailer), months:Object.fromEntries(Object.entries(months).map(([m, v]) => [m, { commits: v.commits, commitsWithNoTool: v.commitsWithNoTool, tools: v.tools }])) })
+  const { generated, transcripts, tools, transcriptOnlyTools, tagTools, inferred, months, open, stated, ...rest } = ledger
+  return JSON.stringify({
+    ...rest,
+    stated: stated.map(({ grade, ...e }) => e),
+    open: { unclassifiedCoAuthors: open.unclassifiedCoAuthors, unversionedTrailers: open.unversionedTrailers, conflictingTrailers: open.conflictingTrailers, emptyGroups: open.emptyGroups },
+    tools: tools.map((t) => ({ tool: t.tool, commits: t.commits, trailer: t.evidence.find((e) => e.kind === 'trailer') })).filter((t) => t.trailer),
+    months: Object.fromEntries(Object.entries(months).map(([m, v]) => [m, { commits: v.commits, commitsWithNoTool: v.commitsWithNoTool, tools: v.tools }])),
+  })
 }
 
 async function main(argv) {
@@ -155,6 +164,11 @@ async function main(argv) {
       again.ref = ledger.ref
       const a = stable(again)
       const b = stable(ledger)
+      const derived = deriveTagTools({ tools: ledger.tools, stated: ledger.stated })
+      if (JSON.stringify(derived) !== JSON.stringify(ledger.tagTools)) {
+        console.error(`tagTools is not what the ledger's own evidence derives: ${ledger.tagTools.join(' + ')} against ${derived.join(' + ')}`)
+        return 1
+      }
       if (a === b) {
         console.log(`ledger ${o.ledger} matches the history at ${ledger.head.slice(0, 10)}`)
         return 0
@@ -168,24 +182,23 @@ async function main(argv) {
     const index = o.transcripts ? loadJson(o.transcripts, 'transcript index') : null
     const cursorModels = o.cursorModels ? loadJson(o.cursorModels, 'cursor models') : null
     const command = `node ${script} build --repo <clone> --ref ${o.ref ?? 'origin/main'}${o.transcripts ? ' --transcripts <index>' : ''}${o.cursorModels ? ' --cursor-models scripts/data/cursor-models.json' : ''}`
-    const ledger = ledgerFor({ repo: o.repo, ref: o.ref, name: o.name, config, index, cursorModels, command, script })
     const out = o.out ?? join(o.repo, 'docs', 'ai-use', 'credits.json')
+    const prior = existsSync(out) ? loadJson(out, 'ledger') : null
+    const ledger = ledgerFor({ repo: o.repo, ref: o.ref, name: o.name, config, index, prior, cursorModels, command, script })
     mkdirSync(dirname(out), { recursive: true })
     writeFileSync(out, `${JSON.stringify(ledger, null, 2)}\n`)
-    const un = Object.keys(ledger.unclassifiedCoAuthors)
     console.log(`${ledger.repo}: ${ledger.counts.commits} commits from ${ledger.firstCommit?.date} to ${ledger.head.slice(0, 10)}; credits: ${ledger.tagTools.join(' + ')} -> ${out}`)
-    if (un.length > 0) {
-      console.error(`unclassified co-authors: ${un.join(', ')}`)
-      if (o.strict) return 3
-    }
-    return 0
+    const openItems = openProblems(ledger)
+    for (const p of openItems) console.error(p)
+    if (ledger.transcriptOnlyTools.length > 0) console.error(`transcript-only, not credited without a decision: ${ledger.tools.filter((t) => t.credited === false).map((t) => t.tool).join(', ') || 'none'}`)
+    return o.strict && openItems.length > 0 ? 3 : 0
   }
   if (o.cmd === 'check-tags') {
     if (!o.ledger || !o.record) {
       console.error('ai-credits: --ledger and --record are required')
       return 2
     }
-    const problems = checkRecord(loadJson(o.ledger, 'ledger'), loadJson(o.record, 'record'))
+    const problems = checkRecord(loadJson(o.ledger, 'ledger'), loadJson(o.record, 'record'), { order: Boolean(o.order) })
     for (const p of problems) console.error(p)
     if (problems.length === 0) console.log('every tag names the tools its ledger records or states')
     return problems.length === 0 ? 0 : 1

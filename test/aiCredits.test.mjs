@@ -9,7 +9,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { describe, it } from 'node:test'
 
-import { buildLedger, checkRecord, classifyCoAuthor, commitTools, parseGitLog, parseTrailers, tagProblems, toolFromModelId, toolsOfTag } from '../scripts/lib/aiCredits.mjs'
+import { buildLedger, checkRecord, classifyCoAuthor, commitTools, filesOf, parseGitLog, parseTrailers, tagProblems, toolFromModelId, toolsOfTag } from '../scripts/lib/aiCredits.mjs'
 import { indexTranscripts, rowsFor } from '../scripts/ai-credits.mjs'
 
 const CLI = new URL('../scripts/ai-credits.mjs', import.meta.url).pathname
@@ -127,7 +127,9 @@ describe('the ledger from git', () => {
 
   it('keeps an inferred Cursor model out of every tag list, whatever the model list says', () => {
     const withModels = buildLedger({ commits, meta: { repo: 'example-site', ref: 'origin/main', head: 'abc' }, config, cursorModels: { source: 'https://example.test/changelog', months: { '2026-05': { models: ['Example Model 1'], source: 'https://example.test/may' } } } })
-    assert.deepEqual(withModels.inferred.find((i) => i.month === '2026-05'), { grade: 'inferred', tool: 'Cursor', month: '2026-05', commits: 1, models: ['Example Model 1'], source: 'https://example.test/may', basis: 'the models Cursor offered that month' })
+    const may = withModels.inferred.find((i) => i.month === '2026-05')
+    assert.deepEqual({ ...may, basis: undefined }, { grade: 'inferred', tool: 'Cursor', month: '2026-05', commits: 1, models: ['Example Model 1'], source: 'https://example.test/may', basis: undefined })
+    assert.match(may.basis, /not exhaustive/)
     assert.equal(withModels.inferred.find((i) => i.month === '2026-06').models, null, 'a month with no list says so rather than guessing')
     assert.ok(!withModels.tagTools.includes('Example Model 1'))
     assert.ok(!JSON.stringify(withModels.pages).includes('Example Model 1'))
@@ -154,14 +156,80 @@ describe('the ledger from git', () => {
   it('records the owner statement apart from the commits', () => {
     assert.equal(ledger.stated[0].quote, 'the words are mostly mine')
     assert.deepEqual(ledger.tagTools, ['Claude Opus 5.5', 'Cursor', 'Claude Haiku 5.5', 'Claude Sonnet 5.5'], 'a stated claim with no tool adds no tool')
-    const withTool = buildLedger({ commits, meta: { repo: 'example-site', ref: 'origin/main', head: 'abc' }, config: { stated: [{ scope: 'site', tool: 'Claude Fable 5.2', role: 'reviewer', quote: 'Yes, full list', date: '2026-11-18' }] } })
-    assert.deepEqual(withTool.tagTools.at(-1), 'Claude Fable 5.2')
+    const stateTool = (quote, scope = 'site') => buildLedger({ commits, meta: { repo: 'example-site', ref: 'origin/main', head: 'abc' }, config: { stated: [{ scope, tool: 'Claude Fable 5.2', role: 'reviewer', quote, date: '2026-11-18' }] } })
+    assert.deepEqual(stateTool('credit Claude Fable 5.2 as the reviewer').tagTools.at(-1), 'Claude Fable 5.2')
+    assert.throws(() => stateTool('Yes, full list'), /don't name it/, 'words that do not name the tool state nothing')
+    assert.throws(() => stateTool('credit Claude Fable 5.2 as the reviewer', 'about page'), /site-wide scope/)
   })
 
   it('does not credit a person, and reports a name nothing classifies', () => {
     assert.equal(ledger.tools.some((t) => t.tool === 'Test Author'), false)
     const odd = buildLedger({ commits: parseGitLog(`\x1eaaaa\x1f\x1f2026-10-01T00:00:00Z\x1fTest Author\x1f2026-10-01T00:00:00Z\x1fx${co('Somebody New')}\x1f`), meta: { repo: 'r', ref: 'origin/main', head: 'a' } })
-    assert.deepEqual(odd.unclassifiedCoAuthors, { 'Somebody New': 1 })
+    assert.deepEqual(odd.open.unclassifiedCoAuthors, { 'Somebody New': 1 })
+  })
+})
+
+describe('what the reviewer found', () => {
+  const when = '2026-10-01T10:00:00Z'
+  const rec = (sha, body, author = 'Test Author', files = '', parents = '') => `\x1e${sha}\x1f${parents}\x1f${when}\x1f${author}\x1f${when}\x1f${body}\x1f${files}`
+  const meta = { repo: 'r', ref: 'origin/main', head: 'a' }
+
+  it('credits nothing from an AI-Use line that disagrees with the commit\'s co-author, and says so', () => {
+    const t = commitTools(`${CLAUDE('Opus 5.5')}\nAI-Use: L2 made undo (Claude Sonnet 5.5)`, new Set())
+    assert.deepEqual(t.tools, ['Claude Opus 5.5'])
+    assert.deepEqual(t.conflicting, ['Claude Sonnet 5.5'])
+    const same = commitTools(`${CLAUDE('Sonnet 5.5')}\nAI-Use: L2 made undo (Claude Sonnet 5.5)`, new Set())
+    assert.deepEqual(same.conflicting, [])
+    const l = buildLedger({ commits: parseGitLog(rec('aaaa', `x${CLAUDE('Opus 5.5')}\nAI-Use: L2 made undo (Claude Sonnet 5.5)`)), meta })
+    assert.deepEqual(l.tagTools, ['Claude Opus 5.5'])
+    assert.deepEqual(l.open.conflictingTrailers, { 'Claude Sonnet 5.5': 1 })
+  })
+
+  it('lets a person settle an open item, and keeps who decided it', () => {
+    const commits = parseGitLog(rec('aaaa', `x${CLAUDE('Opus 5.5')}\nAI-Use: L2 made undo (Claude Sonnet 5.5)`))
+    const acknowledged = { conflictingTrailers: { names: ['Claude Sonnet 5.5'], by: 'Desk', date: '2026-11-18', why: 'a template line' } }
+    const l = buildLedger({ commits, meta, config: { acknowledged } })
+    assert.deepEqual(l.open.conflictingTrailers, {})
+    assert.deepEqual(l.settled.conflictingTrailers.counts, { 'Claude Sonnet 5.5': 1 })
+    assert.throws(() => buildLedger({ commits, meta, config: { acknowledged: { conflictingTrailers: { names: [] } } } }), /by, date and why/)
+    assert.deepEqual(l.tagTools, ['Claude Opus 5.5'], 'settling it does not add a credit')
+  })
+
+  it('splits an AI-Use line that names two tools', () => {
+    assert.deepEqual(commitTools('AI-Use: L3 made no undo (Claude Opus 5.5 + Cursor)', new Set()).tools, ['Claude Opus 5.5', 'Cursor'])
+  })
+
+  it('credits a tool that authored the commit, and never counts it as a person', () => {
+    const l = buildLedger({ commits: parseGitLog(rec('aaaa', 'by the agent', 'Cursor Agent') + rec('bbbb', `by a person${co('Cursor Agent')}`)), meta })
+    assert.equal(l.tools.find((t) => t.tool === 'Cursor').commits, 2)
+    assert.deepEqual(l.people.humans, {}, 'a Cursor Agent co-author is a credit, not a person')
+  })
+
+  it('does not drop a bot that is an AI tool; it stays visible', () => {
+    assert.equal(classifyCoAuthor({ name: 'claude[bot]' }).kind, 'unclassified')
+    assert.equal(classifyCoAuthor({ name: 'dependabot[bot]' }).kind, 'bot')
+  })
+
+  it('keeps a merge whose only trailer nothing classifies, instead of calling it plain', () => {
+    const l = buildLedger({ commits: parseGitLog(rec('mmmm', `Merge${co('Somebody New')}`, 'Test Author', '', 'aaaa bbbb')), meta })
+    assert.deepEqual(l.open.unclassifiedCoAuthors, { 'Somebody New': 1 })
+  })
+
+  it('compares dates in UTC whatever offset git wrote', () => {
+    const l = buildLedger({ commits: parseGitLog(rec('aaaa', `late${CLAUDE('Opus 5.5')}`).replace(when, '2026-10-01T22:00:00-04:00') + rec('bbbb', `early${CLAUDE('Opus 5.5')}`).replace(when, '2026-10-02T01:00:00+00:00')), meta })
+    const opus = l.tools[0]
+    assert.deepEqual([opus.first, opus.last], ['2026-10-02', '2026-10-02'], '22:00 at -04:00 is 02:00 UTC the next day, after 01:00 UTC')
+  })
+
+  it('credits a page nothing for a pure rename, and the new path for a rename with edits', () => {
+    assert.deepEqual(filesOf('M\tsrc/a.txt\nR100\told/b.txt\tnew/b.txt\nR087\told/c.txt\tnew/c.txt\nplain.txt\n'), ['src/a.txt', 'new/c.txt', 'plain.txt'])
+  })
+
+  it('fails closed on a page that names a group the config lacks, and lists a group no commit touches', () => {
+    const commits = parseGitLog(rec('aaaa', `x${CLAUDE('Opus 5.5')}`, 'Test Author', 'src/a.txt\n'))
+    assert.throws(() => buildLedger({ commits, meta, config: { groups: {}, pages: { 'p.html': ['nope'] } } }), /names group nope/)
+    const l = buildLedger({ commits, meta, config: { groups: { a: ['src/a.txt'], ghost: ['src/never.txt'] }, pages: { 'p.html': ['a'] } } })
+    assert.deepEqual(l.open.emptyGroups, ['ghost'])
   })
 })
 
@@ -196,12 +264,19 @@ describe('the ledger from transcripts', () => {
     assert.deepEqual(Object.keys(index.rows[0]).sort(), ['cwd', 'first', 'last', 'model', 'month', 'root', 'sessions', 'subagent', 'turns'])
   })
 
-  it('credits a model that has transcripts and no trailer as recorded, and ranks it after the commit-credited tools', async () => {
+  it('lists a model with transcripts and no trailer, and credits it only on a recorded decision', async () => {
     const index = await indexTranscripts(projects)
     const commits = parseGitLog(`\x1eaaaa\x1f\x1f2026-10-02T10:00:00Z\x1fTest Author\x1f2026-10-02T10:00:00Z\x1fx${CLAUDE('Opus 5.5')}\x1f`)
     const l = buildLedger({ commits, meta: { repo: 'r', ref: 'origin/main', head: 'a' }, transcripts: rowsFor(index, repoDir), readInfo: { indexedAt: index.indexedAt, files: index.files, earliest: '2026-10-02' } })
-    assert.deepEqual(l.tagTools, ['Claude Opus 5.5', 'Claude Haiku 5.5', 'Claude Sonnet 5.5'])
+    assert.deepEqual(l.tagTools, ['Claude Opus 5.5'], 'a transcript shows a model was present, not that it wrote anything')
     assert.deepEqual(l.transcriptOnlyTools, ['Claude Haiku 5.5', 'Claude Sonnet 5.5'])
+    assert.equal(l.tools.find((t) => t.tool === 'Claude Haiku 5.5').credited, false)
+    const decided = buildLedger({ commits, meta: { repo: 'r', ref: 'origin/main', head: 'a' }, config: { transcriptCredit: { 'Claude Haiku 5.5': { by: 'Desk', date: '2026-11-18', why: 'ran the gate' } } }, transcripts: rowsFor(index, repoDir), readInfo: { indexedAt: index.indexedAt, files: index.files, earliest: '2026-10-02' } })
+    assert.deepEqual(decided.tagTools, ['Claude Opus 5.5', 'Claude Haiku 5.5'])
+    // Transcripts get cleaned up: a rebuild after that keeps the larger count.
+    const afterCleanup = buildLedger({ commits, meta: { repo: 'r', ref: 'origin/main', head: 'a' }, prior: decided, transcripts: [], readInfo: { indexedAt: 'later', files: 0, earliest: null } })
+    assert.equal(afterCleanup.tools.find((t) => t.tool === 'Claude Haiku 5.5').evidence[0].turns, 2)
+    assert.deepEqual(l.transcripts.monthsWithClaudeTrailersAndNoTranscripts, [])
     const haiku = l.tools.find((t) => t.tool === 'Claude Haiku 5.5')
     assert.deepEqual(haiku.evidence, [{ kind: 'transcript', turns: 2, subagentTurns: 2, sessions: 1, first: '2026-10-04', last: '2026-10-04' }])
     assert.equal(l.transcripts.read, true)
@@ -232,8 +307,19 @@ describe('tags against the ledger', () => {
     assert.match(tagProblems('site', 'L3 · made · no undo · Claude Opus 5.5 + Cursor + Claude Sonnet 5.5 + Example Model 1', ledger.tagTools)[0], /names Example Model 1/)
   })
 
-  it('fails a tag that puts the tools out of order', () => {
-    assert.match(tagProblems('site', 'L3 · made · no undo · Cursor + Claude Opus 5.5 + Claude Sonnet 5.5', ledger.tagTools)[0], /biggest hand first/)
+  it('fails an order the ledger doesn\'t give only when asked, since the order indicates a hand and does not measure it', () => {
+    const swapped = 'L3 · made · no undo · Cursor + Claude Opus 5.5 + Claude Sonnet 5.5'
+    assert.deepEqual(tagProblems('site', swapped, ledger.tagTools), [])
+    assert.match(tagProblems('site', swapped, ledger.tagTools, { order: true })[0], /the ledger's order is/)
+  })
+
+  it('fails closed: an empty record, and an open ledger, are problems', () => {
+    assert.deepEqual(checkRecord(ledger, {}), ['the record holds no tag to check'])
+    const open = { ...ledger, open: { conflictingTrailers: { 'Claude Sonnet 5.5': 1 }, emptyGroups: ['gone'] } }
+    const p = checkRecord(open, { site: { tag: 'L3 · made · no undo · Claude Opus 5.5 + Cursor + Claude Sonnet 5.5' } })
+    assert.equal(p.length, 2)
+    assert.match(p.join('\n'), /disagrees with its commit/)
+    assert.match(p.join('\n'), /matches no commit: gone/)
   })
 
   it('checks a site tag and each page tag, and a page with no entry', () => {
@@ -264,6 +350,17 @@ describe('the command line', () => {
     const v = run('verify', '--repo', repo, '--ledger', out)
     assert.equal(v.status, 1)
     assert.match(v.stderr, /counts/)
+  })
+
+  it('verify catches a hand-edited tagTools, such as an inferred model added to it', () => {
+    const out = join(tmp(), 'credits.json')
+    run('build', '--repo', repo, '--name', 'example-site', '--out', out)
+    const ledger = JSON.parse(readFileSync(out, 'utf8'))
+    ledger.tagTools.push('Example Model 1')
+    writeFileSync(out, JSON.stringify(ledger))
+    const v = run('verify', '--repo', repo, '--ledger', out)
+    assert.equal(v.status, 1)
+    assert.match(v.stderr, /tagTools is not what the ledger's own evidence derives/)
   })
 
   it('check-tags exits 1 on a dropped tool and 0 on a full tag', () => {
