@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { easternDay, parseExemption, releaseNotes, releaseProblems, visibleText } from '../lib/deploy-plan.mjs'
+import { parseExemption, releaseNotes, releaseProblems, visibleText } from '../lib/deploy-plan.mjs'
 
 const GOOD = '## Release notes\n\n- The figures page.\n\nLocal gate: gate-run make verify, exit 0, log x\nSmoke: npm run preview, read /\n'
 
@@ -18,6 +18,7 @@ describe('release description parsing (plan row 1.25): near misses fail closed',
 
   it('the gate and smoke lines are not the notes, and an empty or placeholder value is no line', () => {
     assert.match(releaseProblems('## Release notes\n\n- Local gate: x\n- Smoke: y\n').join(), /no bullet saying what ships/)
+    assert.match(releaseProblems('## Release notes\n\n- Early release: x\n\nLocal gate: gate-run make verify, exit 0, log x\nSmoke: npm run preview, read /\n').join(), /no bullet saying what ships/)
     for (const v of ['n/a', 'N/A', 'none', 'not run', 'skipped', 'TBD', '-', '...', '<log>', 'todo.', 'n/a (docs only)', 'not run yet', 'no']) {
       assert.match(releaseProblems(GOOD.replace('gate-run make verify, exit 0, log x', v)).join(), /no `Local gate:` line/, v)
     }
@@ -40,8 +41,7 @@ describe('release description parsing (plan row 1.25): near misses fail closed',
     assert.equal(parseExemption('<!-- Exemption: outage x -->').kind, 'none')
   })
 
-  it('dates read as Toronto days', () => {
-    assert.equal(easternDay(new Date('2026-11-14T03:00:00Z')), '13 November 2026')
+  it('hidden text is not read', () => {
     assert.equal(visibleText('a<!-- b -->c'), 'ac')
   })
 })

@@ -494,7 +494,6 @@ async function processPull(ctx, repo, pr, defaultBranch) {
       mainSha: () => ctx.github.getBranchSha(repo.slug, defaultBranch),
       headCovers: () => ctx.github.compareStatus(repo.slug, defaultBranch, sha),
       repoState: ctx.state.repo(repo.slug),
-      now: ctx.clock.now(),
     })
     if (plan.kind === 'invalid') {
       ctx.say('warn', `${tag}: ready, but not merging: ${plan.reason}`)

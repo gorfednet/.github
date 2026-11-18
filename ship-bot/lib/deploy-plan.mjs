@@ -111,12 +111,11 @@ export function parseExemption(body) {
  * @param {() => Promise<string|null>} ctx.mainSha the default branch's head right now
  * @param {() => Promise<string|null>} ctx.headCovers GitHub's compare status of main...head ('ahead' or 'identical' means the head contains main)
  * @param {{lastDeployedSha?: string, lastReleasedAt?: string}} ctx.repoState
- * @param {Date} ctx.now
  * @returns {Promise<{deploy: false, kind: 'none'} | {deploy: false, kind: 'invalid', reason: string} |
  *   {deploy: true, kind: 'merge'|'release'|'hotfix', tag?: object, exemption?: string, why?: string}>}
  *   `tag` is the release-tag plan (lib/release.mjs) for a row with `release`.
  */
-export async function planDeploy(repo, pr, { tags, mainSha, headCovers, repoState, now }) {
+export async function planDeploy(repo, pr, { tags, mainSha, headCovers, repoState }) {
   const body = pr.body ?? ''
   // Case-insensitive: a `Release` label is a release that was meant, not a quiet plain merge.
   const labels = (pr.labels ?? []).map((l) => String(l.name).toLowerCase())
@@ -165,12 +164,6 @@ export async function planDeploy(repo, pr, { tags, mainSha, headCovers, repoStat
     return invalid(`the release head does not contain main (${cover === 'behind' || cover === 'diverged' ? `GitHub compares it as ${cover}` : 'GitHub could not compare it'}), so main holds merges its local gate and smoke never saw; merge main into it, run the gate and the smoke again, and update the two lines`)
   }
   return { deploy: true, kind: 'release', tag: tagPlan }
-}
-
-/** A day as the owner reads it, in Toronto: "14 November 2026". */
-export function easternDay(d) {
-  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Toronto', day: 'numeric', month: 'long', year: 'numeric' }).formatToParts(d).map((p) => [p.type, p.value]))
-  return `${parts.day} ${parts.month} ${parts.year}`
 }
 
 const invalid = (reason) => ({ deploy: false, kind: 'invalid', reason, key: 'release-plan' })
