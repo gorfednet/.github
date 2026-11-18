@@ -25,7 +25,7 @@ import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from
 import { homedir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
 
-import { buildLedger, checkRecord, dayOf, deriveTagTools, monthOf, openProblems, parseGitLog, underSource } from './lib/aiCredits.mjs'
+import { buildLedger, checkRecord, dayOf, monthOf, openProblems, parseGitLog, underSource } from './lib/aiCredits.mjs'
 import { isMain } from './lib/isMain.mjs'
 import { DEFAULT_PROJECTS, listTranscripts, scanFile } from './lib/prCost.mjs'
 
@@ -101,7 +101,8 @@ export async function indexTranscripts(projectsDir, { now = new Date() } = {}) {
  */
 export function rowsFor(index, repoDir, extraRoots = []) {
   const roots = [repoDir, ...extraRoots]
-  return index.rows.filter((r) => r.root === repoDir || roots.some((d) => underSource(r.cwd, d) || r.cwd.startsWith(`${d}-`)))
+  // A folder git resolves to another repository is that repository's. The name rules only judge a folder that no longer exists.
+  return index.rows.filter((r) => (r.root ? r.root === repoDir : roots.some((d) => underSource(r.cwd, d) || r.cwd.startsWith(`${d}-`))) || (r.root && roots.some((d) => r.root === d)))
 }
 
 function loadJson(path, what) {
@@ -129,7 +130,7 @@ const stable = (ledger) => {
     ...rest,
     stated: stated.map(({ grade, ...e }) => e),
     open: { unclassifiedCoAuthors: open.unclassifiedCoAuthors, unversionedTrailers: open.unversionedTrailers, conflictingTrailers: open.conflictingTrailers, emptyGroups: open.emptyGroups },
-    tools: tools.map((t) => ({ tool: t.tool, commits: t.commits, trailer: t.evidence.find((e) => e.kind === 'trailer') })).filter((t) => t.trailer),
+    tools: tools.map((t) => ({ tool: t.tool, commits: t.commits, trailer: t.evidence.find((e) => e.kind === 'trailer') })).filter((t) => t.trailer).sort((a, b) => a.tool.localeCompare(b.tool)),
     months: Object.fromEntries(Object.entries(months).map(([m, v]) => [m, { commits: v.commits, commitsWithNoTool: v.commitsWithNoTool, tools: v.tools }])),
   })
 }
@@ -164,9 +165,13 @@ async function main(argv) {
       again.ref = ledger.ref
       const a = stable(again)
       const b = stable(ledger)
-      const derived = deriveTagTools({ tools: ledger.tools, stated: ledger.stated })
-      if (JSON.stringify(derived) !== JSON.stringify(ledger.tagTools)) {
-        console.error(`tagTools is not what the ledger's own evidence derives: ${ledger.tagTools.join(' + ')} against ${derived.join(' + ')}`)
+      // The expected credits come from git (the rebuild) and the config, never from the ledger's own claims.
+      const decided = Object.keys(config.transcriptCredit ?? {}).filter((t) => ledger.tools.some((x) => x.tool === t && x.evidence.some((e) => e.kind === 'transcript')))
+      const expected = [...new Set([...again.tools.filter((t) => t.commits > 0).map((t) => t.tool), ...decided, ...(config.stated ?? []).filter((e) => e.tool).map((e) => e.tool)])].sort()
+      const claimed = [...ledger.tagTools].sort()
+      const credited = ledger.tools.filter((t) => t.credited).map((t) => t.tool).sort()
+      if (JSON.stringify(expected) !== JSON.stringify(claimed) || credited.some((t) => !expected.includes(t))) {
+        console.error(`tagTools is not what git and the config derive: ledger says ${claimed.join(' + ')}, they say ${expected.join(' + ')}`)
         return 1
       }
       if (a === b) {

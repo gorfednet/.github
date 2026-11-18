@@ -118,8 +118,16 @@ export function commitTools(body, humans, author = '') {
         harness.push('Claude Code')
         continue
       }
+      const family = (t) => t.split(' ').slice(0, 2).join(' ')
       if (named.some((t) => t === k.tool || t.startsWith(`${k.tool} `))) continue
-      if (named.length > 0 && !named.some((t) => t.split(' ').slice(0, 2).join(' ') === k.tool.split(' ').slice(0, 2).join(' '))) {
+      const sameFamily = named.filter((t) => family(t) === family(k.tool))
+      if (sameFamily.length > 0) {
+        // The co-author names this family. An unversioned name agrees with it; another version contradicts it.
+        if (k.tool === family(k.tool)) continue
+        conflicting.push(k.tool)
+        continue
+      }
+      if (named.length > 0) {
         conflicting.push(k.tool)
         continue
       }
@@ -279,7 +287,7 @@ export function buildLedger({ commits: all, meta, config = {}, transcripts = nul
     if (r.subagent) mt.subagentTurns += r.turns
     mt.sessions += r.sessions
   }
-  if (prior && transcripts) {
+  if (prior) {
     for (const [m, perTool] of Object.entries(prior.months ?? {})) {
       for (const [tool, v] of Object.entries(perTool.transcripts ?? {})) {
         const mt = ((transcriptMonths[m] ??= {})[tool] ??= { turns: 0, subagentTurns: 0, sessions: 0 })
@@ -409,7 +417,7 @@ export function buildLedger({ commits: all, meta, config = {}, transcripts = nul
     pages,
     pagesApproximate: Boolean(config.pagesApproximate),
     pageBasis: config.pageBasis ?? null,
-    transcripts: readInfo ? { read: true, indexedAt: readInfo.indexedAt, allProjectsOnThisMac: { files: readInfo.files, earliest: readInfo.earliest }, earliestForRepo, monthsWithClaudeTrailersAndNoTranscripts: claudeMonthsWithoutTranscripts } : { read: false },
+    transcripts: !readInfo && prior?.transcripts?.read ? prior.transcripts : readInfo ? { read: true, indexedAt: readInfo.indexedAt, allProjectsOnThisMac: { files: readInfo.files, earliest: readInfo.earliest }, earliestForRepo, monthsWithClaudeTrailersAndNoTranscripts: claudeMonthsWithoutTranscripts } : { read: false },
     people: { humans: humanCounts, bots: botCounts },
     harness,
     open: { ...open, unknownModels, emptyGroups },

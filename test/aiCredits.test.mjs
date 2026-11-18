@@ -195,6 +195,24 @@ describe('what the reviewer found', () => {
     assert.deepEqual(l.tagTools, ['Claude Opus 5.5'], 'settling it does not add a credit')
   })
 
+  it('flags an AI-Use model of another version in the co-author\'s family, and ignores an unversioned one', () => {
+    const other = commitTools(`${CLAUDE('Opus 5.5')}\nAI-Use: L2 made undo (Claude Opus 5)`, new Set())
+    assert.deepEqual(other.tools, ['Claude Opus 5.5'])
+    assert.deepEqual(other.conflicting, ['Claude Opus 5'])
+    const bare = commitTools(`${CLAUDE('Opus 5.5')}\nAI-Use: L2 made undo (Claude Opus)`, new Set())
+    assert.deepEqual([bare.tools, bare.conflicting, bare.unversioned], [['Claude Opus 5.5'], [], []])
+  })
+
+  it('keeps transcript evidence and a recorded credit when a rebuild has no transcripts', () => {
+    const commits = parseGitLog(rec('aaaa', `x${CLAUDE('Opus 5.5')}`))
+    const row = { month: '2026-10', model: 'claude-haiku-5-5', turns: 4, sessions: 1, subagent: true, first: '2026-10-02T00:00:00.000Z', last: '2026-10-02T00:00:00.000Z' }
+    const config = { transcriptCredit: { 'Claude Haiku 5.5': { by: 'Desk', date: '2026-11-18', why: 'ran the gate' } } }
+    const first = buildLedger({ commits, meta, config, transcripts: [row], readInfo: { indexedAt: 'a', files: 1, earliest: '2026-10-02' } })
+    const again = buildLedger({ commits, meta, config, prior: first })
+    assert.deepEqual(again.tagTools, first.tagTools)
+    assert.equal(again.transcripts.read, true)
+  })
+
   it('checks only for an unknown tool on a page whose groups only approximate it', () => {
     const l = { tagTools: ['Claude Opus 5.5', 'Cursor'], pagesApproximate: true, open: {}, pages: { 'a.html': { tagTools: ['Claude Opus 5.5', 'Cursor'] } } }
     assert.deepEqual(checkRecord(l, { pages: { 'a.html': { tag: 'L3 · made · no undo · Claude Opus 5.5' } } }), [], 'a tool the page may not have touched is not required')
@@ -365,6 +383,25 @@ describe('the command line', () => {
     assert.match(v.stderr, /counts/)
   })
 
+  it('verify catches a tool added to both tools and tagTools by hand', () => {
+    const out = join(tmp(), 'credits.json')
+    run('build', '--repo', repo, '--name', 'example-site', '--out', out)
+    const ledger = JSON.parse(readFileSync(out, 'utf8'))
+    ledger.tools.push({ tool: 'Example Model 1', grade: 'recorded', credited: true, commits: 1, evidence: [] })
+    ledger.tagTools.push('Example Model 1')
+    writeFileSync(out, JSON.stringify(ledger))
+    assert.equal(run('verify', '--repo', repo, '--ledger', out).status, 1)
+  })
+
+  it('verify passes a correct ledger when two tools tie on commits and transcripts would break the tie', () => {
+    const tied = repoWith([['2026-10-02T10:00:00Z', `a${CLAUDE('Sonnet 5')}`, ['a.txt']], ['2026-10-03T10:00:00Z', `b${CLAUDE('Opus 5')}`, ['b.txt']]])
+    const index = join(tmp(), 'index.json')
+    writeFileSync(index, JSON.stringify({ indexedAt: 'x', files: 1, earliest: '2026-10-02T00:00:00Z', rows: [{ cwd: tied, root: tied, model: 'claude-sonnet-5', month: '2026-10', subagent: false, turns: 9, sessions: 1, first: '2026-10-02T00:00:00Z', last: '2026-10-02T00:00:00Z' }] }))
+    const out = join(tmp(), 'credits.json')
+    assert.equal(run('build', '--repo', tied, '--name', 'example-site', '--transcripts', index, '--out', out).status, 0)
+    assert.equal(run('verify', '--repo', tied, '--ledger', out).status, 0)
+  })
+
   it('verify catches a hand-edited tagTools, such as an inferred model added to it', () => {
     const out = join(tmp(), 'credits.json')
     run('build', '--repo', repo, '--name', 'example-site', '--out', out)
@@ -373,7 +410,7 @@ describe('the command line', () => {
     writeFileSync(out, JSON.stringify(ledger))
     const v = run('verify', '--repo', repo, '--ledger', out)
     assert.equal(v.status, 1)
-    assert.match(v.stderr, /tagTools is not what the ledger's own evidence derives/)
+    assert.match(v.stderr, /tagTools is not what git and the config derive/)
   })
 
   it('check-tags exits 1 on a dropped tool and 0 on a full tag', () => {
