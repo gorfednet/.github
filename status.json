@@ -1,11 +1,11 @@
 {
-  "generatedAt": "2026-11-18T06:37:39.703Z",
-  "renderedAt": "2026-11-18T06:37:39.703Z",
+  "generatedAt": "2026-11-18T08:32:31.819Z",
+  "renderedAt": "2026-11-18T08:32:31.819Z",
   "repos": [
     {
       "slug": "gorfednet/bindercurve.com",
       "redacted": true,
-      "mainRed": true,
+      "mainRed": false,
       "openPrCount": 11,
       "lapsedBacklogCount": 16,
       "noPrCount": 80,
@@ -23,7 +23,7 @@
       "slug": "gorfednet/4thcltr.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 38,
+      "openPrCount": 37,
       "lapsedBacklogCount": 21,
       "noPrCount": 18,
       "idlePrCount": 16,
@@ -868,11 +868,11 @@
     }
   },
   "inventory": {
-    "measuredAt": "2026-11-18T06:37:39.703Z",
+    "measuredAt": "2026-11-18T08:32:31.819Z",
     "counts": {
       "pr": {
-        "total": 163,
-        "orphans": 69
+        "total": 162,
+        "orphans": 68
       },
       "session": null,
       "worktree": null,
@@ -924,12 +924,12 @@
         "lapsed": true
       }
     ],
-    "hiddenPrivate": 66,
+    "hiddenPrivate": 65,
     "privateReposNotItemised": 18,
     "planRead": true
   },
   "dotgithub": {
-    "measuredAt": "2026-11-18T06:38:28.432Z",
+    "measuredAt": "2026-11-18T08:33:29.599Z",
     "branches": 41,
     "merged": 3,
     "exposedFiles": 61,
