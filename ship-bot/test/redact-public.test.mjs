@@ -50,11 +50,12 @@ describe('an env value that is a public name', () => {
   })
 
   it('never allows a segment of an absolute path: the host account name stays masked', () => {
+    const HOME = ['', 'Users', 'exampleuser'].join('/')
     const hosted = {
       ...repo,
-      sourceDir: '/Users/exampleuser/Developer/example-site.org',
-      workDir: '/Users/exampleuser/.ship-bot/work/example-site.org',
-      siblings: [{ slug: 'gorfednet/helper-repo', dir: 'helper-repo', path: '/Users/exampleuser/.ship-bot/work/helper-repo' }],
+      sourceDir: `${HOME}/Developer/example-site.org`,
+      workDir: `${HOME}/.ship-bot/work/example-site.org`,
+      siblings: [{ slug: 'gorfednet/helper-repo', dir: 'helper-repo', path: `${HOME}/.ship-bot/work/helper-repo` }],
     }
     const names = redact.publicNames([hosted])
     assert.deepEqual([...names].sort(), ['example-site.org', 'gorfednet', 'gorfednet/example-site.org', 'gorfednet/helper-repo', 'helper-repo'])
