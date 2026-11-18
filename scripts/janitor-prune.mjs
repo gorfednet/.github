@@ -13,6 +13,8 @@
  * for each, the state of its folder: `merged` (its tip reached the default branch through a merge
  * commit, so its pull request merged), `fresh` (no commits of its own), `unmerged`, `dirty`
  * (uncommitted or unpushed work), `unreadable` (git status failed), `missing` or `no-repo`. It reads git only, never the GitHub API.
+ * That state is the folder's. Whether the session is done is its own pull request's: each line also carries `own`
+ * (`ownVerdict` below), from the `prNumber`, `prState`, `isRunning` and pin that `list_sessions` gave for that session.
  *
  * Reads every clone under the root, lists its linked worktrees and prints one JSON
  * line per worktree with a verdict. Without `--apply` it changes nothing.
@@ -29,7 +31,9 @@
  *     just cut a branch from main is never taken for a merged one
  * Then `git worktree remove` (no --force: git itself refuses a dirty tree), `git branch -d`
  * (git itself refuses an unmerged branch), and the origin branch is deleted only when
- * it is also an ancestor of origin/<default>.
+ * it is also an ancestor of origin/<default> and no open pull request has it as its head or its base
+ * (deleting a base branch closes the pull requests cut against it). That list is read once per
+ * repository per run, and only when a branch is up for deletion; if it cannot be read, no origin branch goes.
  *
  * Every other worktree is reported with the reason it was kept. A worktree with
  * uncommitted or unpushed work is reported as `dirty`; the janitor rescues those
@@ -193,14 +197,51 @@ export function sessionState(cwd, { fetched = new Map(), fetch = true } = {}) {
   return { ...base, state: onFirstParent ? 'fresh' : 'merged' }
 }
 
+const PR_STATES = new Set(['OPEN', 'MERGED', 'CLOSED'])
+
+/**
+ * Whether a session's own pull request lets it be archived, from the row `list_sessions` gave for it.
+ * The folder's state cannot answer that: sessions share a clone's main checkout, and a folder's branch
+ * can be merged while the session's pull request (often in another repository) is still open.
+ *   `keep`    never archive this run: running, pinned, or its own pull request is open or in a state not read
+ *   `merged`  its own pull request merged
+ *   `closed`  its own pull request closed unmerged
+ *   `no-pr`   it has no pull request of its own: only its idle time can retire it
+ * Fail closed: a running flag that is not exactly `false`, or a pull request with no known state, keeps the session.
+ */
+export function ownVerdict(session) {
+  const keep = (ownReason) => ({ own: 'keep', ownReason })
+  if (session?.isRunning !== false) return keep('running')
+  if (session.isPinned === true || session.pinned === true) return keep('pinned')
+  const hasNumber = session.prNumber !== null && session.prNumber !== undefined
+  const hasState = session.prState !== null && session.prState !== undefined
+  if (!hasNumber && !hasState) return { own: 'no-pr' }
+  const state = typeof session.prState === 'string' ? session.prState.toUpperCase() : null
+  if (!hasNumber || !PR_STATES.has(state)) return keep('own pull request state not known')
+  if (state === 'OPEN') return keep('own pull request open')
+  return { own: state === 'MERGED' ? 'merged' : 'closed' }
+}
+
 function defaultBranch(clone) {
   const head = tryGit(clone, 'symbolic-ref', '--short', 'refs/remotes/origin/HEAD')
   return head.ok ? head.out.replace(/^origin\//, '') : 'main'
 }
 
-export function run({ root, keep, idleMs, apply, now = Date.now(), fetch = true, log = (o) => console.log(JSON.stringify(o)) }) {
+export function run({ root, keep, idleMs, apply, now = Date.now(), fetch = true, openBranches = openPullRequestBranches, log = (o) => console.log(JSON.stringify(o)) }) {
   const results = []
   for (const clone of clones(root)) {
+    // The clone's open pull request heads and bases, read at most once, and only when an origin branch is up for deletion.
+    let open
+    const openPullRequests = () => {
+      if (open) return open
+      const slug = parseGitHubSlug(tryGit(clone, 'remote', 'get-url', 'origin').out)
+      if (!slug) return (open = { error: 'origin is not a GitHub repository: its open pull requests cannot be read' })
+      try {
+        return (open = { branches: new Set(openBranches(slug)) })
+      } catch (error) {
+        return (open = { error: `open pull request list failed: ${String(error.stderr ?? error.message).trim().split('\n')[0]}` })
+      }
+    }
     if (fetch) {
       const f = tryGit(clone, 'fetch', '--quiet', '--prune', 'origin')
       if (!f.ok) {
@@ -226,7 +267,11 @@ export function run({ root, keep, idleMs, apply, now = Date.now(), fetch = true,
           row.localBranchDeleted = tryGit(clone, 'branch', '-d', wt.branch).ok
           const remote = `refs/remotes/origin/${wt.branch}`
           if (tryGit(clone, 'rev-parse', '--verify', '--quiet', remote).ok && tryGit(clone, 'merge-base', '--is-ancestor', remote, mainRef).ok) {
-            row.remoteBranchDeleted = tryGit(clone, 'push', 'origin', '--delete', wt.branch).ok
+            // Fail closed: deleting the base of an open pull request closes it, so an unread list deletes nothing.
+            const prs = openPullRequests()
+            if (prs.error) row.remoteBranchKept = prs.error
+            else if (prs.branches.has(wt.branch)) row.remoteBranchKept = 'head or base of an open pull request'
+            else row.remoteBranchDeleted = tryGit(clone, 'push', 'origin', '--delete', wt.branch).ok
           }
         }
       }
@@ -494,7 +539,7 @@ if (isMain(import.meta.url) && process.argv.includes('--remote-sweep')) {
     badArgument(`cannot read the sessions file ${process.argv[3]}: ${error.message}`)
   }
   const fetched = new Map()
-  for (const s of sessions) console.log(JSON.stringify({ sessionId: s.sessionId, title: s.title, ...sessionState(s.cwd, { fetched }) }))
+  for (const s of sessions) console.log(JSON.stringify({ sessionId: s.sessionId, title: s.title, ...sessionState(s.cwd, { fetched }), prNumber: s.prNumber ?? null, prState: s.prState ?? null, ...ownVerdict(s) }))
 } else if (isMain(import.meta.url)) {
   const root = arg('--root') ?? join(homedir(), 'Developer', 'gorfednet')
   const keepFile = arg('--keep-file')

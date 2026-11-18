@@ -317,7 +317,8 @@ describe('the command', () => {
 describe('janitor prompt', () => {
   const prompt = readFileSync(new URL('../janitor/PROMPT.md', import.meta.url), 'utf8')
   it('records the cost before it archives, and a failed record never blocks archiving', () => {
-    assert.match(prompt, /`merged`: its pull request merged\. Record its cost \(step 4\.7\), then archive it/)
+    // The wording changed on 18 November 2026: a `merged` folder archives only with the session's own pull request merged.
+    assert.match(prompt, /With `own` `merged`, its own pull request merged too: record its cost \(step 4\.7\), then archive it/)
     assert.match(prompt, /pr-cost\.mjs record/)
     assert.match(prompt, /a failed cost line never blocks archiving/)
     const step = prompt.match(/7\. Cost \(plan row 1\.26\)[\s\S]*?(?=\n5\. Worktrees)/)[0]
