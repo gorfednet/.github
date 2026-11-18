@@ -39,26 +39,51 @@ const git = (cwd, ...args) => execFileSync('git', args, { cwd, encoding: 'utf8',
  * insteadOf matches by prefix, so each base also covers the `.git` form.
  */
 const NO_SUCH_REMOTE = join(tmpdir(), `n7-no-such-remote-${process.pid}`)
-const OPS_BASES = ['https://github.com/gorfednet/ops', 'ssh://git@github.com/gorfednet/ops', 'git@github.com:gorfednet/ops']
-const redirectEnv = () => {
-  const env = { GIT_TERMINAL_PROMPT: '0', GIT_ASKPASS: 'true', SSH_ASKPASS: 'true', GIT_SSH_COMMAND: 'false' }
-  const rules = [...OPS_BASES.map((base) => [`url.${NO_SUCH_REMOTE}.insteadOf`, base]), ['credential.helper', '']]
+const OPS_PLAIN = ['https://github.com/gorfednet/ops', 'ssh://git@github.com/gorfednet/ops', 'git@github.com:gorfednet/ops']
+// Both spellings of each: insteadOf matches by prefix and the longest wins, so the `.git` form maps exactly
+// to the target instead of leaving `.git` appended to it.
+const OPS_BASES = OPS_PLAIN.flatMap((base) => [`${base}.git`, base])
+const OPS_HTTPS = OPS_PLAIN[0]
+/**
+ * An environment that sends every spelling of the ops URL to `target`, for fetches (insteadOf) and for
+ * pushes (pushInsteadOf, which git applies to push URLs ahead of insteadOf), with prompts and credential
+ * helpers off. `base` is the environment it extends.
+ */
+const redirectEnv = (target, base = {}) => {
+  const env = { ...base, GIT_TERMINAL_PROMPT: '0', GIT_ASKPASS: 'true', SSH_ASKPASS: 'true', GIT_SSH_COMMAND: 'false' }
+  for (const key of Object.keys(env)) if (/^GIT_CONFIG_(COUNT|KEY_\d+|VALUE_\d+)$/.test(key)) delete env[key]
+  const rules = [
+    ...OPS_BASES.flatMap((from) => [[`url.${target}.insteadOf`, from], [`url.${target}.pushInsteadOf`, from]]),
+    ['credential.helper', ''],
+  ]
   env.GIT_CONFIG_COUNT = String(rules.length)
   rules.forEach(([key, value], i) => { env[`GIT_CONFIG_KEY_${i}`] = key; env[`GIT_CONFIG_VALUE_${i}`] = value })
   return env
 }
 // Applied to this process too, so a call that passes no env (the default `process.env`, an in-process
 // pushCounts) is covered the same way.
-Object.assign(process.env, redirectEnv())
+Object.assign(process.env, redirectEnv(NO_SUCH_REMOTE))
 
-/** Throws unless `env` sends the ops URL to the missing path or to a local bare repository. */
+/**
+ * Throws unless `env` sends the https ops URL, and every other spelling, to a path under the temp folder,
+ * for both fetch and push, and keeps credential helpers off.
+ */
 function assertIsolated(env) {
   const n = Number(env.GIT_CONFIG_COUNT)
   assert.ok(n >= 1, 'test env has no git config redirect: a push could reach the real ops remote')
-  const targets = []
-  for (let i = 0; i < n; i++) if (/^url\..*\.insteadOf$/.test(env[`GIT_CONFIG_KEY_${i}`])) targets.push([env[`GIT_CONFIG_KEY_${i}`].slice(4, -'.insteadOf'.length), env[`GIT_CONFIG_VALUE_${i}`]])
-  assert.ok(targets.some(([, from]) => from === OPS_REMOTE || OPS_BASES.includes(from)), 'test env does not redirect the ops URL')
-  for (const [to] of targets) assert.ok(!/github\.com/.test(to), `redirect target is remote: ${to}`)
+  const rules = []
+  for (let i = 0; i < n; i++) rules.push([env[`GIT_CONFIG_KEY_${i}`], env[`GIT_CONFIG_VALUE_${i}`]])
+  const targetsOf = (kind) => rules.filter(([k]) => new RegExp(`^url\\..*\\.${kind}$`).test(k)).map(([k, from]) => [k.slice(4, -(kind.length + 1)), from])
+  for (const kind of ['insteadOf', 'pushInsteadOf']) {
+    const targets = targetsOf(kind)
+    for (const from of OPS_BASES) assert.ok(targets.some(([, f]) => f === from), `test env has no ${kind} rule for ${from}`)
+    for (const [to] of targets) {
+      assert.ok(!/github\.com/.test(to), `${kind} target is remote: ${to}`)
+      assert.ok(to.startsWith(tmpdir()), `${kind} target is not under the temp folder: ${to}`)
+    }
+  }
+  assert.ok(rules.some(([k, v]) => k === 'credential.helper' && v === ''), 'test env leaves a credential helper on')
+  assert.equal(env.GIT_TERMINAL_PROMPT, '0', 'test env allows a prompt')
 }
 
 // Before any push in this file: prove the redirect is in force by asking git to list the real ops URL
@@ -75,9 +100,7 @@ for (const url of [OPS_REMOTE, 'git@github.com:gorfednet/ops.git']) {
 function fakeOps(root) {
   const bare = join(root, 'ops.git')
   git(root, 'init', '--bare', '-b', 'main', bare)
-  const env = { ...process.env, GIT_CONFIG_COUNT: '1', GIT_CONFIG_KEY_0: `url.${bare}.insteadOf`, GIT_CONFIG_VALUE_0: OPS_REMOTE }
-  for (const key of Object.keys(env)) if (/^GIT_CONFIG_(KEY|VALUE)_[1-9]/.test(key)) delete env[key]
-  return { bare, env }
+  return { bare, env: redirectEnv(bare, process.env) }
 }
 
 function run(root, status, extra = [], env = process.env) {
@@ -98,6 +121,31 @@ const keepFile = (root) => {
 }
 
 describe('test isolation', () => {
+  it('assertIsolated refuses an env that is not fully redirected', () => {
+    const good = redirectEnv(NO_SUCH_REMOTE)
+    assert.doesNotThrow(() => assertIsolated(good))
+    assert.throws(() => assertIsolated({}), /no git config redirect/)
+    assert.throws(() => assertIsolated({ GIT_CONFIG_COUNT: '0' }), /no git config redirect/)
+    assert.throws(() => assertIsolated(redirectEnv('https://github.com/somewhere/else')), /remote/)
+    assert.throws(() => assertIsolated(redirectEnv(join('/', 'elsewhere', 'ops.git'))), /not under the temp folder/)
+    // Only one spelling redirected: the https form is required, and so is every other.
+    const only = (keep) => {
+      const env = { ...good }
+      const n = Number(env.GIT_CONFIG_COUNT)
+      for (let i = 0; i < n; i++) if (env[`GIT_CONFIG_VALUE_${i}`] === keep) env[`GIT_CONFIG_VALUE_${i}`] = 'https://example.invalid/other'
+      return env
+    }
+    assert.throws(() => assertIsolated(only(OPS_HTTPS)), /no insteadOf rule for https/)
+    assert.throws(() => assertIsolated(only(OPS_PLAIN[1])), /no insteadOf rule for ssh/)
+    // pushInsteadOf missing entirely.
+    const noPush = { ...good }
+    for (let i = 0; i < Number(good.GIT_CONFIG_COUNT); i++) if (/pushInsteadOf$/.test(good[`GIT_CONFIG_KEY_${i}`])) noPush[`GIT_CONFIG_KEY_${i}`] = 'url.x.unused'
+    assert.throws(() => assertIsolated(noPush), /no pushInsteadOf rule/)
+    // A credential helper left on, or prompts allowed.
+    assert.throws(() => assertIsolated({ ...good, [`GIT_CONFIG_VALUE_${Number(good.GIT_CONFIG_COUNT) - 1}`]: 'store' }), /credential helper/)
+    assert.throws(() => assertIsolated({ ...good, GIT_TERMINAL_PROMPT: '1' }), /prompt/)
+  })
+
   it('sends the ops URL, in every form, to a missing local path and never to github.com', () => {
     for (const url of [OPS_REMOTE, 'https://github.com/gorfednet/ops', 'git@github.com:gorfednet/ops.git', 'ssh://git@github.com/gorfednet/ops.git']) {
       const r = spawnSync('git', ['ls-remote', url], { encoding: 'utf8', env: process.env, timeout: 15000 })
