@@ -31,6 +31,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { isMain } from './lib/isMain.mjs'
 import { validateConfig } from '../ship-bot/lib/config.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -245,4 +246,4 @@ export function main(argv) {
   return 0
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) process.exitCode = main(process.argv.slice(2))
+if (isMain(import.meta.url)) process.exitCode = main(process.argv.slice(2))

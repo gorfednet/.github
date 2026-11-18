@@ -6,7 +6,7 @@
  */
 import { strict as assert } from 'node:assert'
 import { execFileSync, spawnSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { after, describe, it } from 'node:test'
@@ -204,5 +204,19 @@ describe('check-rules-drift', () => {
     for (const ok of ['Opus builder', 'Fable 5.2 reviewer', 'claude-opus-5-5', 'Sonnet 5.5', 'Claude 5.5 Sonnet', 'Claude Code', 'a pagination cursor']) {
       assert.deepEqual(lineFindings(ok), [], ok)
     }
+  })
+})
+
+// A skipped CLI block exits 0 and checks nothing. Through a symlink, a running CLI refuses an
+// unknown profile with exit 1; exit 0 would mean the guard silently did nothing.
+describe('CLI entry point', () => {
+  it('runs through a symlink to the script', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'rules-drift-link-'))
+    dirs.push(dir)
+    const link = join(dir, 'drift-link.mjs')
+    symlinkSync(SCRIPT, link)
+    const r = spawnSync(process.execPath, [link, '--profile', 'nonesuch'], { encoding: 'utf8' })
+    assert.equal(r.status, 1)
+    assert.match(r.stderr, /unknown --profile/)
   })
 })
