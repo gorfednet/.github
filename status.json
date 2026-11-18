@@ -1,12 +1,12 @@
 {
-  "generatedAt": "2026-11-18T16:32:00.227Z",
-  "renderedAt": "2026-11-18T16:32:00.227Z",
+  "generatedAt": "2026-11-18T18:32:29.273Z",
+  "renderedAt": "2026-11-18T18:32:29.273Z",
   "repos": [
     {
       "slug": "gorfednet/bindercurve.com",
       "redacted": true,
       "mainRed": true,
-      "openPrCount": 12,
+      "openPrCount": 13,
       "lapsedBacklogCount": 16,
       "noPrCount": 80,
       "idlePrCount": 1,
@@ -23,7 +23,7 @@
       "slug": "gorfednet/4thcltr.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 34,
+      "openPrCount": 31,
       "lapsedBacklogCount": 21,
       "noPrCount": 18,
       "idlePrCount": 13,
@@ -71,11 +71,11 @@
       "slug": "gorfednet/anal0g.org",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 3,
+      "openPrCount": 2,
       "lapsedBacklogCount": 1,
       "noPrCount": 2,
-      "idlePrCount": 2,
-      "duplicatePrCount": 1,
+      "idlePrCount": 1,
+      "duplicatePrCount": 0,
       "dependabotRedCount": 0,
       "kitVersion": "0.61.0",
       "kitPin": {
@@ -87,10 +87,10 @@
       "slug": "gorfednet/blackpixelrecords.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 3,
+      "openPrCount": 2,
       "lapsedBacklogCount": 0,
       "noPrCount": 3,
-      "idlePrCount": 1,
+      "idlePrCount": 0,
       "duplicatePrCount": 0,
       "dependabotRedCount": 0,
       "kitVersion": "0.61.0",
@@ -103,7 +103,7 @@
       "slug": "gorfednet/denseware.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 4,
+      "openPrCount": 5,
       "lapsedBacklogCount": 0,
       "noPrCount": 2,
       "idlePrCount": 0,
@@ -167,11 +167,11 @@
       "slug": "gorfednet/ssatcy.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 10,
-      "lapsedBacklogCount": 2,
+      "openPrCount": 7,
+      "lapsedBacklogCount": 1,
       "noPrCount": 1,
       "idlePrCount": 5,
-      "duplicatePrCount": 2,
+      "duplicatePrCount": 0,
       "dependabotRedCount": 1,
       "kitVersion": "0.61.0",
       "kitPin": {
@@ -185,15 +185,15 @@
       "mainRed": false,
       "openPrs": [
         {
-          "number": 264,
-          "title": "Janitor: archive on a session's own PR, keep branches open PRs use",
+          "number": 265,
+          "title": "Ship-bot: a repository's own name is never a known secret",
           "ageDays": 0,
           "labels": [],
           "draft": false,
-          "review": "not-run",
-          "headSha": "78c501c87765fe23985355f4f25bf98069c64692",
-          "ci": "pending",
-          "next": "claude review clean on the head.",
+          "review": "clean",
+          "headSha": "23adc304fcd20ce265f80adfd3fc36c1cd98e579",
+          "ci": "red",
+          "next": "Merge after clean review and Desk's Fable read (Fable read 23adc30: SHIP)",
           "author": "gorfednet"
         },
         {
@@ -563,7 +563,7 @@
     {
       "slug": "gorfednet/MoonMan",
       "redacted": true,
-      "mainRed": false,
+      "mainRed": true,
       "openPrCount": 9,
       "lapsedBacklogCount": 2,
       "noPrCount": 47,
@@ -634,11 +634,11 @@
       "slug": "gorfednet/heuristics.4thcltr.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 14,
-      "lapsedBacklogCount": 16,
+      "openPrCount": 12,
+      "lapsedBacklogCount": 5,
       "noPrCount": 7,
-      "idlePrCount": 7,
-      "duplicatePrCount": 4,
+      "idlePrCount": 6,
+      "duplicatePrCount": 1,
       "dependabotRedCount": 2,
       "kitVersion": "0.61.0",
       "kitPin": {
@@ -686,7 +686,7 @@
         {
           "number": 23,
           "title": "Spec 1.2.1: a site footer mark, and ordering a long Tool list",
-          "ageDays": 5,
+          "ageDays": 6,
           "labels": [],
           "draft": true,
           "review": "not-run",
@@ -719,7 +719,7 @@
       "idlePrs": [
         {
           "number": 23,
-          "idleDays": 5
+          "idleDays": 6
         },
         {
           "number": 3,
@@ -757,7 +757,7 @@
       "slug": "gorfednet/ops",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 10,
+      "openPrCount": 11,
       "lapsedBacklogCount": 0,
       "noPrCount": 3,
       "idlePrCount": 0,
@@ -824,11 +824,11 @@
     }
   },
   "inventory": {
-    "measuredAt": "2026-11-18T16:32:00.227Z",
+    "measuredAt": "2026-11-18T18:32:29.273Z",
     "counts": {
       "pr": {
-        "total": 151,
-        "orphans": 66
+        "total": 144,
+        "orphans": 64
       },
       "session": null,
       "worktree": null,
@@ -880,12 +880,12 @@
         "lapsed": true
       }
     ],
-    "hiddenPrivate": 63,
+    "hiddenPrivate": 61,
     "privateReposNotItemised": 18,
     "planRead": true
   },
   "dotgithub": {
-    "measuredAt": "2026-11-18T16:33:03.584Z",
+    "measuredAt": "2026-11-18T18:33:19.903Z",
     "branches": 40,
     "merged": 3,
     "exposedFiles": 61,
