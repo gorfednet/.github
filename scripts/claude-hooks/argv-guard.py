@@ -29,8 +29,7 @@ Refused (the classes settings.json already denies, nothing new):
   git -c core.hooksPath=..., --config-env=core.hooksPath=...
   gh pr merge; gh repo delete, rename, edit --visibility; gh run, release
   delete; gh label delete, edit, create --force; gh secret, variable delete
-  or remove; gh pr close --delete-branch; gh auth token and
-  gh auth status --show-token (unless a `$(...)` captures the output)
+  or remove; gh pr close --delete-branch
   gh api        `--hostname`, method DELETE, a write to `pulls/N/merge` or
                 `merges`, a merge mutation on `graphql`, `force` on `git/refs`
 
@@ -156,21 +155,21 @@ def _heredoc_substitutions(body: str, out: list, depth: int) -> None:
             i = _close_paren(body, i + 2) + 1
         elif c == "$" and body.startswith("$(", i):
             k = _close_paren(body, i + 2)
-            parse(body[i + 2 : k], out, True, depth)
+            parse(body[i + 2 : k], out, depth)
             i = k + 1
         elif c == "`":
             k = _close_tick(body, i + 1)
-            parse(body[i + 1 : k], out, True, depth)
+            parse(body[i + 1 : k], out, depth)
             i = k + 1
         else:
             i += 1
 
 
-def parse(text: str, out: list, captured: bool = False, depth: int = 0) -> None:
-    """Append (words, captured) to `out` for every simple command in `text`.
+def parse(text: str, out: list, depth: int = 0) -> None:
+    """Append the words of every simple command in `text` to `out`.
 
     Words have their quoting removed. Commands inside `$(...)` and backticks are
-    appended too, with captured=True. Redirections and heredoc bodies are dropped;
+    appended too. Redirections and heredoc bodies are dropped;
     a heredoc fed to a shell is parsed as code.
     """
     if depth > MAX_DEPTH:
@@ -197,12 +196,12 @@ def parse(text: str, out: list, captured: bool = False, depth: int = 0) -> None:
         end_word()
         skip_word = False
         if words:
-            out.append((words, captured))
+            out.append(words)
         words = []
 
     def substitution(inner: str) -> None:
         nonlocal cur
-        parse(inner, out, True, depth + 1)
+        parse(inner, out, depth + 1)
         cur = (cur or []) + [DYN]
 
     while i < n:
@@ -290,7 +289,7 @@ def parse(text: str, out: list, captured: bool = False, depth: int = 0) -> None:
                 if not closed:
                     raise Unparsed
                 if is_code:
-                    parse("\n".join(body), out, captured, depth + 1)
+                    parse("\n".join(body), out, depth + 1)
                 elif not quoted:
                     _heredoc_substitutions("\n".join(body), out, depth + 1)
             pending = []
@@ -506,7 +505,6 @@ _GH_FLAGGED = {
     ("pr", "close"): ("--delete-branch", "d", "cR", ("--comment", "--repo"), "it deletes the branch"),
     ("label", "create"): ("--force", "f", "cdR", ("--color", "--description", "--repo"), "it overwrites an existing label"),
     ("repo", "edit"): ("--visibility", "", "dh", ("--description", "--homepage", "--add-topic", "--remove-topic", "--default-branch"), "it changes who can see a repository"),
-    ("auth", "status"): ("--show-token", "t", "h", ("--hostname",), "it prints the token"),
 }
 _API_VALUE_SHORT = "XHfFqtp"
 _API_VALUE_LONG = ("--method", "--header", "--raw-field", "--field", "--jq", "--template", "--preview", "--input", "--hostname", "--cache")
@@ -573,7 +571,7 @@ def _gh_api(args: list[str]) -> str | None:
     return None
 
 
-def judge_gh(args: list[str], captured: bool) -> str | None:
+def judge_gh(args: list[str]) -> str | None:
     path: list[str] = []
     i = 0
     while i < len(args) and len(path) < 2:
@@ -592,18 +590,16 @@ def judge_gh(args: list[str], captured: bool) -> str | None:
     key = tuple(path)
     if key in _GH_DENIED:
         return f"`gh {' '.join(key)}`: {_GH_DENIED[key]}"
-    if key == ("auth", "token"):
-        return None if captured else "`gh auth token` prints the token into the transcript"
     if key in _GH_FLAGGED:
         long_flag, short, value_short, value_long, why = _GH_FLAGGED[key]
         flags, _ = _gh_flags(rest, value_short, value_long)
         on = [v for v in flags.get(long_flag, []) + (flags.get(short, []) if short else []) if v.lower() != "false"]
-        if on and not (key == ("auth", "status") and captured):
+        if on:
             return f"`gh {' '.join(key)} {long_flag}`: {why}"
     return None
 
 
-def judge(words: list[str], captured: bool = False, depth: int = 0) -> str | None:
+def judge(words: list[str], depth: int = 0) -> str | None:
     """Why one simple command is refused, or None."""
     if depth > MAX_DEPTH:
         return None
@@ -617,7 +613,7 @@ def judge(words: list[str], captured: bool = False, depth: int = 0) -> str | Non
     if name == "git":
         return judge_git(args)
     if name == "gh":
-        return judge_gh(args, captured)
+        return judge_gh(args)
     if name in _PREFIXES:
         j = 0
         takes = _PREFIX_VALUES.get(name, ())
@@ -625,7 +621,7 @@ def judge(words: list[str], captured: bool = False, depth: int = 0) -> str | Non
             j += 2 if args[j] in takes else 1
         if name == "timeout":
             j += 1  # the duration
-        return judge(args[j:], captured, depth + 1)
+        return judge(args[j:], depth + 1)
     if name in _SHELLS:
         j = 0
         while j < len(args):
@@ -633,7 +629,7 @@ def judge(words: list[str], captured: bool = False, depth: int = 0) -> str | Non
             if not a:
                 break
             if a.startswith("-") and not a.startswith("--") and "c" in a:
-                return judge_text(args[j + 1] if j + 1 < len(args) else "", captured, depth + 1)
+                return judge_text(args[j + 1] if j + 1 < len(args) else "", depth + 1)
             if a[:1] in "-+" and not a.startswith(("--", "++")) and a[-1:] in "oO":
                 j += 1  # -o pipefail, -euo pipefail, -O extglob: the next word is the option's value
             elif a[:1] not in "-+":
@@ -641,11 +637,11 @@ def judge(words: list[str], captured: bool = False, depth: int = 0) -> str | Non
             j += 1
         return None
     if name == "eval":
-        return judge_text(" ".join(args), captured, depth + 1)
+        return judge_text(" ".join(args), depth + 1)
     if name == "ssh":
         for a in args[1:]:
             if re.search(r"\s", a):
-                why = judge_text(a, captured, depth + 1)
+                why = judge_text(a, depth + 1)
                 if why:
                     return why
         return None
@@ -653,22 +649,22 @@ def judge(words: list[str], captured: bool = False, depth: int = 0) -> str | Non
         if args[:1] and args[0] in ("run", "exec") and "--" in args:
             inner = args[args.index("--") + 1 :]
             if len(inner) == 1 and re.search(r"\s", inner[0]):
-                return judge_text(inner[0], captured, depth + 1)  # hc run -- 'git push -f ...'
-            return judge(inner, captured, depth + 1)
+                return judge_text(inner[0], depth + 1)  # hc run -- 'git push -f ...'
+            return judge(inner, depth + 1)
         return None
     if name == "gate-run":
         inner = args[1:]
         if len(inner) == 1:
-            return judge_text(inner[0], captured, depth + 1)
-        return judge(inner, captured, depth + 1)
+            return judge_text(inner[0], depth + 1)
+        return judge(inner, depth + 1)
     return None
 
 
-def judge_text(text: str, captured: bool = False, depth: int = 0) -> str | None:
+def judge_text(text: str, depth: int = 0) -> str | None:
     commands: list = []
-    parse(text, commands, captured, depth)
-    for words, was_captured in commands:
-        why = judge(words, was_captured, depth)
+    parse(text, commands, depth)
+    for words in commands:
+        why = judge(words, depth)
         if why:
             return why
     return None

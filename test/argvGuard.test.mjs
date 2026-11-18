@@ -248,12 +248,6 @@ test('gh: the denied subcommands and flags, wherever the flags sit', () => {
   blocked('gh pr close 5 --delete-branch');
   blocked('gh pr close 5 -d');
   blocked("gh pr close 5 -dc 'done'");
-  blocked('gh auth token');
-  blocked('gh auth token | pbcopy');
-  blocked('gh auth status --show-token');
-  blocked('gh auth status -t');
-  allowed('GH_TOKEN="$(gh auth token)" check-closing-keywords --pr 5'); // captured, never printed
-  allowed('gh auth status');
   allowed("gh pr close 5 --comment '-d'");
   allowed("gh pr close 5 -c 'superseded; --delete-branch not used'");
   allowed('gh pr close 5 --delete-branch=false');
@@ -336,8 +330,13 @@ test('it never fails closed: what it cannot read passes to the settings list and
   assert.ok(run('git push --forc origin x', { tool_name: 'Monitor' }));
   // another tool's input is not a shell command
   assert.equal(run('git push --force origin x', { tool_name: 'Write' }), null);
-  // deep nesting stops reading, it does not raise
-  allowed(`${"bash -c '".repeat(1)}${'$('.repeat(40)}git status${')'.repeat(40)}'`);
+  // deep nesting: a refused command 6 substitutions down is still read, so a crash and a correct read differ
+  const nested = (levels, command) => `echo ${'$(echo '.repeat(levels - 1)}$(${command}${')'.repeat(levels)}`;
+  blocked(nested(6, 'git push --force origin x'), /force push/);
+  blocked(`bash -c '${nested(5, 'git reset --hard')}'`, /--hard/);
+  allowed(nested(6, 'git status'));
+  // past the depth limit it stops reading and passes, it does not raise
+  allowed(nested(40, 'git push --force origin x'));
 });
 
 test('the refusal says what to do instead', () => {
