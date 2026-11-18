@@ -31,7 +31,7 @@ import { promisify } from 'node:util'
 import { CARRY_HOURS } from './lib/carryHours.mjs'
 
 import { isMain } from '../templates/verification-kit/lib/isMain.mjs'
-import { lapsedBacklog } from './fleet-report.mjs'
+import { lapsedBacklog, pinnedRefs } from './fleet-report.mjs'
 import { backlogIds, collectLocal, duplicatePrs, idlePrs } from './lib/hygiene.mjs'
 import { LOCAL_COUNTS_SOURCE, readLocalCounts } from './lib/localCounts.mjs'
 import { collectPrCost } from './lib/prCost.mjs'
@@ -199,8 +199,8 @@ const execFileAsync = promisify(execFile)
  * Asks each such workflow for its own latest success, so a busy repository's other runs can't push it out of a page.
  * `api` takes a path and returns parsed JSON.
  */
-export function latestDeploy(slug, api) {
-  const workflows = api(`repos/${slug}/actions/workflows?per_page=100`).workflows ?? []
+export function latestDeploy(slug, api, listed = null) {
+  const workflows = listed ?? api(`repos/${slug}/actions/workflows?per_page=100`).workflows ?? []
   let best = null
   for (const w of workflows) {
     if (w.state !== 'active' || !/deploy/i.test(`${w.name} ${w.path}`)) continue
@@ -208,6 +208,154 @@ export function latestDeploy(slug, api) {
     if (run && (!best || run.updated_at > best.at)) best = { name: w.name, at: run.updated_at, url: run.html_url }
   }
   return best
+}
+
+
+/** The repository whose kit every caller's gate runs, and where its manifest lives. */
+export const KIT_SOURCE = { slug: 'gorfednet/.github', manifest: 'templates/verification-kit/MANIFEST.json' }
+const SAFE_REF = /^[A-Za-z0-9][A-Za-z0-9._/-]*$/
+
+/** Workflow files most likely to call the shared gate come first, so the read usually stops after one or two. */
+const callerLike = (w) => /pr-check|verif|gate|ci|test/i.test(w.path)
+const callerFirst = (a, b) => Number(callerLike(b)) - Number(callerLike(a))
+
+/** A `uses:` target that is the verification-gate action itself. setup-node, claude-review and the like say nothing about the kit. */
+const gateAction = (target) => target === '.github/actions/verification-gate'
+
+const PR_CHECK_USES = /^([ \t]*)uses:[ \t]*["']?gorfednet\/\.github\/\.github\/workflows\/pr-check-[^/@\s]+\.ya?ml@([^\s#"']+)/
+const emptyValue = (raw) => ['', '""', "''", '~', 'null'].includes(raw.replace(/(^|\s)#.*$/, '').trim())
+
+/**
+ * The refs of the pr-check reusable-workflow calls in a workflow that pass a non-empty `verification-kit`.
+ * Each pr-check workflow defaults that input to "" and runs its gate step only when it is not empty, so a call
+ * without it runs no kit and is not a pin. The `with:` read is the call's own job only: the lines around the
+ * `uses:` key at its indent or deeper.
+ */
+function prCheckGateRefs(body) {
+  const lines = body.split('\n')
+  const indentOf = (line) => line.match(/^[ \t]*/)[0].length
+  const skip = (line) => line.trim() === '' || /^\s*#/.test(line)
+  const refs = []
+  for (let i = 0; i < lines.length; i++) {
+    const m = PR_CHECK_USES.exec(lines[i])
+    if (!m) continue
+    const indent = m[1].length
+    let from = i
+    while (from > 0 && (skip(lines[from - 1]) || indentOf(lines[from - 1]) >= indent)) from--
+    let to = i
+    while (to + 1 < lines.length && (skip(lines[to + 1]) || indentOf(lines[to + 1]) >= indent)) to++
+    let passes = false
+    for (let j = from; j <= to; j++) {
+      const w = /^([ \t]*)with:[ \t]*(.*)$/.exec(lines[j])
+      if (!w || w[1].length !== indent) continue
+      const flow = /^\{(.*)\}\s*(#.*)?$/.exec(w[2].trim())
+      if (flow) {
+        const kit = /(?:^|,)\s*["']?verification-kit["']?\s*:\s*([^,]*)/.exec(flow[1])
+        if (kit && !emptyValue(kit[1])) passes = true
+        continue
+      }
+      for (let k = j + 1; k <= to && (skip(lines[k]) || indentOf(lines[k]) > indent); k++) {
+        const kit = /^[ \t]*["']?verification-kit["']?[ \t]*:(.*)$/.exec(lines[k])
+        if (kit && !skip(lines[k]) && !emptyValue(kit[1])) passes = true
+      }
+    }
+    if (passes) refs.push(m[2])
+  }
+  return refs
+}
+
+const VENDORED_RUN = /^(?:(?:then|do|else)\s+)?node(?:\s+--?[\w-]+(?:=\S+)?)*\s+(?:\.\/)?verification-kit\/bin\/[\w.-]+\.mjs(?:\s|$)/
+
+/** The commands in a `run:` value (inline, or the indented lines of a block scalar), comments cut, split on && ; || and |. */
+function runCommands(body) {
+  const lines = body.split('\n')
+  const out = []
+  const split = (text) => text.replace(/\s#.*$/, '').split(/&&|\|\||;|\|/).map((c) => c.trim()).filter(Boolean)
+  for (let i = 0; i < lines.length; i++) {
+    const m = /^(\s*)(?:-\s+)?run:\s*(.*)$/.exec(lines[i])
+    if (!m || /^\s*#/.test(lines[i])) continue
+    const rest = m[2].trim()
+    if (/^[|>][+-]?\d*\s*(#.*)?$/.test(rest)) {
+      const keyIndent = lines[i].match(/^(\s*)(?:-\s+)?/)[0].length
+      for (let j = i + 1; j < lines.length; j++) {
+        const indent = lines[j].match(/^(\s*)/)[1].length
+        if (lines[j].trim() !== '' && indent < keyIndent + (/^\s*-\s/.test(lines[i]) ? 0 : 1)) break
+        if (lines[j].trim() !== '' && !/^\s*#/.test(lines[j])) out.push(...split(lines[j]))
+      }
+    } else if (rest !== '') out.push(...split(rest.replace(/^(["'])(.*)\1$/, '$2')))
+  }
+  return out
+}
+
+/** True when a `run:` value invokes `node` on a script in the repository's own vendored kit (verification-kit/bin/, exactly). */
+export const runsVendoredKit = (body) => runCommands(body).some((c) => VENDORED_RUN.test(c))
+
+/**
+ * The ref a repository's workflows pin the shared gate to, read from the `uses: gorfednet/.github/...@ref`
+ * lines (the gate runs this repository's kit at that ref, not the repository's vendored copy). Reads the
+ * workflow files the run already listed, caller-like names first, and takes the pin from the files that call the
+ * verification-gate action, or a pr-check reusable workflow at main with a non-empty `verification-kit` (which
+ * calls the action at main; without that input it runs no gate and is no pin; at another ref it is an error). Every active file is read; differing refs across files are an error. Answers `{ ref }`; with no active gate
+ * caller, `{ vendored: true }` when a workflow runs the repository's own verification-kit/bin (the vendored
+ * kit is what runs there), else `{ none: true }` for a tier-0 repository (fleet.json: gate off) or
+ * `{ untiered: true }` for one fleet.json does not list (informational, never a failure); `{ error }` for
+ * everything else: an empty or unreadable list, a gate call with a mixed or unparseable
+ * ref, or no gate caller at tier 1 and above. Never a silent "current". Error text names no path, so it can be published.
+ * `text` is (path) => string | null (null: the file is not on the default branch, so it is skipped; a read that throws propagates).
+ */
+export function readKitPin(workflows, text, { tier } = {}) {
+  if (!Array.isArray(workflows)) return { error: 'workflow list empty' }
+  // An empty list is a repository with no workflows (the API answers 200): it falls through to the tier rules below,
+  // so a tier-0 repository reads `none` and a tier-1 one reads an error.
+  const files = workflows.filter((w) => w.state === 'active' && /^\.github\/workflows\/[^/]+\.ya?ml$/.test(w.path ?? '')).sort(callerFirst)
+  let vendored = false
+  const found = new Set()
+  for (const w of files) {
+    const body = text(w.path)
+    // Not on the default branch (renamed, deleted, or only ever seen on a PR branch): it pins nothing there, so skip it.
+    // A read that throws is not this case; it reaches the caller's catch and the row goes unavailable or error.
+    if (body === null) continue
+    // A direct call of the action runs the kit at the ref written. A pr-check-*.yml reusable workflow calls
+    // verification-gate@main itself, but only when the caller passes verification-kit, and only main's copy is known to:
+    // what a pr-check workflow at another ref calls (nothing at all before the gate step existed) is not in the caller's
+    // text, so that is an error rather than a guess. No fleet caller pins pr-check anywhere but main.
+    const viaPrCheck = prCheckGateRefs(body)
+    if (viaPrCheck.some((ref) => ref !== 'main')) return { error: 'a workflow calls a pr-check workflow at a ref other than main, so the gate it runs cannot be read' }
+    const gate = [...pinnedRefs([body]).filter((u) => gateAction(u.target)), ...viaPrCheck.map((ref) => ({ ref }))]
+    if (gate.length === 0) {
+      if (runsVendoredKit(body)) vendored = true
+      continue
+    }
+    const refs = [...new Set(gate.map((u) => u.ref))]
+    if (refs.length !== 1) return { error: `a workflow pins the gate at ${refs.length} different refs` }
+    if (!SAFE_REF.test(refs[0])) return { error: 'a workflow pins the gate at an unreadable ref' }
+    found.add(refs[0])
+  }
+  if (found.size > 1) return { error: `workflows pin the gate at ${found.size} different refs` }
+  if (found.size === 1) return { ref: [...found][0] }
+  if (vendored) return { vendored: true }
+  if (tier === 0) return { none: true }
+  if (tier === undefined) return { untiered: true }
+  return { error: workflows.length === 0 ? 'workflow list empty' : 'no active workflow calls the shared gate' }
+}
+
+/** A pin with the kit version at its ref: `main` is the canonical kit itself (no call); any other ref's manifest is read once per process (the cache is shared within one process only). */
+export function resolveKitPin(pin, json, cache = new Map()) {
+  if (pin.error || pin.none || pin.untiered || pin.vendored || pin.ref === 'main') return pin
+  if (!cache.has(pin.ref)) {
+    let outcome
+    try {
+      const body = fileText(KIT_SOURCE.slug, `${KIT_SOURCE.manifest}?ref=${encodeURIComponent(pin.ref)}`, json)
+      outcome = body === null ? { error: `ref ${pin.ref} has no kit manifest` } : { version: JSON.parse(body).version ?? '' }
+    } catch (cause) {
+      // A rate limit is the run's problem, not the ref's: let the row go unavailable. Any other failure answers this row only and is not cached.
+      if (/rate limit/i.test(String(cause.stderr || cause.message))) throw cause
+      return { ref: pin.ref, error: `ref ${pin.ref} unreadable` }
+    }
+    cache.set(pin.ref, outcome)
+  }
+  const got = cache.get(pin.ref)
+  return got.error ? { ref: pin.ref, error: got.error } : { ref: pin.ref, version: got.version }
 }
 
 /** ahead_by for each branch against base (null when the branch shares no history with it), 8 requests at a time (a repository can hold hundreds of branches). */
@@ -249,6 +397,16 @@ function fileText(slug, path, json = ghJson) {
 /** True when the repository API says the repository is not public. Unknown visibility counts as private. */
 export const isPrivateRepo = (repo) => repo.private === true || (repo.visibility ?? 'private') !== 'public'
 
+/** A private repository's pin as ref, version and state only: no file path or message from its workflows. */
+export const redactPin = (pin) => ({
+  ...(typeof pin.ref === 'string' ? { ref: pin.ref } : {}),
+  ...(typeof pin.version === 'string' ? { version: pin.version } : {}),
+  ...(pin.none === true ? { none: true } : {}),
+  ...(pin.untiered === true ? { untiered: true } : {}),
+  ...(pin.vendored === true ? { vendored: true } : {}),
+  ...(pin.error ? { error: 'unreadable' } : {}),
+})
+
 /** The slug and counts only: no title, branch, next line, backlog id or run URL leaves a private repository. */
 export function redactRepo(full) {
   return {
@@ -263,6 +421,8 @@ export function redactRepo(full) {
     dependabotRedCount: full.dependabotRed,
     // A version number is not private; the fleet-wide check needs it from every row.
     kitVersion: full.kitVersion,
+    // A ref and a version number name nothing private; the gate's version is what the fleet-wide check reads.
+    ...(full.kitPin ? { kitPin: redactPin(full.kitPin) } : {}),
     // A count (or null for UNKNOWN) names no package or advisory.
     alertsOverdue: full.alertsOverdue,
   }
@@ -274,7 +434,7 @@ export function redactRepo(full) {
  * private repository that then fails to read publishes only the word "unreadable" (an error message can
  * quote the file it choked on). `json` and `log` are injectable for tests.
  */
-export async function collectRepo(slug, now = new Date(), { includePrivate = false, json = ghJson, log = console.error, kitPath = KIT_MANIFEST, carryBranches } = {}) {
+export async function collectRepo(slug, now = new Date(), { includePrivate = false, json = ghJson, log = console.error, kitPath = KIT_MANIFEST, carryBranches, pinCache, tier } = {}) {
   let repo
   let isPrivate = true
   try {
@@ -285,7 +445,7 @@ export async function collectRepo(slug, now = new Date(), { includePrivate = fal
   }
   try {
     if (repo instanceof Error) throw repo
-    return await gatherRepo(slug, now, { includePrivate, json, repo, kitPath, carryBranches, log })
+    return await gatherRepo(slug, now, { includePrivate, json, repo, kitPath, carryBranches, log, pinCache, tier })
   } catch (cause) {
     const detail = String(cause.stderr || cause.message).trim().split('\n')[0]
     // A rate-limit answer names no file, so it is safe to say even for a private repository: without it, 18 rows
@@ -305,7 +465,7 @@ function ciForCommit(slug, sha, json) {
   return ciState(runs, status)
 }
 
-export async function gatherRepo(slug, now = new Date(), { includePrivate = false, json = ghJson, repo = null, kitPath = KIT_MANIFEST, carryBranches, log = console.error } = {}) {
+export async function gatherRepo(slug, now = new Date(), { includePrivate = false, json = ghJson, repo = null, kitPath = KIT_MANIFEST, carryBranches, log = console.error, pinCache = new Map(), tier } = {}) {
   const today = now.toISOString().slice(0, 10)
   if (repo === null) repo = json(['api', `repos/${slug}`])
   const base = repo.default_branch
@@ -348,7 +508,8 @@ export async function gatherRepo(slug, now = new Date(), { includePrivate = fals
   const backlogText = fileText(slug, 'docs/backlog.json', json)
   const backlog = backlogText === null ? null : JSON.parse(backlogText)
   const lapsed = backlog === null ? [] : lapsedBacklog(backlog, today)
-  const deploy = latestDeploy(slug, (path) => json(['api', path]))
+  const workflows = json(['api', `repos/${slug}/actions/workflows?per_page=100`]).workflows ?? []
+  const deploy = latestDeploy(slug, (path) => json(['api', path]), workflows)
   let incidents = 0
   for (const path of INCIDENT_FILES) {
     const text = fileText(slug, path, json)
@@ -360,6 +521,16 @@ export async function gatherRepo(slug, now = new Date(), { includePrivate = fals
   // null: the repository carries no kit. An unreadable manifest is a thrown error, so the row is `unavailable`, never null.
   const manifestText = fileText(slug, kitPath, json)
   const kitVersion = manifestText === null ? null : (JSON.parse(manifestText).version ?? '')
+  // The gate runs the kit at the ref the callers pin, so that ref (not the vendored manifest above) is the drift to report.
+  let kitPin
+  try {
+    kitPin = resolveKitPin(readKitPin(workflows, (path) => fileText(slug, path, json), { tier }), json, pinCache)
+    // A repository that runs its own vendored kit is held to its vendored manifest, as before.
+    if (kitPin.vendored) kitPin = kitVersion === null ? { error: 'vendored kit has no manifest' } : { vendored: true, version: kitVersion }
+  } catch (cause) {
+    if (/rate limit/i.test(String(cause.stderr || cause.message))) throw cause
+    kitPin = { error: 'workflow files unreadable' }
+  }
   const mainSha = json(['api', `repos/${slug}/commits/${base}`]).sha
   const mainRed = ciForCommit(slug, mainSha, json) === 'red'
   const alerts = readAlerts(slug, now, json, log, isPrivate && !includePrivate)
@@ -377,6 +548,7 @@ export async function gatherRepo(slug, now = new Date(), { includePrivate = fals
     incidents7d: incidents,
     dependabotRed: dependabotRed(openPrs),
     kitVersion,
+    kitPin,
     alertsOverdue: alerts.count,
     // Public rows only: which private repositories have alerts switched off is not published.
     ...(alerts.why ? { alertsUnread: alerts.why } : {}),
@@ -509,7 +681,7 @@ if (isMain(import.meta.url)) {
     if (carry) extra.push('--carry-branches', arg('--carry-branches'))
     carriedFrom = carry ? earlier.branchesReadAt : null
     const rows = await mapLimit(slugs, 10, async (slug) => {
-      if (slugs.length === 1) return collectRepo(slug, now, { includePrivate: process.argv.includes('--include-private'), carryBranches: carry?.get(slug), kitPath: kitPathFor(fleet.projects.find((p) => p.slug === slug)) })
+      if (slugs.length === 1) return collectRepo(slug, now, { includePrivate: process.argv.includes('--include-private'), carryBranches: carry?.get(slug), kitPath: kitPathFor(fleet.projects.find((p) => p.slug === slug)), tier: fleet.projects.find((p) => p.slug === slug)?.tier })
       try {
         const tmp = join(mkdtempSync(join(tmpdir(), 'fleet-status-')), 'one.json')
         await execFileAsync(process.execPath, [fileURLToPath(import.meta.url), '--only', slug, '--out', tmp, ...extra], { env: process.env, maxBuffer: 1 << 26 })

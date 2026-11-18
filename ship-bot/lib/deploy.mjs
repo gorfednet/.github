@@ -216,6 +216,31 @@ export function envSecrets(repo, fsx = realFs) {
   return values
 }
 
+/**
+ * The Cloudflare Pages token and config that scripts/site-deploy.sh reads, for the
+ * redactor: `cloudflare-pages.token` and the values of `cloudflare-pages.env` in the
+ * state directory (~/.ship-bot unless the config moves it; the engine always reads
+ * ~/.ship-bot). The bot never uses the token. It reads it only so that no log line,
+ * comment or notification can carry it. The analytics host is masked with and
+ * without its scheme. A file that cannot be read adds nothing: the engine refuses
+ * such a file before it ever starts wrangler, so its content cannot reach any output.
+ */
+export function pagesSecrets(stateDir, fsx = realFs, files = {}) {
+  const values = []
+  const attempt = (path, collect) => {
+    try {
+      if (fsx.exists(path)) collect(fsx.read(path))
+    } catch {
+      // unreadable: see above
+    }
+  }
+  attempt(files.token ?? join(stateDir, 'cloudflare-pages.token'), (text) => values.push(text.replace(/\s+/g, '')))
+  attempt(files.env ?? join(stateDir, 'cloudflare-pages.env'), (text) => {
+    for (const value of parseEnvValues(text)) values.push(...new Set([value, value.replace(/^https:\/\//, '')]))
+  })
+  return values
+}
+
 async function prepareWorkspace(ctx, log, repo, sha) {
   for (const sib of repo.siblings) {
     await syncCheckout(ctx, log, { path: sib.path, cloneUrl: sib.cloneUrl, ref: `origin/${sib.branch}` })

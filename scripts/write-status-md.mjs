@@ -199,7 +199,7 @@ export function render(status) {
       `${r.incidents7d} incident lines in 7 days`,
       `${r.dependabotRed} dependabot red`,
       alertsCell(r.alertsOverdue, r.alertsUnread),
-      `kit ${r.kitVersion ?? 'none'}`,
+      `vendored kit ${r.kitVersion ?? 'none'}`,
     ]
     out.push(facts.join(' · '), '')
     if (r.openPrs.length > 0) {

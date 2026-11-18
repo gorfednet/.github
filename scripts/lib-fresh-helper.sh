@@ -9,6 +9,10 @@ make_fresh_helper() {
   git init -q -b main "${repo}"
   mkdir -p "${repo}/scripts"
   cp "${src_root}/scripts/site-deploy.sh" "${src_root}/scripts/nas-ssh-deploy.sh" "${repo}/scripts/"
+  # The Pages backend's Functions and wrangler pin, without any installed node_modules.
+  mkdir -p "${repo}/scripts/pages"
+  cp -R "${src_root}/scripts/pages/functions" "${src_root}/scripts/pages/shared" "${repo}/scripts/pages/"
+  cp "${src_root}/scripts/pages/package.json" "${src_root}/scripts/pages/package-lock.json" "${repo}/scripts/pages/"
   [[ -f "${src_root}/fleet.json" ]] && cp "${src_root}/fleet.json" "${repo}/"
   git -C "${repo}" add -A
   git -C "${repo}" -c user.email=t@t -c user.name=t commit -q -m helper

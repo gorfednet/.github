@@ -12,7 +12,7 @@ import os from 'node:os'
 import { join } from 'node:path'
 import { HOLD_LABEL, READY_LABEL } from './config.mjs'
 import { diagnosisJob, jobsDir, stallJob, writeJobOnce } from './herdr-jobs.mjs'
-import { DeployLog, deployMerged, envSecrets, matchingFiles, preflight, realFs, selectSteps } from './deploy.mjs'
+import { DeployLog, deployMerged, envSecrets, matchingFiles, pagesSecrets, preflight, realFs, selectSteps } from './deploy.mjs'
 import { controlPlaneFiles, draftClaim, draftIneligibleReason } from './drafts.mjs'
 import { evaluatePull, ineligibleReason, unmergeableReason } from './gates.mjs'
 import { RateLimitError, guardWrites } from './github.mjs'
@@ -51,6 +51,8 @@ export async function runOnce(deps) {
 
   const gitAuth = Buffer.from(`x-access-token:${token}`).toString('base64')
   const redactor = new Redactor([token, gitAuth])
+  // The Pages token site-deploy.sh hands to wrangler: masked everywhere from the first line of the pass.
+  redactor.add(pagesSecrets(config.stateDir, deps.fsx ?? realFs, deps.pagesFiles))
   const ctx = {
     config,
     dry,
