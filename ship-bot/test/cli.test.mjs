@@ -157,7 +157,7 @@ describe('command line', () => {
     assert.equal(await main(['--unblock', 'site', '--deployed', 'eeeeeee'], h.deps), 0)
     assert.equal(read().blocked, undefined)
     assert.equal(read().lastDeployedSha, sha)
-    assert.ok(read().lastReleasedAt, 'a release deployed by hand starts the weekly clock')
+    assert.ok(read().lastReleasedAt, 'a release deployed by hand records the release time')
   })
 
   it('a queued unblock of a paused deploy needs --deployed too; without it the block stays', async () => {

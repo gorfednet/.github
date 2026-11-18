@@ -63,13 +63,12 @@ row merging and deploying are split (`deployOn`, default `"release"`;
 
 - **A plain merge is not deployed.** It goes live with the next release, and
   its comment says so.
-- **Label `release`: a release.** One per repository a week (6 days apart, so a
-  weekly release at a slightly earlier hour still goes). The description needs a
+- **Label `release`: a release.** Milestone releases (owner, 2026-11-18): no
+  spacing between them, so one goes whenever it is labelled. The description needs a
   `## Release notes` section with at least one bullet, a `Local gate:` line
   (the full local gate through `gate-run` on this Mac, and where its log is) and
   a `Smoke:` line (the built site or app read on a local or preview host, and
-  what was checked). An `Early release: <why>` line lets one through sooner
-  when the owner asked. A tag repo (4thcltr.com) also needs its `Release:` line,
+  what was checked). A tag repo (4thcltr.com) also needs its `Release:` line,
   and a `Release:` line without the label stops the merge.
 - **Label `hotfix`: an exemption**, said on its own line:
   `Exemption: security <why>` or `Exemption: outage <why>`. It deploys on merge
@@ -94,7 +93,7 @@ it reports "nothing was rolled back" rather than redeploying the merge's first
 parent, which may never have been live. A paused deploy's block remembers its
 commit: deploy that exact commit by hand, then
 `ship-bot --unblock <repo> --deployed <sha>` records it as deployed (and, for a
-release, starts the weekly clock), so the next release diffs from there
+release, records its time), so the next release diffs from there
 instead of pausing again. A plain `--unblock` is refused for that block. A
 release or hotfix pull request is looked at before the plain ones, so a plain
 merge does not land ahead of it and push its head behind main. A
