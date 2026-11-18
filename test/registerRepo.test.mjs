@@ -4,8 +4,8 @@
  * temporary folder, so nothing here touches this checkout.
  */
 import { strict as assert } from 'node:assert'
-import { execFileSync } from 'node:child_process'
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { execFileSync, spawnSync } from 'node:child_process'
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, it } from 'node:test'
@@ -136,5 +136,17 @@ describe('register-repo', () => {
     const s = sandbox()
     const { opts } = resolveOptions({ slug: 'gorfednet/new-thing', repoDir: s.repo, opsDir: s.ops, githubDir: s.gh, archetype: 'tool', tier: 1, monitorClass: 'tool', summary: 's', space: 'Nowhere' })
     assert.match(plan(opts).problems.join('\n'), /no space "Nowhere"/)
+  })
+})
+
+// A skipped CLI block exits 0 and registers nothing. With no arguments a running CLI exits 64.
+describe('CLI entry point', () => {
+  it('runs through a symlink to the script', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'register-repo-link-'))
+    const link = join(dir, 'register-link.mjs')
+    symlinkSync(SCRIPT, link)
+    const r = spawnSync(process.execPath, [link], { encoding: 'utf8' })
+    assert.equal(r.status, 64)
+    assert.match(r.stderr, /--slug: owner\/name required/)
   })
 })

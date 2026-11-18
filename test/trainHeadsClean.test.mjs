@@ -10,7 +10,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { describe, it } from 'node:test'
 import { fileURLToPath } from 'node:url'
-import { trainHeadsVerdict } from '../scripts/train-heads-clean.mjs'
+import { reviewAlreadyRequested, trainHeadsVerdict } from '../scripts/train-heads-clean.mjs'
 
 describe('trainHeadsVerdict', () => {
   it('passes when every carried head is clean', () => {
@@ -26,6 +26,19 @@ describe('trainHeadsVerdict', () => {
   })
   it('blocks an empty list, since nothing was checked', () => {
     assert.equal(trainHeadsVerdict([]).ok, false)
+  })
+})
+
+describe('reviewAlreadyRequested', () => {
+  const pushed = '2026-11-18T10:00:00Z'
+  it('sees a trigger comment posted after the push, so no second one is added', () => {
+    assert.equal(reviewAlreadyRequested([{ body: 'claude review', created_at: '2026-11-18T10:05:00Z' }], pushed), true)
+    assert.equal(reviewAlreadyRequested([{ body: 'thanks\r\nclaude review\r\n', created_at: '2026-11-18T10:05:00Z' }], pushed), true)
+  })
+  it('ignores a trigger from before the push, a near-miss line and unrelated comments', () => {
+    assert.equal(reviewAlreadyRequested([{ body: 'claude review', created_at: '2026-11-18T09:00:00Z' }], pushed), false)
+    assert.equal(reviewAlreadyRequested([{ body: 'please claude review this', created_at: '2026-11-18T10:05:00Z' }], pushed), false)
+    assert.equal(reviewAlreadyRequested([], pushed), false)
   })
 })
 
