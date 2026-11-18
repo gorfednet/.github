@@ -10,7 +10,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { describe, it } from 'node:test'
 import { fileURLToPath } from 'node:url'
-import { reviewAlreadyRequested, trainHeadsVerdict } from '../scripts/train-heads-clean.mjs'
+import { headPushedAt, reviewAlreadyRequested, trainHeadsVerdict } from '../scripts/train-heads-clean.mjs'
 
 describe('trainHeadsVerdict', () => {
   it('passes when every carried head is clean', () => {
@@ -62,6 +62,29 @@ describe('reviewAlreadyRequested', () => {
     const late = Date.parse('2026-11-18T10:51:00Z')
     assert.equal(reviewAlreadyRequested(ask('claude review'), pushed, { now: late }), false)
     assert.equal(reviewAlreadyRequested(ask('claude review'), pushed, { now: Date.parse('2026-11-18T10:49:00Z') }), true)
+  })
+})
+
+// A commit made earlier and pushed later keeps its old committer date. The request made on the
+// previous head (10:05) must not count for the new head, which GitHub saw at 10:10.
+describe('headPushedAt', () => {
+  const committed = '2026-11-18T10:00:00Z'
+  const now = Date.parse('2026-11-18T10:12:00Z')
+  const owner = { author_association: 'OWNER', user: { login: 'someone', type: 'User' } }
+  const old = [{ body: 'claude review', created_at: '2026-11-18T10:05:00Z', ...owner }]
+  it('uses the earliest check suite GitHub created for the head, when it is later than the commit', () => {
+    assert.equal(headPushedAt(committed, ['2026-11-18T10:10:30Z', '2026-11-18T10:10:10Z']), '2026-11-18T10:10:10Z')
+  })
+  it('falls back to the committer date when GitHub has no suite for the head', () => {
+    assert.equal(headPushedAt(committed, []), committed)
+    assert.equal(headPushedAt(committed, undefined), committed)
+  })
+  it('never goes earlier than the commit', () => {
+    assert.equal(headPushedAt(committed, ['2026-11-18T09:00:00Z']), committed)
+  })
+  it('a head committed earlier but pushed after the old request still gets asked for', () => {
+    assert.equal(reviewAlreadyRequested(old, committed, { now }), true)
+    assert.equal(reviewAlreadyRequested(old, headPushedAt(committed, ['2026-11-18T10:10:10Z']), { now }), false)
   })
 })
 

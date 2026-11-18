@@ -31,6 +31,21 @@ export function trainHeadsVerdict(heads) {
 export const REQUEST_LIVES_MS = 45 * 60 * 1000
 
 /**
+ * When GitHub saw the head, not when it was committed. A commit made earlier and pushed later (or
+ * cherry-picked or rebased) keeps its old committer date, which would make a `claude review`
+ * comment on the previous head look like a request for this one. The earliest check suite GitHub
+ * created for the head is the push time; never earlier than the commit; the committer date when
+ * there is no suite.
+ * @param {string} committedAt ISO committer date of the head commit
+ * @param {string[] | undefined} suiteTimes `created_at` of each check suite on the head
+ * @returns {string}
+ */
+export function headPushedAt(committedAt, suiteTimes) {
+  const times = (suiteTimes ?? []).filter((t) => Number.isFinite(Date.parse(t))).sort()
+  return times.length > 0 && times[0] > committedAt ? times[0] : committedAt
+}
+
+/**
  * Has someone already asked the reviewer to read the head pushed at `headAt`, recently enough that
  * the verdict may still arrive? Mirrors `claude-review.yml`'s trigger: a line that, trimmed and
  * lowercased, is exactly `claude review`, from a human OWNER, MEMBER or COLLABORATOR (or the
@@ -38,7 +53,7 @@ export const REQUEST_LIVES_MS = 45 * 60 * 1000
  * older than REQUEST_LIVES_MS no longer counts either: its run failed, was cancelled or was
  * replaced, and asking again is the only way forward.
  * @param {Array<{ body?: string | null, created_at?: string, author_association?: string, user?: { login?: string, type?: string } | null }>} comments
- * @param {string} headAt ISO time of the head commit
+ * @param {string} headAt ISO time the head was pushed (see headPushedAt)
  * @param {{ now?: number, shipBotLogin?: string }} [opts]
  * @returns {boolean}
  */
@@ -75,7 +90,9 @@ if (isMain(import.meta.url)) {
     const heads = prs.map((n) => {
       const head = gh(['api', `repos/${repo}/pulls/${n}`, '--jq', '.head.sha']).trim()
       const comments = JSON.parse(gh(['api', '--paginate', '--slurp', `repos/${repo}/issues/${n}/comments?per_page=100`])).flat()
-      const headAt = gh(['api', `repos/${repo}/commits/${head}`, '--jq', '.commit.committer.date']).trim()
+      const committedAt = gh(['api', `repos/${repo}/commits/${head}`, '--jq', '.commit.committer.date']).trim()
+      const suites = JSON.parse(gh(['api', `repos/${repo}/commits/${head}/check-suites`, '--jq', '[.check_suites[].created_at]']))
+      const headAt = headPushedAt(committedAt, suites)
       const v = claudeReviewVerdict(comments, head)
       return { pr: Number(n), state: v.state, findings: v.findings, head, pending: v.state === 'not-run' && reviewAlreadyRequested(comments, headAt, { shipBotLogin: process.env.SHIP_BOT_LOGIN }) }
     })
