@@ -31,14 +31,37 @@ describe('trainHeadsVerdict', () => {
 
 describe('reviewAlreadyRequested', () => {
   const pushed = '2026-11-18T10:00:00Z'
+  const now = Date.parse('2026-11-18T10:10:00Z')
+  const owner = { author_association: 'OWNER', user: { login: 'someone', type: 'User' } }
+  const ask = (body, created_at = '2026-11-18T10:05:00Z', who = owner) => [{ body, created_at, ...who }]
   it('sees a trigger comment posted after the push, so no second one is added', () => {
-    assert.equal(reviewAlreadyRequested([{ body: 'claude review', created_at: '2026-11-18T10:05:00Z' }], pushed), true)
-    assert.equal(reviewAlreadyRequested([{ body: 'thanks\r\nclaude review\r\n', created_at: '2026-11-18T10:05:00Z' }], pushed), true)
+    assert.equal(reviewAlreadyRequested(ask('claude review'), pushed, { now }), true)
+    assert.equal(reviewAlreadyRequested(ask('thanks\r\nclaude review\r\n'), pushed, { now }), true)
+  })
+  it('reads the trigger the way the workflow does: any case', () => {
+    assert.equal(reviewAlreadyRequested(ask('Claude Review'), pushed, { now }), true)
+    assert.equal(reviewAlreadyRequested(ask('  CLAUDE REVIEW  '), pushed, { now }), true)
   })
   it('ignores a trigger from before the push, a near-miss line and unrelated comments', () => {
-    assert.equal(reviewAlreadyRequested([{ body: 'claude review', created_at: '2026-11-18T09:00:00Z' }], pushed), false)
-    assert.equal(reviewAlreadyRequested([{ body: 'please claude review this', created_at: '2026-11-18T10:05:00Z' }], pushed), false)
-    assert.equal(reviewAlreadyRequested([], pushed), false)
+    assert.equal(reviewAlreadyRequested(ask('claude review', '2026-11-18T09:00:00Z'), pushed, { now }), false)
+    assert.equal(reviewAlreadyRequested(ask('please claude review this'), pushed, { now }), false)
+    assert.equal(reviewAlreadyRequested([], pushed, { now }), false)
+  })
+  it('ignores a comment the workflow would skip: no write access, or a bot', () => {
+    const stranger = { author_association: 'NONE', user: { login: 'x', type: 'User' } }
+    const bot = { author_association: 'MEMBER', user: { login: 'some-app[bot]', type: 'Bot' } }
+    assert.equal(reviewAlreadyRequested(ask('claude review', undefined, stranger), pushed, { now }), false)
+    assert.equal(reviewAlreadyRequested(ask('claude review', undefined, bot), pushed, { now }), false)
+  })
+  it('counts the ship-bot login only when it is named', () => {
+    const sb = { author_association: 'NONE', user: { login: 'ship-bot[bot]', type: 'Bot' } }
+    assert.equal(reviewAlreadyRequested(ask('claude review', undefined, sb), pushed, { now, shipBotLogin: 'ship-bot[bot]' }), true)
+    assert.equal(reviewAlreadyRequested(ask('claude review', undefined, sb), pushed, { now }), false)
+  })
+  it('lets a request lapse after 45 minutes so a dead run is asked for again', () => {
+    const late = Date.parse('2026-11-18T10:51:00Z')
+    assert.equal(reviewAlreadyRequested(ask('claude review'), pushed, { now: late }), false)
+    assert.equal(reviewAlreadyRequested(ask('claude review'), pushed, { now: Date.parse('2026-11-18T10:49:00Z') }), true)
   })
 })
 

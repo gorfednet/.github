@@ -27,18 +27,32 @@ export function trainHeadsVerdict(heads) {
   return { ok: heads.length > 0 && blocked.length === 0, blocked }
 }
 
+/** The review job's own limit is 30 minutes; with queue time, a request older than this has died. */
+export const REQUEST_LIVES_MS = 45 * 60 * 1000
+
 /**
- * Has someone already asked the reviewer to read the head pushed at `headAt`? A `claude review`
- * line (the trigger matches whole lines) posted after that push is a request still waiting on its
- * verdict, so asking again would queue a second full review of one head.
- * @param {Array<{ body?: string | null, created_at?: string }>} comments
+ * Has someone already asked the reviewer to read the head pushed at `headAt`, recently enough that
+ * the verdict may still arrive? Mirrors `claude-review.yml`'s trigger: a line that, trimmed and
+ * lowercased, is exactly `claude review`, from a human OWNER, MEMBER or COLLABORATOR (or the
+ * ship-bot login). A comment from anyone else starts no review, so it does not count. A request
+ * older than REQUEST_LIVES_MS no longer counts either: its run failed, was cancelled or was
+ * replaced, and asking again is the only way forward.
+ * @param {Array<{ body?: string | null, created_at?: string, author_association?: string, user?: { login?: string, type?: string } | null }>} comments
  * @param {string} headAt ISO time of the head commit
+ * @param {{ now?: number, shipBotLogin?: string }} [opts]
  * @returns {boolean}
  */
-export function reviewAlreadyRequested(comments, headAt) {
-  return comments.some(
-    (c) => String(c?.created_at ?? '') > headAt && String(c?.body ?? '').split(/\r?\n/).some((line) => line.trim() === 'claude review'),
-  )
+export function reviewAlreadyRequested(comments, headAt, opts = {}) {
+  const now = opts.now ?? Date.now()
+  const shipBot = opts.shipBotLogin ?? ''
+  const allowed = (c) =>
+    (c?.user?.type !== 'Bot' && ['OWNER', 'MEMBER', 'COLLABORATOR'].includes(c?.author_association)) ||
+    (shipBot !== '' && c?.user?.login === shipBot)
+  return comments.some((c) => {
+    const at = String(c?.created_at ?? '')
+    if (at <= headAt || now - Date.parse(at) > REQUEST_LIVES_MS || !allowed(c)) return false
+    return String(c?.body ?? '').split(/\r?\n/).some((line) => line.trim().toLowerCase() === 'claude review')
+  })
 }
 
 function arg(name) {
@@ -63,7 +77,7 @@ if (isMain(import.meta.url)) {
       const comments = JSON.parse(gh(['api', '--paginate', '--slurp', `repos/${repo}/issues/${n}/comments?per_page=100`])).flat()
       const headAt = gh(['api', `repos/${repo}/commits/${head}`, '--jq', '.commit.committer.date']).trim()
       const v = claudeReviewVerdict(comments, head)
-      return { pr: Number(n), state: v.state, findings: v.findings, head, pending: v.state === 'not-run' && reviewAlreadyRequested(comments, headAt) }
+      return { pr: Number(n), state: v.state, findings: v.findings, head, pending: v.state === 'not-run' && reviewAlreadyRequested(comments, headAt, { shipBotLogin: process.env.SHIP_BOT_LOGIN }) }
     })
     for (const h of heads) console.log(`#${h.pr}  ${h.state}  ${h.head.slice(0, 9)}${h.state === 'findings' ? `  ${h.findings} finding(s)` : ''}`)
     const { ok, blocked } = trainHeadsVerdict(heads)
@@ -71,7 +85,7 @@ if (isMain(import.meta.url)) {
     if (process.argv.includes('--request')) {
       for (const h of blocked.filter((b) => b.state === 'not-run')) {
         if (h.pending) {
-          console.log(`#${h.pr}: a review was already asked for on this head and has no verdict yet. Not asking again.`)
+          console.log(`#${h.pr}: a review was asked for on this head in the last 45 minutes and has no verdict yet. Not asking again; run this again after that if it still has none.`)
           continue
         }
         gh(['pr', 'comment', String(h.pr), '--repo', repo, '--body', 'claude review'])
