@@ -1,11 +1,11 @@
 {
-  "generatedAt": "2026-11-17T22:32:17.033Z",
-  "renderedAt": "2026-11-17T22:32:17.033Z",
+  "generatedAt": "2026-11-18T00:46:54.737Z",
+  "renderedAt": "2026-11-18T00:46:54.737Z",
   "repos": [
     {
       "slug": "gorfednet/bindercurve.com",
       "redacted": true,
-      "mainRed": false,
+      "mainRed": true,
       "openPrCount": 11,
       "lapsedBacklogCount": 16,
       "noPrCount": 79,
@@ -13,32 +13,42 @@
       "duplicatePrCount": 0,
       "dependabotRedCount": 3,
       "kitVersion": "0.61.0",
+      "kitPin": {
+        "version": "0.61.0",
+        "vendored": true
+      },
       "alertsOverdue": null
     },
     {
       "slug": "gorfednet/4thcltr.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 30,
-      "lapsedBacklogCount": 20,
+      "openPrCount": 32,
+      "lapsedBacklogCount": 21,
       "noPrCount": 13,
       "idlePrCount": 16,
       "duplicatePrCount": 0,
       "dependabotRedCount": 1,
       "kitVersion": "0.63.0",
+      "kitPin": {
+        "ref": "main"
+      },
       "alertsOverdue": null
     },
     {
       "slug": "gorfednet/gorfed.net",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 8,
+      "openPrCount": 7,
       "lapsedBacklogCount": 3,
       "noPrCount": 4,
       "idlePrCount": 0,
       "duplicatePrCount": 0,
       "dependabotRedCount": 4,
       "kitVersion": "0.61.0",
+      "kitPin": {
+        "ref": "main"
+      },
       "alertsOverdue": null
     },
     {
@@ -52,6 +62,9 @@
       "duplicatePrCount": 0,
       "dependabotRedCount": 0,
       "kitVersion": "0.61.0",
+      "kitPin": {
+        "ref": "main"
+      },
       "alertsOverdue": null
     },
     {
@@ -65,6 +78,9 @@
       "duplicatePrCount": 1,
       "dependabotRedCount": 0,
       "kitVersion": "0.61.0",
+      "kitPin": {
+        "ref": "main"
+      },
       "alertsOverdue": null
     },
     {
@@ -78,6 +94,9 @@
       "duplicatePrCount": 0,
       "dependabotRedCount": 0,
       "kitVersion": "0.61.0",
+      "kitPin": {
+        "ref": "main"
+      },
       "alertsOverdue": null
     },
     {
@@ -91,6 +110,9 @@
       "duplicatePrCount": 0,
       "dependabotRedCount": 0,
       "kitVersion": "0.61.0",
+      "kitPin": {
+        "ref": "main"
+      },
       "alertsOverdue": null
     },
     {
@@ -104,6 +126,9 @@
       "duplicatePrCount": 0,
       "dependabotRedCount": 0,
       "kitVersion": "0.61.0",
+      "kitPin": {
+        "ref": "main"
+      },
       "alertsOverdue": null
     },
     {
@@ -117,6 +142,9 @@
       "duplicatePrCount": 0,
       "dependabotRedCount": 0,
       "kitVersion": "0.61.0",
+      "kitPin": {
+        "ref": "main"
+      },
       "alertsOverdue": null
     },
     {
@@ -130,6 +158,9 @@
       "duplicatePrCount": 0,
       "dependabotRedCount": 0,
       "kitVersion": "0.61.0",
+      "kitPin": {
+        "ref": "main"
+      },
       "alertsOverdue": null
     },
     {
@@ -143,6 +174,9 @@
       "duplicatePrCount": 2,
       "dependabotRedCount": 0,
       "kitVersion": "0.61.0",
+      "kitPin": {
+        "ref": "main"
+      },
       "alertsOverdue": null
     },
     {
@@ -151,15 +185,15 @@
       "mainRed": false,
       "openPrs": [
         {
-          "number": 256,
-          "title": "2.9: fleet-status reads the kit pin, not the vendored manifest",
+          "number": 257,
+          "title": "argv-guard: a PreToolUse hook that reads git and gh arguments (plan row 5.14)",
           "ageDays": 0,
           "labels": [],
-          "draft": false,
+          "draft": true,
           "review": "findings",
-          "headSha": "af3e88451f11287289f5437f0cada04675ef32be",
-          "ci": "pending",
-          "next": "Merge when gates pass (clean review on the head, plus a Fable read, since this changes what fleet-status reports)",
+          "headSha": "313638ce8b5ea21db70f25d6c01a1b471cea6945",
+          "ci": "green",
+          "next": "Merge: ship-bot, once the review is clean and CI is green.",
           "author": "gorfednet"
         },
         {
@@ -204,7 +238,7 @@
         {
           "number": 216,
           "title": "Public push guard: check a push or gh text before it reaches a public repository (plan row 1.30 f)",
-          "ageDays": 1,
+          "ageDays": 2,
           "labels": [
             "hold"
           ],
@@ -541,6 +575,9 @@
       "incidents7d": 3,
       "dependabotRed": 1,
       "kitVersion": "0.65.0",
+      "kitPin": {
+        "ref": "main"
+      },
       "alertsOverdue": null,
       "alertsUnread": "no-token-access"
     },
@@ -551,10 +588,13 @@
       "openPrCount": 7,
       "lapsedBacklogCount": 2,
       "noPrCount": 46,
-      "idlePrCount": 1,
+      "idlePrCount": 0,
       "duplicatePrCount": 0,
       "dependabotRedCount": 3,
       "kitVersion": null,
+      "kitPin": {
+        "none": true
+      },
       "alertsOverdue": null
     },
     {
@@ -589,6 +629,9 @@
       "incidents7d": 0,
       "dependabotRed": 0,
       "kitVersion": null,
+      "kitPin": {
+        "none": true
+      },
       "alertsOverdue": null,
       "alertsUnread": "no-token-access"
     },
@@ -603,6 +646,9 @@
       "duplicatePrCount": 0,
       "dependabotRedCount": 3,
       "kitVersion": "0.61.0",
+      "kitPin": {
+        "ref": "main"
+      },
       "alertsOverdue": null
     },
     {
@@ -616,6 +662,9 @@
       "duplicatePrCount": 4,
       "dependabotRedCount": 2,
       "kitVersion": "0.61.0",
+      "kitPin": {
+        "ref": "main"
+      },
       "alertsOverdue": null
     },
     {
@@ -629,6 +678,9 @@
       "duplicatePrCount": 0,
       "dependabotRedCount": 2,
       "kitVersion": "0.61.0",
+      "kitPin": {
+        "ref": "main"
+      },
       "alertsOverdue": null
     },
     {
@@ -642,6 +694,9 @@
       "duplicatePrCount": 0,
       "dependabotRedCount": 0,
       "kitVersion": "0.62.0",
+      "kitPin": {
+        "ref": "main"
+      },
       "alertsOverdue": null
     },
     {
@@ -699,7 +754,7 @@
       "idlePrs": [
         {
           "number": 25,
-          "idleDays": 3
+          "idleDays": 4
         },
         {
           "number": 23,
@@ -715,6 +770,9 @@
       "incidents7d": 0,
       "dependabotRed": 0,
       "kitVersion": null,
+      "kitPin": {
+        "none": true
+      },
       "alertsOverdue": null,
       "alertsUnread": "no-token-access"
     },
@@ -729,19 +787,26 @@
       "duplicatePrCount": 0,
       "dependabotRedCount": 3,
       "kitVersion": "0.61.0",
+      "kitPin": {
+        "ref": "main"
+      },
       "alertsOverdue": null
     },
     {
       "slug": "gorfednet/ops",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 16,
+      "openPrCount": 15,
       "lapsedBacklogCount": 0,
       "noPrCount": 1,
       "idlePrCount": 0,
       "duplicatePrCount": 0,
       "dependabotRedCount": 1,
       "kitVersion": "0.61.0",
+      "kitPin": {
+        "version": "0.61.0",
+        "vendored": true
+      },
       "alertsOverdue": null
     }
   ],
@@ -798,11 +863,11 @@
     }
   },
   "inventory": {
-    "measuredAt": "2026-11-17T22:32:17.033Z",
+    "measuredAt": "2026-11-18T00:46:54.737Z",
     "counts": {
       "pr": {
         "total": 159,
-        "orphans": 69
+        "orphans": 68
       },
       "session": null,
       "worktree": null,
@@ -862,12 +927,12 @@
         "lapsed": true
       }
     ],
-    "hiddenPrivate": 65,
+    "hiddenPrivate": 64,
     "privateReposNotItemised": 18,
     "planRead": true
   },
   "dotgithub": {
-    "measuredAt": "2026-11-17T22:33:08.812Z",
+    "measuredAt": "2026-11-18T00:47:38.584Z",
     "branches": 41,
     "merged": 3,
     "exposedFiles": 61,
