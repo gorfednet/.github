@@ -2,7 +2,10 @@
  * Everything the bot prints, logs or posts goes through one redactor.
  *
  * Two layers. Known secrets — the GitHub token and every value in the env files
- * a deploy uses — are replaced wherever they appear. Patterns catch the
+ * a deploy uses — are replaced wherever they appear, except a value equal to a
+ * public name of a configured repo (its slug, owner, basename, name or directory
+ * name, never a segment of a host path): an env file that repeats the site's
+ * name must not mask that name in every notification. Patterns catch the
  * secret-shaped strings nobody told it about: provider tokens, Authorization
  * headers, private keys, NAME=value lines whose name says secret, and LAN
  * addresses (several of these repositories are public, and a PR comment is
@@ -37,10 +40,32 @@ const SECRET_ASSIGNMENT =
   /\b([A-Za-z0-9_]*(?:TOKEN|SECRET|PASSWORD|PASSWD|API_?KEY|ACCESS_?KEY|PRIVATE_?KEY|CREDENTIALS?)[A-Za-z0-9_]*["']?\s*[:=]\s*["']?)([^\s"',]+)/gi
 
 export class Redactor {
-  constructor(secrets = []) {
+  /**
+   * @param {Iterable<string|undefined|null>} secrets
+   * @param {{ publicNames?: Iterable<string|undefined|null> }} [options] names that are never masked as known secrets
+   */
+  constructor(secrets = [], { publicNames = [] } = {}) {
     /** @type {Set<string>} */
     this.secrets = new Set()
+    /** @type {Set<string>} lower-cased */
+    this.publicNames = new Set()
+    this.allow(publicNames)
     this.add(secrets)
+  }
+
+  /**
+   * Names that must stay readable (repo slugs, their parts, directory names). A
+   * value equal to one is never a known secret, now or later.
+   *
+   * @param {Iterable<string|undefined|null>} names
+   */
+  allow(names) {
+    for (const name of names) {
+      if (typeof name !== 'string' || !name.trim()) continue
+      this.publicNames.add(name.trim().toLowerCase())
+    }
+    for (const secret of this.secrets) if (this.publicNames.has(secret.toLowerCase())) this.secrets.delete(secret)
+    return this
   }
 
   /** @param {Iterable<string|undefined|null>} values */
@@ -48,7 +73,8 @@ export class Redactor {
     for (const value of values) {
       if (typeof value !== 'string') continue
       const trimmed = value.trim()
-      if (trimmed.length >= MIN_SECRET_LENGTH) this.secrets.add(trimmed)
+      if (trimmed.length < MIN_SECRET_LENGTH || this.publicNames.has(trimmed.toLowerCase())) continue
+      this.secrets.add(trimmed)
     }
     return this
   }
@@ -64,6 +90,35 @@ export class Redactor {
     out = out.replace(SECRET_ASSIGNMENT, (_m, prefix) => `${prefix}${MASK}`)
     return out
   }
+}
+
+/**
+ * The public names of the configured repos: each slug, its owner and basename,
+ * its name and its directory name (siblings included). The redactor never takes
+ * one of these as a known secret.
+ *
+ * Only names GitHub already publishes. Never `sourceDir`, `workDir` or a
+ * sibling's `path`: those are absolute paths on the bot's host, and their
+ * segments (the local account name among them) are not public. An env value
+ * equal to one must stay masked.
+ *
+ * @param {Iterable<object>} repos normalized repo rows
+ * @returns {string[]}
+ */
+export function publicNames(repos = []) {
+  const names = new Set()
+  const take = (value) => {
+    if (typeof value === 'string' && value) names.add(value)
+  }
+  for (const repo of repos ?? []) {
+    for (const row of [repo, ...(repo.siblings ?? [])]) {
+      take(row.slug)
+      if (typeof row.slug === 'string') for (const part of row.slug.split('/')) take(part)
+      take(row.name)
+      take(row.dir)
+    }
+  }
+  return [...names]
 }
 
 /**

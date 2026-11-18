@@ -17,7 +17,7 @@ import { controlPlaneFiles, draftClaim, draftIneligibleReason } from './drafts.m
 import { evaluatePull, ineligibleReason, unmergeableReason } from './gates.mjs'
 import { RateLimitError, guardWrites } from './github.mjs'
 import { HOTFIX_LABEL, RELEASE_LABEL, planDeploy } from './deploy-plan.mjs'
-import { Redactor } from './redact.mjs'
+import { Redactor, publicNames } from './redact.mjs'
 import { guardCommands, succeeded } from './runner.mjs'
 import { GATES_REPO, advanceGatesWorktree, ownInstallFreshness, toolWorktreeFor } from './gates-worktree.mjs'
 import { STATE_VERSION, StateStore } from './state.mjs'
@@ -50,7 +50,8 @@ export async function runOnce(deps) {
   if (!dry && config.live !== true) throw new Error('live mode refused: the config does not say "live": true')
 
   const gitAuth = Buffer.from(`x-access-token:${token}`).toString('base64')
-  const redactor = new Redactor([token, gitAuth])
+  // A repo's own name is never a secret, whatever env file repeats it.
+  const redactor = new Redactor([token, gitAuth], { publicNames: publicNames(config.repos) })
   // The Pages token site-deploy.sh hands to wrangler: masked everywhere from the first line of the pass.
   redactor.add(pagesSecrets(config.stateDir, deps.fsx ?? realFs, deps.pagesFiles))
   const ctx = {
