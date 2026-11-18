@@ -1,12 +1,12 @@
 {
-  "generatedAt": "2026-11-18T10:32:16.199Z",
-  "renderedAt": "2026-11-18T10:32:16.199Z",
+  "generatedAt": "2026-11-18T12:34:33.573Z",
+  "renderedAt": "2026-11-18T12:34:33.573Z",
   "repos": [
     {
       "slug": "gorfednet/bindercurve.com",
       "redacted": true,
       "mainRed": true,
-      "openPrCount": 11,
+      "openPrCount": 12,
       "lapsedBacklogCount": 16,
       "noPrCount": 80,
       "idlePrCount": 1,
@@ -23,7 +23,7 @@
       "slug": "gorfednet/4thcltr.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 37,
+      "openPrCount": 36,
       "lapsedBacklogCount": 21,
       "noPrCount": 18,
       "idlePrCount": 16,
@@ -39,7 +39,7 @@
       "slug": "gorfednet/gorfed.net",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 8,
+      "openPrCount": 6,
       "lapsedBacklogCount": 3,
       "noPrCount": 6,
       "idlePrCount": 0,
@@ -194,18 +194,6 @@
           "headSha": "ceb8d76bba6cfd7c3e686a50611cced2d7044d6d",
           "ci": "green",
           "next": "Merge once CI is green and `claude review` is clean on this head.",
-          "author": "gorfednet"
-        },
-        {
-          "number": 257,
-          "title": "argv-guard: a PreToolUse hook that reads git and gh arguments (plan row 5.14)",
-          "ageDays": 0,
-          "labels": [],
-          "draft": false,
-          "review": "findings",
-          "headSha": "0a8d273c2637b44e85e6895714778d54071dbb98",
-          "ci": "green",
-          "next": "Clean `claude review` on this head",
           "author": "gorfednet"
         },
         {
@@ -801,7 +789,7 @@
       "slug": "gorfednet/ops",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 16,
+      "openPrCount": 17,
       "lapsedBacklogCount": 0,
       "noPrCount": 3,
       "idlePrCount": 0,
@@ -868,10 +856,10 @@
     }
   },
   "inventory": {
-    "measuredAt": "2026-11-18T10:32:16.199Z",
+    "measuredAt": "2026-11-18T12:34:33.573Z",
     "counts": {
       "pr": {
-        "total": 162,
+        "total": 161,
         "orphans": 68
       },
       "session": null,
@@ -883,6 +871,14 @@
       }
     },
     "orphans": [
+      {
+        "kind": "pr",
+        "repo": "gorfednet/.github",
+        "ref": "#261",
+        "label": "ship-bot: milestone releases, no 6-day spacing",
+        "private": false,
+        "lapsed": false
+      },
       {
         "kind": "pr",
         "repo": "gorfednet/ai-use-levels",
@@ -924,12 +920,12 @@
         "lapsed": true
       }
     ],
-    "hiddenPrivate": 65,
+    "hiddenPrivate": 64,
     "privateReposNotItemised": 18,
     "planRead": true
   },
   "dotgithub": {
-    "measuredAt": "2026-11-18T10:33:02.839Z",
+    "measuredAt": "2026-11-18T12:35:29.560Z",
     "branches": 41,
     "merged": 3,
     "exposedFiles": 61,
