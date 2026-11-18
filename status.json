@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-11-18T20:32:17.421Z",
-  "renderedAt": "2026-11-18T20:32:17.421Z",
+  "generatedAt": "2026-11-18T22:32:38.065Z",
+  "renderedAt": "2026-11-18T22:32:38.065Z",
   "repos": [
     {
       "slug": "gorfednet/bindercurve.com",
@@ -199,7 +199,7 @@
         {
           "number": 254,
           "title": "1.30i: guard reads dot joins and the tagger line; installed-tools flags a missing guard install",
-          "ageDays": 0,
+          "ageDays": 1,
           "labels": [],
           "draft": false,
           "review": "clean",
@@ -211,7 +211,7 @@
         {
           "number": 103,
           "title": "Handoff: recovery of 38 failed Herdr jobs",
-          "ageDays": 8,
+          "ageDays": 9,
           "labels": [],
           "draft": false,
           "review": "findings",
@@ -632,7 +632,7 @@
       "slug": "gorfednet/heuristics.4thcltr.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 14,
+      "openPrCount": 13,
       "lapsedBacklogCount": 5,
       "noPrCount": 7,
       "idlePrCount": 6,
@@ -771,7 +771,7 @@
       "openPrCount": 12,
       "lapsedBacklogCount": 0,
       "noPrCount": 3,
-      "idlePrCount": 0,
+      "idlePrCount": 1,
       "duplicatePrCount": 0,
       "dependabotRedCount": 0,
       "kitVersion": null,
@@ -835,11 +835,11 @@
     }
   },
   "inventory": {
-    "measuredAt": "2026-11-18T20:32:17.421Z",
+    "measuredAt": "2026-11-18T22:32:38.065Z",
     "counts": {
       "pr": {
-        "total": 139,
-        "orphans": 65
+        "total": 138,
+        "orphans": 64
       },
       "session": null,
       "worktree": null,
@@ -891,12 +891,12 @@
         "lapsed": true
       }
     ],
-    "hiddenPrivate": 62,
+    "hiddenPrivate": 61,
     "privateReposNotItemised": 18,
     "planRead": true
   },
   "dotgithub": {
-    "measuredAt": "2026-11-18T20:32:53.134Z",
+    "measuredAt": "2026-11-18T22:33:17.223Z",
     "branches": 40,
     "merged": 3,
     "exposedFiles": 61,
