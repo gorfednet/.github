@@ -105,7 +105,7 @@ describe('the ledger from git', () => {
     assert.equal(cursor.commits, 2)
     assert.equal(cursor.grade, 'recorded')
     assert.equal(cursor.evidence[0].shas.length, 2)
-    assert.deepEqual([cursor.first, cursor.last], ['2026-05-20', '2026-06-02'])
+    assert.deepEqual([cursor.firstSeen, cursor.lastSeen], ['2026-05-20', '2026-06-02'])
   })
 
   it('writes a month entry for every month with a commit, with commits that name no tool counted apart', () => {
@@ -128,8 +128,8 @@ describe('the ledger from git', () => {
   it('keeps an inferred Cursor model out of every tag list, whatever the model list says', () => {
     const withModels = buildLedger({ commits, meta: { repo: 'example-site', ref: 'origin/main', head: 'abc' }, config, cursorModels: { source: 'https://example.test/changelog', months: { '2026-05': { models: ['Example Model 1'], source: 'https://example.test/may' } } } })
     const may = withModels.inferred.find((i) => i.month === '2026-05')
-    assert.deepEqual({ ...may, basis: undefined }, { grade: 'inferred', tool: 'Cursor', month: '2026-05', commits: 1, models: ['Example Model 1'], source: 'https://example.test/may', basis: undefined })
-    assert.match(may.basis, /not exhaustive/)
+    assert.deepEqual({ ...may, basis: undefined }, { grade: 'inferred', tool: 'Cursor', month: '2026-05', commits: 1, models: ['Example Model 1'], default: null, source: 'https://example.test/may', otherSources: [], note: null, basis: undefined })
+    assert.match(may.basis, /commit may predate a model/)
     assert.equal(withModels.inferred.find((i) => i.month === '2026-06').models, null, 'a month with no list says so rather than guessing')
     assert.ok(!withModels.tagTools.includes('Example Model 1'))
     assert.ok(!JSON.stringify(withModels.pages).includes('Example Model 1'))
@@ -195,6 +195,19 @@ describe('what the reviewer found', () => {
     assert.deepEqual(l.tagTools, ['Claude Opus 5.5'], 'settling it does not add a credit')
   })
 
+  it('checks only for an unknown tool on a page whose groups only approximate it', () => {
+    const l = { tagTools: ['Claude Opus 5.5', 'Cursor'], pagesApproximate: true, open: {}, pages: { 'a.html': { tagTools: ['Claude Opus 5.5', 'Cursor'] } } }
+    assert.deepEqual(checkRecord(l, { pages: { 'a.html': { tag: 'L3 · made · no undo · Claude Opus 5.5' } } }), [], 'a tool the page may not have touched is not required')
+    assert.match(checkRecord(l, { pages: { 'a.html': { tag: 'L3 · made · no undo · Claude Opus 5.5 + Example Model 1' } } })[0], /names Example Model 1/)
+  })
+
+  it('counts a commit a tool authored apart, and marks every tool row credited or not', () => {
+    const l = buildLedger({ commits: parseGitLog(rec('aaaa', 'by the agent', 'Cursor Agent') + rec('bbbb', `with a trailer${co('Cursor')}`)), meta })
+    const cursor = l.tools.find((t) => t.tool === 'Cursor')
+    assert.equal(cursor.evidence[0].ofWhichAuthoredByTheTool, 1)
+    assert.equal(cursor.credited, true)
+  })
+
   it('splits an AI-Use line that names two tools', () => {
     assert.deepEqual(commitTools('AI-Use: L3 made no undo (Claude Opus 5.5 + Cursor)', new Set()).tools, ['Claude Opus 5.5', 'Cursor'])
   })
@@ -218,7 +231,7 @@ describe('what the reviewer found', () => {
   it('compares dates in UTC whatever offset git wrote', () => {
     const l = buildLedger({ commits: parseGitLog(rec('aaaa', `late${CLAUDE('Opus 5.5')}`).replace(when, '2026-10-01T22:00:00-04:00') + rec('bbbb', `early${CLAUDE('Opus 5.5')}`).replace(when, '2026-10-02T01:00:00+00:00')), meta })
     const opus = l.tools[0]
-    assert.deepEqual([opus.first, opus.last], ['2026-10-02', '2026-10-02'], '22:00 at -04:00 is 02:00 UTC the next day, after 01:00 UTC')
+    assert.deepEqual([opus.firstSeen, opus.lastSeen], ['2026-10-02', '2026-10-02'], '22:00 at -04:00 is 02:00 UTC the next day, after 01:00 UTC')
   })
 
   it('credits a page nothing for a pure rename, and the new path for a rename with edits', () => {

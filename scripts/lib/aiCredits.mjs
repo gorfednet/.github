@@ -18,9 +18,9 @@
 export const SCHEMA = 'ai-credits/1'
 export const STANDARD = 'AI Use Levels 1.2'
 export const GRADES = {
-  recorded: 'A Co-Authored-By or AI-Use trailer on a commit, or a Claude Code transcript whose model id and working folder match this repository.',
+  recorded: 'A Co-Authored-By or AI-Use trailer on a commit, a commit the tool authored itself, or a Claude Code transcript whose model id and working folder match this repository.',
   stated: "The owner's own words, quoted and dated.",
-  inferred: 'A Cursor commit with no model, dated against the models Cursor offered that month. Ledger only: never in a tag, because 1.2 has no way to say "likely".',
+  inferred: 'A Cursor commit with no model, dated against the models Cursor offered around then. Ledger only. It never goes in a tag, because 1.2 has no way to say "likely".',
 }
 
 /** `claude-opus-5-5` to `Claude Opus 5.5`; a dated id (`claude-haiku-4-5-20251001`) drops the date. Anything else is null. */
@@ -245,8 +245,9 @@ export function buildLedger({ commits: all, meta, config = {}, transcripts = nul
     }
     for (const tool of t.tools) {
       mo.tools[tool] = (mo.tools[tool] ?? 0) + 1
-      const s = siteTools.get(tool) ?? { shas: [], merges: 0, first: c.authored, last: c.authored }
+      const s = siteTools.get(tool) ?? { shas: [], merges: 0, authored: 0, first: c.authored, last: c.authored }
       s.shas.push(c.sha.slice(0, 10))
+      if (authorKinds.get(c.author) === 'tool' && classifyCoAuthor({ name: c.author }, new Set()).tool === tool) s.authored++
       if (c.merge) s.merges++
       if (c.authored < s.first) s.first = c.authored
       if (c.authored > s.last) s.last = c.authored
@@ -311,14 +312,11 @@ export function buildLedger({ commits: all, meta, config = {}, transcripts = nul
   for (const tool of order) {
     const evidence = []
     const s = siteTools.get(tool)
-    if (s) evidence.push({ kind: 'trailer', commits: s.shas.length, ofWhichMerges: s.merges, first: dayOf(s.first), last: dayOf(s.last), shas: s.shas })
+    if (s) evidence.push({ kind: 'trailer', commits: s.shas.length, ofWhichMerges: s.merges, ofWhichAuthoredByTheTool: s.authored, first: dayOf(s.first), last: dayOf(s.last), shas: s.shas })
     const tr = transcriptTools.get(tool)
     if (tr) evidence.push({ kind: 'transcript', turns: tr.turns, subagentTurns: tr.subagentTurns, sessions: tr.sessions, first: dayOf(tr.first), last: dayOf(tr.last) })
-    const entry = { tool, grade: 'recorded', commits: s?.shas.length ?? 0, first: dayOf(s ? (tr && tr.first < s.first ? tr.first : s.first) : tr.first), last: dayOf(s ? (tr && tr.last > s.last ? tr.last : s.last) : tr.last), evidence }
-    if (!s) {
-      entry.credited = Boolean(credit[tool])
-      if (credit[tool]) entry.creditDecision = credit[tool]
-    }
+    const entry = { tool, grade: 'recorded', credited: Boolean(s) || Boolean(credit[tool]), commits: s?.shas.length ?? 0, firstSeen: dayOf(s ? (tr && tr.first < s.first ? tr.first : s.first) : tr.first), lastSeen: dayOf(s ? (tr && tr.last > s.last ? tr.last : s.last) : tr.last), evidence }
+    if (!s && credit[tool]) entry.creditDecision = credit[tool]
     tools.push(entry)
   }
   const transcriptOnly = order.filter((t) => !siteTools.has(t))
@@ -332,7 +330,7 @@ export function buildLedger({ commits: all, meta, config = {}, transcripts = nul
       const n = mo.tools.Cursor
       if (!n) continue
       const offered = cursorModels?.months?.[m]
-      inferred.push({ grade: 'inferred', tool: 'Cursor', month: m, commits: n, models: offered?.models ?? null, source: offered?.source ?? cursorModels?.source ?? null, basis: offered ? 'models with a launch found on or before this month, from the cited page; not exhaustive (models with no dated launch are left out)' : 'no model list for this month yet' })
+      inferred.push({ grade: 'inferred', tool: 'Cursor', month: m, commits: n, models: offered?.models ?? null, default: offered?.default ?? null, source: offered?.source ?? cursorModels?.source ?? null, otherSources: offered?.other_sources ?? [], note: offered?.note ?? null, basis: offered ? 'Models Cursor had launched by the end of this month, from the pages listed. A commit may predate a model. Models with no dated launch are left out.' : 'No model list for this month yet.' })
     }
   }
 
@@ -402,33 +400,38 @@ export function buildLedger({ commits: all, meta, config = {}, transcripts = nul
     grades: GRADES,
     counts: { commits: commits.length, toolMergeCommits: toolMerges, plainMergeCommitsIgnored: plainMerges, withToolTrailer: withTrailer, withNoToolTrailer: noTrailer },
     tagTools,
-    order: 'commits that name the tool, then transcript responses, then name. An indication of the biggest hand, not a measure of it.',
+    order: 'Commits that name the tool, then transcript responses, then name. It indicates the biggest hand without measuring it.',
     transcriptOnlyTools: transcriptOnly,
     tools,
     stated,
     inferred,
     months: monthOut,
     pages,
-    transcripts: readInfo ? { read: true, ...readInfo, earliestForRepo, monthsWithClaudeTrailersAndNoTranscripts: claudeMonthsWithoutTranscripts } : { read: false },
+    pagesApproximate: Boolean(config.pagesApproximate),
+    pageBasis: config.pageBasis ?? null,
+    transcripts: readInfo ? { read: true, indexedAt: readInfo.indexedAt, allProjectsOnThisMac: { files: readInfo.files, earliest: readInfo.earliest }, earliestForRepo, monthsWithClaudeTrailersAndNoTranscripts: claudeMonthsWithoutTranscripts } : { read: false },
     people: { humans: humanCounts, bots: botCounts },
     harness,
     open: { ...open, unknownModels, emptyGroups },
     settled,
     limits: [
-      'Commits are every commit reachable from the ref, dated by author date converted to UTC, except a plain merge (a pull request landing, main merged in with no tool trailer), which is counted apart and ignored. A merge a tool wrote (main merged into a branch, trailer on it) counts for the site but not for a page, since a merge lists no files. A commit with several trailers for one tool counts once. A commit a tool authored itself counts for that tool.',
-      'A commit with no tool trailer may still be tool-made, and no tool is dropped because a later commit lacks a trailer. A trailer names the session that committed. When a builder\'s branch is squashed back under the main session\'s trailer, the builder\'s model is absent from that commit.',
-      'A page is credited from commits that touched a file under its groups, at the path the file had in that commit. A pure rename credits nothing; a rename with edits credits the new path. A file moved and then edited keeps its earlier commits only under the old path, so a group should list old paths too.',
-      'An `AI-Use` trailer whose model disagrees with the commit\'s co-author is listed under `open.conflictingTrailers` and credits nothing.',
-      'Transcripts are one Mac\'s Claude Code sessions in a folder of this repository, or a worktree of it, kept as the largest count seen. They show a model worked in the repository, not which page it touched or whether it wrote anything. A model with transcripts and no trailer credits only on a recorded decision (`transcriptCredit`). Sessions on another machine, or in Cursor, are not in them, and a worktree pruned before the first index run is not either.',
-      'Order is by commits that name the tool. It indicates the biggest hand and does not measure it: a squashed pull request counts once however large, and a tool that made one large commit ranks low.',
-      'Model use that leaves no trace (a chat window, a pasted answer, a design tool) is not in the ledger. It becomes a credit only if the owner states it.',
+      'Commits are every commit reachable from the ref, with dates converted to UTC. A plain merge (a pull request landing, or main merged in with no tool trailer) is counted apart and ignored.',
+      'A merge a tool wrote counts for the site. It lists no files, so it counts for no page. A commit with several trailers for one tool counts once. A commit a tool authored itself counts for that tool.',
+      'A commit with no tool trailer may still be tool-made. No tool is dropped because a later commit lacks a trailer.',
+      "A trailer names the session that committed. When a builder's branch is squashed back under the main session's trailer, the builder's model is missing from that commit.",
+      'A page is credited from commits that touched a file under its groups, at the path the file had in that commit. A pure rename credits nothing. A rename with edits credits the new path. A group should list old paths too.',
+      "An AI-Use trailer whose model disagrees with the commit's co-author credits nothing. It is listed under open.conflictingTrailers.",
+      "Transcripts are one Mac's Claude Code sessions in a folder of this repository or a worktree of it. The ledger keeps the largest count seen. They show a model worked in the repository. They don't show which page it touched or whether it wrote anything.",
+      'A model with transcripts and no trailer is credited only on a recorded decision (transcriptCredit). Sessions on another machine and in Cursor are missing. So is any worktree pruned before the first index run.',
+      'Order is by commits that name the tool. It indicates the biggest hand without measuring it. A squashed pull request counts once however large.',
+      'Tool use that leaves no trace (a chat window, a pasted answer, a design tool) is missing. It becomes a credit only when the owner states it.',
     ],
   }
 }
 
 /** The names a tag may carry, in order: tools with commits, transcript-only tools with a recorded decision, then stated tools. */
 export function deriveTagTools({ tools, stated }) {
-  const out = tools.filter((t) => t.commits > 0 || t.credited).map((t) => t.tool)
+  const out = tools.filter((t) => t.credited).map((t) => t.tool)
   for (const e of stated ?? []) if (e.tool && !out.includes(e.tool)) out.push(e.tool)
   return out
 }
@@ -466,10 +469,10 @@ export function toolsOfTag(tag) {
  * record or state (an inferred model, a guess). `credited` is the entry's `tagTools`. With `order`, a tag that lists the
  * credited tools in another order than the ledger's is a problem too; the ledger's order only indicates the biggest hand.
  */
-export function tagProblems(label, tag, credited, { order = false } = {}) {
+export function tagProblems(label, tag, credited, { order = false, drops = true } = {}) {
   const named = toolsOfTag(tag)
   const problems = []
-  for (const t of credited) if (!named.includes(t)) problems.push(`${label}: the tag drops ${t}, which the ledger records or states`)
+  if (drops) for (const t of credited) if (!named.includes(t)) problems.push(`${label}: the tag drops ${t}, which the ledger records or states`)
   for (const t of named) if (!credited.includes(t)) problems.push(`${label}: the tag names ${t}, which the ledger neither records nor states`)
   const inOrder = credited.filter((t) => named.includes(t))
   const writtenOrder = named.filter((t) => credited.includes(t))
@@ -489,6 +492,7 @@ export function checkRecord(ledger, record, opts = {}) {
     checked++
     const entry = ledger.pages?.[page]
     if (!entry) problems.push(`${page}: the ledger has no entry for this page`)
+    else if (ledger.pagesApproximate) problems.push(...tagProblems(page, tag, ledger.tagTools, { ...opts, drops: false })) // groups only approximate a page: a tag may name any site tool, and none is required
     else problems.push(...tagProblems(page, tag, entry.tagTools, opts))
   }
   if (checked === 0) problems.push('the record holds no tag to check')
