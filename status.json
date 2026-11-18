@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-11-18T18:32:29.273Z",
-  "renderedAt": "2026-11-18T18:32:29.273Z",
+  "generatedAt": "2026-11-18T20:32:17.421Z",
+  "renderedAt": "2026-11-18T20:32:17.421Z",
   "repos": [
     {
       "slug": "gorfednet/bindercurve.com",
@@ -17,23 +17,23 @@
         "version": "0.61.0",
         "vendored": true
       },
-      "alertsOverdue": null
+      "alertsOverdue": 0
     },
     {
       "slug": "gorfednet/4thcltr.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 31,
+      "openPrCount": 21,
       "lapsedBacklogCount": 21,
       "noPrCount": 18,
-      "idlePrCount": 13,
+      "idlePrCount": 6,
       "duplicatePrCount": 0,
-      "dependabotRedCount": 1,
+      "dependabotRedCount": 0,
       "kitVersion": "0.63.0",
       "kitPin": {
         "ref": "main"
       },
-      "alertsOverdue": null
+      "alertsOverdue": 0
     },
     {
       "slug": "gorfednet/gorfed.net",
@@ -49,7 +49,7 @@
       "kitPin": {
         "ref": "main"
       },
-      "alertsOverdue": null
+      "alertsOverdue": 0
     },
     {
       "slug": "gorfednet/subrythm.com",
@@ -65,7 +65,7 @@
       "kitPin": {
         "ref": "main"
       },
-      "alertsOverdue": null
+      "alertsOverdue": 0
     },
     {
       "slug": "gorfednet/anal0g.org",
@@ -81,7 +81,7 @@
       "kitPin": {
         "ref": "main"
       },
-      "alertsOverdue": null
+      "alertsOverdue": 0
     },
     {
       "slug": "gorfednet/blackpixelrecords.com",
@@ -97,23 +97,23 @@
       "kitPin": {
         "ref": "main"
       },
-      "alertsOverdue": null
+      "alertsOverdue": 0
     },
     {
       "slug": "gorfednet/denseware.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 5,
+      "openPrCount": 4,
       "lapsedBacklogCount": 0,
       "noPrCount": 2,
       "idlePrCount": 0,
       "duplicatePrCount": 0,
-      "dependabotRedCount": 1,
+      "dependabotRedCount": 2,
       "kitVersion": "0.61.0",
       "kitPin": {
         "ref": "main"
       },
-      "alertsOverdue": null
+      "alertsOverdue": 0
     },
     {
       "slug": "gorfednet/gorfmusic.com",
@@ -129,7 +129,7 @@
       "kitPin": {
         "ref": "main"
       },
-      "alertsOverdue": null
+      "alertsOverdue": 0
     },
     {
       "slug": "gorfednet/promptboi.com",
@@ -145,7 +145,7 @@
       "kitPin": {
         "ref": "main"
       },
-      "alertsOverdue": null
+      "alertsOverdue": 0
     },
     {
       "slug": "gorfednet/rowanmcarthur.com",
@@ -161,7 +161,7 @@
       "kitPin": {
         "ref": "main"
       },
-      "alertsOverdue": null
+      "alertsOverdue": 0
     },
     {
       "slug": "gorfednet/ssatcy.com",
@@ -177,7 +177,7 @@
       "kitPin": {
         "ref": "main"
       },
-      "alertsOverdue": null
+      "alertsOverdue": 0
     },
     {
       "slug": "gorfednet/.github",
@@ -185,15 +185,15 @@
       "mainRed": false,
       "openPrs": [
         {
-          "number": 265,
-          "title": "Ship-bot: a repository's own name is never a known secret",
+          "number": 266,
+          "title": "AI credit ledger tool: scripts/ai-credits.mjs (plan row 1.40)",
           "ageDays": 0,
           "labels": [],
           "draft": false,
-          "review": "clean",
-          "headSha": "23adc304fcd20ce265f80adfd3fc36c1cd98e579",
-          "ci": "red",
-          "next": "Merge after clean review and Desk's Fable read (Fable read 23adc30: SHIP)",
+          "review": "findings",
+          "headSha": "ecf9825109dfec5de0f4da06e63dfeaaf967549e",
+          "ci": "green",
+          "next": "Claude reviewer on this head; triage findings",
           "author": "gorfednet"
         },
         {
@@ -557,24 +557,23 @@
       "kitPin": {
         "ref": "main"
       },
-      "alertsOverdue": null,
-      "alertsUnread": "no-token-access"
+      "alertsOverdue": 0
     },
     {
       "slug": "gorfednet/MoonMan",
       "redacted": true,
       "mainRed": true,
-      "openPrCount": 9,
+      "openPrCount": 10,
       "lapsedBacklogCount": 2,
       "noPrCount": 47,
-      "idlePrCount": 0,
+      "idlePrCount": 2,
       "duplicatePrCount": 0,
       "dependabotRedCount": 5,
       "kitVersion": null,
       "kitPin": {
         "none": true
       },
-      "alertsOverdue": null
+      "alertsOverdue": 0
     },
     {
       "slug": "gorfednet/ACID2REAPER",
@@ -611,8 +610,7 @@
       "kitPin": {
         "none": true
       },
-      "alertsOverdue": null,
-      "alertsUnread": "no-token-access"
+      "alertsOverdue": 0
     },
     {
       "slug": "gorfednet/career-portfolio",
@@ -628,13 +626,13 @@
       "kitPin": {
         "ref": "main"
       },
-      "alertsOverdue": null
+      "alertsOverdue": 0
     },
     {
       "slug": "gorfednet/heuristics.4thcltr.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 12,
+      "openPrCount": 14,
       "lapsedBacklogCount": 5,
       "noPrCount": 7,
       "idlePrCount": 6,
@@ -644,13 +642,13 @@
       "kitPin": {
         "ref": "main"
       },
-      "alertsOverdue": null
+      "alertsOverdue": 0
     },
     {
       "slug": "gorfednet/papers.4thcltr.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 2,
+      "openPrCount": 3,
       "lapsedBacklogCount": 0,
       "noPrCount": 5,
       "idlePrCount": 0,
@@ -660,7 +658,7 @@
       "kitPin": {
         "ref": "main"
       },
-      "alertsOverdue": null
+      "alertsOverdue": 0
     },
     {
       "slug": "gorfednet/scratch-bootstrap-5-6",
@@ -676,13 +674,27 @@
       "kitPin": {
         "ref": "main"
       },
-      "alertsOverdue": null
+      "alertsOverdue": 0
     },
     {
       "slug": "gorfednet/ai-use-levels",
       "defaultBranch": "main",
       "mainRed": false,
       "openPrs": [
+        {
+          "number": 26,
+          "title": "v1.3 proposal: delegated confirmation and a pointer to the rules a person set",
+          "ageDays": 0,
+          "labels": [
+            "hold"
+          ],
+          "draft": true,
+          "review": "findings",
+          "headSha": "a81bc6dfd1e4c1ea313a711250cbb2d45474b165",
+          "ci": "green",
+          "next": "Owner decides decision 1 and decision 2 (decision 2 is kept as recommended, a reference-only pointer, until he says otherwise).",
+          "author": "gorfednet"
+        },
         {
           "number": 23,
           "title": "Spec 1.2.1: a site footer mark, and ordering a long Tool list",
@@ -734,8 +746,7 @@
       "kitPin": {
         "none": true
       },
-      "alertsOverdue": null,
-      "alertsUnread": "no-token-access"
+      "alertsOverdue": 0
     },
     {
       "slug": "gorfednet/assess",
@@ -751,13 +762,13 @@
       "kitPin": {
         "ref": "main"
       },
-      "alertsOverdue": null
+      "alertsOverdue": 0
     },
     {
       "slug": "gorfednet/ops",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 11,
+      "openPrCount": 12,
       "lapsedBacklogCount": 0,
       "noPrCount": 3,
       "idlePrCount": 0,
@@ -768,7 +779,7 @@
         "ref": "kit-v0.65.0",
         "version": "0.65.0"
       },
-      "alertsOverdue": null
+      "alertsOverdue": 0
     }
   ],
   "dormant": [
@@ -824,11 +835,11 @@
     }
   },
   "inventory": {
-    "measuredAt": "2026-11-18T18:32:29.273Z",
+    "measuredAt": "2026-11-18T20:32:17.421Z",
     "counts": {
       "pr": {
-        "total": 144,
-        "orphans": 64
+        "total": 139,
+        "orphans": 65
       },
       "session": null,
       "worktree": null,
@@ -880,12 +891,12 @@
         "lapsed": true
       }
     ],
-    "hiddenPrivate": 61,
+    "hiddenPrivate": 62,
     "privateReposNotItemised": 18,
     "planRead": true
   },
   "dotgithub": {
-    "measuredAt": "2026-11-18T18:33:19.903Z",
+    "measuredAt": "2026-11-18T20:32:53.134Z",
     "branches": 40,
     "merged": 3,
     "exposedFiles": 61,
