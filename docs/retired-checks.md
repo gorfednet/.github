@@ -76,6 +76,29 @@ compares the record with the host itself. That is what the dated hash stood in
 for. 4thcltr.com's scheduled `check-live-headers.mjs` still compares that
 site's served headers with its repository's vhost.
 
+## 2026-11-18: the ship bot's release spacing and its unreadable release-time refusal
+
+**Removed:** from `ship-bot/lib/deploy-plan.mjs`, two refusals on a `release`
+pull request: the 6-day minimum between releases in one repository, with its
+`Early release: <why>` exemption line, and the refusal when `lastReleasedAt` in
+the state file could not be parsed. The `now` input and the `easternDay` helper
+that only they used went with them. Recording the release time on deploy is
+unchanged.
+
+**What they caught:** a second release inside 6 days of the last one, unless
+the body carried `Early release`; and a state file whose release time could not
+be read, which the bot refused rather than guess a spacing from.
+
+**Why they went:** on 18 November 2026 the owner moved releases from a weekly
+rhythm to milestones. With no weekly rhythm, spacing has nothing to protect.
+The unreadable-time refusal only guarded the spacing check.
+
+**What catches that class now:** the milestone decision itself, which makes a
+release a choice about what ships rather than a clock. A release still needs a
+`## Release notes` section with a bullet saying what ships, a `Local gate:`
+line, a `Smoke:` line, and a head that contains `main`. Ship-bot refuses one
+without them. An `Early release:` line no longer counts as a release note.
+
 ## 2026-10-19: the ship bot's Bugbot gate
 
 **Removed:** from `ship-bot/` (the merge bot on the owner's Mac), gate (d)'s

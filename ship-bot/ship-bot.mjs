@@ -690,7 +690,7 @@ export function clearBlock(rs, now = new Date()) {
   delete rs.blocked
   if (typeof sha === 'string' && /^[0-9a-f]{40}$/.test(sha)) {
     rs.lastDeployedSha = sha
-    // A release deployed by hand still starts the weekly clock.
+    // A release deployed by hand still records the release time.
     if (wasRelease) rs.lastReleasedAt = now.toISOString()
     return sha
   }

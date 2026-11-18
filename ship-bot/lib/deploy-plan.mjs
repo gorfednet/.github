@@ -10,10 +10,9 @@
  * - label `release`: a release. Its description carries a `## Release notes`
  *   section with at least one bullet, a `Local gate:` line (the full local
  *   gate, run through gate-run on this Mac) and a `Smoke:` line (the built
- *   site or app read on a local or preview host). A repository gets at most one
- *   release in RELEASE_GAP_DAYS unless the description says
- *   `Early release: <why>` (the owner asked for one sooner). Its head must
- *   contain main, so the gate and the smoke saw everything it deploys.
+ *   site or app read on a local or preview host). Releases are milestone
+ *   releases (owner, 2026-11-18): there is no spacing between them, so one goes
+ *   whenever it is labelled. Its head must contain main, so the gate and the smoke saw everything it deploys.
  * - label `hotfix`: one of the two exemptions, said on a line of its own:
  *   `Exemption: security <why>` or `Exemption: outage <why>`. It deploys only
  *   when main is still the commit last deployed, so a hotfix never carries
@@ -35,8 +34,6 @@ import { planRelease } from './release.mjs'
 
 export const RELEASE_LABEL = 'release'
 export const HOTFIX_LABEL = 'hotfix'
-/** "At most once a week": 6 days, so a weekly release at a slightly earlier hour is not refused. */
-export const RELEASE_GAP_DAYS = 6
 
 const EXEMPTION = /^Exemption:[ \t]+(\S+)(?:[ \t]+(\S.*?))?[ \t]*$/gm
 const EXEMPTIONS = ['security', 'outage']
@@ -75,6 +72,8 @@ const lineValue = (text, name, { bullet = true } = {}) => {
 }
 const hasLine = (text, name, opts) => lineValue(text, name, opts) !== null
 // Lines that are attestations or switches, never a note of what ships.
+// "Early release" is no longer a switch (milestone releases have no spacing), but it stays here so an old body
+// that still carries the line does not count it as a release-note bullet.
 const NOT_A_NOTE = /^[ \t]*[-*][ \t]+(?:Local gate|Smoke|Early release|Exemption|Release):/i
 
 /**
@@ -112,12 +111,11 @@ export function parseExemption(body) {
  * @param {() => Promise<string|null>} ctx.mainSha the default branch's head right now
  * @param {() => Promise<string|null>} ctx.headCovers GitHub's compare status of main...head ('ahead' or 'identical' means the head contains main)
  * @param {{lastDeployedSha?: string, lastReleasedAt?: string}} ctx.repoState
- * @param {Date} ctx.now
  * @returns {Promise<{deploy: false, kind: 'none'} | {deploy: false, kind: 'invalid', reason: string} |
  *   {deploy: true, kind: 'merge'|'release'|'hotfix', tag?: object, exemption?: string, why?: string}>}
  *   `tag` is the release-tag plan (lib/release.mjs) for a row with `release`.
  */
-export async function planDeploy(repo, pr, { tags, mainSha, headCovers, repoState, now }) {
+export async function planDeploy(repo, pr, { tags, mainSha, headCovers, repoState }) {
   const body = pr.body ?? ''
   // Case-insensitive: a `Release` label is a release that was meant, not a quiet plain merge.
   const labels = (pr.labels ?? []).map((l) => String(l.name).toLowerCase())
@@ -160,28 +158,12 @@ export async function planDeploy(repo, pr, { tags, mainSha, headCovers, repoStat
 
   const problems = releaseProblems(body)
   if (problems.length > 0) return invalid(`a \`${RELEASE_LABEL}\` pull request is missing what a release needs: ${problems.join('; ')}`)
-  if (repoState.lastReleasedAt !== undefined) {
-    const lastAt = new Date(repoState.lastReleasedAt)
-    if (Number.isNaN(lastAt.getTime())) return invalid(`the bot's record of this repo's last release (${String(repoState.lastReleasedAt).slice(0, 40)}) is unreadable, so it cannot apply the weekly limit; a person fixes \`lastReleasedAt\` in ~/.ship-bot/state.json`)
-    const nextAt = new Date(lastAt.getTime() + RELEASE_GAP_DAYS * 86_400_000)
-    // Not a bullet: a note that happens to start "Early release:" is not the owner's ask.
-    if (now < nextAt && !hasLine(body, 'Early release', { bullet: false })) {
-      // Dates, not a running count, so the comment does not change (and post again) while the release waits.
-      return invalid(`the last release here was on ${easternDay(lastAt)}, and a repo gets at most one release a week, so the next goes from ${easternDay(nextAt)}; wait, or add an \`Early release: <why>\` line of its own when the owner asked for one sooner`)
-    }
-  }
   // The gate and the smoke ran on this head. A release whose head is behind main would deploy merges they never saw.
   const cover = await headCovers()
   if (cover !== 'ahead' && cover !== 'identical') {
     return invalid(`the release head does not contain main (${cover === 'behind' || cover === 'diverged' ? `GitHub compares it as ${cover}` : 'GitHub could not compare it'}), so main holds merges its local gate and smoke never saw; merge main into it, run the gate and the smoke again, and update the two lines`)
   }
   return { deploy: true, kind: 'release', tag: tagPlan }
-}
-
-/** A day as the owner reads it, in Toronto: "14 November 2026". */
-export function easternDay(d) {
-  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Toronto', day: 'numeric', month: 'long', year: 'numeric' }).formatToParts(d).map((p) => [p.type, p.value]))
-  return `${parts.day} ${parts.month} ${parts.year}`
 }
 
 const invalid = (reason) => ({ deploy: false, kind: 'invalid', reason, key: 'release-plan' })

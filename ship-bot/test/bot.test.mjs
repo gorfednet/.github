@@ -1528,19 +1528,15 @@ describe('releases, not every merge (plan row 1.25)', () => {
     }
   })
 
-  it('at most one release a week: a second one within 6 days waits unless it says Early release', async () => {
-    const recent = { lastDeployedSha: LAST, lastReleasedAt: '2026-10-06T12:00:00Z' }
-    const s = rel({ state: recent })
+  it('milestone releases: a second release 1 day after the first is accepted, with or without an old Early release line', async () => {
+    const dayAfter = { lastDeployedSha: LAST, lastReleasedAt: '2026-10-08T12:00:00Z' }
+    const s = rel({ state: dayAfter })
     await s.run()
-    assert.equal(merges(s.github).length, 0)
-    assert.match(bodies(s.github)[0], /the last release here was on 6 October 2026, and a repo gets at most one release a week, so the next goes from 12 October 2026/)
-    const early = rel({ state: recent, body: `${NOTES}Early release: the owner asked for the price fix today\n` })
-    await early.run()
-    assert.equal(merges(early.github).length, 1)
-    assert.deepEqual(early.runner.commandLines('deploy'), ['make deploy'])
-    const weekLater = rel({ state: { lastDeployedSha: LAST, lastReleasedAt: '2026-10-03T11:00:00Z' } })
-    await weekLater.run()
-    assert.equal(merges(weekLater.github).length, 1)
+    assert.equal(merges(s.github).length, 1)
+    assert.deepEqual(s.runner.commandLines('deploy'), ['make deploy'])
+    const old = rel({ state: dayAfter, body: `${NOTES}Early release: the owner asked for the price fix today\n` })
+    await old.run()
+    assert.equal(merges(old.github).length, 1)
   })
 
   it('a hotfix deploys on merge when it names its exemption and main is still the last deploy', async () => {
@@ -1550,7 +1546,7 @@ describe('releases, not every merge (plan row 1.25)', () => {
       assert.equal(merges(s.github).length, 1, ex)
       assert.deepEqual(s.runner.commandLines('deploy'), ['make deploy'], ex)
       assert.equal(s.state().repo(SLUG).lastDeployedSha, MERGE)
-      assert.equal(s.state().repo(SLUG).lastReleasedAt, undefined, 'a hotfix is not a release and does not reset the weekly clock')
+      assert.equal(s.state().repo(SLUG).lastReleasedAt, undefined, 'a hotfix is not a release and is not recorded as a release')
     }
   })
 
@@ -1702,7 +1698,7 @@ describe('releases: what the first review found (plan row 1.25)', () => {
     assert.deepEqual(capital.runner.commandLines('deploy'), ['make deploy'], 'a capitalised label is the same label')
   })
 
-  it('a failed or paused release leaves lastReleasedAt alone, so the weekly clock does not start', async () => {
+  it('a failed or paused release leaves lastReleasedAt alone, so no release time is recorded', async () => {
     const failed = rel({ runner: makeRunner({ handle: (cmd) => (cmd.kind === 'setup' ? { code: 1 } : undefined) }), state: { lastDeployedSha: LAST } })
     await failed.run()
     assert.equal(merges(failed.github).length, 1)
@@ -1772,19 +1768,13 @@ describe('releases: what the first review found (plan row 1.25)', () => {
     assert.equal(merges(s.github).length, 1)
   })
 
-  it('an unreadable lastReleasedAt refuses the release rather than skipping the weekly limit', async () => {
-    const s = rel({ state: { lastDeployedSha: LAST, lastReleasedAt: 'yesterday-ish' } })
-    await s.run()
-    assert.equal(merges(s.github).length, 0)
-    assert.match(bodies(s.github)[0], /last release \(yesterday-ish\) is unreadable/)
-  })
-
-  it('a waiting release gets one comment, not a new one every pass', async () => {
-    const s = rel({ state: { lastDeployedSha: LAST, lastReleasedAt: '2026-10-08T12:00:00Z' } })
+  it('a refused release gets one comment, not a new one every pass', async () => {
+    const s = rel({ body: '## Release notes\n\n- a\n\nSmoke: y\n' })
     await s.run()
     s.clock.advance(300)
     await s.run()
     assert.equal(bodies(s.github).length, 1)
+    assert.match(bodies(s.github)[0], /no `Local gate:` line/)
   })
 
   it('a hotfix on a tag repo needs its Release line, then tags and deploys', async () => {
