@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-11-18T04:32:18.606Z",
-  "renderedAt": "2026-11-18T04:32:18.606Z",
+  "generatedAt": "2026-11-18T06:37:39.703Z",
+  "renderedAt": "2026-11-18T06:37:39.703Z",
   "repos": [
     {
       "slug": "gorfednet/bindercurve.com",
@@ -23,7 +23,7 @@
       "slug": "gorfednet/4thcltr.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 39,
+      "openPrCount": 38,
       "lapsedBacklogCount": 21,
       "noPrCount": 18,
       "idlePrCount": 16,
@@ -39,7 +39,7 @@
       "slug": "gorfednet/gorfed.net",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 9,
+      "openPrCount": 8,
       "lapsedBacklogCount": 3,
       "noPrCount": 6,
       "idlePrCount": 0,
@@ -108,7 +108,7 @@
       "noPrCount": 2,
       "idlePrCount": 0,
       "duplicatePrCount": 0,
-      "dependabotRedCount": 0,
+      "dependabotRedCount": 1,
       "kitVersion": "0.61.0",
       "kitPin": {
         "ref": "main"
@@ -124,7 +124,7 @@
       "noPrCount": 2,
       "idlePrCount": 2,
       "duplicatePrCount": 0,
-      "dependabotRedCount": 0,
+      "dependabotRedCount": 1,
       "kitVersion": "0.61.0",
       "kitPin": {
         "ref": "main"
@@ -135,12 +135,12 @@
       "slug": "gorfednet/promptboi.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 4,
+      "openPrCount": 5,
       "lapsedBacklogCount": 2,
       "noPrCount": 20,
       "idlePrCount": 2,
       "duplicatePrCount": 0,
-      "dependabotRedCount": 0,
+      "dependabotRedCount": 2,
       "kitVersion": "0.61.0",
       "kitPin": {
         "ref": "main"
@@ -172,7 +172,7 @@
       "noPrCount": 1,
       "idlePrCount": 6,
       "duplicatePrCount": 2,
-      "dependabotRedCount": 0,
+      "dependabotRedCount": 1,
       "kitVersion": "0.61.0",
       "kitPin": {
         "ref": "main"
@@ -201,11 +201,11 @@
           "title": "argv-guard: a PreToolUse hook that reads git and gh arguments (plan row 5.14)",
           "ageDays": 0,
           "labels": [],
-          "draft": true,
+          "draft": false,
           "review": "findings",
-          "headSha": "313638ce8b5ea21db70f25d6c01a1b471cea6945",
+          "headSha": "0a8d273c2637b44e85e6895714778d54071dbb98",
           "ci": "green",
-          "next": "Merge: ship-bot, once the review is clean and CI is green.",
+          "next": "Clean `claude review` on this head",
           "author": "gorfednet"
         },
         {
@@ -589,8 +589,8 @@
     {
       "slug": "gorfednet/MoonMan",
       "redacted": true,
-      "mainRed": true,
-      "openPrCount": 8,
+      "mainRed": false,
+      "openPrCount": 7,
       "lapsedBacklogCount": 2,
       "noPrCount": 47,
       "idlePrCount": 0,
@@ -644,7 +644,7 @@
       "slug": "gorfednet/career-portfolio",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 9,
+      "openPrCount": 8,
       "lapsedBacklogCount": 1,
       "noPrCount": 1,
       "idlePrCount": 2,
@@ -660,7 +660,7 @@
       "slug": "gorfednet/heuristics.4thcltr.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 15,
+      "openPrCount": 14,
       "lapsedBacklogCount": 16,
       "noPrCount": 7,
       "idlePrCount": 8,
@@ -767,7 +767,7 @@
         },
         {
           "number": 3,
-          "idleDays": 22
+          "idleDays": 23
         }
       ],
       "duplicatePrs": [],
@@ -801,7 +801,7 @@
       "slug": "gorfednet/ops",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 14,
+      "openPrCount": 16,
       "lapsedBacklogCount": 0,
       "noPrCount": 3,
       "idlePrCount": 0,
@@ -868,11 +868,11 @@
     }
   },
   "inventory": {
-    "measuredAt": "2026-11-18T04:32:18.606Z",
+    "measuredAt": "2026-11-18T06:37:39.703Z",
     "counts": {
       "pr": {
-        "total": 165,
-        "orphans": 74
+        "total": 163,
+        "orphans": 69
       },
       "session": null,
       "worktree": null,
@@ -924,12 +924,12 @@
         "lapsed": true
       }
     ],
-    "hiddenPrivate": 71,
+    "hiddenPrivate": 66,
     "privateReposNotItemised": 18,
     "planRead": true
   },
   "dotgithub": {
-    "measuredAt": "2026-11-18T04:33:07.497Z",
+    "measuredAt": "2026-11-18T06:38:28.432Z",
     "branches": 41,
     "merged": 3,
     "exposedFiles": 61,
