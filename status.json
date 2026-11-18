@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-11-18T00:46:54.737Z",
-  "renderedAt": "2026-11-18T00:46:54.737Z",
+  "generatedAt": "2026-11-18T02:32:13.388Z",
+  "renderedAt": "2026-11-18T02:32:13.388Z",
   "repos": [
     {
       "slug": "gorfednet/bindercurve.com",
@@ -8,7 +8,7 @@
       "mainRed": true,
       "openPrCount": 11,
       "lapsedBacklogCount": 16,
-      "noPrCount": 79,
+      "noPrCount": 80,
       "idlePrCount": 1,
       "duplicatePrCount": 0,
       "dependabotRedCount": 3,
@@ -23,9 +23,9 @@
       "slug": "gorfednet/4thcltr.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 32,
+      "openPrCount": 36,
       "lapsedBacklogCount": 21,
-      "noPrCount": 13,
+      "noPrCount": 18,
       "idlePrCount": 16,
       "duplicatePrCount": 0,
       "dependabotRedCount": 1,
@@ -41,7 +41,7 @@
       "mainRed": false,
       "openPrCount": 7,
       "lapsedBacklogCount": 3,
-      "noPrCount": 4,
+      "noPrCount": 6,
       "idlePrCount": 0,
       "duplicatePrCount": 0,
       "dependabotRedCount": 4,
@@ -185,6 +185,18 @@
       "mainRed": false,
       "openPrs": [
         {
+          "number": 258,
+          "title": "Add train-heads-clean: no train over unreviewed carried heads",
+          "ageDays": 0,
+          "labels": [],
+          "draft": false,
+          "review": "findings",
+          "headSha": "ceb8d76bba6cfd7c3e686a50611cced2d7044d6d",
+          "ci": "green",
+          "next": "Merge once CI is green and `claude review` is clean on this head.",
+          "author": "gorfednet"
+        },
+        {
           "number": 257,
           "title": "argv-guard: a PreToolUse hook that reads git and gh arguments (plan row 5.14)",
           "ageDays": 0,
@@ -229,7 +241,7 @@
             "github_actions"
           ],
           "draft": false,
-          "review": "not-run",
+          "review": "clean",
           "headSha": "606de37853e197cb215096480afb1b77007a21d5",
           "ci": "red",
           "next": null,
@@ -268,7 +280,19 @@
           "ahead": 1
         },
         {
+          "branch": "claude/browser-compat-webkit-shards-trial",
+          "ahead": 1
+        },
+        {
           "branch": "claude/headless-starter-1-10",
+          "ahead": 2
+        },
+        {
+          "branch": "claude/shipbot-selfinstall-ntfy-df8a40",
+          "ahead": 1
+        },
+        {
+          "branch": "claude/3-20f-ship-bot-repo-extra",
           "ahead": 2
         },
         {
@@ -282,6 +306,10 @@
         {
           "branch": "docs/desk-brief-session-starts",
           "ahead": 2
+        },
+        {
+          "branch": "docs/github-org-migration",
+          "ahead": 3
         },
         {
           "branch": "docs/lost-job-hosted-rule",
@@ -330,6 +358,10 @@
         {
           "branch": "ship-bot-self-install",
           "ahead": 11
+        },
+        {
+          "branch": "voice-maturity",
+          "ahead": 2
         },
         {
           "branch": "worktree-breezy-toasting-unicorn",
@@ -585,12 +617,12 @@
       "slug": "gorfednet/MoonMan",
       "redacted": true,
       "mainRed": true,
-      "openPrCount": 7,
+      "openPrCount": 8,
       "lapsedBacklogCount": 2,
-      "noPrCount": 46,
+      "noPrCount": 47,
       "idlePrCount": 0,
       "duplicatePrCount": 0,
-      "dependabotRedCount": 3,
+      "dependabotRedCount": 2,
       "kitVersion": null,
       "kitPin": {
         "none": true
@@ -644,7 +676,7 @@
       "noPrCount": 1,
       "idlePrCount": 2,
       "duplicatePrCount": 0,
-      "dependabotRedCount": 3,
+      "dependabotRedCount": 0,
       "kitVersion": "0.61.0",
       "kitPin": {
         "ref": "main"
@@ -655,9 +687,9 @@
       "slug": "gorfednet/heuristics.4thcltr.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 17,
+      "openPrCount": 15,
       "lapsedBacklogCount": 16,
-      "noPrCount": 6,
+      "noPrCount": 7,
       "idlePrCount": 8,
       "duplicatePrCount": 4,
       "dependabotRedCount": 2,
@@ -671,12 +703,12 @@
       "slug": "gorfednet/papers.4thcltr.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 4,
+      "openPrCount": 2,
       "lapsedBacklogCount": 0,
-      "noPrCount": 4,
+      "noPrCount": 5,
       "idlePrCount": 1,
       "duplicatePrCount": 0,
-      "dependabotRedCount": 2,
+      "dependabotRedCount": 1,
       "kitVersion": "0.61.0",
       "kitPin": {
         "ref": "main"
@@ -785,7 +817,7 @@
       "noPrCount": 3,
       "idlePrCount": 2,
       "duplicatePrCount": 0,
-      "dependabotRedCount": 3,
+      "dependabotRedCount": 1,
       "kitVersion": "0.61.0",
       "kitPin": {
         "ref": "main"
@@ -796,12 +828,12 @@
       "slug": "gorfednet/ops",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 15,
+      "openPrCount": 17,
       "lapsedBacklogCount": 0,
-      "noPrCount": 1,
+      "noPrCount": 3,
       "idlePrCount": 0,
       "duplicatePrCount": 0,
-      "dependabotRedCount": 1,
+      "dependabotRedCount": 0,
       "kitVersion": "0.61.0",
       "kitPin": {
         "version": "0.61.0",
@@ -814,8 +846,8 @@
     "gorfednet/TowIt",
     "gorfednet/wychwood"
   ],
-  "branchesReadAt": "2026-11-17T02:32:13.702Z",
-  "carried": true,
+  "branchesReadAt": "2026-11-18T02:32:13.388Z",
+  "carried": false,
   "localCounts": {
     "rows": {
       "dirtyClones": {
@@ -863,11 +895,11 @@
     }
   },
   "inventory": {
-    "measuredAt": "2026-11-18T00:46:54.737Z",
+    "measuredAt": "2026-11-18T02:32:13.388Z",
     "counts": {
       "pr": {
-        "total": 159,
-        "orphans": 68
+        "total": 165,
+        "orphans": 73
       },
       "session": null,
       "worktree": null,
@@ -927,13 +959,13 @@
         "lapsed": true
       }
     ],
-    "hiddenPrivate": 64,
+    "hiddenPrivate": 69,
     "privateReposNotItemised": 18,
     "planRead": true
   },
   "dotgithub": {
-    "measuredAt": "2026-11-18T00:47:38.584Z",
-    "branches": 41,
+    "measuredAt": "2026-11-18T02:33:23.099Z",
+    "branches": 42,
     "merged": 3,
     "exposedFiles": 61,
     "rulesNotChecked": [],
