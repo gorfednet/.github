@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-11-18T22:32:38.065Z",
-  "renderedAt": "2026-11-18T22:32:38.065Z",
+  "generatedAt": "2026-11-19T00:46:07.194Z",
+  "renderedAt": "2026-11-19T00:46:07.194Z",
   "repos": [
     {
       "slug": "gorfednet/bindercurve.com",
@@ -23,7 +23,7 @@
       "slug": "gorfednet/4thcltr.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 21,
+      "openPrCount": 9,
       "lapsedBacklogCount": 21,
       "noPrCount": 18,
       "idlePrCount": 6,
@@ -39,7 +39,7 @@
       "slug": "gorfednet/gorfed.net",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 6,
+      "openPrCount": 7,
       "lapsedBacklogCount": 3,
       "noPrCount": 6,
       "idlePrCount": 0,
@@ -184,6 +184,18 @@
       "defaultBranch": "main",
       "mainRed": false,
       "openPrs": [
+        {
+          "number": 267,
+          "title": "Content guidelines: the AI statement lives in the AI use overlay",
+          "ageDays": 0,
+          "labels": [],
+          "draft": false,
+          "review": "clean",
+          "headSha": "8e7b3c2bdc84d6703823e0b1dcc42c2053d5d453",
+          "ci": "red",
+          "next": "Merge: docs only, no control-plane path.",
+          "author": "gorfednet"
+        },
         {
           "number": 266,
           "title": "AI credit ledger tool: scripts/ai-credits.mjs (plan row 1.40)",
@@ -562,8 +574,8 @@
     {
       "slug": "gorfednet/MoonMan",
       "redacted": true,
-      "mainRed": true,
-      "openPrCount": 10,
+      "mainRed": false,
+      "openPrCount": 9,
       "lapsedBacklogCount": 2,
       "noPrCount": 47,
       "idlePrCount": 2,
@@ -648,7 +660,7 @@
       "slug": "gorfednet/papers.4thcltr.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 3,
+      "openPrCount": 2,
       "lapsedBacklogCount": 0,
       "noPrCount": 5,
       "idlePrCount": 0,
@@ -835,11 +847,11 @@
     }
   },
   "inventory": {
-    "measuredAt": "2026-11-18T22:32:38.065Z",
+    "measuredAt": "2026-11-19T00:46:07.194Z",
     "counts": {
       "pr": {
-        "total": 138,
-        "orphans": 64
+        "total": 127,
+        "orphans": 55
       },
       "session": null,
       "worktree": null,
@@ -850,6 +862,14 @@
       }
     },
     "orphans": [
+      {
+        "kind": "pr",
+        "repo": "gorfednet/.github",
+        "ref": "#267",
+        "label": "Content guidelines: the AI statement lives in the AI use overlay",
+        "private": false,
+        "lapsed": false
+      },
       {
         "kind": "pr",
         "repo": "gorfednet/ai-use-levels",
@@ -891,13 +911,13 @@
         "lapsed": true
       }
     ],
-    "hiddenPrivate": 61,
+    "hiddenPrivate": 51,
     "privateReposNotItemised": 18,
     "planRead": true
   },
   "dotgithub": {
-    "measuredAt": "2026-11-18T22:33:17.223Z",
-    "branches": 40,
+    "measuredAt": "2026-11-19T00:46:51.246Z",
+    "branches": 41,
     "merged": 3,
     "exposedFiles": 61,
     "rulesNotChecked": [],
