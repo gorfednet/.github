@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-11-19T18:32:58.759Z",
-  "renderedAt": "2026-11-19T18:32:58.759Z",
+  "generatedAt": "2026-11-19T20:32:08.329Z",
+  "renderedAt": "2026-11-19T20:32:08.329Z",
   "repos": [
     {
       "slug": "gorfednet/bindercurve.com",
@@ -201,7 +201,7 @@
         {
           "number": 266,
           "title": "AI credit ledger tool: scripts/ai-credits.mjs (plan row 1.40)",
-          "ageDays": 0,
+          "ageDays": 1,
           "labels": [],
           "draft": false,
           "review": "findings",
@@ -706,7 +706,7 @@
         {
           "number": 26,
           "title": "v1.3 proposal: delegated confirmation and a pointer to the rules a person set",
-          "ageDays": 0,
+          "ageDays": 1,
           "labels": [
             "hold"
           ],
@@ -857,7 +857,7 @@
     }
   },
   "inventory": {
-    "measuredAt": "2026-11-19T18:32:58.759Z",
+    "measuredAt": "2026-11-19T20:32:08.329Z",
     "counts": {
       "pr": {
         "total": 125,
@@ -926,7 +926,7 @@
     "planRead": true
   },
   "dotgithub": {
-    "measuredAt": "2026-11-19T18:33:38.412Z",
+    "measuredAt": "2026-11-19T20:32:58.507Z",
     "branches": 41,
     "merged": 3,
     "exposedFiles": 61,
