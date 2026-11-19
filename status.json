@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-11-19T00:46:07.194Z",
-  "renderedAt": "2026-11-19T00:46:07.194Z",
+  "generatedAt": "2026-11-19T02:32:35.914Z",
+  "renderedAt": "2026-11-19T02:32:35.914Z",
   "repos": [
     {
       "slug": "gorfednet/bindercurve.com",
@@ -25,7 +25,7 @@
       "mainRed": false,
       "openPrCount": 9,
       "lapsedBacklogCount": 21,
-      "noPrCount": 18,
+      "noPrCount": 31,
       "idlePrCount": 6,
       "duplicatePrCount": 0,
       "dependabotRedCount": 0,
@@ -89,7 +89,7 @@
       "mainRed": false,
       "openPrCount": 2,
       "lapsedBacklogCount": 0,
-      "noPrCount": 3,
+      "noPrCount": 4,
       "idlePrCount": 0,
       "duplicatePrCount": 0,
       "dependabotRedCount": 0,
@@ -121,7 +121,7 @@
       "mainRed": false,
       "openPrCount": 6,
       "lapsedBacklogCount": 2,
-      "noPrCount": 2,
+      "noPrCount": 3,
       "idlePrCount": 2,
       "duplicatePrCount": 0,
       "dependabotRedCount": 2,
@@ -188,7 +188,9 @@
           "number": 267,
           "title": "Content guidelines: the AI statement lives in the AI use overlay",
           "ageDays": 0,
-          "labels": [],
+          "labels": [
+            "hold"
+          ],
           "draft": false,
           "review": "clean",
           "headSha": "8e7b3c2bdc84d6703823e0b1dcc42c2053d5d453",
@@ -313,6 +315,14 @@
         {
           "branch": "kit/v0.29.0",
           "ahead": 3
+        },
+        {
+          "branch": "push-guard-hook-1-30f",
+          "ahead": 32
+        },
+        {
+          "branch": "scratch-prove-cca-276",
+          "ahead": 1
         },
         {
           "branch": "ship-bot-self-install",
@@ -644,7 +654,7 @@
       "slug": "gorfednet/heuristics.4thcltr.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 13,
+      "openPrCount": 12,
       "lapsedBacklogCount": 5,
       "noPrCount": 7,
       "idlePrCount": 6,
@@ -782,7 +792,7 @@
       "mainRed": false,
       "openPrCount": 12,
       "lapsedBacklogCount": 0,
-      "noPrCount": 3,
+      "noPrCount": 6,
       "idlePrCount": 1,
       "duplicatePrCount": 0,
       "dependabotRedCount": 0,
@@ -798,8 +808,8 @@
     "gorfednet/TowIt",
     "gorfednet/wychwood"
   ],
-  "branchesReadAt": "2026-11-18T02:32:13.388Z",
-  "carried": true,
+  "branchesReadAt": "2026-11-19T02:32:35.914Z",
+  "carried": false,
   "localCounts": {
     "rows": {
       "dirtyClones": {
@@ -847,11 +857,11 @@
     }
   },
   "inventory": {
-    "measuredAt": "2026-11-19T00:46:07.194Z",
+    "measuredAt": "2026-11-19T02:32:35.914Z",
     "counts": {
       "pr": {
-        "total": 127,
-        "orphans": 55
+        "total": 126,
+        "orphans": 54
       },
       "session": null,
       "worktree": null,
@@ -911,12 +921,12 @@
         "lapsed": true
       }
     ],
-    "hiddenPrivate": 51,
+    "hiddenPrivate": 50,
     "privateReposNotItemised": 18,
     "planRead": true
   },
   "dotgithub": {
-    "measuredAt": "2026-11-19T00:46:51.246Z",
+    "measuredAt": "2026-11-19T02:33:33.463Z",
     "branches": 41,
     "merged": 3,
     "exposedFiles": 61,
