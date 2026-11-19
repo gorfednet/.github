@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-11-19T20:32:08.329Z",
-  "renderedAt": "2026-11-19T20:32:08.329Z",
+  "generatedAt": "2026-11-19T22:31:23.067Z",
+  "renderedAt": "2026-11-19T22:31:23.067Z",
   "repos": [
     {
       "slug": "gorfednet/bindercurve.com",
@@ -213,7 +213,7 @@
         {
           "number": 254,
           "title": "1.30i: guard reads dot joins and the tagger line; installed-tools flags a missing guard install",
-          "ageDays": 1,
+          "ageDays": 2,
           "labels": [],
           "draft": false,
           "review": "clean",
@@ -225,7 +225,7 @@
         {
           "number": 103,
           "title": "Handoff: recovery of 38 failed Herdr jobs",
-          "ageDays": 9,
+          "ageDays": 10,
           "labels": [],
           "draft": false,
           "review": "findings",
@@ -857,7 +857,7 @@
     }
   },
   "inventory": {
-    "measuredAt": "2026-11-19T20:32:08.329Z",
+    "measuredAt": "2026-11-19T22:31:23.067Z",
     "counts": {
       "pr": {
         "total": 125,
@@ -926,7 +926,7 @@
     "planRead": true
   },
   "dotgithub": {
-    "measuredAt": "2026-11-19T20:32:58.507Z",
+    "measuredAt": "2026-11-19T22:32:00.807Z",
     "branches": 41,
     "merged": 3,
     "exposedFiles": 61,
