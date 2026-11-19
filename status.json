@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-11-19T14:31:55.431Z",
-  "renderedAt": "2026-11-19T14:31:55.431Z",
+  "generatedAt": "2026-11-19T16:32:17.367Z",
+  "renderedAt": "2026-11-19T16:32:17.367Z",
   "repos": [
     {
       "slug": "gorfednet/bindercurve.com",
@@ -605,7 +605,7 @@
         {
           "number": 8,
           "title": "Drain: Acid3 sample fixtures",
-          "ageDays": 5,
+          "ageDays": 6,
           "labels": [],
           "draft": true,
           "review": "not-run",
@@ -621,7 +621,7 @@
       "idlePrs": [
         {
           "number": 8,
-          "idleDays": 5
+          "idleDays": 6
         }
       ],
       "duplicatePrs": [],
@@ -657,7 +657,7 @@
       "openPrCount": 12,
       "lapsedBacklogCount": 5,
       "noPrCount": 7,
-      "idlePrCount": 6,
+      "idlePrCount": 7,
       "duplicatePrCount": 1,
       "dependabotRedCount": 2,
       "kitVersion": "0.61.0",
@@ -777,7 +777,7 @@
       "openPrCount": 7,
       "lapsedBacklogCount": 6,
       "noPrCount": 3,
-      "idlePrCount": 2,
+      "idlePrCount": 3,
       "duplicatePrCount": 0,
       "dependabotRedCount": 1,
       "kitVersion": "0.61.0",
@@ -793,7 +793,7 @@
       "openPrCount": 12,
       "lapsedBacklogCount": 0,
       "noPrCount": 6,
-      "idlePrCount": 2,
+      "idlePrCount": 3,
       "duplicatePrCount": 0,
       "dependabotRedCount": 0,
       "kitVersion": null,
@@ -857,7 +857,7 @@
     }
   },
   "inventory": {
-    "measuredAt": "2026-11-19T14:31:55.431Z",
+    "measuredAt": "2026-11-19T16:32:17.367Z",
     "counts": {
       "pr": {
         "total": 125,
@@ -926,7 +926,7 @@
     "planRead": true
   },
   "dotgithub": {
-    "measuredAt": "2026-11-19T14:32:37.977Z",
+    "measuredAt": "2026-11-19T16:32:58.268Z",
     "branches": 41,
     "merged": 3,
     "exposedFiles": 61,
