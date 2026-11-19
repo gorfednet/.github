@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-11-19T12:34:38.163Z",
-  "renderedAt": "2026-11-19T12:34:38.163Z",
+  "generatedAt": "2026-11-19T14:31:55.431Z",
+  "renderedAt": "2026-11-19T14:31:55.431Z",
   "repos": [
     {
       "slug": "gorfednet/bindercurve.com",
@@ -23,7 +23,7 @@
       "slug": "gorfednet/4thcltr.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 10,
+      "openPrCount": 9,
       "lapsedBacklogCount": 21,
       "noPrCount": 31,
       "idlePrCount": 6,
@@ -39,7 +39,7 @@
       "slug": "gorfednet/gorfed.net",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 7,
+      "openPrCount": 6,
       "lapsedBacklogCount": 3,
       "noPrCount": 6,
       "idlePrCount": 0,
@@ -165,7 +165,19 @@
     },
     {
       "slug": "gorfednet/ssatcy.com",
-      "unavailable": "unreadable"
+      "redacted": true,
+      "mainRed": false,
+      "openPrCount": 7,
+      "lapsedBacklogCount": 1,
+      "noPrCount": 1,
+      "idlePrCount": 5,
+      "duplicatePrCount": 0,
+      "dependabotRedCount": 1,
+      "kitVersion": "0.61.0",
+      "kitPin": {
+        "ref": "main"
+      },
+      "alertsOverdue": 0
     },
     {
       "slug": "gorfednet/.github",
@@ -845,16 +857,19 @@
     }
   },
   "inventory": {
-    "measuredAt": "2026-11-19T12:34:38.163Z",
+    "measuredAt": "2026-11-19T14:31:55.431Z",
     "counts": {
       "pr": {
-        "total": 127,
-        "orphans": 57
+        "total": 125,
+        "orphans": 55
       },
       "session": null,
       "worktree": null,
       "job": null,
-      "backlog": null
+      "backlog": {
+        "total": 31,
+        "orphans": 2
+      }
     },
     "orphans": [
       {
@@ -888,14 +903,30 @@
         "label": "Verification kit 0.48.0: the content guidelines and check-voice",
         "private": false,
         "lapsed": false
+      },
+      {
+        "kind": "backlog",
+        "repo": "gorfednet/.github",
+        "ref": "cards-at-overwritable-urls",
+        "label": "Most sites still declare a social card at a URL that cannot be replaced",
+        "private": false,
+        "lapsed": true
+      },
+      {
+        "kind": "backlog",
+        "repo": "gorfednet/.github",
+        "ref": "publish-the-server-never-saw",
+        "label": "Every deploy to the ten NAS sites reached the filesystem and not the visitor",
+        "private": false,
+        "lapsed": true
       }
     ],
-    "hiddenPrivate": 53,
-    "privateReposNotItemised": 17,
+    "hiddenPrivate": 51,
+    "privateReposNotItemised": 18,
     "planRead": true
   },
   "dotgithub": {
-    "measuredAt": "2026-11-19T12:35:20.452Z",
+    "measuredAt": "2026-11-19T14:32:37.977Z",
     "branches": 41,
     "merged": 3,
     "exposedFiles": 61,
