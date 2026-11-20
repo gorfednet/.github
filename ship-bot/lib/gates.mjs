@@ -340,11 +340,13 @@ export function isTriaged(thread, allowedAuthors) {
 /** The local clone review-status judges merges of main in: a deploy row's sourceDir, else the one under sourceRoot. */
 const cloneDir = (ctx, repo) => repo.sourceDir ?? (ctx.config.sourceRoot && repo.dir ? join(ctx.config.sourceRoot, repo.dir) : null)
 
-export async function evaluateReview(ctx, repo, pr, sha, { headSince, memo, draft = false, requireClean = false, controlPlane = null }) {
+export async function evaluateReview(ctx, repo, pr, sha, { headSince, memo, draft = false, requireClean = false, controlPlane = null, seen = null }) {
   const now = ctx.clock.now()
   // --clone lets review-status accept a head that only adds clean merges of main to a clean-reviewed head.
   const script = await gate(ctx, ctx.config.scripts.reviewStatus, ['--pr', String(pr.number), '--repo', repo.slug, ...(cloneDir(ctx, repo) ? ['--clone', cloneDir(ctx, repo)] : [])], {}, memo)
   const status = parseReviewStatus(script, pr.number)
+  // For the board only (lib/board.mjs): review-status's own verdict on this head.
+  if (seen) seen.review = status.state
   if (status.state === 'undetermined') {
     return { blocks: [{ key: 'review-undetermined', kind: 'wait', reason: `Claude review state unknown: ${ctx.redactor.apply(status.detail)}` }] }
   }
@@ -443,13 +445,17 @@ export async function evaluateReview(ctx, repo, pr, sha, { headSince, memo, draf
  * says so with `cached: true`; the caller re-runs fresh before acting on a
  * ready result.
  *
- * @returns {Promise<{ready: boolean, blocks: object[], cached: boolean}>}
+ * `checks` (passing, failing, pending or unread) and `review` (review-status's verdict, or null when no
+ * gate got that far) say what was read on the way, for the board (lib/board.mjs). Nothing decides on them.
+ *
+ * @returns {Promise<{ready: boolean, blocks: object[], cached: boolean, checks: string, review: string|null}>}
  */
 export async function evaluatePull(ctx, repo, pr, { headState, fresh = false, draft = false, requireClean = false, controlPlane = null }) {
   const sha = pr.head.sha
   const now = ctx.clock.now()
   const memo = { inputs: '', fresh, used: false }
-  const blocked = (blocks) => ({ ready: false, blocks, cached: memo.used })
+  const seen = { checks: 'unread', review: null }
+  const blocked = (blocks) => ({ ready: false, blocks, cached: memo.used, ...seen })
 
   // (b) (c) (f)
   let runs
@@ -500,6 +506,7 @@ export async function evaluatePull(ctx, repo, pr, { headState, fresh = false, dr
     labeledAt,
     requireAfterLabel,
   })
+  seen.checks = checkBlocks.some((b) => b.kind === 'fail') ? 'failing' : checkBlocks.length > 0 ? 'pending' : 'passing'
   if (checkBlocks.length > 0) return blocked(checkBlocks)
 
   // What the scripts below read, as far as the bot can see it: the head, the
@@ -543,13 +550,14 @@ export async function evaluatePull(ctx, repo, pr, { headState, fresh = false, dr
   if (repo.claudeReview) {
     let result
     try {
-      result = await evaluateReview(ctx, repo, pr, sha, { headSince, memo: scriptMemo, draft, requireClean, controlPlane })
+      result = await evaluateReview(ctx, repo, pr, sha, { headSince, memo: scriptMemo, draft, requireClean, controlPlane, seen })
     } catch (cause) {
       if (cause instanceof RateLimitError) throw cause
+      seen.review = 'undetermined'
       return blocked([{ key: 'review-undetermined', kind: 'wait', reason: `could not read the Claude review state: ${ctx.redactor.apply(cause.message)}` }])
     }
     if (result.blocks.length > 0) return blocked(result.blocks)
   }
 
-  return { ready: true, blocks: [], cached: memo.used }
+  return { ready: true, blocks: [], cached: memo.used, ...seen }
 }

@@ -20,6 +20,9 @@
  *   node ship-bot.mjs --config <path>      default ~/.ship-bot/config.json
  *   node ship-bot.mjs --verbose            also print why each PR was ignored
  *   node ship-bot.mjs --rotate-log <path>  first move <path> to <path>.1 if it is over 5 MB
+ *   node ship-bot.mjs --board              print the open pull requests that need a decision, longest-standing first, in at
+ *                                          most 40 lines, from the board the last live pass wrote (<stateDir>/board.json).
+ *                                          Reads that file only: no GitHub call, no pass.
  *   node ship-bot.mjs --self-test          read-only: import every module, resolve the gate scripts, load the state
  *                                          file; print one JSON line {ok, stateVersion, source}; exit 1 unless ok
  *   node ship-bot.mjs --dry-run --once --summary-json
@@ -33,6 +36,7 @@ import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync
 import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { setTimeout as sleep } from 'node:timers/promises'
+import { BOARD_FILE, formatBoard, readBoard, writeBoard } from './lib/board.mjs'
 import { runOnce, selectRepos } from './lib/bot.mjs'
 import { ping as heartbeat } from './lib/heartbeat.mjs'
 import { ConfigError, expandHome, loadConfig, validateConfig } from './lib/config.mjs'
@@ -50,7 +54,7 @@ import { formatValidation, validateExpectedChecks } from './lib/validate.mjs'
 
 const USAGE =
   'usage: ship-bot.mjs [--dry-run | --live] [--once] [--repo <name>]... [--config <path>] [--verbose] [--unblock <name> [--deployed <sha>]] [--rotate-log <path>] [--summary-json]\n' +
-  '       ship-bot.mjs --set-live true|false | --set-repo-live <slug> true|false | --validate [--repo <name>]... | --check-preflight | --self-test'
+  '       ship-bot.mjs --set-live true|false | --set-repo-live <slug> true|false | --validate [--repo <name>]... | --check-preflight | --self-test | --board'
 
 const parseBool = (flag, v) => {
   if (v !== 'true' && v !== 'false') throw new Error(`${flag} takes true or false`)
@@ -72,6 +76,7 @@ export function parseArgs(argv) {
     validate: false,
     checkPreflight: false,
     selfTest: false,
+    board: false,
     summaryJson: false,
   }
   for (let i = 0; i < argv.length; i += 1) {
@@ -100,6 +105,7 @@ export function parseArgs(argv) {
     } else if (flag === '--validate') args.validate = true
     else if (flag === '--check-preflight') args.checkPreflight = true
     else if (flag === '--self-test') args.selfTest = true
+    else if (flag === '--board') args.board = true
     else if (flag === '--summary-json') args.summaryJson = true
     else if (flag === '--help' || flag === '-h') args.help = true
     else throw new Error(`unknown argument ${flag}`)
@@ -132,6 +138,7 @@ const defaultDeps = () => ({
   appToken: readAppToken,
   heartbeat: heartbeat,
   runner: realRunner,
+  writeBoard,
   clock: { now: () => new Date() },
   out: (line) => process.stdout.write(`${line}\n`),
   sleep: (ms) => sleep(ms),
@@ -186,6 +193,7 @@ export async function main(argv, overrides = {}) {
 
     if (args.unblock) return unblock(config, args.unblock, deps, args.deployed)
     if (args.checkPreflight) return checkPreflight(config, deps)
+    if (args.board) return showBoard(config, deps)
     if (args.validate) return validate(config, args, deps, print)
 
     // Read again on every pass, so "live": false stops a running bot's merges
@@ -389,6 +397,15 @@ async function onePass(loaded, args, deps, print) {
       readCache.save()
     } catch (cause) {
       print('warn', `could not save the read cache: ${cause.message}`)
+    }
+    // The board (plan row 1.55): what this pass saw, for a reader. Only a pass the LaunchAgent would run over
+    // every repo writes it, so a hand dry run or a --repo pass never replaces it. A failed write changes nothing.
+    if (args.mode !== 'dry-run' && args.repos.length === 0 && pass.summary.board) {
+      try {
+        deps.writeBoard(join(config.stateDir, BOARD_FILE), { at: deps.clock.now().toISOString(), installedSha: gates.installedSha ?? null, mode: args.mode, ...pass.summary.board })
+      } catch (cause) {
+        print('warn', `could not write the board: ${String(cause.message).split('\n')[0].slice(0, 300)}`)
+      }
     }
     if (args.mode !== 'dry-run') await deps.heartbeat('ship-bot')
     pass.code = 0
@@ -607,6 +624,19 @@ async function checkPreflight(config, deps) {
   }
   deps.out(failed === 0 ? `preflight: ${config.preflight.length} step(s) passed` : `preflight: ${failed} of ${config.preflight.length} step(s) failed`)
   return failed === 0 ? 0 : 1
+}
+
+/** `--board`: print the last board's decision rows. Reads one local file. */
+function showBoard(config, deps) {
+  let board
+  try {
+    board = readBoard(join(config.stateDir, BOARD_FILE))
+  } catch (cause) {
+    deps.out(`ship-bot: no board to read (${cause.code ?? cause.message}); a live pass over every repo writes ${BOARD_FILE}`)
+    return 1
+  }
+  for (const line of formatBoard(board, deps.clock.now())) deps.out(line)
+  return 0
 }
 
 /** `--validate`: read-only, so it takes a token like a pass but never the lock. */

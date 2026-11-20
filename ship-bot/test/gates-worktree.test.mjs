@@ -314,10 +314,12 @@ describe('ship-bot warns when its own install is behind main', () => {
     const box = { latest: 'b'.repeat(40), current: false }
     const s = withPr(box, ['scripts/lib/x.mjs'])
     const installedSha = 'a'.repeat(40)
-    await s.run('live', { installedSha })
-    await s.run('live', { installedSha })
+    const passes = [{}, {}]
+    for (const summary of passes) await s.run('live', { installedSha, summary })
     assert.equal(merges(s.github).length, 0, s.logs.join('\n'))
     assert.equal(held(s).length, 1, 'one warning for the PR, debug after that')
+    // The board (plan row 1.55) must not follow the log level: the held PR needs a decision on every pass, not only the first.
+    assert.deepEqual(passes.map((p) => p.board.rows.find((r) => r.number === 7).state), ['needs-decision', 'needs-decision'])
     assert.match(held(s)[0], /installed ship-bot is behind origin\/main \(bbbbbbb\)/)
     assert.equal(s.runner.ofKind('notify').length, 2, 'one for the stale install, one for the held PR')
     const said = s.github.commentsPosted().filter((c) => /changes control-plane paths and the installed ship-bot is behind origin\/main/.test(c.body))

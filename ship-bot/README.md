@@ -534,6 +534,40 @@ pass logs an error and falls back to `gh auth token`.
   deploy, named by time, site and pull request). The comment on the pull
   request has the last lines.
 - **What it remembers:** `~/.ship-bot/state.json`.
+- **Every open pull request it saw:** `~/.ship-bot/board.json` (plan row 1.55).
+  A live or observing pass over every repo replaces it at the end. A hand dry
+  run and a `--repo` pass leave it alone. `ship-bot.mjs --board` prints the rows
+  that need a decision, longest-standing first, in at most 40 lines.
+
+### The board
+
+The board costs no GitHub call. Each row is built from reads the pass makes
+anyway, and its `reason` is the pass's own log lines for that pull request.
+
+- **Top level:** `at` (when it was written), `installedSha`, `mode`, `skipped`
+  (repositories the pass never listed, each with why) and `rows`.
+- **A row:** `repository`, `number`, `title`, `head`, `draft`, `labels`,
+  `checks` (passing, failing, pending or unread), `review` (review-status's
+  verdict), `mergeable`, `next` (the first unchecked `## Next` line, or empty),
+  `controlPlane`, `state`, `since` and `reason`.
+- **Null means not read.** The bot ignores most pull requests from the list
+  alone, so their `checks`, `review`, `mergeable` and `controlPlane` are null.
+- **`state`:** `merged`, `ready`, `waiting`, `held`, `not-reached`,
+  `in-progress` or `needs-decision`.
+- **`in-progress`** is a working draft: no `hold`, and its first unchecked
+  `## Next` line is a session's own step. A draft that says merge, hands a
+  decision to a person or has no unchecked line is not one. `--board` gives
+  these one count line, not rows.
+- **`since`:** for a head the bot gated, when it first saw that head or
+  GitHub's `updated_at`, whichever is older. For any other pull request,
+  `updated_at`. An observing pass keeps no memory, so it has only `updated_at`.
+- **A moved head.** `head` is the commit the row describes. When a later read
+  in the same pass saw another, `headMovedTo` names it.
+- **It can be 3 minutes old.** Anything that writes (a label, a ready, a
+  resolve) checks the head it acts on first.
+- **A failed write** logs `could not write the board` and changes nothing else.
+- **A pass that ends early** (a quota pause before the first repo, a
+  self-install) writes no board. The last one stays, and `at` shows its age.
 
 Passwords, keys and tokens are blanked out (`[REDACTED]`) in all of these and
 in every comment.
