@@ -1019,10 +1019,12 @@ describe('reusable workflows have no hosted fallback (owner, 2026-11-20)', () =>
       const input = text.slice(text.indexOf('      runs-on:\n'), text.indexOf('\n      ', text.indexOf('required:')) + 40)
       // Optional (Desk, 2026-11-20): a required input would fail every caller that passes none at startup.
       assert.match(input, /required: false/, 'the runs-on input is optional')
-      assert.doesNotMatch(text, /runs-on:\s.*ubuntu|"ubuntu-latest"/, 'no job names a hosted runner')
+      assert.doesNotMatch(text, /runs-on:\s+ubuntu/, 'no job names a hosted runner')
+      // Free hosted runners only (owner, 2026-11-20: free runners only): ubuntu-latest appears only behind the public-repository gate.
+      assert.doesNotMatch(text.replaceAll("github.event.repository.visibility == 'public' && '\"ubuntu-latest\"'", ''), /ubuntu-latest/, 'a hosted value only for a public caller')
       const runsOn = [...text.matchAll(/^\s+runs-on: (\$\{\{.+)$/gm)].map((m) => m[1])
       assert.ok(runsOn.length >= 1, 'found a job runs-on line')
-      for (const value of runsOn) assert.equal(value, '${{ ' + "fromJSON(inputs.runs-on != '' && inputs.runs-on || vars.HEAVY_RUNS_ON != '' && vars.HEAVY_RUNS_ON || '[\"self-hosted\",\"no-pool-label-set\"]')" + ' }}')
+      for (const value of runsOn) assert.equal(value, '${{ ' + "fromJSON(inputs.runs-on != '' && inputs.runs-on || vars.HEAVY_RUNS_ON != '' && vars.HEAVY_RUNS_ON || github.event.repository.visibility == 'public' && '\"ubuntu-latest\"' || '[\"self-hosted\",\"no-pool-label-set\"]')" + ' }}')
     })
   }
 })

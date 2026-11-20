@@ -427,9 +427,10 @@ describe('where the shared reviewer runs', () => {
     const runsOn = [...jobs.matchAll(/^\s{4}runs-on: (.+)$/gm)].map((match) => match[1])
     assert.ok(runsOn.length >= 2, 'found a runs-on line for both jobs')
     for (const value of runsOn) {
-      assert.equal(value, '${{ ' + "fromJSON(inputs.runs-on != '' && inputs.runs-on || vars.HEAVY_RUNS_ON != '' && vars.HEAVY_RUNS_ON || '[\"self-hosted\",\"no-pool-label-set\"]')" + ' }}')
+      assert.equal(value, '${{ ' + "fromJSON(inputs.runs-on != '' && inputs.runs-on || vars.HEAVY_RUNS_ON != '' && vars.HEAVY_RUNS_ON || github.event.repository.visibility == 'public' && '\"ubuntu-latest\"' || '[\"self-hosted\",\"no-pool-label-set\"]')" + ' }}')
     }
-    assert.doesNotMatch(workflow, /runs-on: ubuntu|"ubuntu-latest"/)
+    assert.doesNotMatch(workflow, /runs-on: ubuntu/)
+    assert.doesNotMatch(workflow.replaceAll("github.event.repository.visibility == 'public' && '\"ubuntu-latest\"'", ''), /"ubuntu-latest"/, 'a hosted value only for a public caller')
     const input = workflow.slice(workflow.indexOf('      runs-on:\n'), workflow.indexOf('      model:'))
     assert.match(input, /required: false/)
   })
@@ -450,9 +451,15 @@ describe('a pull request from a fork is never reviewed', () => {
     writeFileSync(out, '')
     mkdirSync(join(dir, 'bin'))
     writeFileSync(join(dir, 'bin', 'gh'), '#!/bin/sh\n[ "$GH_HEAD" = FAIL ] && exit 1\nprintf %s "$GH_HEAD"\n', { mode: 0o755 })
-    execFileSync('bash', ['-c', script], {
-      env: { PATH: `${join(dir, 'bin')}:${process.env.PATH}`, EVENT: event, BASE_REPO: 'example/repo', PAYLOAD_HEAD_REPO: payload, NUMBER: '7', GH_HEAD: api, GITHUB_OUTPUT: out },
-    })
+    try {
+      execFileSync('bash', ['-c', script], {
+        env: { PATH: `${join(dir, 'bin')}:${process.env.PATH}`, EVENT: event, BASE_REPO: 'example/repo', PAYLOAD_HEAD_REPO: payload, NUMBER: '7', GH_HEAD: api, GITHUB_OUTPUT: out },
+        stdio: 'pipe',
+      })
+    } catch {
+      rmSync(dir, { recursive: true, force: true })
+      return 'failed'
+    }
     const go = /go=(\w+)/.exec(readFileSync(out, 'utf8'))?.[1]
     rmSync(dir, { recursive: true, force: true })
     return go
@@ -464,11 +471,12 @@ describe('a pull request from a fork is never reviewed', () => {
     assert.equal(decide('pull_request', { payload: '' }), 'false')
   })
 
-  it('reads the head repository from the API on the comment path, and refuses a fork or a failed read', () => {
+  it('reads the head repository from the API on the comment path, refuses a fork, and fails the job on a failed read', () => {
     assert.equal(decide('issue_comment', { api: 'example/repo' }), 'true')
     assert.equal(decide('issue_comment', { api: 'someone/repo' }), 'false')
     assert.equal(decide('issue_comment', { api: '' }), 'false')
-    assert.equal(decide('issue_comment', { api: 'FAIL' }), 'false')
+    // A failed read is red, so a 'claude review' comment that did nothing is visible (Fable, 2026-11-20).
+    assert.equal(decide('issue_comment', { api: 'FAIL' }), 'failed')
   })
 
   it('is wired into the trigger job output and the condition, with read access to pull requests only', () => {

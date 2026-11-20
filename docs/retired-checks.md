@@ -4,6 +4,20 @@ A check taken out on purpose is a recorded decision, not a weakening
 (`~/.claude/rules/shipping.md`, "When CI is red"). Each entry says what the
 check caught, why it went, and what still catches that class. Newest first.
 
+## 2026-11-20: hosted runs for the shared reviewer and the production healthcheck
+
+**Two guarantees retired.** On 20 November 2026 the owner moved every paid CI job to local infrastructure. The same day the Actions budget began refusing every hosted job in private repositories.
+
+**What they caught:**
+- `claude-review.yml` ran hosted so the job holding the review token never ran on a self-hosted runner (owner decision, 19 October 2026).
+- `production-healthcheck.yml` ran hosted so a dead pool host, which also serves the sites, still showed as a red health check rather than a job that never starts.
+
+**Why they went:** the owner's instruction replaces the 19 October decision, and the budget stops both jobs anyway. He refined it the same day to allow free runners. So a public caller still runs both hosted; only private callers moved.
+
+**What catches that class now:**
+- The token: the reviewer refuses a pull request whose head is a fork, on both triggers, so a fork's code never reaches the pool job that holds it. A failed read of the head repository fails the job. `test/claudeReview.test.mjs` covers both paths.
+- A dead pool host: the capacity pool check (`capacity/pool.mjs`, run on a Mac off the pool) alerts on stale heartbeats and long queues. It must be installed before this change merges.
+
 ## 2026-11-17: vendored-kit version and missing-kit failures in fleet-status (plan row 2.9)
 
 **One failure removed, one check added.** `fleet-kit-versions` used to fail only on the vendored `verification-kit/` copy a repository carries. It now also fails on the gate ref the repository's workflows pin, because that ref is the kit the gate runs. The vendored-copy failure stays. The `missing` failure is the one retired.
