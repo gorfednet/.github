@@ -216,16 +216,26 @@ function globToRegex(glob) {
  *                                   with no neighbour that makes it another thing: see `isProductName`.
  *                                   `gorfednet/<name>`, a path, a file, a host, a near-miss spelling
  *                                   and a line that says private are all still read.
+ *   site <domain>                   a public site whose domain is also a private repository's name
+ *                                   (the name has a dot). Only the host form, with the name on its
+ *                                   own or after http(s):// or //, and no repository word, `private`
+ *                                   or `github` on the line: see `isPublicSite`. `gorfednet/<name>`,
+ *                                   a repository link, a path part and a near-miss are still read.
+ *                                   The line itself is not read for that name, so a repository can
+ *                                   add its first one: see `isSiteLine`.
  *   commit <sha>                    a commit (the full 40 hex) whose own diff and message are
  *                                   exempt: a pushed commit cannot be rewritten, so this is the
  *                                   way out. The net diff is still read.
  * A line that is neither is an error: a typo in an exemption must not read as no exemption.
  */
+// A domain: two or more labels, the last one letters. A repository name with no dot is never a site.
+const SITE_VALUE = /^(?:[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?\.)+[A-Za-z]{2,}$/
 export function parseAllowlist(text) {
   const emails = []
   const paths = []
   const repos = []
   const products = []
+  const sites = []
   const commits = []
   text.split('\n').forEach((raw, i) => {
     const line = raw.replace(/#.*$/, '').trim()
@@ -239,6 +249,8 @@ export function parseAllowlist(text) {
       // The match is by exact spelling, so the spelling must differ from the lowercase slug a repository carries.
       if (value === value.toLowerCase()) throw new Error(`allowlist line ${i + 1}: a product name needs a capital letter, or its case check would match nothing`)
       products.push(value)
+    } else if (kind === 'site' && value && !rules && SITE_VALUE.test(value)) {
+      sites.push(value.toLowerCase())
     } else if (kind === 'commit' && value && !rules && /^[0-9a-f]{40}$/i.test(value)) {
       commits.push(value.toLowerCase())
     } else if (kind === 'path' && value && rules) {
@@ -250,10 +262,10 @@ export function parseAllowlist(text) {
       }
       paths.push({ re: globToRegex(value), rules: set })
     } else {
-      throw new Error(`allowlist line ${i + 1}: expected "email <domain-or-address>", "repo <name>", "product <Name>", "commit <40-hex sha>" or "path <glob> <rules|*>"`)
+      throw new Error(`allowlist line ${i + 1}: expected "email <domain-or-address>", "repo <name>", "product <Name>", "site <domain>", "commit <40-hex sha>" or "path <glob> <rules|*>"`)
     }
   })
-  return { emails, paths, repos, products, commits }
+  return { emails, paths, repos, products, sites, commits }
 }
 
 function emailAllowed(address, allow) {
@@ -352,6 +364,36 @@ export function isProductName(text, index, value, allow) {
   return true
 }
 
+/**
+ * An allowlist line that adds a site, as the diff shows it: `site <domain>` and nothing else on
+ * the line, no comment. Returns the domain, lowercase, or null. Only a domain (a name with a
+ * dot) can take this route, so a private repository named like a word, with no dot, can't be
+ * published through it. A line that is not this shape is read like any other.
+ */
+export const isSiteLine = (text) => {
+  const m = /^site[ \t]+(\S+)[ \t]*$/.exec(text.replace(/\r$/, ''))
+  return m && SITE_VALUE.test(m[1]) ? m[1].toLowerCase() : null
+}
+
+/**
+ * A bare match that is exactly an allowlisted public site, in host form: the whole domain
+ * (no `.git`, `.wiki` or file extension after it), and either on its own or right after
+ * `http://`, `https://` or `//`. Never a path part (`/name`), a handle, an underscore name or a
+ * subdomain. The line must say nothing about repositories: no `private`, `visibility`, repository
+ * word or `github`, anywhere on it, so a name paired with one of those is still read.
+ */
+export function isPublicSite(text, index, value, allow) {
+  if (!allow?.sites?.includes(value.toLowerCase())) return false
+  const before = text.slice(0, index)
+  const after = text[index + value.length] ?? ''
+  const hostForm = /(?:^|[\s(\[<"'`*])$/.test(before) || /(?:^|[^:/\w])(?:https?:)?\/\/$/i.test(before)
+  if (!hostForm || /[\\_@~]/.test(after)) return false
+  const from = text.lastIndexOf('\n', index - 1) + 1
+  const to = text.indexOf('\n', index)
+  const line = text.slice(from, to === -1 ? text.length : to)
+  return !SAYS_PRIVATE.test(line) && !REPO_WORDS.test(line)
+}
+
 const all = (re, text) => [...text.matchAll(re)].map((m) => m[0])
 
 // Minified SVG: the numbers in path data and point lists are not addresses. Dropped only in
@@ -388,7 +430,7 @@ export function scanText(raw, { privateRepo, bareNames, saidNames, allow }, rule
     const inPrefixed = (i) => spans.some(([from, to]) => i >= from && i < to)
     for (const m of text.matchAll(bareNames[bare])) {
       if (inPrefixed(m.index)) continue
-      if (bare === 'word' && isProductName(text, m.index, m[0], allow)) continue
+      if (bare === 'word' && (isProductName(text, m.index, m[0], allow) || isPublicSite(text, m.index, m[0], allow))) continue
       add('private-repo', [m[0]])
     }
     if (bare === 'word' && saidNames) {
@@ -396,7 +438,7 @@ export function scanText(raw, { privateRepo, bareNames, saidNames, allow }, rule
       for (const line of text.split('\n')) {
         if (SAYS_PRIVATE.test(line)) {
           for (const m of line.matchAll(saidNames)) {
-            if (inPrefixed(at + m.index) || isProductName(text, at + m.index, m[0], allow)) continue
+            if (inPrefixed(at + m.index) || isProductName(text, at + m.index, m[0], allow) || isPublicSite(text, at + m.index, m[0], allow)) continue
             add('private-repo', [m[0]])
           }
         }
@@ -680,6 +722,8 @@ function scanDiff({ files, newFiles, added }, sha, ctx, base, origin) {
     filesRead.add(path)
     for (const hit of scanText(text, ctx, undefined, bareScope(path), svgContext(path, text))) {
       if (pathExempt(path, hit.rule, allow)) continue
+      // The line that adds a site to the allowlist names it: it can't clear itself on main otherwise.
+      if (path === ALLOWLIST_PATH && hit.rule === 'private-repo' && hit.value.toLowerCase() === isSiteLine(text)) continue
       if (base.heldValue(origin.get(path) ?? path, path, hit.rule, hit.value)) continue
       flag(path, line, hit.rule, hit.value)
     }

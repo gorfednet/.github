@@ -1584,3 +1584,87 @@ describe('privacy guard: a `product <Name>` line clears a public product name, w
     passes('Secret-Repo is fun\n')
   })
 })
+
+describe('privacy guard: a `site <domain>` line clears a public site in host form only', () => {
+  // The private repository is named for its public site, example-music.com.
+  const NAME = 'example-music.com'
+  const real = readFileSync(REAL_ALLOWLIST, 'utf8')
+  const ORG = 'gorfednet' + '/'
+  const run = (body, { path = 'README.md', allow = `${real}site ${NAME}\n`, env } = {}) =>
+    guard({ before: { '.github/privacy-guard-allow.txt': allow }, after: { [path]: body }, allow: false, env: { PRIVATE_REPOS: NAME, ...env } })
+  const fails = (body, opts) => {
+    const r = run(body, opts)
+    assert.equal(r.status, 1, `expected a refusal for ${JSON.stringify(body)}: ${r.out}`)
+    assert.match(r.out, /\[private-repo\]/)
+  }
+  const passes = (body, opts) => {
+    const r = run(body, opts)
+    assert.equal(r.status, 0, `expected a pass for ${JSON.stringify(body)}: ${r.out}`)
+  }
+
+  it('lets the public site through as a URL or a bare host, and refuses it without the line', () => {
+    passes(`Music: [listen](https://${NAME}/albums)\n`)
+    passes(`Music at https://${NAME}\n`)
+    passes(`Visit ${NAME} for the music.\n`)
+    passes(`<a href="http://${NAME}/">Music</a>\n`)
+    const r = run(`Music: https://${NAME}/\n`, { allow: real })
+    assert.equal(r.status, 1, r.out)
+  })
+
+  it('still refuses the repository: org-prefixed, a GitHub link, a path part, a suffix, a handle', () => {
+    fails(`see ${ORG}${NAME}\n`)
+    fails(`https://github.com/${ORG}${NAME}\n`)
+    fails(`git clone git@github.com:${ORG}${NAME}.git\n`)
+    fails(`cd ../${NAME}\n`)
+    fails(`${NAME}.git\n`)
+    fails(`@${NAME}\n`)
+    fails(`${NAME}_notes\n`)
+    fails(`https://example.org/${NAME}\n`)
+  })
+
+  it('refuses a line that pairs the site with a repository word or private, and the file name', () => {
+    fails(`The ${NAME} repo is private.\n`)
+    fails(`${NAME} is a private project\n`)
+    fails(`The code for ${NAME} lives in the source tree.\n`)
+    fails(`https://${NAME} (internal)\n`)
+    fails('x\n', { path: `${NAME}/index.md` })
+  })
+
+  it('reads a name in any other file or message even when a site line is on main', () => {
+    fails(`notes for example-music.com.git\n`)
+    const other = guard({
+      before: { '.github/privacy-guard-allow.txt': `${real}site ${NAME}\n` },
+      after: { 'a.md': 'see ' + ORG + 'other-one\n' },
+      allow: false,
+      env: { PRIVATE_REPOS: `${NAME},other-one` },
+    })
+    assert.equal(other.status, 1, other.out)
+    const msg = run('ok\n', { env: {} })
+    assert.equal(msg.status, 0, msg.out)
+    const m = guard({ before: { '.github/privacy-guard-allow.txt': `${real}site ${NAME}\n` }, after: { 'a.md': 'ok\n' }, allow: false, message: `see ${ORG}${NAME}`, env: { PRIVATE_REPOS: NAME } })
+    assert.equal(m.status, 1, m.out)
+  })
+
+  it('lets a repository add its first site line: the line is not read for its own domain', () => {
+    const add = (line, files = {}) =>
+      guard({ before: { 'README.md': 'hello\n' }, after: { '.github/privacy-guard-allow.txt': line, ...files }, allow: false, env: { PRIVATE_REPOS: NAME } })
+    const r = add(`site ${NAME}\n`)
+    assert.equal(r.status, 0, r.out)
+    // The line clears nothing else: the same push naming the repository, or the README link, is read.
+    assert.equal(add(`site ${NAME}\n`, { 'README.md': `https://${NAME}/\n` }).status, 1, 'the README link needs the line on main first')
+    assert.equal(add(`site ${NAME}\n`, { 'a.md': `see ${ORG}${NAME}\n` }).status, 1)
+    assert.equal(add(`site ${NAME}\n`, { 'b.md': `${NAME}.git\n` }).status, 1)
+    // Not a way to publish a name: a comment on the line, a repo line, a name with no dot, another file.
+    assert.equal(add(`site ${NAME} # the private repo\n`).status, 1)
+    assert.equal(add(`repo ${NAME}\n`).status, 1)
+    assert.equal(guard({ allow: false, after: { '.github/privacy-guard-allow.txt': 'site secret-repo\n' }, env: { PRIVATE_REPOS: 'secret-repo' } }).status, 1)
+    assert.equal(add(`site ${NAME}\n`, { 'docs/privacy-guard-allow.txt': `site ${NAME}\n` }).status, 1)
+  })
+
+  it('parses site lines and refuses a value that is not a domain', () => {
+    assert.deepEqual(parseAllowlist(`site Example-Music.com\n`).sites, ['example-music.com'])
+    for (const bad of ['site\n', 'site secret-repo\n', 'site a.com extra\n', 'site https://a.com\n', 'site a/b.com\n']) {
+      assert.throws(() => parseAllowlist(bad), /allowlist line 1/, bad)
+    }
+  })
+})

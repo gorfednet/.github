@@ -9,6 +9,10 @@
 #   product <Name>                a public product name the private-repo rule would otherwise
 #                                 flag. Exact spelling and case, and a capital letter in it. Only
 #                                 the bare word, in prose: see isProductName in privacy-guard.mjs.
+#   site <domain>                 a public site whose domain is also a private repository's name.
+#                                 Host form only (https://<domain>/ or the bare domain), never beside
+#                                 repo, private or github on a line. The line is not read for its own
+#                                 domain, so a repository adds its first one by itself. See isPublicSite.
 #   commit <sha>                  a commit (the full 40 hex) whose own diff and message are exempt.
 #                                 A pushed commit cannot be rewritten, so this clears a false
 #                                 positive in one that is not the tip. The net diff is still read.
