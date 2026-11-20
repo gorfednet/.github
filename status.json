@@ -1,15 +1,15 @@
 {
-  "generatedAt": "2026-11-20T20:32:10.988Z",
-  "renderedAt": "2026-11-20T20:32:10.988Z",
+  "generatedAt": "2026-11-20T22:32:04.376Z",
+  "renderedAt": "2026-11-20T22:32:04.376Z",
   "repos": [
     {
       "slug": "gorfednet/bindercurve.com",
       "redacted": true,
-      "mainRed": true,
+      "mainRed": false,
       "openPrCount": 14,
       "lapsedBacklogCount": 16,
       "noPrCount": 80,
-      "idlePrCount": 10,
+      "idlePrCount": 9,
       "duplicatePrCount": 0,
       "dependabotRedCount": 3,
       "kitVersion": "0.61.0",
@@ -58,7 +58,7 @@
       "openPrCount": 3,
       "lapsedBacklogCount": 0,
       "noPrCount": 1,
-      "idlePrCount": 0,
+      "idlePrCount": 1,
       "duplicatePrCount": 0,
       "dependabotRedCount": 0,
       "kitVersion": "0.65.0",
@@ -90,7 +90,7 @@
       "openPrCount": 3,
       "lapsedBacklogCount": 0,
       "noPrCount": 4,
-      "idlePrCount": 0,
+      "idlePrCount": 1,
       "duplicatePrCount": 0,
       "dependabotRedCount": 0,
       "kitVersion": "0.65.0",
@@ -106,7 +106,7 @@
       "openPrCount": 5,
       "lapsedBacklogCount": 0,
       "noPrCount": 2,
-      "idlePrCount": 0,
+      "idlePrCount": 1,
       "duplicatePrCount": 0,
       "dependabotRedCount": 2,
       "kitVersion": "0.65.0",
@@ -122,7 +122,7 @@
       "openPrCount": 7,
       "lapsedBacklogCount": 2,
       "noPrCount": 3,
-      "idlePrCount": 2,
+      "idlePrCount": 3,
       "duplicatePrCount": 0,
       "dependabotRedCount": 2,
       "kitVersion": "0.65.0",
@@ -135,10 +135,10 @@
       "slug": "gorfednet/promptboi.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 8,
+      "openPrCount": 7,
       "lapsedBacklogCount": 2,
       "noPrCount": 20,
-      "idlePrCount": 2,
+      "idlePrCount": 3,
       "duplicatePrCount": 0,
       "dependabotRedCount": 1,
       "kitVersion": "0.65.0",
@@ -154,7 +154,7 @@
       "openPrCount": 2,
       "lapsedBacklogCount": 0,
       "noPrCount": 0,
-      "idlePrCount": 0,
+      "idlePrCount": 1,
       "duplicatePrCount": 0,
       "dependabotRedCount": 0,
       "kitVersion": "0.65.0",
@@ -184,6 +184,18 @@
       "defaultBranch": "main",
       "mainRed": false,
       "openPrs": [
+        {
+          "number": 278,
+          "title": "pr-cost: sweep records merged PRs from ship-bot's log",
+          "ageDays": 0,
+          "labels": [],
+          "draft": false,
+          "review": "clean",
+          "headSha": "2fe96f7830c353d77bc5b6238d4623f2c81251d9",
+          "ci": "green",
+          "next": "Merge once CI is green and the review is clean (Fable review done; its fixes are in the second commit, a stray `node_modules` link removed).",
+          "author": "gorfednet"
+        },
         {
           "number": 277,
           "title": "Allowlist: the owner's own public sites",
@@ -233,18 +245,6 @@
           "author": "gorfednet"
         },
         {
-          "number": 272,
-          "title": "Privacy guard: site allowlist line for public sites named like a private repository",
-          "ageDays": 0,
-          "labels": [],
-          "draft": false,
-          "review": "findings",
-          "headSha": "c2142684268fcf6877b04ec7ceed664a3c471b87",
-          "ci": "green",
-          "next": "Desk: label `ready-to-merge` once `claude review` is clean (control-plane path), then ship-bot merges.",
-          "author": "gorfednet"
-        },
-        {
           "number": 270,
           "title": ".github: A4: hookify them into PreToolUse and Stop hooks, each shown failing once",
           "ageDays": 0,
@@ -285,7 +285,7 @@
         {
           "number": 254,
           "title": "1.30i: guard reads dot joins and the tagger line; installed-tools flags a missing guard install",
-          "ageDays": 2,
+          "ageDays": 3,
           "labels": [],
           "draft": false,
           "review": "clean",
@@ -297,7 +297,7 @@
         {
           "number": 103,
           "title": "Handoff: recovery of 38 failed Herdr jobs",
-          "ageDays": 10,
+          "ageDays": 11,
           "labels": [],
           "draft": false,
           "review": "findings",
@@ -734,7 +734,7 @@
       "openPrCount": 10,
       "lapsedBacklogCount": 4,
       "noPrCount": 7,
-      "idlePrCount": 6,
+      "idlePrCount": 7,
       "duplicatePrCount": 1,
       "dependabotRedCount": 2,
       "kitVersion": "0.65.0",
@@ -747,7 +747,7 @@
       "slug": "gorfednet/papers.4thcltr.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 4,
+      "openPrCount": 3,
       "lapsedBacklogCount": 0,
       "noPrCount": 5,
       "idlePrCount": 1,
@@ -865,7 +865,7 @@
       "slug": "gorfednet/ops",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 20,
+      "openPrCount": 18,
       "lapsedBacklogCount": 0,
       "noPrCount": 6,
       "idlePrCount": 6,
@@ -932,11 +932,11 @@
     }
   },
   "inventory": {
-    "measuredAt": "2026-11-20T20:32:10.988Z",
+    "measuredAt": "2026-11-20T22:32:04.376Z",
     "counts": {
       "pr": {
-        "total": 157,
-        "orphans": 81
+        "total": 153,
+        "orphans": 78
       },
       "session": null,
       "worktree": null,
@@ -998,14 +998,6 @@
       {
         "kind": "pr",
         "repo": "gorfednet/.github",
-        "ref": "#272",
-        "label": "Privacy guard: site allowlist line for public sites named like a private repository",
-        "private": false,
-        "lapsed": false
-      },
-      {
-        "kind": "pr",
-        "repo": "gorfednet/.github",
         "ref": "#267",
         "label": "Content guidelines: the AI statement lives in the AI use overlay",
         "private": false,
@@ -1052,12 +1044,12 @@
         "lapsed": true
       }
     ],
-    "hiddenPrivate": 70,
+    "hiddenPrivate": 68,
     "privateReposNotItemised": 18,
     "planRead": true
   },
   "dotgithub": {
-    "measuredAt": "2026-11-20T20:33:27.005Z",
+    "measuredAt": "2026-11-20T22:32:58.184Z",
     "branches": 47,
     "merged": 3,
     "exposedFiles": 61,
