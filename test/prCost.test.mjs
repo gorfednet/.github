@@ -369,6 +369,15 @@ describe('sweep: merged PRs from the merger log', () => {
     assert.equal(second.recorded, 0)
     assert.equal(readFileSync(out, 'utf8').trim().split('\n').length, 1)
   })
+  it('work after a PR merged is not billed to it, even when it is the session\'s last link', () => {
+    const dir = projects({ 'p/S1.jsonl': [assistant({ min: 1 }), assistant({ min: 2, usage: [2, 20, 200, 2000] }), link('o/.github', 7, 3), assistant({ min: 600, usage: [4, 40, 400, 4000] })] })
+    const log = join(dir, 'ship.log')
+    writeFileSync(log, `${T(5)} info  o/.github#7 (abc1234): merged as def5678\n`)
+    const out = join(dir, 'ledger.jsonl')
+    const j = JSON.parse(run('sweep', '--ship-log', log, '--since', T(0), '--projects', dir, '--out', out).stdout)
+    assert.equal(j.recorded, 1)
+    assert.equal(JSON.parse(readFileSync(out, 'utf8').trim()).total, 3333, 'the message 10 hours after the merge is the next change\'s')
+  })
   it('ignores merges before --since', () => {
     const { dir, log, out } = setup()
     const j = JSON.parse(run('sweep', '--ship-log', log, '--since', T(9), '--projects', dir, '--out', out).stdout)

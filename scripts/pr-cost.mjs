@@ -172,7 +172,7 @@ export async function main(argv) {
     const held = latestPerPr(readLines(out))
     const todo = unique.filter((m) => !held.some((l) => l.repo === m.repo && l.number === m.number && l.state === 'MERGED'))
     const fleet = JSON.parse(readFileSync(new URL('../fleet.json', import.meta.url), 'utf8'))
-    const named = todo.map((m) => ({ repo: m.repo, number: m.number, endsAt: Date.parse(m.mergedAt) }))
+    const named = todo.map((m) => ({ repo: m.repo, number: m.number, endsAt: Date.parse(m.mergedAt), linkOnly: true }))
     const { perPr } = await scanAll(opts.projects ?? DEFAULT_PROJECTS, { sinceMs: sinceMs - 14 * 86400000, prs: named })
     const results = []
     for (const m of todo) {

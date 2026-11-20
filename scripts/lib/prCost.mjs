@@ -152,6 +152,7 @@ export function withWindows(prs) {
   const out = prs.map((p) => ({ ...p }))
   const groups = new Map()
   for (const p of out) if (p.branch && p.endsAt !== undefined) groups.set(`${p.repo}|${p.branch}`, [...(groups.get(`${p.repo}|${p.branch}`) ?? []), p])
+  for (const p of out) if (p.linkOnly && p.endsAt !== undefined) p.to = p.endsAt + AFTER_CLOSE_MS
   for (const group of groups.values()) {
     group.sort((a, b) => a.endsAt - b.endsAt)
     group.forEach((p, i) => {
@@ -193,7 +194,11 @@ export function attribute(sessions, namedPrs = []) {
       if (named) key = `${named.repo}#${named.number}`
       else if (links.length > 0) {
         const l = links.find((x) => x.ts >= m.ts) ?? links[links.length - 1]
-        key = `${l.repo}#${l.number}`
+        // A link-only PR (the sweep names PRs by number, with no branch) keeps no work done well after it merged: a session
+        // that goes on to its next change would otherwise bill that change to this PR, and the sweep never rewrites a held row.
+        // A PR named with a branch keeps its session's late work, as before.
+        const closed = prs.find((pr) => pr.linkOnly && pr.repo === l.repo && pr.number === l.number)
+        if (!(closed?.endsAt !== undefined && m.ts > closed.endsAt + AFTER_CLOSE_MS)) key = `${l.repo}#${l.number}`
       }
       if (key === null) {
         rest.push(m)
