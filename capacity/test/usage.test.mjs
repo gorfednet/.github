@@ -153,3 +153,21 @@ test('an overload hold during a usage hold is the same state: no second push', a
   await cap.run(first.deps)
   assert.equal(first.pushes.length, 1) // an overload hold from headroom pushes once, as any hold
 })
+
+test('an error run between a 93% run and a failed probe still holds', async () => {
+  const SUN = Date.parse('2026-11-22T15:00:00Z')
+  let file = null
+  const good = harness(() => ({ pct: 93, reason: null, at: SUN - H }))
+  good.deps.now = SUN
+  good.deps.writeJson = (o) => { file = o }
+  await cap.run(good.deps)
+  assert.equal(file.state, 'hold')
+  file = cap.errorRecord(file.lastPushedState, new Error('vm_stat failed'), SUN + 15 * 60 * 1000, file) // the catch handler's write
+  assert.equal(file.state, 'unknown')
+  const next = harness(() => ({ pct: null, reason: 'usage.pct missing or not a number' }))
+  next.deps.now = SUN + 30 * 60 * 1000
+  next.deps.readPrevious = () => file
+  await cap.run(next.deps)
+  assert.equal(next.written.state, 'hold')
+  assert.equal(next.written.weeklyUsage, 93)
+})

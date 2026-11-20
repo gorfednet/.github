@@ -152,8 +152,11 @@ export function countWorking(root, now, windowMs = THRESHOLDS.workingWindowMs) {
 }
 
 /** The file left behind by a failed run: unknown, but still remembering what the owner was last told. */
-export function errorRecord(lastPushedState, err, now) {
-  return { state: 'unknown', freeSlots: 0, lastPushedState, error: String(err.message).slice(0, 200), at: new Date(now).toISOString() }
+export function errorRecord(lastPushedState, err, now, prev = null) {
+  // Carry the last good usage reading through a failed run, or the next run has nothing to keep and the brake fails open.
+  const usage = typeof prev?.weeklyUsage === 'number' && Number.isFinite(prev.weeklyUsage) && usageReadingState(prev.weeklyUsage, prev.weeklyUsageAt, now) === null
+    ? { weeklyUsage: prev.weeklyUsage, weeklyUsageAt: prev.weeklyUsageAt } : {}
+  return { state: 'unknown', freeSlots: 0, lastPushedState, error: String(err.message).slice(0, 200), ...usage, at: new Date(now).toISOString() }
 }
 
 export function message({ state, freeSlots, queued, reason }) {
@@ -302,9 +305,9 @@ if (isMain(import.meta.url)) main().catch((e) => {
     try {
       const f = path.join(os.homedir(), '.desk', 'capacity.json')
       fs.mkdirSync(path.dirname(f), { recursive: true })
-      let kept = null // keep what the owner was last told, so recovery does not repeat it
-      try { kept = JSON.parse(fs.readFileSync(f, 'utf8')).lastPushedState ?? null } catch { /* none */ }
-      fs.writeFileSync(f, JSON.stringify(errorRecord(kept, e, Date.now()), null, 2) + '\n')
+      let prev = null // keep what the owner was last told, so recovery does not repeat it, and the last good usage reading
+      try { prev = JSON.parse(fs.readFileSync(f, 'utf8')) } catch { /* none */ }
+      fs.writeFileSync(f, JSON.stringify(errorRecord(prev?.lastPushedState ?? null, e, Date.now(), prev), null, 2) + '\n')
     } catch { /* nothing more to do */ }
     // A failed run tells the dead-man service at once instead of waiting out the grace period.
     loadHelpers().then((h) => h.heartbeat?.ping('capacity', { ok: false })).catch(() => {}).finally(() => process.exit(1))
