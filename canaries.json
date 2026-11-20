@@ -1052,7 +1052,7 @@
     {
       "id": "push-guard-keeps-a-site-name-watched",
       "guards": "The pre-push guard keeps a site-listed name watched, as the CI guard does. Without it a README link at the base makes cd ../name and name.git pass a push.",
-      "command": "node --test --test-name-pattern='keeps its name watched' test/publicPushGuard.test.mjs",
+      "command": "node --test --test-name-pattern='loadGuard keeps' test/publicPushGuard.test.mjs",
       "file": "scripts/claude-hooks/public-push-guard.mjs",
       "find": "allow.sites.includes(n.toLowerCase()) || !known",
       "replace": "!known"
