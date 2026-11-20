@@ -164,8 +164,10 @@ export async function main(argv) {
     const out = opts.out ?? DEFAULT_FILE
     // A missing log is an error, never an empty sweep: an empty one would look like a quiet week.
     const merges = opts.shipLogs.flatMap((f) => mergesFromShipLog(readFileSync(f, 'utf8'))).filter((m) => Date.parse(m.mergedAt) >= sinceMs)
-    // A log with no merge line at all is a changed format or a wrong file, not a quiet week.
-    if (!opts.shipLogs.some((f) => mergesFromShipLog(readFileSync(f, 'utf8')).length)) throw new Error('the ship-bot log holds no merge line')
+    // Callers pass the live log and its rotated copy (`.1`). A quiet night, or a fresh log after a rotation, holds pass lines
+    // and no merge line, which is fine. Text with no timestamped ship-bot line at all is a wrong file or a changed format.
+    const logLine = /^\d{4}-\d\d-\d\dT[\d:.]+Z\s+\w+\s+\S/m
+    if (!opts.shipLogs.some((f) => logLine.test(readFileSync(f, 'utf8')))) throw new Error('the ship-bot log holds no ship-bot log line')
     const unique = [...new Map(merges.map((m) => [`${m.repo}#${m.number}`, m])).values()]
     const held = latestPerPr(readLines(out))
     const todo = unique.filter((m) => !held.some((l) => l.repo === m.repo && l.number === m.number && l.state === 'MERGED'))
