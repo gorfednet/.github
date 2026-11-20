@@ -408,6 +408,17 @@ describe('sweep: merged PRs from the merger log', () => {
     assert.equal(b.total, 4444, 'B holds only the work after A\'s window, not the 2,222 A already holds')
     assert.equal(total(7), 1111 + 2222, 'A holds its own work and its post-merge work')
   })
+  it('overlapping PRs: work on B before A merged stays B\'s, only the tail after A\'s merge is A\'s', () => {
+    // Link A at min 3, B's work from min 20, link B at min 60, A merged at min 120, tail work at min 150, B merged at min 400.
+    const dir = projects({ 'p/S1.jsonl': [assistant({ min: 1 }), link('o/.github', 7, 3), assistant({ min: 20, usage: [2, 20, 200, 2000] }), link('o/.github', 8, 60), assistant({ min: 150, usage: [4, 40, 400, 4000] })] })
+    const log = join(dir, 'ship.log')
+    writeFileSync(log, `${T(120)} info  o/.github#7 (abc1234): merged as def5678\n${T(400)} info  o/.github#8 (abc1235): merged as def5679\n`)
+    const out = join(dir, 'ledger.jsonl')
+    JSON.parse(run('sweep', '--ship-log', log, '--since', T(0), '--projects', dir, '--out', out).stdout)
+    const rows = readFileSync(out, 'utf8').trim().split('\n').map(JSON.parse)
+    assert.equal(rows.find((r) => r.number === 7).total, 1111 + 4444, 'A: its own work before its link and the tail after its merge')
+    assert.equal(rows.find((r) => r.number === 8).total, 2222, 'B: the work before B\'s link, from min 20')
+  })
   it('a merge under 2 hours old is left for the next run', () => {
     const dir = projects({ 'p/S1.jsonl': [assistant({ min: 1 }), link('o/.github', 7, 3)] })
     const log = join(dir, 'ship.log')
