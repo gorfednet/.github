@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-11-20T18:32:43.969Z",
-  "renderedAt": "2026-11-20T18:32:43.969Z",
+  "generatedAt": "2026-11-20T20:32:10.988Z",
+  "renderedAt": "2026-11-20T20:32:10.988Z",
   "repos": [
     {
       "slug": "gorfednet/bindercurve.com",
@@ -9,7 +9,7 @@
       "openPrCount": 14,
       "lapsedBacklogCount": 16,
       "noPrCount": 80,
-      "idlePrCount": 9,
+      "idlePrCount": 10,
       "duplicatePrCount": 0,
       "dependabotRedCount": 3,
       "kitVersion": "0.61.0",
@@ -166,8 +166,8 @@
     {
       "slug": "gorfednet/ssatcy.com",
       "redacted": true,
-      "mainRed": true,
-      "openPrCount": 9,
+      "mainRed": false,
+      "openPrCount": 8,
       "lapsedBacklogCount": 1,
       "noPrCount": 1,
       "idlePrCount": 5,
@@ -184,6 +184,30 @@
       "defaultBranch": "main",
       "mainRed": false,
       "openPrs": [
+        {
+          "number": 277,
+          "title": "Allowlist: the owner's own public sites",
+          "ageDays": 0,
+          "labels": [],
+          "draft": true,
+          "review": "not-run",
+          "headSha": "22d20143fa132056fa9bd20c981a81594b057d7f",
+          "ci": "green",
+          "next": "Merge 272 first, then retarget this PR to main and merge.",
+          "author": "gorfednet"
+        },
+        {
+          "number": 276,
+          "title": "Template: LICENSE starts from the owner's standard copyright line",
+          "ageDays": 0,
+          "labels": [],
+          "draft": true,
+          "review": "not-run",
+          "headSha": "9b052230284c74864c051f14395e1144b5cffdbd",
+          "ci": "green",
+          "next": "Review (control-plane path), then ship-bot merges.",
+          "author": "gorfednet"
+        },
         {
           "number": 274,
           "title": "Reusable reviewer and pr-checks run on the caller's pool, with no hosted fallback",
@@ -214,10 +238,10 @@
           "ageDays": 0,
           "labels": [],
           "draft": false,
-          "review": "clean",
-          "headSha": "dedf79c801ac24b230334084588200528b1f15bf",
+          "review": "findings",
+          "headSha": "c2142684268fcf6877b04ec7ceed664a3c471b87",
           "ci": "green",
-          "next": "Desk: label `ready-to-merge` once `claude review` is clean (control-plane path).",
+          "next": "Desk: label `ready-to-merge` once `claude review` is clean (control-plane path), then ship-bot merges.",
           "author": "gorfednet"
         },
         {
@@ -249,7 +273,7 @@
         {
           "number": 266,
           "title": "AI credit ledger tool: scripts/ai-credits.mjs (plan row 1.40)",
-          "ageDays": 1,
+          "ageDays": 2,
           "labels": [],
           "draft": false,
           "review": "findings",
@@ -618,7 +642,12 @@
           "reviewBy": "2026-11-27"
         }
       ],
-      "idlePrs": [],
+      "idlePrs": [
+        {
+          "number": 103,
+          "idleDays": 3
+        }
+      ],
       "duplicatePrs": [],
       "lastDeploy": null,
       "incidents7d": 4,
@@ -633,10 +662,10 @@
       "slug": "gorfednet/MoonMan",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 11,
+      "openPrCount": 13,
       "lapsedBacklogCount": 3,
       "noPrCount": 47,
-      "idlePrCount": 2,
+      "idlePrCount": 3,
       "duplicatePrCount": 0,
       "dependabotRedCount": 5,
       "kitVersion": null,
@@ -689,7 +718,7 @@
       "openPrCount": 8,
       "lapsedBacklogCount": 1,
       "noPrCount": 1,
-      "idlePrCount": 3,
+      "idlePrCount": 4,
       "duplicatePrCount": 0,
       "dependabotRedCount": 0,
       "kitVersion": "0.65.0",
@@ -705,7 +734,7 @@
       "openPrCount": 10,
       "lapsedBacklogCount": 4,
       "noPrCount": 7,
-      "idlePrCount": 4,
+      "idlePrCount": 6,
       "duplicatePrCount": 1,
       "dependabotRedCount": 2,
       "kitVersion": "0.65.0",
@@ -718,10 +747,10 @@
       "slug": "gorfednet/papers.4thcltr.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 3,
+      "openPrCount": 4,
       "lapsedBacklogCount": 0,
       "noPrCount": 5,
-      "idlePrCount": 0,
+      "idlePrCount": 1,
       "duplicatePrCount": 0,
       "dependabotRedCount": 1,
       "kitVersion": "0.65.0",
@@ -752,15 +781,15 @@
       "mainRed": false,
       "openPrs": [
         {
-          "number": 28,
-          "title": "Release AI Use Levels 1.3",
+          "number": 29,
+          "title": "Research: AI Use Levels in audio and other media",
           "ageDays": 0,
           "labels": [],
-          "draft": false,
+          "draft": true,
           "review": "findings",
-          "headSha": "9157d4fd5190bca28c8da4b3bb11f22974f64301",
+          "headSha": "a48c586f8952b59b07c2d4a52e556cec5155da90",
           "ci": "green",
-          "next": "Merge once the review reads clean. Desk labels.",
+          "next": "Owner confirms the wording and the tag, then merge",
           "author": "gorfednet"
         },
         {
@@ -823,7 +852,7 @@
       "openPrCount": 8,
       "lapsedBacklogCount": 6,
       "noPrCount": 3,
-      "idlePrCount": 3,
+      "idlePrCount": 5,
       "duplicatePrCount": 0,
       "dependabotRedCount": 1,
       "kitVersion": "0.65.0",
@@ -836,7 +865,7 @@
       "slug": "gorfednet/ops",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 17,
+      "openPrCount": 20,
       "lapsedBacklogCount": 0,
       "noPrCount": 6,
       "idlePrCount": 6,
@@ -903,11 +932,11 @@
     }
   },
   "inventory": {
-    "measuredAt": "2026-11-20T18:32:43.969Z",
+    "measuredAt": "2026-11-20T20:32:10.988Z",
     "counts": {
       "pr": {
-        "total": 149,
-        "orphans": 77
+        "total": 157,
+        "orphans": 81
       },
       "session": null,
       "worktree": null,
@@ -920,9 +949,33 @@
     "orphans": [
       {
         "kind": "pr",
-        "repo": "gorfednet/ai-use-levels",
-        "ref": "#28",
-        "label": "Release AI Use Levels 1.3",
+        "repo": "gorfednet/.github",
+        "ref": "#277",
+        "label": "Allowlist: the owner's own public sites",
+        "private": false,
+        "lapsed": false
+      },
+      {
+        "kind": "pr",
+        "repo": "gorfednet/gorfednet",
+        "ref": "#6",
+        "label": "Profile: drop links to public repositories outside 4th Culture",
+        "private": false,
+        "lapsed": false
+      },
+      {
+        "kind": "pr",
+        "repo": "gorfednet/.github",
+        "ref": "#276",
+        "label": "Template: LICENSE starts from the owner's standard copyright line",
+        "private": false,
+        "lapsed": false
+      },
+      {
+        "kind": "pr",
+        "repo": "gorfednet/plex-lastfm-sync",
+        "ref": "#1",
+        "label": "Licence: name the copyright holder and sites",
         "private": false,
         "lapsed": false
       },
@@ -999,13 +1052,13 @@
         "lapsed": true
       }
     ],
-    "hiddenPrivate": 69,
+    "hiddenPrivate": 70,
     "privateReposNotItemised": 18,
     "planRead": true
   },
   "dotgithub": {
-    "measuredAt": "2026-11-20T18:33:39.015Z",
-    "branches": 45,
+    "measuredAt": "2026-11-20T20:33:27.005Z",
+    "branches": 47,
     "merged": 3,
     "exposedFiles": 61,
     "rulesNotChecked": [],
