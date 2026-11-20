@@ -554,8 +554,9 @@ anyway, and its `reason` is the pass's own log lines for that pull request.
   alone, so their `checks`, `review`, `mergeable` and `controlPlane` are null.
 - **`state`:** `merged`, `ready`, `waiting`, `held`, `not-reached` or
   `needs-decision`.
-- **`since`:** when the bot first saw the head it gated. For a pull request it
-  never gated, GitHub's `updated_at`.
+- **`since`:** for a head the bot gated, when it first saw that head or
+  GitHub's `updated_at`, whichever is older. For any other pull request,
+  `updated_at`. An observing pass keeps no memory, so it has only `updated_at`.
 - **A moved head.** `head` is the commit the row describes. When a later read
   in the same pass saw another, `headMovedTo` names it.
 - **It can be 3 minutes old.** Anything that writes (a label, a ready, a

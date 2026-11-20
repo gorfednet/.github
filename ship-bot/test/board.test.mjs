@@ -101,6 +101,20 @@ describe('the board a pass builds', () => {
     assert.equal(row(two, 2).reason, 'not looked at this pass')
   })
 
+  it('keeps since from moving forward in a pass whose state is not kept (observing, or a not-live repo)', async () => {
+    const pulls = () => [makePr({ updated_at: '2026-10-02T08:00:00Z' })]
+    // A not-live repository in a live pass gates on a throwaway copy of the state, so "first seen" is always now.
+    const s = scenario({ repos: [mergeOnly({ live: false })], github: new FakeGitHub({ pulls: pulls(), runs: failed }) })
+    assert.deepEqual([row(await boardOf(s), 7).checks, row(await boardOf(s), 7).since], ['failing', '2026-10-02T08:00:00Z'])
+    s.clock.advance(30)
+    assert.equal(row(await boardOf(s), 7).since, '2026-10-02T08:00:00Z')
+    // The near miss: a head the bot has known for longer than GitHub's last update keeps the bot's own, older time.
+    const live = scenario({ repos: [mergeOnly()], github: new FakeGitHub({ pulls: pulls(), runs: failed }), now: '2026-10-01T00:00:00Z' })
+    await boardOf(live)
+    live.clock.advance(60 * 24 * 5)
+    assert.equal(row(await boardOf(live), 7).since, '2026-10-01T00:00:00.000Z')
+  })
+
   it('names a blocked repository as skipped, and a dry run builds the same rows without writing', async () => {
     const s = scenario({ github: new FakeGitHub({ pulls: [makePr()] }) })
     const st = s.state()

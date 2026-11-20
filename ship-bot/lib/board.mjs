@@ -32,6 +32,11 @@ const quiet = (fn) => (...args) => {
     return undefined
   }
 }
+/**
+ * The older of two times. A pass whose state is not kept (observing, or a not-live repo) first sees every head
+ * "now", so the bot's own first sight only counts when it is older than GitHub's last update.
+ */
+const earlier = (a, b) => [a, b].filter((t) => t && Number.isFinite(new Date(t).getTime())).sort((x, y) => new Date(x) - new Date(y))[0] ?? null
 const labelsOf = (pr) => (pr.labels ?? []).map((l) => l.name)
 
 export class Board {
@@ -81,7 +86,7 @@ export class Board {
   #gated(slug, pr, result, headState) {
     const row = this.rows.get(`${slug}#${pr.number}`)
     if (!row) return
-    Object.assign(row, { head: pr.head.sha, checks: result.checks ?? null, review: result.review ?? null, since: headState?.firstSeenAt ?? row.since })
+    Object.assign(row, { head: pr.head.sha, checks: result.checks ?? null, review: result.review ?? null, since: earlier(headState?.firstSeenAt, row.since) })
     row.gates = result.ready ? 'ready' : result.blocks.some((b) => b.kind === 'fail') ? 'needs-decision' : 'waiting'
   }
 
