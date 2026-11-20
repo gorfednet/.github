@@ -9,36 +9,13 @@
 #   product <Name>                a public product name the private-repo rule would otherwise
 #                                 flag. Exact spelling and case, and a capital letter in it. Only
 #                                 the bare word, in prose: see isProductName in privacy-guard.mjs.
-#   site <domain>                 a public site whose domain is also a private repository's name.
-#                                 The owner's rule of record (20 November 2026): "we can name public
-#                                 website URLs even if the repo and code is private." So the line
-#                                 itself, which says that this domain is a private repository's name,
-#                                 is accepted in writing: it is not read for its own domain, and
-#                                 a repository with no allowlist adds its first one by itself. It
-#                                 clears nothing else in the push. Word the commit message without
-#                                 the name: messages are read. Web TLDs only (com, net, org, io, ca,
-#                                 co, app, dev, fm, me, info, xyz, music, studio, art, it, ai, uk,
-#                                 tv, band, shop).
-#                                 Host form only: write https://<domain>/... with the scheme. Also
-#                                 fine: an attribute or bracket (href="//<domain>"), an address
-#                                 (booking@<domain>, not git@), site:<domain> and _<domain>_. A bare
-#                                 domain with a path (<domain>/albums) is refused: it reads as a
-#                                 directory of the repository. A line is refused when, with every URL
-#                                 and the domain taken out, it says visibility, or that something is
-#                                 private (is, still, stays private; private ending a clause), or
-#                                 holds repo, repository, codebase, internal, gorfednet, clone,
-#                                 checkout, pnpm, npm, gh or confidential, or an identifier that joins
-#                                 those in any case or spelling (REPO_NAME, repoName, REPONAME,
-#                                 isPrivate, REPO1, secret_key, PRNumber); or when the name is followed
-#                                 by #12, PR, CI or issue, or follows cd, clone, checkout or -R.
-#                                 Prose is fine: GitHub, source, org, remote, git, private events,
-#                                 Secret show, the gate, PR contact, a CI badge. privateKey,
-#                                 PrivateRoute and visibilityState are other things.
-#                                 Accepted as written, each already disclosed by the allowlist line
-#                                 itself: a // after . } or " (cd ..//<domain>), cd or git -C not
-#                                 directly before the name, and a JSON or table row that names the site.
-#                                 Listing a name the base already says puts it back on watch: a branch
-#                                 named after it, or name.git, then refuses. See isPublicSite.
+#   site <domain>                 a public site whose domain is also a private repository's name
+#                                 (a web TLD only). Owner's rule of record (20 November 2026): "we can
+#                                 name public website URLs even if the repo and code is private." The name
+#                                 then counts as said: read beside private or visibility, and as
+#                                 gorfednet/<name>. This line isn't read for its own domain, so a
+#                                 repository adds its first one by itself (word the commit message
+#                                 without the name). The line shows the domain is listed: accepted.
 #   commit <sha>                  a commit (the full 40 hex) whose own diff and message are exempt.
 #                                 A pushed commit cannot be rewritten, so this clears a false
 #                                 positive in one that is not the tip. The net diff is still read.

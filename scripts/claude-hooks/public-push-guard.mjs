@@ -140,7 +140,7 @@ export async function loadGuard(list, allowText = '', head = '') {
   // As privacy-guard reads a bare name: watched while the remote's default branch has never said it, and on a line that says private once it has.
   // Without that commit here nothing counts as said, which watches every name.
   const known = /^[0-9a-f]{40,64}$/.test(head) && git(['cat-file', '-e', `${head}^{commit}`]).status === 0
-  const unsaid = open.filter((n) => allow.sites.includes(n.toLowerCase()) || !known || !mod.namedAtBase('.', head, n))
+  const unsaid = open.filter((n) => !known || (!allow.sites.includes(n.toLowerCase()) && !mod.namedAtBase('.', head, n)))
   const said = open.filter((n) => !unsaid.includes(n))
   const ctx = { privateRepo: mod.privateRepoPattern(open), bareNames: mod.bareNamePatterns(unsaid), saidNames: mod.bareNamePatterns(said).word, allow }
   return { mod, ctx, names }

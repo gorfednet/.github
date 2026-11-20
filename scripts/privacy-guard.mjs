@@ -217,12 +217,10 @@ function globToRegex(glob) {
  *                                   `gorfednet/<name>`, a path, a file, a host, a near-miss spelling
  *                                   and a line that says private are all still read.
  *   site <domain>                   a public site whose domain is also a private repository's name
- *                                   (the name has a dot). Only the host form, with the name on its
- *                                   own or after http(s):// or //, and no repository word or `private`
- *                                   on the line: see `isPublicSite`. `gorfednet/<name>`,
- *                                   a repository link, a path part and a near-miss are still read.
- *                                   The line itself is not read for that name, so a repository can
- *                                   add its first one: see `isSiteLine`.
+ *                                   (a web TLD). The name then counts as said, as if the base already
+ *                                   named it: read on a line that says private, and as
+ *                                   `gorfednet/<name>`. The line itself is not read for that name,
+ *                                   so a repository can add its first one: see `isSiteLine`.
  *   commit <sha>                    a commit (the full 40 hex) whose own diff and message are
  *                                   exempt: a pushed commit cannot be rewritten, so this is the
  *                                   way out. The net diff is still read.
@@ -379,92 +377,6 @@ export const isSiteLine = (text) => {
   return m && siteValue(m[1]) ? m[1].toLowerCase() : null
 }
 
-/**
- * A bare match that is exactly an allowlisted public site, in host form: the whole domain
- * (no `.git`, `.wiki` or file extension after it), and either on its own or right after
- * `http://`, `https://` or `//`. Never a path part (`/name`), a handle, an underscore name or a
- * subdomain. The line, with every URL and the domain taken out, must say nothing about repositories:
- * no `private`, `visibility` or repository word in any spelling (`repoName`, `REPONAME`, `REPO1`,
- * `isPrivate`), so a name paired with one of those is still read.
- */
-export function isPublicSite(text, index, value, allow) {
-  if (!allow?.sites?.includes(value.toLowerCase())) return false
-  const before = text.slice(0, index)
-  const after = text[index + value.length] ?? ''
-  // Host form: on its own after a space or opening mark, after a scheme, after a bare // only
-  // inside an attribute or bracket (never after a comment), as the domain of an address
-  // (`booking@name`, not `git@name`), after `site:`, or wrapped in underscores (_name_).
-  const plain = /(?:^|[\s(\[<>"'`*=,|\u201c\u2018])$/.test(before) || /\bhttps?:\/\/$/i.test(before) || /(?:^|[("'=\[<`])\/\/$/.test(before)
-  const address = /(?:^|[\s(<:])(?!git@)[\w.+-]+@$/i.test(before)
-  const labelled = /(?:^|\s)(?:site|domain|host|url):$/i.test(before)
-  const italic = /(?:^|[\s(\[])_$/.test(before) && /^_(?![A-Za-z0-9_])/.test(text.slice(index + value.length))
-  if (!(plain || address || labelled || italic)) return false
-  if (!italic && /[\\_@~]/.test(after)) return false
-  // A bare domain has no path: `name/src/index.ts` is a directory of the repository.
-  if (after === '/' && !/\/\/$/.test(before)) return false
-  const from = text.lastIndexOf('\n', index - 1) + 1
-  const to = text.indexOf('\n', index)
-  const line = text.slice(from, to === -1 ? text.length : to)
-  // The guard reads one added line at a time, so a heading on the line above can't be seen: a
-  // bare list item under "Private repositories:" passes. A residual, said in the PR.
-  // `name#12` is an issue or PR of the repository, and so is `name PR 12`, `cd name`, `clone name`.
-  const tail = text.slice(index + value.length)
-  if (/^#\d/.test(tail) || /^[ \t]+(?:PRs?|CI|issues?)\b/i.test(tail)) return false
-  if (/(?:^|[\s(])(?:cd|clone|checkout)[ \t]+$|(?:^|\s)(?:-R|--repo)[ \t=]+$/i.test(before)) return false
-  // Read the line without every URL (its path words are the site's own) and without the domain
-  // itself (its labels, `.org` and `pr-`, are not words about a repository).
-  const rest = line.replace(URL_TOKEN, ' ').replace(new RegExp(escapeRegex(value), 'gi'), ' ')
-  return !(sitePrivate(rest) || repoish(rest))
-}
-
-/**
- * A URL up to the next space, bracket or quote: the link's own path is not prose. Only a scheme
- * URL (`https://…`), or a bare `//host` straight after an opening mark (`href="//host"`, `(//host)`),
- * the same place isPublicSite accepts a bare `//`. A `//word` after a space is a line comment.
- */
-const URL_TOKEN = /\bhttps?:\/\/[^\s)\]>"'`<]+|(?<=^|[("'=\[<`])\/\/[^\s)\]>"'`<]+/gi
-const NOUN_AFTER_PRIVATE = /(?:private|visibility)(?:keys?|routes?|state|beta|betas|mode|modes|lobby|lobbies|preview|previews|match|matches|playtests?|ly|eer|eers|er|ers)/g
-const identTokens = (t) => t.match(/[A-Za-z0-9_]+/g) ?? []
-const compact = (tok) => tok.replace(/_/g, '').toLowerCase()
-/** Identifier parts: camelCase, ACRONYMWord, underscores and (when asked) letter-digit joins taken apart. */
-const identParts = (tok, digits = true) => {
-  let u = tok.replace(/_/g, ' ').replace(/([a-z])([A-Z])/g, '$1 $2').replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2')
-  if (digits) u = u.replace(/([A-Za-z])(\d)/g, '$1 $2').replace(/(\d)([A-Za-z])/g, '$1 $2')
-  return u.toLowerCase().split(' ').filter(Boolean)
-}
-/**
- * Does the line say it is private, for a site link's neighbours: `visibility`, `private` said of
- * the thing (is, still, stays private; private at the end of a clause), or private inside an
- * identifier in any case and separators (isPrivate, ISPRIVATE, is_private, PRIVATE_REPOS).
- * "private events" and "Secret show" are prose about the site; `privateKey`, `PrivateRoute`,
- * `visibilityState` and `privately` are other things.
- */
-const PRIVATE_OF_THING = /\b(?:is|are|was|were|be|been|stays?|remains?|kept|keeps?|marked|set|made)(?:\s+(?:a|an|the|still|now|currently|very|also|only|fully|totally))*\s+private\b|\bprivate\s*(?:[.,;:!?)\]]|$)/i
-const sitePrivate = (text) =>
-  /\bvisibility\b/i.test(text) ||
-  PRIVATE_OF_THING.test(text) ||
-  identTokens(text).some((tok) => {
-    const c = compact(tok)
-    return c !== 'private' && c !== 'visibility' && /private|visibility/.test(c.replace(NOUN_AFTER_PRIVATE, ''))
-  })
-// Repository words inside an identifier, whatever its spelling: reponame, REPONAME, GHRepo, REPO1.
-// `report`, `reposition`, `repose`, `repost` and `repopulate` are other words.
-const REPO_ANY = /repo(?!rt|se|ss|st|pul|sit(?!ory))|repositor|codebase|internal/
-// Words that make a line about a repository, not a link to a site. `github`, `source`, `org`,
-// `remote` and `git` are left out on purpose: a README line often says "on GitHub" beside a site link,
-// and the repository form itself (org-prefixed, a GitHub URL, a path part) has its own rule.
-const LINE_WORDS = new Set(['gorfednet', 'clone', 'checkout', 'pnpm', 'npm', 'gh', 'confidential'])
-// PR, CI, CD, secret and gate as plain words are prose ("PR contact", "Secret show"); joined into a
-// camelCase or underscore identifier (PRNumber, ci_status, secret_key) they name a repository's workflow.
-const IDENT_WORDS = new Set(['pr', 'prs', 'ci', 'cd', 'secret', 'gate'])
-const repoish = (text) =>
-  identTokens(text).some((tok) => {
-    if (REPO_ANY.test(compact(tok))) return true
-    if (identParts(tok).some((w) => LINE_WORDS.has(w))) return true
-    const parts = identParts(tok, false)
-    return parts.length > 1 && parts.some((w) => IDENT_WORDS.has(w))
-  })
-
 const all = (re, text) => [...text.matchAll(re)].map((m) => m[0])
 
 // Minified SVG: the numbers in path data and point lists are not addresses. Dropped only in
@@ -501,7 +413,7 @@ export function scanText(raw, { privateRepo, bareNames, saidNames, allow }, rule
     const inPrefixed = (i) => spans.some(([from, to]) => i >= from && i < to)
     for (const m of text.matchAll(bareNames[bare])) {
       if (inPrefixed(m.index)) continue
-      if (bare === 'word' && (isProductName(text, m.index, m[0], allow) || isPublicSite(text, m.index, m[0], allow))) continue
+      if (bare === 'word' && (isProductName(text, m.index, m[0], allow))) continue
       add('private-repo', [m[0]])
     }
     if (bare === 'word' && saidNames) {
@@ -910,9 +822,9 @@ export function run(argv, env = process.env, out = console) {
   // their names in dozens of files: flagging them again discloses nothing new, and the
   // only way out of a false red would be a rewrite. The org-prefixed form is always read.
   // A said name is still read on a line that says private: that pairing is new.
-  // A name the allowlist lists as a site stays watched whatever the base says: it is allowed in
-  // host form only, and a README link that lands must not make `cd ../name` or `name.git` pass.
-  const unsaid = open.filter((n) => allow.sites.includes(n.toLowerCase()) || !namedAtBase(dir, mergeBase, n))
+  // A name the allowlist lists as a site counts as said, as if the base already named it: it is
+  // read on a line that says private, and as `gorfednet/<name>`, like any other said name.
+  const unsaid = open.filter((n) => !allow.sites.includes(n.toLowerCase()) && !namedAtBase(dir, mergeBase, n))
   const said = open.filter((n) => !unsaid.includes(n))
   const ctx = {
     privateRepo: privateRepoPattern(open),
