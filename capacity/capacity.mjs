@@ -7,6 +7,9 @@ import path from 'node:path'
 import { execFileSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 
+/** A usage reading older than this is stale: it reads as unknown, so a pre-reset 90% cannot hold starts after the weekly reset. */
+export const USAGE_MAX_AGE_MS = 2 * 60 * 60 * 1000
+
 export const THRESHOLDS = { headroomLoadFactor: 0.7, minFreeGb: 4, minIdlePct: 40, maxWorking: 5, maxBuilders: 2, workingWindowMs: 10 * 60 * 1000, holdUsagePct: 90 }
 
 /**
@@ -35,12 +38,17 @@ export function classify({ load1, cores, freeGb, working, backup = null, idlePct
 
 /**
  * Weekly usage percent from the Herdr state file (`usage.pct`, the source scripts/lib/usageAlert.mjs reads), or null with a reason.
- * Only a finite number from 0 to 1000 counts; a missing file, bad JSON or any other value is unknown, never a guess.
+ * Only a fresh (under USAGE_MAX_AGE_MS) finite number from 0 to 1000 counts; a missing file, bad JSON or any other value is unknown, never a guess.
  */
-export function readWeeklyUsage(statePath, readFile = (p) => fs.readFileSync(p, 'utf8')) {
-  let pct
-  try { pct = JSON.parse(readFile(statePath))?.usage?.pct } catch { return { pct: null, reason: 'usage source unreadable' } }
+export function readWeeklyUsage(statePath, readFile = (p) => fs.readFileSync(p, 'utf8'), { now = Date.now(), mtimeMs = (p) => fs.statSync(p).mtimeMs } = {}) {
+  let usage
+  try { usage = JSON.parse(readFile(statePath))?.usage } catch { return { pct: null, reason: 'usage source unreadable' } }
+  const pct = usage?.pct
   if (typeof pct !== 'number' || !Number.isFinite(pct) || pct < 0 || pct > 1000) return { pct: null, reason: 'usage.pct missing or not a number' }
+  // Age: usage.at (epoch ms or ISO text) when the file carries one, else the file's mtime. No usable time means unknown.
+  let at = typeof usage.at === 'number' ? usage.at : typeof usage.at === 'string' ? Date.parse(usage.at) : NaN
+  if (!Number.isFinite(at)) { try { at = mtimeMs(statePath) } catch { at = NaN } }
+  if (!Number.isFinite(at) || now - at > USAGE_MAX_AGE_MS) return { pct: null, reason: 'stale' }
   return { pct, reason: null }
 }
 
