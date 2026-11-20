@@ -11,8 +11,8 @@ on:
           GitHub-hosted, which is free (owner, 2026-11-20: free runners only), and
           a private one asks for a label no runner carries and waits, spending no paid minutes.
           A scheduled run's event carries no repository, so that public fallback can't apply to
-          one. A public caller that runs this on a schedule passes runs-on itself
-          ('"ubuntu-latest"' is free there) or sets HEAVY_RUNS_ON.
+          one. A public caller that runs this on a schedule passes a hosted runs-on
+          itself (free there) or sets HEAVY_RUNS_ON.
         required: false
         type: string
         default: ""
