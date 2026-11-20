@@ -46,8 +46,10 @@ export function cachedReader({ get, cache, used, stats = { reads: 0, notModified
   return { read, stats }
 }
 
-/** The runs list is cached as ids and created_at times only. */
-const reduceRuns = (b) => ({ runs: (b?.workflow_runs ?? []).map((r) => ({ id: r.id, created_at: r.created_at })) })
+/** The latest of created_at and run_started_at: a re-run keeps its first attempt's created_at, and run_started_at is when this attempt began. */
+const attemptAt = (r) => { const t = [r.created_at, r.run_started_at].map((x) => Date.parse(x)).filter(Number.isFinite); return t.length ? new Date(Math.max(...t)).toISOString() : r.created_at }
+/** The runs list is cached as ids and this attempt's start time only (kept under created_at). */
+const reduceRuns = (b) => ({ runs: (b?.workflow_runs ?? []).map((r) => ({ id: r.id, created_at: attemptAt(r) })) })
 /** A run's jobs are cached as status, created_at and runner labels only. */
 const reduceJobs = (b) => ({ jobs: (b?.jobs ?? []).map((j) => ({ status: j.status, created_at: j.created_at, labels: Array.isArray(j.labels) ? j.labels : [] })) })
 

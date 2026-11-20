@@ -245,6 +245,14 @@ test('queued behind the repository\'s own running CI is no alert; with nothing r
   assert.deepEqual(idle.p.behind, [])
 })
 
+test('a re-run of an old run is aged from this attempt, not its first one', async () => {
+  const rerun = { workflow_runs: [{ id: 9, created_at: new Date(NOW - 1440 * MIN).toISOString(), run_started_at: new Date(NOW - 2 * MIN).toISOString(), name: 'x' }] }
+  const r = await check({ [LIST]: repos('a'), [hb('a')]: beat(1), [qd('a')]: rerun })
+  assert.equal(r.p.state, 'ok')
+  const old = { workflow_runs: [{ id: 9, created_at: new Date(NOW - 1440 * MIN).toISOString(), run_started_at: new Date(NOW - 30 * MIN).toISOString(), name: 'x' }] }
+  assert.equal((await check({ [LIST]: repos('a'), [hb('a')]: beat(1), [qd('a')]: old })).p.state, 'queued')
+})
+
 test('pool queue goes out at most once an hour, and at once again after the pool was ok', async () => {
   const h = harness([Q(['a', 18]), Q(['a', 28], ['b', 16]), Q(['b', 70]), Q(['b', 90], ['c', 20]), OK, Q(['d', 17])])
   const sent = []
