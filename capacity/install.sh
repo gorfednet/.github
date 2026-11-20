@@ -40,6 +40,7 @@ NODE_BIN="$(resolve_node)" || { echo "capacity/install.sh: no usable Node. Nothi
 NODE_BIN="${NODE_BIN}" "${HERE}/check.sh"
 mkdir -p "${HOME_DIR}/logs" "${APP_DIR}" "${HOME}/Library/LaunchAgents"
 cp "${HERE}/capacity.mjs" "${APP_DIR}/capacity.mjs"
+cp "${HERE}/pool.mjs" "${APP_DIR}/pool.mjs"
 # The heartbeat and weekly-usage helpers (plan row 1.13), beside it so the copy has no path into a checkout.
 mkdir -p "${APP_DIR}/lib"
 cp "${HERE}/../ship-bot/lib/heartbeat.mjs" "${APP_DIR}/lib/heartbeat.mjs"

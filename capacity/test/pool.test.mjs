@@ -1,0 +1,201 @@
+import test from 'node:test'
+import assert from 'node:assert/strict'
+import { checkPool, cachedReader, poolKey, poolMessage, loadEtags, saveEtags, ghToken, productionPool } from '../pool.mjs'
+import { run, errorRecord } from '../capacity.mjs'
+
+const NOW = Date.parse('2026-11-20T15:00:00Z')
+const MIN = 60 * 1000
+const beat = (minAgo) => ({ value: String(Math.floor((NOW - minAgo * MIN) / 1000)) })
+const runs = (...minAgo) => ({ workflow_runs: minAgo.map((m) => ({ created_at: new Date(NOW - m * MIN).toISOString(), name: 'x' })) })
+const LIST = '/orgs/example-org/repos?type=all&per_page=100'
+
+/** A fake GitHub: `routes` maps a url to a body, a status number, or a function (headers) => response. */
+function fake(routes) {
+  const calls = []
+  const get = async (url, headers) => {
+    calls.push({ url, headers })
+    const r = routes[url]
+    if (r === undefined) return { status: 404, etag: null, body: null }
+    if (typeof r === 'function') return r(headers)
+    if (typeof r === 'number') return { status: r, etag: null, body: null }
+    return { status: 200, etag: `"e-${url}"`, body: r }
+  }
+  return { get, calls }
+}
+const repos = (...names) => names.map((n) => ({ full_name: `example-org/${n}`, archived: false }))
+const hb = (n) => `/repos/example-org/${n}/actions/variables/HEAVY_RUNNER_HEARTBEAT`
+const qd = (n) => `/repos/example-org/${n}/actions/runs?status=queued&per_page=20`
+const check = (routes, cache = {}) => {
+  const f = fake(routes)
+  const { read, stats } = cachedReader({ get: f.get, cache, used: new Set() })
+  return checkPool({ read, now: NOW, org: 'example-org' }).then((p) => ({ p, f, stats, cache }))
+}
+
+test('pool ok: a fresh heartbeat and nothing queued past 15 minutes', async () => {
+  const { p } = await check({ [LIST]: repos('a', 'b'), [hb('a')]: beat(4), [qd('a')]: runs(3), [hb('b')]: beat(6), [qd('b')]: runs() })
+  assert.equal(p.state, 'ok')
+  assert.equal(p.repos, 2)
+  assert.equal(poolMessage(p, null), null)
+})
+
+test('pool down: every heartbeat stale, the message gives the newest age', async () => {
+  const { p } = await check({ [LIST]: repos('a', 'b'), [hb('a')]: beat(23), [qd('a')]: runs(), [hb('b')]: beat(40), [qd('b')]: runs() })
+  assert.equal(p.state, 'down')
+  assert.equal(poolMessage(p, 'ok'), 'pool down: no heartbeat for 23 min')
+})
+
+test('pool queued: lists each repository waiting over 15 minutes, longest first', async () => {
+  const { p } = await check({
+    [LIST]: repos('a', 'b', 'c'),
+    [hb('a')]: beat(2), [qd('a')]: runs(18, 1),
+    [hb('b')]: beat(2), [qd('b')]: runs(41),
+    [hb('c')]: beat(2), [qd('c')]: runs(14),
+  })
+  assert.equal(p.state, 'queued')
+  assert.deepEqual(p.queued, [{ repo: 'example-org/b', minutes: 41 }, { repo: 'example-org/a', minutes: 18 }])
+  assert.equal(poolMessage(p, 'ok'), 'pool queue: example-org/b 41 min, example-org/a 18 min')
+})
+
+test('one stale heartbeat among fresh ones is not down', async () => {
+  const { p } = await check({ [LIST]: repos('a', 'b'), [hb('a')]: beat(30), [qd('a')]: runs(), [hb('b')]: beat(1), [qd('b')]: runs() })
+  assert.equal(p.state, 'ok')
+  assert.deepEqual(p.stale, ['example-org/a'])
+})
+
+test('a failed read is unknown, never ok', async () => {
+  const { p } = await check({ [LIST]: repos('a', 'b'), [hb('a')]: beat(1), [qd('a')]: 500, [hb('b')]: beat(1), [qd('b')]: runs() })
+  assert.equal(p.state, 'unknown')
+  assert.match(p.reason, /1 read\(s\) failed.*HTTP 500/)
+  const none = await check({ [LIST]: 403 })
+  assert.equal(none.p.state, 'unknown')
+  assert.match(none.p.reason, /repository list/)
+})
+
+test('a repository without the variable is not a pool repository; no pool repository at all is unknown', async () => {
+  const mixed = await check({ [LIST]: repos('a', 'plain'), [hb('a')]: beat(1), [qd('a')]: runs() })
+  assert.equal(mixed.p.state, 'ok')
+  assert.equal(mixed.p.repos, 1)
+  assert.equal(mixed.f.calls.some((c) => c.url === qd('plain')), false)
+  const empty = await check({ [LIST]: repos('plain') })
+  assert.equal(empty.p.state, 'unknown')
+})
+
+test('archived repositories are left out', async () => {
+  const list = [...repos('a'), { full_name: 'example-org/old', archived: true }]
+  const { f } = await check({ [LIST]: list, [hb('a')]: beat(1), [qd('a')]: runs() })
+  assert.equal(f.calls.some((c) => c.url.includes('/old/')), false)
+})
+
+test('a 304 is answered from the cache, with If-None-Match sent', async () => {
+  const routes = { [LIST]: repos('a'), [hb('a')]: beat(1), [qd('a')]: runs(20) }
+  const first = await check(routes)
+  assert.equal(first.stats.notModified, 0)
+  assert.equal(first.p.state, 'queued')
+  // The same cache, a server that answers 304 to any request carrying the stored tag.
+  const second = fake(Object.fromEntries(Object.keys(routes).map((u) => [u, (h) => (h['If-None-Match'] === `"e-${u}"` ? { status: 304, etag: null, body: null } : { status: 500, etag: null, body: null })])))
+  const { read, stats } = cachedReader({ get: second.get, cache: first.cache, used: new Set() })
+  const again = await checkPool({ read, now: NOW, org: 'example-org' })
+  assert.equal(again.state, 'queued')
+  assert.equal(stats.notModified, 3)
+  assert.equal(stats.reads, 3)
+})
+
+test('a 304 with nothing cached is an error, not a guess', async () => {
+  const { read } = cachedReader({ get: async () => ({ status: 304, etag: null, body: null }), cache: {}, used: new Set() })
+  await assert.rejects(read('/x'), /nothing cached/)
+})
+
+test('the ETag cache: unreadable is empty, and a save keeps only the urls this run used', () => {
+  assert.deepEqual(loadEtags('/none', () => { throw new Error('ENOENT') }), {})
+  assert.deepEqual(loadEtags('/bad', () => '[1]'), {})
+  let written
+  saveEtags('f', { '/a': { etag: '1', body: 1 }, '/b': { etag: '2', body: 2 } }, new Set(['/a']), (_p, t) => { written = t })
+  assert.deepEqual(JSON.parse(written), { '/a': { etag: '1', body: 1 } })
+})
+
+test('keys: queued minutes moving is no change; a different set of repositories is', () => {
+  const a = { state: 'queued', queued: [{ repo: 'x', minutes: 18 }] }
+  assert.equal(poolKey(a), poolKey({ state: 'queued', queued: [{ repo: 'x', minutes: 40 }] }))
+  assert.notEqual(poolKey(a), poolKey({ state: 'queued', queued: [{ repo: 'x', minutes: 18 }, { repo: 'y', minutes: 16 }] }))
+})
+
+// The change-only push, through run().
+function harness(pools, { prev = { state: 'headroom', lastPushedState: 'headroom' }, pushOk = true } = {}) {
+  const pushes = []
+  let file = prev
+  const queue = [...pools]
+  const deps = {
+    now: NOW,
+    read: () => ({ load1: 1, cores: 10, freeGb: 8, backup: null, idlePct: null }),
+    working: () => 1,
+    queue: () => 0,
+    readPrevious: () => file,
+    writeJson: (o) => { file = o },
+    push: async (t) => { pushes.push(t); return pushOk },
+    pool: async () => { const n = queue.shift(); if (n instanceof Error) throw n; return n },
+  }
+  return { deps, pushes, get file() { return file } }
+}
+const Q = (...pairs) => ({ state: 'queued', queued: pairs.map(([repo, minutes]) => ({ repo, minutes })), repos: 3, stale: [] })
+const OK = { state: 'ok', queued: [], repos: 3, stale: [] }
+
+test('pushes only when the state or the queued set changes, and says when the pool is back', async () => {
+  const h = harness([Q(['a', 18]), Q(['a', 33]), Q(['a', 48], ['b', 16]), OK, OK])
+  const lines = []
+  for (let i = 0; i < 5; i++) {
+    const before = h.pushes.length
+    await run(h.deps)
+    lines.push(h.pushes.length - before)
+  }
+  assert.deepEqual(lines, [1, 0, 1, 1, 0])
+  assert.deepEqual(h.pushes, ['pool queue: a 18 min', 'pool queue: a 48 min, b 16 min', 'pool back'])
+  assert.equal(h.file.pool.state, 'ok')
+})
+
+test('the first ok run says nothing; down says how long', async () => {
+  const h = harness([OK, { state: 'down', queued: [], repos: 3, stale: [], newestHeartbeatMinutes: 23 }])
+  await run(h.deps)
+  assert.deepEqual(h.pushes, [])
+  await run(h.deps)
+  assert.deepEqual(h.pushes, ['pool down: no heartbeat for 23 min'])
+})
+
+test('a failed push is retried on the next run; a pool read that throws is unknown, not ok', async () => {
+  const h = harness([Q(['a', 20]), Q(['a', 21])], { pushOk: false })
+  await run(h.deps)
+  assert.equal(h.file.pool.lastPushedKey, null)
+  h.deps.push = async (t) => { h.pushes.push(t) }
+  await run(h.deps)
+  assert.deepEqual(h.pushes, ['pool queue: a 20 min', 'pool queue: a 21 min']) // the failed attempt, then the retry
+  const t = harness([new Error('boom')])
+  await run(t.deps)
+  assert.equal(t.file.pool.state, 'unknown')
+  assert.match(t.pushes[0], /^pool unknown: boom/)
+})
+
+test('a run without a pool dependency writes no pool record, and a failed run keeps the memo', () => {
+  const rec = errorRecord('headroom', new Error('x'), NOW, { pool: { state: 'queued', lastPushedKey: 'queued:a' } })
+  assert.equal(rec.pool.lastPushedKey, 'queued:a')
+  assert.equal('pool' in errorRecord('headroom', new Error('x'), NOW, {}), false)
+})
+
+test('the token: GH_TOKEN first, then gh, and an error when neither answers', () => {
+  assert.equal(ghToken({ GH_TOKEN: 't1' }, () => { throw new Error('no') }), 't1')
+  assert.equal(ghToken({}, (cmd) => { if (cmd !== 'gh') throw new Error('missing'); return 'tok\n' }), 'tok')
+  assert.throws(() => ghToken({}, () => { throw new Error('no') }), /no GitHub token/)
+})
+
+test('production reader sends the bearer token and If-None-Match, and a token failure is unknown', async () => {
+  const seen = []
+  const fetchImpl = async (url, init) => {
+    seen.push({ url, headers: init.headers })
+    return { status: 200, headers: { get: (h) => (h === 'etag' ? '"t"' : null) }, json: async () => [] }
+  }
+  const ok = productionPool({ cacheFile: '/dev/null/none', org: 'example-org', fetchImpl, tokenFn: () => 'tok' })
+  const p = await ok.pool(NOW)
+  assert.equal(p.state, 'unknown') // an empty list has no pool repository
+  assert.equal(seen[0].url, `https://api.github.com${LIST}`)
+  assert.equal(seen[0].headers.Authorization, 'Bearer tok')
+  const bad = productionPool({ cacheFile: '/dev/null/none', org: 'example-org', fetchImpl, tokenFn: () => { throw new Error('no token') } })
+  assert.equal((await bad.pool(NOW)).state, 'unknown')
+})

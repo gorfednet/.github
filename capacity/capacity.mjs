@@ -6,6 +6,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { execFileSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
+import { productionPool, poolKey, poolMessage } from './pool.mjs'
 
 /** A reading under the hold line older than this is stale: it reads as unknown. */
 export const USAGE_MAX_AGE_MS = 2 * 60 * 60 * 1000
@@ -156,7 +157,9 @@ export function errorRecord(lastPushedState, err, now, prev = null) {
   // Carry the last good usage reading through a failed run, or the next run has nothing to keep and the brake fails open.
   const usage = typeof prev?.weeklyUsage === 'number' && Number.isFinite(prev.weeklyUsage) && usageReadingState(prev.weeklyUsage, prev.weeklyUsageAt, now) === null
     ? { weeklyUsage: prev.weeklyUsage, weeklyUsageAt: prev.weeklyUsageAt } : {}
-  return { state: 'unknown', freeSlots: 0, lastPushedState, error: String(err.message).slice(0, 200), ...usage, at: new Date(now).toISOString() }
+  // The pool memo too, or the next good run would say again what the owner was already told.
+  const pool = prev?.pool ? { pool: prev.pool } : {}
+  return { state: 'unknown', freeSlots: 0, lastPushedState, error: String(err.message).slice(0, 200), ...usage, ...pool, at: new Date(now).toISOString() }
 }
 
 export function message({ state, freeSlots, queued, reason }) {
@@ -191,6 +194,19 @@ export async function run(deps) {
     else if ((await push(text)) !== false) lastPushed = state
   }
   out.lastPushedState = lastPushed
+  // Pool liveness (README): its own state and its own change-only push, apart from the machine's. It never throws.
+  if (deps.pool) {
+    let p
+    try { p = await deps.pool(now) } catch (e) { p = { state: 'unknown', reason: String(e.message).slice(0, 120), repos: 0, queued: [], stale: [] } }
+    const key = poolKey(p)
+    let lastKey = prev?.pool && 'lastPushedKey' in prev.pool ? prev.pool.lastPushedKey : null
+    if (key !== lastKey) {
+      const line = poolMessage(p, lastKey)
+      if (!line) lastKey = key // ok with nothing to retract
+      else if ((await push(line)) !== false) lastKey = key
+    }
+    out.pool = { ...p, lastPushedKey: lastKey }
+  }
   writeJson(out)
   return out
 }
@@ -255,8 +271,10 @@ export function productionDeps({ home, pushOps, now = Date.now() }) {
   const dir = path.join(home, '.desk')
   const file = path.join(dir, 'capacity.json')
   const sessions = path.join(home, 'Library/Application Support/Claude/claude-code-sessions')
+  const poolReader = productionPool({ cacheFile: path.join(dir, 'capacity-etags.json') })
   return {
     now,
+    pool: async (at) => { const p = await poolReader.pool(at); poolReader.save(); return p },
     read: () => ({
       load1: os.loadavg()[0],
       cores: Number(execFileSync('sysctl', ['-n', 'hw.ncpu']).toString()),

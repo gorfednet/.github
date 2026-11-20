@@ -18,6 +18,24 @@ Pool queue: set `CAPACITY_QUEUE_CMD` to a command that prints one number (one ca
 
 ntfy topic `ops-report` (token from `~/.ship-bot/ntfy.token`) gets "headroom for N, M queued" or "overloaded, hold" only when the state changes. A change into `steady` pushes nothing.
 
+## Pool liveness (`pool` in capacity.json, owner 20 November 2026)
+
+The self-hosted pool serves each repository through its `HEAVY_RUNS_ON` variable, and the supervisor writes `HEAVY_RUNNER_HEARTBEAT` (unix seconds) on each served repository every 300 s. Each run reads the org's repository list once (`GET /orgs/gorfednet/repos?type=all&per_page=100`, paged, set `CAPACITY_POOL_ORG` to change the org; never committed), skips archived ones, then per repository:
+
+- `GET /repos/<r>/actions/variables/HEAVY_RUNNER_HEARTBEAT`: a 404 means not a pool repository, skipped. A heartbeat older than 15 minutes means not served.
+- `GET /repos/<r>/actions/runs?status=queued&per_page=20` (pool repositories only): the oldest `created_at` older than 15 minutes means queued with no runner.
+
+| `pool.state` | Rule |
+|--------------|------|
+| `ok` | at least one heartbeat is fresh and nothing has queued past 15 minutes |
+| `down` | every heartbeat is stale |
+| `queued` | a queued run has waited over 15 minutes (`queued` lists `{repo, minutes}`) |
+| `unknown` | any read failed, the repository list failed, or no repository has a heartbeat. Never `ok` |
+
+Every read sends `If-None-Match` from `~/.desk/capacity-etags.json` (beside capacity.json, pruned to the URLs of the last run), so an unchanged answer is a free 304. Cost: about 2 reads per pool repository per run plus 1 for the list, mostly 304s. The token is `GH_TOKEN`, else `gh auth token` (the plist's PATH has no Homebrew, so `/opt/homebrew/bin/gh` and `/usr/local/bin/gh` are tried too). A missing token makes the state `unknown`.
+
+One ntfy line on each change of state or of the set of queued repositories (minutes moving alone is no change): `pool down: no heartbeat for 23 min` (the newest heartbeat's age), `pool queue: <repo> 41 min, <repo> 18 min`, `pool unknown: <reason>`, and `pool back` when it returns to `ok`. A first `ok` says nothing. `pool.lastPushedKey` remembers what was last delivered, so a failed push is retried. The pool check never fails the run. `install.sh` copies `pool.mjs` beside `capacity.mjs`.
+
 Install: `capacity/install.sh` (runs the tests first), from the gates-main worktree only. The script refuses any other checkout, because a copy installed from a working checkout drifts behind main (13 November 2026: 3 commits behind). fleet-status's "Installed tools behind main" row reports a stale copy. Remove: `capacity/install.sh --uninstall`. Tests: `capacity/check.sh`.
 
 Failure handling: if a run throws, it writes `state: "unknown"` with an `error` and exits 1. If the session store is missing or empty, `working` is `null` and the state is at most `steady`. Desk treats a missing file, `unknown`, or `at` older than 30 minutes as unknown. A push is retried each run until it succeeds (`lastPushedState`). The installed plist sets no `CAPACITY_QUEUE_CMD`; add it to the plist's EnvironmentVariables by hand and note that re-running `install.sh` overwrites it. This job is a standing automation; the owner asked for the scheduled check on 13 November 2026.
