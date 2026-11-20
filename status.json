@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-11-20T02:32:04.472Z",
-  "renderedAt": "2026-11-20T02:32:04.472Z",
+  "generatedAt": "2026-11-20T04:31:51.367Z",
+  "renderedAt": "2026-11-20T04:31:51.367Z",
   "repos": [
     {
       "slug": "gorfednet/bindercurve.com",
@@ -584,7 +584,7 @@
     {
       "slug": "gorfednet/MoonMan",
       "redacted": true,
-      "mainRed": true,
+      "mainRed": false,
       "openPrCount": 9,
       "lapsedBacklogCount": 3,
       "noPrCount": 47,
@@ -732,7 +732,7 @@
         {
           "number": 3,
           "title": "Verification kit 0.48.0: the content guidelines and check-voice",
-          "ageDays": 24,
+          "ageDays": 25,
           "labels": [],
           "draft": false,
           "review": "not-run",
@@ -809,7 +809,7 @@
     "gorfednet/wychwood"
   ],
   "branchesReadAt": "2026-11-20T02:32:04.472Z",
-  "carried": false,
+  "carried": true,
   "localCounts": {
     "rows": {
       "dirtyClones": {
@@ -857,7 +857,7 @@
     }
   },
   "inventory": {
-    "measuredAt": "2026-11-20T02:32:04.472Z",
+    "measuredAt": "2026-11-20T04:31:51.367Z",
     "counts": {
       "pr": {
         "total": 125,
@@ -926,7 +926,7 @@
     "planRead": true
   },
   "dotgithub": {
-    "measuredAt": "2026-11-20T02:33:25.727Z",
+    "measuredAt": "2026-11-20T04:32:23.674Z",
     "branches": 41,
     "merged": 3,
     "exposedFiles": 61,
