@@ -8,6 +8,7 @@
  *                                   [--title T] [--additions N] [--deletions N] [--created ISO] [--closed ISO] [--label L]...
  *                                   [--infra] [--out ~/.desk/pr-cost.jsonl]
  *   node scripts/pr-cost.mjs backfill --repo owner/name --prs <gh-pr-list.json> [--out FILE]
+ *   node scripts/pr-cost.mjs sweep  --ship-log FILE [--ship-log FILE]... [--since ISO] [--out ~/.desk/pr-cost.jsonl]
  *   node scripts/pr-cost.mjs window [--days 7]
  *   node scripts/pr-cost.mjs report [--days 7] [--file ~/.desk/pr-cost.jsonl]
  *
@@ -16,6 +17,9 @@
  * already holds the same total (a rerun adds nothing; a later session on the same PR adds a fresh line, which replaces it).
  * `backfill` records every PR in a file of `gh pr list --state merged --json number,title,headRefName,state,additions,deletions,createdAt,mergedAt,closedAt,labels`
  * output with one transcript scan (a first fill, or a run the janitor missed). It matches by branch, then by the sessions' own PR links.
+ * `sweep` records every PR the merger's log says it merged since `--since` (default 14 days) and the ledger doesn't hold yet,
+ * with one transcript scan and no network call. The log has no branch, so a session's own pr-link attributes the tokens.
+ * It exists because `record` ran only when the janitor archived a session, and a dry janitor archives none.
  * `window` prints this window's tokens split attributed / unattributed.
  * `report` prints the numbers fleet-status shows (by repository and kind, 5 dearest, tokens per added line, unattributed).
  * `--projects DIR` reads another transcript folder (default ~/.claude/projects).
@@ -28,11 +32,11 @@ import { homedir } from 'node:os'
 import { dirname } from 'node:path'
 
 import { isMain } from './lib/isMain.mjs'
-import { DEFAULT_FILE, DEFAULT_PROJECTS, collectPrCost, costRecord, infraRepo, latestPerPr, readLines, scanAll, sumModels, totalTokens, windowTotals } from './lib/prCost.mjs'
+import { DEFAULT_FILE, mergesFromShipLog, DEFAULT_PROJECTS, collectPrCost, costRecord, infraRepo, latestPerPr, readLines, scanAll, sumModels, totalTokens, windowTotals } from './lib/prCost.mjs'
 
 function parseArgs(argv) {
-  const opts = { labels: [] }
-  const takes = new Set(['--repo', '--number', '--branch', '--worktree', '--since', '--state', '--title', '--additions', '--deletions', '--created', '--closed', '--out', '--days', '--file', '--projects', '--label', '--prs', '--pr-json'])
+  const opts = { labels: [], shipLogs: [] }
+  const takes = new Set(['--repo', '--number', '--branch', '--worktree', '--since', '--state', '--title', '--additions', '--deletions', '--created', '--closed', '--out', '--days', '--file', '--projects', '--label', '--prs', '--pr-json', '--ship-log'])
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]
     if (a === '--infra') opts.infra = true
@@ -40,6 +44,7 @@ function parseArgs(argv) {
       const v = argv[++i]
       if (v === undefined) throw new Error(`${a} needs a value`)
       if (a === '--label') opts.labels.push(v)
+      else if (a === '--ship-log') opts.shipLogs.push(v)
       else opts[a.slice(2)] = v
     } else throw new Error(`unknown argument ${a}`)
   }
@@ -149,6 +154,34 @@ export async function main(argv) {
     console.log(JSON.stringify({ repo: opts.repo, file: tidy(out), results }))
     return 0
   }
+  if (cmd === 'sweep') {
+    if (!opts.shipLogs.length) throw new Error('--ship-log <file> is required')
+    const days = opts.since ? null : 14
+    const sinceMs = opts.since ? Date.parse(opts.since) : Date.now() - days * 86400000
+    if (Number.isNaN(sinceMs)) throw new Error(`--since is not a date: ${opts.since}`)
+    const out = opts.out ?? DEFAULT_FILE
+    // A missing log is an error, never an empty sweep: an empty one would look like a quiet week.
+    const merges = opts.shipLogs.flatMap((f) => mergesFromShipLog(readFileSync(f, 'utf8'))).filter((m) => Date.parse(m.mergedAt) >= sinceMs)
+    const unique = [...new Map(merges.map((m) => [`${m.repo}#${m.number}`, m])).values()]
+    const held = latestPerPr(readLines(out))
+    const todo = unique.filter((m) => !held.some((l) => l.repo === m.repo && l.number === m.number && l.state === 'MERGED'))
+    const fleet = JSON.parse(readFileSync(new URL('../fleet.json', import.meta.url), 'utf8'))
+    const named = todo.map((m) => ({ repo: m.repo, number: m.number, endsAt: Date.parse(m.mergedAt) }))
+    const { perPr } = await scanAll(opts.projects ?? DEFAULT_PROJECTS, { sinceMs: sinceMs - 5 * 86400000, prs: named })
+    const results = []
+    for (const m of todo) {
+      const models = perPr.get(`${m.repo}#${m.number}`) ?? {}
+      const rec = costRecord({ repo: m.repo, number: m.number, state: 'MERGED', additions: null, deletions: null, closedAt: m.mergedAt, infra: infraRepo(m.repo, fleet) }, models)
+      const recorded = rec.total > 0
+      if (recorded) {
+        mkdirSync(dirname(out), { recursive: true })
+        appendFileSync(out, `${JSON.stringify(rec)}\n`)
+      }
+      results.push({ repo: m.repo, number: m.number, total: rec.total, recorded })
+    }
+    console.log(JSON.stringify({ merged: unique.length, alreadyHeld: unique.length - todo.length, recorded: results.filter((r) => r.recorded).length, noTranscript: results.filter((r) => !r.recorded).length, file: tidy(out), results }))
+    return 0
+  }
   if (cmd === 'window') {
     console.log(JSON.stringify(await windowTotals({ projects: opts.projects ?? DEFAULT_PROJECTS, days: opts.days ? int(opts.days, '--days') : 7 })))
     return 0
@@ -161,7 +194,7 @@ export async function main(argv) {
     console.log(JSON.stringify(report))
     return 0
   }
-  throw new Error('first argument must be pr, record, backfill, window or report')
+  throw new Error('first argument must be pr, record, backfill, sweep, window or report')
 }
 
 if (isMain(import.meta.url)) {

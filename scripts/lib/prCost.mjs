@@ -343,6 +343,21 @@ export function costReport(lines, { now = new Date(), days = 7, window = null } 
   }
 }
 
+/**
+ * Merged PRs from ship-bot's log text: `<ISO time> info  <owner/repo>#<n> (<sha>): merged as <sha>`. One entry per PR, the
+ * first merge line wins. Pure. Draft, error and "not merging" lines never match.
+ */
+export function mergesFromShipLog(text) {
+  const seen = new Map()
+  for (const line of String(text).split('\n')) {
+    const m = /^(\d{4}-\d\d-\d\dT[\d:.]+Z)\s+info\s+([\w.-]+\/[\w.-]+)#(\d+) \([0-9a-f]+(?:, draft)?\): merged as [0-9a-f]+\s*$/.exec(line)
+    if (!m) continue
+    const key = `${m[2]}#${m[3]}`
+    if (!seen.has(key)) seen.set(key, { repo: m[2], number: Number(m[3]), mergedAt: m[1] })
+  }
+  return [...seen.values()]
+}
+
 export const DEFAULT_PROJECTS = join(homedir(), '.claude', 'projects')
 export const DEFAULT_FILE = join(homedir(), '.desk', 'pr-cost.jsonl')
 

@@ -10,6 +10,7 @@ import { join } from 'node:path'
 import { describe, it } from 'node:test'
 
 import { attribute, withWindows, classifyKind, collectPrCost, costRecord, costReport, groupBySession, infraRepo, matchesPr, scanAll, scanFile, sumModels, totalTokens } from '../scripts/lib/prCost.mjs'
+import { mergesFromShipLog } from '../scripts/lib/prCost.mjs'
 import { compact, renderPrCost } from '../scripts/write-status-md.mjs'
 
 const CLI = new URL('../scripts/pr-cost.mjs', import.meta.url).pathname
@@ -332,3 +333,53 @@ describe('janitor prompt', () => {
 
 // groupBySession is exercised through scanAll; keep the import honest.
 assert.equal(typeof groupBySession, 'function')
+
+describe('sweep: merged PRs from the merger log', () => {
+  const run = (...args) => spawnSync(process.execPath, [CLI, ...args], { encoding: 'utf8' })
+  const LOG = [
+    `${T(5)} info  o/.github#7 (abc1234): merged as def5678`,
+    `${T(6)} info  o/.github#7 (abc1234): merged as def5678`,
+    `${T(7)} info  o/.github#8 (abc1235, draft): draft left alone`,
+    `${T(8)} info  o/.github#9 (abc1236): not merging: review has findings`,
+    `${T(9)} warn  o/.github#10 (abc1237): merged as def5680`,
+    `${T(10)} info  o/other#11 (abc1238): merged as def5679`,
+  ].join('\n')
+  const setup = () => {
+    const dir = projects({ 'p/S1.jsonl': [assistant({ min: 1 }), assistant({ min: 2, usage: [2, 20, 200, 2000] }), link('o/.github', 7, 3)] })
+    const log = join(dir, 'ship.log')
+    writeFileSync(log, LOG)
+    return { dir, log, out: join(dir, 'ledger.jsonl') }
+  }
+  it('reads only real merge lines, once per PR', () => {
+    assert.deepEqual(mergesFromShipLog(LOG).map((m) => `${m.repo}#${m.number}`), ['o/.github#7', 'o/other#11'])
+    assert.deepEqual(mergesFromShipLog('not a log'), [])
+  })
+  it('records a merged PR through its session pr-link, and a rerun adds nothing', () => {
+    const { dir, log, out } = setup()
+    const args = ['sweep', '--ship-log', log, '--since', T(0), '--projects', dir, '--out', out]
+    const first = JSON.parse(run(...args).stdout)
+    assert.equal(first.merged, 2)
+    assert.equal(first.recorded, 1, 'o/other#11 has no transcript, so it adds no line')
+    assert.equal(first.noTranscript, 1)
+    const rows = readFileSync(out, 'utf8').trim().split('\n').map(JSON.parse)
+    assert.deepEqual(rows.map((r) => [r.repo, r.number, r.state, r.total]), [['o/.github', 7, 'MERGED', 3333]])
+    assert.equal(rows[0].closedAt, T(5))
+    const second = JSON.parse(run(...args).stdout)
+    assert.equal(second.alreadyHeld, 1)
+    assert.equal(second.recorded, 0)
+    assert.equal(readFileSync(out, 'utf8').trim().split('\n').length, 1)
+  })
+  it('ignores merges before --since', () => {
+    const { dir, log, out } = setup()
+    const j = JSON.parse(run('sweep', '--ship-log', log, '--since', T(9), '--projects', dir, '--out', out).stdout)
+    assert.equal(j.merged, 1)
+    assert.equal(j.recorded, 0)
+  })
+  it('a missing log is an error, never an empty sweep', () => {
+    const { dir, out } = setup()
+    const r = run('sweep', '--ship-log', join(dir, 'gone.log'), '--projects', dir, '--out', out)
+    assert.notEqual(r.status, 0)
+    assert.match(r.stderr, /^pr-cost: /)
+    assert.equal(run('sweep', '--projects', dir, '--out', out).status, 2)
+  })
+})
