@@ -275,6 +275,12 @@ test('a queue change held by the hour still goes out once the hour is up, even i
   assert.equal(h.file.pool.lastPushedKey, 'queued:b')
 })
 
+test('a queue that returns after a failed check or a down pool goes out at once', async () => {
+  const h = harness([Q(['a', 18]), { state: 'unknown', reason: 'x', queued: [], repos: 0, stale: [] }, Q(['a', 30])])
+  for (const minutes of [0, 15, 30]) { h.deps.now = NOW + minutes * MIN; await run(h.deps) }
+  assert.deepEqual(h.pushes, ['pool queue: a 18 min', 'pool check failed: x', 'pool queue: a 30 min'])
+})
+
 test('pool down and a failed check still push on change, whatever the queue rate limit says', async () => {
   const h = harness([Q(['a', 18]), { state: 'down', queued: [], behind: [], repos: 3, stale: [], newestHeartbeatMinutes: 20 }, { state: 'unknown', reason: '2 read(s) failed', queued: [], repos: 0, stale: [] }])
   for (let i = 0; i < 3; i++) { h.deps.now = NOW + i * MIN; await run(h.deps) }

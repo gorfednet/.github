@@ -200,7 +200,7 @@ export async function run(deps) {
     try { p = await deps.pool(now) } catch (e) { p = { state: 'unknown', reason: String(e.message).slice(0, 120), repos: 0, queued: [], stale: [] } }
     const key = poolKey(p)
     let lastKey = prev?.pool && 'lastPushedKey' in prev.pool ? prev.pool.lastPushedKey : null
-    let queueAt = p.state === 'ok' ? null : (prev?.pool?.lastQueuePushAt ?? null)
+    let queueAt = p.state === 'queued' && prev?.pool?.state === 'queued' ? (prev.pool.lastQueuePushAt ?? null) : null // the hour runs only while the queue stays the last thing said
     if (key !== lastKey) {
       const line = poolMessage(p, lastKey)
       if (!line) lastKey = key // ok with nothing to retract
