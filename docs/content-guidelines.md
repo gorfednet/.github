@@ -103,6 +103,7 @@ One "I built" on a page is a claim he can make. The fault is a run of them.
 - A summary is three or four flat sentences: the two or three biggest facts with their numbers, then any condition the reader must know (vantage, date, what was not examined).
 - Headings are nouns or noun phrases, under eight words, no colons, no full stop, no questions unless the page is a FAQ.
 - Button and link labels are verb first and name the destination or result: "Download the PDF", "Order an analysis", not "Learn more", "Get started", "Read more", "Click here".
+- The link to the AI Use Levels spec reads "Read more about AI Use Levels" on every site, linked as a whole. It names its destination, so the ban on a bare "Read more" doesn't apply.
 - Error and empty states say what happened, what it means and what to do, in that order, in one or two sentences.
 - Captions say what the picture shows and when it was taken. Never "as seen here".
 

@@ -1,5 +1,5 @@
 {
-  "version": "0.65.0",
+  "version": "0.66.0",
   "files": {
     "README.md": "41fc03ce1176db63d95c795824865bf0f1879de31ceef96a045ff00dc94af62b",
     "bin/assert-checks-started.mjs": "9b32370e3b8ab4dae94c9b54abd46c6d364f81fb00b6f81ccbaf0e4d21b077f0",
@@ -54,6 +54,6 @@
   },
   "companions": {
     "docs/verification-rules.md": "89145e60e40eb84c28e4420373551dc29c5c9268b13836afa2de09d003dd7d30",
-    "docs/content-guidelines.md": "444ba7dd9f531a49ebd653646e70de71d3ca0c12a3282432e42878f83d12eecd"
+    "docs/content-guidelines.md": "e4f6cecf6befd66cc48fc92d7d7bd700e79fbce9277733f584a9646cf71f7ca9"
   }
 }
