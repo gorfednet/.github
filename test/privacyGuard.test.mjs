@@ -1471,3 +1471,63 @@ describe('privacy guard: the workflow and ship-bot expect the check', () => {
     assert.ok(entry.expectedChecks.includes(job), `${job} must be expected, so a head whose workflow never starts is blocked`)
   })
 })
+
+describe('privacy guard: a `product <Name>` line clears a public product name, whole and exact only', () => {
+  const real = readFileSync(REAL_ALLOWLIST, 'utf8')
+  // The private name is secret-repo; the product is spelled Secret-Repo. A product line says the
+  // name at the base, so it is the "said" path that matters: a line that says private is read.
+  const run = (body, { path = 'docs/p.md', allow = `${real}product Secret-Repo\n` } = {}) =>
+    guard({ before: { '.github/privacy-guard-allow.txt': allow }, after: { [path]: body }, allow: false })
+  const fails = (body, opts) => {
+    const r = run(body, opts)
+    assert.equal(r.status, 1, `expected a refusal for ${JSON.stringify(body)}: ${r.out}`)
+    assert.match(r.out, /\[private-repo\]/)
+  }
+  const passes = (body, opts) => {
+    const r = run(body, opts)
+    assert.equal(r.status, 0, `expected a pass for ${JSON.stringify(body)}: ${r.out}`)
+  }
+
+  it('lets the product name through on a line that says private, and refuses without the line', () => {
+    passes('Join the private beta of Secret-Repo today.\n')
+    passes('Secret-Repo has a private mode for friends.\n')
+    passes('Secret-Repo is a game. Private lobbies are coming.\n')
+    fails('Join the private beta of Secret-Repo today.\n', { allow: real })
+  })
+
+  it('refuses a near-miss spelling or another case', () => {
+    fails('Join the private beta of secret-repo today.\n')
+    fails('Join the private beta of SECRET-REPO today.\n')
+    fails('Join the private beta of Secret-repo today.\n')
+    fails('Join the private beta of Secret-Repo.git today.\n')
+    fails('Join the private beta of Secret-Repo.wiki today.\n')
+  })
+
+  it('refuses the name used in another sense', () => {
+    fails(`the private ${'gorfednet' + '/'}Secret-Repo for it\n`)
+    fails('Secret-Repo is private\n')
+    fails('Secret-Repo (private)\n')
+    fails('private Secret-Repo\n')
+    fails('Secret-Repo\t2026-11-14\tprivate\n')
+    fails('| Secret-Repo | private |\n')
+    fails('the private repo Secret-Repo\n')
+    fails('Secret-Repo, visibility: internal\n')
+    fails('private cd ../Secret-Repo\n')
+    fails('a private Secret-Repo_notes file\n')
+    fails('a private note for @Secret-Repo\n')
+    fails('private Secret-Repo.md\n')
+  })
+
+  it('refuses a private name that was never listed as a product, beside one that was', () => {
+    fails('a private beta of Secret-Repo and other-one\n'.replace('other-one', 'other-one'))
+    const r = run('the private other-one is out, like Secret-Repo\n')
+    assert.equal(r.status, 1, r.out)
+  })
+
+  it('parses the line, and rejects a malformed one', () => {
+    assert.deepEqual(parseAllowlist('product Secret-Repo\n').products, ['Secret-Repo'])
+    assert.throws(() => parseAllowlist('product\n'), /allowlist line 1/)
+    assert.throws(() => parseAllowlist('product A B\n'), /allowlist line 1/)
+    assert.throws(() => parseAllowlist('product a/b\n'), /allowlist line 1/)
+  })
+})
