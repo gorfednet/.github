@@ -1,0 +1,19 @@
+{
+  "label": "2026-11-20-register-plex-lastfm-sync",
+  "note": "Plan row 5.6: registers gorfednet/plex-lastfm-sync (scripts/register-repo.mjs). Adds the row config.example.json gained in the same pull request.",
+  "add": [
+    {
+      "slug": "gorfednet/plex-lastfm-sync",
+      "dir": "plex-lastfm-sync",
+      "mode": "merge-only",
+      "reason": "no deploy: it is a service the owner runs by hand from a git clone, and nothing ships from a merge (plan row 6.6d, 20 November 2026)",
+      "claudeReview": true,
+      "live": false,
+      "expectedChecks": [
+        "test (22)",
+        "test (24)"
+      ],
+      "note": "ci / test names the matrix legs (Node 22 and 24). review / review and review / trigger come from the Claude reviewer caller (claudeReview): until its workflow (plex-lastfm-sync pull request 3) is on main and the review secret is set, review-status.mjs reads not-run and the bot holds each pull request."
+    }
+  ]
+}
