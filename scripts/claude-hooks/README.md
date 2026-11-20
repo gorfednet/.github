@@ -77,3 +77,16 @@ It puts `hook` in `~/.claude/git-hooks` under every client hook name (`pre-commi
 - A clone with its own local `core.hooksPath` (husky, `.githooks`) skips the global hook. The installer lists those clones. For a public one, add `node ~/.claude/git-hooks/public-push-guard.mjs "$@"` to its own pre-push hook.
 - `git push --no-verify` skips every git hook. Its deny entry goes in `control/claude-home/settings.json` in `gorfednet/ops`.
 - Tests: `test/publicPushGuard.test.mjs` installs the hook into a throwaway HOME and pushes to a local bare repository through an insteadOf rewrite of a fake github.com URL. The values it plants are invented and built at run time.
+
+## desk-event.py (plan row 1.56)
+
+A hook on `Stop`, `StopFailure`, `Notification` and `PermissionRequest`. It appends one JSON line to `~/.desk/events.jsonl`, so a control session reads one file instead of polling terminal screens.
+
+- Line: `{"session","cwd","event","kind","at"}`, plus a `message` (first 200 characters) on a `Notification`. `event` is `turn-ended` (a `Stop`, or a `StopFailure` with `kind` `StopFailure`) or `waiting-on-prompt` (`kind` `permission_request`, `permission_prompt` or `elicitation_dialog`). `at` is Toronto time with its EST or EDT label, from the system zone database.
+- `session` is `DESK_SESSION_NAME` when the starter set it (`desk-start` does), else the session id. The hook input has no session name on these events.
+- `PermissionRequest` fires when the dialog opens. `Notification` `permission_prompt` follows about 6 seconds later, so a prompt can appear twice. Readers take the first. Tool input is never copied.
+- It only writes that line. It prints nothing, exits 0 on any error and changes no tool call.
+- Docs it rests on (code.claude.com/docs/en/hooks): Stop "runs when the main Claude Code agent has finished responding", API errors fire `StopFailure`. Notification exit code and stderr are ignored. `permission_prompt` fires "about six seconds after Claude asks for permission". `PermissionRequest` ignores exit 2.
+- Dialogs with no event: folder trust (hooks wait until it's accepted), the autocompact size dialog and a read outside the working directory (the last one is a permission prompt, so it does report).
+- Settings entry: `desk-event.settings.json`, merged into the `hooks` block of `~/.claude/settings.json`. Install the file the same way as gh-poll-guard.py.
+- Tests: `test/deskEvent.test.mjs`.

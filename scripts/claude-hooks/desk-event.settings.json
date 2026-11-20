@@ -1,0 +1,48 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 -I ~/.claude/hooks/desk-event.py || true",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "StopFailure": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 -I ~/.claude/hooks/desk-event.py || true",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 -I ~/.claude/hooks/desk-event.py || true",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PermissionRequest": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 -I ~/.claude/hooks/desk-event.py || true",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}
