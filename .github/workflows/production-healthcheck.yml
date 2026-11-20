@@ -3,6 +3,14 @@ name: production-healthcheck
 on:
   workflow_call:
     inputs:
+      runs-on:
+        description: >-
+          Where the job runs, as JSON: a label string or an array of labels, e.g.
+          '["self-hosted","linux","4c-heavy"]', passed from the caller's HEAVY_RUNS_ON variable.
+          Required, with no hosted fallback (owner, 2026-11-20: only local infrastructure). An
+          empty value is an error, not ubuntu-latest.
+        required: true
+        type: string
       site-url:
         description: Production site base URL (no trailing slash)
         required: true
@@ -147,16 +155,11 @@ on:
 
 jobs:
   health:
-    # Hosted, on purpose, and deliberately no runs-on input: this is a liveness
-    # monitor that must run off the dapyllil pool. Every site that calls it is
-    # served by the nginx container on dapyllil (infra/nginx/README.md: its config is in gorfednet/ops), the same
-    # host the pool runs on. When that host is down, every site is down, and a job
-    # routed to the pool does not go red: it waits in the queue for a runner that
-    # is not coming. The outage this monitor exists to report would be the one it
-    # cannot report. A hosted runner fails loudly instead. The owner's runner rule
-    # (2026-10-19) allows hosted for exactly this; a caller whose site moves off
-    # dapyllil should get a runs-on input here, not a copy of this job.
-    runs-on: ubuntu-latest
+    # On the caller's pool since 2026-11-20, when the owner ruled out GitHub-hosted runners. This replaces the 2026-10-19 decision to run this
+    # liveness monitor hosted so it could still report when the pool host is down: with the pool host
+    # down, this job now waits in the queue instead of going red, so the pool liveness check in
+    # capacity/ (heartbeat and queue age) and the sites' own external monitors are what notice that outage.
+    runs-on: ${{ fromJSON(inputs.runs-on) }}
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7

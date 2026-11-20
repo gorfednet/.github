@@ -1009,7 +1009,7 @@ function hostedWithoutReason(text) {
 }
 
 describe('reusable workflows have no hosted fallback (owner, 2026-11-20)', () => {
-  const reusable = readdirSync(WORKFLOWS).filter((f) => /^(pr-check-.*|browser-compat)\.yml$/.test(f)) // claude-review.yml has its own test
+  const reusable = readdirSync(WORKFLOWS).filter((f) => /^(pr-check-.*|browser-compat|production-healthcheck)\.yml$/.test(f)) // claude-review.yml has its own test
   it('finds the reusable workflows', () => {
     assert.ok(reusable.length >= 6, `found ${reusable.length}`)
   })
