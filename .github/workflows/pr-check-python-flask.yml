@@ -6,13 +6,13 @@ on:
       runs-on:
         description: >-
           Where every job runs, as JSON: a label string or an array of labels, e.g.
-          '["self-hosted","linux","4c-heavy"]', passed from the caller's HEAVY_RUNS_ON variable.
-          Required, with no hosted fallback (owner, 2026-11-20: only local infrastructure). An
-          empty value is an error, not ubuntu-latest, so a caller whose variable is unset fails
-          at once instead of spending hosted minutes. A caller should also gate on its pool
-          preflight, because a label no runner carries is not red, it is queued.
-        required: true
+          '["self-hosted","linux","4c-heavy"]'. Optional: left empty, the caller's HEAVY_RUNS_ON
+          variable is used, so no caller has to pass it. There is no hosted fallback (owner,
+          2026-11-20: only local infrastructure). With neither set, the jobs ask for a label no
+          runner carries and wait in the queue, spending no hosted minutes.
+        required: false
         type: string
+        default: ""
       python-version:
         description: Python version
         required: false
@@ -180,7 +180,7 @@ on:
         default: ""
 jobs:
   test:
-    runs-on: ${{ fromJSON(inputs.runs-on) }}
+    runs-on: ${{ fromJSON(inputs.runs-on != '' && inputs.runs-on || vars.HEAVY_RUNS_ON != '' && vars.HEAVY_RUNS_ON || '["self-hosted","no-pool-label-set"]') }}
     timeout-minutes: 15
     services:
       mongodb:

@@ -427,7 +427,7 @@ describe('where the shared reviewer runs', () => {
     const runsOn = [...jobs.matchAll(/^\s{4}runs-on: (.+)$/gm)].map((match) => match[1])
     assert.ok(runsOn.length >= 2, 'found a runs-on line for both jobs')
     for (const value of runsOn) {
-      assert.match(value, /fromJSON\(inputs\.runs-on != '' && inputs\.runs-on \|\| '\["self-hosted","no-pool-label-set"\]'\)/)
+      assert.equal(value, '${{ ' + "fromJSON(inputs.runs-on != '' && inputs.runs-on || vars.HEAVY_RUNS_ON != '' && vars.HEAVY_RUNS_ON || '[\"self-hosted\",\"no-pool-label-set\"]')" + ' }}')
     }
     assert.doesNotMatch(workflow, /runs-on: ubuntu|"ubuntu-latest"/)
     const input = workflow.slice(workflow.indexOf('      runs-on:\n'), workflow.indexOf('      model:'))

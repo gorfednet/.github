@@ -20,11 +20,11 @@
 # key keeps reviews off the subscription's weekly limit (owner, 2026-10-27: the shared limit was
 # reached and every review failed).
 #
-# Both jobs run on the caller's pool, through the required `runs-on` input (JSON, from the caller's
-# HEAVY_RUNS_ON variable). The owner's instruction of 2026-11-20 ("we need to stop using github
+# Both jobs run on the caller's pool: the optional `runs-on` input (JSON), else the caller's
+# HEAVY_RUNS_ON variable. The owner's instruction of 2026-11-20 ("we need to stop using github
 # runners entirely, only rely on local infra") replaces the decision of 2026-10-19 that kept
-# secret-holding jobs hosted. There is no hosted fallback: an empty `runs-on` waits for a label no
-# runner carries, so the caller gets no review until it passes a served one.
+# secret-holding jobs hosted. There is no hosted fallback: with neither set, the jobs wait for a
+# label no runner carries, so the caller gets no review until it has a served one.
 #
 # A pull request whose head is in another repository (a fork) is never reviewed here, on either
 # trigger: the review job holds the token and runs on the pool, and a fork's head must not reach it.
@@ -39,11 +39,11 @@ on:
     inputs:
       runs-on:
         description: >-
-          Where both jobs run, as JSON: a label string or an array of labels, e.g.
-          '["self-hosted","linux","4c-heavy"]', passed from the caller's HEAVY_RUNS_ON variable.
-          There is no hosted fallback (owner, 2026-11-20: only local infrastructure). Left empty,
-          the jobs ask for a label no runner carries and wait, so a caller with no pool label gets
-          no review, and spends no hosted minutes, instead of failing at startup.
+          Where every job runs, as JSON: a label string or an array of labels, e.g.
+          '["self-hosted","linux","4c-heavy"]'. Optional: left empty, the caller's HEAVY_RUNS_ON
+          variable is used, so no caller has to pass it. There is no hosted fallback (owner,
+          2026-11-20: only local infrastructure). With neither set, the jobs ask for a label no
+          runner carries and wait in the queue, spending no hosted minutes.
         required: false
         type: string
         default: ""
@@ -79,7 +79,7 @@ jobs:
        ((github.event.comment.user.type != 'Bot' &&
          contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)) ||
         (vars.SHIP_BOT_LOGIN != '' && github.event.comment.user.login == vars.SHIP_BOT_LOGIN)))
-    runs-on: ${{ fromJSON(inputs.runs-on != '' && inputs.runs-on || '["self-hosted","no-pool-label-set"]') }}
+    runs-on: ${{ fromJSON(inputs.runs-on != '' && inputs.runs-on || vars.HEAVY_RUNS_ON != '' && vars.HEAVY_RUNS_ON || '["self-hosted","no-pool-label-set"]') }}
     timeout-minutes: 2
     permissions:
       pull-requests: read
@@ -136,7 +136,7 @@ jobs:
   review:
     needs: trigger
     if: needs.trigger.outputs.go == 'true'
-    runs-on: ${{ fromJSON(inputs.runs-on != '' && inputs.runs-on || '["self-hosted","no-pool-label-set"]') }}
+    runs-on: ${{ fromJSON(inputs.runs-on != '' && inputs.runs-on || vars.HEAVY_RUNS_ON != '' && vars.HEAVY_RUNS_ON || '["self-hosted","no-pool-label-set"]') }}
     timeout-minutes: 30
     permissions:
       contents: read

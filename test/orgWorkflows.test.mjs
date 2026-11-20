@@ -1014,13 +1014,15 @@ describe('reusable workflows have no hosted fallback (owner, 2026-11-20)', () =>
     assert.ok(reusable.length >= 6, `found ${reusable.length}`)
   })
   for (const file of reusable) {
-    it(`${file} requires runs-on and never falls back to ubuntu-latest`, () => {
+    it(`${file} takes an optional runs-on that defaults to the caller's pool, never ubuntu-latest`, () => {
       const text = readFileSync(join(WORKFLOWS, file), 'utf8')
       const input = text.slice(text.indexOf('      runs-on:\n'), text.indexOf('\n      ', text.indexOf('required:')) + 40)
-      assert.match(input, /required: true/, 'the runs-on input is required')
-      assert.doesNotMatch(text, /runs-on:\s.*ubuntu/, 'no job names a hosted runner')
-      assert.doesNotMatch(text, /inputs\.runs-on != ''/, 'no empty-input fallback expression')
-      assert.match(text, /runs-on: \$\{\{ fromJSON\(inputs\.runs-on\) \}\}/)
+      // Optional (Desk, 2026-11-20): a required input would fail every caller that passes none at startup.
+      assert.match(input, /required: false/, 'the runs-on input is optional')
+      assert.doesNotMatch(text, /runs-on:\s.*ubuntu|"ubuntu-latest"/, 'no job names a hosted runner')
+      const runsOn = [...text.matchAll(/^\s+runs-on: (\$\{\{.+)$/gm)].map((m) => m[1])
+      assert.ok(runsOn.length >= 1, 'found a job runs-on line')
+      for (const value of runsOn) assert.equal(value, '${{ ' + "fromJSON(inputs.runs-on != '' && inputs.runs-on || vars.HEAVY_RUNS_ON != '' && vars.HEAVY_RUNS_ON || '[\"self-hosted\",\"no-pool-label-set\"]')" + ' }}')
     })
   }
 })
