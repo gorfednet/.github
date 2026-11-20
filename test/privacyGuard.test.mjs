@@ -1735,7 +1735,7 @@ describe('privacy guard: a `site` line stays narrow once the site is on the base
   })
 
   it('reads the line without the domain: its own labels are not words about a repository (.org, pr-)', () => {
-    for (const site of ['example-music.org', 'pr-music.com', 'ci.example.com']) {
+    for (const site of ['example-music.org', 'pr-music.com', 'repo-music.com', 'private-notes.com']) {
       const body = `Music: https://${site}/albums\n`
       const r = guard({
         before: { '.github/privacy-guard-allow.txt': `${real}site ${site}\n`, 'README.md': 'hello\n' },
@@ -1759,6 +1759,43 @@ describe('privacy guard: a `site` line stays narrow once the site is on the base
     // The repository forms are still refused by their own rules.
     fails(`https://github.com/${ORG}${NAME}\n`)
     fails(`on GitHub: ${ORG}${NAME}\n`)
+  })
+
+  it('reads identifiers whatever their case or separators (second Fable read)', () => {
+    for (const body of [
+      `reponame=${NAME}`,
+      `REPONAME=${NAME}`,
+      `GHRepo: ${NAME}`,
+      `PRNumber: ${NAME}`,
+      `ISPRIVATE=${NAME}`,
+      `isprivate: ${NAME}`,
+      `PRIVATE_REPOS=${NAME}`,
+      `private_repos: ['${NAME}']`,
+      `{"name":"${NAME}","is_private":true}`,
+    ]) fails(`${body}\n`)
+  })
+
+  it('reads a said name beside private in any identifier spelling, and lets private keys and routes be', () => {
+    const said = (line) => guard({ before: { 'README.md': 'see other-one in the docs\n' }, after: { 'a.txt': `${line}\n` }, env: { PRIVATE_REPOS: 'other-one' } })
+    for (const line of ['PRIVATE_REPOS=other-one', 'private_repos: [other-one]', '{"name":"other-one","is_private":true}', 'ISPRIVATE other-one', 'isPrivate other-one']) {
+      assert.equal(said(line).status, 1, line)
+    }
+    for (const line of ['other-one privateKey', 'other-one visibilityState', 'PrivateRoute for other-one', 'other-one uses a_private_key', 'other-one PRIVATE_KEY']) {
+      const r = said(line)
+      assert.equal(r.status, 0, `${line}: ${r.out}`)
+    }
+  })
+
+  it('does not refuse the site link for words in its own URL or in prose (second Fable read)', () => {
+    passes(`Shop: https://${NAME}/checkout\n`)
+    passes(`Shop: https://${NAME}/shop/cd/x\n`)
+    passes(`News: https://${NAME}/pr/launch\n`)
+    passes(`Events: https://${NAME}/private-events\n`)
+    passes(`Styles https://${NAME}/ app.3cd9f1.css\n`)
+    passes(`The 2CD set is out: https://${NAME}/\n`)
+    passes(`CD release, PR contact: https://${NAME}/\n`)
+    passes(`CI badge passing. https://${NAME}/\n`)
+    passes(`https://${NAME}/ and https://pr-music.com/\n`)
   })
 
   it('lets the usual public mentions through', () => {
