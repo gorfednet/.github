@@ -15,7 +15,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../scripts/lib/resolve-node.sh
 source "${HERE}/../scripts/lib/resolve-node.sh"
 NODE_BIN="$(resolve_node)" || { echo "check.sh: no usable Node." >&2; exit 1; }
-MIN_TESTS=605
+MIN_TESTS=616
 
 tests=("${HERE}"/test/*.test.mjs)
 if [[ ! -f "${tests[0]}" ]]; then

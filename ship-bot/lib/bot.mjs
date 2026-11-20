@@ -10,6 +10,7 @@ import { createHash } from 'node:crypto'
 import * as nodeFs from 'node:fs'
 import os from 'node:os'
 import { join } from 'node:path'
+import { Board } from './board.mjs'
 import { HOLD_LABEL, READY_LABEL } from './config.mjs'
 import { diagnosisJob, jobsDir, stallJob, writeJobOnce } from './herdr-jobs.mjs'
 import { DeployLog, deployMerged, envSecrets, matchingFiles, pagesSecrets, preflight, realFs, selectSteps } from './deploy.mjs'
@@ -54,14 +55,20 @@ export async function runOnce(deps) {
   const redactor = new Redactor([token, gitAuth], { publicNames: publicNames(config.repos) })
   // The Pages token site-deploy.sh hands to wrangler: masked everywhere from the first line of the pass.
   redactor.add(pagesSecrets(config.stateDir, deps.fsx ?? realFs, deps.pagesFiles))
+  // The board (lib/board.mjs) listens to reads and log lines the pass makes anyway. It decides nothing.
+  const board = new Board()
+  const github = board.tap(deps.github)
   const ctx = {
     config,
+    board,
+    /** The client before any dry-run guard, for a repo context that adds its own. */
+    rawGithub: github,
     dry,
     clock,
     token,
     gitAuth,
     redactor,
-    github: dry ? guardWrites(deps.github) : deps.github,
+    github: dry ? guardWrites(github) : github,
     runner: dry ? guardCommands(deps.runner) : deps.runner,
     state: stateStore,
     fsx: deps.fsx ?? realFs,
@@ -83,6 +90,7 @@ export async function runOnce(deps) {
     say(level, text) {
       const line = redactor.apply(text)
       this.decisions.push({ level, text: line })
+      board.heard(level, line)
       log(level, line)
     },
   }
@@ -149,6 +157,7 @@ export async function runOnce(deps) {
   if (!dry && summary.complete) recordPassErrors(stateStore.data, summary.repoErrors)
   sayUsage(ctx)
   stateStore.save()
+  summary.board = board.snapshot(repos.map((r) => r.slug), (text) => redactor.apply(text))
   return ctx.decisions
 }
 
@@ -231,7 +240,7 @@ function repoContext(ctx, repo, deps) {
   const observed = {
     ...ctx,
     dry: true,
-    github: guardWrites(deps.github),
+    github: guardWrites(ctx.rawGithub),
     runner: guardCommands(deps.runner),
     state: shadow,
     // Its own counter: an observed repository never merges, so its "would
@@ -438,6 +447,7 @@ async function processPull(ctx, repo, pr, defaultBranch) {
   let result = await evaluatePull(ctx, repo, pr, { headState, requireClean, controlPlane })
   // A merge never rests on a remembered gate answer: run every script again.
   if (result.ready && result.cached) result = await evaluatePull(ctx, repo, pr, { headState, fresh: true, requireClean, controlPlane })
+  ctx.board.gated(repo.slug, pr, result, headState)
   await syncNeedsFix(ctx, repo, pr, result)
   if (result.ready && headState.readiedAt && (ctx.clock.now() - new Date(headState.readiedAt)) / 60000 < ctx.config.reviewGraceMinutes) {
     ctx.say('debug', `${tag}: not merging: the bot marked this draft ready at ${headState.readiedAt}; giving the ready-for-review review time to start`)
@@ -702,6 +712,7 @@ async function takeDraft(ctx, repo, listed, defaultBranch) {
   }
   const headState = ctx.state.head(repo.slug, pr.number, sha, ctx.clock.now().toISOString())
   const result = await evaluatePull(ctx, repo, pr, { headState, draft: true, requireClean: repo.mode === 'deploy' })
+  ctx.board.gated(repo.slug, pr, result, headState)
   await syncNeedsFix(ctx, repo, pr, result)
   if (!result.ready) {
     for (const block of result.blocks) {
