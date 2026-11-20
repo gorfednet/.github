@@ -1728,6 +1728,32 @@ describe('privacy guard: a `site` line stays narrow once the site is on the base
     assert.equal(r.status, 1, r.out)
   })
 
+  it('a site line already in the pushed base holds nothing for a later line (second push, allowlist read from main)', () => {
+    // The hook reads the allowlist from the remote's default branch (no site line) while the
+    // merge base is the first push, which holds the cleared line.
+    const dir = mkdtempSync(join(tmpdir(), 'privacy-guard-held-'))
+    try {
+      sh(dir, 'init', '-q', '-b', 'main')
+      mkdirSync(join(dir, '.github'), { recursive: true })
+      writeFileSync(join(dir, '.github', 'privacy-guard-allow.txt'), `site ${NAME}\n`)
+      sh(dir, 'add', '-A')
+      sh(dir, 'commit', '-q', '-m', 'base')
+      sh(dir, 'checkout', '-q', '-b', 'pr')
+      writeFileSync(join(dir, '.github', 'privacy-guard-allow.txt'), `site ${NAME}\nrepo ${NAME}\n`)
+      sh(dir, 'add', '-A')
+      sh(dir, 'commit', '-q', '-m', 'second')
+      const empty = join(dir, 'empty-allow.txt')
+      writeFileSync(empty, '')
+      const r = spawnSync('node', [GUARD, '--base', 'main', '--head', 'pr', '--dir', dir, '--allow', empty], {
+        encoding: 'utf8',
+        env: { PATH: process.env.PATH, HOME: process.env.HOME, PRIVATE_REPOS: NAME },
+      })
+      assert.equal(r.status, 1, `${r.stdout}${r.stderr}`)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
   it('takes only a web domain: a file name, a package or a bare word is no site line', () => {
     for (const v of ['secret-engine.js', 'notes.md', 'org.github', 'secret-repo']) {
       const r = guard({ before: { 'README.md': 'hi\n' }, after: { '.github/privacy-guard-allow.txt': `site ${v}\n` }, allow: false, env: { PRIVATE_REPOS: v } })

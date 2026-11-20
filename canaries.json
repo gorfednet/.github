@@ -1020,7 +1020,7 @@
     {
       "id": "privacy-guard-lets-a-cleared-site-line-excuse-later-lines",
       "guards": "A site line the allowlist's own diff cleared holds nothing for later lines. Without it, a second push of a comment or repo line naming the domain reads as held.",
-      "command": "node --test --test-name-pattern='excuse a later line' test/privacyGuard.test.mjs",
+      "command": "node --test --test-name-pattern='holds nothing for a later line' test/privacyGuard.test.mjs",
       "file": "scripts/privacy-guard.mjs",
       "find": "if (key === ALLOWLIST_PATH) text = text.split('\\n').filter((l) => !isSiteLine(l)).join('\\n')",
       "replace": "void 0"
