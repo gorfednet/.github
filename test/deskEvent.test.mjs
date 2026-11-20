@@ -32,7 +32,7 @@ test('Stop writes one turn-ended line with the named session, cwd and an ET time
   assert.equal(e.session, 'cli-hooks');
   assert.equal(e.cwd, '/w/repo');
   assert.equal(e.event, 'turn-ended');
-  assert.match(e.at, /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d (EST|EDT)$/);
+  assert.match(e.at, /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d \S+$/); // the zone label is checked on fixed instants below
 });
 
 test('without DESK_SESSION_NAME the session id names the line', () => {
@@ -57,7 +57,36 @@ test('PermissionRequest writes waiting-on-prompt at once and prints nothing', ()
   const e = JSON.parse(lines[0]);
   assert.equal(e.event, 'waiting-on-prompt');
   assert.equal(e.kind, 'permission_request');
-  assert.equal(e.message, undefined, 'tool input is never copied');
+  assert.equal(e.message, undefined, 'no message field on a PermissionRequest');
+});
+
+test('tool input and tool name are never written: the planted command is absent from the whole line', () => {
+  const planted = 'rm -rf /tmp/PLANTED-7f3a';
+  const { lines } = run({ hook_event_name: 'PermissionRequest', tool_name: 'Bash', tool_input: { command: planted, file_path: '/x/PLANTED-7f3a' }, permission_suggestions: [{ rule: planted }], session_id: 's', cwd: '/w' });
+  assert.equal(lines.length, 1);
+  assert.doesNotMatch(lines[0], /PLANTED-7f3a|tool_input|tool_name|Bash/);
+});
+
+test('a PermissionRequest records permission_mode, the only hint at whether a dialog shows', () => {
+  const e = JSON.parse(run({ hook_event_name: 'PermissionRequest', permission_mode: 'auto', session_id: 's' }).lines[0]);
+  assert.equal(e.permission_mode, 'auto');
+  assert.equal(JSON.parse(run({ hook_event_name: 'Stop', permission_mode: 'auto', session_id: 's' }).lines[0]).permission_mode, undefined);
+});
+
+test('the message is cut at 200 characters, and only on a waiting line', () => {
+  const long = 'x'.repeat(250);
+  const e = JSON.parse(run({ hook_event_name: 'Notification', notification_type: 'permission_prompt', message: long, session_id: 's' }).lines[0]);
+  assert.equal(e.message.length, 200);
+  assert.equal(e.message, long.slice(0, 200));
+  const stop = JSON.parse(run({ hook_event_name: 'Stop', message: long, session_id: 's' }).lines[0]);
+  assert.equal(stop.message, undefined);
+});
+
+test('a Stop with scheduled wakes pending says so, so it is not written as a finish', () => {
+  const e = JSON.parse(run({ hook_event_name: 'Stop', session_id: 's', session_crons: [{ id: 'a' }] }).lines[0]);
+  assert.equal(e.session_crons, 1);
+  assert.equal(e.event, 'turn-ended');
+  assert.equal(JSON.parse(run({ hook_event_name: 'Stop', session_id: 's', session_crons: [] }).lines[0]).session_crons, undefined);
 });
 
 test('a Stop with background tasks says so, and every line carries an epoch ts', () => {

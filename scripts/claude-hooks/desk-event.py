@@ -1,7 +1,8 @@
 # Claude Code hook (Stop, StopFailure, Notification, PermissionRequest): append one JSON line to ~/.desk/events.jsonl.
 # Fields: session (DESK_SESSION_NAME, else the session id), cwd, event ("turn-ended" or
 # "waiting-on-prompt"), kind (the Notification type, else null), at (ET, from the system zone database), ts (epoch seconds),
-# and background_tasks when a Stop arrives with tasks still running.
+# background_tasks or session_crons when a Stop arrives with tasks or scheduled wakes pending, and
+# permission_mode on a PermissionRequest.
 # It only writes that line. It prints nothing, never blocks, never changes a tool call, and always exits 0.
 # Test override: DESK_EVENTS_FILE.
 import json, os, sys, time
@@ -48,10 +49,15 @@ def line_for(inp, env=os.environ, now=None):
         'at': et_now(now),
         'ts': int(now if now is not None else time.time()),
     }
-    # A Stop with background tasks still running is a pause, not a finish.
-    if event == 'turn-ended' and inp.get('background_tasks'):
-        bt = inp['background_tasks']
-        rec['background_tasks'] = len(bt) if isinstance(bt, (list, dict)) else bt
+    # A Stop with background tasks or scheduled wakes pending is a pause, not a finish.
+    if event == 'turn-ended':
+        for key in ('background_tasks', 'session_crons'):
+            v = inp.get(key)
+            if v:
+                rec[key] = len(v) if isinstance(v, (list, dict)) else v
+    # The input has no field that says whether a dialog is shown; permission_mode is the only hint.
+    if event == 'waiting-on-prompt' and kind == 'permission_request' and inp.get('permission_mode'):
+        rec['permission_mode'] = str(inp['permission_mode'])[:30]
     if event == 'waiting-on-prompt' and inp.get('message'):
         rec['message'] = str(inp['message'])[:200]
     return json.dumps(rec, separators=(',', ':')) + '\n'
