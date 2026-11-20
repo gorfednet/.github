@@ -1471,3 +1471,116 @@ describe('privacy guard: the workflow and ship-bot expect the check', () => {
     assert.ok(entry.expectedChecks.includes(job), `${job} must be expected, so a head whose workflow never starts is blocked`)
   })
 })
+
+describe('privacy guard: a `product <Name>` line clears a public product name, whole and exact only', () => {
+  const real = readFileSync(REAL_ALLOWLIST, 'utf8')
+  // The private name is secret-repo; the product is spelled Secret-Repo. A product line says the
+  // name at the base, so it is the "said" path that matters: a line that says private is read.
+  const run = (body, { path = 'docs/p.md', allow = `${real}product Secret-Repo\n` } = {}) =>
+    guard({ before: { '.github/privacy-guard-allow.txt': allow }, after: { [path]: body }, allow: false })
+  const fails = (body, opts) => {
+    const r = run(body, opts)
+    assert.equal(r.status, 1, `expected a refusal for ${JSON.stringify(body)}: ${r.out}`)
+    assert.match(r.out, /\[private-repo\]/)
+  }
+  const passes = (body, opts) => {
+    const r = run(body, opts)
+    assert.equal(r.status, 0, `expected a pass for ${JSON.stringify(body)}: ${r.out}`)
+  }
+
+  it('lets the product name through on a line that says private, and refuses without the line', () => {
+    passes('Join the private beta of Secret-Repo today.\n')
+    passes('Secret-Repo has a private mode for friends.\n')
+    passes('Secret-Repo is a game. Private lobbies are coming.\n')
+    passes("Secret-Repo's private beta opens Friday.\n")
+    passes("Don't share the Secret-Repo private beta link.\n")
+    passes('- [ ] Secret-Repo: fix private lobby join\n')
+    passes('- [x] Secret-Repo: fix private lobby join\n')
+    passes('[Secret-Repo](https://example.org/x) private beta\n')
+    passes('Secret-Repo Private Beta opens Friday\n')
+    passes('SECRET-REPO PRIVATE BETA'.replace('SECRET-REPO', 'Secret-Repo') + '\n')
+    passes('Secret-Repo private-beta signup\n')
+    passes('Secret-Repo has private betas and private modes\n')
+    passes('Secret-Repo now has private lobbies\n')
+    passes('Secret-Repo 2.0.0 has a private beta.\n')
+    passes('Secret-Repo ships to phones and tablets with a private beta, see the GitHub docs\n')
+    fails('Join the private beta of Secret-Repo today.\n', { allow: real })
+  })
+
+  it('refuses a near-miss spelling or another case', () => {
+    fails('Join the private beta of secret-repo today.\n')
+    fails('Join the private beta of SECRET-REPO today.\n')
+    fails('Join the private beta of Secret-repo today.\n')
+    fails('Join the private beta of Secret-Repo.git today.\n')
+    fails('Join the private beta of Secret-Repo.wiki today.\n')
+  })
+
+  it('refuses the name used in another sense', () => {
+    fails(`the private ${'gorfednet' + '/'}Secret-Repo for it\n`)
+    fails('Secret-Repo is private\n')
+    fails('Secret-Repo (private)\n')
+    fails('private Secret-Repo\n')
+    fails('Secret-Repo\t2026-11-14\tprivate\n')
+    fails('| Secret-Repo | private |\n')
+    fails('the private repo Secret-Repo\n')
+    fails('Secret-Repo, visibility: internal\n')
+    fails('private cd ../Secret-Repo\n')
+    fails('a private Secret-Repo_notes file\n')
+    fails('a private note for @Secret-Repo\n')
+    fails('private Secret-Repo.md\n')
+    fails('a private beta in ~/Secret-Repo\n')
+    fails('a private beta in Secret-Repo/docs\n')
+    fails('a private beta for Secret-Repo\\x\n')
+    fails('Secret-Repo repo: private beta\n')
+    fails('the repo Secret-Repo has a private beta\n')
+    fails('a private beta in the repo of the Secret-Repo game\n')
+    fails('repo for the Secret-Repo has a private beta\n')
+    fails('Secret-Repo has a repo private beta\n')
+    fails('the Secret-Repo monorepo has a private beta\n')
+    fails('a private beta of the Secret-Repo codebase\n')
+    fails('the Secret-Repo org has a private beta\n')
+    fails('x = Secret-Repo private beta\n')
+    fails('[Secret-Repo, private beta]\n')
+    fails('{Secret-Repo} private beta\n')
+    fails('"Secret-Repo" private beta\n')
+    fails('Secret-Repo 2.0.0 is in private beta.\n')
+    fails('Secret-Repo v1.2 is a private beta.\n')
+    fails('Secret-Repo is still private for now.\n')
+    fails('Secret-Repo is kept private until launch.\n')
+    fails('Secret-Repo went private not yet public.\n')
+    fails('Secret-Repo is currently private.\n')
+    fails('Secret-Repo is a private game.\n')
+    fails('Secret-Repo is in private testing.\n')
+    fails('Secret-Repo stays a private test.\n')
+    fails('Secret-Repo is a private server.\n')
+    fails('Secret-Repo is in private beta.\n')
+    fails('private until launch, then Secret-Repo ships\n')
+    fails('{"name":"Secret-Repo","private":true}\n')
+    fails('Secret-Repo,2026-11-14,private\n')
+    fails('Secret-Repo   2026-11-14   private\n')
+    fails('Secret-Repo, Other-Game: private\n')
+    fails('Secret-Repo is a game, private: yes\n')
+    fails('the Secret-Repo "private" flag\n')
+  })
+
+  it('refuses a private name that was never listed as a product, beside one that was', () => {
+    fails('a private beta of Secret-Repo and other-one\n'.replace('other-one', 'other-one'))
+    const r = run('the private other-one is out, like Secret-Repo\n')
+    assert.equal(r.status, 1, r.out)
+  })
+
+  it('parses the line, and rejects a malformed one', () => {
+    assert.deepEqual(parseAllowlist('product Secret-Repo\n').products, ['Secret-Repo'])
+    assert.throws(() => parseAllowlist('product\n'), /allowlist line 1/)
+    assert.throws(() => parseAllowlist('product A B\n'), /allowlist line 1/)
+    assert.throws(() => parseAllowlist('product a/b\n'), /allowlist line 1/)
+    assert.throws(() => parseAllowlist('product secret-repo\n'), /capital letter/)
+  })
+
+  it('does not let its own allowlist line make the name count as said at the base', () => {
+    // The only mention at the base is the product line, so the name is unsaid and read on every line.
+    const lowercase = ['secret-repo is fun', 'secret-repo.git', 'cd ../secret-repo', 'SECRET-REPO']
+    for (const body of lowercase) fails(`${body}\n`)
+    passes('Secret-Repo is fun\n')
+  })
+})

@@ -211,6 +211,11 @@ function globToRegex(glob) {
  *   email <domain-or-address>       domain also covers its subdomains
  *   path <glob> <rule,rule | *>     the named rules are not applied to matching files
  *   repo <name>                     a private repository whose name public files may use
+ *   product <Name>                  a public product name that matches a private repository name.
+ *                                   Only the bare word, spelled exactly as written (case counts),
+ *                                   with no neighbour that makes it another thing: see `isProductName`.
+ *                                   `gorfednet/<name>`, a path, a file, a host, a near-miss spelling
+ *                                   and a line that says private are all still read.
  *   commit <sha>                    a commit (the full 40 hex) whose own diff and message are
  *                                   exempt: a pushed commit cannot be rewritten, so this is the
  *                                   way out. The net diff is still read.
@@ -220,6 +225,7 @@ export function parseAllowlist(text) {
   const emails = []
   const paths = []
   const repos = []
+  const products = []
   const commits = []
   text.split('\n').forEach((raw, i) => {
     const line = raw.replace(/#.*$/, '').trim()
@@ -229,6 +235,10 @@ export function parseAllowlist(text) {
       emails.push(value.toLowerCase())
     } else if (kind === 'repo' && value && !rules && /^[A-Za-z0-9._-]+$/.test(value)) {
       repos.push(value.toLowerCase())
+    } else if (kind === 'product' && value && !rules && /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(value)) {
+      // The match is by exact spelling, so the spelling must differ from the lowercase slug a repository carries.
+      if (value === value.toLowerCase()) throw new Error(`allowlist line ${i + 1}: a product name needs a capital letter, or its case check would match nothing`)
+      products.push(value)
     } else if (kind === 'commit' && value && !rules && /^[0-9a-f]{40}$/i.test(value)) {
       commits.push(value.toLowerCase())
     } else if (kind === 'path' && value && rules) {
@@ -240,10 +250,10 @@ export function parseAllowlist(text) {
       }
       paths.push({ re: globToRegex(value), rules: set })
     } else {
-      throw new Error(`allowlist line ${i + 1}: expected "email <domain-or-address>", "repo <name>", "commit <40-hex sha>" or "path <glob> <rules|*>"`)
+      throw new Error(`allowlist line ${i + 1}: expected "email <domain-or-address>", "repo <name>", "product <Name>", "commit <40-hex sha>" or "path <glob> <rules|*>"`)
     }
   })
-  return { emails, paths, repos, commits }
+  return { emails, paths, repos, products, commits }
 }
 
 function emailAllowed(address, allow) {
@@ -285,6 +295,63 @@ export function bareNamePatterns(names) {
 const SAYS_PRIVATE = /\b(?:private|visibility)\b/i
 export const bareNamePattern = (names) => bareNamePatterns(names).word
 
+/**
+ * A bare match that is exactly an allowlisted product name: same spelling and case, and not
+ * joined to anything that makes it another thing (a path part, an underscore name, a handle,
+ * a dotted or dashed longer name). Prose punctuation around it is fine.
+ *
+ * A line that says private (SAYS_PRIVATE) is where a name is read even when the repository
+ * has said it: that pairing discloses a private repository. A product name passes there only
+ * when the line is prose about the product:
+ *   - no `visibility` word, tab or table pipe anywhere on the line, and no repository word
+ *     (repo, repository, GitHub, internal, monorepo, codebase, source, org, remote) within 3
+ *     words of the name;
+ *   - no brace, bracket, quote mark or equals sign, once a checklist box, a Markdown link and
+ *     an apostrophe in a contraction or possessive are set aside;
+ *   - every `private`, before or after the name and in any case, leads straight into a listed
+ *     noun (beta, mode and the like, plural or not, spaced or hyphenated);
+ *   - no copula (is, are, stays, went) between the name and a `private` in the same sentence.
+ * "the private beta of Example-Game" passes; "Example-Game is private", "Example-Game is
+ * still private" and "private Example-Game" refuse.
+ */
+const PRIVATE_NOUNS = new Set(['beta', 'betas', 'alpha', 'alphas', 'preview', 'previews', 'mode', 'modes', 'lobby', 'lobbies', 'match', 'matches', 'playtest', 'playtests'])
+const COPULA = /\b(?:is|are|was|were|be|been|being|am|stays?|remains?|becomes?|became|went|goes|kept|keeps?)\b/i
+const REPO_WORDS = /\b(?:repos?|monorepos?|repositor(?:y|ies)|github|internal|codebases?|sources?|orgs?|remotes?)\b/i
+const WINDOW_WORDS = 3
+const SENTENCE_END = /[.!?;](?:\s|$)/
+// Prose shapes that carry brackets and quote marks without being data.
+const CHECKLIST = /^\s*(?:[-*+]|\d+[.)])\s+\[[ xX]\]\s+/
+const MD_LINK = /\[([^\][]*)\]\([^)\s]*\)/g
+export function isProductName(text, index, value, allow) {
+  if (!allow?.products?.includes(value)) return false
+  const before = text[index - 1] ?? ''
+  const after = text[index + value.length] ?? ''
+  if (/[\\/_@~]/.test(before) || /[\\/_]/.test(after)) return false
+  const from = text.lastIndexOf('\n', index - 1) + 1
+  const to = text.indexOf('\n', index)
+  const line = text.slice(from, to === -1 ? text.length : to)
+  if (!SAYS_PRIVATE.test(line)) return true
+  const at = index - from
+  // The name itself may hold a repository word (a product called Foo-Repo): read the line without it.
+  const pre = line.slice(0, at)
+  const post = line.slice(at + value.length)
+  if (/\bvisibility\b|[\t|]/i.test(pre + ' ' + post)) return false
+  const noUrl = (t) => t.replace(/\]\([^)\s]*\)/g, ']')
+  const words = (t) => t.split(/\s+/).filter(Boolean)
+  const near = [...words(noUrl(pre)).slice(-WINDOW_WORDS), ...words(noUrl(post)).slice(0, WINDOW_WORDS)].join(' ')
+  if (REPO_WORDS.test(near)) return false
+  const prose = line.replace(CHECKLIST, ' ').replace(MD_LINK, ' $1 ').replace(/(?<=\w)'(?=\w)/g, '')
+  if (/["'{}\[\]=]/.test(prose)) return false
+  for (const m of line.matchAll(/\bprivate\b/gi)) {
+    const next = /^[\s-]+([a-z]+)\b/i.exec(line.slice(m.index + m[0].length))
+    if (!next || !PRIVATE_NOUNS.has(next[1].toLowerCase())) return false
+    const end = at + value.length
+    const gap = line.slice(end, m.index)
+    if (m.index >= end && !SENTENCE_END.test(gap) && COPULA.test(gap)) return false
+  }
+  return true
+}
+
 const all = (re, text) => [...text.matchAll(re)].map((m) => m[0])
 
 // Minified SVG: the numbers in path data and point lists are not addresses. Dropped only in
@@ -320,13 +387,18 @@ export function scanText(raw, { privateRepo, bareNames, saidNames, allow }, rule
     const spans = [...text.matchAll(privateRepo)].map((m) => [m.index, m.index + m[0].length])
     const inPrefixed = (i) => spans.some(([from, to]) => i >= from && i < to)
     for (const m of text.matchAll(bareNames[bare])) {
-      if (!inPrefixed(m.index)) add('private-repo', [m[0]])
+      if (inPrefixed(m.index)) continue
+      if (bare === 'word' && isProductName(text, m.index, m[0], allow)) continue
+      add('private-repo', [m[0]])
     }
     if (bare === 'word' && saidNames) {
       let at = 0
       for (const line of text.split('\n')) {
         if (SAYS_PRIVATE.test(line)) {
-          for (const m of line.matchAll(saidNames)) if (!inPrefixed(at + m.index)) add('private-repo', [m[0]])
+          for (const m of line.matchAll(saidNames)) {
+            if (inPrefixed(at + m.index) || isProductName(text, at + m.index, m[0], allow)) continue
+            add('private-repo', [m[0]])
+          }
         }
         at += line.length + 1
       }
@@ -622,7 +694,8 @@ function scanDiff({ files, newFiles, added }, sha, ctx, base, origin) {
 export function namedAtBase(dir, rev, name) {
   let lines
   try {
-    lines = git(dir, ['grep', '-I', '-h', '-i', '-F', '-e', name, rev, '--']).split('\n')
+    // Not the allowlist: a `product` line there holds the name, and would make it count as said.
+    lines = git(dir, ['grep', '-I', '-h', '-i', '-F', '-e', name, rev, '--', '.', `:(exclude)${ALLOWLIST_PATH}`]).split('\n')
   } catch {
     return false // no match, or git could not look: keep watching the name
   }
