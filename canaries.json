@@ -918,8 +918,8 @@
       "guards": "A name the base already says is public as a name, not as a private repository. A line that pairs it with private (the 14 November inventory: name, date, private) discloses that, and passes if said names are never read.",
       "command": "node --test --test-name-pattern='says it is private' test/privacyGuard.test.mjs",
       "file": "scripts/privacy-guard.mjs",
-      "find": "const SAYS_PRIVATE = /\\b(?:private|visibility)\\b/i",
-      "replace": "const SAYS_PRIVATE = /(?!)/"
+      "find": "if (saysPrivate(line)) {",
+      "replace": "if (false) {"
     },
     {
       "id": "privacy-guard-takes-privately-for-private",

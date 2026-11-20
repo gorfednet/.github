@@ -1736,7 +1736,8 @@ describe('privacy guard: a `site` line stays narrow once the site is on the base
 
   it('reads the line without the domain: its own labels are not words about a repository (.org, pr-)', () => {
     for (const site of ['example-music.org', 'pr-music.com', 'repo-music.com', 'private-notes.com']) {
-      const body = `Music: https://${site}/albums\n`
+      // The URL form and the bare form: the bare one has no URL to cut, so the domain's own labels are cut by name.
+      const body = `Music: https://${site}/albums\nAlso at ${site} now\n`
       const r = guard({
         before: { '.github/privacy-guard-allow.txt': `${real}site ${site}\n`, 'README.md': 'hello\n' },
         after: { 'docs/n.md': body },
