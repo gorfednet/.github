@@ -1027,11 +1027,35 @@
     },
     {
       "id": "privacy-guard-site-line-words-hide-in-identifiers",
-      "guards": "A repository word inside an identifier (REPO_NAME=, GH_REPO=) still refuses a site name. An underscore is a word character, so without the split the word is missed.",
-      "command": "node --test --test-name-pattern='repository-shaped' test/privacyGuard.test.mjs",
+      "guards": "A repository word joined into an identifier (REPO_NAME=, repoName:, isPrivate, REPO1=) still refuses a site name. Without the split the word is missed.",
+      "command": "node --test --test-name-pattern='reads identifiers apart' test/privacyGuard.test.mjs",
       "file": "scripts/privacy-guard.mjs",
-      "find": "const words = line.replace(/_/g, ' ')",
-      "replace": "const words = line"
+      "find": "const words = splitWords(line.slice(0, index - from) + ' ' + line.slice(index - from + value.length))",
+      "replace": "const words = line.slice(0, index - from) + ' ' + line.slice(index - from + value.length)"
+    },
+    {
+      "id": "privacy-guard-site-check-reads-its-own-labels",
+      "guards": "The site line check reads the line without the domain. Without it the domain's own labels (.org, pr-music) read as words about a repository and the route never clears a link.",
+      "command": "node --test --test-name-pattern='reads the line without the domain' test/privacyGuard.test.mjs",
+      "file": "scripts/privacy-guard.mjs",
+      "find": "const words = splitWords(line.slice(0, index - from) + ' ' + line.slice(index - from + value.length))",
+      "replace": "const words = splitWords(line)"
+    },
+    {
+      "id": "privacy-guard-said-name-reads-camelcase-private",
+      "guards": "A said name on a line that says private in camelCase (isPrivate) is still read. Without the split the pairing goes unseen.",
+      "command": "node --test --test-name-pattern='reads identifiers apart' test/privacyGuard.test.mjs",
+      "file": "scripts/privacy-guard.mjs",
+      "find": "SAYS_PRIVATE.test(splitWords(line, false))",
+      "replace": "SAYS_PRIVATE.test(line)"
+    },
+    {
+      "id": "push-guard-keeps-a-site-name-watched",
+      "guards": "The pre-push guard keeps a site-listed name watched, as the CI guard does. Without it a README link at the base makes cd ../name and name.git pass a push.",
+      "command": "node --test --test-name-pattern='keeps its name watched' test/publicPushGuard.test.mjs",
+      "file": "scripts/claude-hooks/public-push-guard.mjs",
+      "find": "allow.sites.includes(n.toLowerCase()) || !known",
+      "replace": "!known"
     }
   ]
 }

@@ -1625,7 +1625,7 @@ describe('privacy guard: a `site <domain>` line clears a public site in host for
   it('refuses a line that pairs the site with a repository word or private, and the file name', () => {
     fails(`The ${NAME} repo is private.\n`)
     fails(`${NAME} is a private project\n`)
-    fails(`The code for ${NAME} lives in the source tree.\n`)
+    fails(`The code for ${NAME} lives in the codebase.\n`)
     fails(`https://${NAME} (internal)\n`)
     fails('x\n', { path: `${NAME}/index.md` })
   })
@@ -1695,7 +1695,7 @@ describe('privacy guard: a `site` line stays narrow once the site is on the base
       `@${NAME}`,
       `${NAME}_notes`,
       `https://example.org/${NAME}`,
-      `The code for ${NAME} lives in the source tree.`,
+      `The code for ${NAME} lives in the codebase.`,
       `cd ${NAME} && pnpm gate`,
       `open ${NAME}/src/index.ts`,
       `${NAME}#12 fixes the header`,
@@ -1709,6 +1709,56 @@ describe('privacy guard: a `site` line stays narrow once the site is on the base
     ]) fails(`${body}\n`)
     assert.equal(run(`- ${NAME}\n`, { before: {} }).status, 0, 'a bare list item with nothing private around passes')
     fails('x\n', { path: `${NAME}/index.md` })
+  })
+
+  it('reads identifiers apart: camelCase, digits and underscores carry the words too (Fable read fixes)', () => {
+    for (const body of [
+      `{"name":"${NAME}","isPrivate":true}`,
+      `privateRepos: ['${NAME}']`,
+      `repoName: "${NAME}"`,
+      `REPO1=${NAME}`,
+      `REPO_NAME=${NAME}`,
+      `GH_REPO=${NAME}`,
+      `GITHUB_REPOSITORY=${NAME}`,
+      `${NAME}#12 fixes the header`,
+    ]) fails(`${body}\n`)
+    // A name that is not a site, said at the base, on a line with camelCase private.
+    const said = guard({
+      before: { 'README.md': 'see other-one in the docs\n' },
+      after: { 'a.json': '{"name":"other-one","isPrivate":true}\n' },
+      env: { PRIVATE_REPOS: 'other-one' },
+    })
+    assert.equal(said.status, 1, said.out)
+    // Near misses: plain words that merely contain the letters.
+    passes(`Reports and privateers: https://${NAME}/\n`)
+    passes(`DOMAIN=${NAME}\n`)
+  })
+
+  it('reads the line without the domain: its own labels are not words about a repository (.org, pr-)', () => {
+    for (const site of ['example-music.org', 'pr-music.com', 'ci.example.com']) {
+      const body = `Music: https://${site}/albums\n`
+      const r = guard({
+        before: { '.github/privacy-guard-allow.txt': `${real}site ${site}\n`, 'README.md': 'hello\n' },
+        after: { 'docs/n.md': body },
+        allow: false,
+        env: { PRIVATE_REPOS: site },
+      })
+      assert.equal(r.status, 0, `${site}: ${r.out}`)
+    }
+    // The route still works end to end for a .org site, and the line adding it clears itself.
+    const first = guard({ before: { 'README.md': 'hi\n' }, after: { '.github/privacy-guard-allow.txt': 'site example-music.org\n' }, allow: false, env: { PRIVATE_REPOS: 'example-music.org' } })
+    assert.equal(first.status, 0, first.out)
+  })
+
+  it('does not refuse a site link because the line says GitHub, source, org, remote or git', () => {
+    passes(`I'm on GitHub, and my music lives at https://${NAME}/\n`)
+    passes(`Open source credits: https://${NAME}/credits\n`)
+    passes(`Find my git history and the remote shows: https://${NAME}/\n`)
+    passes(`My org plays at https://${NAME}/ &#39;\n`)
+    passes(`Colour #0af at https://${NAME}/\n`)
+    // The repository forms are still refused by their own rules.
+    fails(`https://github.com/${ORG}${NAME}\n`)
+    fails(`on GitHub: ${ORG}${NAME}\n`)
   })
 
   it('lets the usual public mentions through', () => {

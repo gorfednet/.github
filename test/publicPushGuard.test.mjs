@@ -515,6 +515,25 @@ describe("pre-push: the allowlist is the remote default branch's tip, as it is n
   }
 })
 
+describe('pre-push: a `site` line keeps its name watched even when the base already says it', () => {
+  const SITE = 'example-music.com'
+  const world2 = () => world({ listOut: `gorfednet/ops\ngorfednet/${SITE}\n` })
+  // The base says the name in its README link and lists it as a site. Without the keep-watched
+  // clause in loadGuard the name counts as said, and a path or .git mention of it passes.
+  const base = { '.github/privacy-guard-allow.txt': `site ${SITE}\n`, 'README.md': `Music: https://${SITE}/\n` }
+  it('lets the host-form link through', () => {
+    const r = repo(world2(), { baseFiles: base, outgoing: { 'docs/n.md': `Listen at https://${SITE}/albums\n` } })
+    const x = push(r, '-u', 'origin', 'feature')
+    assert.equal(x.status, 0, x.stderr)
+  })
+  it('refuses a repository-shaped mention of it', () => {
+    for (const body of [`cd ../${SITE}\n`, `${SITE}.git\n`]) {
+      const r = repo(world2(), { baseFiles: base, outgoing: { 'docs/n.md': body } })
+      assert.ok(refused(push(r, '-u', 'origin', 'feature')), body)
+    }
+  })
+})
+
 describe('pre-push: bare private names in ref names and tag messages', () => {
   const BARE = SECRET.split('/')[1]
   const OPEN = PUBLIC.split('/')[1]

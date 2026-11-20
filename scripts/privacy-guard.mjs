@@ -218,8 +218,8 @@ function globToRegex(glob) {
  *                                   and a line that says private are all still read.
  *   site <domain>                   a public site whose domain is also a private repository's name
  *                                   (the name has a dot). Only the host form, with the name on its
- *                                   own or after http(s):// or //, and no repository word, `private`
- *                                   or `github` on the line: see `isPublicSite`. `gorfednet/<name>`,
+ *                                   own or after http(s):// or //, and no repository word or `private`
+ *                                   on the line: see `isPublicSite`. `gorfednet/<name>`,
  *                                   a repository link, a path part and a near-miss are still read.
  *                                   The line itself is not read for that name, so a repository can
  *                                   add its first one: see `isSiteLine`.
@@ -383,8 +383,9 @@ export const isSiteLine = (text) => {
  * A bare match that is exactly an allowlisted public site, in host form: the whole domain
  * (no `.git`, `.wiki` or file extension after it), and either on its own or right after
  * `http://`, `https://` or `//`. Never a path part (`/name`), a handle, an underscore name or a
- * subdomain. The line must say nothing about repositories: no `private`, `visibility`, repository
- * word or `github`, anywhere on it, so a name paired with one of those is still read.
+ * subdomain. The line, with the domain taken out and identifiers split (`repoName`, `REPO1`), must say
+ * nothing about repositories: no `private`, `visibility` or repository word, so a name paired with
+ * one of those is still read.
  */
 export function isPublicSite(text, index, value, allow) {
   if (!allow?.sites?.includes(value.toLowerCase())) return false
@@ -399,12 +400,25 @@ export function isPublicSite(text, index, value, allow) {
   const line = text.slice(from, to === -1 ? text.length : to)
   // The guard reads one added line at a time, so a heading on the line above can't be seen: a
   // bare list item under "Private repositories:" passes. A residual, said in the PR.
-  // An underscore is a word character: REPO_NAME= and GH_REPO= still carry the word.
-  const words = line.replace(/_/g, ' ')
-  return !(SAYS_PRIVATE.test(words) || REPO_WORDS.test(words) || SITE_LINE_WORDS.test(words))
+  // `name#12` is an issue or PR of the repository.
+  if (/^#\d/.test(text.slice(index + value.length))) return false
+  // Read the line without the domain itself: its own labels (`.org`, `pr-music`) are not words about a repository.
+  const words = splitWords(line.slice(0, index - from) + ' ' + line.slice(index - from + value.length))
+  return !(SAYS_PRIVATE.test(words) || SITE_REPO_WORDS.test(words) || SITE_LINE_WORDS.test(words))
 }
-// Words that make a bare domain a repository or a project, not a link, and the org name itself.
-const SITE_LINE_WORDS = /\b(?:gorfednet|cd|clone|checkout|pr|prs|ci|gate|pnpm|npm|git|gh|confidential|secret)\b|#\d/i
+/**
+ * Words with the joins a identifier makes taken apart: REPO_NAME, repoName, isPrivate, REPO1 and
+ * privateRepos read as repo name, repo Name, is Private, REPO 1 and private Repos. Only for testing
+ * a line for words; positions in the original text don't move.
+ */
+export const splitWords = (t, underscore = true) =>
+  (underscore ? t.replace(/_/g, ' ') : t).replace(/([a-z])([A-Z])/g, '$1 $2').replace(/([A-Za-z])(\d)/g, '$1 $2').replace(/(\d)([A-Za-z])/g, '$1 $2')
+// Words that make a line about a repository, not a link to a site. The prose words `github`,
+// `source`, `org`, `remote` and `git` are left out on purpose: a README line often says
+// "on GitHub" beside a site link, and the repository form itself (org-prefixed, a GitHub URL,
+// a path part) is refused by its own rule.
+const SITE_REPO_WORDS = /\b(?:repos?|monorepos?|repositor(?:y|ies)|internal|codebases?)\b/i
+const SITE_LINE_WORDS = /\b(?:gorfednet|cd|clone|checkout|pr|prs|ci|gate|pnpm|npm|gh|confidential|secret)\b/i
 
 const all = (re, text) => [...text.matchAll(re)].map((m) => m[0])
 
@@ -448,7 +462,8 @@ export function scanText(raw, { privateRepo, bareNames, saidNames, allow }, rule
     if (bare === 'word' && saidNames) {
       let at = 0
       for (const line of text.split('\n')) {
-        if (SAYS_PRIVATE.test(line)) {
+        // Underscores stay joined here: a said name beside `a_private_key` is not a statement of privacy.
+        if (SAYS_PRIVATE.test(splitWords(line, false))) {
           for (const m of line.matchAll(saidNames)) {
             if (inPrefixed(at + m.index) || isProductName(text, at + m.index, m[0], allow)) continue
             add('private-repo', [m[0]])
