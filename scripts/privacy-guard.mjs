@@ -301,9 +301,11 @@ export const bareNamePattern = (names) => bareNamePatterns(names).word
  * A line that says private (SAYS_PRIVATE) is where a name is read even when the repository
  * has said it: that pairing discloses a private repository. A product name passes there only
  * when the line is prose about the product: no repository, visibility or GitHub word, no
- * table or tab, and `private` not the word next to the name ("Example-Game is private",
- * "Example-Game (private)", "private Example-Game" refuse; "the private beta of Example-Game" passes).
+ * table, tab, quote or brace, and every `private` leading straight into a listed noun such as
+ * beta or mode ("the private beta of Example-Game" passes; "Example-Game is private",
+ * "Example-Game is still private" and "private Example-Game" refuse).
  */
+const PRIVATE_NOUNS = new Set(['beta', 'alpha', 'preview', 'mode', 'lobby', 'lobbies', 'match', 'matches', 'game', 'games', 'server', 'servers', 'chat', 'room', 'rooms', 'testing', 'test', 'playtest', 'playtests'])
 const REPO_WORDS = /\b(?:repos?|repositor(?:y|ies)|visibility|github|internal)\b|[\t|]/i
 export function isProductName(text, index, value, allow) {
   if (!allow?.products?.includes(value)) return false
@@ -317,17 +319,14 @@ export function isProductName(text, index, value, allow) {
   // The name itself may hold such a word (a product called Foo-Repo): read the line without it.
   if (REPO_WORDS.test(line.replace(value, ' '))) return false
   // Fail closed: a data shape (quotes, braces, brackets, an equals sign) is not prose, and every
-  // `private` on the line must lead into a plain lowercase word ("private beta"), never end a
-  // field or a clause ("name,date,private", "X, Y: private", "private: true").
+  // `private` on the line, before or after the name, must lead straight into a noun from a short
+  // list ("private beta", "private lobbies"). Anything else, however it is phrased ("is still
+  // private", "kept private until"), refuses: a word list of ways to say it would always miss one.
   if (/["'{}\[\]=]/.test(line.replace(value, ' '))) return false
   for (const m of line.matchAll(/\bprivate\b/gi)) {
-    if (!/^\s+[a-z]{2,}/.test(line.slice(m.index + m[0].length))) return false
+    const next = /^\s+([a-z]+)\b/.exec(line.slice(m.index + m[0].length))
+    if (!next || !PRIVATE_NOUNS.has(next[1])) return false
   }
-  const pre = text.slice(from, index)
-  const post = text.slice(index + value.length, from + line.length)
-  const word = '(?:private|visibility)'
-  if (new RegExp(`\\b${word}\\b[\\s:,(\\-\\u2013\\u2014]*$`, 'i').test(pre)) return false
-  if (new RegExp(`^[\\s:,)(\\-\\u2013\\u2014]*(?:(?:is|are|was|were|stays|remains|be|being|now)\\s+)*(?:a\\s+)?${word}\\b`, 'i').test(post)) return false
   return true
 }
 
