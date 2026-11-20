@@ -260,7 +260,7 @@ function recoverInterruptedDeploys(ctx) {
       ctx.say('warn', `${slug}: ${reason} (live run would block this repo)`)
       continue
     }
-    rs.blocked = { reason, at: ctx.clock.now().toISOString(), pr: d.pr }
+    rs.blocked = { reason, at: ctx.clock.now().toISOString(), pr: d.pr, ...(d.mergeSha ? { failedSha: d.mergeSha } : {}) }
     delete rs.deployInProgress
     ctx.say('error', `${slug}: blocked: ${reason}`)
   }
@@ -1479,7 +1479,8 @@ async function report(ctx, repo, pr, mergeSha, outcome, deployLog, release = nul
   const tag = `${repo.slug}#${pr.number}`
   const logTail = `<details><summary>Log tail (full log on the owner's Mac: ${deployLog.path})</summary>\n\n\`\`\`\n${deployLog.tail()}\n\`\`\`\n</details>`
   const block = (reason, extra = {}) => {
-    rs.blocked = { reason, at: ctx.clock.now().toISOString(), pr: pr.number, ...extra }
+    // failedSha lets `--unblock --deployed <sha>` check the commit a person says they deployed by hand.
+    rs.blocked = { reason, at: ctx.clock.now().toISOString(), pr: pr.number, failedSha: mergeSha, ...extra }
   }
   // A hotfix says so wherever a release would, so a run of them is visible (plan row 1.25).
   const as = plan?.kind === 'hotfix' ? ` as a hotfix (exemption: ${plan.exemption})` : plan?.kind === 'release' ? ' as a release' : ''

@@ -43,11 +43,13 @@ export const greenRuns = (names = ['check / check'], startedAt = '2026-10-09T12:
   names.map((name) => ({ name, status: 'completed', conclusion: 'success', started_at: startedAt }))
 
 export class FakeGitHub {
-  constructor({ pulls = [makePr()], pullsBySlug = undefined, runs = greenRuns(), runsBySha = undefined, statuses = [], reviews = [], comments = [], events = [], threads = [], files = [], mergedPulls = [], mergedPullsBySlug = undefined } = {}) {
+  constructor({ pulls = [makePr()], pullsBySlug = undefined, runs = greenRuns(), runsBySha = undefined, statuses = [], reviews = [], comments = [], events = [], threads = [], files = [], mergedPulls = [], mergedPullsBySlug = undefined, workflowRuns = [] } = {}) {
     this.pulls = pulls
     /** Optional: a separate list of pull requests per repository. */
     this.pullsBySlug = pullsBySlug
     this.runs = runs
+    /** Workflow runs on the head (id, workflow_id, event, head_sha, status, conclusion), for superseded cancels. */
+    this.workflowRuns = workflowRuns
     /** Optional: check runs per head sha (falls back to `runs`). --validate reads several heads. */
     this.runsBySha = runsBySha
     /** Merged pull requests, newest first, for --validate. */
@@ -105,6 +107,11 @@ export class FakeGitHub {
   async listCheckRuns(slug, sha) {
     this.log('listCheckRuns', slug, sha)
     return structuredClone(this.runsBySha?.[sha] ?? this.runs)
+  }
+
+  async listWorkflowRuns(slug, sha) {
+    this.log('listWorkflowRuns', slug, sha)
+    return structuredClone(this.workflowRunsBySha?.[sha] ?? this.workflowRuns ?? [])
   }
 
   async getBranchSha(slug, branch) {
