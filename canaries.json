@@ -750,7 +750,7 @@
       "guards": "A bare name is watched only while the merge base has never said it. Always watched, nearly every mention of a site name is red, with no way out but a rewrite.",
       "command": "node --test --test-name-pattern='stops watching a name' test/privacyGuard.test.mjs",
       "file": "scripts/privacy-guard.mjs",
-      "find": "const unsaid = open.filter((n) => allow.sites.includes(n.toLowerCase()) || !namedAtBase(dir, mergeBase, n))",
+      "find": "const unsaid = open.filter((n) => !allow.sites.includes(n.toLowerCase()) && !namedAtBase(dir, mergeBase, n))",
       "replace": "const unsaid = open"
     },
     {
@@ -822,7 +822,7 @@
       "guards": "A repo line in the allowlist names a name that is public already. For a name the repository never said it would disclose it with a green check.",
       "command": "node --test --test-name-pattern='allowlist add a' test/privacyGuard.test.mjs",
       "file": "scripts/privacy-guard.mjs",
-      "find": "const unsaid = open.filter((n) => allow.sites.includes(n.toLowerCase()) || !namedAtBase(dir, mergeBase, n))",
+      "find": "const unsaid = open.filter((n) => !allow.sites.includes(n.toLowerCase()) && !namedAtBase(dir, mergeBase, n))",
       "replace": "const unsaid = []"
     },
     {
@@ -1010,12 +1010,12 @@
       "replace": "const inner = t.slice(1, -1)"
     },
     {
-      "id": "privacy-guard-keeps-a-site-name-watched-after-the-base-says-it",
-      "guards": "A name listed as a site stays watched whatever the base says. Without it, the first README link makes `cd ../name` and `name.git` pass.",
-      "command": "node --test --test-name-pattern='repository-shaped' test/privacyGuard.test.mjs",
+      "id": "privacy-guard-site-name-counts-as-said",
+      "guards": "A name listed as a site counts as said. Without it a README link or commit message naming the public domain is refused as a new private-repository name.",
+      "command": "node --test --test-name-pattern='lets the domain through in a README link' test/privacyGuard.test.mjs",
       "file": "scripts/privacy-guard.mjs",
-      "find": "allow.sites.includes(n.toLowerCase()) || !namedAtBase(dir, mergeBase, n)",
-      "replace": "!namedAtBase(dir, mergeBase, n)"
+      "find": "const unsaid = open.filter((n) => !allow.sites.includes(n.toLowerCase()) && !namedAtBase(dir, mergeBase, n))",
+      "replace": "const unsaid = open.filter((n) => !namedAtBase(dir, mergeBase, n))"
     },
     {
       "id": "privacy-guard-lets-a-cleared-site-line-excuse-later-lines",
@@ -1026,36 +1026,20 @@
       "replace": "void 0"
     },
     {
-      "id": "privacy-guard-site-line-words-hide-in-identifiers",
-      "guards": "A repository word joined into an identifier (REPO_NAME=, repoName:, isPrivate, REPO1=) still refuses a site name. Without the split the word is missed.",
-      "command": "node --test --test-name-pattern='reads identifiers apart' test/privacyGuard.test.mjs",
-      "file": "scripts/privacy-guard.mjs",
-      "find": "const words = splitWords(line.slice(0, index - from) + ' ' + line.slice(index - from + value.length))",
-      "replace": "const words = line.slice(0, index - from) + ' ' + line.slice(index - from + value.length)"
-    },
-    {
-      "id": "privacy-guard-site-check-reads-its-own-labels",
-      "guards": "The site line check reads the line without the domain. Without it the domain's own labels (.org, pr-music) read as words about a repository and the route never clears a link.",
-      "command": "node --test --test-name-pattern='reads the line without the domain' test/privacyGuard.test.mjs",
-      "file": "scripts/privacy-guard.mjs",
-      "find": "const words = splitWords(line.slice(0, index - from) + ' ' + line.slice(index - from + value.length))",
-      "replace": "const words = splitWords(line)"
-    },
-    {
-      "id": "privacy-guard-said-name-reads-camelcase-private",
-      "guards": "A said name on a line that says private in camelCase (isPrivate) is still read. Without the split the pairing goes unseen.",
-      "command": "node --test --test-name-pattern='reads identifiers apart' test/privacyGuard.test.mjs",
-      "file": "scripts/privacy-guard.mjs",
-      "find": "SAYS_PRIVATE.test(splitWords(line, false))",
-      "replace": "SAYS_PRIVATE.test(line)"
-    },
-    {
-      "id": "push-guard-keeps-a-site-name-watched",
-      "guards": "The pre-push guard keeps a site-listed name watched, as the CI guard does. Without it a README link at the base makes cd ../name and name.git pass a push.",
-      "command": "node --test --test-name-pattern='loadGuard keeps' test/publicPushGuard.test.mjs",
+      "id": "push-guard-site-name-counts-as-said",
+      "guards": "The pre-push guard counts a site-listed name as said, as the CI guard does. Without it a README link to the public site is refused at push.",
+      "command": "node --test --test-name-pattern='loadGuard counts a site-listed' test/publicPushGuard.test.mjs",
       "file": "scripts/claude-hooks/public-push-guard.mjs",
-      "find": "allow.sites.includes(n.toLowerCase()) || !known",
-      "replace": "!known"
+      "find": "(!allow.sites.includes(n.toLowerCase()) && !mod.namedAtBase('.', head, n))",
+      "replace": "!mod.namedAtBase('.', head, n)"
+    },
+    {
+      "id": "privacy-guard-site-line-clears-its-own-domain",
+      "guards": "The line that adds `site <domain>` is not read for its own domain, so a repository with no allowlist can add its first one. Without it the first line is refused and there is no way in.",
+      "command": "node --test --test-name-pattern='lets a repository add its first site line' test/privacyGuard.test.mjs",
+      "file": "scripts/privacy-guard.mjs",
+      "find": "hit.value.toLowerCase() === isSiteLine(text)) continue",
+      "replace": "false) continue"
     }
   ]
 }

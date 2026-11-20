@@ -9,19 +9,13 @@
 #   product <Name>                a public product name the private-repo rule would otherwise
 #                                 flag. Exact spelling and case, and a capital letter in it. Only
 #                                 the bare word, in prose: see isProductName in privacy-guard.mjs.
-#   site <domain>                 a public site whose domain is also a private repository's name.
-#                                 Host form only: write https://<domain>/... with the scheme (a bare
-#                                 domain with a path, <domain>/albums, is refused: it reads as a
-#                                 directory of the repository). The line is refused when, with the
-#                                 domain taken out, it holds private, repo, repository, codebase,
-#                                 internal, gorfednet, PR, CI, clone, cd, gh, secret or a #12 after
-#                                 the name; identifiers count (REPO_NAME, repoName, REPO1). GitHub,
-#                                 source, org and remote are fine on the line. The line is not read
-#                                 for its own domain, so a repository adds its first one by itself
-#                                 (word the commit message without the name: messages are read).
-#                                 Web TLDs only. Listing a name the base already says puts it back
-#                                 on watch: a branch named after it, or name.git, then refuses.
-#                                 See isPublicSite.
+#   site <domain>                 a public site whose domain is also a private repository's name
+#                                 (a web TLD only). Owner's rule of record (20 November 2026): "we can
+#                                 name public website URLs even if the repo and code is private." The name
+#                                 then counts as said: read beside private or visibility, and as
+#                                 gorfednet/<name>. This line isn't read for its own domain, so a
+#                                 repository adds its first one by itself (word the commit message
+#                                 without the name). The line shows the domain is listed: accepted.
 #   commit <sha>                  a commit (the full 40 hex) whose own diff and message are exempt.
 #                                 A pushed commit cannot be rewritten, so this clears a false
 #                                 positive in one that is not the tip. The net diff is still read.
