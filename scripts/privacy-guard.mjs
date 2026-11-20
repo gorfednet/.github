@@ -229,7 +229,11 @@ function globToRegex(glob) {
  * A line that is neither is an error: a typo in an exemption must not read as no exemption.
  */
 // A domain: two or more labels, the last one letters. A repository name with no dot is never a site.
+// The last label must be a web TLD from a short list, so a repository named like a file or a
+// package (`name.js`, `notes.md`, `org.github`) can't be written through the site route.
+const SITE_TLDS = new Set(['com', 'net', 'org', 'io', 'ca', 'co', 'app', 'dev', 'fm', 'me', 'info', 'xyz', 'music', 'studio', 'art'])
 const SITE_VALUE = /^(?:[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?\.)+[A-Za-z]{2,}$/
+const siteValue = (v) => SITE_VALUE.test(v) && SITE_TLDS.has(v.slice(v.lastIndexOf('.') + 1).toLowerCase())
 export function parseAllowlist(text) {
   const emails = []
   const paths = []
@@ -249,7 +253,7 @@ export function parseAllowlist(text) {
       // The match is by exact spelling, so the spelling must differ from the lowercase slug a repository carries.
       if (value === value.toLowerCase()) throw new Error(`allowlist line ${i + 1}: a product name needs a capital letter, or its case check would match nothing`)
       products.push(value)
-    } else if (kind === 'site' && value && !rules && SITE_VALUE.test(value)) {
+    } else if (kind === 'site' && value && !rules && siteValue(value)) {
       sites.push(value.toLowerCase())
     } else if (kind === 'commit' && value && !rules && /^[0-9a-f]{40}$/i.test(value)) {
       commits.push(value.toLowerCase())
@@ -372,7 +376,7 @@ export function isProductName(text, index, value, allow) {
  */
 export const isSiteLine = (text) => {
   const m = /^site[ \t]+(\S+)[ \t]*$/.exec(text.replace(/\r$/, ''))
-  return m && SITE_VALUE.test(m[1]) ? m[1].toLowerCase() : null
+  return m && siteValue(m[1]) ? m[1].toLowerCase() : null
 }
 
 /**
@@ -386,13 +390,19 @@ export function isPublicSite(text, index, value, allow) {
   if (!allow?.sites?.includes(value.toLowerCase())) return false
   const before = text.slice(0, index)
   const after = text[index + value.length] ?? ''
-  const hostForm = /(?:^|[\s(\[<"'`*])$/.test(before) || /(?:^|[^:/\w])(?:https?:)?\/\/$/i.test(before)
+  const hostForm = /(?:^|[\s(\[<>"'`*=,|\u201c\u2018])$/.test(before) || /(?:^|[^:/\w])(?:https?:)?\/\/$/i.test(before)
   if (!hostForm || /[\\_@~]/.test(after)) return false
+  // A bare domain has no path: `name/src/index.ts` is a directory of the repository.
+  if (after === '/' && !/\/\/$/.test(before)) return false
   const from = text.lastIndexOf('\n', index - 1) + 1
   const to = text.indexOf('\n', index)
   const line = text.slice(from, to === -1 ? text.length : to)
-  return !SAYS_PRIVATE.test(line) && !REPO_WORDS.test(line)
+  // The guard reads one added line at a time, so a heading on the line above can't be seen: a
+  // bare list item under "Private repositories:" passes. A residual, said in the PR.
+  return !(SAYS_PRIVATE.test(line) || REPO_WORDS.test(line) || SITE_LINE_WORDS.test(line))
 }
+// Words that make a bare domain a repository or a project, not a link, and the org name itself.
+const SITE_LINE_WORDS = /\b(?:gorfednet|cd|clone|checkout|pr|prs|ci|gate|pnpm|npm|git|gh|confidential|secret)\b|#\d/i
 
 const all = (re, text) => [...text.matchAll(re)].map((m) => m[0])
 
@@ -438,7 +448,7 @@ export function scanText(raw, { privateRepo, bareNames, saidNames, allow }, rule
       for (const line of text.split('\n')) {
         if (SAYS_PRIVATE.test(line)) {
           for (const m of line.matchAll(saidNames)) {
-            if (inPrefixed(at + m.index) || isProductName(text, at + m.index, m[0], allow) || isPublicSite(text, at + m.index, m[0], allow)) continue
+            if (inPrefixed(at + m.index) || isProductName(text, at + m.index, m[0], allow)) continue
             add('private-repo', [m[0]])
           }
         }
@@ -839,7 +849,9 @@ export function run(argv, env = process.env, out = console) {
   // their names in dozens of files: flagging them again discloses nothing new, and the
   // only way out of a false red would be a rewrite. The org-prefixed form is always read.
   // A said name is still read on a line that says private: that pairing is new.
-  const unsaid = open.filter((n) => !namedAtBase(dir, mergeBase, n))
+  // A name the allowlist lists as a site stays watched whatever the base says: it is allowed in
+  // host form only, and a README link that lands must not make `cd ../name` or `name.git` pass.
+  const unsaid = open.filter((n) => allow.sites.includes(n.toLowerCase()) || !namedAtBase(dir, mergeBase, n))
   const said = open.filter((n) => !unsaid.includes(n))
   const ctx = {
     privateRepo: privateRepoPattern(open),
@@ -880,7 +892,9 @@ export function run(argv, env = process.env, out = console) {
       if (!textCache.has(cacheKey)) {
         let held = new Set()
         try {
-          const text = git(dir, ['show', `${mergeBase}:${key}`])
+          let text = git(dir, ['show', `${mergeBase}:${key}`])
+          // A `site` line the allowlist's own diff cleared holds nothing: it may not excuse a later line.
+          if (key === ALLOWLIST_PATH) text = text.split('\n').filter((l) => !isSiteLine(l)).join('\n')
           held = new Set(scanText(text, ctx, undefined, mode).map((h) => `${h.rule}\0${h.value.toLowerCase()}`))
         } catch {
           // a new file held nothing

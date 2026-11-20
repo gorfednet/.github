@@ -1668,3 +1668,68 @@ describe('privacy guard: a `site <domain>` line clears a public site in host for
     }
   })
 })
+
+describe('privacy guard: a `site` line stays narrow once the site is on the base (Fable read fixes)', () => {
+  const NAME = 'example-music.com'
+  const ORG = 'gorfednet' + '/'
+  const real = readFileSync(REAL_ALLOWLIST, 'utf8')
+  const allow = `${real}site ${NAME}\n`
+  // The base already carries the README link, so the name is "said" there.
+  const run = (body, { before = {}, path = 'docs/n.md' } = {}) =>
+    guard({
+      before: { '.github/privacy-guard-allow.txt': allow, 'README.md': `Music: https://${NAME}/\n`, ...before },
+      after: { [path]: body },
+      allow: false,
+      env: { PRIVATE_REPOS: NAME },
+    })
+  const fails = (body, opts) => assert.equal(run(body, opts).status, 1, `expected a refusal for ${JSON.stringify(body)}`)
+  const passes = (body, opts) => {
+    const r = run(body, opts)
+    assert.equal(r.status, 0, `expected a pass for ${JSON.stringify(body)}: ${r.out}`)
+  }
+
+  it('still refuses repository-shaped mentions when the base already says the name', () => {
+    for (const body of [
+      `cd ../${NAME}`,
+      `${NAME}.git`,
+      `@${NAME}`,
+      `${NAME}_notes`,
+      `https://example.org/${NAME}`,
+      `The code for ${NAME} lives in the source tree.`,
+      `cd ${NAME} && pnpm gate`,
+      `open ${NAME}/src/index.ts`,
+      `${NAME}#12 fixes the header`,
+      `${NAME} PR 12 is waiting on CI`,
+      `gh pr list -R ${NAME}`,
+      `gorfednet / ${NAME}`,
+      `${NAME} is confidential`,
+    ]) fails(`${body}\n`)
+    assert.equal(run(`- ${NAME}\n`, { before: {} }).status, 0, 'a bare list item with nothing private around passes')
+    fails('x\n', { path: `${NAME}/index.md` })
+  })
+
+  it('lets the usual public mentions through', () => {
+    passes(`<a href="https://${NAME}/">${NAME}</a>\n`)
+    passes(`DOMAIN=${NAME}\n`)
+    passes(`2026-11-01,${NAME},200\n`)
+  })
+
+  it('does not let the first push of a site line excuse a later line in the same file', () => {
+    const r = guard({
+      before: { 'README.md': 'hello\n' },
+      after: { '.github/privacy-guard-allow.txt': `site ${NAME}\n` },
+      allow: false,
+      steps: [{ files: { '.github/privacy-guard-allow.txt': `site ${NAME}\n# ${NAME}: the label site\nrepo ${NAME}\n` } }],
+      env: { PRIVATE_REPOS: NAME },
+    })
+    assert.equal(r.status, 1, r.out)
+  })
+
+  it('takes only a web domain: a file name, a package or a bare word is no site line', () => {
+    for (const v of ['secret-engine.js', 'notes.md', 'org.github', 'secret-repo']) {
+      const r = guard({ before: { 'README.md': 'hi\n' }, after: { '.github/privacy-guard-allow.txt': `site ${v}\n` }, allow: false, env: { PRIVATE_REPOS: v } })
+      assert.equal(r.status, 1, `${v}: ${r.out}`)
+      assert.throws(() => parseAllowlist(`site ${v}\n`), /allowlist line 1/)
+    }
+  })
+})
