@@ -337,7 +337,8 @@ export function isProductName(text, index, value, allow) {
   const post = line.slice(at + value.length)
   if (/\bvisibility\b|[\t|]/i.test(pre + ' ' + post)) return false
   const noUrl = (t) => t.replace(/\]\([^)\s]*\)/g, ']')
-  const near = [...noUrl(pre).split(/\s+/).slice(-WINDOW_WORDS), ...noUrl(post).split(/\s+/).slice(0, WINDOW_WORDS + 1)].join(' ')
+  const words = (t) => t.split(/\s+/).filter(Boolean)
+  const near = [...words(noUrl(pre)).slice(-WINDOW_WORDS), ...words(noUrl(post)).slice(0, WINDOW_WORDS)].join(' ')
   if (REPO_WORDS.test(near)) return false
   const prose = line.replace(CHECKLIST, ' ').replace(MD_LINK, ' $1 ').replace(/(?<=\w)'(?=\w)/g, '')
   if (/["'{}\[\]=]/.test(prose)) return false
