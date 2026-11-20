@@ -918,8 +918,8 @@
       "guards": "A name the base already says is public as a name, not as a private repository. A line that pairs it with private (the 14 November inventory: name, date, private) discloses that, and passes if said names are never read.",
       "command": "node --test --test-name-pattern='says it is private' test/privacyGuard.test.mjs",
       "file": "scripts/privacy-guard.mjs",
-      "find": "if (saysPrivate(line)) {",
-      "replace": "if (false) {"
+      "find": "const SAYS_PRIVATE = /\\b(?:private|visibility)\\b/i",
+      "replace": "const SAYS_PRIVATE = /(?!)/"
     },
     {
       "id": "privacy-guard-takes-privately-for-private",
@@ -1042,14 +1042,6 @@
       "replace": ""
     },
     {
-      "id": "privacy-guard-said-name-reads-camelcase-private",
-      "guards": "A said name on a line that says private in camelCase (isPrivate) is still read. Without the split the pairing goes unseen.",
-      "command": "node --test --test-name-pattern='any identifier spelling' test/privacyGuard.test.mjs",
-      "file": "scripts/privacy-guard.mjs",
-      "find": "if (saysPrivate(line)) {",
-      "replace": "if (SAYS_PRIVATE.test(line)) {"
-    },
-    {
       "id": "push-guard-keeps-a-site-name-watched",
       "guards": "The pre-push guard keeps a site-listed name watched, as the CI guard does. Without it a README link at the base makes cd ../name and name.git pass a push.",
       "command": "node --test --test-name-pattern='loadGuard keeps' test/publicPushGuard.test.mjs",
@@ -1068,10 +1060,66 @@
     {
       "id": "privacy-guard-private-keys-and-routes-are-other-things",
       "guards": "privateKey, PrivateRoute and visibilityState beside a said name are not a statement of privacy. Without the exemption they refuse.",
-      "command": "node --test --test-name-pattern='any identifier spelling' test/privacyGuard.test.mjs",
+      "command": "node --test --test-name-pattern='reads identifiers apart' test/privacyGuard.test.mjs",
       "file": "scripts/privacy-guard.mjs",
       "find": ".replace(NOUN_AFTER_PRIVATE, '')",
       "replace": ".replace(/(?!)/g, '')"
+    },
+    {
+      "id": "privacy-guard-bare-slashes-after-a-comment-are-a-host",
+      "guards": "A bare // reads as a host only inside an attribute or bracket. Without it, `x = 1 //name` after a comment names the repository with a green check.",
+      "command": "node --test --test-name-pattern='bare // as a host' test/privacyGuard.test.mjs",
+      "file": "scripts/privacy-guard.mjs",
+      "find": "/(?:^|[(\"'=\\[<`])\\/\\/$/.test(before)",
+      "replace": "/(?:^|[^:/\\w])\\/\\/$/.test(before)"
+    },
+    {
+      "id": "privacy-guard-repo-word-exclusions",
+      "guards": "repost, repopulate and preposterous are other words, not repository words. Without the exclusions an ordinary line beside a site link refuses.",
+      "command": "node --test --test-name-pattern='whole words for repo' test/privacyGuard.test.mjs",
+      "file": "scripts/privacy-guard.mjs",
+      "find": "repo(?!rt|se|ss|st|pul|sit(?!ory))",
+      "replace": "repo(?!rt|se|ss|sit(?!ory))"
+    },
+    {
+      "id": "privacy-guard-is-private-beside-a-site-link",
+      "guards": "`is private` said of the thing beside a site link still refuses. Without it the pairing of a name and private passes.",
+      "command": "node --test --test-name-pattern='prose words secret' test/privacyGuard.test.mjs",
+      "file": "scripts/privacy-guard.mjs",
+      "find": "PRIVATE_OF_THING.test(text) ||",
+      "replace": ""
+    },
+    {
+      "id": "privacy-guard-secret-and-gate-in-identifiers",
+      "guards": "secret_key and gate_key name a repository's workflow beside a site link. Without the identifier words they pass.",
+      "command": "node --test --test-name-pattern='prose words secret' test/privacyGuard.test.mjs",
+      "file": "scripts/privacy-guard.mjs",
+      "find": "['pr', 'prs', 'ci', 'cd', 'secret', 'gate']",
+      "replace": "['pr', 'prs', 'ci', 'cd']"
+    },
+    {
+      "id": "privacy-guard-site-address-form",
+      "guards": "An address on the site (booking@name) is the email rule's, not a repository name. Without the form it refuses.",
+      "command": "node --test --test-name-pattern='address on the site' test/privacyGuard.test.mjs",
+      "file": "scripts/privacy-guard.mjs",
+      "find": "const address = /(?:^|[\\s(<:])(?!git@)[\\w.+-]+@$/i.test(before)",
+      "replace": "const address = false"
+    },
+    {
+      "id": "privacy-guard-site-label-form",
+      "guards": "`site:name` is a link label. Without the form it refuses.",
+      "command": "node --test --test-name-pattern='address on the site' test/privacyGuard.test.mjs",
+      "file": "scripts/privacy-guard.mjs",
+      "find": "const labelled = /(?:^|\\s)(?:site|domain|host|url):$/i.test(before)",
+      "replace": "const labelled = false"
+    },
+    {
+      "id": "privacy-guard-site-italic-form",
+      "guards": "_name_ is Markdown italics. Without the form it refuses.",
+      "command": "node --test --test-name-pattern='address on the site' test/privacyGuard.test.mjs",
+      "file": "scripts/privacy-guard.mjs",
+      "find": "const italic = /(?:^|[\\s(\\[])_$/.test(before) && /^_(?![A-Za-z0-9_])/.test(text.slice(index + value.length))",
+      "replace": "const italic = false"
     }
   ]
 }

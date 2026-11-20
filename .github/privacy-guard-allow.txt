@@ -19,17 +19,24 @@
 #                                 the name: messages are read. Web TLDs only (com, net, org, io, ca,
 #                                 co, app, dev, fm, me, info, xyz, music, studio, art, it, ai, uk,
 #                                 tv, band, shop).
-#                                 Host form only: write https://<domain>/... with the scheme (a bare
-#                                 domain with a path, <domain>/albums, is refused: it reads as a
-#                                 directory of the repository). A line is refused when, with every URL
-#                                 and the domain taken out, it says private, visibility, repo,
-#                                 repository, codebase, internal, gorfednet, clone, checkout, pnpm,
-#                                 npm, gh, gate, secret or confidential, in any case or spelling
-#                                 (REPO_NAME, repoName, REPONAME, isPrivate, REPO1), or joins PR, CI or CD
-#                                 into an identifier (PRNumber); or when the name is followed by #12, PR,
-#                                 CI or issue, or follows cd, clone, checkout or -R. GitHub, source, org,
-#                                 remote, git and plain PR, CI or CD words are fine. privateKey,
+#                                 Host form only: write https://<domain>/... with the scheme. Also
+#                                 fine: an attribute or bracket (href="//<domain>"), an address
+#                                 (booking@<domain>, not git@), site:<domain> and _<domain>_. A bare
+#                                 domain with a path (<domain>/albums) is refused: it reads as a
+#                                 directory of the repository. A line is refused when, with every URL
+#                                 and the domain taken out, it says visibility, or that something is
+#                                 private (is, still, stays private; private ending a clause), or
+#                                 holds repo, repository, codebase, internal, gorfednet, clone,
+#                                 checkout, pnpm, npm, gh or confidential, or an identifier that joins
+#                                 those in any case or spelling (REPO_NAME, repoName, REPONAME,
+#                                 isPrivate, REPO1, secret_key, PRNumber); or when the name is followed
+#                                 by #12, PR, CI or issue, or follows cd, clone, checkout or -R.
+#                                 Prose is fine: GitHub, source, org, remote, git, private events,
+#                                 Secret show, the gate, PR contact, a CI badge. privateKey,
 #                                 PrivateRoute and visibilityState are other things.
+#                                 Accepted as written, each already disclosed by the allowlist line
+#                                 itself: a // after . } or " (cd ..//<domain>), cd or git -C not
+#                                 directly before the name, and a JSON or table row that names the site.
 #                                 Listing a name the base already says puts it back on watch: a branch
 #                                 named after it, or name.git, then refuses. See isPublicSite.
 #   commit <sha>                  a commit (the full 40 hex) whose own diff and message are exempt.

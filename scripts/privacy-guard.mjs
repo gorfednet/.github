@@ -391,8 +391,15 @@ export function isPublicSite(text, index, value, allow) {
   if (!allow?.sites?.includes(value.toLowerCase())) return false
   const before = text.slice(0, index)
   const after = text[index + value.length] ?? ''
-  const hostForm = /(?:^|[\s(\[<>"'`*=,|\u201c\u2018])$/.test(before) || /(?:^|[^:/\w])(?:https?:)?\/\/$/i.test(before)
-  if (!hostForm || /[\\_@~]/.test(after)) return false
+  // Host form: on its own after a space or opening mark, after a scheme, after a bare // only
+  // inside an attribute or bracket (never after a comment), as the domain of an address
+  // (`booking@name`, not `git@name`), after `site:`, or wrapped in underscores (_name_).
+  const plain = /(?:^|[\s(\[<>"'`*=,|\u201c\u2018])$/.test(before) || /\bhttps?:\/\/$/i.test(before) || /(?:^|[("'=\[<`])\/\/$/.test(before)
+  const address = /(?:^|[\s(<:])(?!git@)[\w.+-]+@$/i.test(before)
+  const labelled = /(?:^|\s)(?:site|domain|host|url):$/i.test(before)
+  const italic = /(?:^|[\s(\[])_$/.test(before) && /^_(?![A-Za-z0-9_])/.test(text.slice(index + value.length))
+  if (!(plain || address || labelled || italic)) return false
+  if (!italic && /[\\_@~]/.test(after)) return false
   // A bare domain has no path: `name/src/index.ts` is a directory of the repository.
   if (after === '/' && !/\/\/$/.test(before)) return false
   const from = text.lastIndexOf('\n', index - 1) + 1
@@ -407,7 +414,7 @@ export function isPublicSite(text, index, value, allow) {
   // Read the line without every URL (its path words are the site's own) and without the domain
   // itself (its labels, `.org` and `pr-`, are not words about a repository).
   const rest = line.replace(URL_TOKEN, ' ').replace(new RegExp(escapeRegex(value), 'gi'), ' ')
-  return !(saysPrivate(rest) || repoish(rest))
+  return !(sitePrivate(rest) || repoish(rest))
 }
 
 /** A scheme URL up to the next space, bracket or quote: the link's own path is not prose. */
@@ -422,22 +429,30 @@ const identParts = (tok, digits = true) => {
   return u.toLowerCase().split(' ').filter(Boolean)
 }
 /**
- * Does the text say private or visibility: as a word, or inside an identifier whatever its case
- * and separators (isPrivate, ISPRIVATE, is_private, PRIVATE_REPOS). `privateKey`, `PrivateRoute`,
- * `visibilityState`, `a_private_key` and `privately` are other things and don't count.
+ * Does the line say it is private, for a site link's neighbours: `visibility`, `private` said of
+ * the thing (is, still, stays private; private at the end of a clause), or private inside an
+ * identifier in any case and separators (isPrivate, ISPRIVATE, is_private, PRIVATE_REPOS).
+ * "private events" and "Secret show" are prose about the site; `privateKey`, `PrivateRoute`,
+ * `visibilityState` and `privately` are other things.
  */
-export const saysPrivate = (text) =>
-  SAYS_PRIVATE.test(text) || identTokens(text).some((tok) => /private|visibility/.test(compact(tok).replace(NOUN_AFTER_PRIVATE, '')))
+const PRIVATE_OF_THING = /\b(?:is|are|was|were|be|been|stays?|remains?|kept|keeps?|marked|set|made)(?:\s+(?:a|an|the|still|now|currently|very|also|only|fully|totally))*\s+private\b|\bprivate\s*(?:[.,;:!?)\]]|$)/i
+const sitePrivate = (text) =>
+  /\bvisibility\b/i.test(text) ||
+  PRIVATE_OF_THING.test(text) ||
+  identTokens(text).some((tok) => {
+    const c = compact(tok)
+    return c !== 'private' && c !== 'visibility' && /private|visibility/.test(c.replace(NOUN_AFTER_PRIVATE, ''))
+  })
 // Repository words inside an identifier, whatever its spelling: reponame, REPONAME, GHRepo, REPO1.
-// `report`, `reposition` and `repose` are other words.
-const REPO_ANY = /repo(?!rt|se|ss|sit(?!ory))|repositor|codebase|internal/
+// `report`, `reposition`, `repose`, `repost` and `repopulate` are other words.
+const REPO_ANY = /repo(?!rt|se|ss|st|pul|sit(?!ory))|repositor|codebase|internal/
 // Words that make a line about a repository, not a link to a site. `github`, `source`, `org`,
 // `remote` and `git` are left out on purpose: a README line often says "on GitHub" beside a site link,
 // and the repository form itself (org-prefixed, a GitHub URL, a path part) has its own rule.
-const LINE_WORDS = new Set(['gorfednet', 'clone', 'checkout', 'pnpm', 'npm', 'gh', 'gate', 'confidential', 'secret'])
-// PR, CI and CD as plain words are prose ("PR contact", "2CD set"); joined into a camelCase or
-// underscore identifier (PRNumber, ci_status) they name a repository's workflow.
-const IDENT_WORDS = new Set(['pr', 'prs', 'ci', 'cd'])
+const LINE_WORDS = new Set(['gorfednet', 'clone', 'checkout', 'pnpm', 'npm', 'gh', 'confidential'])
+// PR, CI, CD, secret and gate as plain words are prose ("PR contact", "Secret show"); joined into a
+// camelCase or underscore identifier (PRNumber, ci_status, secret_key) they name a repository's workflow.
+const IDENT_WORDS = new Set(['pr', 'prs', 'ci', 'cd', 'secret', 'gate'])
 const repoish = (text) =>
   identTokens(text).some((tok) => {
     if (REPO_ANY.test(compact(tok))) return true
@@ -488,7 +503,7 @@ export function scanText(raw, { privateRepo, bareNames, saidNames, allow }, rule
     if (bare === 'word' && saidNames) {
       let at = 0
       for (const line of text.split('\n')) {
-        if (saysPrivate(line)) {
+        if (SAYS_PRIVATE.test(line)) {
           for (const m of line.matchAll(saidNames)) {
             if (inPrefixed(at + m.index) || isProductName(text, at + m.index, m[0], allow)) continue
             add('private-repo', [m[0]])

@@ -1675,9 +1675,9 @@ describe('privacy guard: a `site` line stays narrow once the site is on the base
   const real = readFileSync(REAL_ALLOWLIST, 'utf8')
   const allow = `${real}site ${NAME}\n`
   // The base already carries the README link, so the name is "said" there.
-  const run = (body, { before = {}, path = 'docs/n.md' } = {}) =>
+  const run = (body, { before = {}, path = 'docs/n.md', allow: allowText = allow } = {}) =>
     guard({
-      before: { '.github/privacy-guard-allow.txt': allow, 'README.md': `Music: https://${NAME}/\n`, ...before },
+      before: { '.github/privacy-guard-allow.txt': allowText, 'README.md': `Music: https://${NAME}/\n`, ...before },
       after: { [path]: body },
       allow: false,
       env: { PRIVATE_REPOS: NAME },
@@ -1722,16 +1722,10 @@ describe('privacy guard: a `site` line stays narrow once the site is on the base
       `GITHUB_REPOSITORY=${NAME}`,
       `${NAME}#12 fixes the header`,
     ]) fails(`${body}\n`)
-    // A name that is not a site, said at the base, on a line with camelCase private.
-    const said = guard({
-      before: { 'README.md': 'see other-one in the docs\n' },
-      after: { 'a.json': '{"name":"other-one","isPrivate":true}\n' },
-      env: { PRIVATE_REPOS: 'other-one' },
-    })
-    assert.equal(said.status, 1, said.out)
     // Near misses: plain words that merely contain the letters.
     passes(`Reports and privateers: https://${NAME}/\n`)
     passes(`DOMAIN=${NAME}\n`)
+    passes(`privateKey docs: https://${NAME}/\n`)
   })
 
   it('reads the line without the domain: its own labels are not words about a repository (.org, pr-)', () => {
@@ -1776,15 +1770,52 @@ describe('privacy guard: a `site` line stays narrow once the site is on the base
     ]) fails(`${body}\n`)
   })
 
-  it('reads a said name beside private in any identifier spelling, and lets private keys and routes be', () => {
+  it('keeps main\'s whole-word rule for a said name: identifiers that hold private are other things', () => {
     const said = (line) => guard({ before: { 'README.md': 'see other-one in the docs\n' }, after: { 'a.txt': `${line}\n` }, env: { PRIVATE_REPOS: 'other-one' } })
-    for (const line of ['PRIVATE_REPOS=other-one', 'private_repos: [other-one]', '{"name":"other-one","is_private":true}', 'ISPRIVATE other-one', 'isPrivate other-one']) {
-      assert.equal(said(line).status, 1, line)
-    }
-    for (const line of ['other-one privateKey', 'other-one visibilityState', 'PrivateRoute for other-one', 'other-one uses a_private_key', 'other-one PRIVATE_KEY']) {
+    for (const line of ['other-one is private', 'private: other-one', 'the private other-one']) assert.equal(said(line).status, 1, line)
+    for (const line of ['PRIVATE_REPOS other-one', 'privateList other-one', 'private_subnet other-one', 'isPrivate other-one', 'other-one privateKey', 'PrivateRoute for other-one', 'other-one uses a_private_key']) {
       const r = said(line)
       assert.equal(r.status, 0, `${line}: ${r.out}`)
     }
+  })
+
+  it('reads a bare // as a host only inside an attribute or bracket, never after a comment (third Fable read)', () => {
+    fails(`x = 1 //${NAME}\n`)
+    fails(`foo // //${NAME}\n`)
+    fails(`see //${NAME}\n`)
+    passes(`<a href="//${NAME}/">music</a>\n`)
+    passes(`[music](//${NAME}/)\n`)
+  })
+
+  it('reads whole words for repo: repost, repopulate and preposterous are other things', () => {
+    passes(`Reposted and repopulate, preposterous: https://${NAME}/\n`)
+    passes(`reposted=https://${NAME}/\n`)
+    fails(`repos=${NAME}\n`)
+    fails(`reponame=${NAME}\n`)
+  })
+
+  it('lets prose words secret, gate and private sit beside the link, and reads them in identifiers', () => {
+    passes(`Secret show, private events: https://${NAME}/events\n`)
+    passes(`Open the gate at 7: https://${NAME}/\n`)
+    fails(`secret_key=${NAME}\n`)
+    fails(`SecretKey: ${NAME}\n`)
+    fails(`gate_key=${NAME}\n`)
+    fails(`The show is private: https://${NAME}/\n`)
+    fails(`Is it still private? https://${NAME}/\n`)
+    fails(`${NAME} is a private project\n`)
+    fails(`visibility: https://${NAME}/\n`)
+  })
+
+  it('lets an address on the site, an italic name and site: through, and still refuses handles', () => {
+    const mail = { allow: `${allow}email ${NAME}\n` } // the address itself is the email rule's, not the name's
+    passes(`Bookings: booking@${NAME}\n`, mail)
+    passes(`Mail mailto:booking@${NAME}\n`, mail)
+    passes(`Find _${NAME}_ online\n`)
+    passes(`site:${NAME}\n`)
+    fails(`git@${NAME}:me/repo.git\n`)
+    fails(`@${NAME}\n`)
+    fails(`${NAME}_notes\n`)
+    fails(`~${NAME}\n`)
   })
 
   it('does not refuse the site link for words in its own URL or in prose (second Fable read)', () => {
