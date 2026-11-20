@@ -7,12 +7,11 @@ on:
         description: >-
           Where every job runs, as JSON: a label string or an array of labels, e.g.
           '["self-hosted","linux","4c-heavy"]'. Optional: left empty, the caller's HEAVY_RUNS_ON
-          variable is used, so no caller has to pass it. With neither set, a public caller runs
-          GitHub-hosted, which is free (owner, 2026-11-20: free runners only), and
-          a private one asks for a label no runner carries and waits, spending no paid minutes.
-          A scheduled run's event carries no repository, so that public fallback can't apply to
-          one: a public caller on a schedule must pass a hosted runs-on itself, or set
-          HEAVY_RUNS_ON to a hosted image (free there; the pool serves no public repository).
+          variable is used, so no caller has to pass it. A public caller always runs
+          GitHub-hosted, which is free (owner, 2026-11-20: free runners only), whatever this input
+          or the variable say: the pool serves no public repository. A scheduled run's event carries no
+          repository, so that rule can't see one: a public caller on a schedule passes a hosted runs-on
+          itself. With neither set, a private one asks for a label no runner carries and waits, spending no paid minutes.
           No public repository called this on 20 November 2026.
         required: false
         type: string
@@ -163,9 +162,10 @@ jobs:
   health:
     # On the caller's pool since 2026-11-20, when the owner ruled out GitHub-hosted runners. This replaces the 2026-10-19 decision to run this
     # liveness monitor hosted so it could still report when the pool host is down: with the pool host
-    # down, this job now waits in the queue instead of going red, so the pool liveness check in
-    # capacity/ (heartbeat and queue age) and the sites' own external monitors are what notice that outage.
-    runs-on: ${{ fromJSON(inputs.runs-on != '' && inputs.runs-on || vars.HEAVY_RUNS_ON != '' && vars.HEAVY_RUNS_ON || github.event.repository.visibility == 'public' && '"ubuntu-latest"' || '["self-hosted","no-pool-label-set"]') }}
+    # down, this job now waits in the queue instead of going red. The pool liveness check in capacity/
+    # (heartbeat and queue age) notices that outage. docs/retired-checks.md records what is lost: the
+    # outside vantage (WAN, public DNS, a lapsed domain) and that no external site monitor exists yet.
+    runs-on: ${{ fromJSON(github.event.repository.visibility == 'public' && '"ubuntu-latest"' || inputs.runs-on != '' && inputs.runs-on || vars.HEAVY_RUNS_ON != '' && vars.HEAVY_RUNS_ON || '["self-hosted","no-pool-label-set"]') }}
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7

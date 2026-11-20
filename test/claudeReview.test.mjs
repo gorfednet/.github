@@ -427,7 +427,7 @@ describe('where the shared reviewer runs', () => {
     const runsOn = [...jobs.matchAll(/^\s{4}runs-on: (.+)$/gm)].map((match) => match[1])
     assert.ok(runsOn.length >= 2, 'found a runs-on line for both jobs')
     for (const value of runsOn) {
-      assert.equal(value, '${{ ' + "fromJSON(inputs.runs-on != '' && inputs.runs-on || vars.HEAVY_RUNS_ON != '' && vars.HEAVY_RUNS_ON || github.event.repository.visibility == 'public' && '\"ubuntu-latest\"' || '[\"self-hosted\",\"no-pool-label-set\"]')" + ' }}')
+      assert.equal(value, '${{ ' + "fromJSON(github.event.repository.visibility == 'public' && '\"ubuntu-latest\"' || inputs.runs-on != '' && inputs.runs-on || vars.HEAVY_RUNS_ON != '' && vars.HEAVY_RUNS_ON || '[\"self-hosted\",\"no-pool-label-set\"]')" + ' }}')
     }
     assert.doesNotMatch(workflow, /runs-on: ubuntu/)
     assert.doesNotMatch(workflow.replaceAll("github.event.repository.visibility == 'public' && '\"ubuntu-latest\"'", ''), /"ubuntu-latest"/, 'a hosted value only for a public caller')

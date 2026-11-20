@@ -22,9 +22,7 @@ permissions:
 jobs:
   review:
     uses: gorfednet/.github/.github/workflows/claude-review.yml@main
-    with:
-      # This repository has no pool label yet, so an unset HEAVY_RUNS_ON is passed as an explicit
-      # hosted value. Drop the fallback once the variable is set here (owner, 2026-11-20).
-      runs-on: ${{ vars.HEAVY_RUNS_ON || '"ubuntu-latest"' }}
+    # No runs-on input: this repository is public, so the reusable always runs it GitHub-hosted, free.
+    # Never set HEAVY_RUNS_ON on a public repository: the pool serves none, and the reusable ignores it.
     secrets:
       CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}

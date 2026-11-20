@@ -1019,14 +1019,39 @@ describe('reusable workflows have no hosted fallback (owner, 2026-11-20)', () =>
       const input = text.slice(text.indexOf('      runs-on:\n'), text.indexOf('\n      ', text.indexOf('required:')) + 40)
       // Optional (Desk, 2026-11-20): a required input would fail every caller that passes none at startup.
       assert.match(input, /required: false/, 'the runs-on input is optional')
-      assert.doesNotMatch(text, /runs-on:\s+ubuntu/, 'no job names a hosted runner')
+      assert.doesNotMatch(text, /runs-on:\s+(ubuntu|macos|windows)/, 'no job names a hosted runner')
       // Free hosted runners only (owner, 2026-11-20: free runners only): ubuntu-latest appears only behind the public-repository gate.
       assert.doesNotMatch(text.replaceAll("github.event.repository.visibility == 'public' && '\"ubuntu-latest\"'", ''), /ubuntu-latest/, 'a hosted value only for a public caller')
-      const runsOn = [...text.matchAll(/^\s+runs-on: (\$\{\{.+)$/gm)].map((m) => m[1])
+      // Every `runs-on:` line, not only those with an expression: a literal label would otherwise be skipped.
+      const runsOn = [...text.matchAll(/^\s+runs-on: (.+)$/gm)].map((m) => m[1])
       assert.ok(runsOn.length >= 1, 'found a job runs-on line')
-      for (const value of runsOn) assert.equal(value, '${{ ' + "fromJSON(inputs.runs-on != '' && inputs.runs-on || vars.HEAVY_RUNS_ON != '' && vars.HEAVY_RUNS_ON || github.event.repository.visibility == 'public' && '\"ubuntu-latest\"' || '[\"self-hosted\",\"no-pool-label-set\"]')" + ' }}')
+      for (const value of runsOn) assert.equal(value, '${{ ' + "fromJSON(github.event.repository.visibility == 'public' && '\"ubuntu-latest\"' || inputs.runs-on != '' && inputs.runs-on || vars.HEAVY_RUNS_ON != '' && vars.HEAVY_RUNS_ON || '[\"self-hosted\",\"no-pool-label-set\"]')" + ' }}')
     })
   }
+})
+
+describe('the reusable runs-on expression, evaluated', () => {
+  // GitHub's && and || return their operands, as JavaScript's do, and a missing context is ''.
+  const where = (ctx) => {
+    const text = readFileSync(join(WORKFLOWS, 'claude-review.yml'), 'utf8')
+    const line = text.match(/^\s+runs-on: \$\{\{ fromJSON\((.+)\) \}\}$/m)[1]
+    const evaluate = new Function('github', 'inputs', 'vars', `return ${line.replaceAll('inputs.runs-on', "inputs['runs-on']")}`)
+    return JSON.parse(evaluate({ event: { repository: { visibility: ctx.visibility ?? '' } } }, { 'runs-on': ctx.input ?? '' }, { HEAVY_RUNS_ON: ctx.variable ?? '' }))
+  }
+  it('sends a public caller hosted whatever the variable or the input say', () => {
+    assert.equal(where({ visibility: 'public' }), 'ubuntu-latest')
+    assert.equal(where({ visibility: 'public', variable: '["self-hosted","linux","x-heavy"]' }), 'ubuntu-latest')
+    assert.equal(where({ visibility: 'public', input: '["self-hosted","linux","x-heavy"]' }), 'ubuntu-latest')
+  })
+  it('sends a private caller to the input, else the variable, else a label nothing carries', () => {
+    assert.deepEqual(where({ visibility: 'private', variable: '["self-hosted","linux","x-heavy"]' }), ['self-hosted', 'linux', 'x-heavy'])
+    assert.deepEqual(where({ visibility: 'private', input: '["self-hosted","linux","y-heavy"]', variable: '["self-hosted","linux","x-heavy"]' }), ['self-hosted', 'linux', 'y-heavy'])
+    assert.deepEqual(where({ visibility: 'private' }), ['self-hosted', 'no-pool-label-set'])
+  })
+  it('lets a scheduled run, which has no repository, use the input or the variable', () => {
+    assert.equal(where({ input: '"ubuntu-latest"' }), 'ubuntu-latest')
+    assert.deepEqual(where({}), ['self-hosted', 'no-pool-label-set'])
+  })
 })
 
 describe('a hosted job says why it is not on the pool', () => {
