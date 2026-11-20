@@ -333,12 +333,21 @@ describe('janitor prompt', () => {
     assert.match(prompt, /With `own` `merged`, its own pull request merged too: record its cost \(step 4\.7\), then archive it/)
     assert.match(prompt, /pr-cost\.mjs record/)
     assert.match(prompt, /a failed cost line never blocks archiving/)
-    const step = prompt.match(/7\. Cost \(plan row 1\.26\)[\s\S]*?(?=\n5\. Worktrees)/)[0]
+    const step = prompt.match(/7\. Cost \(plan row 1\.26\)[\s\S]*?(?=\n4b\. Cost sweep|\n5\. Worktrees)/)[0]
     assert.match(step, /--pr-json \$R\/pr-<id8>\.json/)
     assert.doesNotMatch(step, /--title|--label/, 'no pull request text on the command line')
     const unmerged = prompt.match(/- `unmerged`, idle under 48 hours[^\n]*/)[0]
     for (const field of ['title', 'additions', 'deletions', 'createdAt', 'closedAt', 'mergedAt', 'labels']) assert.ok(unmerged.includes(field), `the call step 4.7 reuses must ask for ${field}`)
     assert.match(step, /with no pull request, or only an `OPEN` one, has no cost line yet: skip it/)
+  })
+  it('runs the cost sweep as its own step, so a run that archives nothing still sweeps', () => {
+    const perSession = prompt.match(/7\. Cost \(plan row 1\.26\)[\s\S]*?(?=\n4b\. Cost sweep|\n5\. Worktrees)/)[0]
+    assert.doesNotMatch(perSession, /pr-cost\.mjs sweep/, 'not under the per-session step')
+    const own = prompt.match(/\n4b\. Cost sweep[^\n]*/)?.[0]
+    assert.ok(own, 'a numbered step 4b')
+    assert.match(own, /pr-cost\.mjs sweep --ship-log ~\/\.ship-bot\/logs\/ship-bot\.log\.1 --ship-log ~\/\.ship-bot\/logs\/ship-bot\.log/)
+    assert.match(own, /every run/i)
+    assert.ok(prompt.indexOf('\n4b. Cost sweep') < prompt.indexOf('\n5. Worktrees'))
   })
 })
 
