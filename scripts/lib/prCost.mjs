@@ -194,7 +194,7 @@ export function attribute(sessions, namedPrs = []) {
       if (named) key = `${named.repo}#${named.number}`
       else if (links.length > 0) {
         // Work after a link-only PR's merge (swept by number, whether recorded yet or not), up to merge + 2 h, is that PR's tail:
-        // the next link would otherwise take it. Work before the merge keeps the rule above: it goes to the link that follows it and the PR already in the ledger would be billed the same tokens again.
+        // the next link would otherwise take it. Work before the merge goes to the link that follows it. Without this, a PR already in the ledger would be billed the same tail again.
         const claim = [...links].reverse().find((x) => x.ts < m.ts && prs.some((pr) => pr.linkOnly && pr.repo === x.repo && pr.number === x.number && pr.endsAt !== undefined && m.ts > pr.endsAt && pr.to !== undefined && m.ts <= pr.to))
         const l = claim ?? links.find((x) => x.ts >= m.ts) ?? links[links.length - 1]
         // A link-only PR (the sweep names PRs by number, with no branch) keeps no work done well after it merged: a session
