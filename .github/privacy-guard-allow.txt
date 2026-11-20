@@ -38,3 +38,8 @@ path test/fixtures/** *
 
 # Commit b642bd3 (PR 241): its diff holds SSH-remote test fixtures for the public-push guard, no real address.
 commit b642bd39924c04e50b4ef17894fe417045b16464
+
+# The owner's own public sites, each also the name of a private repository.
+site gorfed.net
+site gorfmusic.com
+site 4thcltr.com
