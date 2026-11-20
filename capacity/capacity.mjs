@@ -7,7 +7,44 @@ import path from 'node:path'
 import { execFileSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 
-export const THRESHOLDS = { headroomLoadFactor: 0.7, minFreeGb: 4, minIdlePct: 40, maxWorking: 5, maxBuilders: 2, workingWindowMs: 10 * 60 * 1000 }
+/** A reading under the hold line older than this is stale: it reads as unknown. */
+export const USAGE_MAX_AGE_MS = 2 * 60 * 60 * 1000
+/** A reading dated further ahead than this is a bad clock or file: unknown. */
+export const USAGE_MAX_FUTURE_MS = 5 * 60 * 1000
+
+const tzOffsetMs = (utcMs, zone) => {
+  const p = Object.fromEntries(new Intl.DateTimeFormat('en-US', { timeZone: zone, hourCycle: 'h23', year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric', second: 'numeric' }).formatToParts(new Date(utcMs)).map((x) => [x.type, x.value]))
+  return Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second) - Math.floor(utcMs / 1000) * 1000
+}
+
+/**
+ * The most recent weekly usage reset at or before `now`: Friday 05:00 in America/Toronto, from the time-zone database (no fixed offset), as epoch ms.
+ */
+export function lastWeeklyReset(now, zone = 'America/Toronto') {
+  const local = new Date(now + tzOffsetMs(now, zone)) // wall-clock fields read through the UTC getters
+  let back = (local.getUTCDay() - 5 + 7) % 7
+  const at = (b) => {
+    const wall = Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate() - b, 5)
+    let utc = wall - tzOffsetMs(wall, zone)
+    utc = wall - tzOffsetMs(utc, zone)
+    return utc
+  }
+  if (at(back) > now) back += 7
+  return at(back)
+}
+
+/**
+ * Whether a reading still counts. Usage only rises within a week, so a reading at or over the hold line taken after the last reset stays
+ * valid at any age (Herdr skips refreshes while its hold file exists). A reading under the line keeps the 2-hour rule. Future-dated: unknown.
+ */
+export function usageReadingState(pct, at, now, holdPct = THRESHOLDS.holdUsagePct) {
+  if (!Number.isFinite(at)) return 'no-timestamp'
+  if (at - now > USAGE_MAX_FUTURE_MS) return 'future-dated'
+  if (pct >= holdPct) return at >= lastWeeklyReset(now) ? null : 'stale'
+  return now - at > USAGE_MAX_AGE_MS ? 'stale' : null
+}
+
+export const THRESHOLDS = { headroomLoadFactor: 0.7, minFreeGb: 4, minIdlePct: 40, maxWorking: 5, maxBuilders: 2, workingWindowMs: 10 * 60 * 1000, holdUsagePct: 90 }
 
 /**
  * Pure: inputs in, state out.
@@ -17,7 +54,11 @@ export const THRESHOLDS = { headroomLoadFactor: 0.7, minFreeGb: 4, minIdlePct: 4
  * ops `builder-ok` then applies: hold on CPU idle under 40% or free memory under 4 GB, and ignore load. If the backup or the idle
  * figure could not be read (`backup` falsy, `idlePct` not a finite number), the load rule applies: fail closed.
  */
-export function classify({ load1, cores, freeGb, working, backup = null, idlePct = null }, t = THRESHOLDS) {
+export function classify({ load1, cores, freeGb, working, backup = null, idlePct = null, weeklyUsage = null }, t = THRESHOLDS) {
+  // Weekly usage at the limit stops new starts whatever the machine load. Not a finite number (unknown): today's rules apply.
+  if (typeof weeklyUsage === 'number' && Number.isFinite(weeklyUsage) && weeklyUsage >= t.holdUsagePct) {
+    return { state: 'hold', freeSlots: 0, reason: `weekly usage at ${weeklyUsage}%, at or over ${t.holdUsagePct}%` }
+  }
   const byIdle = Boolean(backup) && typeof idlePct === 'number' && Number.isFinite(idlePct)
   if (freeGb < t.minFreeGb) return { state: 'hold', freeSlots: 0 }
   if (byIdle ? idlePct < t.minIdlePct : load1 > cores) return { state: 'hold', freeSlots: 0 }
@@ -27,6 +68,23 @@ export function classify({ load1, cores, freeGb, working, backup = null, idlePct
     return { state: 'headroom', freeSlots: Math.min(t.maxWorking - working, t.maxBuilders) }
   }
   return { state: 'steady', freeSlots: 0 }
+}
+
+/**
+ * Weekly usage percent from the Herdr state file (`usage.pct`, the source scripts/lib/usageAlert.mjs reads), or null with a reason.
+ * Only a finite number from 0 to 1000 with a usable `usage.at` counts (see usageReadingState: a 90+ reading stays valid after the last Friday 05:00 ET reset, a lower one for 2 hours); a missing file, bad JSON or any other value is unknown, never a guess.
+ */
+export function readWeeklyUsage(statePath, readFile = (p) => fs.readFileSync(p, 'utf8'), { now = Date.now() } = {}) {
+  let usage
+  try { usage = JSON.parse(readFile(statePath))?.usage } catch { return { pct: null, reason: 'usage source unreadable' } }
+  const pct = usage?.pct
+  if (typeof pct !== 'number' || !Number.isFinite(pct) || pct < 0 || pct > 1000) return { pct: null, reason: 'usage.pct missing or not a number' }
+  // Age comes from usage.at (epoch ms or ISO text) only. The file's mtime says nothing: the reconciler rewrites the file on every job change.
+  let at = typeof usage.at === 'number' ? usage.at : typeof usage.at === 'string' ? Date.parse(usage.at) : NaN
+  if (!Number.isFinite(at)) return { pct: null, reason: 'no-timestamp' }
+  const bad = usageReadingState(pct, at, now)
+  if (bad) return { pct: null, reason: bad }
+  return { pct, reason: null, at }
 }
 
 /** True when `tmutil status` output says a Time Machine backup is running (`Running = 1`). */
@@ -94,12 +152,15 @@ export function countWorking(root, now, windowMs = THRESHOLDS.workingWindowMs) {
 }
 
 /** The file left behind by a failed run: unknown, but still remembering what the owner was last told. */
-export function errorRecord(lastPushedState, err, now) {
-  return { state: 'unknown', freeSlots: 0, lastPushedState, error: String(err.message).slice(0, 200), at: new Date(now).toISOString() }
+export function errorRecord(lastPushedState, err, now, prev = null) {
+  // Carry the last good usage reading through a failed run, or the next run has nothing to keep and the brake fails open.
+  const usage = typeof prev?.weeklyUsage === 'number' && Number.isFinite(prev.weeklyUsage) && usageReadingState(prev.weeklyUsage, prev.weeklyUsageAt, now) === null
+    ? { weeklyUsage: prev.weeklyUsage, weeklyUsageAt: prev.weeklyUsageAt } : {}
+  return { state: 'unknown', freeSlots: 0, lastPushedState, error: String(err.message).slice(0, 200), ...usage, at: new Date(now).toISOString() }
 }
 
-export function message({ state, freeSlots, queued }) {
-  if (state === 'hold') return 'overloaded, hold'
+export function message({ state, freeSlots, queued, reason }) {
+  if (state === 'hold') return reason ? `hold: ${reason}` : 'overloaded, hold'
   if (state === 'headroom') return `headroom for ${freeSlots}, ${queued ?? 'unknown'} queued`
   return null
 }
@@ -112,13 +173,19 @@ export function shouldPush(previousState, state) {
 export async function run(deps) {
   const { read, now, writeJson, readPrevious, push } = deps
   const inputs = { ...read(), working: deps.working() }
-  const { state, freeSlots } = classify(inputs)
-  const queued = deps.queue()
-  const out = { state, freeSlots, load1: inputs.load1, cores: inputs.cores, freeGb: Number(inputs.freeGb.toFixed(2)), backup: inputs.backup ?? null, idlePct: inputs.idlePct ?? null, working: inputs.working, sessionsKnown: inputs.working !== null, poolQueue: queued, weeklyUsage: null, at: new Date(now).toISOString() }
+  let usage = deps.usage ? deps.usage() : { pct: null, reason: 'no usage source configured' }
   const prev = readPrevious()
+  // Herdr writes pct null with a fresh `at` on a failed probe. Keep the last known reading while it is still valid, so one bad probe at 93% cannot read as headroom.
+  if (usage.pct == null && typeof prev?.weeklyUsage === 'number' && Number.isFinite(prev.weeklyUsage) && usageReadingState(prev.weeklyUsage, prev.weeklyUsageAt, now) === null) {
+    usage = { pct: prev.weeklyUsage, at: prev.weeklyUsageAt, reason: null, kept: true }
+  }
+  const weeklyUsage = usage.pct ?? null
+  const { state, freeSlots, reason } = classify({ ...inputs, weeklyUsage })
+  const queued = deps.queue()
+  const out = { state, freeSlots, load1: inputs.load1, cores: inputs.cores, freeGb: Number(inputs.freeGb.toFixed(2)), backup: inputs.backup ?? null, idlePct: inputs.idlePct ?? null, working: inputs.working, sessionsKnown: inputs.working !== null, poolQueue: queued, weeklyUsage, weeklyUsageAt: weeklyUsage === null ? null : usage.at ?? null, weeklyUsageReason: weeklyUsage === null ? usage.reason ?? 'unknown' : usage.kept ? 'kept: last reading, the new one was unusable' : null, ...(reason ? { reason } : {}), at: new Date(now).toISOString() }
   // Compare with the last state a push actually reached, so a failed POST is retried next run.
   let lastPushed = prev && 'lastPushedState' in prev ? prev.lastPushedState : (prev?.state ?? null)
-  const text = message({ state, freeSlots, queued })
+  const text = message({ state, freeSlots, queued, reason })
   if (shouldPush(lastPushed, state)) {
     if (!text) lastPushed = state // steady: nothing to say, but remember it
     else if ((await push(text)) !== false) lastPushed = state
@@ -183,21 +250,21 @@ function backupInputs() {
   return { backup, idlePct }
 }
 
-async function main() {
-  const home = os.homedir()
+/** The production wiring of `run`, exported so a test can prove every input (usage included) is passed. */
+export function productionDeps({ home, pushOps, now = Date.now() }) {
   const dir = path.join(home, '.desk')
   const file = path.join(dir, 'capacity.json')
-  const cfgFile = path.join(home, '.ship-bot', 'ntfy.token')
   const sessions = path.join(home, 'Library/Application Support/Claude/claude-code-sessions')
-  const out = await run({
-    now: Date.now(),
+  return {
+    now,
     read: () => ({
       load1: os.loadavg()[0],
       cores: Number(execFileSync('sysctl', ['-n', 'hw.ncpu']).toString()),
       freeGb: parseVmStat(execFileSync('vm_stat').toString()),
       ...backupInputs(),
     }),
-    working: () => (fs.existsSync(sessions) ? countWorking(sessions, Date.now()) : null),
+    usage: () => readWeeklyUsage(path.join(home, '.herdr-jobs', 'state.json'), undefined, { now }),
+    working: () => (fs.existsSync(sessions) ? countWorking(sessions, now) : null),
     // One optional command printing a number; null when none is configured (README).
     queue: () => {
       const cmd = process.env.CAPACITY_QUEUE_CMD
@@ -207,7 +274,13 @@ async function main() {
     readPrevious: () => { try { return JSON.parse(fs.readFileSync(file, 'utf8')) } catch { return null } },
     writeJson: (o) => { fs.mkdirSync(dir, { recursive: true }); fs.writeFileSync(file + '.tmp', JSON.stringify(o, null, 2) + '\n'); fs.renameSync(file + '.tmp', file) },
     push: (text) => pushOps(text),
-  })
+  }
+}
+
+async function main() {
+  const home = os.homedir()
+  const cfgFile = path.join(home, '.ship-bot', 'ntfy.token')
+  const out = await run(productionDeps({ home, pushOps }))
   console.log(JSON.stringify(out))
   const done = await afterRun({ helpers: await loadHelpers(), home, pushOps })
   console.log(JSON.stringify(done))
@@ -232,9 +305,9 @@ if (isMain(import.meta.url)) main().catch((e) => {
     try {
       const f = path.join(os.homedir(), '.desk', 'capacity.json')
       fs.mkdirSync(path.dirname(f), { recursive: true })
-      let kept = null // keep what the owner was last told, so recovery does not repeat it
-      try { kept = JSON.parse(fs.readFileSync(f, 'utf8')).lastPushedState ?? null } catch { /* none */ }
-      fs.writeFileSync(f, JSON.stringify(errorRecord(kept, e, Date.now()), null, 2) + '\n')
+      let prev = null // keep what the owner was last told, so recovery does not repeat it, and the last good usage reading
+      try { prev = JSON.parse(fs.readFileSync(f, 'utf8')) } catch { /* none */ }
+      fs.writeFileSync(f, JSON.stringify(errorRecord(prev?.lastPushedState ?? null, e, Date.now(), prev), null, 2) + '\n')
     } catch { /* nothing more to do */ }
     // A failed run tells the dead-man service at once instead of waiting out the grace period.
     loadHelpers().then((h) => h.heartbeat?.ping('capacity', { ok: false })).catch(() => {}).finally(() => process.exit(1))
