@@ -1008,6 +1008,23 @@ function hostedWithoutReason(text) {
   return bare
 }
 
+describe('reusable workflows have no hosted fallback (owner, 2026-11-20)', () => {
+  const reusable = readdirSync(WORKFLOWS).filter((f) => /^(pr-check-.*|browser-compat)\.yml$/.test(f))
+  it('finds the reusable workflows', () => {
+    assert.ok(reusable.length >= 6, `found ${reusable.length}`)
+  })
+  for (const file of reusable) {
+    it(`${file} requires runs-on and never falls back to ubuntu-latest`, () => {
+      const text = readFileSync(join(WORKFLOWS, file), 'utf8')
+      const input = text.slice(text.indexOf('      runs-on:\n'), text.indexOf('\n      ', text.indexOf('required:')) + 40)
+      assert.match(input, /required: true/, 'the runs-on input is required')
+      assert.doesNotMatch(text, /runs-on:\s.*ubuntu/, 'no job names a hosted runner')
+      assert.doesNotMatch(text, /inputs\.runs-on != ''/, 'no empty-input fallback expression')
+      assert.match(text, /runs-on: \$\{\{ fromJSON\(inputs\.runs-on\) \}\}/)
+    })
+  }
+})
+
 describe('a hosted job says why it is not on the pool', () => {
   it('flags a bare hosted runner, a reason across a blank line, and a reason one job up', () => {
     assert.deepEqual(hostedWithoutReason('jobs:\n  a:\n    runs-on: ubuntu-latest\n'), [

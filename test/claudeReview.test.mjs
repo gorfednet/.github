@@ -312,10 +312,10 @@ describe('the caller template', () => {
     assert.match(template, /issue_comment:\n\s+types: \[created\]/)
   })
 
-  it('passes the token and never routes the reviewer to the pool', () => {
+  it('passes the token and routes the reviewer to the caller pool', () => {
     assert.match(template, /CLAUDE_CODE_OAUTH_TOKEN: \$\{\{ secrets\.CLAUDE_CODE_OAUTH_TOKEN \}\}/)
-    // The reviewer holds a secret; secret-holding jobs stay GitHub-hosted (owner, 2026-10-19).
-    assert.doesNotMatch(template, /HEAVY_RUNS_ON/)
+    // The owner's 2026-11-20 instruction replaced the 2026-10-19 rule that kept secret jobs hosted.
+    assert.match(template, /runs-on: \$\{\{ vars\.HEAVY_RUNS_ON \}\}/)
   })
 
   it('grants every permission the shared job asks for, since a called job cannot exceed its caller', () => {
@@ -421,12 +421,15 @@ describe('the review trigger', () => {
 })
 
 describe('where the shared reviewer runs', () => {
-  it('always runs GitHub-hosted, whatever a caller passes, because it holds the OAuth secret', () => {
+  it('runs every job on the caller pool, with a required input and no hosted fallback', () => {
     const jobs = workflow.slice(workflow.indexOf('\njobs:'))
     const runsOn = [...jobs.matchAll(/^\s{4}runs-on: (.+)$/gm)].map((match) => match[1])
-    assert.ok(runsOn.length >= 1, 'found runs-on lines')
-    for (const value of runsOn) assert.equal(value, 'ubuntu-latest')
-    assert.doesNotMatch(jobs, /inputs\.runs-on/)
+    assert.ok(runsOn.length >= 2, 'found a runs-on line for both jobs')
+    for (const value of runsOn) assert.equal(value, '${{ fromJSON(inputs.runs-on) }}')
+    assert.doesNotMatch(workflow, /ubuntu-latest'|runs-on: ubuntu/)
+    const input = workflow.slice(workflow.indexOf('      runs-on:\n'), workflow.indexOf('      model:'))
+    assert.match(input, /required: true/)
+    assert.doesNotMatch(input, /default:/)
   })
 })
 
