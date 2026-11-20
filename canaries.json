@@ -1008,6 +1008,30 @@
       "file": "scripts/privacy-guard.mjs",
       "find": "const inner = [...t.slice(1, -1)]",
       "replace": "const inner = t.slice(1, -1)"
+    },
+    {
+      "id": "privacy-guard-keeps-a-site-name-watched-after-the-base-says-it",
+      "guards": "A name listed as a site stays watched whatever the base says. Without it, the first README link makes `cd ../name` and `name.git` pass.",
+      "command": "node --test --test-name-pattern='repository-shaped' test/privacyGuard.test.mjs",
+      "file": "scripts/privacy-guard.mjs",
+      "find": "allow.sites.includes(n.toLowerCase()) || !namedAtBase(dir, mergeBase, n)",
+      "replace": "!namedAtBase(dir, mergeBase, n)"
+    },
+    {
+      "id": "privacy-guard-lets-a-cleared-site-line-excuse-later-lines",
+      "guards": "A site line the allowlist's own diff cleared holds nothing for later lines. Without it, a second push of a comment or repo line naming the domain reads as held.",
+      "command": "node --test --test-name-pattern='excuse a later line' test/privacyGuard.test.mjs",
+      "file": "scripts/privacy-guard.mjs",
+      "find": "if (key === ALLOWLIST_PATH) text = text.split('\\n').filter((l) => !isSiteLine(l)).join('\\n')",
+      "replace": "void 0"
+    },
+    {
+      "id": "privacy-guard-site-line-words-hide-in-identifiers",
+      "guards": "A repository word inside an identifier (REPO_NAME=, GH_REPO=) still refuses a site name. An underscore is a word character, so without the split the word is missed.",
+      "command": "node --test --test-name-pattern='repository-shaped' test/privacyGuard.test.mjs",
+      "file": "scripts/privacy-guard.mjs",
+      "find": "const words = line.replace(/_/g, ' ')",
+      "replace": "const words = line"
     }
   ]
 }
