@@ -1,9 +1,9 @@
-// desk-event.py (Stop, StopFailure, Notification): appends one JSON line per turn end or
+// desk-event.py (Stop, StopFailure, Notification, PermissionRequest): appends one JSON line per turn end or
 // prompt wait to the events file, and nothing else. It never blocks and never prints.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, existsSync, writeFileSync, chmodSync } from 'node:fs';
+import { mkdtempSync, readFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -58,6 +58,16 @@ test('PermissionRequest writes waiting-on-prompt at once and prints nothing', ()
   assert.equal(e.event, 'waiting-on-prompt');
   assert.equal(e.kind, 'permission_request');
   assert.equal(e.message, undefined, 'tool input is never copied');
+});
+
+test('a Stop with background tasks says so, and every line carries an epoch ts', () => {
+  const e = JSON.parse(run({ hook_event_name: 'Stop', session_id: 's', background_tasks: [{ id: 1 }, { id: 2 }] }).lines[0]);
+  assert.equal(e.background_tasks, 2);
+  assert.ok(Number.isInteger(e.ts) && e.ts > 1.7e9);
+  assert.equal(JSON.parse(run({ hook_event_name: 'Stop', session_id: 's' }).lines[0]).background_tasks, undefined);
+  for (const t of ['elicitation_url_dialog', 'agent_needs_input']) {
+    assert.equal(JSON.parse(run({ hook_event_name: 'Notification', notification_type: t, session_id: 's' }).lines[0]).event, 'waiting-on-prompt');
+  }
 });
 
 test('StopFailure is a turn end that says it failed', () => {
