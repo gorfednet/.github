@@ -23,6 +23,17 @@ The refusal tells the session to start one `gh run watch <id> --interval 60 --ex
 
 Install it as a copy of this file at origin/main, never from a working checkout: `git -C <.github clone>/.claude/worktrees/gates-main show HEAD:scripts/claude-hooks/gh-poll-guard.py > ~/.claude/hooks/gh-poll-guard.py`. The entry goes in `~/.claude/settings.json`. fleet-status's "Installed tools behind main" row compares the installed copy with every committed version and reports how far behind it is.
 
+## must-rules-guard.py (assessment A4)
+
+A `PreToolUse` hook on Bash, Agent, Edit, Write and MultiEdit. It refuses:
+
+- a `claude review` comment where the trigger isn't on a line by itself;
+- an Agent call to `builder` whose prompt lacks `git checkout -B` or `builder-ok`;
+- a new `.skip(`, `xit(` or `xtest(` in a test file with no `backlog:<id>` on that line or the one above.
+
+- Settings entry: `must-rules-guard.settings.json`. Tests: `test/mustRulesGuard.test.mjs`. It fails open.
+- Not yet held: the `ready-to-merge` label gate and no wall clock in a test file.
+
 ## argv-guard.py (plan row 5.14)
 
 A `PreToolUse` hook on Bash and Monitor. It refuses the git and gh commands the settings deny list refuses, in spellings a glob can't see. The deny list matches the command text. This hook splits the command into simple commands, strips the quoting and reads the arguments.
