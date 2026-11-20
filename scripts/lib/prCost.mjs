@@ -193,7 +193,10 @@ export function attribute(sessions, namedPrs = []) {
       const named = prs.find((pr) => matchesPr(m, pr))
       if (named) key = `${named.repo}#${named.number}`
       else if (links.length > 0) {
-        const l = links.find((x) => x.ts >= m.ts) ?? links[links.length - 1]
+        // Work after a link, inside the window of a link-only PR (swept by number, whether recorded yet or not), is that PR's:
+        // the next link would otherwise take it and the PR already in the ledger would be billed the same tokens again.
+        const claim = [...links].reverse().find((x) => x.ts < m.ts && prs.some((pr) => pr.linkOnly && pr.repo === x.repo && pr.number === x.number && pr.to !== undefined && m.ts <= pr.to))
+        const l = claim ?? links.find((x) => x.ts >= m.ts) ?? links[links.length - 1]
         // A link-only PR (the sweep names PRs by number, with no branch) keeps no work done well after it merged: a session
         // that goes on to its next change would otherwise bill that change to this PR, and the sweep never rewrites a held row.
         // A PR named with a branch keeps its session's late work, as before.

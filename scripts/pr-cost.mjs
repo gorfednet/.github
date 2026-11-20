@@ -162,17 +162,34 @@ export async function main(argv) {
     const sinceMs = opts.since ? Date.parse(opts.since) : Date.now() - days * 86400000
     if (Number.isNaN(sinceMs)) throw new Error(`--since is not a date: ${opts.since}`)
     const out = opts.out ?? DEFAULT_FILE
-    // A missing log is an error, never an empty sweep: an empty one would look like a quiet week.
-    const merges = opts.shipLogs.flatMap((f) => mergesFromShipLog(readFileSync(f, 'utf8'))).filter((m) => Date.parse(m.mergedAt) >= sinceMs)
+    // Each log is read once. One missing log is skipped with a warning and a count (a fresh install has no `.1` yet);
+    // every log missing is an error, never an empty sweep: an empty one would look like a quiet week.
+    const texts = []
+    let skippedLogs = 0
+    for (const f of opts.shipLogs) {
+      try {
+        texts.push(readFileSync(f, 'utf8'))
+      } catch (e) {
+        if (e.code !== 'ENOENT') throw e
+        skippedLogs += 1
+        console.error(`pr-cost: skipped a missing ship-bot log: ${tidy(f)}`)
+      }
+    }
+    if (!texts.length) throw new Error('no ship-bot log could be read')
     // Callers pass the live log and its rotated copy (`.1`). A quiet night, or a fresh log after a rotation, holds pass lines
     // and no merge line, which is fine. Text with no timestamped ship-bot line at all is a wrong file or a changed format.
     const logLine = /^\d{4}-\d\d-\d\dT[\d:.]+Z\s+\w+\s+\S/m
-    if (!opts.shipLogs.some((f) => logLine.test(readFileSync(f, 'utf8')))) throw new Error('the ship-bot log holds no ship-bot log line')
-    const unique = [...new Map(merges.map((m) => [`${m.repo}#${m.number}`, m])).values()]
+    if (!texts.some((t) => logLine.test(t))) throw new Error('the ship-bot log holds no ship-bot log line')
+    const merges = texts.flatMap((t) => mergesFromShipLog(t)).filter((m) => Date.parse(m.mergedAt) >= sinceMs)
+    // A PR merged under 2 hours ago is left for the next run: the work billed to it runs to merge + 2 hours, and a row is never rewritten.
+    const settledBefore = Date.now() - 2 * 3600000
+    const unique = [...new Map(merges.map((m) => [`${m.repo}#${m.number}`, m])).values()].filter((m) => Date.parse(m.mergedAt) <= settledBefore)
     const held = latestPerPr(readLines(out))
     const todo = unique.filter((m) => !held.some((l) => l.repo === m.repo && l.number === m.number && l.state === 'MERGED'))
     const fleet = JSON.parse(readFileSync(new URL('../fleet.json', import.meta.url), 'utf8'))
-    const named = todo.map((m) => ({ repo: m.repo, number: m.number, endsAt: Date.parse(m.mergedAt), linkOnly: true }))
+    // PRs already in the ledger are named too, so the work inside their window stays theirs when a session links a later PR.
+    const heldMerged = held.filter((l) => l.state === 'MERGED' && l.closedAt && Date.parse(l.closedAt) >= sinceMs - 14 * 86400000 && !todo.some((m) => m.repo === l.repo && m.number === l.number))
+    const named = [...todo.map((m) => ({ repo: m.repo, number: m.number, endsAt: Date.parse(m.mergedAt), linkOnly: true })), ...heldMerged.map((l) => ({ repo: l.repo, number: l.number, endsAt: Date.parse(l.closedAt), linkOnly: true }))]
     const { perPr } = await scanAll(opts.projects ?? DEFAULT_PROJECTS, { sinceMs: sinceMs - 14 * 86400000, prs: named })
     const results = []
     for (const m of todo) {
@@ -185,7 +202,7 @@ export async function main(argv) {
       }
       results.push({ repo: m.repo, number: m.number, total: rec.total, recorded })
     }
-    console.log(JSON.stringify({ merged: unique.length, alreadyHeld: unique.length - todo.length, recorded: results.filter((r) => r.recorded).length, noTranscript: results.filter((r) => !r.recorded).length, file: tidy(out), results }))
+    console.log(JSON.stringify({ merged: unique.length, alreadyHeld: unique.length - todo.length, recorded: results.filter((r) => r.recorded).length, noTranscript: results.filter((r) => !r.recorded).length, skippedLogs, file: tidy(out), results }))
     return 0
   }
   if (cmd === 'window') {

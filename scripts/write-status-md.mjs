@@ -46,7 +46,7 @@ export const compact = (n) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 
  * "not measured", never zero. Repository names and PR numbers only.
  */
 export function renderPrCost(c, unread) {
-  const out = [`## Cost per PR, last ${c?.days ?? 7} days`, '']
+  const out = [`## Cost per PR, last ${c?.days ?? 7} days`, '', "Rows swept from ship-bot's log (`pr-cost.mjs sweep`) have no line counts, so their per-line figure is blank, and no title or branch, so their kind is feature or infra only, never fix or docs.", '']
   if (c === null || c === undefined) return [...out, unread ? `not measured: ${unread}` : 'not measured', '']
   if (c.prs === 0) out.push('No closed PR has a recorded cost in this window.', '')
   else {

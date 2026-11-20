@@ -315,6 +315,17 @@ describe('the command', () => {
   })
 })
 
+describe('ship-bot\'s merge line', () => {
+  // The sweep parses the line ship-bot writes when it merges. A reworded line must fail here, not stop the ledger silently.
+  const src = readFileSync(new URL('../ship-bot/lib/bot.mjs', import.meta.url), 'utf8')
+  it('is still the one mergesFromShipLog reads', () => {
+    assert.match(src, /ctx\.say\('info', `\$\{tag\}: merged as \$\{short\(mergeSha\)\}`\)/)
+    assert.match(src, /const tag = `\$\{repo\.slug\}#\$\{pr\.number\} \(\$\{short\(sha\)\}\)`/)
+    const line = '2026-11-20T14:40:38.679Z info  gorfednet/example-site.org#36 (6d05c0c): merged as ef44a1c'
+    assert.deepEqual(mergesFromShipLog(line).map((m) => `${m.repo}#${m.number}`), ['gorfednet/example-site.org#36'])
+  })
+})
+
 describe('janitor prompt', () => {
   const prompt = readFileSync(new URL('../janitor/PROMPT.md', import.meta.url), 'utf8')
   it('records the cost before it archives, and a failed record never blocks archiving', () => {
@@ -377,6 +388,40 @@ describe('sweep: merged PRs from the merger log', () => {
     const j = JSON.parse(run('sweep', '--ship-log', log, '--since', T(0), '--projects', dir, '--out', out).stdout)
     assert.equal(j.recorded, 1)
     assert.equal(JSON.parse(readFileSync(out, 'utf8').trim()).total, 3333, 'the message 10 hours after the merge is the next change\'s')
+  })
+  it('a session that links a second PR is not billed twice: the first PR keeps its post-merge work (A merged, B swept later)', () => {
+    // Link A at min 3, A merged at min 10, work on it to min 50 (inside merge + 2 h), the next change's work at min 200, link B at min 210.
+    const dir = projects({ 'p/S1.jsonl': [assistant({ min: 1 }), link('o/.github', 7, 3), assistant({ min: 50, usage: [2, 20, 200, 2000] }), assistant({ min: 200, usage: [4, 40, 400, 4000] }), link('o/.github', 8, 210)] })
+    const log = join(dir, 'ship.log')
+    writeFileSync(log, `${T(10)} info  o/.github#7 (abc1234): merged as def5678\n${T(220)} info  o/.github#8 (abc1235): merged as def5679\n`)
+    const out = join(dir, 'ledger.jsonl')
+    const day1 = JSON.parse(run('sweep', '--ship-log', log, '--since', T(0), '--projects', dir, '--out', out).stdout)
+    assert.equal(day1.recorded, 2, 'both swept on one run is the simple case')
+    const rows = readFileSync(out, 'utf8').trim().split('\n').map(JSON.parse)
+    const total = (n) => rows.find((r) => r.number === n).total
+    // Day 1 sweeps A alone, day 2 sweeps B with A already held: rebuild that order.
+    const out2 = join(dir, 'ledger2.jsonl')
+    writeFileSync(out2, `${JSON.stringify({ repo: 'o/.github', number: 7, state: 'MERGED', closedAt: T(10), recordedAt: T(15), total: total(7), models: {} })}\n`)
+    const day2 = JSON.parse(run('sweep', '--ship-log', log, '--since', T(0), '--projects', dir, '--out', out2).stdout)
+    assert.equal(day2.recorded, 1)
+    const b = readFileSync(out2, 'utf8').trim().split('\n').map(JSON.parse).find((r) => r.number === 8)
+    assert.equal(b.total, 4444, 'B holds only the work after A\'s window, not the 2,222 A already holds')
+    assert.equal(total(7), 1111 + 2222, 'A holds its own work and its post-merge work')
+  })
+  it('a merge under 2 hours old is left for the next run', () => {
+    const dir = projects({ 'p/S1.jsonl': [assistant({ min: 1 }), link('o/.github', 7, 3)] })
+    const log = join(dir, 'ship.log')
+    writeFileSync(log, `${new Date(Date.now() - 30 * 60000).toISOString()} info  o/.github#7 (abc1234): merged as def5678\n`)
+    const j = JSON.parse(run('sweep', '--ship-log', log, '--since', T(0), '--projects', dir, '--out', join(dir, 'l.jsonl')).stdout)
+    assert.deepEqual([j.merged, j.recorded], [0, 0])
+  })
+  it('one missing log is skipped with a warning and a count; all missing is an error', () => {
+    const { dir, log, out } = setup()
+    const r = run('sweep', '--ship-log', join(dir, 'gone.log.1'), '--ship-log', log, '--since', T(0), '--projects', dir, '--out', out)
+    assert.equal(r.status, 0, r.stderr)
+    assert.equal(JSON.parse(r.stdout).skippedLogs, 1)
+    assert.match(r.stderr, /skipped a missing ship-bot log/)
+    assert.equal(run('sweep', '--ship-log', join(dir, 'gone.log'), '--projects', dir, '--out', out).status, 2)
   })
   it('ignores merges before --since', () => {
     const { dir, log, out } = setup()
