@@ -417,8 +417,12 @@ export function isPublicSite(text, index, value, allow) {
   return !(sitePrivate(rest) || repoish(rest))
 }
 
-/** A scheme URL up to the next space, bracket or quote: the link's own path is not prose. */
-const URL_TOKEN = /(?:https?:)?\/\/[^\s)\]>"'`<]+/gi
+/**
+ * A URL up to the next space, bracket or quote: the link's own path is not prose. Only a scheme
+ * URL (`https://…`), or a bare `//host` straight after an opening mark (`href="//host"`, `(//host)`),
+ * the same place isPublicSite accepts a bare `//`. A `//word` after a space is a line comment.
+ */
+const URL_TOKEN = /\bhttps?:\/\/[^\s)\]>"'`<]+|(?<=^|[("'=\[<`])\/\/[^\s)\]>"'`<]+/gi
 const NOUN_AFTER_PRIVATE = /(?:private|visibility)(?:keys?|routes?|state|beta|betas|mode|modes|lobby|lobbies|preview|previews|match|matches|playtests?|ly|eer|eers|er|ers)/g
 const identTokens = (t) => t.match(/[A-Za-z0-9_]+/g) ?? []
 const compact = (tok) => tok.replace(/_/g, '').toLowerCase()

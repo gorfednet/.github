@@ -1806,6 +1806,16 @@ describe('privacy guard: a `site` line stays narrow once the site is on the base
     fails(`visibility: https://${NAME}/\n`)
   })
 
+  it('cuts only real URLs from the line: a no-space comment after the site stays prose (fourth Fable read)', () => {
+    fails(`${NAME} //private-repo\n`)
+    fails(`const SITE = '${NAME}' //private\n`)
+    fails(`const SITES = ['${NAME}'] //internal\n`)
+    fails(`${NAME} //confidential\n`)
+    passes(`Events: https://${NAME}/private-events\n`)
+    passes(`Music: [listen](//${NAME}/albums)\n`)
+    passes(`<a href="//${NAME}/">music</a> and <a href="//cdn.example.com/x">cdn</a>\n`)
+  })
+
   it('lets an address on the site, an italic name and site: through, and still refuses handles', () => {
     const mail = { allow: `${allow}email ${NAME}\n` } // the address itself is the email rule's, not the name's
     passes(`Bookings: booking@${NAME}\n`, mail)

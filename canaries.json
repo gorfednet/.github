@@ -1120,6 +1120,14 @@
       "file": "scripts/privacy-guard.mjs",
       "find": "const italic = /(?:^|[\\s(\\[])_$/.test(before) && /^_(?![A-Za-z0-9_])/.test(text.slice(index + value.length))",
       "replace": "const italic = false"
+    },
+    {
+      "id": "privacy-guard-cuts-only-real-urls",
+      "guards": "Only a scheme URL, or a bare //host after an opening mark, is cut from a site line before the word test. Without it a no-space comment (//private-repo) beside the site is cut and the line reads clean.",
+      "command": "node --test --test-name-pattern='cuts only real URLs' test/privacyGuard.test.mjs",
+      "file": "scripts/privacy-guard.mjs",
+      "find": "const URL_TOKEN = /\\bhttps?:\\/\\/[^\\s)\\]>\"'`<]+|(?<=^|[(\"'=\\[<`])\\/\\/[^\\s)\\]>\"'`<]+/gi",
+      "replace": "const URL_TOKEN = /(?:https?:)?\\/\\/[^\\s)\\]>\"'`<]+/gi"
     }
   ]
 }
