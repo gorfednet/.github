@@ -399,7 +399,9 @@ export function isPublicSite(text, index, value, allow) {
   const line = text.slice(from, to === -1 ? text.length : to)
   // The guard reads one added line at a time, so a heading on the line above can't be seen: a
   // bare list item under "Private repositories:" passes. A residual, said in the PR.
-  return !(SAYS_PRIVATE.test(line) || REPO_WORDS.test(line) || SITE_LINE_WORDS.test(line))
+  // An underscore is a word character: REPO_NAME= and GH_REPO= still carry the word.
+  const words = line.replace(/_/g, ' ')
+  return !(SAYS_PRIVATE.test(words) || REPO_WORDS.test(words) || SITE_LINE_WORDS.test(words))
 }
 // Words that make a bare domain a repository or a project, not a link, and the org name itself.
 const SITE_LINE_WORDS = /\b(?:gorfednet|cd|clone|checkout|pr|prs|ci|gate|pnpm|npm|git|gh|confidential|secret)\b|#\d/i

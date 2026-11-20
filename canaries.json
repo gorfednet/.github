@@ -750,7 +750,7 @@
       "guards": "A bare name is watched only while the merge base has never said it. Always watched, nearly every mention of a site name is red, with no way out but a rewrite.",
       "command": "node --test --test-name-pattern='stops watching a name' test/privacyGuard.test.mjs",
       "file": "scripts/privacy-guard.mjs",
-      "find": "const unsaid = open.filter((n) => !namedAtBase(dir, mergeBase, n))",
+      "find": "const unsaid = open.filter((n) => allow.sites.includes(n.toLowerCase()) || !namedAtBase(dir, mergeBase, n))",
       "replace": "const unsaid = open"
     },
     {
@@ -822,7 +822,7 @@
       "guards": "A repo line in the allowlist names a name that is public already. For a name the repository never said it would disclose it with a green check.",
       "command": "node --test --test-name-pattern='allowlist add a' test/privacyGuard.test.mjs",
       "file": "scripts/privacy-guard.mjs",
-      "find": "const unsaid = open.filter((n) => !namedAtBase(dir, mergeBase, n))",
+      "find": "const unsaid = open.filter((n) => allow.sites.includes(n.toLowerCase()) || !namedAtBase(dir, mergeBase, n))",
       "replace": "const unsaid = []"
     },
     {

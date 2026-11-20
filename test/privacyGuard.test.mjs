@@ -1703,6 +1703,9 @@ describe('privacy guard: a `site` line stays narrow once the site is on the base
       `gh pr list -R ${NAME}`,
       `gorfednet / ${NAME}`,
       `${NAME} is confidential`,
+      `REPO_NAME=${NAME}`,
+      `GH_REPO=${NAME}`,
+      `GITHUB_REPOSITORY=${NAME}`,
     ]) fails(`${body}\n`)
     assert.equal(run(`- ${NAME}\n`, { before: {} }).status, 0, 'a bare list item with nothing private around passes')
     fails('x\n', { path: `${NAME}/index.md` })
