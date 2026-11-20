@@ -169,6 +169,41 @@ export const alertsPhrase = (s) => {
   return `${s.alertsOverdue} Dependabot alerts past target`
 }
 
+/** A release this old with commits after it is a gap (first-release rule, plan row 1.66; the 14-day rule in shipping.md). */
+export const RELEASE_LAG_DAYS = 14
+
+/**
+ * Public repositories' faces: what is missing, and how many were read. A row with no `face` (private, archived,
+ * unreadable, or a snapshot from before this field) is not read, and says so rather than counting as complete.
+ */
+export function faceGaps(status) {
+  const rows = status.repos.filter((r) => !r.unavailable && !r.redacted)
+  const read = rows.filter((r) => r.face)
+  const gaps = []
+  for (const r of read) {
+    const f = r.face
+    const missing = []
+    if (!f.description) missing.push('description')
+    if (!f.homepage) missing.push('homepage')
+    if (f.topics === 0) missing.push('topics')
+    if (!f.unread && f.release === null) missing.push('release')
+    else if (!f.unread && Number.isInteger(f.unreleasedDays) && f.unreleasedDays > RELEASE_LAG_DAYS) missing.push(`main ahead of ${f.release} by ${f.unreleasedDays} days`)
+    if (missing.length > 0) gaps.push({ slug: r.slug, missing })
+  }
+  return { rowsSeen: rows.length, read: read.length, unread: read.filter((r) => r.face.unread).map((r) => r.slug), notRead: rows.length - read.length, gaps }
+}
+
+export function renderFace(status) {
+  const g = faceGaps(status)
+  const out = ['## Repository faces', '']
+  if (g.read === 0) return [...out, 'Not measured: no public repository row carries a face read.', ''].join('\n')
+  out.push(`Read ${g.read} of ${g.rowsSeen} public repositories (a description, homepage, topics and a release each, and main no more than ${RELEASE_LAG_DAYS} days ahead of the latest release).${g.notRead > 0 ? ` ${g.notRead} not read.` : ''}`, '')
+  if (g.unread.length > 0) out.push(`Release not read, so no release gap claimed: ${g.unread.join(', ')}.`, '')
+  if (g.gaps.length === 0) out.push('No gaps.', '')
+  else out.push(...g.gaps.map((x) => `- [${x.slug}](https://github.com/${x.slug}): missing ${x.missing.join(', ')}`), '')
+  return out.join('\n')
+}
+
 export function summaryLine(status) {
   const s = summarize(status)
   const oldest = s.oldest ? `oldest ${s.oldest.ageDays} days (${short(s.oldest.slug)} #${s.oldest.number})` : 'none open'
@@ -237,6 +272,7 @@ export function render(status) {
       out.push(`${name}: ${r.count === null ? 'not measured' : `${r.count}${r.measuredAt ? ` (measured ${etStamp(r.measuredAt)})` : ''}`}`, '')
     }
   }
+  out.push(renderFace(status))
   if (status.prCost !== undefined) out.push(...renderPrCost(status.prCost, status.prCostUnread))
   if (status.inventory) out.push(renderInventory(inventoryWithCounts(status), etStamp))
   if (status.dotgithub) out.push(renderDotgithub(status.dotgithub, etStamp))

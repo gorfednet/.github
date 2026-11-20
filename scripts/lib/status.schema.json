@@ -57,6 +57,7 @@
           "alertsUnread": { "enum": ["rate-limited", "alerts-off", "archived", "no-token-access", "read-error"], "$comment": "Why alertsOverdue is null. Public repositories' rows only." },
           "alertsOverdue": { "type": ["integer", "null"], "$comment": "Open Dependabot alerts past target (critical or high over 72 hours, the rest over 7 days). null means UNKNOWN: the alerts could not be read. A count only, in a private repository's row too." },
           "incidents7d": { "type": "integer" },
+          "face": { "type": "object", "$comment": "First-release rule (plan row 1.66). Public, unarchived rows only. description and homepage are whether the field is set; topics a count; release the latest release tag or null; unreleasedDays the age of the oldest commit on the default branch after that release (0 when none, null when there is no release). unread: the release read failed, so no release gap is claimed.", "required": ["description", "homepage", "topics", "release", "unreleasedDays"], "additionalProperties": false, "properties": { "description": { "type": "boolean" }, "homepage": { "type": "boolean" }, "topics": { "type": "integer" }, "release": { "type": ["string", "null"] }, "unreleasedDays": { "type": ["integer", "null"] }, "unread": { "type": "boolean" } } },
           "lastDeploy": {
             "type": ["object", "null"],
             "required": ["name", "at", "url"],

@@ -10,9 +10,9 @@ import { join } from 'node:path'
 import { describe, it } from 'node:test'
 
 import { behindClones, collectLocal, dirtyClones, duplicatePrs, idlePrs, idleSessions, oldWorktrees } from '../scripts/lib/hygiene.mjs'
-import { aheadCounts, alertsOverdue, carryMap, ciState, collectRepo, mapLimit, dependabotRed, overdueAlerts, alertsUnreadReason, readAlerts, isPrivateRepo, latestDeploy, nextItem, PLAN_SOURCE, readPlanOfRecord, recentLines, redactRepo, repoList, dormantRepos } from '../scripts/fleet-status.mjs'
+import { aheadCounts, alertsOverdue, carryMap, ciState, collectRepo, mapLimit, dependabotRed, overdueAlerts, alertsUnreadReason, readAlerts, isPrivateRepo, latestDeploy, nextItem, PLAN_SOURCE, readPlanOfRecord, readFace, recentLines, redactRepo, repoList, dormantRepos } from '../scripts/fleet-status.mjs'
 import { workflowTriggers } from '../scripts/lib/workflowTriggers.mjs'
-import { digest, etStamp, hygiene, lowerMeridiem, render, summaryLine } from '../scripts/write-status-md.mjs'
+import { digest, etStamp, faceGaps, hygiene, lowerMeridiem, render, renderFace, summaryLine } from '../scripts/write-status-md.mjs'
 
 const fixture = JSON.parse(readFileSync(new URL('./fixtures/status.fixture.json', import.meta.url), 'utf8'))
 const schema = JSON.parse(readFileSync(new URL('../scripts/lib/status.schema.json', import.meta.url), 'utf8'))
@@ -695,5 +695,63 @@ describe('the plan of record comes from gorfednet/ops (plan row 1.30)', () => {
     const r = readPlanOfRecord(reader({ [url('desk-log')]: new Error('gh: Bad credentials (HTTP 401)'), [url('main')]: 'main copy' }), (l) => logs.push(l))
     assert.equal(r.ref, 'main')
     assert.match(logs[0], /::warning::inventory: plan of record unreadable at gorfednet\/ops@desk-log: gh: Bad credentials/)
+  })
+})
+
+describe('repository faces (first-release rule, plan row 1.66)', () => {
+  const now = new Date('2026-11-20T12:00:00Z')
+  const repo = { default_branch: 'main', description: 'A tool', homepage: 'https://example.org', topics: ['a'] }
+  const notFound = () => Object.assign(new Error('gh: Not Found (HTTP 404)'), { stderr: 'gh: Not Found (HTTP 404)' })
+  const answer = (release, cmp) => (args) => {
+    const path = args[args.length - 1]
+    if (path.endsWith('/releases/latest')) return release === null ? (() => { throw notFound() })() : release
+    if (path.includes('/compare/')) return cmp
+    throw new Error(`unexpected call ${args.join(' ')}`)
+  }
+  it('reads the fields as set or not, topics as a count, and a release with no later commits as 0 days', () => {
+    const face = readFace('o/p', repo, now, answer({ tag_name: 'v1.0.0' }, { ahead_by: 0, commits: [] }))
+    assert.deepEqual(face, { description: true, homepage: true, topics: 1, release: 'v1.0.0', unreleasedDays: 0 })
+    assert.deepEqual(readFace('o/p', { default_branch: 'main', description: '  ', homepage: '', topics: [] }, now, answer(null)), { description: false, homepage: false, topics: 0, release: null, unreleasedDays: null })
+  })
+  it('ages the oldest commit after the release', () => {
+    const cmp = { ahead_by: 3, commits: [{ commit: { committer: { date: '2026-11-01T12:00:00Z' } } }] }
+    assert.equal(readFace('o/p', repo, now, answer({ tag_name: 'v1.0.0' }, cmp)).unreleasedDays, 19)
+  })
+  it('marks a failed release read unread, and still throws on a rate limit', () => {
+    const broken = () => { throw new Error('HTTP 500: boom') }
+    assert.equal(readFace('o/p', repo, now, broken).unread, true)
+    const limited = () => { throw new Error('gh: API rate limit exceeded (HTTP 403)') }
+    assert.throws(() => readFace('o/p', repo, now, limited), /rate limit/)
+  })
+  const row = (slug, face) => ({ slug, ...(face ? { face } : {}), mainRed: false, openPrs: [], branchesAhead: [], lapsedBacklog: [], dependabotRed: 0 })
+  const ok = { description: true, homepage: true, topics: 2, release: 'v1.0.0', unreleasedDays: 3 }
+  it('lists each gap, and the near misses are not gaps', () => {
+    const status = { repos: [
+      row('o/whole', ok),
+      row('o/bare', { description: true, homepage: false, topics: 0, release: null, unreleasedDays: null }),
+      row('o/stale', { ...ok, unreleasedDays: 15 }),
+      row('o/edge', { ...ok, unreleasedDays: 14 }),
+      row('o/unread', { ...ok, release: null, unreleasedDays: null, unread: true }),
+      row('o/nopf'),
+      { slug: 'o/private', redacted: true },
+      { slug: 'o/gone', unavailable: 'x' },
+    ] }
+    const g = faceGaps(status)
+    assert.deepEqual(g.gaps, [
+      { slug: 'o/bare', missing: ['homepage', 'topics', 'release'] },
+      { slug: 'o/stale', missing: ['main ahead of v1.0.0 by 15 days'] },
+    ])
+    assert.deepEqual({ rowsSeen: g.rowsSeen, read: g.read, notRead: g.notRead, unread: g.unread }, { rowsSeen: 6, read: 5, notRead: 1, unread: ['o/unread'] })
+    const md = renderFace(status)
+    assert.match(md, /Read 5 of 6 public repositories/)
+    assert.match(md, /o\/bare\]\(https:\/\/github.com\/o\/bare\): missing homepage, topics, release/)
+    assert.ok(!md.includes('o/private'))
+  })
+  it('says not measured, never "No gaps", when no row carries a face', () => {
+    assert.match(renderFace({ repos: [row('o/a')] }), /Not measured/)
+  })
+  it('accepts a face in the schema and refuses an unknown field', () => {
+    assert.deepEqual(validate({ generatedAt: 'x', renderedAt: 'x', repos: [row('o/a', ok)].map((r) => ({ slug: r.slug, face: r.face })) }, schema), [])
+    assert.equal(validate({ generatedAt: 'x', renderedAt: 'x', repos: [{ slug: 'o/a', face: { ...ok, surprise: 1 } }] }, schema).length, 1)
   })
 })
