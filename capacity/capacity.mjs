@@ -204,7 +204,7 @@ export async function run(deps) {
     if (key !== lastKey) {
       const line = poolMessage(p, lastKey)
       if (!line) lastKey = key // ok with nothing to retract
-      else if (p.state === 'queued' && !queuePushAllowed(queueAt, now)) lastKey = key // one `pool queue` line an hour: a change inside it is recorded, not sent
+      else if (p.state === 'queued' && !queuePushAllowed(queueAt, now)) { /* one `pool queue` line an hour: a change inside it waits, unrecorded, so it goes out once the hour is up */ }
       else if ((await push(line)) !== false) { lastKey = key; if (p.state === 'queued') queueAt = now }
     }
     out.pool = { ...p, lastPushedKey: lastKey, lastQueuePushAt: queueAt }
