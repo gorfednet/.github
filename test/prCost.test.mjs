@@ -375,6 +375,15 @@ describe('sweep: merged PRs from the merger log', () => {
     assert.equal(j.merged, 1)
     assert.equal(j.recorded, 0)
   })
+  it('a log with no merge line is an error, never a quiet week', () => {
+    const { dir, out } = setup()
+    const log = join(dir, 'format-changed.log')
+    writeFileSync(log, [`${T(5)} info  o/.github#9 (abc1236): not merging: review has findings`, `${T(6)} info  o/.github#8 (abc1235, draft): draft left alone`].join('\n'))
+    const r = run('sweep', '--ship-log', log, '--since', T(0), '--projects', dir, '--out', out)
+    assert.equal(r.status, 2)
+    assert.match(r.stderr, /holds no merge line/)
+    assert.equal(existsSync(out), false)
+  })
   it('a missing log is an error, never an empty sweep', () => {
     const { dir, out } = setup()
     const r = run('sweep', '--ship-log', join(dir, 'gone.log'), '--projects', dir, '--out', out)
