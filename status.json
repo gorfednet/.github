@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-11-20T00:44:22.897Z",
-  "renderedAt": "2026-11-20T00:44:22.897Z",
+  "generatedAt": "2026-11-20T02:32:04.472Z",
+  "renderedAt": "2026-11-20T02:32:04.472Z",
   "repos": [
     {
       "slug": "gorfednet/bindercurve.com",
@@ -9,7 +9,7 @@
       "openPrCount": 13,
       "lapsedBacklogCount": 16,
       "noPrCount": 80,
-      "idlePrCount": 5,
+      "idlePrCount": 6,
       "duplicatePrCount": 0,
       "dependabotRedCount": 3,
       "kitVersion": "0.61.0",
@@ -808,8 +808,8 @@
     "gorfednet/TowIt",
     "gorfednet/wychwood"
   ],
-  "branchesReadAt": "2026-11-19T02:32:35.914Z",
-  "carried": true,
+  "branchesReadAt": "2026-11-20T02:32:04.472Z",
+  "carried": false,
   "localCounts": {
     "rows": {
       "dirtyClones": {
@@ -857,7 +857,7 @@
     }
   },
   "inventory": {
-    "measuredAt": "2026-11-20T00:44:22.897Z",
+    "measuredAt": "2026-11-20T02:32:04.472Z",
     "counts": {
       "pr": {
         "total": 125,
@@ -926,7 +926,7 @@
     "planRead": true
   },
   "dotgithub": {
-    "measuredAt": "2026-11-20T00:45:05.373Z",
+    "measuredAt": "2026-11-20T02:33:25.727Z",
     "branches": 41,
     "merged": 3,
     "exposedFiles": 61,
