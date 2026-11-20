@@ -552,8 +552,12 @@ anyway, and its `reason` is the pass's own log lines for that pull request.
   `controlPlane`, `state`, `since` and `reason`.
 - **Null means not read.** The bot ignores most pull requests from the list
   alone, so their `checks`, `review`, `mergeable` and `controlPlane` are null.
-- **`state`:** `merged`, `ready`, `waiting`, `held`, `not-reached` or
-  `needs-decision`.
+- **`state`:** `merged`, `ready`, `waiting`, `held`, `not-reached`,
+  `in-progress` or `needs-decision`.
+- **`in-progress`** is a working draft: no `hold`, and its first unchecked
+  `## Next` line is a session's own step. A draft that says merge, hands a
+  decision to a person or has no unchecked line is not one. `--board` gives
+  these one count line, not rows.
 - **`since`:** for a head the bot gated, when it first saw that head or
   GitHub's `updated_at`, whichever is older. For any other pull request,
   `updated_at`. An observing pass keeps no memory, so it has only `updated_at`.

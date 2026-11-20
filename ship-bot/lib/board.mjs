@@ -16,7 +16,7 @@
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { HOLD_LABEL } from './config.mjs'
-import { controlPlaneFiles, firstNextItem } from './drafts.mjs'
+import { controlPlaneFiles, draftClaim, firstNextItem } from './drafts.mjs'
 
 export const BOARD_FILE = 'board.json'
 export const BOARD_VERSION = 1
@@ -37,6 +37,12 @@ const quiet = (fn) => (...args) => {
  * "now", so the bot's own first sight only counts when it is older than GitHub's last update.
  */
 const earlier = (a, b) => [a, b].filter((t) => t && Number.isFinite(new Date(t).getTime())).sort((x, y) => new Date(x) - new Date(y))[0] ?? null
+/** Is the first unchecked `## Next` line a session's own step: there is one, it is no merge instruction, and no line hands the decision to a person? */
+const ownStep = (pr) => {
+  const { claim, refused } = draftClaim(pr)
+  // "Merge once the review is clean" is no instruction to the bot (drafts.mjs), but it still says merge: it stays a row.
+  return Boolean(firstNextItem(pr.body)) && !claim && !refused && !/^\W*merge\b/i.test(firstNextItem(pr.body))
+}
 const labelsOf = (pr) => (pr.labels ?? []).map((l) => l.name)
 
 export class Board {
@@ -72,7 +78,7 @@ export class Board {
     if (call === 'listOpenPulls') {
       this.listed.add(slug)
       for (const p of out) {
-        this.rows.set(`${slug}#${p.number}`, { repository: slug, number: p.number, title: p.title ?? '', head: p.head?.sha ?? null, headNow: p.head?.sha ?? null, draft: Boolean(p.draft), labels: labelsOf(p), checks: null, review: null, mergeable: null, next: firstNextItem(p.body) ?? '', controlPlane: null, since: p.updated_at ?? null, reasons: [] })
+        this.rows.set(`${slug}#${p.number}`, { repository: slug, number: p.number, title: p.title ?? '', head: p.head?.sha ?? null, headNow: p.head?.sha ?? null, draft: Boolean(p.draft), labels: labelsOf(p), checks: null, review: null, mergeable: null, next: firstNextItem(p.body) ?? '', ownStep: ownStep(p), controlPlane: null, since: p.updated_at ?? null, reasons: [] })
       }
       return
     }
@@ -84,7 +90,7 @@ export class Board {
     // Every later read says where the head is now. Once the gates ran, `head` stays the commit they ran on.
     row.headNow = out.head?.sha ?? null
     if (row.gates) return
-    Object.assign(row, { head: row.headNow, title: out.title ?? row.title, draft: Boolean(out.draft), labels: labelsOf(out), next: firstNextItem(out.body) ?? '', mergeable: out.mergeable ?? null })
+    Object.assign(row, { head: row.headNow, title: out.title ?? row.title, draft: Boolean(out.draft), labels: labelsOf(out), next: firstNextItem(out.body) ?? '', ownStep: ownStep(out), mergeable: out.mergeable ?? null })
   }
 
   #gated(slug, pr, result, headState) {
@@ -107,7 +113,9 @@ export class Board {
   /**
    * `state`: merged (this pass), held (the hold label), ready (every gate
    * passed; the reason says what it is waiting on, if anything), waiting (on
-   * CI, the reviewer or GitHub), not-reached (the pass ended before it), and
+   * CI, the reviewer or GitHub), not-reached (the pass ended before it),
+   * in-progress (a draft whose first unchecked `## Next` line is a session's
+   * own step: no merge line, nothing handed to a person, no hold), and
    * needs-decision for everything else the bot is not going to move by itself.
    */
   #state(row) {
@@ -116,17 +124,18 @@ export class Board {
     if (row.labels.includes(HOLD_LABEL)) return 'held'
     if (row.loud) return 'needs-decision'
     if (row.gates) return row.gates
+    if (row.draft && row.ownStep) return 'in-progress'
     return row.reasons.some((r) => /not computed yet/.test(r)) ? 'waiting' : 'needs-decision'
   }
 
   /** What the pass saw. `repos` are the slugs it was meant to cover: one never listed is skipped, with its last log line as why. */
   snapshot(repos, redact = (s) => s) {
-    const rows = [...this.rows.values()].map(({ reasons, gates, loud, merged, headNow, ...row }) => ({
+    const rows = [...this.rows.values()].map(({ reasons, gates, loud, merged, headNow, ownStep: own, ...row }) => ({
       ...row,
       title: redact(row.title),
       next: redact(row.next),
       ...(headNow !== row.head ? { headMovedTo: headNow } : {}),
-      state: this.#state({ ...row, reasons, gates, loud, merged }),
+      state: this.#state({ ...row, reasons, gates, loud, merged, ownStep: own }),
       reason: reasons.join('\n') || 'not looked at this pass',
     }))
     const skipped = repos.filter((slug) => !this.listed.has(slug)).map((slug) => ({ repository: slug, why: this.repoLines.get(slug) ?? 'not reached this pass' }))
@@ -162,6 +171,7 @@ export function formatBoard(board, now = new Date(), max = BOARD_MAX_LINES) {
   const lines = [`board ${board.at} (${age(board.at, now)} old), ship-bot ${board.installedSha ? String(board.installedSha).slice(0, 7) : 'from a checkout'}, ${board.mode}: ${rows.length} open, ${count('needs-decision')} need a decision, ${count('waiting')} waiting, ${count('ready')} ready, ${count('held')} held, ${count('not-reached')} not reached`]
   const skipped = (board.skipped ?? []).map((s) => `skipped ${s.repository}: ${s.why}`.slice(0, 200))
   const decide = rows.filter((r) => r.state === 'needs-decision').sort((a, b) => String(a.since ?? '').localeCompare(String(b.since ?? '')))
+  if (count('in-progress') > 0) lines.push(`${count('in-progress')} drafts in progress (a session's own next step; not listed)`)
   const skipLines = skipped.slice(0, 5)
   if (skipped.length > 5) skipLines[4] = `skipped ${skipped.length - 4} more repositories`
   const room = max - lines.length - skipLines.length

@@ -35,7 +35,7 @@ describe('the board a pass builds', () => {
     const board = await boardOf(s)
 
     assert.deepEqual(board.rows.map((r) => `${r.repository}#${r.number}`), [1, 2, 3, 4].map((n) => `${SLUG}#${n}`))
-    assert.deepEqual(row(board, 1), { repository: SLUG, number: 1, title: 'A working draft', head: HEAD, draft: true, labels: [], checks: null, review: null, mergeable: true, next: 'finish the tests', controlPlane: null, since: null, state: 'needs-decision', reason: 'draft left alone (no merge line under ## Next)' })
+    assert.deepEqual(row(board, 1), { repository: SLUG, number: 1, title: 'A working draft', head: HEAD, draft: true, labels: [], checks: null, review: null, mergeable: true, next: 'finish the tests', controlPlane: null, since: null, state: 'in-progress', reason: 'draft left alone (no merge line under ## Next)' })
     assert.equal(row(board, 2).reason, 'ignored (no ready-to-merge label)')
     assert.equal(row(board, 2).state, 'needs-decision')
     assert.equal(row(board, 2).since, '2026-10-01T09:00:00Z')
@@ -113,6 +113,26 @@ describe('the board a pass builds', () => {
     await boardOf(live)
     live.clock.advance(60 * 24 * 5)
     assert.equal(row(await boardOf(live), 7).since, '2026-10-01T00:00:00.000Z')
+  })
+
+  it('calls a draft in progress only when its first unchecked ## Next line is a session\'s own step and nothing holds it', async () => {
+    const draft = (number, body, labels = []) => makePr({ number, draft: true, labels: labels.map((name) => ({ name })), body })
+    const pulls = [
+      draft(1, '## Next\n- [x] done\n- [ ] finish the tests\n- [ ] merge'),
+      draft(2, '## Next\n- [ ] merge once review reads clean'),
+      draft(3, '## Next\n- [ ] finish the tests\n- [ ] Owner approves the line'),
+      draft(4, '## Next\n- [ ] finish the tests', ['hold']),
+      draft(5, '## Summary\n- [ ] finish the tests'),
+      draft(6, '## Next\n- [x] everything is done'),
+      makePr({ number: 7, labels: [], body: '## Next\n- [ ] finish the tests' }),
+      draft(8, '## Next\n- [ ] merge'),
+    ]
+    const board = await boardOf(scenario({ github: new FakeGitHub({ pulls, files: ['README.md'], runs: failed }) }))
+    assert.deepEqual(board.rows.map((r) => [r.number, r.state]), [[1, 'in-progress'], [2, 'needs-decision'], [3, 'needs-decision'], [4, 'held'], [5, 'needs-decision'], [6, 'needs-decision'], [7, 'needs-decision'], [8, 'needs-decision']])
+    assert.equal('ownStep' in row(board, 1), false)
+    const lines = formatBoard({ at: '2026-10-09T12:00:00.000Z', mode: 'live', ...board }, new Date('2026-10-09T12:00:00Z'))
+    assert.deepEqual(lines.map((l) => /#(\d+) /.exec(l)?.[1]).filter(Boolean), ['2', '3', '5', '6', '7', '8'])
+    assert.equal(lines[1], "1 drafts in progress (a session's own next step; not listed)")
   })
 
   it('names a blocked repository as skipped, and a dry run builds the same rows without writing', async () => {
