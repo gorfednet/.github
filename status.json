@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-11-20T14:31:54.946Z",
-  "renderedAt": "2026-11-20T14:31:54.946Z",
+  "generatedAt": "2026-11-20T16:32:32.148Z",
+  "renderedAt": "2026-11-20T16:32:32.148Z",
   "repos": [
     {
       "slug": "gorfednet/bindercurve.com",
@@ -9,7 +9,7 @@
       "openPrCount": 14,
       "lapsedBacklogCount": 16,
       "noPrCount": 80,
-      "idlePrCount": 8,
+      "idlePrCount": 9,
       "duplicatePrCount": 0,
       "dependabotRedCount": 3,
       "kitVersion": "0.61.0",
@@ -38,13 +38,13 @@
     {
       "slug": "gorfednet/gorfed.net",
       "redacted": true,
-      "mainRed": false,
-      "openPrCount": 7,
+      "mainRed": true,
+      "openPrCount": 1,
       "lapsedBacklogCount": 3,
       "noPrCount": 6,
       "idlePrCount": 0,
       "duplicatePrCount": 0,
-      "dependabotRedCount": 4,
+      "dependabotRedCount": 0,
       "kitVersion": "0.65.0",
       "kitPin": {
         "ref": "main"
@@ -87,7 +87,7 @@
       "slug": "gorfednet/blackpixelrecords.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 3,
+      "openPrCount": 1,
       "lapsedBacklogCount": 0,
       "noPrCount": 4,
       "idlePrCount": 0,
@@ -119,7 +119,7 @@
       "slug": "gorfednet/gorfmusic.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 7,
+      "openPrCount": 5,
       "lapsedBacklogCount": 2,
       "noPrCount": 3,
       "idlePrCount": 2,
@@ -166,8 +166,8 @@
     {
       "slug": "gorfednet/ssatcy.com",
       "redacted": true,
-      "mainRed": false,
-      "openPrCount": 8,
+      "mainRed": true,
+      "openPrCount": 6,
       "lapsedBacklogCount": 1,
       "noPrCount": 1,
       "idlePrCount": 5,
@@ -185,17 +185,39 @@
       "mainRed": false,
       "openPrs": [
         {
-          "number": 271,
-          "title": "Privacy guard: allow-list for public product names",
+          "number": 274,
+          "title": "Reusable reviewer and pr-checks run on the caller's pool, with no hosted fallback",
           "ageDays": 0,
-          "labels": [
-            "ready-to-merge"
-          ],
-          "draft": false,
-          "review": "clean",
-          "headSha": "0882bd62949ea4098ee941cf7a03db3c0be8aecc",
-          "ci": "pending",
-          "next": "merge once `claude review` is clean on head 0882bd6 (round 5 Low fixed, review requested)",
+          "labels": [],
+          "draft": true,
+          "review": "not-run",
+          "headSha": "efab9617bcb786729564c0fe33034b62800fb2f7",
+          "ci": "green",
+          "next": "Fable read (running), then leave draft, which starts the Claude reviewer.",
+          "author": "gorfednet"
+        },
+        {
+          "number": 273,
+          "title": "Capacity check: pool liveness from heartbeats and queued runs",
+          "ageDays": 0,
+          "labels": [],
+          "draft": true,
+          "review": "not-run",
+          "headSha": "0a5a290b58139ae0ef654b1e86176ebd5c17d619",
+          "ci": "green",
+          "next": "Fable read (running), then leave draft, which starts the Claude reviewer.",
+          "author": "gorfednet"
+        },
+        {
+          "number": 272,
+          "title": "Privacy guard: site allowlist line for public sites named like a private repository",
+          "ageDays": 0,
+          "labels": [],
+          "draft": true,
+          "review": "findings",
+          "headSha": "b4ecf4e6474b4acd940b3499168e8f3eb43d001e",
+          "ci": "green",
+          "next": "Desk: label `ready-to-merge` once `claude review` is clean (control-plane path).",
           "author": "gorfednet"
         },
         {
@@ -611,7 +633,7 @@
       "slug": "gorfednet/MoonMan",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 11,
+      "openPrCount": 10,
       "lapsedBacklogCount": 3,
       "noPrCount": 47,
       "idlePrCount": 2,
@@ -631,7 +653,7 @@
         {
           "number": 8,
           "title": "Drain: Acid3 sample fixtures",
-          "ageDays": 6,
+          "ageDays": 7,
           "labels": [],
           "draft": true,
           "review": "not-run",
@@ -647,7 +669,7 @@
       "idlePrs": [
         {
           "number": 8,
-          "idleDays": 6
+          "idleDays": 7
         }
       ],
       "duplicatePrs": [],
@@ -680,11 +702,11 @@
       "slug": "gorfednet/heuristics.4thcltr.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 10,
+      "openPrCount": 11,
       "lapsedBacklogCount": 5,
       "noPrCount": 7,
       "idlePrCount": 4,
-      "duplicatePrCount": 1,
+      "duplicatePrCount": 2,
       "dependabotRedCount": 2,
       "kitVersion": "0.65.0",
       "kitPin": {
@@ -696,7 +718,7 @@
       "slug": "gorfednet/papers.4thcltr.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 2,
+      "openPrCount": 3,
       "lapsedBacklogCount": 0,
       "noPrCount": 5,
       "idlePrCount": 0,
@@ -800,7 +822,7 @@
       "slug": "gorfednet/assess",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 7,
+      "openPrCount": 8,
       "lapsedBacklogCount": 6,
       "noPrCount": 3,
       "idlePrCount": 3,
@@ -815,8 +837,8 @@
     {
       "slug": "gorfednet/ops",
       "redacted": true,
-      "mainRed": false,
-      "openPrCount": 13,
+      "mainRed": true,
+      "openPrCount": 15,
       "lapsedBacklogCount": 0,
       "noPrCount": 6,
       "idlePrCount": 6,
@@ -883,11 +905,11 @@
     }
   },
   "inventory": {
-    "measuredAt": "2026-11-20T14:31:54.946Z",
+    "measuredAt": "2026-11-20T16:32:32.148Z",
     "counts": {
       "pr": {
-        "total": 138,
-        "orphans": 67
+        "total": 136,
+        "orphans": 64
       },
       "session": null,
       "worktree": null,
@@ -900,17 +922,25 @@
     "orphans": [
       {
         "kind": "pr",
-        "repo": "gorfednet/gorfednet",
-        "ref": "#1",
-        "label": "Profile: short dev and infrastructure README, add RESUME.md",
+        "repo": "gorfednet/.github",
+        "ref": "#274",
+        "label": "Reusable reviewer and pr-checks run on the caller's pool, with no hosted fallback",
         "private": false,
         "lapsed": false
       },
       {
         "kind": "pr",
         "repo": "gorfednet/.github",
-        "ref": "#271",
-        "label": "Privacy guard: allow-list for public product names",
+        "ref": "#273",
+        "label": "Capacity check: pool liveness from heartbeats and queued runs",
+        "private": false,
+        "lapsed": false
+      },
+      {
+        "kind": "pr",
+        "repo": "gorfednet/.github",
+        "ref": "#272",
+        "label": "Privacy guard: site allowlist line for public sites named like a private repository",
         "private": false,
         "lapsed": false
       },
@@ -963,13 +993,13 @@
         "lapsed": true
       }
     ],
-    "hiddenPrivate": 61,
+    "hiddenPrivate": 57,
     "privateReposNotItemised": 18,
     "planRead": true
   },
   "dotgithub": {
-    "measuredAt": "2026-11-20T14:32:38.758Z",
-    "branches": 43,
+    "measuredAt": "2026-11-20T16:33:16.658Z",
+    "branches": 46,
     "merged": 3,
     "exposedFiles": 61,
     "rulesNotChecked": [],
