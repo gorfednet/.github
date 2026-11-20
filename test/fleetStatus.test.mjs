@@ -741,9 +741,9 @@ describe('repository faces (first-release rule, plan row 1.66)', () => {
       { slug: 'o/bare', missing: ['homepage', 'topics', 'release'] },
       { slug: 'o/stale', missing: ['main ahead of v1.0.0 by 15 days'] },
     ])
-    assert.deepEqual({ rowsSeen: g.rowsSeen, read: g.read, notRead: g.notRead, unread: g.unread }, { rowsSeen: 6, read: 5, notRead: 1, unread: ['o/unread'] })
+    assert.deepEqual({ read: g.read, noFace: g.noFace, unread: g.unread }, { read: 5, noFace: 1, unread: ['o/unread'] })
     const md = renderFace(status)
-    assert.match(md, /Read 5 of 6 public repositories/)
+    assert.match(md, /Read 5 public repositories.*1 other rows carry no face read/)
     assert.match(md, /o\/bare\]\(https:\/\/github.com\/o\/bare\): missing homepage, topics, release/)
     assert.ok(!md.includes('o/private'))
   })

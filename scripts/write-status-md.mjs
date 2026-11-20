@@ -190,14 +190,14 @@ export function faceGaps(status) {
     else if (!f.unread && Number.isInteger(f.unreleasedDays) && f.unreleasedDays > RELEASE_LAG_DAYS) missing.push(`main ahead of ${f.release} by ${f.unreleasedDays} days`)
     if (missing.length > 0) gaps.push({ slug: r.slug, missing })
   }
-  return { rowsSeen: rows.length, read: read.length, unread: read.filter((r) => r.face.unread).map((r) => r.slug), notRead: rows.length - read.length, gaps }
+  return { read: read.length, unread: read.filter((r) => r.face.unread).map((r) => r.slug), noFace: rows.length - read.length, gaps }
 }
 
 export function renderFace(status) {
   const g = faceGaps(status)
   const out = ['## Repository faces', '']
   if (g.read === 0) return [...out, 'Not measured: no public repository row carries a face read.', ''].join('\n')
-  out.push(`Read ${g.read} of ${g.rowsSeen} public repositories (a description, homepage, topics and a release each, and main no more than ${RELEASE_LAG_DAYS} days ahead of the latest release).${g.notRead > 0 ? ` ${g.notRead} not read.` : ''}`, '')
+  out.push(`Read ${g.read} public repositories (a description, homepage, topics and a release each, and main no more than ${RELEASE_LAG_DAYS} days ahead of the latest release).${g.noFace > 0 ? ` ${g.noFace} other rows carry no face read (private or archived, or from an older snapshot).` : ''}`, '')
   if (g.unread.length > 0) out.push(`Release not read, so no release gap claimed: ${g.unread.join(', ')}.`, '')
   if (g.gaps.length === 0) out.push('No gaps.', '')
   else out.push(...g.gaps.map((x) => `- [${x.slug}](https://github.com/${x.slug}): missing ${x.missing.join(', ')}`), '')
