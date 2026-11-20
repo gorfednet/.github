@@ -7,7 +7,7 @@ import path from 'node:path'
 import { execFileSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 
-export const THRESHOLDS = { headroomLoadFactor: 0.7, minFreeGb: 4, minIdlePct: 40, maxWorking: 5, maxBuilders: 2, workingWindowMs: 10 * 60 * 1000 }
+export const THRESHOLDS = { headroomLoadFactor: 0.7, minFreeGb: 4, minIdlePct: 40, maxWorking: 5, maxBuilders: 2, workingWindowMs: 10 * 60 * 1000, holdUsagePct: 90 }
 
 /**
  * Pure: inputs in, state out.
@@ -17,7 +17,11 @@ export const THRESHOLDS = { headroomLoadFactor: 0.7, minFreeGb: 4, minIdlePct: 4
  * ops `builder-ok` then applies: hold on CPU idle under 40% or free memory under 4 GB, and ignore load. If the backup or the idle
  * figure could not be read (`backup` falsy, `idlePct` not a finite number), the load rule applies: fail closed.
  */
-export function classify({ load1, cores, freeGb, working, backup = null, idlePct = null }, t = THRESHOLDS) {
+export function classify({ load1, cores, freeGb, working, backup = null, idlePct = null, weeklyUsage = null }, t = THRESHOLDS) {
+  // Weekly usage at the limit stops new starts whatever the machine load. Not a finite number (unknown): today's rules apply.
+  if (typeof weeklyUsage === 'number' && Number.isFinite(weeklyUsage) && weeklyUsage >= t.holdUsagePct) {
+    return { state: 'hold', freeSlots: 0, reason: `weekly usage at ${weeklyUsage}%, at or over ${t.holdUsagePct}%` }
+  }
   const byIdle = Boolean(backup) && typeof idlePct === 'number' && Number.isFinite(idlePct)
   if (freeGb < t.minFreeGb) return { state: 'hold', freeSlots: 0 }
   if (byIdle ? idlePct < t.minIdlePct : load1 > cores) return { state: 'hold', freeSlots: 0 }
@@ -27,6 +31,17 @@ export function classify({ load1, cores, freeGb, working, backup = null, idlePct
     return { state: 'headroom', freeSlots: Math.min(t.maxWorking - working, t.maxBuilders) }
   }
   return { state: 'steady', freeSlots: 0 }
+}
+
+/**
+ * Weekly usage percent from the Herdr state file (`usage.pct`, the source scripts/lib/usageAlert.mjs reads), or null with a reason.
+ * Only a finite number from 0 to 1000 counts; a missing file, bad JSON or any other value is unknown, never a guess.
+ */
+export function readWeeklyUsage(statePath, readFile = (p) => fs.readFileSync(p, 'utf8')) {
+  let pct
+  try { pct = JSON.parse(readFile(statePath))?.usage?.pct } catch { return { pct: null, reason: 'usage source unreadable' } }
+  if (typeof pct !== 'number' || !Number.isFinite(pct) || pct < 0 || pct > 1000) return { pct: null, reason: 'usage.pct missing or not a number' }
+  return { pct, reason: null }
 }
 
 /** True when `tmutil status` output says a Time Machine backup is running (`Running = 1`). */
@@ -98,8 +113,8 @@ export function errorRecord(lastPushedState, err, now) {
   return { state: 'unknown', freeSlots: 0, lastPushedState, error: String(err.message).slice(0, 200), at: new Date(now).toISOString() }
 }
 
-export function message({ state, freeSlots, queued }) {
-  if (state === 'hold') return 'overloaded, hold'
+export function message({ state, freeSlots, queued, reason }) {
+  if (state === 'hold') return reason ? `hold: ${reason}` : 'overloaded, hold'
   if (state === 'headroom') return `headroom for ${freeSlots}, ${queued ?? 'unknown'} queued`
   return null
 }
@@ -112,13 +127,15 @@ export function shouldPush(previousState, state) {
 export async function run(deps) {
   const { read, now, writeJson, readPrevious, push } = deps
   const inputs = { ...read(), working: deps.working() }
-  const { state, freeSlots } = classify(inputs)
+  const usage = deps.usage ? deps.usage() : { pct: null, reason: 'no usage source configured' }
+  const weeklyUsage = usage.pct ?? null
+  const { state, freeSlots, reason } = classify({ ...inputs, weeklyUsage })
   const queued = deps.queue()
-  const out = { state, freeSlots, load1: inputs.load1, cores: inputs.cores, freeGb: Number(inputs.freeGb.toFixed(2)), backup: inputs.backup ?? null, idlePct: inputs.idlePct ?? null, working: inputs.working, sessionsKnown: inputs.working !== null, poolQueue: queued, weeklyUsage: null, at: new Date(now).toISOString() }
+  const out = { state, freeSlots, load1: inputs.load1, cores: inputs.cores, freeGb: Number(inputs.freeGb.toFixed(2)), backup: inputs.backup ?? null, idlePct: inputs.idlePct ?? null, working: inputs.working, sessionsKnown: inputs.working !== null, poolQueue: queued, weeklyUsage, weeklyUsageReason: weeklyUsage === null ? usage.reason ?? 'unknown' : null, ...(reason ? { reason } : {}), at: new Date(now).toISOString() }
   const prev = readPrevious()
   // Compare with the last state a push actually reached, so a failed POST is retried next run.
   let lastPushed = prev && 'lastPushedState' in prev ? prev.lastPushedState : (prev?.state ?? null)
-  const text = message({ state, freeSlots, queued })
+  const text = message({ state, freeSlots, queued, reason })
   if (shouldPush(lastPushed, state)) {
     if (!text) lastPushed = state // steady: nothing to say, but remember it
     else if ((await push(text)) !== false) lastPushed = state
@@ -197,6 +214,7 @@ async function main() {
       freeGb: parseVmStat(execFileSync('vm_stat').toString()),
       ...backupInputs(),
     }),
+    usage: () => readWeeklyUsage(path.join(home, '.herdr-jobs', 'state.json')),
     working: () => (fs.existsSync(sessions) ? countWorking(sessions, Date.now()) : null),
     // One optional command printing a number; null when none is configured (README).
     queue: () => {
