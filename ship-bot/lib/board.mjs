@@ -47,6 +47,10 @@ export class Board {
     this.heard = quiet(this.#heard.bind(this))
     this.gated = quiet(this.#gated.bind(this))
     this.record = quiet(this.#record.bind(this))
+    /** A row the bot will not move by itself, whatever level its log lines had this pass. */
+    this.decide = quiet((slug, number) => {
+      this.rows.get(`${slug}#${number}`).loud = true
+    })
   }
 
   /** The same client, with the three reads the board is built from also recorded. Results pass through untouched. */

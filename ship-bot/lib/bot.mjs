@@ -1367,6 +1367,8 @@ async function holdForStaleInstall(ctx, repo, pr, tag) {
   const mark = own.latest ?? 'unknown'
   const seen = held[key] === mark
   ctx.say(seen ? 'debug' : 'warn', text)
+  // Said as a warning once only, so the board is told outright: this row waits on a reinstall every pass.
+  ctx.board.decide(repo.slug, pr.number)
   await postOnce(ctx, repo, pr.number, pr.head.sha, 'stale-install', `Ship bot is not merging this yet. Every gate passed, but this pull request changes control-plane paths and ${why}. An out-of-date bot gates with out-of-date rules.\n\nIt merges on the first pass after ship-bot is reinstalled from origin/main. Nothing on this pull request needs to change.`)
   if (seen || ctx.dry) return
   held[key] = mark
