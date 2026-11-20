@@ -23,7 +23,11 @@
 # Both jobs run on the caller's pool, through the required `runs-on` input (JSON, from the caller's
 # HEAVY_RUNS_ON variable). The owner's instruction of 2026-11-20 ("we need to stop using github
 # runners entirely, only rely on local infra") replaces the decision of 2026-10-19 that kept
-# secret-holding jobs hosted. There is no hosted fallback: an empty `runs-on` is a workflow error.
+# secret-holding jobs hosted. There is no hosted fallback: an empty `runs-on` waits for a label no
+# runner carries, so the caller gets no review until it passes a served one.
+#
+# A pull request whose head is in another repository (a fork) is never reviewed here, on either
+# trigger: the review job holds the token and runs on the pool, and a fork's head must not reach it.
 #
 # The verdict is machine-readable: the review ends with one pull request comment carrying
 # `<!-- claude-review head=<sha> findings=<n> blocking=<m> -->`, which scripts/review-status.mjs (in this
@@ -37,10 +41,12 @@ on:
         description: >-
           Where both jobs run, as JSON: a label string or an array of labels, e.g.
           '["self-hosted","linux","4c-heavy"]', passed from the caller's HEAVY_RUNS_ON variable.
-          Required, with no hosted fallback (owner, 2026-11-20: only local infrastructure). An
-          empty value fails the workflow instead of falling back to ubuntu-latest.
-        required: true
+          There is no hosted fallback (owner, 2026-11-20: only local infrastructure). Left empty,
+          the jobs ask for a label no runner carries and wait, so a caller with no pool label gets
+          no review, and spends no hosted minutes, instead of failing at startup.
+        required: false
         type: string
+        default: ""
       model:
         description: >-
           Claude model that reviews. "auto" (the default) means Opus, except that the "Pick the
@@ -66,17 +72,19 @@ jobs:
   trigger:
     if: >-
       (github.event_name == 'pull_request' && !github.event.pull_request.draft &&
-       github.event.pull_request.user.login != 'dependabot[bot]') ||
+       github.event.pull_request.user.login != 'dependabot[bot]' &&
+       github.event.pull_request.head.repo.full_name == github.repository) ||
       (github.event_name == 'issue_comment' && github.event.issue.pull_request &&
        contains(github.event.comment.body, 'claude review') &&
        ((github.event.comment.user.type != 'Bot' &&
          contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)) ||
         (vars.SHIP_BOT_LOGIN != '' && github.event.comment.user.login == vars.SHIP_BOT_LOGIN)))
-    runs-on: ${{ fromJSON(inputs.runs-on) }}
+    runs-on: ${{ fromJSON(inputs.runs-on != '' && inputs.runs-on || '["self-hosted","no-pool-label-set"]') }}
     timeout-minutes: 2
-    permissions: {}
+    permissions:
+      pull-requests: read
     outputs:
-      go: ${{ steps.trigger.outputs.go }}
+      go: ${{ steps.fork.outputs.go || steps.trigger.outputs.go }}
     steps:
       # The job's `if` only prefilters a comment (the words appear somewhere, and contains() is
       # case-insensitive). This decides: a review is asked for when one line of the comment,
@@ -102,10 +110,33 @@ jobs:
           echo "go=${go}" >> "$GITHUB_OUTPUT"
           echo "review requested: ${go}"
 
+      # A fork head never reaches the review job. The pull_request payload carries the head
+      # repository; an issue_comment payload does not, so it is read from the API. An unreadable
+      # or deleted head repository is refused, never assumed to be this one.
+      - name: Refuse a pull request from a fork
+        id: fork
+        if: steps.trigger.outputs.go == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          BASE_REPO: ${{ github.repository }}
+          PAYLOAD_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
+        run: |
+          set -euo pipefail
+          head="$PAYLOAD_HEAD_REPO"
+          if [[ "$EVENT" == issue_comment ]]; then
+            head="$(gh api "repos/${BASE_REPO}/pulls/${NUMBER}" --jq '.head.repo.full_name // ""' 2>/dev/null || true)"
+          fi
+          go=false
+          if [[ -n "$head" && "$head" == "$BASE_REPO" ]]; then go=true; fi
+          echo "go=${go}" >> "$GITHUB_OUTPUT"
+          echo "head repository: ${head:-unknown}; review: ${go}"
+
   review:
     needs: trigger
     if: needs.trigger.outputs.go == 'true'
-    runs-on: ${{ fromJSON(inputs.runs-on) }}
+    runs-on: ${{ fromJSON(inputs.runs-on != '' && inputs.runs-on || '["self-hosted","no-pool-label-set"]') }}
     timeout-minutes: 30
     permissions:
       contents: read

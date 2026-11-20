@@ -22,7 +22,7 @@ jobs:
   review:
     uses: gorfednet/.github/.github/workflows/claude-review.yml@main
     with:
-      # Required, no hosted fallback (owner, 2026-11-20): the repository's pool labels as JSON.
+      # The repository's pool labels as JSON. No hosted fallback (owner, 2026-11-20): unset, no review runs.
       runs-on: ${{ vars.HEAVY_RUNS_ON }}
     secrets:
       CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
