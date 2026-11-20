@@ -2,11 +2,11 @@
 // The org's self-hosted pool serves each repository through the repo variable HEAVY_RUNS_ON, and its supervisor writes
 // HEAVY_RUNNER_HEARTBEAT (unix seconds) on every served repository each 300 s. Two things say the pool is not serving:
 // a heartbeat older than 15 minutes, and a queued run that has waited over 15 minutes. The repository list is read at
-// run time and never committed. Every read sends If-None-Match from an ETag cache, so an unchanged answer (304) is free.
+// run time and never committed (the token owner's own repositories, or an organization's when CAPACITY_POOL_ORG names one). Every read sends If-None-Match from an ETag cache, so an unchanged answer (304) is free.
 import fs from 'node:fs'
 import { execFileSync } from 'node:child_process'
 
-export const POOL = { staleMs: 15 * 60 * 1000, defaultOrg: 'gorfednet', queuedPerPage: 20, reposPerPage: 100 }
+export const POOL = { staleMs: 15 * 60 * 1000, defaultOrg: '', queuedPerPage: 20, reposPerPage: 100 }
 
 /** The ETag cache: url -> { etag, body }. Unreadable or malformed means empty: every read is then a full one. */
 export function loadEtags(file, readFile = (p) => fs.readFileSync(p, 'utf8')) {
@@ -46,14 +46,21 @@ export function cachedReader({ get, cache, used, stats = { reads: 0, notModified
   return { read, stats }
 }
 
-/** The runs list is cached as created_at times only. */
-const reduceRuns = (b) => ({ runs: (b?.workflow_runs ?? []).map((r) => ({ created_at: r.created_at })) })
+/** The runs list is cached as ids and created_at times only. */
+const reduceRuns = (b) => ({ runs: (b?.workflow_runs ?? []).map((r) => ({ id: r.id, created_at: r.created_at })) })
+/** A run's jobs are cached as status and created_at only. */
+const reduceJobs = (b) => ({ jobs: (b?.jobs ?? []).map((j) => ({ status: j.status, created_at: j.created_at })) })
 
-/** Non-archived repository names in the org, paged, or throws. */
+/**
+ * Non-archived repository names, paged, or throws. With no org it is the token owner's own repositories
+ * (`/user/repos`, private ones included): the account the checks run as is a user, and `/orgs/<name>/repos` answers 404 for one.
+ * With an org it is that organization's (`CAPACITY_POOL_ORG`).
+ */
 export async function listRepos({ read, org = POOL.defaultOrg }) {
   const names = []
   for (let page = 1; page <= 20; page++) {
-    const url = `/orgs/${org}/repos?type=all&per_page=${POOL.reposPerPage}${page > 1 ? `&page=${page}` : ''}`
+    const base = org ? `/orgs/${org}/repos?type=all&per_page=${POOL.reposPerPage}` : `/user/repos?affiliation=owner&per_page=${POOL.reposPerPage}`
+    const url = `${base}${page > 1 ? `&page=${page}` : ''}`
     const { body } = await read(url)
     if (!Array.isArray(body)) throw new Error('repository list is not an array')
     for (const r of body) if (r && !r.archived && typeof r.full_name === 'string') names.push(r.full_name)
@@ -84,10 +91,17 @@ export async function checkPool({ read, now, org = POOL.defaultOrg }) {
       served.push(repo)
       if (age > POOL.staleMs) stale.push(repo)
       if (Number.isFinite(age)) newestMinutes = newestMinutes === null ? Math.floor(age / 60000) : Math.min(newestMinutes, Math.floor(age / 60000))
+      // A queued run, and a job still queued inside a run that has started: a run is in_progress as soon as one of its jobs runs.
       const q = await read(`/repos/${repo}/actions/runs?status=queued&per_page=${POOL.queuedPerPage}`, reduceRuns)
       const times = (q.body?.runs ?? []).map((r) => Date.parse(r.created_at)).filter(Number.isFinite)
-      if (times.length) {
-        const waited = now - Math.min(...times)
+      const started = await read(`/repos/${repo}/actions/runs?status=in_progress&per_page=${POOL.queuedPerPage}`, reduceRuns)
+      for (const run of started.body?.runs ?? []) {
+        const j = await read(`/repos/${repo}/actions/runs/${run.id}/jobs?filter=latest&per_page=100`, reduceJobs)
+        for (const job of j.body?.jobs ?? []) if (job.status === 'queued') times.push(Date.parse(job.created_at))
+      }
+      const waits = times.filter(Number.isFinite)
+      if (waits.length) {
+        const waited = now - Math.min(...waits)
         if (waited > POOL.staleMs) queued.push({ repo, minutes: Math.floor(waited / 60000) })
       }
     } catch (e) { failures.push(`${repo}: ${String(e.message).slice(0, 80)}`) }
@@ -111,12 +125,12 @@ export function poolKey(p) {
 export function poolMessage(p, lastKey) {
   if (p.state === 'down') return `pool down: no heartbeat for ${p.newestHeartbeatMinutes ?? '?'} min`
   if (p.state === 'queued') return `pool queue: ${p.queued.map((q) => `${q.repo} ${q.minutes} min`).join(', ')}`
-  if (p.state === 'unknown') return `pool unknown: ${p.reason}`
+  if (p.state === 'unknown') return `pool check failed: ${p.reason}`
   return lastKey && lastKey !== 'ok' ? 'pool back' : null
 }
 
 /** Production reader: the gh token, an ETag cache beside capacity.json. Returns { pool(now), save() }. */
-export function productionPool({ cacheFile, org = process.env.CAPACITY_POOL_ORG || POOL.defaultOrg, fetchImpl = fetch, tokenFn = ghToken }) {
+export function productionPool({ cacheFile, org = process.env.CAPACITY_POOL_ORG ?? POOL.defaultOrg, fetchImpl = fetch, tokenFn = ghToken }) {
   const cache = loadEtags(cacheFile)
   const used = new Set()
   let token

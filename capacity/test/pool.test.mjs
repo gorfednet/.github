@@ -15,6 +15,7 @@ function fake(routes) {
   const get = async (url, headers) => {
     calls.push({ url, headers })
     const r = routes[url]
+    if (r === undefined && /status=in_progress/.test(url)) return { status: 200, etag: null, body: { workflow_runs: [] } }
     if (r === undefined) return { status: 404, etag: null, body: null }
     if (typeof r === 'function') return r(headers)
     if (typeof r === 'number') return { status: r, etag: null, body: null }
@@ -25,6 +26,8 @@ function fake(routes) {
 const repos = (...names) => names.map((n) => ({ full_name: `example-org/${n}`, archived: false }))
 const hb = (n) => `/repos/example-org/${n}/actions/variables/HEAVY_RUNNER_HEARTBEAT`
 const qd = (n) => `/repos/example-org/${n}/actions/runs?status=queued&per_page=20`
+const ip = (n) => `/repos/example-org/${n}/actions/runs?status=in_progress&per_page=20`
+const jobsOf = (n, id) => `/repos/example-org/${n}/actions/runs/${id}/jobs?filter=latest&per_page=100`
 const check = (routes, cache = {}) => {
   const f = fake(routes)
   const { read, stats } = cachedReader({ get: f.get, cache, used: new Set() })
@@ -97,7 +100,7 @@ test('a 304 is answered from the cache, with If-None-Match sent', async () => {
   const again = await checkPool({ read, now: NOW, org: 'example-org' })
   assert.equal(again.state, 'queued')
   assert.equal(stats.notModified, 3)
-  assert.equal(stats.reads, 3)
+  assert.equal(stats.reads, 4)
 })
 
 test('a 304 with nothing cached is an error, not a guess', async () => {
@@ -170,7 +173,7 @@ test('a failed push is retried on the next run; a pool read that throws is unkno
   const t = harness([new Error('boom')])
   await run(t.deps)
   assert.equal(t.file.pool.state, 'unknown')
-  assert.match(t.pushes[0], /^pool unknown: boom/)
+  assert.match(t.pushes[0], /^pool check failed: boom/)
 })
 
 test('a run without a pool dependency writes no pool record, and a failed run keeps the memo', () => {
@@ -198,4 +201,28 @@ test('production reader sends the bearer token and If-None-Match, and a token fa
   assert.equal(seen[0].headers.Authorization, 'Bearer tok')
   const bad = productionPool({ cacheFile: '/dev/null/none', org: 'example-org', fetchImpl, tokenFn: () => { throw new Error('no token') } })
   assert.equal((await bad.pool(NOW)).state, 'unknown')
+})
+
+test('a job queued over 15 minutes inside a run that has started counts as queued; a young one does not', async () => {
+  const jobs = (...pairs) => ({ jobs: pairs.map(([status, m]) => ({ status, created_at: new Date(NOW - m * MIN).toISOString(), name: 'j' })) })
+  const routes = {
+    [LIST]: repos('a', 'b'),
+    [hb('a')]: beat(1), [qd('a')]: runs(), [ip('a')]: { workflow_runs: [{ id: 11, created_at: new Date(NOW - 50 * MIN).toISOString() }] },
+    [jobsOf('a', 11)]: jobs(['completed', 49], ['in_progress', 40], ['queued', 27]),
+    [hb('b')]: beat(1), [qd('b')]: runs(), [ip('b')]: { workflow_runs: [{ id: 12, created_at: new Date(NOW - 5 * MIN).toISOString() }] },
+    [jobsOf('b', 12)]: jobs(['queued', 4]),
+  }
+  const { p, f } = await check(routes)
+  assert.equal(p.state, 'queued')
+  assert.deepEqual(p.queued, [{ repo: 'example-org/a', minutes: 27 }])
+  assert.ok(f.calls.some((c) => c.url === jobsOf('a', 11)), 'the jobs of a started run were read')
+})
+
+test('the default repository list is the token owner, and an organization is used only when named', async () => {
+  const urls = []
+  const get = async (url) => { urls.push(url); return { status: 200, etag: null, body: [] } }
+  const { read } = cachedReader({ get, cache: {}, used: new Set() })
+  await checkPool({ read, now: NOW })
+  await checkPool({ read, now: NOW, org: 'example-org' })
+  assert.deepEqual(urls, ['/user/repos?affiliation=owner&per_page=100', LIST])
 })

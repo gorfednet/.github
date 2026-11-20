@@ -20,21 +20,22 @@ ntfy topic `ops-report` (token from `~/.ship-bot/ntfy.token`) gets "headroom for
 
 ## Pool liveness (`pool` in capacity.json, owner 20 November 2026)
 
-The self-hosted pool serves each repository through its `HEAVY_RUNS_ON` variable, and the supervisor writes `HEAVY_RUNNER_HEARTBEAT` (unix seconds) on each served repository every 300 s. Each run reads the org's repository list once (`GET /orgs/gorfednet/repos?type=all&per_page=100`, paged, set `CAPACITY_POOL_ORG` to change the org; never committed), skips archived ones, then per repository:
+The self-hosted pool serves each repository through its `HEAVY_RUNS_ON` variable, and the supervisor writes `HEAVY_RUNNER_HEARTBEAT` (unix seconds) on each served repository every 300 s. Each run reads the repository list once, paged and never committed: the token owner's own repositories (`GET /user/repos?affiliation=owner&per_page=100`, the account is a user, and `/orgs/<name>/repos` answers 404 for one), or an organization's (`GET /orgs/<org>/repos?type=all&per_page=100`) when `CAPACITY_POOL_ORG` names one. Archived repositories are skipped. Per repository:
 
 - `GET /repos/<r>/actions/variables/HEAVY_RUNNER_HEARTBEAT`: a 404 means not a pool repository, skipped. A heartbeat older than 15 minutes means not served.
 - `GET /repos/<r>/actions/runs?status=queued&per_page=20` (pool repositories only): the oldest `created_at` older than 15 minutes means queued with no runner.
+- `GET /repos/<r>/actions/runs?status=in_progress&per_page=20`, then `GET /repos/<r>/actions/runs/<id>/jobs?filter=latest&per_page=100` for each: a job still `queued` over 15 minutes inside a run that has started (a run is in progress as soon as one job runs) also counts as queued.
 
 | `pool.state` | Rule |
 |--------------|------|
 | `ok` | at least one heartbeat is fresh and nothing has queued past 15 minutes |
 | `down` | every heartbeat is stale |
-| `queued` | a queued run has waited over 15 minutes (`queued` lists `{repo, minutes}`) |
+| `queued` | a queued run or job has waited over 15 minutes (`queued` lists `{repo, minutes}`, the longest wait per repository) |
 | `unknown` | any read failed, the repository list failed, or no repository has a heartbeat. Never `ok` |
 
-Every read sends `If-None-Match` from `~/.desk/capacity-etags.json` (beside capacity.json, pruned to the URLs of the last run), so an unchanged answer is a free 304. Cost: about 2 reads per pool repository per run plus 1 for the list, mostly 304s. The token is `GH_TOKEN`, else `gh auth token` (the plist's PATH has no Homebrew, so `/opt/homebrew/bin/gh` and `/usr/local/bin/gh` are tried too). A missing token makes the state `unknown`.
+Every read sends `If-None-Match` from `~/.desk/capacity-etags.json` (beside capacity.json, pruned to the URLs of the last run), and a 304 is free. The heartbeat value changes every 300 s, so each run's heartbeat read per pool repository is a full, counted one: with 4 runs an hour that is about 96 counted reads an hour across the pool. The list, the run lists and the job lists are mostly 304s. The token is `GH_TOKEN`, else `gh auth token` (the plist's PATH has no Homebrew, so `/opt/homebrew/bin/gh` and `/usr/local/bin/gh` are tried too). A missing token makes the state `unknown`.
 
-One ntfy line on each change of state or of the set of queued repositories (minutes moving alone is no change): `pool down: no heartbeat for 23 min` (the newest heartbeat's age), `pool queue: <repo> 41 min, <repo> 18 min`, `pool unknown: <reason>`, and `pool back` when it returns to `ok`. A first `ok` says nothing. `pool.lastPushedKey` remembers what was last delivered, so a failed push is retried. The pool check never fails the run. `install.sh` copies `pool.mjs` beside `capacity.mjs`.
+One ntfy line on each change of state or of the set of queued repositories, so a storm is one message and minutes moving alone is no change: `pool down: no heartbeat for 23 min` (the newest heartbeat's age), `pool queue: <repo> 41 min, <repo> 18 min`, `pool check failed: <reason>`, and `pool back` when it returns to `ok`. A first `ok` says nothing. `pool.lastPushedKey` remembers what was last delivered, so a failed push is retried. The pool check never fails the run. `install.sh` copies `pool.mjs` beside `capacity.mjs`.
 
 Install: `capacity/install.sh` (runs the tests first), from the gates-main worktree only. The script refuses any other checkout, because a copy installed from a working checkout drifts behind main (13 November 2026: 3 commits behind). fleet-status's "Installed tools behind main" row reports a stale copy. Remove: `capacity/install.sh --uninstall`. Tests: `capacity/check.sh`.
 

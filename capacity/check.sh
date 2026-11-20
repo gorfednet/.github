@@ -6,7 +6,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../scripts/lib/resolve-node.sh
 source "${HERE}/../scripts/lib/resolve-node.sh"
 NODE_BIN="$(resolve_node)" || { echo "capacity/check.sh: no usable Node." >&2; exit 1; }
-MIN_TESTS=59
+MIN_TESTS=61
 status=0
 report="$("${NODE_BIN}" --test --test-reporter=tap "${HERE}"/test/*.test.mjs 2>&1)" || status=$?
 passed="$(grep -E '^# pass [0-9]+$' <<<"${report}" | awk '{print $3}' | tail -1)"
