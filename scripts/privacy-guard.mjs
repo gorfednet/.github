@@ -305,7 +305,8 @@ export const bareNamePattern = (names) => bareNamePatterns(names).word
  * beta or mode ("the private beta of Example-Game" passes; "Example-Game is private",
  * "Example-Game is still private" and "private Example-Game" refuse).
  */
-const PRIVATE_NOUNS = new Set(['beta', 'alpha', 'preview', 'mode', 'lobby', 'lobbies', 'match', 'matches', 'game', 'games', 'server', 'servers', 'chat', 'room', 'rooms', 'testing', 'test', 'playtest', 'playtests'])
+const PRIVATE_NOUNS = new Set(['beta', 'alpha', 'preview', 'mode', 'lobby', 'lobbies', 'match', 'matches', 'playtest', 'playtests'])
+const COPULA = /\b(?:is|are|was|were|be|been|being|am|stays?|remains?|becomes?|became|went|goes|kept|keeps?|now)\b/i
 const REPO_WORDS = /\b(?:repos?|repositor(?:y|ies)|visibility|github|internal)\b|[\t|]/i
 export function isProductName(text, index, value, allow) {
   if (!allow?.products?.includes(value)) return false
@@ -326,6 +327,11 @@ export function isProductName(text, index, value, allow) {
   for (const m of line.matchAll(/\bprivate\b/gi)) {
     const next = /^\s+([a-z]+)\b/.exec(line.slice(m.index + m[0].length))
     if (!next || !PRIVATE_NOUNS.has(next[1])) return false
+    // A noun that names an event or a feature only. After the name, a copula between the two
+    // ("X is a private beta", "X is in private beta") says what the product is: refuse.
+    const end = index - from + value.length
+    const gap = line.slice(end, m.index)
+    if (m.index >= end && !/[.!?;]/.test(gap) && COPULA.test(gap)) return false
   }
   return true
 }
