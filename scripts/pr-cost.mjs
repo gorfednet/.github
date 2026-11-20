@@ -19,8 +19,10 @@
  * output with one transcript scan (a first fill, or a run the janitor missed). It matches by branch, then by the sessions' own PR links.
  * `sweep` records every PR the merger's log says it merged since `--since` (default 14 days) and the ledger doesn't hold yet,
  * with one transcript scan and no network call. The log has no branch, so a session's own pr-link attributes the tokens.
- * Known limits: the log keeps about 4 days, so sweep daily; a session's tokens go to the PRs it links, so a session that
- * links 2 PRs is split by its pr-link times; a swept row has no title or branch, so its kind is feature or infra only.
+ * One attribution: every row already in the ledger (by branch or swept) is named to the scan, so a message is claimed once.
+ * Known limits: the log keeps about 4 days, so sweep daily (the output says when the logs begin); a session's tokens go to
+ * the PRs it links, split by link times, and a PR's post-merge tail (up to 2 hours) is its own only on a branch it worked on;
+ * a swept row has no title or branch, so its kind is feature or infra only.
  * It exists because `record` ran only when the janitor archived a session, and a dry janitor archives none.
  * `window` prints this window's tokens split attributed / unattributed.
  * `report` prints the numbers fleet-status shows (by repository and kind, 5 dearest, tokens per added line, unattributed).
@@ -31,14 +33,14 @@
  */
 import { appendFileSync, mkdirSync, readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { dirname } from 'node:path'
+import { dirname, join } from 'node:path'
 
 import { isMain } from './lib/isMain.mjs'
-import { DEFAULT_FILE, mergesFromShipLog, DEFAULT_PROJECTS, collectPrCost, costRecord, infraRepo, latestPerPr, readLines, scanAll, sumModels, totalTokens, windowTotals } from './lib/prCost.mjs'
+import { DEFAULT_FILE, deployMergesBefore, ledgerNamed, mergesFromShipLog, DEFAULT_PROJECTS, collectPrCost, costRecord, infraRepo, latestPerPr, readLines, scanAll, sumModels, totalTokens, windowTotals } from './lib/prCost.mjs'
 
 function parseArgs(argv) {
   const opts = { labels: [], shipLogs: [] }
-  const takes = new Set(['--repo', '--number', '--branch', '--worktree', '--since', '--state', '--title', '--additions', '--deletions', '--created', '--closed', '--out', '--days', '--file', '--projects', '--label', '--prs', '--pr-json', '--ship-log'])
+  const takes = new Set(['--repo', '--number', '--branch', '--worktree', '--since', '--state', '--title', '--additions', '--deletions', '--created', '--closed', '--out', '--days', '--file', '--projects', '--label', '--prs', '--pr-json', '--ship-log', '--deploy-logs'])
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]
     if (a === '--infra') opts.infra = true
@@ -72,7 +74,9 @@ export function earlierOnBranch(file, repo, branch, number) {
 }
 
 export async function prTokens(opts, ledger = DEFAULT_FILE) {
-  const prs = [...earlierOnBranch(ledger, opts.repo, opts.branch, Number(opts.number)), { repo: opts.repo, number: int(opts.number, '--number'), branch: opts.branch, worktree: opts.worktree, endsAt: opts.closed ? Date.parse(opts.closed) : undefined }]
+  const own = [...earlierOnBranch(ledger, opts.repo, opts.branch, Number(opts.number)), { repo: opts.repo, number: int(opts.number, '--number'), branch: opts.branch, worktree: opts.worktree, endsAt: opts.closed ? Date.parse(opts.closed) : undefined }]
+  // The rest of the ledger is named too, so work a row already holds is not billed to this PR again.
+  const prs = [...own, ...ledgerNamed(readLines(ledger), new Set(own.map((p) => `${p.repo}#${p.number}`)))]
   const sinceMs = opts.since ? Date.parse(opts.since) : null
   if (opts.since && Number.isNaN(sinceMs)) throw new Error(`--since is not a date: ${opts.since}`)
   const { perPr, files } = await scanAll(opts.projects ?? DEFAULT_PROJECTS, { sinceMs, prs })
@@ -181,15 +185,26 @@ export async function main(argv) {
     const logLine = /^\d{4}-\d\d-\d\dT[\d:.]+Z\s+\w+\s+\S/m
     if (!texts.some((t) => logLine.test(t))) throw new Error('the ship-bot log holds no ship-bot log line')
     const merges = texts.flatMap((t) => mergesFromShipLog(t)).filter((m) => Date.parse(m.mergedAt) >= sinceMs)
+    // Where the logs begin. A merge that rotated out before the first janitor run after it is invisible here, so say when the
+    // logs start, and count the merges a gh-free source (ship-bot's deploy logs, one per deploy) knows of from before that.
+    const firsts = texts.map((t) => [...t.matchAll(/^(\d{4}-\d\d-\d\dT[\d:.]+Z)\s/gm)].map((m) => Date.parse(m[1]))).filter((x) => x.length).map((x) => Math.min(...x))
+    const earliestMs = Math.min(...firsts)
+    const earliestLogAt = new Date(earliestMs).toISOString()
+    if (earliestMs > sinceMs) console.error(`pr-cost: the log begins at ${earliestLogAt}, after --since ${new Date(sinceMs).toISOString()}: merges before it cannot be seen here`)
     // A PR merged under 2 hours ago is left for the next run: the work billed to it runs to merge + 2 hours, and a row is never rewritten.
+    // It is still named to the scan, so a later PR does not take its work.
     const settledBefore = Date.now() - 2 * 3600000
-    const unique = [...new Map(merges.map((m) => [`${m.repo}#${m.number}`, m])).values()].filter((m) => Date.parse(m.mergedAt) <= settledBefore)
-    const held = latestPerPr(readLines(out))
+    const uniqueAll = [...new Map(merges.map((m) => [`${m.repo}#${m.number}`, m])).values()]
+    const unique = uniqueAll.filter((m) => Date.parse(m.mergedAt) <= settledBefore)
+    const ledgerLines = readLines(out)
+    const held = latestPerPr(ledgerLines)
     const todo = unique.filter((m) => !held.some((l) => l.repo === m.repo && l.number === m.number && l.state === 'MERGED'))
     const fleet = JSON.parse(readFileSync(new URL('../fleet.json', import.meta.url), 'utf8'))
-    // PRs already in the ledger are named too, so the work inside their window stays theirs when a session links a later PR.
-    const heldMerged = held.filter((l) => l.state === 'MERGED' && l.closedAt && Date.parse(l.closedAt) >= sinceMs - 14 * 86400000 && !todo.some((m) => m.repo === l.repo && m.number === l.number))
-    const named = [...todo.map((m) => ({ repo: m.repo, number: m.number, endsAt: Date.parse(m.mergedAt), linkOnly: true })), ...heldMerged.map((l) => ({ repo: l.repo, number: l.number, endsAt: Date.parse(l.closedAt), linkOnly: true }))]
+    const knownUnrecordedBeforeLog = deployMergesBefore(opts['deploy-logs'] ?? join(homedir(), '.ship-bot', 'logs', 'deploys'), sinceMs, earliestMs).filter((d) => !held.some((l) => l.state === 'MERGED' && l.number === d.number && l.repo.endsWith(`/${d.repo}`))).length
+    // Every other PR is named too, so each message is claimed once: ledger rows by branch or by merge window, and merges
+    // the log shows that are not recorded yet. A later PR does not take their work.
+    const own = uniqueAll.filter((m) => !held.some((l) => l.repo === m.repo && l.number === m.number && l.state === 'MERGED')).map((m) => ({ repo: m.repo, number: m.number, endsAt: Date.parse(m.mergedAt), linkOnly: true }))
+    const named = [...own, ...ledgerNamed(ledgerLines, new Set(own.map((p) => `${p.repo}#${p.number}`)))]
     const { perPr } = await scanAll(opts.projects ?? DEFAULT_PROJECTS, { sinceMs: sinceMs - 14 * 86400000, prs: named })
     const results = []
     for (const m of todo) {
@@ -202,7 +217,7 @@ export async function main(argv) {
       }
       results.push({ repo: m.repo, number: m.number, total: rec.total, recorded })
     }
-    console.log(JSON.stringify({ merged: unique.length, alreadyHeld: unique.length - todo.length, recorded: results.filter((r) => r.recorded).length, noTranscript: results.filter((r) => !r.recorded).length, skippedLogs, file: tidy(out), results }))
+    console.log(JSON.stringify({ merged: unique.length, alreadyHeld: unique.length - todo.length, recorded: results.filter((r) => r.recorded).length, noTranscript: results.filter((r) => !r.recorded).length, skippedLogs, earliestLogAt, knownUnrecordedBeforeLog, file: tidy(out), results }))
     return 0
   }
   if (cmd === 'window') {

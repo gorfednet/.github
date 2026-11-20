@@ -315,6 +315,66 @@ describe('the command', () => {
   })
 })
 
+
+describe('one attribution across branch rows and swept rows', () => {
+  const run = (...args) => spawnSync(process.execPath, [CLI, ...args], { encoding: 'utf8' })
+  const rows = (out) => readFileSync(out, 'utf8').trim().split('\n').map(JSON.parse)
+  const sweepLog = (dir, lines) => {
+    const log = join(dir, 'ship.log')
+    writeFileSync(log, lines.join('\n') + '\n')
+    return log
+  }
+  const recordBranch = (dir, out, number, branch, closedMin) => run('record', '--repo', 'o/.github', '--number', String(number), '--state', 'MERGED', '--branch', branch, '--worktree', WT, '--closed', T(closedMin), '--projects', dir, '--out', out)
+  const A = (min, usage) => assistant({ min, usage, branch: 'claude/a-1' })
+  const B = (min, usage) => assistant({ min, usage, branch: 'claude/b-2' })
+
+  it('record A by branch, then sweep B: B does not take A\'s branch work', () => {
+    // A: branch work at 1, 2 and review rounds at 40, link A at 3, A merged at 60. B: work at 150, link B at 160, merged at 200.
+    const dir = projects({ 'p/S1.jsonl': [A(1, [1, 10, 100, 1000]), A(2, [1, 10, 100, 1000]), link('o/.github', 7, 3), A(40, [2, 20, 200, 2000]), B(150, [4, 40, 400, 4000]), link('o/.github', 8, 160)] })
+    const out = join(dir, 'ledger.jsonl')
+    assert.equal(JSON.parse(recordBranch(dir, out, 7, 'claude/a-1', 60).stdout).recorded, true)
+    const log = sweepLog(dir, [`${T(200)} info  o/.github#8 (abc1235): merged as def5679`])
+    const j = JSON.parse(run('sweep', '--ship-log', log, '--since', T(0), '--projects', dir, '--out', out).stdout)
+    assert.equal(j.recorded, 1)
+    const b = rows(out).find((r) => r.number === 8)
+    assert.equal(b.total, 4444, 'B holds only its own work, not the 2,222 of A\'s review rounds')
+  })
+  it('sweep A, then record B by branch: B does not take A\'s post-merge tail', () => {
+    // A linked at 3, merged at 60. Its tail runs on A's branch at 90 (inside merge + 2 h). B works on its own branch at 150 and links at 160.
+    const dir = projects({ 'p/S1.jsonl': [A(1, [1, 10, 100, 1000]), link('o/.github', 7, 3), A(90, [2, 20, 200, 2000]), B(150, [4, 40, 400, 4000]), link('o/.github', 8, 160)] })
+    const out = join(dir, 'ledger.jsonl')
+    const log = sweepLog(dir, [`${T(60)} info  o/.github#7 (abc1234): merged as def5678`])
+    assert.equal(JSON.parse(run('sweep', '--ship-log', log, '--since', T(0), '--projects', dir, '--out', out).stdout).recorded, 1)
+    assert.equal(rows(out).find((r) => r.number === 7).total, 1111 + 2222, 'A\'s swept row holds its work and its tail')
+    assert.equal(JSON.parse(recordBranch(dir, out, 8, 'claude/b-2', 200).stdout).recorded, true)
+    assert.equal(rows(out).filter((r) => r.number === 8).at(-1).total, 4444, 'B holds only its own work')
+  })
+  it('work after merge + 2 h that a link would credit to a swept PR is counted as unattributed, not lost', async () => {
+    const dir = projects({ 'p/S1.jsonl': [assistant({ min: 1 }), link('o/.github', 7, 3), assistant({ min: 700, usage: [4, 40, 400, 4000] })] })
+    const file = join(dir, 'ledger.jsonl')
+    writeFileSync(file, `${JSON.stringify({ repo: 'o/.github', number: 7, branch: null, kind: 'feature', state: 'MERGED', additions: null, deletions: null, createdAt: null, closedAt: T(5), recordedAt: T(6), models: { 'claude-sonnet-5-5': { input: 1, cacheRead: 10, cacheWrite: 100, output: 1000, messages: 1 } }, fresh: 1101, total: 1111 })}\n`)
+    const c = await collectPrCost({ projects: dir, file, now: new Date(Date.parse(T(0)) + 86400000) })
+    assert.equal(c.unattributed.tokens, 4444, 'the message after the tail is on no row, so it is in "match no PR"')
+  })
+  it('the sweep says when its logs start and counts deploys it knows of from before them', () => {
+    const dir = projects({ 'p/S1.jsonl': [assistant({ min: 1 }), link('o/.github', 7, 3)] })
+    const log = sweepLog(dir, [`${T(300)} info  o/.github#7 (abc1234): merged as def5678`])
+    const deploys = join(dir, 'deploys')
+    mkdirSync(deploys)
+    writeFileSync(join(deploys, '2026-11-10T12-30-00-000Z-.github-pr5.log'), '')
+    writeFileSync(join(deploys, '2026-11-10T12-45-00-000Z-.github-pr6.log'), '')
+    writeFileSync(join(deploys, '2026-11-10T18-00-00-000Z-.github-pr9.log'), '')
+    const out = join(dir, 'ledger.jsonl')
+    writeFileSync(out, `${JSON.stringify({ repo: 'o/.github', number: 6, branch: 'x', kind: 'feature', state: 'MERGED', closedAt: T(-30), recordedAt: T(0), models: {}, fresh: 1, total: 1 })}\n`)
+    const r = run('sweep', '--ship-log', log, '--deploy-logs', deploys, '--since', T(0), '--projects', dir, '--out', out)
+    assert.equal(r.status, 0, r.stderr)
+    const j = JSON.parse(r.stdout)
+    assert.equal(j.earliestLogAt, T(300))
+    assert.equal(j.knownUnrecordedBeforeLog, 1, 'PR 5 merged before the log began and is not in the ledger; 6 is; 9 is after the log began')
+    assert.match(r.stderr, /log begins at/)
+  })
+})
+
 describe('ship-bot\'s merge line', () => {
   // The sweep parses the line ship-bot writes when it merges. A reworded line must fail here, not stop the ledger silently.
   const src = readFileSync(new URL('../ship-bot/lib/bot.mjs', import.meta.url), 'utf8')
@@ -400,7 +460,7 @@ describe('sweep: merged PRs from the merger log', () => {
   })
   it('a session that links a second PR is not billed twice: the first PR keeps its post-merge work (A merged, B swept later)', () => {
     // Link A at min 3, A merged at min 10, work on it to min 50 (inside merge + 2 h), the next change's work at min 200, link B at min 210.
-    const dir = projects({ 'p/S1.jsonl': [assistant({ min: 1 }), link('o/.github', 7, 3), assistant({ min: 50, usage: [2, 20, 200, 2000] }), assistant({ min: 200, usage: [4, 40, 400, 4000] }), link('o/.github', 8, 210)] })
+    const dir = projects({ 'p/S1.jsonl': [assistant({ min: 1 }), link('o/.github', 7, 3), assistant({ min: 50, usage: [2, 20, 200, 2000] }), assistant({ min: 200, usage: [4, 40, 400, 4000], branch: 'claude/b-2' }), link('o/.github', 8, 210)] })
     const log = join(dir, 'ship.log')
     writeFileSync(log, `${T(10)} info  o/.github#7 (abc1234): merged as def5678\n${T(220)} info  o/.github#8 (abc1235): merged as def5679\n`)
     const out = join(dir, 'ledger.jsonl')
@@ -418,8 +478,8 @@ describe('sweep: merged PRs from the merger log', () => {
     assert.equal(total(7), 1111 + 2222, 'A holds its own work and its post-merge work')
   })
   it('overlapping PRs: work on B before A merged stays B\'s, only the tail after A\'s merge is A\'s', () => {
-    // Link A at min 3, B's work from min 20, link B at min 60, A merged at min 120, tail work at min 150, B merged at min 400.
-    const dir = projects({ 'p/S1.jsonl': [assistant({ min: 1 }), link('o/.github', 7, 3), assistant({ min: 20, usage: [2, 20, 200, 2000] }), link('o/.github', 8, 60), assistant({ min: 150, usage: [4, 40, 400, 4000] })] })
+    // Link A at min 3 (A's branch), B's work from min 20 (B's branch), link B at min 60, A merged at min 120, tail work on A's branch at min 150, B merged at min 400.
+    const dir = projects({ 'p/S1.jsonl': [assistant({ min: 1 }), link('o/.github', 7, 3), assistant({ min: 20, usage: [2, 20, 200, 2000], branch: 'claude/b-2' }), link('o/.github', 8, 60), assistant({ min: 150, usage: [4, 40, 400, 4000] })] })
     const log = join(dir, 'ship.log')
     writeFileSync(log, `${T(120)} info  o/.github#7 (abc1234): merged as def5678\n${T(400)} info  o/.github#8 (abc1235): merged as def5679\n`)
     const out = join(dir, 'ledger.jsonl')
