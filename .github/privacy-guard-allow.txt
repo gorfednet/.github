@@ -9,6 +9,13 @@
 #   product <Name>                a public product name the private-repo rule would otherwise
 #                                 flag. Exact spelling and case, and a capital letter in it. Only
 #                                 the bare word, in prose: see isProductName in privacy-guard.mjs.
+#   site <domain>                 a public site whose domain is also a private repository's name
+#                                 (a web TLD only). Owner's rule of record (20 November 2026): "we can
+#                                 name public website URLs even if the repo and code is private." The name
+#                                 then counts as said: read beside private or visibility, and as
+#                                 gorfednet/<name>. This line isn't read for its own domain, so a
+#                                 repository adds its first one by itself (word the commit message
+#                                 without the name). The line shows the domain is listed: accepted.
 #   commit <sha>                  a commit (the full 40 hex) whose own diff and message are exempt.
 #                                 A pushed commit cannot be rewritten, so this clears a false
 #                                 positive in one that is not the tip. The net diff is still read.

@@ -1584,3 +1584,106 @@ describe('privacy guard: a `product <Name>` line clears a public product name, w
     passes('Secret-Repo is fun\n')
   })
 })
+
+describe('privacy guard: a `site <domain>` line makes the name count as said', () => {
+  // The private repository is named for its public site, example-music.com. Listing it as a site
+  // does what a base that already named it does: nothing more, nothing less.
+  const NAME = 'example-music.com'
+  const real = readFileSync(REAL_ALLOWLIST, 'utf8')
+  const ORG = 'gorfednet' + '/'
+  const allow = `${real}site ${NAME}\n`
+  const run = (body, { path = 'README.md', message = 'pr', allowText = allow } = {}) =>
+    guard({ before: { '.github/privacy-guard-allow.txt': allowText }, after: { [path]: body }, allow: false, message, env: { PRIVATE_REPOS: NAME } })
+  const fails = (body, opts) => {
+    const r = run(body, opts)
+    assert.equal(r.status, 1, `expected a refusal for ${JSON.stringify(body)}: ${r.out}`)
+    assert.match(r.out, /\[private-repo\]/)
+  }
+  const passes = (body, opts) => {
+    const r = run(body, opts)
+    assert.equal(r.status, 0, `expected a pass for ${JSON.stringify(body)}: ${r.out}`)
+  }
+
+  it('lets the domain through in a README link and a commit message, and refuses it without the line', () => {
+    passes(`Music: [listen](https://${NAME}/albums)\n`)
+    passes(`Visit ${NAME} for the music.\n`)
+    passes('ok\n', { path: 'a.md', message: `Link ${NAME} from the README` })
+    assert.equal(run(`Music: https://${NAME}/\n`, { allowText: real }).status, 1)
+    assert.equal(run('ok\n', { path: 'a.md', message: `Link ${NAME}`, allowText: real }).status, 1)
+  })
+
+  it('still refuses private or visibility beside it, and the repository form', () => {
+    fails(`Private project: https://${NAME}/\n`)
+    fails(`The private one: ${NAME}\n`)
+    fails(`| ${NAME} | private |\n`)
+    fails(`{"name":"${NAME}","private": true}\n`)
+    fails(`visibility of ${NAME}\n`)
+    fails(`Private events: https://${NAME}/events\n`) // as on main for any said name
+    fails(`see ${ORG}${NAME}\n`)
+    fails(`https://github.com/${ORG}${NAME}\n`)
+    fails(`git clone git@github.com:${ORG}${NAME}.git\n`)
+  })
+
+  it('reads the name as main reads any said name: these shapes pass, written down as residuals', () => {
+    passes(`cd ../${NAME}\n`)
+    passes(`${NAME}.git\n`)
+    passes(`REPO_NAME=${NAME}\n`)
+  })
+
+  it('lets a repository add its first site line: the line is not read for its own domain', () => {
+    const add = (line, files = {}) =>
+      guard({ before: { 'README.md': 'hello\n' }, after: { '.github/privacy-guard-allow.txt': line, ...files }, allow: false, env: { PRIVATE_REPOS: NAME } })
+    const r = add(`site ${NAME}\n`)
+    assert.equal(r.status, 0, r.out)
+    // The line clears nothing else: the same push naming the repository, or the README link, is read.
+    assert.equal(add(`site ${NAME}\n`, { 'README.md': `https://${NAME}/\n` }).status, 1, 'the README link needs the line on main first')
+    assert.equal(add(`site ${NAME}\n`, { 'a.md': `see ${ORG}${NAME}\n` }).status, 1)
+    assert.equal(add(`site ${NAME}\n`, { 'b.md': `${NAME}.git\n` }).status, 1)
+    // Not a way to publish a name: a comment on the line, a repo line, a name with no dot, another file.
+    assert.equal(add(`site ${NAME} # the private repo\n`).status, 1)
+    assert.equal(add(`repo ${NAME}\n`).status, 1)
+    assert.equal(guard({ allow: false, after: { '.github/privacy-guard-allow.txt': 'site secret-repo\n' }, env: { PRIVATE_REPOS: 'secret-repo' } }).status, 1)
+    assert.equal(add(`site ${NAME}\n`, { 'docs/privacy-guard-allow.txt': `site ${NAME}\n` }).status, 1)
+  })
+
+  it('parses site lines and refuses a value that is not a domain', () => {
+    assert.deepEqual(parseAllowlist(`site Example-Music.com\n`).sites, ['example-music.com'])
+    for (const bad of ['site\n', 'site secret-repo\n', 'site a.com extra\n', 'site https://a.com\n', 'site a/b.com\n']) {
+      assert.throws(() => parseAllowlist(bad), /allowlist line 1/, bad)
+    }
+  })
+
+  it('a site line already in the pushed base holds nothing for a later line (second push, allowlist read from main)', () => {
+    // The hook reads the allowlist from the remote's default branch (no site line) while the
+    // merge base is the first push, which holds the cleared line.
+    const dir = mkdtempSync(join(tmpdir(), 'privacy-guard-held-'))
+    try {
+      sh(dir, 'init', '-q', '-b', 'main')
+      mkdirSync(join(dir, '.github'), { recursive: true })
+      writeFileSync(join(dir, '.github', 'privacy-guard-allow.txt'), `site ${NAME}\n`)
+      sh(dir, 'add', '-A')
+      sh(dir, 'commit', '-q', '-m', 'base')
+      sh(dir, 'checkout', '-q', '-b', 'pr')
+      writeFileSync(join(dir, '.github', 'privacy-guard-allow.txt'), `site ${NAME}\nrepo ${NAME}\n`)
+      sh(dir, 'add', '-A')
+      sh(dir, 'commit', '-q', '-m', 'second')
+      const empty = join(dir, 'empty-allow.txt')
+      writeFileSync(empty, '')
+      const r = spawnSync('node', [GUARD, '--base', 'main', '--head', 'pr', '--dir', dir, '--allow', empty], {
+        encoding: 'utf8',
+        env: { PATH: process.env.PATH, HOME: process.env.HOME, PRIVATE_REPOS: NAME },
+      })
+      assert.equal(r.status, 1, `${r.stdout}${r.stderr}`)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('takes only a web domain: a file name, a package or a bare word is no site line', () => {
+    for (const v of ['secret-engine.js', 'notes.md', 'org.github', 'secret-repo']) {
+      const r = guard({ before: { 'README.md': 'hi\n' }, after: { '.github/privacy-guard-allow.txt': `site ${v}\n` }, allow: false, env: { PRIVATE_REPOS: v } })
+      assert.equal(r.status, 1, `${v}: ${r.out}`)
+      assert.throws(() => parseAllowlist(`site ${v}\n`), /allowlist line 1/)
+    }
+  })
+})
