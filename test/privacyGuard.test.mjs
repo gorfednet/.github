@@ -1516,6 +1516,12 @@ describe('privacy guard: a `product <Name>` line clears a public product name, w
     fails('a private Secret-Repo_notes file\n')
     fails('a private note for @Secret-Repo\n')
     fails('private Secret-Repo.md\n')
+    fails('{"name":"Secret-Repo","private":true}\n')
+    fails('Secret-Repo,2026-11-14,private\n')
+    fails('Secret-Repo   2026-11-14   private\n')
+    fails('Secret-Repo, Other-Game: private\n')
+    fails('Secret-Repo is a game, private: yes\n')
+    fails('the Secret-Repo "private" flag\n')
   })
 
   it('refuses a private name that was never listed as a product, beside one that was', () => {

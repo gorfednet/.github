@@ -316,6 +316,13 @@ export function isProductName(text, index, value, allow) {
   if (!SAYS_PRIVATE.test(line)) return true
   // The name itself may hold such a word (a product called Foo-Repo): read the line without it.
   if (REPO_WORDS.test(line.replace(value, ' '))) return false
+  // Fail closed: a data shape (quotes, braces, brackets, an equals sign) is not prose, and every
+  // `private` on the line must lead into a plain lowercase word ("private beta"), never end a
+  // field or a clause ("name,date,private", "X, Y: private", "private: true").
+  if (/["'{}\[\]=]/.test(line.replace(value, ' '))) return false
+  for (const m of line.matchAll(/\bprivate\b/gi)) {
+    if (!/^\s+[a-z]{2,}/.test(line.slice(m.index + m[0].length))) return false
+  }
   const pre = text.slice(from, index)
   const post = text.slice(index + value.length, from + line.length)
   const word = '(?:private|visibility)'
