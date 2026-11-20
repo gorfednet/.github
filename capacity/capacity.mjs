@@ -6,7 +6,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { execFileSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
-import { productionPool, poolKey, poolMessage } from './pool.mjs'
+import { productionPool, poolKey, poolMessage, queuePushAllowed } from './pool.mjs'
 
 /** A reading under the hold line older than this is stale: it reads as unknown. */
 export const USAGE_MAX_AGE_MS = 2 * 60 * 60 * 1000
@@ -200,12 +200,14 @@ export async function run(deps) {
     try { p = await deps.pool(now) } catch (e) { p = { state: 'unknown', reason: String(e.message).slice(0, 120), repos: 0, queued: [], stale: [] } }
     const key = poolKey(p)
     let lastKey = prev?.pool && 'lastPushedKey' in prev.pool ? prev.pool.lastPushedKey : null
+    let queueAt = p.state === 'ok' ? null : (prev?.pool?.lastQueuePushAt ?? null)
     if (key !== lastKey) {
       const line = poolMessage(p, lastKey)
       if (!line) lastKey = key // ok with nothing to retract
-      else if ((await push(line)) !== false) lastKey = key
+      else if (p.state === 'queued' && !queuePushAllowed(queueAt, now)) lastKey = key // one `pool queue` line an hour: a change inside it is recorded, not sent
+      else if ((await push(line)) !== false) { lastKey = key; if (p.state === 'queued') queueAt = now }
     }
-    out.pool = { ...p, lastPushedKey: lastKey }
+    out.pool = { ...p, lastPushedKey: lastKey, lastQueuePushAt: queueAt }
   }
   writeJson(out)
   return out

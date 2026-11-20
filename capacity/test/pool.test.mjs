@@ -150,8 +150,8 @@ test('pushes only when the state or the queued set changes, and says when the po
     await run(h.deps)
     lines.push(h.pushes.length - before)
   }
-  assert.deepEqual(lines, [1, 0, 1, 1, 0])
-  assert.deepEqual(h.pushes, ['pool queue: a 18 min', 'pool queue: a 48 min, b 16 min', 'pool back'])
+  assert.deepEqual(lines, [1, 0, 0, 1, 0]) // the third run's new repository is inside the hour: recorded, not sent
+  assert.deepEqual(h.pushes, ['pool queue: a 18 min', 'pool back'])
   assert.equal(h.file.pool.state, 'ok')
 })
 
@@ -225,4 +225,43 @@ test('the default repository list is the token owner, and an organization is use
   await checkPool({ read, now: NOW })
   await checkPool({ read, now: NOW, org: 'example-org' })
   assert.deepEqual(urls, ['/user/repos?affiliation=owner&per_page=100', LIST])
+})
+
+test('queued behind the repository\'s own running CI is no alert; with nothing running it is', async () => {
+  const job = (status, labels) => ({ jobs: [{ status, labels, created_at: new Date(NOW - 30 * MIN).toISOString(), name: 'j' }] })
+  const started = (id) => ({ workflow_runs: [{ id, created_at: new Date(NOW - 40 * MIN).toISOString() }] })
+  const behind = await check({
+    [LIST]: repos('a'), [hb('a')]: beat(1),
+    [qd('a')]: runs(30), // a run waiting 30 minutes
+    [ip('a')]: started(1), [jobsOf('a', 1)]: { jobs: [{ status: 'in_progress', labels: ['self-hosted', 'linux'], created_at: new Date(NOW - 40 * MIN).toISOString() }] },
+  })
+  assert.equal(behind.p.state, 'ok')
+  assert.deepEqual(behind.p.behind, [{ repo: 'example-org/a', minutes: 30 }])
+  // A job running on a hosted runner does not count as the pool serving the repository.
+  const hosted = await check({ [LIST]: repos('a'), [hb('a')]: beat(1), [qd('a')]: runs(30), [ip('a')]: started(1), [jobsOf('a', 1)]: job('in_progress', ['ubuntu-latest']) })
+  assert.equal(hosted.p.state, 'queued')
+  const idle = await check({ [LIST]: repos('a'), [hb('a')]: beat(1), [qd('a')]: runs(30) })
+  assert.equal(idle.p.state, 'queued')
+  assert.deepEqual(idle.p.behind, [])
+})
+
+test('pool queue goes out at most once an hour, and at once again after the pool was ok', async () => {
+  const h = harness([Q(['a', 18]), Q(['a', 28], ['b', 16]), Q(['b', 70]), Q(['b', 90], ['c', 20]), OK, Q(['d', 17])])
+  const sent = []
+  for (const minutes of [0, 10, 20, 61, 70, 75]) {
+    h.deps.now = NOW + minutes * MIN
+    const before = h.pushes.length
+    await run(h.deps)
+    sent.push(h.pushes.length - before)
+  }
+  // 0: first alert. 10 and 20: changes inside the hour, recorded and not sent. 61: an hour on, sent. 70: ok, "pool back". 75: queue again at once.
+  assert.deepEqual(sent, [1, 0, 0, 1, 1, 1])
+  assert.deepEqual(h.pushes, ['pool queue: a 18 min', 'pool queue: b 90 min, c 20 min', 'pool back', 'pool queue: d 17 min'])
+  assert.equal(h.file.pool.lastPushedKey, 'queued:d')
+})
+
+test('pool down and a failed check still push on change, whatever the queue rate limit says', async () => {
+  const h = harness([Q(['a', 18]), { state: 'down', queued: [], behind: [], repos: 3, stale: [], newestHeartbeatMinutes: 20 }, { state: 'unknown', reason: '2 read(s) failed', queued: [], repos: 0, stale: [] }])
+  for (let i = 0; i < 3; i++) { h.deps.now = NOW + i * MIN; await run(h.deps) }
+  assert.deepEqual(h.pushes, ['pool queue: a 18 min', 'pool down: no heartbeat for 20 min', 'pool check failed: 2 read(s) failed'])
 })

@@ -6,7 +6,7 @@
 import fs from 'node:fs'
 import { execFileSync } from 'node:child_process'
 
-export const POOL = { staleMs: 15 * 60 * 1000, defaultOrg: '', queuedPerPage: 20, reposPerPage: 100 }
+export const POOL = { queuePushGapMs: 60 * 60 * 1000, staleMs: 15 * 60 * 1000, defaultOrg: '', queuedPerPage: 20, reposPerPage: 100 }
 
 /** The ETag cache: url -> { etag, body }. Unreadable or malformed means empty: every read is then a full one. */
 export function loadEtags(file, readFile = (p) => fs.readFileSync(p, 'utf8')) {
@@ -48,8 +48,8 @@ export function cachedReader({ get, cache, used, stats = { reads: 0, notModified
 
 /** The runs list is cached as ids and created_at times only. */
 const reduceRuns = (b) => ({ runs: (b?.workflow_runs ?? []).map((r) => ({ id: r.id, created_at: r.created_at })) })
-/** A run's jobs are cached as status and created_at only. */
-const reduceJobs = (b) => ({ jobs: (b?.jobs ?? []).map((j) => ({ status: j.status, created_at: j.created_at })) })
+/** A run's jobs are cached as status, created_at and runner labels only. */
+const reduceJobs = (b) => ({ jobs: (b?.jobs ?? []).map((j) => ({ status: j.status, created_at: j.created_at, labels: Array.isArray(j.labels) ? j.labels : [] })) })
 
 /**
  * Non-archived repository names, paged, or throws. With no org it is the token owner's own repositories
@@ -77,10 +77,11 @@ export async function listRepos({ read, org = POOL.defaultOrg }) {
 export async function checkPool({ read, now, org = POOL.defaultOrg }) {
   const failures = []
   let repos
-  try { repos = await listRepos({ read, org }) } catch (e) { return { state: 'unknown', reason: `repository list: ${String(e.message).slice(0, 120)}`, repos: 0, queued: [], stale: [] } }
+  try { repos = await listRepos({ read, org }) } catch (e) { return { state: 'unknown', reason: `repository list: ${String(e.message).slice(0, 120)}`, repos: 0, queued: [], behind: [], stale: [] } }
   const served = []
   const stale = []
   const queued = []
+  const behind = []
   let newestMinutes = null
   for (const repo of repos) {
     try {
@@ -95,19 +96,24 @@ export async function checkPool({ read, now, org = POOL.defaultOrg }) {
       const q = await read(`/repos/${repo}/actions/runs?status=queued&per_page=${POOL.queuedPerPage}`, reduceRuns)
       const times = (q.body?.runs ?? []).map((r) => Date.parse(r.created_at)).filter(Number.isFinite)
       const started = await read(`/repos/${repo}/actions/runs?status=in_progress&per_page=${POOL.queuedPerPage}`, reduceRuns)
+      let running = false // a job of this repository is running on a self-hosted runner right now: the pool is serving it
       for (const run of started.body?.runs ?? []) {
         const j = await read(`/repos/${repo}/actions/runs/${run.id}/jobs?filter=latest&per_page=100`, reduceJobs)
-        for (const job of j.body?.jobs ?? []) if (job.status === 'queued') times.push(Date.parse(job.created_at))
+        for (const job of j.body?.jobs ?? []) {
+          if (job.status === 'queued') times.push(Date.parse(job.created_at))
+          if (job.status === 'in_progress' && job.labels.includes('self-hosted')) running = true
+        }
       }
       const waits = times.filter(Number.isFinite)
       if (waits.length) {
         const waited = now - Math.min(...waits)
-        if (waited > POOL.staleMs) queued.push({ repo, minutes: Math.floor(waited / 60000) })
+        // Waiting behind the repository's own running CI is normal on a healthy pool, so it is not an alert.
+        if (waited > POOL.staleMs) (running ? behind : queued).push({ repo, minutes: Math.floor(waited / 60000) })
       }
     } catch (e) { failures.push(`${repo}: ${String(e.message).slice(0, 80)}`) }
   }
   queued.sort((a, b) => b.minutes - a.minutes)
-  const base = { repos: served.length, queued, stale, ...(newestMinutes === null ? {} : { newestHeartbeatMinutes: newestMinutes }) }
+  const base = { repos: served.length, queued, behind, stale, ...(newestMinutes === null ? {} : { newestHeartbeatMinutes: newestMinutes }) }
   if (failures.length) return { state: 'unknown', reason: `${failures.length} read(s) failed, first: ${failures[0]}`, ...base }
   if (served.length === 0) return { state: 'unknown', reason: 'no repository has a pool heartbeat', ...base }
   if (stale.length === served.length) return { state: 'down', ...base }
@@ -119,6 +125,14 @@ export async function checkPool({ read, now, org = POOL.defaultOrg }) {
 export function poolKey(p) {
   if (p.state === 'queued') return `queued:${p.queued.map((q) => q.repo).sort().join(',')}`
   return p.state
+}
+
+/**
+ * Whether a `pool queue` line may go out: at most one an hour. The gap resets when the pool is ok again, which clears
+ * `lastQueuePushAt`, so a queue that clears and returns pushes at once.
+ */
+export function queuePushAllowed(lastQueuePushAt, now) {
+  return !Number.isFinite(lastQueuePushAt) || now - lastQueuePushAt >= POOL.queuePushGapMs
 }
 
 /** The ntfy line for a change to `p`, or null when the owner needs nothing (never alerted, still ok). */
@@ -147,7 +161,7 @@ export function productionPool({ cacheFile, org = process.env.CAPACITY_POOL_ORG 
   return {
     stats,
     pool: async (now) => {
-      try { return await checkPool({ read, now, org }) } catch (e) { return { state: 'unknown', reason: String(e.message).slice(0, 120), repos: 0, queued: [], stale: [] } }
+      try { return await checkPool({ read, now, org }) } catch (e) { return { state: 'unknown', reason: String(e.message).slice(0, 120), repos: 0, queued: [], behind: [], stale: [] } }
     },
     save: () => saveEtags(cacheFile, cache, used),
   }
