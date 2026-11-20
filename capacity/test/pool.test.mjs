@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { checkPool, cachedReader, poolKey, poolMessage, loadEtags, saveEtags, ghToken, productionPool } from '../pool.mjs'
-import { run, errorRecord } from '../capacity.mjs'
+import { run, errorRecord, makePush, productionDeps } from '../capacity.mjs'
 
 const NOW = Date.parse('2026-11-20T15:00:00Z')
 const MIN = 60 * 1000
@@ -204,7 +204,7 @@ test('production reader sends the bearer token and If-None-Match, and a token fa
 })
 
 test('a job queued over 15 minutes inside a run that has started counts as queued; a young one does not', async () => {
-  const jobs = (...pairs) => ({ jobs: pairs.map(([status, m]) => ({ status, created_at: new Date(NOW - m * MIN).toISOString(), name: 'j' })) })
+  const jobs = (...pairs) => ({ jobs: pairs.map(([status, m]) => ({ status, created_at: new Date(NOW - m * MIN).toISOString(), name: 'j', labels: status === 'in_progress' ? ['ubuntu-latest'] : ['self-hosted', 'linux'] })) })
   const routes = {
     [LIST]: repos('a', 'b'),
     [hb('a')]: beat(1), [qd('a')]: runs(), [ip('a')]: { workflow_runs: [{ id: 11, created_at: new Date(NOW - 50 * MIN).toISOString() }] },
@@ -293,4 +293,65 @@ test('pool down and a failed check still push on change, whatever the queue rate
   const h = harness([Q(['a', 18]), { state: 'down', queued: [], behind: [], repos: 3, stale: [], newestHeartbeatMinutes: 20 }, { state: 'unknown', reason: '2 read(s) failed', queued: [], repos: 0, stale: [] }])
   for (let i = 0; i < 3; i++) { h.deps.now = NOW + i * MIN; await run(h.deps) }
   assert.deepEqual(h.pushes, ['pool queue: a 18 min', 'pool down: no heartbeat for 20 min', 'pool check failed: 2 read(s) failed'])
+})
+
+// Round 4 (Fable read of abfe496).
+
+test('pool lines go on both paths: either delivering moves lastPushedKey, neither leaves it for a retry', async () => {
+  const off = (sent) => ({ heartbeat: { pushOffbox: async () => ({ sent }) } })
+  const poolPush = (opsResult, sent) => makePush({ helpers: off(sent), home: '/h', pushOps: async () => opsResult })
+  const h = harness([Q(['a', 20]), Q(['a', 21]), Q(['a', 22])])
+  h.deps.poolPush = poolPush(false, false) // the box's ntfy is down and the off-box path failed too
+  await run(h.deps)
+  assert.equal(h.file.pool.lastPushedKey, null, 'nothing delivered: stays unpushed')
+  h.deps.poolPush = poolPush(false, true) // box ntfy down, off-box delivered
+  await run(h.deps)
+  assert.equal(h.file.pool.lastPushedKey, 'queued:a', 'the off-box path alone counts')
+  assert.equal(typeof productionDeps({ home: '/h', pushOps: async () => false }).poolPush, 'function', 'production wires it')
+})
+
+test('a down pool is announced off-box when the box ntfy is down, and recovery then says "pool back"', async () => {
+  const sent = []
+  const helpers = { heartbeat: { pushOffbox: async (t) => { sent.push(t); return { sent: true } } } }
+  const h = harness([{ state: 'down', queued: [], repos: 3, stale: [], newestHeartbeatMinutes: 30 }, OK])
+  h.deps.poolPush = makePush({ helpers, home: '/h', pushOps: async () => false })
+  await run(h.deps)
+  await run(h.deps)
+  assert.deepEqual(sent, ['pool down: no heartbeat for 30 min', 'pool back'])
+})
+
+const jobsOk = (...a) => ({ jobs: a })
+test('one transport failure is retried once; two in a row make the state unknown', async () => {
+  let n = 0
+  const flaky = (failures) => async (url, headers) => {
+    if (url === hb('a') && n++ < failures) throw new Error('fetch failed')
+    return fake({ [LIST]: repos('a'), [hb('a')]: beat(4), [qd('a')]: runs() }).get(url, headers)
+  }
+  const go = (failures) => { n = 0; const { read } = cachedReader({ get: flaky(failures), cache: {}, used: new Set() }); return checkPool({ read, now: NOW, org: 'example-org' }) }
+  assert.equal((await go(1)).state, 'ok')
+  const two = await go(2)
+  assert.equal(two.state, 'unknown')
+  assert.match(two.reason, /fetch failed/)
+})
+
+test('a 404 on a run list, or an answer without its list, is a failed read, never "nothing queued"', async () => {
+  const base = { [LIST]: repos('a'), [hb('a')]: beat(4) }
+  const no404 = await check({ ...base, [qd('a')]: 404 })
+  assert.equal(no404.p.state, 'unknown')
+  const noList = await check({ ...base, [qd('a')]: { total_count: 0 } })
+  assert.equal(noList.p.state, 'unknown')
+  const noJobs = await check({ ...base, [qd('a')]: runs(), [ip('a')]: { workflow_runs: [{ id: 5, created_at: new Date(NOW - MIN).toISOString() }] }, [jobsOf('a', 5)]: { total_count: 0 } })
+  assert.equal(noJobs.p.state, 'unknown')
+})
+
+test('a heartbeat dated in the future is stale, not fresh', async () => {
+  const { p } = await check({ [LIST]: repos('a'), [hb('a')]: { value: String(Math.floor((NOW + 30 * MIN) / 1000)) }, [qd('a')]: runs() })
+  assert.equal(p.state, 'down')
+})
+
+test('a queued job that is not for a self-hosted runner is not the pool\'s wait', async () => {
+  const j = (labels) => ({ status: 'queued', created_at: new Date(NOW - 40 * MIN).toISOString(), labels })
+  const routes = (labels) => ({ [LIST]: repos('a'), [hb('a')]: beat(1), [qd('a')]: runs(), [ip('a')]: { workflow_runs: [{ id: 9, created_at: new Date(NOW - 50 * MIN).toISOString() }] }, [jobsOf('a', 9)]: jobsOk(j(labels)) })
+  assert.equal((await check(routes(['ubuntu-latest']))).p.state, 'ok')
+  assert.equal((await check(routes(['self-hosted', 'linux']))).p.state, 'queued')
 })

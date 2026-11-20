@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Capacity check: writes ~/.desk/capacity.json and pushes ntfy only when the state changes.
-// Token-free: local reads only. See README.md for thresholds.
+// Reads are local, plus the pool check's GitHub reads (a few hundred an hour, mostly 304s). See README.md for thresholds.
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -205,7 +205,7 @@ export async function run(deps) {
       const line = poolMessage(p, lastKey)
       if (!line) lastKey = key // ok with nothing to retract
       else if (p.state === 'queued' && !queuePushAllowed(queueAt, now)) { /* one `pool queue` line an hour: a change inside it waits, unrecorded, so it goes out once the hour is up */ }
-      else if ((await push(line)) !== false) { lastKey = key; if (p.state === 'queued') queueAt = now }
+      else if ((await (deps.poolPush ?? push)(line)) !== false) { lastKey = key; if (p.state === 'queued') queueAt = now }
     }
     out.pool = { ...p, lastPushedKey: lastKey, lastQueuePushAt: queueAt }
   }
@@ -234,14 +234,19 @@ export async function loadHelpers(here = path.dirname(fileURLToPath(import.meta.
   return { heartbeat: await pick('lib/heartbeat.mjs', '../ship-bot/lib/heartbeat.mjs'), usage: await pick('lib/usageAlert.mjs', '../scripts/lib/usageAlert.mjs'), drift: await safe('lib/installedDrift.mjs', '../scripts/lib/installedDrift.mjs') }
 }
 
+/** ntfy on both paths, the box's own and the off-box one: delivered when either delivers (false only when neither did). */
+export function makePush({ helpers, home, pushOps }) {
+  return async (text) => {
+    const ops = (await pushOps(text)) !== false
+    const off = helpers?.heartbeat ? (await helpers.heartbeat.pushOffbox(text, { home })).sent === true : false
+    return ops || off
+  }
+}
+
 /** After a good run: the weekly-usage pushes, the ping, then the installed-tools check (ntfy on both paths; either delivering counts). */
 export async function afterRun({ helpers, home, pushOps, log = console.log, root = path.join(home, 'Developer', 'gorfednet'), driftOpts = {} }) {
   const done = { usage: null, drift: null, ping: null }
-  const push = async (text) => {
-    const ops = (await pushOps(text)) !== false
-    const off = helpers.heartbeat ? (await helpers.heartbeat.pushOffbox(text, { home })).sent === true : false
-    return ops || off
-  }
+  const push = makePush({ helpers, home, pushOps })
   if (helpers.usage && helpers.heartbeat) {
     done.usage = await helpers.usage.checkUsage({
       statePath: path.join(home, '.herdr-jobs', 'state.json'),
@@ -269,7 +274,7 @@ function backupInputs() {
 }
 
 /** The production wiring of `run`, exported so a test can prove every input (usage included) is passed. */
-export function productionDeps({ home, pushOps, now = Date.now() }) {
+export function productionDeps({ home, pushOps, helpers = null, now = Date.now() }) {
   const dir = path.join(home, '.desk')
   const file = path.join(dir, 'capacity.json')
   const sessions = path.join(home, 'Library/Application Support/Claude/claude-code-sessions')
@@ -294,15 +299,18 @@ export function productionDeps({ home, pushOps, now = Date.now() }) {
     readPrevious: () => { try { return JSON.parse(fs.readFileSync(file, 'utf8')) } catch { return null } },
     writeJson: (o) => { fs.mkdirSync(dir, { recursive: true }); fs.writeFileSync(file + '.tmp', JSON.stringify(o, null, 2) + '\n'); fs.renameSync(file + '.tmp', file) },
     push: (text) => pushOps(text),
+    // Pool lines go on both paths: with the box's ntfy down, "pool down" is exactly the message that must still arrive.
+    poolPush: makePush({ helpers, home, pushOps }),
   }
 }
 
 async function main() {
   const home = os.homedir()
   const cfgFile = path.join(home, '.ship-bot', 'ntfy.token')
-  const out = await run(productionDeps({ home, pushOps }))
+  const helpers = await loadHelpers()
+  const out = await run(productionDeps({ home, pushOps, helpers }))
   console.log(JSON.stringify(out))
-  const done = await afterRun({ helpers: await loadHelpers(), home, pushOps })
+  const done = await afterRun({ helpers, home, pushOps })
   console.log(JSON.stringify(done))
 
   async function pushOps(text) {

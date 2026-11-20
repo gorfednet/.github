@@ -6,7 +6,7 @@
 import fs from 'node:fs'
 import { execFileSync } from 'node:child_process'
 
-export const POOL = { queuePushGapMs: 60 * 60 * 1000, staleMs: 15 * 60 * 1000, defaultOrg: '', queuedPerPage: 20, reposPerPage: 100 }
+export const POOL = { queuePushGapMs: 60 * 60 * 1000, staleMs: 15 * 60 * 1000, maxSkewMs: 60 * 1000, defaultOrg: '', queuedPerPage: 20, reposPerPage: 100 }
 
 /** The ETag cache: url -> { etag, body }. Unreadable or malformed means empty: every read is then a full one. */
 export function loadEtags(file, readFile = (p) => fs.readFileSync(p, 'utf8')) {
@@ -28,7 +28,10 @@ export function cachedReader({ get, cache, used, stats = { reads: 0, notModified
   const read = async (url, reduce = (b) => b) => {
     used.add(url)
     const hit = cache[url]
-    const res = await get(url, hit?.etag ? { 'If-None-Match': hit.etag } : {})
+    const headers = hit?.etag ? { 'If-None-Match': hit.etag } : {}
+    // A transport failure (a stalled or reset connection, about 1 in 30 from the Mac) gets one more try: one stall among ~75 reads must not read as a dead pool.
+    let res
+    try { res = await get(url, headers) } catch { res = await get(url, headers) }
     stats.reads++
     if (res.status === 304) {
       if (!hit) throw new Error(`HTTP 304 for ${url} with nothing cached`)
@@ -49,9 +52,15 @@ export function cachedReader({ get, cache, used, stats = { reads: 0, notModified
 /** The latest of created_at and run_started_at: a re-run keeps its first attempt's created_at, and run_started_at is when this attempt began. */
 const attemptAt = (r) => { const t = [r.created_at, r.run_started_at].map((x) => Date.parse(x)).filter(Number.isFinite); return t.length ? new Date(Math.max(...t)).toISOString() : r.created_at }
 /** The runs list is cached as ids and this attempt's start time only (kept under created_at). */
-const reduceRuns = (b) => ({ runs: (b?.workflow_runs ?? []).map((r) => ({ id: r.id, created_at: attemptAt(r) })) })
+const reduceRuns = (b) => {
+  if (!Array.isArray(b?.workflow_runs)) throw new Error('runs answer has no workflow_runs list')
+  return { runs: b.workflow_runs.map((r) => ({ id: r.id, created_at: attemptAt(r) })) }
+}
 /** A run's jobs are cached as status, created_at and runner labels only. */
-const reduceJobs = (b) => ({ jobs: (b?.jobs ?? []).map((j) => ({ status: j.status, created_at: j.created_at, labels: Array.isArray(j.labels) ? j.labels : [] })) })
+const reduceJobs = (b) => {
+  if (!Array.isArray(b?.jobs)) throw new Error('jobs answer has no jobs list')
+  return { jobs: b.jobs.map((j) => ({ status: j.status, created_at: j.created_at, labels: Array.isArray(j.labels) ? j.labels : [] })) }
+}
 
 /**
  * Non-archived repository names, paged, or throws. With no org it is the token owner's own repositories
@@ -90,19 +99,22 @@ export async function checkPool({ read, now, org = POOL.defaultOrg }) {
       const v = await read(`/repos/${repo}/actions/variables/HEAVY_RUNNER_HEARTBEAT`)
       if (v.status === 404) continue // not a pool repository
       const beat = Number(v.body?.value) * 1000
-      const age = Number.isFinite(beat) ? now - beat : Infinity
+      let age = Number.isFinite(beat) ? now - beat : Infinity
+      if (age < -POOL.maxSkewMs) age = Infinity // dated in the future: the clocks disagree, so it proves nothing is alive
       served.push(repo)
       if (age > POOL.staleMs) stale.push(repo)
       if (Number.isFinite(age)) newestMinutes = newestMinutes === null ? Math.floor(age / 60000) : Math.min(newestMinutes, Math.floor(age / 60000))
       // A queued run, and a job still queued inside a run that has started: a run is in_progress as soon as one of its jobs runs.
-      const q = await read(`/repos/${repo}/actions/runs?status=queued&per_page=${POOL.queuedPerPage}`, reduceRuns)
+      // A 404 on a pool repository's run or job list is a failed read, never "nothing queued".
+      const answer = async (url, reduce) => { const r = await read(url, reduce); if (r.status === 404) throw new Error(`HTTP 404 for ${url}`); return r }
+      const q = await answer(`/repos/${repo}/actions/runs?status=queued&per_page=${POOL.queuedPerPage}`, reduceRuns)
       const times = (q.body?.runs ?? []).map((r) => Date.parse(r.created_at)).filter(Number.isFinite)
-      const started = await read(`/repos/${repo}/actions/runs?status=in_progress&per_page=${POOL.queuedPerPage}`, reduceRuns)
+      const started = await answer(`/repos/${repo}/actions/runs?status=in_progress&per_page=${POOL.queuedPerPage}`, reduceRuns)
       let running = false // a job of this repository is running on a self-hosted runner right now: the pool is serving it
       for (const run of started.body?.runs ?? []) {
-        const j = await read(`/repos/${repo}/actions/runs/${run.id}/jobs?filter=latest&per_page=100`, reduceJobs)
+        const j = await answer(`/repos/${repo}/actions/runs/${run.id}/jobs?filter=latest&per_page=100`, reduceJobs)
         for (const job of j.body?.jobs ?? []) {
-          if (job.status === 'queued') times.push(Date.parse(job.created_at))
+          if (job.status === 'queued' && job.labels.includes('self-hosted')) times.push(Date.parse(job.created_at))
           if (job.status === 'in_progress' && job.labels.includes('self-hosted')) running = true
         }
       }
