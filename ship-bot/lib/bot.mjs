@@ -260,7 +260,7 @@ function recoverInterruptedDeploys(ctx) {
       ctx.say('warn', `${slug}: ${reason} (live run would block this repo)`)
       continue
     }
-    rs.blocked = { reason, at: ctx.clock.now().toISOString(), pr: d.pr }
+    rs.blocked = { reason, at: ctx.clock.now().toISOString(), pr: d.pr, ...(d.mergeSha ? { failedSha: d.mergeSha } : {}) }
     delete rs.deployInProgress
     ctx.say('error', `${slug}: blocked: ${reason}`)
   }

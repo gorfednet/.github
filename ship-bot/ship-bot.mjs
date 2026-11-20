@@ -754,11 +754,11 @@ function applyUnblockRequests(config, state, print) {
       requestedAt = undefined
     }
     if (rs?.blocked && requestedAt && String(rs.blocked.at) <= String(requestedAt) && pausedRefusal({ slug, name: slug.split('/')[1] }, rs.blocked, deployed)) {
-      print('warn', `${slug}: an unblock request without the paused commit dropped; the block stays (${rs.blocked.reason})`)
+      print('warn', `${slug}: an unblock request ${rs.blocked.pausedSha ? 'without the paused commit' : `whose --deployed does not name the failed deploy's commit`} dropped; the block stays (${rs.blocked.reason})`)
     } else if (rs?.blocked && requestedAt && String(rs.blocked.at) <= String(requestedAt)) {
       print('info', `${slug}: unblocked on request (was: ${rs.blocked.reason})`)
       const recorded = clearBlock(rs, new Date(), deployed)
-      if (recorded) print('info', `${slug}: recorded ${recorded.slice(0, 7)} as deployed (the paused commit a person deployed by hand)`)
+      if (recorded) print('info', `${slug}: recorded ${recorded.slice(0, 7)} as deployed (the commit a person deployed by hand)`)
     } else if (rs?.blocked) {
       print('warn', `${slug}: an unblock request from ${requestedAt} is older than the block set at ${rs.blocked.at}; dropped, the block stays`)
     }

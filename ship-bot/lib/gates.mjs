@@ -80,28 +80,39 @@ function workflowRunIdOf(run) {
  * ready-to-merge label cancels the running CI and starts a labelled run; the
  * cancelled run's jobs that have no namesake in the new run (an unexpanded
  * `e2e` against the new `e2e (1)` .. `e2e (8)`) would otherwise block forever.
- * A cancelled check run is superseded only when a later workflow run with the
- * same workflow id and event, on this head, completed with success. A cancel
- * with no such run still blocks, and cancelled is never treated as success.
- * No workflow runs (unreadable, or none passed) supersedes nothing.
+ *
+ * Only a check run that is itself completed with conclusion `cancelled` can be
+ * superseded, and only by a workflow run of the same workflow id and event, on
+ * this head, with a strictly higher run id, that completed with success.
+ * Anything else is kept: a red shard, a cancel whose workflow run can't be
+ * found, a cancel with no later green run. Cancelled is never success.
+ *
+ * `workflowRuns`: undefined = not read (nothing was cancelled, nothing is
+ * superseded); null = the read failed. Returns the runs to judge and the
+ * cancelled checks that may yet be superseded (a later run of the workflow is
+ * still going, or the read failed), which wait instead of failing.
  */
 export function dropSupersededCancels(runs, workflowRuns, sha) {
-  if (!Array.isArray(runs) || !Array.isArray(workflowRuns) || workflowRuns.length === 0) return runs
-  const byId = new Map(workflowRuns.map((w) => [Number(w.id), w]))
-  return runs.filter((r) => {
-    if (r.conclusion !== 'cancelled') return true
+  const waiting = new Set()
+  if (!Array.isArray(runs) || workflowRuns === undefined) return { runs, waiting }
+  const list = Array.isArray(workflowRuns) ? workflowRuns : []
+  const byId = new Map(list.map((w) => [Number(w.id), w]))
+  const kept = runs.filter((r) => {
+    if (r.status !== 'completed' || r.conclusion !== 'cancelled') return true
+    if (workflowRuns === null) {
+      waiting.add(r)
+      return true
+    }
     const own = byId.get(workflowRunIdOf(r))
     if (!own || own.head_sha !== sha) return true
-    return !workflowRuns.some(
-      (w) =>
-        Number(w.id) > Number(own.id) &&
-        w.workflow_id === own.workflow_id &&
-        w.event === own.event &&
-        w.head_sha === sha &&
-        w.status === 'completed' &&
-        w.conclusion === 'success',
+    const later = list.filter(
+      (w) => Number(w.id) > Number(own.id) && w.workflow_id === own.workflow_id && w.event === own.event && w.head_sha === sha,
     )
+    if (later.some((w) => w.status === 'completed' && w.conclusion === 'success')) return false
+    if (later.some((w) => w.status !== 'completed')) waiting.add(r)
+    return true
   })
+  return { runs: kept, waiting }
 }
 
 /** The most recent commit status per context (latest created_at, ties by id). */
@@ -129,16 +140,19 @@ export function evaluateChecks({ runs, statuses, expectedChecks, graceOver, labe
     return [{ key: 'checks-unreadable', kind: 'wait', reason: 'could not read the checks on this head' }]
   }
   // Only the latest run of each name is judged; older runs of it are history.
-  const others = latestPerName(dropSupersededCancels(runs, workflowRuns, sha))
+  const dropped = dropSupersededCancels(runs, workflowRuns, sha)
+  const others = latestPerName(dropped.runs)
+  const waitingCancels = others.filter((r) => dropped.waiting.has(r))
   const otherStatuses = latestPerContext(statuses)
 
   const pending = [
     ...others.filter((r) => r.status !== 'completed').map((r) => r.name),
+    ...waitingCancels.map((r) => `${r.name} (cancelled; a later run of its workflow may replace it)`),
     ...otherStatuses.filter((s) => s.state === 'pending').map((s) => s.context),
   ]
   const failed = [
     ...others
-      .filter((r) => r.status === 'completed' && !OK_CONCLUSIONS.has(r.conclusion))
+      .filter((r) => r.status === 'completed' && !OK_CONCLUSIONS.has(r.conclusion) && !waitingCancels.includes(r))
       .map((r) => `${r.name} (${r.conclusion ?? 'no conclusion'})`),
     ...otherStatuses.filter((s) => s.state !== 'pending' && s.state !== 'success').map((s) => `${s.context} (${s.state})`),
   ]
@@ -160,7 +174,7 @@ export function evaluateChecks({ runs, statuses, expectedChecks, graceOver, labe
       continue
     }
     for (const r of matchedRuns) {
-      if (r.status === 'completed' && r.conclusion !== 'success') notSuccess.push(`${name} (${r.conclusion ?? 'no conclusion'})`)
+      if (r.status === 'completed' && r.conclusion !== 'success' && !waitingCancels.includes(r)) notSuccess.push(`${name} (${r.conclusion ?? 'no conclusion'})`)
       if (requireAfterLabel && !(labeledAt && r.started_at && r.started_at >= labeledAt)) beforeLabel.push(name)
     }
     for (const s of matchedStatuses) {
@@ -466,14 +480,14 @@ export async function evaluatePull(ctx, repo, pr, { headState, fresh = false, dr
       labeledAt = undefined
     }
   }
-  // Only a cancelled run can be superseded, so only then is the extra read made. Unreadable = nothing superseded.
+  // Only a cancelled run can be superseded, so only then is the extra read made. Unreadable = null: the cancelled checks wait.
   let workflowRuns
-  if (runs.some((r) => r.conclusion === 'cancelled') && ctx.github.listWorkflowRuns) {
+  if (runs.some((r) => r.status === 'completed' && r.conclusion === 'cancelled') && ctx.github.listWorkflowRuns) {
     try {
       workflowRuns = await ctx.github.listWorkflowRuns(repo.slug, sha)
     } catch (cause) {
       if (cause instanceof RateLimitError) throw cause
-      workflowRuns = undefined
+      workflowRuns = null
     }
   }
   const checkBlocks = evaluateChecks({

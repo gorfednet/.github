@@ -200,6 +200,7 @@ describe('command line', () => {
     Object.assign(store.repo('gorfednet/site'), { blocked: { reason: 'deploy failed', at: '2026-10-09T11:00:00.000Z', failedSha: failed }, lastDeployedSha: 'd'.repeat(40) })
     store.save()
     assert.equal(await main(['--unblock', 'site', '--deployed', 'ffffffff'], h.deps), 2)
+    assert.match(h.out.join('\n'), /does not name the failed deploy's commit eeeeeee/)
     assert.equal(existsSync(join(h.config.stateDir, 'unblock')), false)
     assert.equal(await main(['--unblock', 'site', '--deployed', 'eeeeeee'], h.deps), 0)
     rmSync(join(h.config.stateDir, 'run.lock'))
