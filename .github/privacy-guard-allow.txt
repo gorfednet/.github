@@ -6,11 +6,9 @@
 #   email <domain-or-address>     an address, or a domain and its subdomains
 #   path <glob> <rule,rule | *>   the named rules are not applied to matching files
 #   repo <name>                   a private repository whose name public files may use
-#   product <Name>                a public product name that is also a private repository's name.
-#                                 Only the bare word, spelled exactly so (case counts), and not
-#                                 joined to a path, an underscore, a handle or a longer name. The
-#                                 org-prefixed form, a near-miss spelling and a line that says
-#                                 private are still flagged.
+#   product <Name>                a public product name the private-repo rule would otherwise
+#                                 flag. Exact spelling and case, and a capital letter in it. Only
+#                                 the bare word, in prose: see isProductName in privacy-guard.mjs.
 #   commit <sha>                  a commit (the full 40 hex) whose own diff and message are exempt.
 #                                 A pushed commit cannot be rewritten, so this clears a false
 #                                 positive in one that is not the tip. The net diff is still read.
@@ -23,7 +21,7 @@
 # line does the same for the local pre-push hook, which lists every private repository.
 repo ops
 
-# Public product names that share a private repository's name.
+# Public product names.
 product MoonMan
 product BinderCurve
 

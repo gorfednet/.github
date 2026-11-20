@@ -236,6 +236,8 @@ export function parseAllowlist(text) {
     } else if (kind === 'repo' && value && !rules && /^[A-Za-z0-9._-]+$/.test(value)) {
       repos.push(value.toLowerCase())
     } else if (kind === 'product' && value && !rules && /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(value)) {
+      // The match is by exact spelling, so the spelling must differ from the lowercase slug a repository carries.
+      if (value === value.toLowerCase()) throw new Error(`allowlist line ${i + 1}: a product name needs a capital letter, or its case check would match nothing`)
       products.push(value)
     } else if (kind === 'commit' && value && !rules && /^[0-9a-f]{40}$/i.test(value)) {
       commits.push(value.toLowerCase())
@@ -300,14 +302,26 @@ export const bareNamePattern = (names) => bareNamePatterns(names).word
  *
  * A line that says private (SAYS_PRIVATE) is where a name is read even when the repository
  * has said it: that pairing discloses a private repository. A product name passes there only
- * when the line is prose about the product: no repository, visibility or GitHub word, no
- * table, tab, quote or brace, and every `private` leading straight into a listed noun such as
- * beta or mode ("the private beta of Example-Game" passes; "Example-Game is private",
- * "Example-Game is still private" and "private Example-Game" refuse).
+ * when the line is prose about the product:
+ *   - no `visibility` word, tab or table pipe anywhere on the line, and no repository word
+ *     (repo, repository, GitHub, internal, monorepo, codebase, source, org, remote) within 3
+ *     words of the name;
+ *   - no brace, bracket, quote mark or equals sign, once a checklist box, a Markdown link and
+ *     an apostrophe in a contraction or possessive are set aside;
+ *   - every `private`, before or after the name and in any case, leads straight into a listed
+ *     noun (beta, mode and the like, plural or not, spaced or hyphenated);
+ *   - no copula (is, are, stays, went) between the name and a `private` in the same sentence.
+ * "the private beta of Example-Game" passes; "Example-Game is private", "Example-Game is
+ * still private" and "private Example-Game" refuse.
  */
-const PRIVATE_NOUNS = new Set(['beta', 'alpha', 'preview', 'mode', 'lobby', 'lobbies', 'match', 'matches', 'playtest', 'playtests'])
-const COPULA = /\b(?:is|are|was|were|be|been|being|am|stays?|remains?|becomes?|became|went|goes|kept|keeps?|now)\b/i
-const REPO_WORDS = /\b(?:repos?|repositor(?:y|ies)|visibility|github|internal)\b|[\t|]/i
+const PRIVATE_NOUNS = new Set(['beta', 'betas', 'alpha', 'alphas', 'preview', 'previews', 'mode', 'modes', 'lobby', 'lobbies', 'match', 'matches', 'playtest', 'playtests'])
+const COPULA = /\b(?:is|are|was|were|be|been|being|am|stays?|remains?|becomes?|became|went|goes|kept|keeps?)\b/i
+const REPO_WORDS = /\b(?:repos?|monorepos?|repositor(?:y|ies)|github|internal|codebases?|sources?|orgs?|remotes?)\b/i
+const WINDOW_WORDS = 3
+const SENTENCE_END = /[.!?;](?:\s|$)/
+// Prose shapes that carry brackets and quote marks without being data.
+const CHECKLIST = /^\s*(?:[-*+]|\d+[.)])\s+\[[ xX]\]\s+/
+const MD_LINK = /\[([^\][]*)\]\([^)\s]*\)/g
 export function isProductName(text, index, value, allow) {
   if (!allow?.products?.includes(value)) return false
   const before = text[index - 1] ?? ''
@@ -317,21 +331,22 @@ export function isProductName(text, index, value, allow) {
   const to = text.indexOf('\n', index)
   const line = text.slice(from, to === -1 ? text.length : to)
   if (!SAYS_PRIVATE.test(line)) return true
-  // The name itself may hold such a word (a product called Foo-Repo): read the line without it.
-  if (REPO_WORDS.test(line.replace(value, ' '))) return false
-  // Fail closed: a data shape (quotes, braces, brackets, an equals sign) is not prose, and every
-  // `private` on the line, before or after the name, must lead straight into a noun from a short
-  // list ("private beta", "private lobbies"). Anything else, however it is phrased ("is still
-  // private", "kept private until"), refuses: a word list of ways to say it would always miss one.
-  if (/["'{}\[\]=]/.test(line.replace(value, ' '))) return false
+  const at = index - from
+  // The name itself may hold a repository word (a product called Foo-Repo): read the line without it.
+  const pre = line.slice(0, at)
+  const post = line.slice(at + value.length)
+  if (/\bvisibility\b|[\t|]/i.test(pre + ' ' + post)) return false
+  const noUrl = (t) => t.replace(/\]\([^)\s]*\)/g, ']')
+  const near = [...noUrl(pre).split(/\s+/).slice(-WINDOW_WORDS), ...noUrl(post).split(/\s+/).slice(0, WINDOW_WORDS + 1)].join(' ')
+  if (REPO_WORDS.test(near)) return false
+  const prose = line.replace(CHECKLIST, ' ').replace(MD_LINK, ' $1 ').replace(/(?<=\w)'(?=\w)/g, '')
+  if (/["'{}\[\]=]/.test(prose)) return false
   for (const m of line.matchAll(/\bprivate\b/gi)) {
-    const next = /^\s+([a-z]+)\b/.exec(line.slice(m.index + m[0].length))
-    if (!next || !PRIVATE_NOUNS.has(next[1])) return false
-    // A noun that names an event or a feature only. After the name, a copula between the two
-    // ("X is a private beta", "X is in private beta") says what the product is: refuse.
-    const end = index - from + value.length
+    const next = /^[\s-]+([a-z]+)\b/i.exec(line.slice(m.index + m[0].length))
+    if (!next || !PRIVATE_NOUNS.has(next[1].toLowerCase())) return false
+    const end = at + value.length
     const gap = line.slice(end, m.index)
-    if (m.index >= end && !/[.!?;]/.test(gap) && COPULA.test(gap)) return false
+    if (m.index >= end && !SENTENCE_END.test(gap) && COPULA.test(gap)) return false
   }
   return true
 }
@@ -678,7 +693,8 @@ function scanDiff({ files, newFiles, added }, sha, ctx, base, origin) {
 export function namedAtBase(dir, rev, name) {
   let lines
   try {
-    lines = git(dir, ['grep', '-I', '-h', '-i', '-F', '-e', name, rev, '--']).split('\n')
+    // Not the allowlist: a `product` line there holds the name, and would make it count as said.
+    lines = git(dir, ['grep', '-I', '-h', '-i', '-F', '-e', name, rev, '--', '.', `:(exclude)${ALLOWLIST_PATH}`]).split('\n')
   } catch {
     return false // no match, or git could not look: keep watching the name
   }
