@@ -666,8 +666,8 @@ function unblock(config, name, deps, deployed) {
       return 2
     }
     deps.out(`unblocking ${repo.slug} (was: ${rs.blocked.reason})`)
-    const recorded = clearBlock(rs, deps.clock.now())
-    if (recorded) deps.out(`${repo.slug}: recorded ${recorded.slice(0, 7)} as deployed (the paused commit a person deployed by hand); the next release diffs from there`)
+    const recorded = clearBlock(rs, deps.clock.now(), deployed)
+    if (recorded) deps.out(`${repo.slug}: recorded ${recorded.slice(0, 7)} as deployed (the commit a person deployed by hand); the next release diffs from there`)
     state.save()
     return 0
   } finally {
@@ -684,9 +684,9 @@ const unblockDir = (stateDir) => join(stateDir, 'unblock')
  * from the old commit, see the paused path again, and pause forever (plan row 1.25).
  * Returns the sha recorded, if any.
  */
-export function clearBlock(rs, now = new Date()) {
-  const sha = rs.blocked?.pausedSha
+export function clearBlock(rs, now = new Date(), deployed = undefined) {
   const wasRelease = rs.blocked?.pausedKind === 'release'
+  const sha = rs.blocked?.pausedSha ?? recordedSha(rs.blocked, deployed)
   delete rs.blocked
   if (typeof sha === 'string' && /^[0-9a-f]{40}$/.test(sha)) {
     rs.lastDeployedSha = sha
@@ -698,13 +698,34 @@ export function clearBlock(rs, now = new Date()) {
 }
 
 /**
+ * The commit `--deployed` records on a block that carries no paused commit
+ * (a failed deploy): the failed deploy's own merge commit when the block kept
+ * it (a prefix of at least 7 characters names it), else a full 40-character
+ * sha the person typed. Anything else records nothing (and is refused first).
+ */
+function recordedSha(blocked, deployed) {
+  const given = String(deployed ?? '').toLowerCase()
+  if (!given) return null
+  const known = blocked?.failedSha
+  if (typeof known === 'string' && /^[0-9a-f]{40}$/.test(known)) return given.length >= 7 && /^[0-9a-f]+$/.test(given) && known.startsWith(given) ? known : null
+  return /^[0-9a-f]{40}$/.test(given) ? given : null
+}
+
+/**
  * Unblocking a paused deploy records a commit as live, so it needs the person
  * to name that commit (`--deployed <sha>`): "I checked the site" is not "I
- * deployed the API". Returns the refusal, or null when the unblock may go ahead.
+ * deployed the API". On a failed block `--deployed` is optional, but a value
+ * given must name a commit the block can vouch for (see recordedSha), or the
+ * unblock is refused. Returns the refusal, or null when the unblock may go ahead.
  */
 export function pausedRefusal(repo, blocked, deployed) {
   const sha = blocked?.pausedSha
-  if (!sha) return null
+  if (!sha) {
+    if (deployed === undefined || deployed === null || deployed === '') return null
+    if (recordedSha(blocked, deployed)) return null
+    const known = typeof blocked?.failedSha === 'string' ? `the failed deploy's commit ${blocked.failedSha.slice(0, 7)}` : 'a full 40-character commit sha'
+    return `${repo.slug}: --deployed ${String(deployed).slice(0, 40)} does not name ${known}. Nothing was changed.`
+  }
   const given = String(deployed ?? '').toLowerCase()
   if (given.length >= 7 && /^[0-9a-f]+$/.test(given) && sha.startsWith(given)) return null
   return `${repo.slug}: this block is a paused deploy of ${sha.slice(0, 7)}. Unblocking records that commit as live. Deploy it by hand first, then run: ship-bot --unblock ${repo.name} --deployed ${sha.slice(0, 7)}. Nothing was changed.`
@@ -736,7 +757,7 @@ function applyUnblockRequests(config, state, print) {
       print('warn', `${slug}: an unblock request without the paused commit dropped; the block stays (${rs.blocked.reason})`)
     } else if (rs?.blocked && requestedAt && String(rs.blocked.at) <= String(requestedAt)) {
       print('info', `${slug}: unblocked on request (was: ${rs.blocked.reason})`)
-      const recorded = clearBlock(rs, new Date())
+      const recorded = clearBlock(rs, new Date(), deployed)
       if (recorded) print('info', `${slug}: recorded ${recorded.slice(0, 7)} as deployed (the paused commit a person deployed by hand)`)
     } else if (rs?.blocked) {
       print('warn', `${slug}: an unblock request from ${requestedAt} is older than the block set at ${rs.blocked.at}; dropped, the block stays`)

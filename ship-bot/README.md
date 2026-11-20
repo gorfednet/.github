@@ -94,7 +94,10 @@ parent, which may never have been live. A paused deploy's block remembers its
 commit: deploy that exact commit by hand, then
 `ship-bot --unblock <repo> --deployed <sha>` records it as deployed (and, for a
 release, records its time), so the next release diffs from there
-instead of pausing again. A plain `--unblock` is refused for that block. A
+instead of pausing again. A plain `--unblock` is refused for that block. On a
+failed deploy's block `--deployed <sha>` is optional but works the same way:
+it records the commit (the failed deploy's merge commit, or a full 40-character
+sha on an older block) so the next deploy doesn't re-take old work. A
 release or hotfix pull request is looked at before the plain ones, so a plain
 merge does not land ahead of it and push its head behind main. A
 hotfix also checks, after the merge, that the merge's first parent is the last

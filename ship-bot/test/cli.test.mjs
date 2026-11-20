@@ -160,6 +160,55 @@ describe('command line', () => {
     assert.ok(read().lastReleasedAt, 'a release deployed by hand records the release time')
   })
 
+  it('--unblock --deployed records the commit on a failed block too, and refuses one the block cannot vouch for', async () => {
+    const h = harness()
+    const statePath = join(h.config.stateDir, 'state.json')
+    const failed = 'e'.repeat(40)
+    const stale = 'd'.repeat(40)
+    const read = () => JSON.parse(readFileSync(statePath, 'utf8')).repos['gorfednet/site']
+    const seed = (blocked) => {
+      const store = new StateStore(statePath)
+      Object.assign(store.repo('gorfednet/site'), { blocked, lastDeployedSha: stale })
+      store.save()
+    }
+    // A failed block that kept its merge commit: a short prefix names it.
+    seed({ reason: 'deploy failed', at: 'x', failedSha: failed })
+    assert.equal(await main(['--unblock', 'site', '--deployed', 'ffffffff'], h.deps), 2)
+    assert.ok(read().blocked, 'a sha that is not the failed deploy is refused')
+    assert.equal(read().lastDeployedSha, stale)
+    assert.equal(await main(['--unblock', 'site', '--deployed', 'not-a-sha'], h.deps), 2)
+    assert.equal(await main(['--unblock', 'site', '--deployed', 'eeeeeee'], h.deps), 0)
+    assert.equal(read().blocked, undefined)
+    assert.equal(read().lastDeployedSha, failed)
+    // An older failed block with no recorded commit: only a full sha is accepted.
+    seed({ reason: 'deploy failed', at: 'x' })
+    assert.equal(await main(['--unblock', 'site', '--deployed', 'fffffff'], h.deps), 2)
+    assert.ok(read().blocked, 'a short sha cannot be checked, so it is refused')
+    assert.equal(await main(['--unblock', 'site', '--deployed', 'f'.repeat(40)], h.deps), 0)
+    assert.equal(read().lastDeployedSha, 'f'.repeat(40))
+    // Without --deployed a failed block clears and leaves lastDeployedSha alone.
+    seed({ reason: 'deploy failed', at: 'x', failedSha: failed })
+    assert.equal(await main(['--unblock', 'site'], h.deps), 0)
+    assert.equal(read().lastDeployedSha, stale)
+  })
+
+  it('a queued unblock of a failed block records --deployed when the next pass applies it', async () => {
+    const h = harness({ lock: { pid: process.pid, startedAt: 'now' } })
+    const statePath = join(h.config.stateDir, 'state.json')
+    const failed = 'e'.repeat(40)
+    const store = new StateStore(statePath)
+    Object.assign(store.repo('gorfednet/site'), { blocked: { reason: 'deploy failed', at: '2026-10-09T11:00:00.000Z', failedSha: failed }, lastDeployedSha: 'd'.repeat(40) })
+    store.save()
+    assert.equal(await main(['--unblock', 'site', '--deployed', 'ffffffff'], h.deps), 2)
+    assert.equal(existsSync(join(h.config.stateDir, 'unblock')), false)
+    assert.equal(await main(['--unblock', 'site', '--deployed', 'eeeeeee'], h.deps), 0)
+    rmSync(join(h.config.stateDir, 'run.lock'))
+    assert.equal(await main(['--live', '--once'], h.deps), 0, h.out.join('\n'))
+    const after = JSON.parse(readFileSync(statePath, 'utf8')).repos['gorfednet/site']
+    assert.equal(after.blocked, undefined)
+    assert.equal(after.lastDeployedSha, failed)
+  })
+
   it('a queued unblock of a paused deploy needs --deployed too; without it the block stays', async () => {
     const h = harness({ lock: { pid: process.pid, startedAt: 'now' } })
     const statePath = join(h.config.stateDir, 'state.json')

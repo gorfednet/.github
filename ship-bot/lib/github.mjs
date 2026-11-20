@@ -164,6 +164,7 @@ export function createGitHubClient({ token, fetchImpl = globalThis.fetch, api = 
     listPullFiles: (slug, n) => paginate(`/repos/${slug}/pulls/${n}/files`, (d) => d, 3000),
     listCheckRuns: (slug, sha) =>
       paginate(`/repos/${slug}/commits/${sha}/check-runs?filter=latest`, (d) => d?.check_runs),
+    listWorkflowRuns: (slug, sha) => paginate(`/repos/${slug}/actions/runs?head_sha=${sha}`, (d) => d?.workflow_runs),
     listStatuses: (slug, sha) => paginate(`/repos/${slug}/commits/${sha}/status`, (d) => d?.statuses),
     listReviews: (slug, n) => paginate(`/repos/${slug}/pulls/${n}/reviews`),
     /** Every tag name, for a release's "higher than the newest tag" check. */

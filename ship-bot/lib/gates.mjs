@@ -69,6 +69,41 @@ export function latestPerName(runs) {
   return [...newest.values()]
 }
 
+/** The workflow run a check run belongs to, read from its details_url (.../actions/runs/<id>/job/<id>). */
+function workflowRunIdOf(run) {
+  const m = /\/actions\/runs\/(\d+)(?:\/|$)/.exec(String(run?.details_url ?? ''))
+  return m ? Number(m[1]) : null
+}
+
+/**
+ * Drop check runs that a newer run of the same workflow replaced. Adding the
+ * ready-to-merge label cancels the running CI and starts a labelled run; the
+ * cancelled run's jobs that have no namesake in the new run (an unexpanded
+ * `e2e` against the new `e2e (1)` .. `e2e (8)`) would otherwise block forever.
+ * A cancelled check run is superseded only when a later workflow run with the
+ * same workflow id and event, on this head, completed with success. A cancel
+ * with no such run still blocks, and cancelled is never treated as success.
+ * No workflow runs (unreadable, or none passed) supersedes nothing.
+ */
+export function dropSupersededCancels(runs, workflowRuns, sha) {
+  if (!Array.isArray(runs) || !Array.isArray(workflowRuns) || workflowRuns.length === 0) return runs
+  const byId = new Map(workflowRuns.map((w) => [Number(w.id), w]))
+  return runs.filter((r) => {
+    if (r.conclusion !== 'cancelled') return true
+    const own = byId.get(workflowRunIdOf(r))
+    if (!own || own.head_sha !== sha) return true
+    return !workflowRuns.some(
+      (w) =>
+        Number(w.id) > Number(own.id) &&
+        w.workflow_id === own.workflow_id &&
+        w.event === own.event &&
+        w.head_sha === sha &&
+        w.status === 'completed' &&
+        w.conclusion === 'success',
+    )
+  })
+}
+
 /** The most recent commit status per context (latest created_at, ties by id). */
 export function latestPerContext(statuses) {
   const newest = new Map()
@@ -88,13 +123,13 @@ export function latestPerContext(statuses) {
  * and every expected check is present, successful and (optionally) newer than
  * the ready-to-merge label.
  */
-export function evaluateChecks({ runs, statuses, expectedChecks, graceOver, labeledAt = undefined, requireAfterLabel = false }) {
+export function evaluateChecks({ runs, statuses, expectedChecks, graceOver, labeledAt = undefined, requireAfterLabel = false, workflowRuns = undefined, sha = undefined }) {
   const blocks = []
   if (!Array.isArray(runs) || !Array.isArray(statuses)) {
     return [{ key: 'checks-unreadable', kind: 'wait', reason: 'could not read the checks on this head' }]
   }
   // Only the latest run of each name is judged; older runs of it are history.
-  const others = latestPerName(runs)
+  const others = latestPerName(dropSupersededCancels(runs, workflowRuns, sha))
   const otherStatuses = latestPerContext(statuses)
 
   const pending = [
@@ -431,8 +466,20 @@ export async function evaluatePull(ctx, repo, pr, { headState, fresh = false, dr
       labeledAt = undefined
     }
   }
+  // Only a cancelled run can be superseded, so only then is the extra read made. Unreadable = nothing superseded.
+  let workflowRuns
+  if (runs.some((r) => r.conclusion === 'cancelled') && ctx.github.listWorkflowRuns) {
+    try {
+      workflowRuns = await ctx.github.listWorkflowRuns(repo.slug, sha)
+    } catch (cause) {
+      if (cause instanceof RateLimitError) throw cause
+      workflowRuns = undefined
+    }
+  }
   const checkBlocks = evaluateChecks({
     runs,
+    workflowRuns,
+    sha,
     statuses,
     expectedChecks: repo.expectedChecks,
     graceOver,

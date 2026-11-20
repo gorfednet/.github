@@ -223,6 +223,48 @@ describe('the same check name more than once on a head', () => {
   })
 })
 
+describe('a cancelled run superseded by a later green run of the same workflow', () => {
+  // Adding ready-to-merge cancels the running CI and starts a labelled run: the cancelled run's unexpanded
+  // `e2e` job has no namesake among the new run's `e2e (1)` .. `e2e (8)`.
+  const jobRun = (name, conclusion, runId, id) => ({ name, status: 'completed', conclusion, started_at: '2026-10-09T12:00:00Z', id, details_url: `https://github.example/gorfednet/site/actions/runs/${runId}/job/${id}` })
+  const wf = (id, extra = {}) => ({ id, workflow_id: 900, event: 'pull_request', head_sha: HEAD, status: 'completed', conclusion: 'success', ...extra })
+  const runs = () => [jobRun('check / check', 'success', 2, 11), jobRun('e2e', 'cancelled', 1, 10), jobRun('e2e (1)', 'success', 2, 12)]
+  const outcome = async (workflowRuns) => {
+    const gh = new FakeGitHub({ runs: runs(), workflowRuns })
+    await scenario({ github: gh }).run()
+    return merges(gh).length
+  }
+
+  it('the cancelled job is ignored: the later run of its workflow on this head is green', async () => {
+    assert.equal(await outcome([wf(1, { conclusion: 'cancelled' }), wf(2)]), 1)
+  })
+
+  it('a cancel with no later green run of its workflow still blocks', async () => {
+    assert.equal(await outcome([wf(1, { conclusion: 'cancelled' })]), 0)
+    assert.equal(await outcome([wf(1, { conclusion: 'cancelled' }), wf(2, { conclusion: 'failure' })]), 0, 'a later red run does not supersede')
+    assert.equal(await outcome([wf(1, { conclusion: 'cancelled' }), wf(2, { status: 'in_progress', conclusion: null })]), 0, 'a later run still going does not supersede')
+    assert.equal(await outcome([wf(2, { conclusion: 'cancelled' }), wf(1)]), 0, 'an earlier green run is not a later one')
+  })
+
+  it('a later green run of a different workflow does not supersede', async () => {
+    assert.equal(await outcome([wf(1, { conclusion: 'cancelled' }), wf(2, { workflow_id: 901 })]), 0)
+    assert.equal(await outcome([wf(1, { conclusion: 'cancelled' }), wf(2, { event: 'push' })]), 0)
+  })
+
+  it('a later green run on a different head does not count', async () => {
+    assert.equal(await outcome([wf(1, { conclusion: 'cancelled' }), wf(2, { head_sha: 'd'.repeat(40) })]), 0)
+  })
+
+  it('unreadable workflow runs supersede nothing', async () => {
+    const gh = new FakeGitHub({ runs: runs() })
+    gh.listWorkflowRuns = async () => {
+      throw new Error('boom')
+    }
+    await scenario({ github: gh }).run()
+    assert.equal(merges(gh).length, 0)
+  })
+})
+
 describe('gate (c): expected checks present and successful', () => {
   it('does not merge when an expected check never appeared, and says so after the grace period', async () => {
     const gh = new FakeGitHub({ runs: greenRuns(['something else']) })
