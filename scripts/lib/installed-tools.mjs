@@ -47,7 +47,7 @@ export const COPIES = [
   { tool: '~/.claude mirror', mirrorDir: '.claude', clone: 'ops', sourceDir: 'control/claude-home', include: ['rules', 'agents', 'skills', 'CLAUDE.md', 'settings.json'] },
   // The fleet-janitor scheduled task is a copy of janitor/SKILL.md (plan row 3.20f). A live file that matches no committed version is reported ahead ("matches no committed version"), not behind.
   { tool: 'fleet-janitor task', copy: '.claude/scheduled-tasks/fleet-janitor/SKILL.md', clone: 'gorfednet.github', source: 'janitor/SKILL.md' },
-  { tool: '~/.claude hooks', mirrorDir: '.claude/hooks', clone: 'gorfednet.github', sourceDir: 'scripts/claude-hooks', include: ['gh-poll-guard.py', 'always-pr-remind.py', 'argv-guard.py'] },
+  { tool: '~/.claude hooks', mirrorDir: '.claude/hooks', clone: 'gorfednet.github', sourceDir: 'scripts/claude-hooks', include: ['gh-poll-guard.py', 'always-pr-remind.py', 'argv-guard.py', 'desk-event.py'] },
 ]
 
 const LINK_DIRS = ['.local/bin', '.config/herdr-core', '.config/herdr-core/templates']
