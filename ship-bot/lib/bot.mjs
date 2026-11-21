@@ -457,6 +457,8 @@ async function processPull(ctx, repo, pr, defaultBranch) {
   if (result.ready && result.cached) result = await evaluatePull(ctx, repo, pr, { headState, fresh: true, requireClean, controlPlane })
   ctx.board.gated(repo.slug, pr, result, headState)
   await syncNeedsFix(ctx, repo, pr, result)
+  // A cancelled run that alone blocks this head is rerun once, and the pass says nothing else about it.
+  if (!result.ready && result.rerun?.length > 0 && (await rerunCancelled(ctx, repo, headState, tag, result.rerun))) return false
   if (result.ready && headState.readiedAt && (ctx.clock.now() - new Date(headState.readiedAt)) / 60000 < ctx.config.reviewGraceMinutes) {
     ctx.say('debug', `${tag}: not merging: the bot marked this draft ready at ${headState.readiedAt}; giving the ready-for-review review time to start`)
     return false
@@ -566,6 +568,44 @@ async function processPull(ctx, repo, pr, defaultBranch) {
     return true
   }
   return liveMerge(ctx, repo, pr, tag, plan)
+}
+
+/**
+ * Rerun the cancelled workflow runs that alone keep a labelled head from green (plan row 1.59; gates.mjs
+ * `cancelledRunsToRerun` decides which). Each run is asked for once per head: the ask is written to the state
+ * file before the call, so a crash or a refusal never repeats it. A run the bot already asked for and that is
+ * cancelled again is a person's. Returns whether a rerun was asked for (or would be) this pass.
+ */
+async function rerunCancelled(ctx, repo, headState, tag, ids) {
+  const fresh = ids.filter((id) => !headState.reruns?.[id])
+  if (fresh.length === 0) return false
+  if (ctx.dry) {
+    ctx.say('info', `${tag}: would rerun cancelled workflow run(s) ${fresh.join(', ')}: every other check on this head is green`)
+    return true
+  }
+  let asked = 0
+  for (const id of fresh) {
+    checkQuota(ctx)
+    headState.reruns ??= {}
+    headState.reruns[id] = { at: ctx.clock.now().toISOString() }
+    ctx.state.save()
+    try {
+      await ctx.github.rerunFailedJobs(repo.slug, id)
+      asked += 1
+      ctx.say('info', `${tag}: reran the cancelled jobs of workflow run ${id}: every other check on this head is green. Once per run and head`)
+    } catch (cause) {
+      if (cause instanceof RateLimitError) {
+        // Refused before it was performed: not an ask.
+        delete headState.reruns[id]
+        ctx.state.save()
+        throw cause
+      }
+      headState.reruns[id].failed = true
+      const hint = cause.status === 403 ? ' (the GitHub App needs the Actions permission set to write)' : ''
+      ctx.say('warn', `${tag}: could not rerun cancelled workflow run ${id}${hint}: ${String(cause.message).split('\n')[0].slice(0, 200)}. Not tried again on this head`)
+    }
+  }
+  return asked > 0
 }
 
 /**

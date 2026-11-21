@@ -193,6 +193,12 @@ export class FakeGitHub {
     return pr.labels
   }
 
+  async rerunFailedJobs(slug, runId) {
+    this.log('rerunFailedJobs', slug, runId)
+    this.writes.push({ name: 'rerunFailedJobs', slug, runId })
+    return null
+  }
+
   async markReady(nodeId) {
     this.log('markReady', nodeId)
     this.writes.push({ name: 'markReady', nodeId })

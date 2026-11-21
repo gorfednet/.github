@@ -15,7 +15,7 @@ pull request, asks:
    **`ready-to-merge`** label, and does it **not** carry **`hold`**?
 2. Did **every check pass** on the latest commit, including the specific
    checks that repository is supposed to run? A check that is still running,
-   failed, was cancelled, or never ran at all means "not yet".
+   failed, was cancelled, or never ran at all means "not yet". (A cancelled run that is the only thing in the way is rerun once: see "Cancelled runs" below.)
 3. Did the **Claude reviewer review the latest commit**, and either find
    nothing or have **every one of its comments answered**, with a reply
    written after the comment or by resolving it? (Exception: a pull request that changes control-plane paths and has a Medium or High thread merges only on a clean review of a new head; a reply never lifts it, and resolving lifts it only for a thread opened on an earlier commit, which then does not count.) It reads this with
@@ -517,14 +517,47 @@ that quota with every session. It keeps its share small:
 
 **Its own quota: the GitHub App.** `github-app/manifest.json` describes a
 private App with only what the bot needs (read metadata, checks, commit
-statuses, Actions and issues; write contents, pull requests and workflow
-files, since merging a pull request that changes a workflow needs it).
+statuses and issues; write contents, pull requests, workflow files, since
+merging a pull request that changes a workflow needs it, and Actions, for
+the one rerun of a cancelled run).
 `node ~/.ship-bot/app/github-app/create.mjs` creates it in one browser step,
 saves its private key to `~/.ship-bot/github-app.pem` (mode 600, outside every
 repository) and adds `githubApp: { appId, privateKeyFile }` to the config.
 Once the App is installed on the gorfednet account (a user account, so the script uses the user "new App" page), each pass mints an installation
 token and the log's pass line ends `as GitHub App <id>`. If minting fails, the
 pass logs an error and falls back to `gh auth token`.
+
+## Cancelled runs (plan row 1.59)
+
+A cancelled check is never a pass. Two things can clear one:
+
+- **A later green run replaces it.** Adding `ready-to-merge` can cancel the
+  running CI and start a new run. A cancelled check is ignored once a later
+  run of the same workflow and event on the same head finished green.
+- **The bot reruns it, once.** When a labelled head has nothing red, nothing
+  running and nothing replacing the cancelled run, the bot asks GitHub to
+  rerun that run's cancelled jobs (what `gh run rerun <id> --failed` does)
+  and logs `reran the cancelled jobs of workflow run <id>`.
+
+The rerun is narrow on purpose:
+
+- every other check and status on the head is green;
+- the run is the newest of its workflow on the head, and the whole run
+  ended `cancelled`;
+- it has sat cancelled for 10 minutes, so a label's own replacement run has
+  had time to appear;
+- it is on attempt 1 or 2, and the bot hasn't asked for it before on this
+  head;
+- at most 2 runs per head.
+
+Anything unreadable means no rerun. A run that is cancelled again after the
+bot's rerun gets the usual "checks did not pass" comment and waits for a
+person. `hold` stops it, like everything else.
+
+The rerun needs the GitHub App's **Actions** permission set to **Read and
+write** (App settings, Permissions, then accept the change on the
+installation). Until then GitHub answers 403, the bot logs one warning per
+run and head, and the pull request gets the usual comment.
 
 ## Where to look
 

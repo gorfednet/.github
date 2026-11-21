@@ -115,6 +115,54 @@ export function dropSupersededCancels(runs, workflowRuns, sha) {
   return { runs: kept, waiting }
 }
 
+/** A workflow run already on this attempt or a later one is never rerun by the bot, whatever the state file remembers. */
+export const MAX_RERUN_ATTEMPT = 3
+/** How long a workflow run must have sat cancelled before the bot reruns it: a label's own replacement run needs time to appear. */
+export const RERUN_SETTLE_MINUTES = 10
+/** More cancelled workflow runs than this on one head is a pattern for a person, not a rerun. */
+export const MAX_RERUNS_PER_HEAD = 2
+
+/**
+ * The cancelled workflow runs that alone keep this head from green, for the bot to rerun once (plan row 1.59).
+ * Returns their run ids, or [] whenever anything else is in the way or cannot be read: fail closed.
+ *
+ * A rerun is offered only when all of this holds:
+ * - the check runs, statuses and workflow runs were all read;
+ * - every latest check run is completed, and each is green or cancelled (one red check and nothing is rerun);
+ * - every latest status is success;
+ * - no cancelled check may yet be superseded (`dropSupersededCancels` has none waiting), and at least one stands;
+ * - each cancelled check maps to a workflow run on this head, and the newest run of that workflow and event on
+ *   the head is itself completed with conclusion `cancelled`, below MAX_RERUN_ATTEMPT, and has not been touched
+ *   for RERUN_SETTLE_MINUTES (adding ready-to-merge cancels a run and starts its replacement moments later;
+ *   a rerun in that gap would race the replacement, and a concurrency group could cancel it);
+ * - there are at most MAX_RERUNS_PER_HEAD such runs.
+ * Only the newest run of a workflow is offered: once it is green, the older cancelled ones are superseded.
+ */
+export function cancelledRunsToRerun({ runs, statuses, workflowRuns, sha, now }) {
+  if (!Array.isArray(runs) || !Array.isArray(statuses) || !Array.isArray(workflowRuns) || !sha || !(now instanceof Date)) return []
+  const dropped = dropSupersededCancels(runs, workflowRuns, sha)
+  const latest = latestPerName(dropped.runs)
+  if (latest.some((r) => r.status !== 'completed' || dropped.waiting.has(r))) return []
+  if (latest.some((r) => !OK_CONCLUSIONS.has(r.conclusion) && r.conclusion !== 'cancelled')) return []
+  if (latestPerContext(statuses).some((s) => s.state !== 'success')) return []
+  const byId = new Map(workflowRuns.map((w) => [Number(w.id), w]))
+  const ids = new Set()
+  for (const r of latest.filter((x) => x.conclusion === 'cancelled')) {
+    const own = byId.get(workflowRunIdOf(r))
+    if (!own || own.head_sha !== sha || own.workflow_id === undefined || own.workflow_id === null || !own.event) return []
+    const newest = workflowRuns
+      .filter((w) => w.workflow_id === own.workflow_id && w.event === own.event && w.head_sha === sha && Number(w.id) >= Number(own.id))
+      .sort((a, b) => Number(b.id) - Number(a.id))[0]
+    if (newest.status !== 'completed' || newest.conclusion !== 'cancelled') return []
+    if (!Number.isInteger(newest.run_attempt) || newest.run_attempt < 1 || newest.run_attempt >= MAX_RERUN_ATTEMPT) return []
+    const settled = minutesBetween(newest.updated_at, now)
+    if (!newest.updated_at || !(settled >= RERUN_SETTLE_MINUTES)) return []
+    ids.add(Number(newest.id))
+  }
+  if (ids.size > MAX_RERUNS_PER_HEAD) return []
+  return [...ids].sort((a, b) => a - b)
+}
+
 /** The most recent commit status per context (latest created_at, ties by id). */
 export function latestPerContext(statuses) {
   const newest = new Map()
@@ -507,7 +555,8 @@ export async function evaluatePull(ctx, repo, pr, { headState, fresh = false, dr
     requireAfterLabel,
   })
   seen.checks = checkBlocks.some((b) => b.kind === 'fail') ? 'failing' : checkBlocks.length > 0 ? 'pending' : 'passing'
-  if (checkBlocks.length > 0) return blocked(checkBlocks)
+  // `rerun`: the cancelled workflow runs that alone block this head, for bot.mjs to rerun once. Never a pass.
+  if (checkBlocks.length > 0) return { ...blocked(checkBlocks), rerun: cancelledRunsToRerun({ runs, statuses, workflowRuns, sha, now }) }
 
   // What the scripts below read, as far as the bot can see it: the head, the
   // pull request's last change (title, body, labels and comments all move
