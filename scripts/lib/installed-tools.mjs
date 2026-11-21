@@ -31,6 +31,7 @@ export const TOOL_WORKTREE_NAMES = ['gates-main', 'tools-main']
 /** Installed copies of committed files: where the copy lives (under home) and its source (clone dir, path). */
 export const COPIES = [
   { tool: 'capacity check', copy: '.desk/capacity-app/capacity.mjs', clone: 'gorfednet.github', source: 'capacity/capacity.mjs' },
+  { tool: 'capacity pool check', copy: '.desk/capacity-app/pool.mjs', clone: 'gorfednet.github', source: 'capacity/pool.mjs' },
   { tool: 'capacity heartbeat helper', copy: '.desk/capacity-app/lib/heartbeat.mjs', clone: 'gorfednet.github', source: 'ship-bot/lib/heartbeat.mjs' },
   { tool: 'capacity drift check', copy: '.desk/capacity-app/lib/installedDrift.mjs', clone: 'gorfednet.github', source: 'scripts/lib/installedDrift.mjs' },
   { tool: 'capacity installed-tools helper', copy: '.desk/capacity-app/lib/installed-tools.mjs', clone: 'gorfednet.github', source: 'scripts/lib/installed-tools.mjs' },
@@ -47,7 +48,7 @@ export const COPIES = [
   { tool: '~/.claude mirror', mirrorDir: '.claude', clone: 'ops', sourceDir: 'control/claude-home', include: ['rules', 'agents', 'skills', 'CLAUDE.md', 'settings.json'] },
   // The fleet-janitor scheduled task is a copy of janitor/SKILL.md (plan row 3.20f). A live file that matches no committed version is reported ahead ("matches no committed version"), not behind.
   { tool: 'fleet-janitor task', copy: '.claude/scheduled-tasks/fleet-janitor/SKILL.md', clone: 'gorfednet.github', source: 'janitor/SKILL.md' },
-  { tool: '~/.claude hooks', mirrorDir: '.claude/hooks', clone: 'gorfednet.github', sourceDir: 'scripts/claude-hooks', include: ['gh-poll-guard.py', 'always-pr-remind.py', 'argv-guard.py'] },
+  { tool: '~/.claude hooks', mirrorDir: '.claude/hooks', clone: 'gorfednet.github', sourceDir: 'scripts/claude-hooks', include: ['gh-poll-guard.py', 'always-pr-remind.py', 'argv-guard.py', 'desk-event.py', 'context-cap.py'] },
 ]
 
 const LINK_DIRS = ['.local/bin', '.config/herdr-core', '.config/herdr-core/templates']

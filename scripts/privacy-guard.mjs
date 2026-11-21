@@ -58,7 +58,8 @@
  * numbers (an npm tag) is a version tag, not an email.
  *
  * The allowlist is read from the BASE revision (main's tip for a pull request), never from the
- * change: an exemption takes effect once its own pull request has merged, on the next run of a
+ * change, with one exception: a single new `site` line the range adds counts for that range (the
+ * first line of a repository with no allowlist). Every other exemption takes effect once its own pull request has merged, on the next run of a
  * waiting pull request, with no merge of main needed. Format in .github/privacy-guard-allow.txt.
  *
  * A false positive in a commit that is not the tip cannot be fixed forward: the commit stays
@@ -216,16 +217,28 @@ function globToRegex(glob) {
  *                                   with no neighbour that makes it another thing: see `isProductName`.
  *                                   `gorfednet/<name>`, a path, a file, a host, a near-miss spelling
  *                                   and a line that says private are all still read.
+ *   site <domain>                   a public site whose domain is also a private repository's name
+ *                                   (a web TLD). The name then counts as said, as if the base already
+ *                                   named it: read on a line that says private, and as
+ *                                   `gorfednet/<name>`. The line itself is not read for that name,
+ *                                   so a repository can add its first one: see `isSiteLine`.
  *   commit <sha>                    a commit (the full 40 hex) whose own diff and message are
  *                                   exempt: a pushed commit cannot be rewritten, so this is the
  *                                   way out. The net diff is still read.
  * A line that is neither is an error: a typo in an exemption must not read as no exemption.
  */
+// A domain: two or more labels, the last one letters. A repository name with no dot is never a site.
+// The last label must be a web TLD from a short list, so a repository named like a file or a
+// package (`name.js`, `notes.md`, `org.github`) can't be written through the site route.
+const SITE_TLDS = new Set(['com', 'net', 'org', 'io', 'ca', 'co', 'app', 'dev', 'fm', 'me', 'info', 'xyz', 'music', 'studio', 'art', 'it', 'ai', 'uk', 'tv', 'band', 'shop'])
+const SITE_VALUE = /^(?:[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?\.)+[A-Za-z]{2,}$/
+const siteValue = (v) => SITE_VALUE.test(v) && SITE_TLDS.has(v.slice(v.lastIndexOf('.') + 1).toLowerCase())
 export function parseAllowlist(text) {
   const emails = []
   const paths = []
   const repos = []
   const products = []
+  const sites = []
   const commits = []
   text.split('\n').forEach((raw, i) => {
     const line = raw.replace(/#.*$/, '').trim()
@@ -239,6 +252,8 @@ export function parseAllowlist(text) {
       // The match is by exact spelling, so the spelling must differ from the lowercase slug a repository carries.
       if (value === value.toLowerCase()) throw new Error(`allowlist line ${i + 1}: a product name needs a capital letter, or its case check would match nothing`)
       products.push(value)
+    } else if (kind === 'site' && value && !rules && siteValue(value)) {
+      sites.push(value.toLowerCase())
     } else if (kind === 'commit' && value && !rules && /^[0-9a-f]{40}$/i.test(value)) {
       commits.push(value.toLowerCase())
     } else if (kind === 'path' && value && rules) {
@@ -250,10 +265,10 @@ export function parseAllowlist(text) {
       }
       paths.push({ re: globToRegex(value), rules: set })
     } else {
-      throw new Error(`allowlist line ${i + 1}: expected "email <domain-or-address>", "repo <name>", "product <Name>", "commit <40-hex sha>" or "path <glob> <rules|*>"`)
+      throw new Error(`allowlist line ${i + 1}: expected "email <domain-or-address>", "repo <name>", "product <Name>", "site <domain>", "commit <40-hex sha>" or "path <glob> <rules|*>"`)
     }
   })
-  return { emails, paths, repos, products, commits }
+  return { emails, paths, repos, products, sites, commits }
 }
 
 function emailAllowed(address, allow) {
@@ -352,6 +367,17 @@ export function isProductName(text, index, value, allow) {
   return true
 }
 
+/**
+ * An allowlist line that adds a site, as the diff shows it: `site <domain>` and nothing else on
+ * the line, no comment. Returns the domain, lowercase, or null. Only a domain (a name with a
+ * dot) can take this route, so a private repository named like a word, with no dot, can't be
+ * published through it. A line that is not this shape is read like any other.
+ */
+export const isSiteLine = (text) => {
+  const m = /^site[ \t]+(\S+)[ \t]*$/.exec(text.replace(/\r$/, ''))
+  return m && siteValue(m[1]) ? m[1].toLowerCase() : null
+}
+
 const all = (re, text) => [...text.matchAll(re)].map((m) => m[0])
 
 // Minified SVG: the numbers in path data and point lists are not addresses. Dropped only in
@@ -372,7 +398,7 @@ const versionLikeDomain = (address) => /^\d+\.\d/.test(address.slice(address.las
  * or a commit message is not checked for emails). `bare` is how a bare private repository
  * name is read in this text: 'word', 'path', or null for not at all. `svg` drops drawing data.
  */
-export function scanText(raw, { privateRepo, bareNames, saidNames, allow }, rules = Object.keys(RULES), bare = null, svg = false) {
+export function scanText(raw, { privateRepo, bareNames, saidNames, allow }, rules = Object.keys(RULES), bare = null, svg = false, fileText = false) {
   const text = raw.replace(/\0/g, '') // a UTF-16 file read as bytes has a NUL between letters
   const on = (r) => rules.includes(r)
   const hits = []
@@ -388,7 +414,7 @@ export function scanText(raw, { privateRepo, bareNames, saidNames, allow }, rule
     const inPrefixed = (i) => spans.some(([from, to]) => i >= from && i < to)
     for (const m of text.matchAll(bareNames[bare])) {
       if (inPrefixed(m.index)) continue
-      if (bare === 'word' && isProductName(text, m.index, m[0], allow)) continue
+      if (bare === 'word' && (isProductName(text, m.index, m[0], allow))) continue
       add('private-repo', [m[0]])
     }
     if (bare === 'word' && saidNames) {
@@ -402,6 +428,25 @@ export function scanText(raw, { privateRepo, bareNames, saidNames, allow }, rule
         }
         at += line.length + 1
       }
+    }
+  }
+  // A site this range itself lists (the bootstrap case) has had no review on main yet, so its
+  // domain near the word repo or repository, or with a .git or .wiki ending, is read as the repository.
+  // A site already on main keeps main's reading. The hit carries its own value, so a file at the
+  // merge base can't hold it.
+  if (on('private-repo') && bare === 'word' && fileText && allow.bootSites?.length > 0) {
+    const REPO = '\\b(?:repos?|repositor(?:y|ies))\\b'
+    for (const site of allow.bootSites) {
+      const name = site.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      const near = new RegExp(`${REPO}[^\\n]{0,24}?(?<![\\w-])${name}(?![\\w-])|(?<![\\w-])${name}(?:\\.(?:git|wiki)\\b|(?![\\w-])[^\\n]{0,24}?${REPO})`, 'gi')
+      for (const _ of text.matchAll(near)) add('private-repo', [`${site} (as a repository)`])
+    }
+  }
+  // The same site, as a path part (`repos/<site>/`, `<site>.git/`, `<site>.md`), is the repository too.
+  if (on('private-repo') && bare === 'path' && allow.bootSites?.length > 0) {
+    for (const site of allow.bootSites) {
+      const name = site.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      for (const _ of text.matchAll(new RegExp(`(?:^|/)${name}(?:\\.[A-Za-z0-9]+)?(?=/|$)`, 'gi'))) add('private-repo', [`${site} (as a repository)`])
     }
   }
   if (on('owner-quote')) add('owner-quote', all(OWNER_QUOTE, text))
@@ -678,8 +723,10 @@ function scanDiff({ files, newFiles, added }, sha, ctx, base, origin) {
   for (const { path, line, text } of added) {
     linesRead += 1
     filesRead.add(path)
-    for (const hit of scanText(text, ctx, undefined, bareScope(path), svgContext(path, text))) {
+    for (const hit of scanText(text, ctx, undefined, bareScope(path), svgContext(path, text), true)) {
       if (pathExempt(path, hit.rule, allow)) continue
+      // The line that adds a site to the allowlist names it: it can't clear itself on main otherwise.
+      if (path === ALLOWLIST_PATH && hit.rule === 'private-repo' && hit.value.toLowerCase() === isSiteLine(text)) continue
       if (base.heldValue(origin.get(path) ?? path, path, hit.rule, hit.value)) continue
       flag(path, line, hit.rule, hit.value)
     }
@@ -789,13 +836,46 @@ export function run(argv, env = process.env, out = console) {
     return 2
   }
 
+  // A repository's first allowlist line can't be on the base yet. A `site` line this range adds to
+  // the allowlist (the whole line, nothing else on it, a domain with a web TLD) counts for the range
+  // too, so the same push can name the site. Net diff only, so a line added and then removed counts
+  // for nothing, and only one new site per range: more than one clears nothing. The name is then
+  // read for the repository forms too (`bootSites`, see scanText). Bare names in paths, the org
+  // path and a line that says private stay read.
+  // Counted against the allowlist the guard was given (main's, or the remote's default branch for
+  // the hook), not the range, so a second push to a branch that already carries a site line from
+  // the first push counts both and clears neither. Only a line this range itself adds can clear
+  // (`written`, from the net diff against the merge base): a line a branch inherited, which main has
+  // since dropped, counts toward the cap and clears nothing.
+  const written = new Set((net?.added ?? []).filter((a) => a.path === ALLOWLIST_PATH).map((a) => isSiteLine(a.text)).filter(Boolean))
+  const added = new Set()
+  if (commits.length > 0) {
+    let headList = ''
+    try {
+      headList = git(dir, ['show', `${headSha}:${ALLOWLIST_PATH}`])
+    } catch {
+      // no allowlist at the head
+    }
+    for (const line of headList.split('\n')) {
+      const site = isSiteLine(line)
+      if (site && !allow.sites.includes(site)) added.add(site)
+    }
+  }
+  // The one new site is read as a repository in file text and paths whether or not this range wrote
+  // it (a later push on the same branch still carries it). Only a line the range wrote clears.
+  allow.bootSites = added.size === 1 ? [...added] : []
+  allow.sites.push(...allow.bootSites.filter((x) => written.has(x)))
+  if (added.size > 1) out.error(`privacy-guard: note: ${added.size} new site lines in the allowlist, so none of them is cleared (one new site at a time). The names they list are read as before.`)
+
   const open = names.filter((n) => !allow.repos.includes(n))
   // A bare name is watched only while the repository has never said it. Most private
   // repositories are named for a site that is public, and the merge base already says
   // their names in dozens of files: flagging them again discloses nothing new, and the
   // only way out of a false red would be a rewrite. The org-prefixed form is always read.
   // A said name is still read on a line that says private: that pairing is new.
-  const unsaid = open.filter((n) => !namedAtBase(dir, mergeBase, n))
+  // A name the allowlist lists as a site counts as said, as if the base already named it: it is
+  // read on a line that says private, and as `gorfednet/<name>`, like any other said name.
+  const unsaid = open.filter((n) => !allow.sites.includes(n.toLowerCase()) && !namedAtBase(dir, mergeBase, n))
   const said = open.filter((n) => !unsaid.includes(n))
   const ctx = {
     privateRepo: privateRepoPattern(open),
@@ -836,7 +916,9 @@ export function run(argv, env = process.env, out = console) {
       if (!textCache.has(cacheKey)) {
         let held = new Set()
         try {
-          const text = git(dir, ['show', `${mergeBase}:${key}`])
+          let text = git(dir, ['show', `${mergeBase}:${key}`])
+          // A `site` line the allowlist's own diff cleared holds nothing: it may not excuse a later line.
+          if (key === ALLOWLIST_PATH) text = text.split('\n').filter((l) => !isSiteLine(l)).join('\n')
           held = new Set(scanText(text, ctx, undefined, mode).map((h) => `${h.rule}\0${h.value.toLowerCase()}`))
         } catch {
           // a new file held nothing

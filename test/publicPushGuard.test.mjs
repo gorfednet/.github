@@ -515,6 +515,63 @@ describe("pre-push: the allowlist is the remote default branch's tip, as it is n
   }
 })
 
+describe('pre-push: a `site` line makes the name count as said', () => {
+  const SITE = 'example-music.com'
+  const world2 = () => world({ listOut: `gorfednet/ops\ngorfednet/${SITE}\n` })
+  const base = { '.github/privacy-guard-allow.txt': `site ${SITE}\n` }
+  it('lets a README link to the site through the installed hook, and refuses it without the line', () => {
+    const body = { 'README.md': `Music: https://${SITE}/\n` }
+    const r = repo(world2(), { baseFiles: base, outgoing: body })
+    const x = push(r, '-u', 'origin', 'feature')
+    assert.equal(x.status, 0, x.stderr)
+    assert.ok(refused(push(repo(world2(), { outgoing: body }), '-u', 'origin', 'feature')), 'without the site line the name is watched')
+  })
+  it('lets the first push carry the site line and the README link together, and refuses the link in a push without the line', () => {
+    const body = { '.github/privacy-guard-allow.txt': `site ${SITE}\n`, 'README.md': `Music: [listen](https://${SITE}/)\n` }
+    const x = push(repo(world2(), { outgoing: body }), '-u', 'origin', 'feature')
+    assert.equal(x.status, 0, x.stderr)
+    for (const bad of [`see gorfednet/${SITE}\n`, `Private project: https://${SITE}/\n`, `The repo ${SITE} holds it\n`]) {
+      const r = repo(world2(), { outgoing: { ...body, 'README.md': bad } })
+      assert.ok(refused(push(r, '-u', 'origin', 'feature')), bad)
+    }
+  })
+  it('still refuses the repository form and a line that says private', () => {
+    for (const body of [`see gorfednet/${SITE}\n`, `Private project: https://${SITE}/\n`]) {
+      const r = repo(world2(), { baseFiles: base, outgoing: { 'docs/n.md': body } })
+      assert.ok(refused(push(r, '-u', 'origin', 'feature')), body)
+    }
+  })
+
+  // The installed hook is a copy of the committed tree, so this reads the working-tree module
+  // itself: loadGuard decides what a branch or tag name is read for, and the clause under test is in it.
+  it('loadGuard counts a site-listed name as said: a branch named for it is not read', async () => {
+    const w = world({ install: false })
+    const dir = join(w.dir, 'loadguard')
+    mkdirSync(dir)
+    ok(dir, w, 'init', '-q', '-b', 'main')
+    writeFileSync(join(dir, 'README.md'), 'hello\n') // the base never says the name
+    ok(dir, w, 'add', '-A')
+    ok(dir, w, 'commit', '-q', '-m', 'base')
+    const head = ok(dir, w, 'rev-parse', 'HEAD').trim()
+    const was = [process.cwd(), process.env.PUBLIC_PUSH_GUARD_SCRIPT]
+    process.env.PUBLIC_PUSH_GUARD_SCRIPT = join(ROOT, 'scripts', 'privacy-guard.mjs')
+    try {
+      const mod = await import(`../scripts/claude-hooks/public-push-guard.mjs?loadguard=${(seq += 1)}`)
+      process.chdir(dir)
+      const read = async (allowText) => {
+        const { mod: g, ctx } = await mod.loadGuard(new Set([`gorfednet/${SITE}`]), allowText, head)
+        return ['path', 'word'].some((m) => g.scanText(`refs/heads/notes/${SITE}`, ctx, ['private-repo'], m).length > 0)
+      }
+      assert.equal(await read(`site ${SITE}\n`), false, 'listed as a site: said')
+      assert.equal(await read(''), true, 'not listed and never said: read')
+    } finally {
+      process.chdir(was[0])
+      if (was[1] === undefined) delete process.env.PUBLIC_PUSH_GUARD_SCRIPT
+      else process.env.PUBLIC_PUSH_GUARD_SCRIPT = was[1]
+    }
+  })
+})
+
 describe('pre-push: bare private names in ref names and tag messages', () => {
   const BARE = SECRET.split('/')[1]
   const OPEN = PUBLIC.split('/')[1]

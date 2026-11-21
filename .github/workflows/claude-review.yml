@@ -5,7 +5,9 @@
 # on `pull_request: [opened, ready_for_review]` and `issue_comment: [created]`. The job reviews when a
 # pull request opens or leaves draft, and again whenever an owner, member or collaborator posts a
 # comment with a line that is exactly "claude review" (any case; other lines may explain): once at open, once more on the final head after a push that changed code someone
-# wrote, which keeps reviews inside the Max plan's limits.
+# wrote, which keeps reviews inside the Max plan's limits. A head that already has a verdict is not
+# reviewed twice: the repeat request skips and says so in one comment, and a line "claude review force"
+# (or a new commit) reviews that head again.
 #
 # A pull request Dependabot opens is not reviewed on `pull_request` (7 November 2026): GitHub runs
 # that event for dependabot[bot] with read-only secrets, so the review job could not read
@@ -91,6 +93,7 @@ jobs:
       pull-requests: read
     outputs:
       go: ${{ steps.fork.outputs.go || steps.trigger.outputs.go }}
+      force: ${{ steps.trigger.outputs.force }}
     steps:
       # The job's `if` only prefilters a comment (the words appear somewhere, and contains() is
       # case-insensitive). This decides: a review is asked for when one line of the comment,
@@ -106,14 +109,18 @@ jobs:
         run: |
           set -euo pipefail
           go=true
+          force=false
           if [[ "$EVENT" == issue_comment ]]; then
             go=false
             while IFS= read -r line || [[ -n "$line" ]]; do
               line="$(printf '%s' "${line%$'\r'}" | tr '[:upper:]' '[:lower:]' | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')"
               if [[ "$line" == "claude review" ]]; then go=true; fi
+              # `claude review force` also reviews a head that already has a verdict.
+              if [[ "$line" == "claude review force" ]]; then go=true; force=true; fi
             done <<<"$BODY"
           fi
           echo "go=${go}" >> "$GITHUB_OUTPUT"
+          echo "force=${force}" >> "$GITHUB_OUTPUT"
           echo "review requested: ${go}"
 
       # A fork head never reaches the review job. The pull_request payload carries the head
@@ -170,13 +177,62 @@ jobs:
           echo "head=${pull%% *}" >> "$GITHUB_OUTPUT"
           echo "base=${pull##* }" >> "$GITHUB_OUTPUT"
 
+      # One finished review per head. The concurrency group above queues a second request behind
+      # a running review (it never cancels one, so a head's review is never lost). The head is
+      # resolved here, when the job starts, so a queued run always reviews the newest head. If
+      # the bot has already posted a verdict for exactly that head, this run is a duplicate and
+      # every later step skips. A different head has a different sha and is never skipped; a
+      # review that failed before its verdict comment leaves none, so a retry still runs (ops 188
+      # took 11 reviewer runs for 3 lines). Two ways to review the same head again: a comment
+      # line `claude review force` (a retarget, or a verdict that says it could not read everything),
+      # or a new commit. A draft that ship-bot readies keeps its draft-time review of the same
+      # head: the ready_for_review run skips, on purpose. Each comment counts by its first marker
+      # only, as scripts/lib/reviewVerdict.mjs reads it, in the same shape.
+      # A pending `force` run can be replaced by a later plain request in the group: send force last.
+      - name: Skip a head that already has a verdict
+        id: dup
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NUMBER: ${{ steps.pr.outputs.number }}
+          HEAD: ${{ steps.pr.outputs.head }}
+          FORCE: ${{ needs.trigger.outputs.force }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          if [[ "${FORCE:-false}" == true ]]; then
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            echo "forced: reviewing ${HEAD} again"
+            exit 0
+          fi
+          encoded="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/issues/${NUMBER}/comments" \
+            --jq '.[] | select(.user.login == "github-actions[bot]") | [.html_url, (.body | @base64)] | @tsv')"
+          skip=false
+          verdict_url=""
+          while IFS=$'\t' read -r url one; do
+            [[ -n "${one:-}" ]] || continue
+            marker="$(base64 --decode <<<"$one" | grep -Eo '<!--[[:space:]]*claude-review[[:space:]]+head=[0-9a-f]{40}[[:space:]]+findings=[0-9]+([[:space:]]+blocking=[0-9]+)?[[:space:]]*-->' | sed -n 1p || true)"
+            [[ -n "$marker" ]] || continue
+            if [[ "$(sed -E 's/.*head=([0-9a-f]{40}).*/\1/' <<<"$marker")" == "$HEAD" ]]; then skip=true; verdict_url="$url"; fi
+          done <<<"$encoded"
+          echo "skip=${skip}" >> "$GITHUB_OUTPUT"
+          if [[ "$skip" == true ]]; then
+            echo "head ${HEAD} already has a review verdict: skipping this duplicate request"
+            # A person who asked sees why nothing ran. Never on a pull_request event (leaving
+            # draft), and never a marker or a line that is only the trigger phrase.
+            if [[ "$EVENT" == issue_comment ]]; then
+              gh pr comment "$NUMBER" --body "A review of \`${HEAD:0:9}\` already exists: ${verdict_url}. No new review ran. To review this head again, post the words claude review force on a line of their own, or push a new commit."
+            fi
+          fi
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        if: steps.dup.outputs.skip != 'true'
         with:
           ref: ${{ steps.pr.outputs.head }}
           fetch-depth: 0
 
       # From gorfednet/.github@main, never from the checkout: see the action's description.
       - name: Build the review input
+        if: steps.dup.outputs.skip != 'true'
         uses: gorfednet/.github/.github/actions/review-input@main
         with:
           base: ${{ steps.pr.outputs.base }}
@@ -187,6 +243,7 @@ jobs:
       # gorfed.net, bindercurve.com, assess and ops keep Opus under "auto". Matching is by
       # repository name, case-insensitive (ACID2REAPER's remote is spelled in capitals).
       - name: Pick the model
+        if: steps.dup.outputs.skip != 'true'
         id: model
         env:
           REPO: ${{ github.repository }}
@@ -207,6 +264,7 @@ jobs:
       # The secret holds either a subscription token or an API key; pass it to the matching input.
       # Fails closed: an empty or unrecognised value is an error, never a silent skip.
       - name: Pick the credential
+        if: steps.dup.outputs.skip != 'true'
         id: auth
         env:
           CREDENTIAL: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
@@ -219,6 +277,7 @@ jobs:
           esac
 
       - name: Review
+        if: steps.dup.outputs.skip != 'true'
         uses: anthropics/claude-code-action@f3b070c88125d33dbae5653df5f143101d4ea9dc # v1.0.276
         with:
           anthropic_api_key: ${{ steps.auth.outputs.kind == 'api' && secrets.CLAUDE_CODE_OAUTH_TOKEN || '' }}

@@ -37,9 +37,14 @@ require_gates_main() {
 # shellcheck source=../scripts/lib/resolve-node.sh
 source "${HERE}/../scripts/lib/resolve-node.sh"
 NODE_BIN="$(resolve_node)" || { echo "capacity/install.sh: no usable Node. Nothing was installed." >&2; exit 1; }
+# The pool check needs gh, which launchd's bare PATH lacks: resolve it now, refuse to install without it.
+# shellcheck source=launchd-path.sh
+source "${HERE}/launchd-path.sh"
+LAUNCHD_PATH="$(capacity_launchd_path)" || exit 1
 NODE_BIN="${NODE_BIN}" "${HERE}/check.sh"
 mkdir -p "${HOME_DIR}/logs" "${APP_DIR}" "${HOME}/Library/LaunchAgents"
 cp "${HERE}/capacity.mjs" "${APP_DIR}/capacity.mjs"
+cp "${HERE}/pool.mjs" "${APP_DIR}/pool.mjs"
 # The heartbeat and weekly-usage helpers (plan row 1.13), beside it so the copy has no path into a checkout.
 mkdir -p "${APP_DIR}/lib"
 cp "${HERE}/../ship-bot/lib/heartbeat.mjs" "${APP_DIR}/lib/heartbeat.mjs"
@@ -61,7 +66,7 @@ cat >"${PLIST}.tmp" <<EOF
   <key>StartInterval</key><integer>900</integer>
   <key>RunAtLoad</key><true/>
   <key>EnvironmentVariables</key>
-  <dict><key>PATH</key><string>/usr/bin:/bin:/usr/sbin:/sbin</string><key>HOME</key><string>$(xml "${HOME}")</string></dict>
+  <dict><key>PATH</key><string>$(xml "${LAUNCHD_PATH}")</string><key>HOME</key><string>$(xml "${HOME}")</string></dict>
   <key>StandardOutPath</key><string>$(xml "${HOME_DIR}/logs/capacity.log")</string>
   <key>StandardErrorPath</key><string>$(xml "${HOME_DIR}/logs/capacity.log")</string>
 </dict>

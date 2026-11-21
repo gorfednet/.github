@@ -40,9 +40,10 @@ export function ineligibleReason(pr, repo, defaultBranch, allowedAuthors) {
 }
 
 /** After GET /pulls/N: GitHub must have computed mergeability and found no conflict. */
+export const CONFLICTED = 'conflicts with its base'
 export function unmergeableReason(full) {
   if (full.mergeable === true && full.mergeable_state !== 'dirty') return null
-  if (full.mergeable === false || full.mergeable_state === 'dirty') return 'conflicts with its base'
+  if (full.mergeable === false || full.mergeable_state === 'dirty') return CONFLICTED
   return 'mergeability not computed yet'
 }
 
@@ -84,13 +85,18 @@ function workflowRunIdOf(run) {
  * Only a check run that is itself completed with conclusion `cancelled` can be
  * superseded, and only by a workflow run of the same workflow id and event, on
  * this head, with a strictly higher run id, that completed with success.
+ * A rerun is the other way one is replaced: it is a new attempt of the same
+ * run id, so no higher id ever appears. A cancelled check is superseded too
+ * when its own workflow run is on attempt 2 or later, completed with success,
+ * and the check finished at or before that attempt started (`run_started_at`).
+ * A check with no such times, or one that finished inside the attempt, is kept.
  * Anything else is kept: a red shard, a cancel whose workflow run can't be
  * found, a cancel with no later green run. Cancelled is never success.
  *
  * `workflowRuns`: undefined = not read (nothing was cancelled, nothing is
  * superseded); null = the read failed. Returns the runs to judge and the
- * cancelled checks that may yet be superseded (a later run of the workflow is
- * still going, or the read failed), which wait instead of failing.
+ * cancelled checks that may yet be superseded (a later run of the workflow, or
+ * a later attempt of its own run, is still going, or the read failed), which wait instead of failing.
  */
 export function dropSupersededCancels(runs, workflowRuns, sha) {
   const waiting = new Set()
@@ -105,6 +111,11 @@ export function dropSupersededCancels(runs, workflowRuns, sha) {
     }
     const own = byId.get(workflowRunIdOf(r))
     if (!own || own.head_sha !== sha) return true
+    // Its own run on a later attempt (a rerun keeps the run id). Only a check that finished before that attempt began is the earlier attempt's.
+    if (Number.isInteger(own.run_attempt) && own.run_attempt > 1 && r.completed_at && own.run_started_at && r.completed_at <= own.run_started_at) {
+      if (own.status === 'completed' && own.conclusion === 'success') return false
+      if (own.status !== 'completed') waiting.add(r)
+    }
     const later = list.filter(
       (w) => Number(w.id) > Number(own.id) && w.workflow_id === own.workflow_id && w.event === own.event && w.head_sha === sha,
     )
@@ -113,6 +124,98 @@ export function dropSupersededCancels(runs, workflowRuns, sha) {
     return true
   })
   return { runs: kept, waiting }
+}
+
+/** A workflow run already on this attempt or a later one is never rerun by the bot, whatever the state file remembers. */
+export const MAX_RERUN_ATTEMPT = 3
+/** How long a workflow run must have sat cancelled before the bot reruns it: a label's own replacement run needs time to appear. */
+export const RERUN_SETTLE_MINUTES = 10
+/** More reruns than this on one head is a pattern for a person. Every rerun the bot ever asked for on the head counts, refused ones too, not only this pass's. */
+export const MAX_RERUNS_PER_HEAD = 2
+/** The bot reads each cancelled check run's annotations before a rerun. A plan that would need more reads than this is a person's. */
+export const MAX_ANNOTATION_READS = 10
+/**
+ * GitHub's annotation on a job that ran past its `timeout-minutes`. Such a job, and its workflow run, both report
+ * `cancelled`, never `timed_out`, so the annotation is the only thing that tells a timeout from a cancel.
+ */
+export const TIMEOUT_ANNOTATION = /exceeded the maximum execution time/i
+
+/**
+ * The cancelled workflow runs that alone keep this head from green, for the bot to rerun once (plan row 1.59).
+ * Returns `{ids, settling, checks}`: the run ids to rerun now, with `checks[id]` the ids of that run's cancelled
+ * check runs (bot.mjs reads their annotations first: a job that hit its timeout reports `cancelled` too, and a
+ * timeout is never rerun), or `settling: true` (and no ids) when the head qualifies but a cancel is younger
+ * than RERUN_SETTLE_MINUTES. Anything else in the way, or unreadable, is `{ids: [], settling: false, checks: {}}`:
+ * fail closed.
+ *
+ * A head qualifies only when all of this holds:
+ * - the check runs, statuses and workflow runs were all read;
+ * - every latest check run is completed, and each is green or cancelled (one red check and nothing is rerun);
+ * - every latest status is success;
+ * - every expected check is on the head, and each is success or one of the cancelled ones (a required check that
+ *   is missing or was skipped is a refusal no rerun of another run lifts);
+ * - no cancelled check may yet be superseded (`dropSupersededCancels` has none waiting), and at least one stands;
+ * - each cancelled check maps to a workflow run on this head, and the newest run of that workflow and event on
+ *   the head is itself completed with conclusion `cancelled` and below MAX_RERUN_ATTEMPT;
+ * - where the repository requires checks that started after the label (`requireAfterLabel`), that run was
+ *   created at or after `labeledAt`: a rerun gives a run from before the label new check runs that start after
+ *   it, and those would pass for the labelled run the repository asks for;
+ *   and every green expected check or status started at or after `labeledAt` too (one from before the label
+ *   still blocks the head, so the rerun would be spent for nothing);
+ * - that run has at least 1 cancelled check run with an id, and the plan needs at most MAX_ANNOTATION_READS reads;
+ * - the bot has asked for none of those runs before on this head (`asked`), and they and the earlier asks
+ *   together stay within MAX_RERUNS_PER_HEAD.
+ * The settle time is why a young cancel waits: adding ready-to-merge cancels a run and starts its replacement
+ * moments later, a rerun in that gap would race the replacement, and a concurrency group could cancel it.
+ * Only the newest run of a workflow is offered: once it is green, the older cancelled ones are superseded.
+ */
+export function cancelledRunsToRerun({ runs, statuses, workflowRuns, sha, now, asked = [], expectedChecks = [], requireAfterLabel = false, labeledAt = undefined }) {
+  const none = { ids: [], settling: false, checks: {} }
+  if (!Array.isArray(runs) || !Array.isArray(statuses) || !Array.isArray(workflowRuns) || !Array.isArray(asked) || !Array.isArray(expectedChecks) || !sha || !(now instanceof Date)) return none
+  const dropped = dropSupersededCancels(runs, workflowRuns, sha)
+  const latest = latestPerName(dropped.runs)
+  if (latest.some((r) => r.status !== 'completed' || dropped.waiting.has(r))) return none
+  if (latest.some((r) => !OK_CONCLUSIONS.has(r.conclusion) && r.conclusion !== 'cancelled')) return none
+  if (latestPerContext(statuses).some((s) => s.state !== 'success')) return none
+  // A required check that is absent, or present and neither success nor cancelled (skipped, neutral), is a refusal a rerun of something else cannot lift.
+  const contexts = new Set(latestPerContext(statuses).map((x) => x.context))
+  for (const name of expectedChecks) {
+    const named = latest.filter((r) => r.name === name)
+    if (named.length === 0 && !contexts.has(name)) return none
+    if (named.some((r) => r.conclusion !== 'success' && r.conclusion !== 'cancelled')) return none
+    // The same after-label test evaluateChecks applies: a green required check from before the label still blocks, and no rerun of another run lifts that.
+    if (requireAfterLabel) {
+      if (named.some((r) => r.conclusion === 'success' && !(labeledAt && r.started_at && r.started_at >= labeledAt))) return none
+      if (latestPerContext(statuses).some((x) => x.context === name && !(labeledAt && x.created_at && x.created_at >= labeledAt))) return none
+    }
+  }
+  const byId = new Map(workflowRuns.map((w) => [Number(w.id), w]))
+  const ids = new Set()
+  const checks = {}
+  let settling = false
+  for (const r of latest.filter((x) => x.conclusion === 'cancelled')) {
+    const own = byId.get(workflowRunIdOf(r))
+    if (!own || own.head_sha !== sha || own.workflow_id === undefined || own.workflow_id === null || !own.event) return none
+    const newest = workflowRuns
+      .filter((w) => w.workflow_id === own.workflow_id && w.event === own.event && w.head_sha === sha && Number(w.id) >= Number(own.id))
+      .sort((a, b) => Number(b.id) - Number(a.id))[0]
+    if (newest.status !== 'completed' || newest.conclusion !== 'cancelled') return none
+    if (!Number.isInteger(newest.run_attempt) || newest.run_attempt < 1 || newest.run_attempt >= MAX_RERUN_ATTEMPT) return none
+    if (asked.map(Number).includes(Number(newest.id))) return none
+    // A run from before the label is not the labelled run this repository requires, and a rerun would dress it as one.
+    if (requireAfterLabel && !(labeledAt && newest.created_at && newest.created_at >= labeledAt)) return none
+    const cancelledIn = runs.filter((x) => x.status === 'completed' && x.conclusion === 'cancelled' && workflowRunIdOf(x) === Number(newest.id)).map((x) => x.id)
+    if (cancelledIn.length === 0 || cancelledIn.some((id) => !Number.isSafeInteger(id) || id <= 0)) return none
+    checks[Number(newest.id)] = [...new Set(cancelledIn)].sort((a, b) => a - b)
+    const age = newest.updated_at ? minutesBetween(newest.updated_at, now) : NaN
+    // A time more than a few minutes ahead of this Mac's clock is not a time to wait on.
+    if (!Number.isFinite(age) || age < -RERUN_SETTLE_MINUTES) return none
+    if (age < RERUN_SETTLE_MINUTES) settling = true
+    ids.add(Number(newest.id))
+  }
+  if (ids.size === 0 || asked.length + ids.size > MAX_RERUNS_PER_HEAD) return none
+  if (Object.values(checks).reduce((n, list) => n + list.length, 0) > MAX_ANNOTATION_READS) return none
+  return settling ? { ids: [], settling: true, checks: {} } : { ids: [...ids].sort((a, b) => a - b), settling: false, checks }
 }
 
 /** The most recent commit status per context (latest created_at, ties by id). */
@@ -147,7 +250,7 @@ export function evaluateChecks({ runs, statuses, expectedChecks, graceOver, labe
 
   const pending = [
     ...others.filter((r) => r.status !== 'completed').map((r) => r.name),
-    ...waitingCancels.map((r) => `${r.name} (cancelled; a later run of its workflow may replace it)`),
+    ...waitingCancels.map((r) => `${r.name} (cancelled; a later run or attempt of its workflow may replace it)`),
     ...otherStatuses.filter((s) => s.state === 'pending').map((s) => s.context),
   ]
   const failed = [
@@ -340,11 +443,13 @@ export function isTriaged(thread, allowedAuthors) {
 /** The local clone review-status judges merges of main in: a deploy row's sourceDir, else the one under sourceRoot. */
 const cloneDir = (ctx, repo) => repo.sourceDir ?? (ctx.config.sourceRoot && repo.dir ? join(ctx.config.sourceRoot, repo.dir) : null)
 
-export async function evaluateReview(ctx, repo, pr, sha, { headSince, memo, draft = false, requireClean = false, controlPlane = null }) {
+export async function evaluateReview(ctx, repo, pr, sha, { headSince, memo, draft = false, requireClean = false, controlPlane = null, seen = null }) {
   const now = ctx.clock.now()
   // --clone lets review-status accept a head that only adds clean merges of main to a clean-reviewed head.
   const script = await gate(ctx, ctx.config.scripts.reviewStatus, ['--pr', String(pr.number), '--repo', repo.slug, ...(cloneDir(ctx, repo) ? ['--clone', cloneDir(ctx, repo)] : [])], {}, memo)
   const status = parseReviewStatus(script, pr.number)
+  // For the board only (lib/board.mjs): review-status's own verdict on this head.
+  if (seen) seen.review = status.state
   if (status.state === 'undetermined') {
     return { blocks: [{ key: 'review-undetermined', kind: 'wait', reason: `Claude review state unknown: ${ctx.redactor.apply(status.detail)}` }] }
   }
@@ -443,13 +548,21 @@ export async function evaluateReview(ctx, repo, pr, sha, { headSince, memo, draf
  * says so with `cached: true`; the caller re-runs fresh before acting on a
  * ready result.
  *
- * @returns {Promise<{ready: boolean, blocks: object[], cached: boolean}>}
+ * `skipReview` leaves gate (d) out and marks the result `reviewSkipped: true`. It is only for marking a
+ * control-plane draft ready so that its review starts (bot.mjs readyForReview): such a result is never a reason
+ * to label or merge.
+ *
+ * `checks` (passing, failing, pending or unread) and `review` (review-status's verdict, or null when no
+ * gate got that far) say what was read on the way, for the board (lib/board.mjs). Nothing decides on them.
+ *
+ * @returns {Promise<{ready: boolean, blocks: object[], cached: boolean, checks: string, review: string|null}>}
  */
-export async function evaluatePull(ctx, repo, pr, { headState, fresh = false, draft = false, requireClean = false, controlPlane = null }) {
+export async function evaluatePull(ctx, repo, pr, { headState, fresh = false, draft = false, requireClean = false, controlPlane = null, skipReview = false }) {
   const sha = pr.head.sha
   const now = ctx.clock.now()
   const memo = { inputs: '', fresh, used: false }
-  const blocked = (blocks) => ({ ready: false, blocks, cached: memo.used })
+  const seen = { checks: 'unread', review: null }
+  const blocked = (blocks) => ({ ready: false, blocks, cached: memo.used, ...seen })
 
   // (b) (c) (f)
   let runs
@@ -500,7 +613,17 @@ export async function evaluatePull(ctx, repo, pr, { headState, fresh = false, dr
     labeledAt,
     requireAfterLabel,
   })
-  if (checkBlocks.length > 0) return blocked(checkBlocks)
+  seen.checks = checkBlocks.some((b) => b.kind === 'fail') ? 'failing' : checkBlocks.length > 0 ? 'pending' : 'passing'
+  if (checkBlocks.length > 0) {
+    // A cancelled run that alone blocks a labelled head (plan row 1.59): bot.mjs reruns `rerun` once. Never a pass.
+    const plan = draft ? { ids: [], settling: false, checks: {} } : cancelledRunsToRerun({ runs, statuses, workflowRuns, sha, now, asked: Object.keys(headState.reruns ?? {}).map(Number), expectedChecks: repo.expectedChecks, requireAfterLabel, labeledAt })
+    if (plan.settling) {
+      // The bot will rerun it by itself once the cancel has settled, so this pass is a wait: no refusal comment, no stall clock.
+      seen.checks = 'pending'
+      return blocked([{ key: 'cancel-settling', kind: 'wait', reason: `a cancelled workflow run is all that blocks this head; the bot reruns it once it has sat cancelled for ${RERUN_SETTLE_MINUTES} minutes with no replacement run` }])
+    }
+    return { ...blocked(checkBlocks), rerun: plan.ids, rerunChecks: plan.checks }
+  }
 
   // What the scripts below read, as far as the bot can see it: the head, the
   // pull request's last change (title, body, labels and comments all move
@@ -537,19 +660,21 @@ export async function evaluatePull(ctx, repo, pr, { headState, fresh = false, dr
 
   // (d) the Claude reviewer's verdict on this head. A clean review that is
   // required cannot come from a repo with no reviewer: fail closed.
+  if (skipReview) return { ready: true, blocks: [], cached: memo.used, ...seen, reviewSkipped: true }
   if (requireClean && !repo.claudeReview) {
     return blocked([{ key: 'review-required', kind: 'fail', noStall: true, reason: 'The bot readied this pull request itself and the repo deploys, so it needs a clean Claude review, but this repo has no Claude reviewer configured. A person labels it.' }])
   }
   if (repo.claudeReview) {
     let result
     try {
-      result = await evaluateReview(ctx, repo, pr, sha, { headSince, memo: scriptMemo, draft, requireClean, controlPlane })
+      result = await evaluateReview(ctx, repo, pr, sha, { headSince, memo: scriptMemo, draft, requireClean, controlPlane, seen })
     } catch (cause) {
       if (cause instanceof RateLimitError) throw cause
+      seen.review = 'undetermined'
       return blocked([{ key: 'review-undetermined', kind: 'wait', reason: `could not read the Claude review state: ${ctx.redactor.apply(cause.message)}` }])
     }
     if (result.blocks.length > 0) return blocked(result.blocks)
   }
 
-  return { ready: true, blocks: [], cached: memo.used }
+  return { ready: true, blocks: [], cached: memo.used, ...seen }
 }

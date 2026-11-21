@@ -750,7 +750,7 @@
       "guards": "A bare name is watched only while the merge base has never said it. Always watched, nearly every mention of a site name is red, with no way out but a rewrite.",
       "command": "node --test --test-name-pattern='stops watching a name' test/privacyGuard.test.mjs",
       "file": "scripts/privacy-guard.mjs",
-      "find": "const unsaid = open.filter((n) => !namedAtBase(dir, mergeBase, n))",
+      "find": "const unsaid = open.filter((n) => !allow.sites.includes(n.toLowerCase()) && !namedAtBase(dir, mergeBase, n))",
       "replace": "const unsaid = open"
     },
     {
@@ -822,7 +822,7 @@
       "guards": "A repo line in the allowlist names a name that is public already. For a name the repository never said it would disclose it with a green check.",
       "command": "node --test --test-name-pattern='allowlist add a' test/privacyGuard.test.mjs",
       "file": "scripts/privacy-guard.mjs",
-      "find": "const unsaid = open.filter((n) => !namedAtBase(dir, mergeBase, n))",
+      "find": "const unsaid = open.filter((n) => !allow.sites.includes(n.toLowerCase()) && !namedAtBase(dir, mergeBase, n))",
       "replace": "const unsaid = []"
     },
     {
@@ -1008,6 +1008,62 @@
       "file": "scripts/privacy-guard.mjs",
       "find": "const inner = [...t.slice(1, -1)]",
       "replace": "const inner = t.slice(1, -1)"
+    },
+    {
+      "id": "privacy-guard-site-name-counts-as-said",
+      "guards": "A name listed as a site counts as said. Without it a README link or commit message naming the public domain is refused as a new private-repository name.",
+      "command": "node --test --test-name-pattern='lets the domain through in a README link' test/privacyGuard.test.mjs",
+      "file": "scripts/privacy-guard.mjs",
+      "find": "const unsaid = open.filter((n) => !allow.sites.includes(n.toLowerCase()) && !namedAtBase(dir, mergeBase, n))",
+      "replace": "const unsaid = open.filter((n) => !namedAtBase(dir, mergeBase, n))"
+    },
+    {
+      "id": "privacy-guard-lets-a-cleared-site-line-excuse-later-lines",
+      "guards": "A site line the allowlist's own diff cleared holds nothing for later lines. Without it, a second push of a comment or repo line naming the domain reads as held.",
+      "command": "node --test --test-name-pattern='holds nothing for a later line' test/privacyGuard.test.mjs",
+      "file": "scripts/privacy-guard.mjs",
+      "find": "if (key === ALLOWLIST_PATH) text = text.split('\\n').filter((l) => !isSiteLine(l)).join('\\n')",
+      "replace": "void 0"
+    },
+    {
+      "id": "push-guard-site-name-counts-as-said",
+      "guards": "The pre-push guard counts a site-listed name as said, as the CI guard does. Without it a README link to the public site is refused at push.",
+      "command": "node --test --test-name-pattern='loadGuard counts a site-listed' test/publicPushGuard.test.mjs",
+      "file": "scripts/claude-hooks/public-push-guard.mjs",
+      "find": "(!allow.sites.includes(n.toLowerCase()) && !mod.namedAtBase('.', head, n))",
+      "replace": "!mod.namedAtBase('.', head, n)"
+    },
+    {
+      "id": "privacy-guard-site-line-clears-its-own-domain",
+      "guards": "A single new `site <domain>` line the range adds counts for that range, so a repository with no allowlist can add its first line and link the site together. Without it the first line is refused and there is no way in.",
+      "command": "node --test --test-name-pattern='lets a repository add its first site line' test/privacyGuard.test.mjs",
+      "file": "scripts/privacy-guard.mjs",
+      "find": "allow.bootSites = added.size === 1 ? [...added] : []",
+      "replace": "allow.bootSites = []"
+    },
+    {
+      "id": "privacy-guard-one-new-site-per-range",
+      "guards": "Only one new site line per range clears. Without the cap, a push could link or name more than one new site elsewhere in the range. The allowlist's own site lines still publish each name they list.",
+      "command": "node --test --test-name-pattern='lets a repository add its first site line' test/privacyGuard.test.mjs",
+      "file": "scripts/privacy-guard.mjs",
+      "find": "added.size === 1 ?",
+      "replace": "added.size >= 1 ?"
+    },
+    {
+      "id": "privacy-guard-two-site-lines-alone-pass",
+      "guards": "A site line is not read for its own domain, which is the only route for two or more new sites. Without it the allowlist lines themselves are refused.",
+      "command": "node --test --test-name-pattern='lets a repository add its first site line' test/privacyGuard.test.mjs",
+      "file": "scripts/privacy-guard.mjs",
+      "find": "hit.value.toLowerCase() === isSiteLine(text)) continue",
+      "replace": "false) continue"
+    },
+    {
+      "id": "context-cap-refuses-past-the-cap",
+      "guards": "The context-cap hook refuses new work at 200,001 tokens. Without it a session runs past the cap unheld, which is the waste plan row 1.61 names.",
+      "command": "node --test --test-name-pattern='the boundary' test/contextCap.test.mjs",
+      "file": "scripts/claude-hooks/context-cap.py",
+      "find": "    if tokens <= cap:",
+      "replace": "    if tokens <= cap + 1:"
     }
   ]
 }

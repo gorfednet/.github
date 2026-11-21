@@ -152,6 +152,7 @@ export function withWindows(prs) {
   const out = prs.map((p) => ({ ...p }))
   const groups = new Map()
   for (const p of out) if (p.branch && p.endsAt !== undefined) groups.set(`${p.repo}|${p.branch}`, [...(groups.get(`${p.repo}|${p.branch}`) ?? []), p])
+  for (const p of out) if (p.linkOnly && p.endsAt !== undefined) p.to = p.endsAt + AFTER_CLOSE_MS
   for (const group of groups.values()) {
     group.sort((a, b) => a.endsAt - b.endsAt)
     group.forEach((p, i) => {
@@ -193,10 +194,21 @@ export function attribute(sessions, namedPrs = []) {
       if (named) key = `${named.repo}#${named.number}`
       else if (links.length > 0) {
         const l = links.find((x) => x.ts >= m.ts) ?? links[links.length - 1]
-        key = `${l.repo}#${l.number}`
+        // A link-only PR (the sweep names PRs by number, with no branch) keeps no work done well after it merged: a session
+        // that goes on to its next change would otherwise bill that change to this PR, and the sweep never rewrites a held row.
+        // A PR named with a branch keeps its session's late work, as before.
+        const closed = prs.find((pr) => pr.linkOnly && pr.repo === l.repo && pr.number === l.number)
+        if (!(closed?.endsAt !== undefined && m.ts > closed.endsAt + AFTER_CLOSE_MS)) key = `${l.repo}#${l.number}`
+        // Work after an earlier link-only PR's merge, up to merge + 2 h, may be that PR's tail rather than the next link's.
+        // Only the (folder, branch) the PR's own work ran on can tell, and that is learned in pass 2, so hold it back there.
+        const tail = [...links].some((x) => x.ts < m.ts && prs.some((pr) => pr.linkOnly && pr.repo === x.repo && pr.number === x.number && pr.endsAt !== undefined && m.ts > pr.endsAt && pr.to !== undefined && m.ts <= pr.to))
+        if (tail) {
+          rest.push({ m, fallback: key })
+          continue
+        }
       }
       if (key === null) {
-        rest.push(m)
+        rest.push({ m, fallback: null })
         continue
       }
       put(key, m)
@@ -212,10 +224,11 @@ export function attribute(sessions, namedPrs = []) {
       }
     }
   }
-  for (const m of rest) {
+  for (const { m, fallback } of rest) {
     const t = DEFAULT_BRANCHES.has(m.branch) ? undefined : taught.get(`${folderRoot(m.cwd)}|${m.branch}`)
     // A taught PR keeps the stretch of time it was named for: work long after it closed is not its work.
     if (t && !(t.from !== undefined && m.ts <= t.from) && !(t.to !== undefined && m.ts > t.to)) put(t.key, m)
+    else if (fallback) put(fallback, m)
     else addByModel(unattributed, m.model, m.usage)
   }
   return { perPr, unattributed }
@@ -343,6 +356,56 @@ export function costReport(lines, { now = new Date(), days = 7, window = null } 
   }
 }
 
+/**
+ * Merged PRs from ship-bot's log text: `<ISO time> info  <owner/repo>#<n> (<sha>): merged as <sha>`. One entry per PR, the
+ * first merge line wins. Pure. Draft, error and "not merging" lines never match.
+ */
+export function mergesFromShipLog(text) {
+  const seen = new Map()
+  for (const line of String(text).split('\n')) {
+    const m = /^(\d{4}-\d\d-\d\dT[\d:.]+Z)\s+info\s+([\w.-]+\/[\w.-]+)#(\d+) \([0-9a-f]+(?:, draft)?\): merged as [0-9a-f]+\s*$/.exec(line)
+    if (!m) continue
+    const key = `${m[2]}#${m[3]}`
+    if (!seen.has(key)) seen.set(key, { repo: m[2], number: Number(m[3]), mergedAt: m[1] })
+  }
+  return [...seen.values()]
+}
+
+/**
+ * Every PR the ledger holds, named to a scan so each message is claimed once across branch rows and swept rows. A row with a
+ * branch claims its branch's work inside its window; a swept row (no branch) is link-only and claims its post-merge tail.
+ * `skip`: `repo#number` keys the caller already names.
+ */
+export function ledgerNamed(lines, skip = new Set()) {
+  return latestPerPr(lines)
+    .filter((l) => !skip.has(`${l.repo}#${l.number}`))
+    .map((l) => {
+      const endsAt = l.closedAt ? Date.parse(l.closedAt) : undefined
+      return { repo: l.repo, number: l.number, ...(l.branch ? { branch: l.branch } : { linkOnly: endsAt !== undefined }), endsAt }
+    })
+}
+
+/**
+ * Deploys ship-bot ran from `fromMs` up to `beforeMs`, from the names of its deploy logs (`<ISO with dashes>-<repo>-pr<N>.log`):
+ * a gh-free list of merged PRs, partial (only repositories that deploy on merge). A missing folder gives none.
+ */
+export function deployMergesBefore(dir, fromMs, beforeMs) {
+  let names
+  try {
+    names = readdirSync(dir)
+  } catch {
+    return []
+  }
+  const out = []
+  for (const name of names) {
+    const m = /^(\d{4}-\d\d-\d\d)T(\d\d)-(\d\d)-(\d\d)-(\d{3})Z-(.+)-pr(\d+)\.log$/.exec(name)
+    if (!m) continue
+    const t = Date.parse(`${m[1]}T${m[2]}:${m[3]}:${m[4]}.${m[5]}Z`)
+    if (t >= fromMs && t < beforeMs) out.push({ repo: m[6], number: Number(m[7]), at: t })
+  }
+  return out
+}
+
 export const DEFAULT_PROJECTS = join(homedir(), '.claude', 'projects')
 export const DEFAULT_FILE = join(homedir(), '.desk', 'pr-cost.jsonl')
 
@@ -375,7 +438,7 @@ export async function collectPrCost({ projects = DEFAULT_PROJECTS, file = DEFAUL
     // The ledger's PRs are named to the scan, so a session that worked a recorded branch without a pr-link is counted
     // under that PR here as it was when recorded, not again as unattributed.
     const lines = readLines(file)
-    const prs = latestPerPr(lines).filter((l) => l.branch).map((l) => ({ repo: l.repo, number: l.number, branch: l.branch, endsAt: l.closedAt ? Date.parse(l.closedAt) : undefined }))
+    const prs = ledgerNamed(lines)
     const window = await windowTotals({ projects, days, now, prs })
     return { measuredAt: now.toISOString(), ...costReport(lines, { now, days, window }) }
   } catch (error) {

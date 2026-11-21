@@ -36,4 +36,16 @@ describe('installers and resolve-node', () => {
     assert.match(installer, /LABEL="net\.gorfed\.gh-quota"/)
     assert.ok(NODE_RECORDS.some((r) => r.agent === 'net.gorfed.gh-quota' && r.record === '.desk/gh-quota-app.node-version'))
   })
+  it('every file capacity/install.sh copies into the capacity app is tracked by the installed-tools check', () => {
+    const installer = readFileSync(new URL('../capacity/install.sh', import.meta.url), 'utf8')
+    const copies = [...installer.matchAll(/^cp "\$\{HERE\}\/([^"]+)" "\$\{APP_DIR\}\/([^"]+)"$/gm)]
+    assert.ok(copies.length >= 6, `found the installer's copies (${copies.length})`)
+    for (const [, from, to] of copies) {
+      const source = from.replace(/^\.\.\//, '').replace(/^(?!ship-bot|scripts)/, 'capacity/')
+      assert.ok(
+        COPIES.some((c) => c.copy === `.desk/capacity-app/${to}` && c.source === source),
+        `capacity/install.sh copies ${from} to ${to}, but COPIES has no row for it: a stale copy would go unreported`,
+      )
+    }
+  })
 })
