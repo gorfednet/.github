@@ -56,7 +56,7 @@ export async function runOnce(deps) {
   // The Pages token site-deploy.sh hands to wrangler: masked everywhere from the first line of the pass.
   redactor.add(pagesSecrets(config.stateDir, deps.fsx ?? realFs, deps.pagesFiles))
   // The board (lib/board.mjs) listens to reads and log lines the pass makes anyway. It decides nothing.
-  const board = new Board()
+  const board = deps.board ?? new Board()
   const github = board.tap(deps.github)
   const ctx = {
     config,
@@ -157,7 +157,15 @@ export async function runOnce(deps) {
   if (!dry && summary.complete) recordPassErrors(stateStore.data, summary.repoErrors)
   sayUsage(ctx)
   stateStore.save()
-  summary.board = board.snapshot(repos.map((r) => r.slug), (text) => redactor.apply(text))
+  // A pass cut by the quota floor saw only some repositories: it hands back no board, so the last whole one stays.
+  // Building it must not fail a pass that has already done its work.
+  if (!limited) {
+    try {
+      summary.board = board.snapshot(repos.map((r) => r.slug), (text) => redactor.apply(text))
+    } catch (cause) {
+      ctx.say('warn', `could not build the board: ${String(cause.message).split('\n')[0].slice(0, 300)}`)
+    }
+  }
   return ctx.decisions
 }
 

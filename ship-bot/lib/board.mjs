@@ -15,7 +15,7 @@
  */
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
-import { HOLD_LABEL } from './config.mjs'
+import { HOLD_LABEL, READY_LABEL } from './config.mjs'
 import { controlPlaneFiles, draftClaim, firstNextItem } from './drafts.mjs'
 
 export const BOARD_FILE = 'board.json'
@@ -37,11 +37,31 @@ const quiet = (fn) => (...args) => {
  * "now", so the bot's own first sight only counts when it is older than GitHub's last update.
  */
 const earlier = (a, b) => [a, b].filter((t) => t && Number.isFinite(new Date(t).getTime())).sort((x, y) => new Date(x) - new Date(y))[0] ?? null
-/** Is the first unchecked `## Next` line a session's own step: there is one, it is no merge instruction, and no line hands the decision to a person? */
+/** How long a waiting row, or a draft in progress, may sit before `--board` lists it with the decisions. */
+export const STALLED_WAITING_HOURS = 6
+export const STALLED_DRAFT_DAYS = 3
+/**
+ * A pass writes the board when it ends, and one pass can run a long gate or a deploy for about 15 minutes. So a
+ * board is only called stale past 20: by then the passes since were cut short, or could not build or write it.
+ */
+export const BOARD_STALE_MINUTES = 20
+
+/**
+ * A first unchecked line that is someone else's move: it names Desk or a person, opens by addressing anyone but the
+ * session ("Reviewer: ..."), says ship-bot, Fable or merge anywhere in it, or is a label, ready or approval step.
+ * It errs toward a hand-off: a row too many is
+ * read and skipped, while a hand-off counted as work in progress is never seen.
+ */
+const HANDOFF = /\b(desk|owner|michael|person|human|someone|fable|ship-?bot|label\w*|read(?:y|ies|ied)|merg\w*|approv\w*|sign[- ]?off|decid\w*|decision)\b/i
+/** `Reviewer: ...`, also with markdown around the name or the colon (`**Reviewer:** ...`). A line addressed to the session or its builder is its own step. */
+const ADDRESSED = /^\W*(?!(?:this )?(?:session|builder)\b)[A-Za-z][\w -]{0,30}[*_`]*:[*_`]*\s/i
+
+/** Is the first unchecked `## Next` line a session's own step: there is one, it is no merge instruction, and it hands nothing to anyone? */
 const ownStep = (pr) => {
+  const first = firstNextItem(pr.body)
   const { claim, refused } = draftClaim(pr)
   // "Merge once the review is clean" is no instruction to the bot (drafts.mjs), but it still says merge: it stays a row.
-  return Boolean(firstNextItem(pr.body)) && !claim && !refused && !/^\W*merge\b/i.test(firstNextItem(pr.body))
+  return Boolean(first) && !claim && !refused && !/^\W*merge\b/i.test(first) && !HANDOFF.test(first) && !ADDRESSED.test(first)
 }
 const labelsOf = (pr) => (pr.labels ?? []).map((l) => l.name)
 
@@ -115,7 +135,8 @@ export class Board {
    * passed; the reason says what it is waiting on, if anything), waiting (on
    * CI, the reviewer or GitHub), not-reached (the pass ended before it),
    * in-progress (a draft whose first unchecked `## Next` line is a session's
-   * own step: no merge line, nothing handed to a person, no hold), and
+   * own step: no merge line, nothing handed to Desk or a person, no label or
+   * ready step, no hold and no ready-to-merge label), and
    * needs-decision for everything else the bot is not going to move by itself.
    */
   #state(row) {
@@ -124,7 +145,7 @@ export class Board {
     if (row.labels.includes(HOLD_LABEL)) return 'held'
     if (row.loud) return 'needs-decision'
     if (row.gates) return row.gates
-    if (row.draft && row.ownStep) return 'in-progress'
+    if (row.draft && row.ownStep && !row.labels.includes(READY_LABEL)) return 'in-progress'
     return row.reasons.some((r) => /not computed yet/.test(r)) ? 'waiting' : 'needs-decision'
   }
 
@@ -164,20 +185,29 @@ const age = (fromIso, now) => {
   return minutes < 120 ? `${minutes}m` : minutes < 2880 ? `${Math.round(minutes / 60)}h` : `${Math.round(minutes / 1440)}d`
 }
 
-/** `--board`: the rows that need a decision, longest-standing first, in at most `max` lines. */
+/**
+ * `--board`: the rows that need a decision, longest-standing first, in at most `max` lines. A row that has been
+ * waiting for over STALLED_WAITING_HOURS, or a draft in progress not updated for over STALLED_DRAFT_DAYS, is listed
+ * with them and marked stalled. That is judged here, against the reader's clock, not in the file.
+ */
 export function formatBoard(board, now = new Date(), max = BOARD_MAX_LINES) {
   const rows = Array.isArray(board?.rows) ? board.rows : []
   const count = (state) => rows.filter((r) => r.state === state).length
-  const lines = [`board ${board.at} (${age(board.at, now)} old), ship-bot ${board.installedSha ? String(board.installedSha).slice(0, 7) : 'from a checkout'}, ${board.mode}: ${rows.length} open, ${count('needs-decision')} need a decision, ${count('waiting')} waiting, ${count('ready')} ready, ${count('held')} held, ${count('not-reached')} not reached`]
+  const stale = (now - new Date(board.at)) / 60000 > BOARD_STALE_MINUTES ? `, STALE: no pass has replaced it for over ${BOARD_STALE_MINUTES} minutes` : ''
+  const lines = [`board ${board.at} (${age(board.at, now)} old${stale}), ship-bot ${board.installedSha ? String(board.installedSha).slice(0, 7) : 'from a checkout'}, ${board.mode}: ${rows.length} open, ${count('needs-decision')} need a decision, ${count('waiting')} waiting, ${count('ready')} ready, ${count('held')} held, ${count('not-reached')} not reached`]
   const skipped = (board.skipped ?? []).map((s) => `skipped ${s.repository}: ${s.why}`.slice(0, 200))
-  const decide = rows.filter((r) => r.state === 'needs-decision').sort((a, b) => String(a.since ?? '').localeCompare(String(b.since ?? '')))
-  if (count('in-progress') > 0) lines.push(`${count('in-progress')} drafts in progress (a session's own next step; not listed)`)
+  // A row with no time is never called stalled: nothing says how long it has sat.
+  const hours = (r) => (r.since ? (now - new Date(r.since)) / 3600000 : 0)
+  const stalled = (r) => (r.state === 'waiting' && hours(r) > STALLED_WAITING_HOURS) || (r.state === 'in-progress' && hours(r) > STALLED_DRAFT_DAYS * 24)
+  const decide = rows.filter((r) => r.state === 'needs-decision' || stalled(r)).sort((a, b) => String(a.since ?? '').localeCompare(String(b.since ?? '')))
+  const fresh = rows.filter((r) => r.state === 'in-progress' && !stalled(r)).length
+  if (fresh > 0) lines.push(`${fresh} drafts in progress (updated in the last ${STALLED_DRAFT_DAYS} days; not listed)`)
   const skipLines = skipped.slice(0, 5)
   if (skipped.length > 5) skipLines[4] = `skipped ${skipped.length - 4} more repositories`
   const room = max - lines.length - skipLines.length
   const shown = decide.length > room ? decide.slice(0, room - 1) : decide
   for (const r of shown) {
-    const flags = [r.draft ? 'draft' : null, r.controlPlane ? 'control-plane' : null, r.headMovedTo ? `head moved to ${String(r.headMovedTo).slice(0, 7)}` : null].filter(Boolean)
+    const flags = [stalled(r) ? `stalled ${r.state}` : null, r.draft ? 'draft' : null, r.controlPlane ? 'control-plane' : null, r.headMovedTo ? `head moved to ${String(r.headMovedTo).slice(0, 7)}` : null].filter(Boolean)
     lines.push(`${r.repository}#${r.number} (${String(r.head).slice(0, 7)}) ${age(r.since, now)} checks:${r.checks ?? '-'} review:${r.review ?? '-'}${flags.length ? ` [${flags.join(', ')}]` : ''} ${String(r.reason).split('\n')[0]}`.slice(0, 240))
   }
   if (shown.length < decide.length) lines.push(`and ${decide.length - shown.length} more that need a decision`)

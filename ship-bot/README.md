@@ -554,20 +554,30 @@ anyway, and its `reason` is the pass's own log lines for that pull request.
   alone, so their `checks`, `review`, `mergeable` and `controlPlane` are null.
 - **`state`:** `merged`, `ready`, `waiting`, `held`, `not-reached`,
   `in-progress` or `needs-decision`.
-- **`in-progress`** is a working draft: no `hold`, and its first unchecked
-  `## Next` line is a session's own step. A draft that says merge, hands a
-  decision to a person or has no unchecked line is not one. `--board` gives
-  these one count line, not rows.
+- **`in-progress`** is a working draft: no `hold`, no `ready-to-merge`, and
+  its first unchecked `## Next` line is a session's own step. A draft is not
+  one when that line says merge, ship-bot or Fable, names Desk or a person,
+  addresses anyone but the session, or is a label, ready or approval step. Nor is a draft with no
+  unchecked line. `--board` gives these one count line, not rows.
+- **Stalled rows join the list.** `--board` also lists a row that has been
+  `waiting` for over 6 hours and an `in-progress` draft not updated for over
+  3 days, each marked `stalled`. It judges that when it prints.
 - **`since`:** for a head the bot gated, when it first saw that head or
   GitHub's `updated_at`, whichever is older. For any other pull request,
   `updated_at`. An observing pass keeps no memory, so it has only `updated_at`.
 - **A moved head.** `head` is the commit the row describes. When a later read
   in the same pass saw another, `headMovedTo` names it.
+- **A stale board says so.** `--board` prints `STALE` in its first line when
+  `at` is over 20 minutes old. A pass writes the board when it ends, and one
+  pass can run a gate or a deploy for about 15 minutes, so a younger board
+  may only be waiting on a pass still running. Past 20, the passes since ended
+  early or could not build or write it; the log says which.
 - **It can be 3 minutes old.** Anything that writes (a label, a ready, a
   resolve) checks the head it acts on first.
 - **A failed write** logs `could not write the board` and changes nothing else.
-- **A pass that ends early** (a quota pause before the first repo, a
-  self-install) writes no board. The last one stays, and `at` shows its age.
+- **A pass that ends early** (a quota pause, before the first repo or partway
+  through, or a self-install) writes no board. The last whole one stays, and
+  `at` shows its age.
 
 Passwords, keys and tokens are blanked out (`[REDACTED]`) in all of these and
 in every comment.

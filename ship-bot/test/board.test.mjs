@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { existsSync, mkdtempSync, readFileSync, readdirSync, statSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
 import { describe, it } from 'node:test'
@@ -107,7 +107,11 @@ describe('the board a pass builds', () => {
     const s = scenario({ repos: [mergeOnly({ live: false })], github: new FakeGitHub({ pulls: pulls(), runs: failed }) })
     assert.deepEqual([row(await boardOf(s), 7).checks, row(await boardOf(s), 7).since], ['failing', '2026-10-02T08:00:00Z'])
     s.clock.advance(30)
-    assert.equal(row(await boardOf(s), 7).since, '2026-10-02T08:00:00Z')
+    const observed = row(await boardOf(s), 7)
+    assert.equal(observed.since, '2026-10-02T08:00:00Z')
+    // The not-live repository's lines carry their own prefix in the log; the row's reason is the same line without it.
+    assert.match(observed.reason, /^not merging: checks did not pass on this head/)
+    assert.ok(s.logs.includes(`info OBSERVE (repo not live) ${SLUG}#7 (${HEAD.slice(0, 7)}): ${observed.reason.split('\n')[0]}`), s.logs.join('\n'))
     // The near miss: a head the bot has known for longer than GitHub's last update keeps the bot's own, older time.
     const live = scenario({ repos: [mergeOnly()], github: new FakeGitHub({ pulls: pulls(), runs: failed }), now: '2026-10-01T00:00:00Z' })
     await boardOf(live)
@@ -132,7 +136,38 @@ describe('the board a pass builds', () => {
     assert.equal('ownStep' in row(board, 1), false)
     const lines = formatBoard({ at: '2026-10-09T12:00:00.000Z', mode: 'live', ...board }, new Date('2026-10-09T12:00:00Z'))
     assert.deepEqual(lines.map((l) => /#(\d+) /.exec(l)?.[1]).filter(Boolean), ['2', '3', '5', '6', '7', '8'])
-    assert.equal(lines[1], "1 drafts in progress (a session's own next step; not listed)")
+    assert.equal(lines[1], '1 drafts in progress (updated in the last 3 days; not listed)')
+  })
+
+  it('a first unchecked line that hands off to Desk or a person, or is a label or ready step, is no draft in progress', async () => {
+    const handed = ['Desk: Fable read, ready and label', 'label it ready-to-merge', 'Mark it ready for review', 'Michael reads the copy', 'Someone approves the wording', 'Reviewer: read the diff', 'Review clean, then ship-bot merges', 'ship-bot readies and merges once gates pass', 'shipbot takes it from here', 'the merge follows the review', 'readied by the bot after the gates', 'a Fable read of the diff', '**Reviewer:** read the diff', '`reviewer`: read the diff']
+    // The near misses: a session's own step, also when the line is addressed to the session or its builder.
+    const own = ['finish the tests', 'address the review findings', 'get the fixtures in shape', 'Session: finish the tests', 'Builder: fix the lint', '**This session:** rerun the gate']
+    const firsts = [...handed, ...own]
+    const pulls = firsts.map((first, i) => makePr({ number: i + 1, draft: true, labels: [], body: `## Next\n- [x] done\n- [ ] ${first}\n- [ ] merge; Desk labels` }))
+    // The near miss: the same own step on a draft that already carries ready-to-merge is a decision, never in progress.
+    pulls.push(makePr({ number: 99, draft: true, body: '## Next\n- [ ] finish the tests' }))
+    const board = await boardOf(scenario({ github: new FakeGitHub({ pulls }) }))
+    assert.deepEqual(board.rows.map((r) => [r.next, r.state]), [...handed.map((l) => [l, 'needs-decision']), ...own.map((l) => [l, 'in-progress']), ['finish the tests', 'needs-decision']])
+  })
+
+  it('a pass cut by the quota floor hands back no board, and a board that cannot be built changes nothing', async () => {
+    const github = new FakeGitHub({ pullsBySlug: { [SLUG]: [makePr({ labels: [] })], [OTHER]: [makePr()] } })
+    github.lowQuota = () => (github.calls.some((c) => c.name === 'listOpenPulls') ? { remaining: 100, resetAt: '2026-10-09T13:00:00Z', resource: 'core' } : null)
+    const cut = {}
+    await scenario({ repos: [mergeOnly(), mergeOnly({ slug: OTHER, dir: 'other' })], github }).run('live', { summary: cut })
+    assert.deepEqual([cut.quota, cut.board], [true, undefined])
+
+    class Broken extends Board {
+      snapshot() {
+        throw new Error('snapshot broke')
+      }
+    }
+    const s = scenario({ repos: [mergeOnly()], github: new FakeGitHub({ pulls: [makePr()] }) })
+    const summary = {}
+    await s.run('live', { summary, board: new Broken() })
+    assert.deepEqual([summary.board, summary.complete, s.github.writes.map((w) => w.name)], [undefined, true, ['mergePull', 'createComment']])
+    assert.deepEqual(s.logs.filter((l) => /board/.test(l)), ['warn could not build the board: snapshot broke'])
   })
 
   it('names a blocked repository as skipped, and a dry run builds the same rows without writing', async () => {
@@ -203,9 +238,11 @@ describe('writing and printing the board', () => {
     assert.deepEqual(bad.github.writes.map((w) => w.name), ['mergePull', 'createComment'])
     assert.deepEqual(bad.out.filter((l) => /board/.test(l)), ['2026-10-09T12:00:00.000Z warn  could not write the board: EACCES: permission denied'])
     assert.equal(existsSync(bad.path), false)
-    // The real writer, against a path it cannot write, throws and leaves no temporary file.
-    assert.throws(() => writeBoard(join(good.path, 'under-a-file', BOARD_FILE), {}))
-    assert.deepEqual(readdirSync(good.config.stateDir).filter((f) => f.includes('.tmp-')), [])
+    // The real writer, when the rename fails after the temporary file exists (the target is a folder with something in it), throws and removes that file.
+    const dir = join(good.config.stateDir, 'in-the-way')
+    mkdirSync(join(dir, BOARD_FILE, 'x'), { recursive: true })
+    assert.throws(() => writeBoard(join(dir, BOARD_FILE), {}), /EISDIR|ENOTEMPTY|EEXIST|EPERM/)
+    assert.deepEqual(readdirSync(dir), [BOARD_FILE])
   })
 
   it('a hand dry run and a --repo pass leave the board alone; an observing pass writes it', async () => {
@@ -240,7 +277,7 @@ describe('writing and printing the board', () => {
   it('formatBoard keeps to 40 lines, longest-standing first, and counts what it left out', () => {
     const at = '2026-10-09T12:00:00.000Z'
     const mk = (n, state, since) => ({ repository: OTHER, number: n, head: HEAD, state, since, checks: 'failing', review: 'findings', draft: n === 3, controlPlane: n === 3, headMovedTo: n === 3 ? MOVED : undefined, reason: `reason ${n}\nsecond line` })
-    const rows = [mk(1, 'waiting', '2026-09-01T00:00:00Z'), mk(2, 'held', '2026-09-01T00:00:00Z'), ...Array.from({ length: 60 }, (_, i) => mk(100 - i, 'needs-decision', `2026-10-0${1 + (i % 8)}T00:00:00Z`)), mk(3, 'needs-decision', '2026-08-01T00:00:00Z')]
+    const rows = [mk(1, 'waiting', '2026-10-09T10:00:00Z'), mk(2, 'held', '2026-09-01T00:00:00Z'), ...Array.from({ length: 60 }, (_, i) => mk(100 - i, 'needs-decision', `2026-10-0${1 + (i % 8)}T00:00:00Z`)), mk(3, 'needs-decision', '2026-08-01T00:00:00Z')]
     const lines = formatBoard({ at, installedSha: null, mode: 'live', rows, skipped: [{ repository: 'example-org/blocked.example', why: 'blocked since yesterday' }] }, new Date('2026-10-09T12:03:00Z'))
     assert.equal(lines.length, 40)
     assert.match(lines[0], /\(3m old\), ship-bot from a checkout, live: 63 open, 61 need a decision, 1 waiting, 0 ready, 1 held/)
@@ -250,5 +287,16 @@ describe('writing and printing the board', () => {
     assert.equal(lines[39], 'skipped example-org/blocked.example: blocked since yesterday')
     assert.equal(lines.some((l) => /#1 |#2 /.test(l)), false, 'waiting and held rows are not decisions')
     assert.equal(formatBoard({ at, mode: 'live', rows: rows.slice(0, 5) }, new Date(at)).length, 4)
+    // Waiting for over 6 hours, or a draft in progress untouched for over 3 days, ages into the list.
+    const hoursAgo = (h) => new Date(new Date(at) - h * 3600000).toISOString()
+    const aged = formatBoard({ at, mode: 'live', rows: [mk(1, 'waiting', hoursAgo(7)), mk(2, 'waiting', hoursAgo(5)), mk(4, 'in-progress', hoursAgo(73)), mk(5, 'in-progress', hoursAgo(71)), mk(6, 'held', hoursAgo(900))] }, new Date(at))
+    assert.equal(aged[1], '1 drafts in progress (updated in the last 3 days; not listed)')
+    assert.deepEqual(aged.slice(2).map((l) => l.replace(/ \(aaaaaaa\).*?(\[|reason)/, ' $1').slice(OTHER.length)), ['#4 [stalled in-progress] reason 4', '#1 [stalled waiting] reason 1'])
+    assert.match(aged[0], /5 open, 0 need a decision, 2 waiting, 0 ready, 1 held/)
+    // A board no pass has replaced for over 20 minutes says so. One pass can run a gate or a deploy for 15, so 15 and 20 do not.
+    const header = (minutes) => formatBoard({ at, mode: 'live', rows: [] }, new Date(new Date(at).getTime() + minutes * 60000))[0]
+    assert.match(header(21), /^board 2026-10-09T12:00:00.000Z \(21m old, STALE: no pass has replaced it for over 20 minutes\), /)
+    assert.match(header(20), /^board 2026-10-09T12:00:00.000Z \(20m old\), /)
+    assert.match(header(15), /^board 2026-10-09T12:00:00.000Z \(15m old\), /)
   })
 })
