@@ -165,8 +165,8 @@ Lines 1 to 8 as they read on 30 October 2026, rewritten under the 6 November bas
    - Before: "I've produced as Gorf since 2003, with Denseware and SSATCY alongside. I've logged 47 performances since 2004."
    - After: "Producing as Gorf since 2003, with Denseware and SSATCY alongside. Logged 47 performances since 2004."
 10. Role entry under its job title (gorfed.net)
-    - Before: "I managed people in TD Invent's Human-Centered Design Practice. I led design teams across Wealth, on WebBroker, Web Business Banking, TD Asset Management and EasyWeb."
-    - After: "Managed people in TD Invent's Human-Centered Design Practice. Led design teams across Wealth, on WebBroker, Web Business Banking, TD Asset Management and EasyWeb."
+    - Before: "I managed 3 direct reports in TD Invent's Human-Centered Design Practice. I was the most senior hands-on craft leader on a Wealth design team of about 22."
+    - After: "Managed 3 direct reports in TD Invent's Human-Centered Design Practice. Most senior hands-on craft leader on a Wealth design team of about 22."
 11. heuristics.4thcltr.com, method page
     - Before: "I publish each analysis for criticism and review, and I write it for the company's own digital product team."
     - After: "I publish each analysis for criticism and review. It's written for the company's own digital product team."
