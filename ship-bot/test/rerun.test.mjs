@@ -81,6 +81,18 @@ describe('cancelledRunsToRerun: which cancelled workflow runs the bot may rerun'
     assert.deepEqual(plan({ workflowRuns: [young], asked: null }), NONE, 'unreadable memory')
   })
 
+  it('offers nothing while a required check is missing or was skipped: no rerun of another run lifts that', () => {
+    assert.deepEqual(plan({ expectedChecks: ['check / check'] }), { ids: [1], settling: false }, 'present and green')
+    assert.deepEqual(plan({ expectedChecks: ['check / check', 'e2e'] }), { ids: [1], settling: false }, 'the cancelled check is itself required')
+    assert.deepEqual(plan({ expectedChecks: ['check / check', 'deploy'] }), NONE, 'missing')
+    assert.deepEqual(plan({ expectedChecks: ['deploy'], statuses: [{ context: 'deploy', state: 'success', created_at: SETTLED }] }), { ids: [1], settling: false }, 'present as a status')
+    for (const conclusion of ['skipped', 'neutral']) assert.deepEqual(plan({ expectedChecks: ['lint'], runs: runs(jobRun('lint', conclusion, 2, 12)) }), NONE, conclusion)
+    assert.deepEqual(plan({ expectedChecks: null }), NONE, 'unreadable')
+    // Still settling: the missing check is refused now, not hidden behind a 10-minute wait.
+    const young = wf(1, { updated_at: new Date(NOW.getTime() - 60000).toISOString() })
+    assert.deepEqual(plan({ workflowRuns: [young], expectedChecks: ['check / check', 'deploy'] }), NONE)
+  })
+
   it('never offers a run the bot already asked for, nor one past the head’s cap of 2', () => {
     assert.deepEqual(offer({ asked: [1] }), [])
     assert.deepEqual(offer({ asked: [8] }), [1])
@@ -178,6 +190,15 @@ describe('a labelled head blocked only by a cancelled run', () => {
     assert.equal(reruns(gh).length, 0)
     assert.equal(s.logs.some((l) => /a cancelled workflow run is all that blocks this head/.test(l)), false)
     assert.ok(s.logs.some((l) => /draft/.test(l) && /e2e \(cancelled\)/.test(l)), s.logs.join('\n'))
+  })
+
+  it('a required check that never appeared is refused as usual, and nothing is rerun for it', async () => {
+    const gh = world()
+    const s = scenario({ github: gh, repos: [repoEntry({ expectedChecks: ['check / check', 'deploy'] })] })
+    s.clock.advance(60)
+    await s.run()
+    assert.equal(reruns(gh).length, 0)
+    assert.match(gh.commentsPosted()[0].body, /required checks never appeared on this head: deploy/)
   })
 
   it('merges on a later pass once the rerun is green', async () => {

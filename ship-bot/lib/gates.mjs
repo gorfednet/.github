@@ -132,6 +132,8 @@ export const MAX_RERUNS_PER_HEAD = 2
  * - the check runs, statuses and workflow runs were all read;
  * - every latest check run is completed, and each is green or cancelled (one red check and nothing is rerun);
  * - every latest status is success;
+ * - every expected check is on the head, and each is success or one of the cancelled ones (a required check that
+ *   is missing or was skipped is a refusal no rerun of another run lifts);
  * - no cancelled check may yet be superseded (`dropSupersededCancels` has none waiting), and at least one stands;
  * - each cancelled check maps to a workflow run on this head, and the newest run of that workflow and event on
  *   the head is itself completed with conclusion `cancelled` and below MAX_RERUN_ATTEMPT;
@@ -141,14 +143,21 @@ export const MAX_RERUNS_PER_HEAD = 2
  * moments later, a rerun in that gap would race the replacement, and a concurrency group could cancel it.
  * Only the newest run of a workflow is offered: once it is green, the older cancelled ones are superseded.
  */
-export function cancelledRunsToRerun({ runs, statuses, workflowRuns, sha, now, asked = [] }) {
+export function cancelledRunsToRerun({ runs, statuses, workflowRuns, sha, now, asked = [], expectedChecks = [] }) {
   const none = { ids: [], settling: false }
-  if (!Array.isArray(runs) || !Array.isArray(statuses) || !Array.isArray(workflowRuns) || !Array.isArray(asked) || !sha || !(now instanceof Date)) return none
+  if (!Array.isArray(runs) || !Array.isArray(statuses) || !Array.isArray(workflowRuns) || !Array.isArray(asked) || !Array.isArray(expectedChecks) || !sha || !(now instanceof Date)) return none
   const dropped = dropSupersededCancels(runs, workflowRuns, sha)
   const latest = latestPerName(dropped.runs)
   if (latest.some((r) => r.status !== 'completed' || dropped.waiting.has(r))) return none
   if (latest.some((r) => !OK_CONCLUSIONS.has(r.conclusion) && r.conclusion !== 'cancelled')) return none
   if (latestPerContext(statuses).some((s) => s.state !== 'success')) return none
+  // A required check that is absent, or present and neither success nor cancelled (skipped, neutral), is a refusal a rerun of something else cannot lift.
+  const contexts = new Set(latestPerContext(statuses).map((x) => x.context))
+  for (const name of expectedChecks) {
+    const named = latest.filter((r) => r.name === name)
+    if (named.length === 0 && !contexts.has(name)) return none
+    if (named.some((r) => r.conclusion !== 'success' && r.conclusion !== 'cancelled')) return none
+  }
   const byId = new Map(workflowRuns.map((w) => [Number(w.id), w]))
   const ids = new Set()
   let settling = false
@@ -565,7 +574,7 @@ export async function evaluatePull(ctx, repo, pr, { headState, fresh = false, dr
   seen.checks = checkBlocks.some((b) => b.kind === 'fail') ? 'failing' : checkBlocks.length > 0 ? 'pending' : 'passing'
   if (checkBlocks.length > 0) {
     // A cancelled run that alone blocks a labelled head (plan row 1.59): bot.mjs reruns `rerun` once. Never a pass.
-    const plan = draft ? { ids: [], settling: false } : cancelledRunsToRerun({ runs, statuses, workflowRuns, sha, now, asked: Object.keys(headState.reruns ?? {}).map(Number) })
+    const plan = draft ? { ids: [], settling: false } : cancelledRunsToRerun({ runs, statuses, workflowRuns, sha, now, asked: Object.keys(headState.reruns ?? {}).map(Number), expectedChecks: repo.expectedChecks })
     if (plan.settling) {
       // The bot will rerun it by itself once the cancel has settled, so this pass is a wait: no refusal comment, no stall clock.
       seen.checks = 'pending'

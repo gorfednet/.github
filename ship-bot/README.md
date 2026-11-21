@@ -541,7 +541,8 @@ A cancelled check is never a pass. Two things can clear one:
 
 The rerun is narrow on purpose:
 
-- every other check and status on the head is green;
+- every other check and status on the head is green, and no required check
+  is missing or skipped;
 - the run is the newest of its workflow on the head, and the whole run
   ended `cancelled`;
 - it has sat cancelled for 10 minutes, so a label's own replacement run has
