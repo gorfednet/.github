@@ -44,6 +44,32 @@ A `PreToolUse` hook on Bash and Monitor. It refuses the git and gh commands the 
 - Known passes, out of scope: `caffeinate -t`, `time -p`, `stdbuf`, `arch`, `find -exec`, `git -c alias.*`, `git rebase --exec`, `git submodule foreach` and `gh api graphql -F query=@file`.
 - Install it the same way as gh-poll-guard.py: a copy of this file at origin/main.
 
+## context-cap.py (plan row 1.61)
+
+A `PreToolUse` hook on every tool. Once a session's context passes 200,000 tokens it refuses new work. The refusal tells the session to write `/handoff`, start its successor from it and end the turn.
+
+- Context size is the newest main-chain assistant message's usage in the transcript (`transcript_path`): input plus cache read plus cache creation tokens. 200,000 passes and 200,001 is refused.
+- Nothing lifts the hold. It lasts until the session ends, unless compaction brings the context back under the cap.
+- Why: sessions past the cap processed 26% of all tokens in the week of 13 to 19 November 2026, and 3 sessions passed 300,000 on 20 November. The cap was a rule nothing enforced.
+- At 180,000 it warns once per session, as context for the model, on the first tool call at or past that line. It refuses nothing there. The record is an empty file named for the session in `~/.desk/context-cap-warned/`. With nowhere to write it, there's no warning and the hold still works. A compacted session that climbs back is warned again.
+- Refused past the cap: `Agent`, `Task`, `Workflow`, `WebFetch`, `WebSearch`, and `Edit`, `Write`, `MultiEdit` or `NotebookEdit` outside the handoff's files.
+- The handoff's files, from the file's repository root: `docs/handoff/<date>-*.md`, `control/handoff/<date>-*.md` and `docs/backlog.json`. The root is the nearest directory above the file with a `.git`. `src/docs/handoff/` doesn't count. A memory file (`~/.claude/projects/*/memory/*.md`) and temp files (`/tmp`, `/private/tmp`, `$TMPDIR`) count too.
+- Every other tool passes: `Read`, `Grep`, `Glob`, `Skill`, session tools, MCP tools.
+- `Bash` and `Monitor` aren't read in this version. So git, gh, labels (`--remove-label`, `--add-label hold`, `gh pr ready --undo`), cleanup (`hc kill`, `hc rm`, `kill`, `git worktree remove`), waits (`hc wait`) and gate scripts always run. A session can also still do work through the shell. Reading shell commands was cut from this version: each review round found new holes in the allowlist.
+- A subagent's calls pass (`agent_id` in the input). Its context isn't this transcript's, and no `Agent` call starts past the cap.
+- Desk is exempt up to 300,000, with its warning at 280,000. Past 300,000 it's held too. Its refusal names `/desk-rotate`, and it can still write what a rotation writes: `control/desk/*.md` and `control/briefs/*.md`. Desk keeps running past 300,000 until the owner's next message, so those writes must pass.
+- Desk is the session whose transcript id is a line in `~/.desk/context-cap-exempt`. The id is the transcript's file name without `.jsonl`, a UUID. It's also the `session_id` hooks get, and the hook checks both. The app's own `local_` id for a session is a different value and never matches. An id belongs to 1 session. A session Desk starts inherits Desk's environment and never its id, so none is exempt by accident.
+- It fails open. A missing or unreadable transcript, no usage in it, bad input, an unknown event, an internal error and a 4-second alarm all let the call run.
+- A refusal is exit 2 with the reason on stderr, the only non-zero exit. So the settings command has no `|| true`. It starts with `[ -r ~/.claude/hooks/context-cap.py ] || exit 0`, because `python3` also exits 2 on a missing script.
+- Install order:
+  1. Desk writes its transcript UUID, alone on a line, to `~/.desk/context-cap-exempt`. Desk reads it from its own scratchpad or tool-results path: it's the directory named with a UUID, after the project directory. `/desk-rotate` gains that step for each successor, and drops the retired id once the old Desk has stopped.
+  2. One live subagent tool call proves `agent_id` is in the `PreToolUse` input. Without it a subagent of a session past the cap is held too.
+  3. Copy this file at origin/main to `~/.claude/hooks/`, the same way as gh-poll-guard.py.
+  4. Merge `context-cap.settings.json` into the `hooks` block of `~/.claude/settings.json`.
+- Settings before the file lets every call through. Settings before the Desk id holds Desk at 200,000.
+- Tests: `test/contextCap.test.mjs`. Test overrides: `CONTEXT_CAP_EXEMPT_FILE`, `CONTEXT_CAP_TEMP_ROOTS`, `CONTEXT_CAP_STATE_DIR`.
+- Not covered: work done through `Bash`, `SendMessage` to a subagent that is still running, a skill that forks, and MCP tools that do work. The warning relies on `additionalContext` in a `PreToolUse` hook's output. A client that ignores it loses the warning and keeps the hold. Nothing prunes `~/.desk/context-cap-warned/` yet.
+
 ## always-pr-remind.py
 
 A `PostToolUse` hook on Bash. After a commit or push on a feature branch it reminds the session to open a PR when the branch has none.

@@ -1040,6 +1040,14 @@
       "file": "scripts/privacy-guard.mjs",
       "find": "hit.value.toLowerCase() === isSiteLine(text)) continue",
       "replace": "false) continue"
+    },
+    {
+      "id": "context-cap-refuses-past-the-cap",
+      "guards": "The context-cap hook refuses new work at 200,001 tokens. Without it a session runs past the cap unheld, which is the waste plan row 1.61 names.",
+      "command": "node --test --test-name-pattern='the boundary' test/contextCap.test.mjs",
+      "file": "scripts/claude-hooks/context-cap.py",
+      "find": "    if tokens <= cap:",
+      "replace": "    if tokens <= cap + 1:"
     }
   ]
 }
