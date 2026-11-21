@@ -15,7 +15,7 @@ import { HOLD_LABEL, READY_LABEL } from './config.mjs'
 import { diagnosisJob, jobsDir, stallJob, writeJobOnce } from './herdr-jobs.mjs'
 import { DeployLog, deployMerged, envSecrets, matchingFiles, pagesSecrets, preflight, realFs, selectSteps } from './deploy.mjs'
 import { controlPlaneFiles, draftClaim, draftIneligibleReason } from './drafts.mjs'
-import { evaluatePull, ineligibleReason, unmergeableReason } from './gates.mjs'
+import { MAX_RERUNS_PER_HEAD, TIMEOUT_ANNOTATION, evaluatePull, ineligibleReason, unmergeableReason } from './gates.mjs'
 import { RateLimitError, guardWrites } from './github.mjs'
 import { HOTFIX_LABEL, RELEASE_LABEL, planDeploy } from './deploy-plan.mjs'
 import { Redactor, publicNames } from './redact.mjs'
@@ -457,6 +457,8 @@ async function processPull(ctx, repo, pr, defaultBranch) {
   if (result.ready && result.cached) result = await evaluatePull(ctx, repo, pr, { headState, fresh: true, requireClean, controlPlane })
   ctx.board.gated(repo.slug, pr, result, headState)
   await syncNeedsFix(ctx, repo, pr, result)
+  // A cancelled run that alone blocks this head is rerun once, and the pass says nothing else about it.
+  if (!result.ready && result.rerun?.length > 0 && (await rerunCancelled(ctx, repo, headState, tag, result.rerun, result.rerunChecks))) return false
   if (result.ready && headState.readiedAt && (ctx.clock.now() - new Date(headState.readiedAt)) / 60000 < ctx.config.reviewGraceMinutes) {
     ctx.say('debug', `${tag}: not merging: the bot marked this draft ready at ${headState.readiedAt}; giving the ready-for-review review time to start`)
     return false
@@ -566,6 +568,86 @@ async function processPull(ctx, repo, pr, defaultBranch) {
     return true
   }
   return liveMerge(ctx, repo, pr, tag, plan)
+}
+
+/**
+ * Rerun the cancelled workflow runs that alone keep a labelled head from green (plan row 1.59; gates.mjs
+ * `cancelledRunsToRerun` decides which). Each run is asked for once per head: the ask is written to the state
+ * file before anything else, so a crash or a refusal never repeats it. A run the bot already asked for and that is
+ * cancelled again is a person's, and so is a head that would pass MAX_RERUNS_PER_HEAD asks in all.
+ *
+ * A job that ran past its `timeout-minutes` reports `cancelled` on the job and on the run, and a timeout is
+ * never rerun (shipping.md: "a failed step, a timeout or a cancel is never a loss"; a timeout wants shards).
+ * So before the rerun the bot reads the annotations of each cancelled check run in the run, 1 GET each
+ * (`checks[id]`, held to MAX_ANNOTATION_READS by gates.mjs), and refuses the run when any says the job exceeded
+ * its maximum execution time, when a read fails, or when a list is too long to have been read whole. Each is
+ * the head's one ask for that run: nothing is read or tried again.
+ * Returns whether a rerun was asked for (or would be) this pass.
+ */
+async function rerunCancelled(ctx, repo, headState, tag, ids, checks = {}) {
+  const fresh = ids.filter((id) => !headState.reruns?.[id])
+  if (fresh.length === 0) return false
+  // gates.mjs already holds the offer to the cap; this is the same rule where the write is made. Every ask counts, the refused ones too.
+  if (Object.keys(headState.reruns ?? {}).length + fresh.length > MAX_RERUNS_PER_HEAD) return false
+  if (ctx.dry) {
+    // Nothing is remembered on a dry or observed pass, so this would repeat every pass: debug, and no annotation read.
+    ctx.say('debug', `${tag}: would rerun cancelled workflow run(s) ${fresh.join(', ')} unless an annotation says a job timed out: every other check on this head is green`)
+    return true
+  }
+  let asked = 0
+  for (const id of fresh) {
+    checkQuota(ctx)
+    headState.reruns ??= {}
+    headState.reruns[id] = { at: ctx.clock.now().toISOString() }
+    ctx.state.save()
+    try {
+      const why = await notACancel(ctx, repo, checks[id])
+      if (why) {
+        headState.reruns[id].refused = why
+        ctx.state.save()
+        ctx.say('warn', `${tag}: not rerunning cancelled workflow run ${id}: ${why}. Not tried again on this head`)
+        continue
+      }
+      await ctx.github.rerunFailedJobs(repo.slug, id)
+      asked += 1
+      ctx.say('info', `${tag}: reran the cancelled jobs of workflow run ${id}: every other check on this head is green. Once per run and head`)
+    } catch (cause) {
+      if (cause instanceof RateLimitError) {
+        // Refused before it was performed: not an ask.
+        delete headState.reruns[id]
+        ctx.state.save()
+        throw cause
+      }
+      headState.reruns[id].failed = true
+      ctx.state.save()
+      const hint = cause.status === 403 ? ' (the GitHub App needs the Actions permission set to write)' : ''
+      ctx.say('warn', `${tag}: could not rerun cancelled workflow run ${id}${hint}: ${String(cause.message).split('\n')[0].slice(0, 200)}. Not tried again on this head`)
+    }
+  }
+  return asked > 0
+}
+
+/**
+ * Why a cancelled workflow run is not proven to be a plain cancel, or '' when its annotations were all read and
+ * none names a timeout. Fail closed: no check run to read, a failed read and a full page are each a reason.
+ * A RateLimitError is thrown on, since that read was never made.
+ */
+async function notACancel(ctx, repo, checkRunIds) {
+  if (!Array.isArray(checkRunIds) || checkRunIds.length === 0) return 'the bot has no cancelled check run of it to read annotations from'
+  for (const checkRunId of checkRunIds) {
+    checkQuota(ctx)
+    let annotations
+    try {
+      annotations = await ctx.github.listCheckRunAnnotations(repo.slug, checkRunId)
+    } catch (cause) {
+      if (cause instanceof RateLimitError) throw cause
+      return `the annotations of check run ${checkRunId} could not be read (${String(cause.message).split('\n')[0].slice(0, 120)}), so nothing says it was a cancel and not a timeout`
+    }
+    if (!Array.isArray(annotations)) return `the annotations of check run ${checkRunId} could not be read, so nothing says it was a cancel and not a timeout`
+    if (annotations.some((a) => TIMEOUT_ANNOTATION.test(`${a?.title ?? ''} ${a?.message ?? ''}`))) return `check run ${checkRunId} hit its timeout (its annotation says the job exceeded the maximum execution time), and a timeout is not rerun`
+    if (annotations.length >= 100) return `check run ${checkRunId} has more annotations than 1 read returns, so nothing says it was a cancel and not a timeout`
+  }
+  return ''
 }
 
 /**

@@ -193,6 +193,18 @@ export class FakeGitHub {
     return pr.labels
   }
 
+  /** Annotations per check run id (`this.annotations`); none by default, as on a plain cancel. */
+  async listCheckRunAnnotations(slug, checkRunId) {
+    this.log('listCheckRunAnnotations', slug, checkRunId)
+    return structuredClone(this.annotations?.[checkRunId] ?? [])
+  }
+
+  async rerunFailedJobs(slug, runId) {
+    this.log('rerunFailedJobs', slug, runId)
+    this.writes.push({ name: 'rerunFailedJobs', slug, runId })
+    return null
+  }
+
   async markReady(nodeId) {
     this.log('markReady', nodeId)
     this.writes.push({ name: 'markReady', nodeId })

@@ -15,7 +15,7 @@ pull request, asks:
    **`ready-to-merge`** label, and does it **not** carry **`hold`**?
 2. Did **every check pass** on the latest commit, including the specific
    checks that repository is supposed to run? A check that is still running,
-   failed, was cancelled, or never ran at all means "not yet".
+   failed, was cancelled, or never ran at all means "not yet". (A cancelled run that is the only thing in the way is rerun once: see "Cancelled runs" below.)
 3. Did the **Claude reviewer review the latest commit**, and either find
    nothing or have **every one of its comments answered**, with a reply
    written after the comment or by resolving it? (Exception: a pull request that changes control-plane paths and has a Medium or High thread merges only on a clean review of a new head; a reply never lifts it, and resolving lifts it only for a thread opened on an earlier commit, which then does not count.) It reads this with
@@ -517,14 +517,65 @@ that quota with every session. It keeps its share small:
 
 **Its own quota: the GitHub App.** `github-app/manifest.json` describes a
 private App with only what the bot needs (read metadata, checks, commit
-statuses, Actions and issues; write contents, pull requests and workflow
-files, since merging a pull request that changes a workflow needs it).
+statuses and issues; write contents, pull requests, workflow files, since
+merging a pull request that changes a workflow needs it, and Actions, for
+the one rerun of a cancelled run).
 `node ~/.ship-bot/app/github-app/create.mjs` creates it in one browser step,
 saves its private key to `~/.ship-bot/github-app.pem` (mode 600, outside every
 repository) and adds `githubApp: { appId, privateKeyFile }` to the config.
 Once the App is installed on the gorfednet account (a user account, so the script uses the user "new App" page), each pass mints an installation
 token and the log's pass line ends `as GitHub App <id>`. If minting fails, the
 pass logs an error and falls back to `gh auth token`.
+
+## Cancelled runs (plan row 1.59)
+
+A cancelled check is never a pass. Two things can clear one:
+
+- **A later green run replaces it.** Adding `ready-to-merge` can cancel the
+  running CI and start a new run. A cancelled check is ignored once a later
+  run of the same workflow and event on the same head finished green.
+- **The bot reruns it, once.** When a labelled head has nothing red, nothing
+  running and nothing replacing the cancelled run, the bot asks GitHub to
+  rerun that run's cancelled jobs (what `gh run rerun <id> --failed` does)
+  and logs `reran the cancelled jobs of workflow run <id>`.
+
+The rerun is narrow on purpose:
+
+- every other check and status on the head is green, and no required check
+  is missing or skipped;
+- the run is the newest of its workflow on the head, and the whole run
+  ended `cancelled`;
+- it has sat cancelled for 10 minutes, so a label's own replacement run has
+  had time to appear. Until then the head waits: no comment, and the log
+  line is `a cancelled workflow run is all that blocks this head`;
+- it is on attempt 1 or 2, and the bot hasn't asked for it before on this
+  head;
+- it was a cancel and not a timeout. A job that runs past `timeout-minutes`
+  reports `cancelled` on the job and on the run, so before a rerun the bot
+  reads the annotations of each cancelled check run in it (1 request each,
+  10 at most, once per run and head). `exceeded the maximum execution time`
+  on any of them, a read that fails or more than 10 to read means no rerun,
+  and the log says `not rerunning cancelled workflow run <id>`;
+- where the repository has `requireChecksAfterLabel`, the run was created
+  after the label. A rerun of an older run would start new checks after the
+  label and pass for the labelled run;
+- at most 2 reruns per head in all, counting ones GitHub refused.
+
+Anything unreadable means no rerun. A run that is cancelled again after the
+bot's rerun gets the usual "checks did not pass" comment and waits for a
+person. `hold` stops it, like everything else.
+
+The bot can't tell who cancelled a run. A run a person cancelled on purpose
+on a labelled head is rerun too, 10 minutes later, unless the pull request
+carries `hold` or loses its label first.
+
+The rerun needs the GitHub App's **Actions** permission set to **Read and
+write** (App settings, Permissions, then accept the change on the
+installation). Until then GitHub answers 403, the bot logs one warning per
+run and head, and the pull request gets the usual comment. GitHub has no
+narrower permission: Actions write also lets the App's token cancel runs and
+dispatch workflows. The bot's client has one Actions write, the rerun, and
+`guardWrites` lists it.
 
 ## Where to look
 
