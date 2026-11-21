@@ -300,6 +300,15 @@ export function runCheck({ config, base, head, today, tz, cwd, configRel = null 
     const oldDateFile = baseEntry?.dateFile ?? baseEntry?.file ?? dateFile
     const pageTouched = [page.file, dateFile, oldFile, oldDateFile].some((f) => touched.has(f))
 
+    // Re-pointing the entry is accepted only as a real move: the old path is gone
+    // at HEAD. Otherwise a stale copy could stand in for the page visitors read.
+    if (baseEntry && (oldFile !== page.file || oldDateFile !== dateFile)) {
+      for (const gone of new Set([oldFile, oldDateFile])) {
+        if (gone !== page.file && gone !== dateFile && showAt(head, gone, cwd) !== null) {
+          bail(`page "${page.name}": this PR points the entry at ${page.file} but ${gone} still exists at HEAD. A re-pointed entry is accepted only when the old file is gone (a real move); otherwise a stale copy could hide an edit.`)
+        }
+      }
+    }
     let before
     if (baseEntry && !sameScope(baseEntry, page) && pageTouched) {
       // What counts as policy text may not change in a PR that edits the page: a

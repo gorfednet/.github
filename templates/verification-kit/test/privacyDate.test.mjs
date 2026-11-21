@@ -300,4 +300,16 @@ describe('check-privacy-date', () => {
     assert.equal(r.status, 1)
     assert.match(r.stderr, /latest commit that changed the policy text \(2026-11-20\)/)
   })
+
+  it('refuses an entry re-pointed at a copy while the old page still exists', () => {
+    const dir = repo({ base: pageHtml(), change: undefined })
+    writeFileSync(join(dir, 'privacy-archive.html'), pageHtml())
+    writeFileSync(join(dir, 'privacy.html'), pageHtml({ body: sentences + ' We now also keep logs.' }))
+    writeFileSync(join(dir, 'privacy.config.json'), JSON.stringify({ pages: [{ ...CONFIG.pages[0], file: 'privacy-archive.html' }] }))
+    git(dir, ['add', '-A'])
+    git(dir, ['commit', '-qm', 'repoint'], { GIT_AUTHOR_DATE: '2026-11-20T12:00:00-05:00' })
+    const r = run(dir)
+    assert.equal(r.status, 1)
+    assert.match(r.stderr, /still exists at HEAD/)
+  })
 })

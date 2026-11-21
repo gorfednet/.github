@@ -1104,6 +1104,14 @@
       "file": "templates/verification-kit/bin/check-privacy-date.mjs",
       "find": "      bail(`the base config ${renamedFrom ?? configRel} does not parse",
       "replace": "      void (`the base config ${renamedFrom ?? configRel} does not parse"
+    },
+    {
+      "id": "privacy-date-repoint-needs-a-real-move",
+      "guards": "An entry re-pointed at a copy is refused while the old page still exists. Without it a stale copy stands in for the page and a policy edit keeps its old date.",
+      "command": "node --test --test-name-pattern='re-pointed at a copy' templates/verification-kit/test/privacyDate.test.mjs",
+      "file": "templates/verification-kit/bin/check-privacy-date.mjs",
+      "find": "if (gone !== page.file && gone !== dateFile && showAt(head, gone, cwd) !== null) {",
+      "replace": "if (false) {"
     }
   ]
 }
