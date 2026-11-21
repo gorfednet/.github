@@ -17,6 +17,11 @@
 #                                 gorfednet/<name>. This line isn't read for its own domain, so a
 #                                 repository adds its first one by itself (word the commit message
 #                                 without the name). The line shows the domain is listed: accepted.
+#                                 Every web domain fleet.json lists as a project counts the same way with
+#                                 no line here (set "publicSite": false on a project to leave it out), so a
+#                                 `site` line is only for a site outside the fleet. In CI the guard reads
+#                                 fleet.json from the base, and the pre-push hook reads the copy
+#                                 install-git-hooks.sh put beside it: reinstall after the fleet gains a site.
 #   commit <sha>                  a commit (the full 40 hex) whose own diff and message are exempt.
 #                                 A pushed commit cannot be rewritten, so this clears a false
 #                                 positive in one that is not the tip. The net diff is still read.
