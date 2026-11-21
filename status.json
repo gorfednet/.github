@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-11-21T16:32:05.283Z",
-  "renderedAt": "2026-11-21T16:32:05.283Z",
+  "generatedAt": "2026-11-21T18:32:07.072Z",
+  "renderedAt": "2026-11-21T18:32:07.072Z",
   "repos": [
     {
       "slug": "gorfednet/bindercurve.com",
@@ -9,7 +9,7 @@
       "openPrCount": 17,
       "lapsedBacklogCount": 16,
       "noPrCount": 80,
-      "idlePrCount": 8,
+      "idlePrCount": 9,
       "duplicatePrCount": 0,
       "dependabotRedCount": 3,
       "kitVersion": "0.61.0",
@@ -39,7 +39,7 @@
       "slug": "gorfednet/gorfed.net",
       "redacted": true,
       "mainRed": true,
-      "openPrCount": 5,
+      "openPrCount": 4,
       "lapsedBacklogCount": 4,
       "noPrCount": 6,
       "idlePrCount": 0,
@@ -71,7 +71,7 @@
       "slug": "gorfednet/anal0g.org",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 3,
+      "openPrCount": 2,
       "lapsedBacklogCount": 1,
       "noPrCount": 2,
       "idlePrCount": 2,
@@ -87,7 +87,7 @@
       "slug": "gorfednet/blackpixelrecords.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 4,
+      "openPrCount": 3,
       "lapsedBacklogCount": 0,
       "noPrCount": 4,
       "idlePrCount": 1,
@@ -103,7 +103,7 @@
       "slug": "gorfednet/denseware.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 6,
+      "openPrCount": 5,
       "lapsedBacklogCount": 0,
       "noPrCount": 2,
       "idlePrCount": 3,
@@ -119,7 +119,7 @@
       "slug": "gorfednet/gorfmusic.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 7,
+      "openPrCount": 8,
       "lapsedBacklogCount": 2,
       "noPrCount": 4,
       "idlePrCount": 3,
@@ -135,7 +135,7 @@
       "slug": "gorfednet/promptboi.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 8,
+      "openPrCount": 7,
       "lapsedBacklogCount": 3,
       "noPrCount": 20,
       "idlePrCount": 6,
@@ -182,20 +182,8 @@
     {
       "slug": "gorfednet/.github",
       "defaultBranch": "main",
-      "mainRed": true,
+      "mainRed": false,
       "openPrs": [
-        {
-          "number": 293,
-          "title": "Kit 0.67.0: privacy date moves with its policy text (V78, plan row 2.17)",
-          "ageDays": 0,
-          "labels": [],
-          "draft": true,
-          "review": "not-run",
-          "headSha": "4ce8505619dfaa89c03ca1635d3bc7abd08163ae",
-          "ci": "pending",
-          "next": "`claude review` on the current head (round 6).",
-          "author": "gorfednet"
-        },
         {
           "number": 282,
           "title": "Register plex-lastfm-sync with the fleet and ship-bot (plan row 6.6d)",
@@ -640,7 +628,7 @@
       "lastDeploy": null,
       "incidents7d": 4,
       "dependabotRed": 0,
-      "kitVersion": "0.66.0",
+      "kitVersion": "0.67.0",
       "kitPin": {
         "ref": "main"
       },
@@ -718,9 +706,9 @@
       "openPrCount": 8,
       "lapsedBacklogCount": 1,
       "noPrCount": 1,
-      "idlePrCount": 7,
+      "idlePrCount": 6,
       "duplicatePrCount": 0,
-      "dependabotRedCount": 0,
+      "dependabotRedCount": 1,
       "kitVersion": "0.65.0",
       "kitPin": {
         "ref": "main"
@@ -730,12 +718,12 @@
     {
       "slug": "gorfednet/heuristics.4thcltr.com",
       "redacted": true,
-      "mainRed": false,
+      "mainRed": true,
       "openPrCount": 12,
       "lapsedBacklogCount": 34,
       "noPrCount": 7,
-      "idlePrCount": 8,
-      "duplicatePrCount": 1,
+      "idlePrCount": 7,
+      "duplicatePrCount": 0,
       "dependabotRedCount": 2,
       "kitVersion": "0.65.0",
       "kitPin": {
@@ -783,7 +771,7 @@
         {
           "number": 23,
           "title": "Spec 1.2.1: a site footer mark, and ordering a long Tool list",
-          "ageDays": 8,
+          "ageDays": 9,
           "labels": [],
           "draft": true,
           "review": "not-run",
@@ -816,7 +804,7 @@
       "idlePrs": [
         {
           "number": 23,
-          "idleDays": 8
+          "idleDays": 9
         },
         {
           "number": 3,
@@ -840,9 +828,9 @@
       "openPrCount": 8,
       "lapsedBacklogCount": 6,
       "noPrCount": 3,
-      "idlePrCount": 7,
+      "idlePrCount": 6,
       "duplicatePrCount": 0,
-      "dependabotRedCount": 1,
+      "dependabotRedCount": 2,
       "kitVersion": "0.65.0",
       "kitPin": {
         "ref": "main"
@@ -852,8 +840,8 @@
     {
       "slug": "gorfednet/ops",
       "redacted": true,
-      "mainRed": false,
-      "openPrCount": 27,
+      "mainRed": true,
+      "openPrCount": 30,
       "lapsedBacklogCount": 0,
       "noPrCount": 11,
       "idlePrCount": 8,
@@ -920,11 +908,11 @@
     }
   },
   "inventory": {
-    "measuredAt": "2026-11-21T16:32:05.283Z",
+    "measuredAt": "2026-11-21T18:32:07.072Z",
     "counts": {
       "pr": {
-        "total": 182,
-        "orphans": 96
+        "total": 180,
+        "orphans": 95
       },
       "session": null,
       "worktree": null,
@@ -1056,13 +1044,13 @@
         "lapsed": true
       }
     ],
-    "hiddenPrivate": 83,
+    "hiddenPrivate": 82,
     "privateReposNotItemised": 18,
     "planRead": true
   },
   "dotgithub": {
-    "measuredAt": "2026-11-21T16:33:10.521Z",
-    "branches": 47,
+    "measuredAt": "2026-11-21T18:33:27.796Z",
+    "branches": 46,
     "merged": 3,
     "exposedFiles": 54,
     "rulesNotChecked": [],
