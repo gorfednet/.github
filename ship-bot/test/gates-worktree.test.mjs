@@ -294,6 +294,13 @@ describe('a row\'s own tool worktree and its refresh command (a CLI installed fr
     assert.ok(s.logs.some((l) => /the refresh command timed out after 7 minutes/.test(l)), s.logs.join('\n'))
   })
 
+  it('a refresh killed by a signal says which, not "exit undefined"', async () => {
+    const runner = runnerWith(() => ({ code: null, signal: 'SIGKILL' }))
+    const s = scenario({ repos: [row()], github: new FakeGitHub({ pulls: [pr()] }), runner })
+    await s.run()
+    assert.ok(s.logs.some((l) => /the refresh command failed \(killed by SIGKILL\)/.test(l)), s.logs.join('\n'))
+  })
+
   it('a refused advance (dirty worktree) runs no refresh: the checkout has not moved', async () => {
     const runner = makeRunner({ handle: (c) => (c.cmd === 'git' && c.args[2] === 'rev-parse' && c.args[3] === '--show-prefix' ? { stdout: '' } : c.cmd === 'git' && c.args[2] === 'rev-parse' ? { stdout: 'a'.repeat(40) } : c.cmd === 'git' && c.args[2] === 'status' ? { stdout: ' M src/cli.ts\n' } : undefined) })
     const s = scenario({ repos: [row()], github: new FakeGitHub({ pulls: [pr()] }), runner })

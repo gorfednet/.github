@@ -1033,7 +1033,7 @@ async function refreshTools(ctx, wt) {
     return { ok: true }
   }
   const said = String(r.stderr || r.stdout || r.error || '').trim().split('\n').filter(Boolean).at(-1) ?? 'no output'
-  const why = r.timedOut ? `the refresh command timed out after ${wt.refreshTimeoutMinutes ?? 15} minutes` : `the refresh command failed (exit ${r.code ?? r.error}): ${ctx.redactor.apply(said)}`
+  const why = r.timedOut ? `the refresh command timed out after ${wt.refreshTimeoutMinutes ?? 15} minutes` : `the refresh command failed (${r.code === null || r.code === undefined ? (r.signal ? `killed by ${r.signal}` : `error: ${r.error ?? "no exit code"}`) : `exit ${r.code}`}): ${ctx.redactor.apply(said)}`
   return { ok: false, reason: `${wt.path} is at origin/main but ${why}` }
 }
 
