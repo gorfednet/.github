@@ -1,6 +1,6 @@
 # Capacity check (plan row 1.9)
 
-A token-free LaunchAgent (`net.gorfed.capacity`, every 15 minutes) that writes `~/.desk/capacity.json`. Desk reads it first on every pass and fills free slots from the ranked plan.
+A LaunchAgent (`net.gorfed.capacity`, every 15 minutes) that makes local reads, plus the pool check's GitHub reads with the `gh` token, and writes `~/.desk/capacity.json`. Desk reads it first on every pass and fills free slots from the ranked plan.
 
 | State | Rule | Free slots |
 |-------|------|-----------|
