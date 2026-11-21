@@ -1,4 +1,5 @@
 import test from 'node:test'
+import fs from 'node:fs'
 import assert from 'node:assert/strict'
 import { checkPool, cachedReader, poolKey, poolMessage, loadEtags, saveEtags, ghToken, productionPool } from '../pool.mjs'
 import { run, errorRecord, makePush, productionDeps } from '../capacity.mjs'
@@ -176,9 +177,11 @@ test('a failed push is retried on the next run; a pool read that throws is unkno
   h.deps.push = async (t) => { h.pushes.push(t) }
   await run(h.deps)
   assert.deepEqual(h.pushes, ['pool queue: a 20 min', 'pool queue: a 21 min']) // the failed attempt, then the retry
-  const t = harness([new Error('boom')])
+  const t = harness([new Error('boom'), new Error('boom')])
   await run(t.deps)
   assert.equal(t.file.pool.state, 'unknown')
+  assert.deepEqual(t.pushes, [], 'one failed check says nothing')
+  await run(t.deps)
   assert.match(t.pushes[0], /^pool check failed: boom/)
 })
 
@@ -194,17 +197,26 @@ test('the token: GH_TOKEN first, then gh, and an error when neither answers', ()
   assert.throws(() => ghToken({}, () => { throw new Error('no') }), /no GitHub token/)
 })
 
-test('production reader sends the bearer token and If-None-Match, and a token failure is unknown', async () => {
+test('production reader reaches a real state with a token, sends If-None-Match and a timeout, and a token failure is unknown', async () => {
   const seen = []
+  const body = (url) => (url === LIST ? repos('a') : /HEARTBEAT/.test(url) ? beat(1) : /status=/.test(url) ? { workflow_runs: [] } : null)
   const fetchImpl = async (url, init) => {
-    seen.push({ url, headers: init.headers })
-    return { status: 200, headers: { get: (h) => (h === 'etag' ? '"t"' : null) }, json: async () => [] }
+    const path = url.replace('https://api.github.com', '')
+    seen.push({ path, init })
+    if (init.headers['If-None-Match']) return { status: 304, headers: { get: () => null }, json: async () => null }
+    return { status: 200, headers: { get: (h) => (h === 'etag' ? `"t-${path}"` : null) }, json: async () => body(path) }
   }
   const ok = productionPool({ cacheFile: '/dev/null/none', org: 'example-org', fetchImpl, tokenFn: () => 'tok' })
   const p = await ok.pool(NOW)
-  assert.equal(p.state, 'unknown') // an empty list has no pool repository
-  assert.equal(seen[0].url, `https://api.github.com${LIST}`)
-  assert.equal(seen[0].headers.Authorization, 'Bearer tok')
+  assert.equal(p.state, 'ok', 'with a token the check reaches a real state')
+  assert.equal(seen[0].path, LIST)
+  assert.equal(seen[0].init.headers.Authorization, 'Bearer tok')
+  assert.ok(seen[0].init.signal instanceof AbortSignal, 'every request carries a timeout signal')
+  assert.ok(seen.every((c) => c.init.signal instanceof AbortSignal))
+  assert.equal(seen[0].init.headers['If-None-Match'], undefined, 'the first read has no tag to send')
+  seen.length = 0
+  assert.equal((await ok.pool(NOW)).state, 'ok')
+  assert.equal(seen[0].init.headers['If-None-Match'], `"t-${LIST}"`, 'a repeat read sends the stored tag, and the 304 is answered from the cache')
   const bad = productionPool({ cacheFile: '/dev/null/none', org: 'example-org', fetchImpl, tokenFn: () => { throw new Error('no token') } })
   assert.equal((await bad.pool(NOW)).state, 'unknown')
 })
@@ -319,14 +331,24 @@ test('a queue change held by the hour still goes out once the hour is up, even i
 })
 
 test('a queue that returns after a failed check or a down pool goes out at once', async () => {
-  const h = harness([Q(['a', 18]), { state: 'unknown', reason: 'x', queued: [], repos: 0, stale: [] }, Q(['a', 30])])
-  for (const minutes of [0, 15, 30]) { h.deps.now = NOW + minutes * MIN; await run(h.deps) }
+  const U = { state: 'unknown', reason: 'x', queued: [], repos: 0, stale: [] }
+  const h = harness([Q(['a', 18]), U, U, Q(['a', 30])])
+  for (const minutes of [0, 15, 30, 45]) { h.deps.now = NOW + minutes * MIN; await run(h.deps) }
   assert.deepEqual(h.pushes, ['pool queue: a 18 min', 'pool check failed: x', 'pool queue: a 30 min'])
 })
 
+test('a single failed check neither pushes nor resets the hourly queue limit', async () => {
+  const U = { state: 'unknown', reason: 'x', queued: [], repos: 0, stale: [] }
+  const h = harness([Q(['a', 18]), U, Q(['b', 30]), Q(['b', 80])])
+  for (const minutes of [0, 15, 30, 65]) { h.deps.now = NOW + minutes * MIN; await run(h.deps) }
+  // t30 is a changed queue inside the hour: held, because the lone unknown at t15 did not reset the gap. It goes out at t65.
+  assert.deepEqual(h.pushes, ['pool queue: a 18 min', 'pool queue: b 80 min'])
+})
+
 test('pool down and a failed check still push on change, whatever the queue rate limit says', async () => {
-  const h = harness([Q(['a', 18]), { state: 'down', queued: [], behind: [], repos: 3, stale: [], newestHeartbeatMinutes: 20 }, { state: 'unknown', reason: '2 read(s) failed', queued: [], repos: 0, stale: [] }])
-  for (let i = 0; i < 3; i++) { h.deps.now = NOW + i * MIN; await run(h.deps) }
+  const U = { state: 'unknown', reason: '2 read(s) failed', queued: [], repos: 0, stale: [] }
+  const h = harness([Q(['a', 18]), { state: 'down', queued: [], behind: [], repos: 3, stale: [], newestHeartbeatMinutes: 20 }, U, U])
+  for (let i = 0; i < 4; i++) { h.deps.now = NOW + i * MIN; await run(h.deps) }
   assert.deepEqual(h.pushes, ['pool queue: a 18 min', 'pool down: no heartbeat for 20 min', 'pool check failed: 2 read(s) failed'])
 })
 
@@ -343,6 +365,14 @@ test('pool lines go on both paths: either delivering moves lastPushedKey, neithe
   await run(h.deps)
   assert.equal(h.file.pool.lastPushedKey, 'queued:a', 'the off-box path alone counts')
   assert.equal(typeof productionDeps({ home: '/h', pushOps: async () => false }).poolPush, 'function', 'production wires it')
+  // The helpers reach the pool push, so the off-box path is real: with none, a down box ntfy would lose "pool down" (round 5).
+  const offSent = []
+  const wired = productionDeps({ home: '/h', pushOps: async () => false, helpers: { heartbeat: { pushOffbox: async (t) => { offSent.push(t); return { sent: true } } } } })
+  assert.equal(await wired.poolPush('pool down: no heartbeat for 30 min'), true)
+  assert.deepEqual(offSent, ['pool down: no heartbeat for 30 min'])
+  // main hands the loaded helpers to productionDeps (its body is not runnable here: it reads this Mac's state).
+  const src = fs.readFileSync(new URL('../capacity.mjs', import.meta.url), 'utf8')
+  assert.match(src.slice(src.indexOf('async function main()')), /productionDeps\(\{ home, pushOps, helpers \}\)/)
 })
 
 test('a down pool is announced off-box when the box ntfy is down, and recovery then says "pool back"', async () => {
@@ -389,4 +419,21 @@ test('a queued job that is not for a self-hosted runner is not the pool\'s wait'
   const routes = (labels) => ({ [LIST]: repos('a'), [hb('a')]: beat(1), [qd('a')]: runs(), [ip('a')]: { workflow_runs: [{ id: 9, created_at: new Date(NOW - 50 * MIN).toISOString() }] }, [jobsOf('a', 9)]: jobsOk(j(labels)) })
   assert.equal((await check(routes(['ubuntu-latest']))).p.state, 'ok')
   assert.equal((await check(routes(['self-hosted', 'linux']))).p.state, 'queued')
+})
+
+test('nothing off the box names a repository: queue and failure lines carry counts and fixed reasons', async () => {
+  const names = ['example-org/secret-one', 'example-org/secret-two']
+  const queued = { state: 'queued', queued: [{ repo: names[0], minutes: 41 }, { repo: names[1], minutes: 18 }], repos: 3, stale: [] }
+  const failed = { state: 'unknown', reason: `1 read(s) failed, first: ${names[0]}: HTTP 500`, offReason: '1 read(s) failed', queued: [], repos: 0, stale: [] }
+  const listFailed = await check({ [LIST]: 500 }) // a real checkPool failure carries the org in its own reason
+  const h = harness([queued, failed, failed, listFailed.p, listFailed.p])
+  const offbox = []
+  const helpers = { heartbeat: { pushOffbox: async (t) => { offbox.push(t); return { sent: true } } } }
+  const boxed = []
+  h.deps.poolPush = makePush({ helpers, home: '/h', pushOps: async (t) => { boxed.push(t) } })
+  for (let i = 0; i < 5; i++) { h.deps.now = NOW + i * MIN; await run(h.deps) }
+  assert.deepEqual(offbox.slice(0, 2), ['pool queue: 2 repositories, longest 41 min', 'pool check failed: 1 read(s) failed'])
+  assert.ok(offbox.length >= 2)
+  for (const line of offbox) assert.ok(!/example-org|secret/.test(line), `off-box line names a repository or org: ${line}`)
+  assert.match(boxed[0], /secret-one 41 min, example-org\/secret-two 18 min|secret-one 41 min/, 'the box\'s own ntfy keeps the names')
 })

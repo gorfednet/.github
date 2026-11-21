@@ -88,7 +88,7 @@ export async function listRepos({ read, org = POOL.defaultOrg }) {
 export async function checkPool({ read, now, org = POOL.defaultOrg, deadlineAt = Infinity }) {
   const failures = []
   let repos
-  try { repos = await listRepos({ read, org }) } catch (e) { return { state: 'unknown', reason: `repository list: ${String(e.message).slice(0, 120)}`, repos: 0, queued: [], behind: [], stale: [] } }
+  try { repos = await listRepos({ read, org }) } catch (e) { return { state: 'unknown', reason: `repository list: ${String(e.message).slice(0, 120)}`, offReason: 'repository list unreadable', repos: 0, queued: [], behind: [], stale: [] } }
   const served = []
   const stale = []
   const queued = []
@@ -135,8 +135,8 @@ export async function checkPool({ read, now, org = POOL.defaultOrg, deadlineAt =
   await Promise.all(Array.from({ length: Math.min(POOL.concurrency, repos.length) }, async () => { while (next < repos.length) await probe(repos[next++]) }))
   queued.sort((a, b) => b.minutes - a.minutes)
   const base = { repos: served.length, queued, behind, stale, ...(newestMinutes === null ? {} : { newestHeartbeatMinutes: newestMinutes }) }
-  if (failures.length) return { state: 'unknown', reason: `${failures.length} read(s) failed, first: ${failures[0]}`, ...base }
-  if (served.length === 0) return { state: 'unknown', reason: 'no repository has a pool heartbeat', ...base }
+  if (failures.length) return { state: 'unknown', reason: `${failures.length} read(s) failed, first: ${failures[0]}`, offReason: `${failures.length} read(s) failed`, ...base }
+  if (served.length === 0) return { state: 'unknown', reason: 'no repository has a pool heartbeat', offReason: 'no pool heartbeat found', ...base }
   if (stale.length === served.length) return { state: 'down', ...base }
   if (queued.length) return { state: 'queued', ...base }
   return { state: 'ok', ...base }
@@ -156,11 +156,19 @@ export function queuePushAllowed(lastQueuePushAt, now) {
   return !Number.isFinite(lastQueuePushAt) || now - lastQueuePushAt >= POOL.queuePushGapMs
 }
 
-/** The ntfy line for a change to `p`, or null when the owner needs nothing (never alerted, still ok). */
-export function poolMessage(p, lastKey) {
+/**
+ * The ntfy line for a change to `p`, or null when the owner needs nothing (never alerted, still ok).
+ * `offbox` is the line for the public off-box topic: counts and a fixed reason only, never a repository name
+ * (private repositories are in the list), so what leaves the box names nothing.
+ */
+export function poolMessage(p, lastKey, { offbox = false } = {}) {
   if (p.state === 'down') return `pool down: no heartbeat for ${p.newestHeartbeatMinutes ?? '?'} min`
-  if (p.state === 'queued') return `pool queue: ${p.queued.map((q) => `${q.repo} ${q.minutes} min`).join(', ')}`
-  if (p.state === 'unknown') return `pool check failed: ${p.reason}`
+  if (p.state === 'queued') {
+    if (!offbox) return `pool queue: ${p.queued.map((q) => `${q.repo} ${q.minutes} min`).join(', ')}`
+    const n = p.queued.length
+    return `pool queue: ${n} ${n === 1 ? 'repository' : 'repositories'}, longest ${Math.max(...p.queued.map((q) => q.minutes))} min`
+  }
+  if (p.state === 'unknown') return `pool check failed: ${offbox ? p.offReason ?? 'see the box' : p.reason}`
   return lastKey && lastKey !== 'ok' ? 'pool back' : null
 }
 
@@ -183,7 +191,7 @@ export function productionPool({ deadlineMs = POOL.deadlineMs, cacheFile, org = 
   return {
     stats,
     pool: async (now) => {
-      try { return await checkPool({ read, now, org, deadlineAt }) } catch (e) { return { state: 'unknown', reason: String(e.message).slice(0, 120), repos: 0, queued: [], behind: [], stale: [] } }
+      try { return await checkPool({ read, now, org, deadlineAt }) } catch (e) { return { state: 'unknown', reason: String(e.message).slice(0, 120), offReason: 'check did not finish', repos: 0, queued: [], behind: [], stale: [] } }
     },
     save: () => saveEtags(cacheFile, cache, used),
   }

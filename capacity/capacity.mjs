@@ -200,17 +200,21 @@ export async function run(deps) {
     // Bounded: a stalled GitHub must not hold back capacity.json or the dead-man ping. Past the deadline the pool reads `unknown`.
     const limit = deps.poolDeadlineMs ?? 150 * 1000
     let timer
-    try { p = await Promise.race([deps.pool(now), new Promise((_, rej) => { timer = setTimeout(() => rej(new Error(`pool check passed its ${Math.round(limit / 1000)} s deadline`)), limit) })]) } catch (e) { p = { state: 'unknown', reason: String(e.message).slice(0, 120), repos: 0, queued: [], stale: [] } } finally { clearTimeout(timer) }
+    try { p = await Promise.race([deps.pool(now), new Promise((_, rej) => { timer = setTimeout(() => rej(new Error(`pool check passed its ${Math.round(limit / 1000)} s deadline`)), limit) })]) } catch (e) { p = { state: 'unknown', reason: String(e.message).slice(0, 120), offReason: 'check did not finish', repos: 0, queued: [], stale: [] } } finally { clearTimeout(timer) }
     const key = poolKey(p)
+    // One failed check says nothing: a single stalled read is common. `pool check failed` goes out on the second unknown run in a row.
+    const unknownRuns = p.state === 'unknown' ? (prev?.pool?.unknownRuns ?? 0) + 1 : 0
+    const held = p.state === 'unknown' && unknownRuns < 2
     let lastKey = prev?.pool && 'lastPushedKey' in prev.pool ? prev.pool.lastPushedKey : null
-    let queueAt = p.state === 'queued' && prev?.pool?.state === 'queued' ? (prev.pool.lastQueuePushAt ?? null) : null // the hour runs only while the queue stays the last thing said
-    if (key !== lastKey) {
+    // The hour runs while a queue is the last thing said, so a single held unknown does not reset it.
+    let queueAt = typeof lastKey === 'string' && lastKey.startsWith('queued:') && (p.state === 'queued' || held) ? (prev?.pool?.lastQueuePushAt ?? null) : null
+    if (key !== lastKey && !held) {
       const line = poolMessage(p, lastKey)
       if (!line) lastKey = key // ok with nothing to retract
       else if (p.state === 'queued' && !queuePushAllowed(queueAt, now)) { /* one `pool queue` line an hour: a change inside it waits, unrecorded, so it goes out once the hour is up */ }
-      else if ((await (deps.poolPush ?? push)(line)) !== false) { lastKey = key; if (p.state === 'queued') queueAt = now }
+      else if ((await (deps.poolPush ?? push)(line, poolMessage(p, lastKey, { offbox: true }))) !== false) { lastKey = key; if (p.state === 'queued') queueAt = now }
     }
-    out.pool = { ...p, lastPushedKey: lastKey, lastQueuePushAt: queueAt }
+    out.pool = { ...p, lastPushedKey: lastKey, lastQueuePushAt: queueAt, unknownRuns }
   }
   writeJson(out)
   return out
@@ -239,9 +243,10 @@ export async function loadHelpers(here = path.dirname(fileURLToPath(import.meta.
 
 /** ntfy on both paths, the box's own and the off-box one: delivered when either delivers (false only when neither did). */
 export function makePush({ helpers, home, pushOps }) {
-  return async (text) => {
+  // `offText` is what the public off-box topic gets when it differs (pool lines drop repository names there).
+  return async (text, offText = text) => {
     const ops = (await pushOps(text)) !== false
-    const off = helpers?.heartbeat ? (await helpers.heartbeat.pushOffbox(text, { home })).sent === true : false
+    const off = helpers?.heartbeat ? (await helpers.heartbeat.pushOffbox(offText, { home })).sent === true : false
     return ops || off
   }
 }
