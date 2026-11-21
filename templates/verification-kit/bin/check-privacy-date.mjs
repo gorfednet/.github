@@ -163,27 +163,33 @@ export function readPolicy(page, source, dateSource) {
 
 /**
  * Judge one page. `before` is null when the page did not exist at the merge
- * base. `prDates` is the set of ISO dates of the PR's own commits.
+ * base. `requiredDay` is the day of the latest commit in the PR that changed the
+ * policy text (a Set so --today can stand in), or empty when none did.
+ * Returns failures and warnings: a date that moved with no visible text change
+ * is a warning, because a link target, an attribute, an excluded region or text
+ * imported from another file can change a policy without changing what this
+ * check can see.
  */
-export function judge(name, before, after, prDates) {
+export function judge(name, before, after, requiredDay) {
   const problems = []
+  const warnings = []
   const policyChanged = before === null || before.policy !== after.policy
   const dateChanged = before === null || before.date !== after.date
-  const dates = [...prDates].sort().join(', ') || 'none'
+  const dates = [...requiredDay].sort().join(', ') || 'none'
   if (policyChanged) {
-    if (!prDates.has(after.date)) {
+    if (!requiredDay.has(after.date)) {
       problems.push(
         dateChanged
-          ? `${name}: the policy text changed and the date moved to ${after.date}, which is not the day of any commit to this page in this PR (${dates}).`
-          : `${name}: the policy text changed but the shown date is still ${after.date}. Move it to the day of this change (${dates}).`,
+          ? `${name}: the policy text changed and the date moved to ${after.date}, which is not the day of the latest commit that changed the policy text (${dates}).`
+          : `${name}: the policy text changed but the shown date is still ${after.date}. Move it to the day of the latest change to the policy text (${dates}).`,
       )
     } else if (before !== null && after.date < before.date) {
       problems.push(`${name}: the date moved back, from ${before.date} to ${after.date}.`)
     }
   } else if (dateChanged) {
-    problems.push(`${name}: the date moved from ${before.date} to ${after.date} but the policy text did not change. A date with no change behind it is false.`)
+    warnings.push(`${name}: the date moved from ${before.date} to ${after.date} but the visible policy text did not change. If a link, attribute, excluded region or imported text changed, that is fine; otherwise the date is false.`)
   }
-  return problems
+  return { problems, warnings }
 }
 
 function git(args, cwd) {
@@ -210,74 +216,77 @@ function dayIn(zone, instant) {
 }
 
 
-/** A page's policy and date at the merge base, or null only when the page did not exist there. */
-function readBase(page, dateFile, mergeBase, cwd, baseEntry) {
-  const same = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null)
-  // The scope of what counts as policy text is part of the contract. A PR that
-  // widens an exclude or narrows a region could hide its own edit, so the scope
-  // may not change in the PR that changes the page: land it on its own.
-  if (baseEntry && !(same(baseEntry.region, page.region) && same(baseEntry.exclude, page.exclude) && same(baseEntry.datePattern, page.datePattern))) {
-    bail(`page "${page.name}": this PR changes the config's region, exclude or datePattern. What counts as policy text may not change in a PR that could use it to hide an edit. Land the config change on its own, with the page untouched.`)
+/** A page's policy and date at a revision, or null when it cannot be read there. */
+function tryRead(page, file, dateFile, rev, cwd) {
+  const source = showAt(rev, file, cwd)
+  if (source === null) return null
+  const dateSource = dateFile === file ? source : showAt(rev, dateFile, cwd)
+  if (dateSource === null) return null
+  try {
+    return readPolicy({ ...page, file }, source, dateSource)
+  } catch (cause) {
+    if (cause instanceof PrivacyDateError) return null
+    throw cause
   }
-  const attempt = (file, dFile) => {
-    const source = showAt(mergeBase, file, cwd)
-    if (source === null) return undefined
-    const dateSource = dFile === file ? source : showAt(mergeBase, dFile, cwd)
-    if (dateSource === null) return undefined
-    try {
-      return readPolicy({ ...page, file }, source, dateSource)
-    } catch (cause) {
-      if (cause instanceof PrivacyDateError) return undefined
-      throw cause
-    }
+}
+
+const sameJson = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null)
+const sameScope = (a, b) => sameJson(a.region, b.region) && sameJson(a.exclude, b.exclude) && sameJson(a.datePattern, b.datePattern)
+
+/** The latest commit in the PR that changed this page's policy text: its day, as a one-day set. */
+function latestPolicyDay({ page, dateFile, mergeBase, head, tz, cwd }) {
+  const log = git(['log', '--no-merges', '--reverse', '--format=%H %aI', `${mergeBase}..${head}`, '--', page.file, dateFile], cwd).trim()
+  let day = null
+  for (const line of log.split('\n').filter(Boolean)) {
+    const [sha, when] = line.split(' ')
+    const now = tryRead(page, page.file, dateFile, sha, cwd)
+    const prev = tryRead(page, page.file, dateFile, `${sha}^`, cwd)
+    // A copy the config cannot read counts as changed: it is the safer reading.
+    if (now === null || prev === null || now.policy !== prev.policy) day = dayIn(tz, new Date(when))
   }
-  const direct = attempt(page.file, dateFile)
-  if (direct) return direct
-  // Same scope, different file: the page moved. Read it where it used to be.
-  if (baseEntry) {
-    const viaOld = attempt(baseEntry.file, baseEntry.dateFile ?? baseEntry.file)
-    if (viaOld) return viaOld
-    return bail(`page "${page.name}": the copy at the merge base cannot be read with this config, so there is nothing to compare. Land the config change in its own PR.`)
-  }
-  return null
+  return day === null ? new Set() : new Set([day])
 }
 
 export function runCheck({ config, base, head, today, tz, cwd, configRel = null }) {
   if (!config || !Array.isArray(config.pages) || config.pages.length === 0) {
     bail('the config lists no pages. A site with a privacy page has to name it; an empty list proves nothing.')
   }
+  if (!configRel) bail('the config is not tracked by git, so the base config cannot be compared. Commit it.')
   git(['rev-parse', '--verify', `${base}^{commit}`], cwd)
   git(['rev-parse', '--verify', `${head}^{commit}`], cwd)
   const mergeBase = git(['merge-base', base, head], cwd).trim()
   if (!mergeBase) bail(`no merge base between ${base} and ${head}. Fetch full history (fetch-depth: 0) so the PR's own diff can be read.`)
-
   if (today && !parseDate(today)) bail(`--today wants YYYY-MM-DD, got ${JSON.stringify(today)}.`)
-  const daysFor = (files) => {
-    if (today) return new Set([today])
-    const out = new Set()
-    const log = git(['log', '--no-merges', '--format=%aI', `${mergeBase}..${head}`, '--', ...files], cwd).trim()
-    for (const line of log.split('\n').filter(Boolean)) out.add(dayIn(tz, new Date(line)))
-    return out
-  }
 
-  // A page the base config guarded cannot be dropped by this PR's config.
+  const changed = git(['diff', '--find-renames', '--name-status', mergeBase, head], cwd)
+    .split('\n')
+    .filter(Boolean)
+    .map((l) => l.split('\t'))
+  const touched = new Set(changed.flatMap((c) => c.slice(1)))
+
+  // The base config guards what the PR may not quietly change. Read it where it
+  // was at the merge base, following a rename of the config file. Absent at the
+  // base (and not renamed) means this PR adopts the check. Present but unreadable
+  // is an error: both locks would otherwise switch off.
+  const renamedFrom = changed.find((c) => c[0].startsWith('R') && c[2] === configRel)?.[1]
+  const baseText = showAt(mergeBase, renamedFrom ?? configRel, cwd)
   let baseConfig = null
-  if (configRel) {
-    const text = showAt(mergeBase, configRel, cwd)
-    if (text !== null) {
-      try {
-        baseConfig = JSON.parse(text)
-      } catch {
-        baseConfig = null
-      }
+  if (baseText !== null) {
+    try {
+      baseConfig = JSON.parse(baseText)
+    } catch {
+      bail(`the base config ${renamedFrom ?? configRel} does not parse, so what it guarded cannot be compared. Fix it in its own PR.`)
     }
+    if (!Array.isArray(baseConfig.pages)) bail(`the base config ${renamedFrom ?? configRel} has no pages list.`)
   }
   for (const old of baseConfig?.pages ?? []) {
     if (!config.pages.some((p) => p.name === old.name)) {
       bail(`page "${old.name}" is in the base config but not in this PR's config. Removing a guarded page needs its own PR.`)
     }
   }
+
   const problems = []
+  const warnings = []
   const allDays = []
   const seen = []
   for (const page of config.pages) {
@@ -285,28 +294,50 @@ export function runCheck({ config, base, head, today, tz, cwd, configRel = null 
       if (typeof page[key] !== 'string' || page[key] === '') bail(`a page entry is missing "${key}".`)
     }
     const dateFile = page.dateFile ?? page.file
-    const read = (rev) => {
-      const source = showAt(rev, page.file, cwd)
-      if (source === null) return null
-      const dateSource = dateFile === page.file ? source : showAt(rev, dateFile, cwd)
-      if (dateSource === null) bail(`page "${page.name}": dateFile ${dateFile} does not exist at ${rev}.`)
-      return readPolicy(page, source, dateSource)
+    const after = tryReadStrict(page, dateFile, head, cwd)
+    const baseEntry = baseConfig?.pages.find((p) => p.name === page.name) ?? null
+    const oldFile = baseEntry?.file ?? page.file
+    const oldDateFile = baseEntry?.dateFile ?? baseEntry?.file ?? dateFile
+    const pageTouched = [page.file, dateFile, oldFile, oldDateFile].some((f) => touched.has(f))
+
+    let before
+    if (baseEntry && !sameScope(baseEntry, page) && pageTouched) {
+      // What counts as policy text may not change in a PR that edits the page: a
+      // widened exclude or narrowed region would hide the edit.
+      bail(`page "${page.name}": this PR changes the config's region, exclude or datePattern and also touches the page. Land the config change on its own, with the page untouched.`)
     }
-    const after = read(head)
-    if (after === null) {
-      bail(`page "${page.name}": ${page.file} does not exist at ${head}. A privacy page the check cannot find is an error: if the page moved, update the config in the same PR.`)
+    if (!pageTouched && baseEntry) {
+      // Neither the page nor its date file changed, so nothing can have drifted. A
+      // config-only PR passes on this branch; the head copy was read above.
+      before = after
+    } else if (baseEntry) {
+      before = tryRead(baseEntry, oldFile, oldDateFile, mergeBase, cwd)
+      if (before === null) {
+        bail(`page "${page.name}": the copy at the merge base cannot be read with the base config, so there is nothing to compare. Land the config change in its own PR.`)
+      }
+    } else {
+      // No base entry: this PR adopts the check for the page. Read the base copy with
+      // this config if there was one; a page with no base copy is new.
+      before = tryRead(page, page.file, dateFile, mergeBase, cwd)
     }
-    // The base copy is read with this config; failing that with the base's own
-    // config (a PR that edits the region or moves the page). A base that cannot be read is an
-    // error, never "everything changed", which would demand a false date.
-    const baseEntry = baseConfig?.pages?.find((p) => p.name === page.name) ?? null
-    const before = readBase(page, dateFile, mergeBase, cwd, baseEntry)
-    const prDates = daysFor([page.file, dateFile])
-    allDays.push(...prDates)
-    problems.push(...judge(page.name, before, after, prDates))
+    const required = today ? new Set([today]) : latestPolicyDay({ page, dateFile, mergeBase, head, tz, cwd })
+    for (const d of required) allDays.push(d)
+    const verdict = judge(page.name, before, after, required)
+    problems.push(...verdict.problems)
+    warnings.push(...verdict.warnings)
     seen.push({ name: page.name, file: page.file, date: after.date, policyChanged: before === null || before.policy !== after.policy })
   }
-  return { problems, seen, prDates: [...new Set(allDays)].sort() }
+  return { problems, warnings, seen, prDates: [...new Set(allDays)].sort() }
+}
+
+function tryReadStrict(page, dateFile, head, cwd) {
+  const source = showAt(head, page.file, cwd)
+  if (source === null) {
+    bail(`page "${page.name}": ${page.file} does not exist at ${head}. A privacy page the check cannot find is an error: if the page moved, update the config in the same PR.`)
+  }
+  const dateSource = dateFile === page.file ? source : showAt(head, dateFile, cwd)
+  if (dateSource === null) bail(`page "${page.name}": dateFile ${dateFile} does not exist at ${head}.`)
+  return readPolicy(page, source, dateSource)
 }
 
 function parseArgs(argv) {
@@ -345,6 +376,7 @@ function main() {
     for (const s of result.seen) {
       console.error(`  ${s.name}: ${s.file}, shown date ${s.date}, policy text ${s.policyChanged ? 'changed' : 'unchanged'}`)
     }
+    for (const w of result.warnings) console.error(`::warning title=Privacy date::${w}`)
     if (result.problems.length > 0) {
       for (const p of result.problems) console.error(`✗ ${TOOL}: ${p}`)
       process.exit(1)

@@ -1092,18 +1092,24 @@ date was queried as possibly stale. It was right that day, by luck: nothing kept
 it right, so it becomes a contract.
 
 1. A pull request that changes a privacy page's policy text moves its shown date
-   to the day of one of that pull request's own commits to the page (author date,
-   read in America/Toronto), never to an earlier date. A date already showing that
-   day stands, so a second same-day edit passes. Every date a visitor reads inside
-   the matched line must be that same day. Policy text changed with the date untouched, or dated to
-   some other day, fails.
-2. A shown date that moves with no change to the policy text fails: a date with
-   nothing behind it is as false as a stale one.
+   to the day of the latest commit in that pull request that changed the policy
+   text (author date, read in America/Toronto), never to an earlier date. A date
+   already showing that day stands, so a second same-day edit passes. Every date a
+   visitor reads inside the matched line must be that same day.
+2. A shown date that moves with no change to the visible policy text is a
+   `::warning`, not a failure: a link target, an attribute, an excluded region or
+   text imported from another file can change a policy without changing what the
+   check can see, and entries that share one date file would otherwise fail the
+   untouched entry. A visible text change with no date move still fails.
 3. The policy text is the visible text of the page's configured region, with
    tags, comments, whitespace and the date itself taken out, minus any excluded
    pattern. Header, nav and footer are excluded by region or pattern in the
    site's `privacy-date.config.json`, so a footer-only change stays green.
-4. It fails closed. A configured page that does not exist, a region or date
+4. What counts as policy text is locked. A PR that changes an entry's region,
+   exclude or datePattern and also touches the page fails; the same change with
+   the page and its date file untouched passes. Dropping a guarded page from the
+   config, or a base config that does not parse, fails, and a renamed config is
+   followed. It fails closed. A configured page that does not exist, a region or date
    pattern that matches nothing, a date it cannot parse, a page with under 200
    characters of policy text left, an empty page list, or a base branch it cannot
    resolve is an error, never a pass. A site that moves its privacy page updates

@@ -105,13 +105,13 @@ describe('check-privacy-date', () => {
   it('fails a policy change dated to some other day', () => {
     const r = run(repo({ base: pageHtml(), change: pageHtml({ body: sentences + ' More.', date: '2026-11-18' }) }))
     assert.equal(r.status, 1)
-    assert.match(r.stderr, /not the day of any commit/)
+    assert.match(r.stderr, /not the day of the latest commit that changed the policy text/)
   })
 
-  it('fails a date that moves with no policy change', () => {
+  it('warns, and does not fail, when the date moves with no visible policy change', () => {
     const r = run(repo({ base: pageHtml(), change: pageHtml({ date: '2026-11-20' }) }))
-    assert.equal(r.status, 1)
-    assert.match(r.stderr, /date moved from 2026-11-01 to 2026-11-20 but the policy text did not change/)
+    assert.equal(r.status, 0, r.stderr)
+    assert.match(r.stderr, /::warning title=Privacy date::privacy: the date moved from 2026-11-01 to 2026-11-20/)
   })
 
   it('near miss: a footer-only and nav-only change stays green', () => {
@@ -173,8 +173,8 @@ describe('check-privacy-date', () => {
     writeFileSync(join(dir, 'date.ts'), "export const REVISED = '2026-11-20'")
     git(dir, ['commit', '-qam', 'bump'], { GIT_AUTHOR_DATE: '2026-11-20T10:00:00-05:00' })
     const r = run(dir)
-    assert.equal(r.status, 1)
-    assert.match(r.stderr, /date moved/)
+    assert.equal(r.status, 0, r.stderr)
+    assert.match(r.stderr, /::warning/)
   })
 
   it('--today overrides the commit dates', () => {
@@ -204,11 +204,13 @@ describe('check-privacy-date', () => {
     assert.match(r.stderr, /shown text says 1 November 2026 but the date captured is 2026-11-20/)
   })
 
-  it('counts only commits that touch the page as PR days', () => {
+  it('counts only commits that change the policy text', () => {
     const dir = repo({ base: pageHtml(), change: pageHtml({ body: sentences + ' More.', date: '2026-11-22' }), onDay: '2026-11-20T12:00:00-05:00', extraFiles: {} })
     writeFileSync(join(dir, 'other.txt'), 'x')
     git(dir, ['add', '-A'])
     git(dir, ['commit', '-qm', 'unrelated'], { GIT_AUTHOR_DATE: '2026-11-22T12:00:00-05:00' })
+    writeFileSync(join(dir, 'privacy.html'), pageHtml({ body: sentences + ' More.', date: '2026-11-22', footer: 'other footer' }))
+    git(dir, ['commit', '-qam', 'footer only'], { GIT_AUTHOR_DATE: '2026-11-22T13:00:00-05:00' })
     const r = run(dir)
     assert.equal(r.status, 1, r.stderr)
   })
@@ -253,5 +255,49 @@ describe('check-privacy-date', () => {
     assert.equal(run(repo({ base, change: dotted })).status, 0)
     const odd = base.replace('Nov 1, 2026', 'Foo 1, 2026')
     assert.equal(run(repo({ base: odd, change: odd })).status, 1)
+  })
+
+  it('passes a config-only PR that widens the scope while the page is untouched', () => {
+    const dir = repo({ base: pageHtml(), change: undefined })
+    writeFileSync(join(dir, 'privacy.config.json'), JSON.stringify({ pages: [{ ...CONFIG.pages[0], exclude: ['Home About'] }] }))
+    git(dir, ['add', '-A'])
+    git(dir, ['commit', '-qm', 'scope only'], { GIT_AUTHOR_DATE: '2026-11-20T12:00:00-05:00' })
+    const r = run(dir)
+    assert.equal(r.status, 0, r.stderr)
+  })
+
+  it('fails closed when the base config does not parse', () => {
+    const dir = repo({ base: pageHtml(), change: undefined })
+    git(dir, ['checkout', '-q', 'main'])
+    writeFileSync(join(dir, 'privacy.config.json'), '{ not json')
+    git(dir, ['commit', '-qam', 'break'], { GIT_AUTHOR_DATE: '2026-11-02T12:00:00-05:00' })
+    git(dir, ['update-ref', 'refs/remotes/origin/main', 'HEAD'])
+    git(dir, ['checkout', '-q', 'pr'])
+    git(dir, ['rebase', '-q', '--onto', 'main', 'main~1', 'pr'], {})
+    writeFileSync(join(dir, 'privacy.config.json'), JSON.stringify(CONFIG))
+    git(dir, ['commit', '-qam', 'fix config'], { GIT_AUTHOR_DATE: '2026-11-20T12:00:00-05:00' })
+    const r = run(dir)
+    assert.equal(r.status, 1)
+    assert.match(r.stderr, /does not parse/)
+  })
+
+  it('follows a renamed config, so moving it does not switch the locks off', () => {
+    const dir = repo({ base: pageHtml(), change: pageHtml({ body: sentences + ' We now also keep logs.' }) })
+    git(dir, ['mv', 'privacy.config.json', 'privacy.moved.json'])
+    writeFileSync(join(dir, 'privacy.moved.json'), JSON.stringify({ pages: [{ ...CONFIG.pages[0], exclude: ['We now also keep logs\\.'] }] }))
+    git(dir, ['add', '-A'])
+    git(dir, ['commit', '-qm', 'move config'], { GIT_AUTHOR_DATE: '2026-11-20T12:00:00-05:00' })
+    const r = spawnSync('node', [CHECKER, '--config', 'privacy.moved.json', '--base', 'origin/main'], { cwd: dir, encoding: 'utf8' })
+    assert.equal(r.status, 1)
+    assert.match(r.stderr, /changes the config's region, exclude or datePattern/)
+  })
+
+  it('requires the day of the latest commit that changed the policy, not any commit day', () => {
+    const dir = repo({ base: pageHtml(), change: pageHtml({ body: sentences + ' One.', date: '2026-11-19' }), onDay: '2026-11-19T12:00:00-05:00' })
+    writeFileSync(join(dir, 'privacy.html'), pageHtml({ body: sentences + ' One. Two.', date: '2026-11-19' }))
+    git(dir, ['commit', '-qam', 'later edit'], { GIT_AUTHOR_DATE: '2026-11-20T12:00:00-05:00' })
+    const r = run(dir)
+    assert.equal(r.status, 1)
+    assert.match(r.stderr, /latest commit that changed the policy text \(2026-11-20\)/)
   })
 })

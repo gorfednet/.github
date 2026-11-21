@@ -1070,16 +1070,16 @@
       "guards": "A policy change with the date untouched fails (V78). Without it the check passes every stale date.",
       "command": "node --test --test-name-pattern='fails a policy change with the date left alone' templates/verification-kit/test/privacyDate.test.mjs",
       "file": "templates/verification-kit/bin/check-privacy-date.mjs",
-      "find": "  if (policyChanged) {\n    if (!prDates.has(after.date)) {",
-      "replace": "  if (false) {\n    if (!prDates.has(after.date)) {"
+      "find": "  if (policyChanged) {\n    if (!requiredDay.has(after.date)) {",
+      "replace": "  if (false) {\n    if (!requiredDay.has(after.date)) {"
     },
     {
-      "id": "privacy-date-only-page-commits-count",
-      "guards": "PR days come from commits touching the page. Without the path filter any commit in the PR supplies a valid day.",
-      "command": "node --test --test-name-pattern='counts only commits that touch the page' templates/verification-kit/test/privacyDate.test.mjs",
+      "id": "privacy-date-only-policy-commits-count",
+      "guards": "Only a commit that changed the policy text supplies the required day. Without it a footer-only commit on a later day makes that day valid.",
+      "command": "node --test --test-name-pattern='counts only commits that change the policy text' templates/verification-kit/test/privacyDate.test.mjs",
       "file": "templates/verification-kit/bin/check-privacy-date.mjs",
-      "find": "`${mergeBase}..${head}`, '--', ...files]",
-      "replace": "`${mergeBase}..${head}`]"
+      "find": "now.policy !== prev.policy) day",
+      "replace": "true) day"
     },
     {
       "id": "privacy-date-no-backdating",
@@ -1094,8 +1094,16 @@
       "guards": "A PR may not change what counts as policy text (region, exclude, datePattern) in the same change as the page. Without it a widened exclude hides the edit and the date stays stale.",
       "command": "node --test --test-name-pattern='widens exclude to hide the edit' templates/verification-kit/test/privacyDate.test.mjs",
       "file": "templates/verification-kit/bin/check-privacy-date.mjs",
-      "find": "if (baseEntry && !(same(baseEntry.region",
-      "replace": "if (false && !(same(baseEntry.region"
+      "find": "if (baseEntry && !sameScope(baseEntry, page) && pageTouched) {",
+      "replace": "if (false) {"
+    },
+    {
+      "id": "privacy-date-base-config-must-parse",
+      "guards": "A base config that does not parse fails the check. Without it both locks switch off for a PR that corrupts the config.",
+      "command": "node --test --test-name-pattern='base config does not parse' templates/verification-kit/test/privacyDate.test.mjs",
+      "file": "templates/verification-kit/bin/check-privacy-date.mjs",
+      "find": "      bail(`the base config ${renamedFrom ?? configRel} does not parse",
+      "replace": "      void (`the base config ${renamedFrom ?? configRel} does not parse"
     }
   ]
 }
