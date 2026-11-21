@@ -1832,9 +1832,24 @@ describe('privacy guard: the public sites fleet.json lists count as said, with n
   const NAME = 'example-site.org'
   const ORG = 'gorfednet' + '/'
   const fleet = (...slugs) => JSON.stringify({ projects: slugs.map((slug) => (typeof slug === 'string' ? { slug } : slug)) })
+  const MISSING = 'missing'
   const FLEET = fleet(`${ORG}${NAME}`, `${ORG}.github`, `${ORG}plain-tool`)
-  const run = (body, { path = 'README.md', message = 'pr', base = FLEET, names = NAME, extra = {}, args = [] } = {}) =>
-    guard({ before: base === null ? {} : { 'fleet.json': base }, after: { [path]: body, ...extra }, message, args, env: { PRIVATE_REPOS: names } })
+  // The fleet reaches the guard as the file it is handed (the hook's installed copy), so the base
+  // repository never names the site itself: a base that holds fleet.json already says the name.
+  // `base` puts a fleet.json in the base instead (what CI in this repository reads).
+  const run = (body, { path = 'README.md', message = 'pr', fleetFile = FLEET, base = null, names = NAME, extra = {} } = {}) => {
+    const dir = mkdtempSync(join(tmpdir(), 'fleet-arg-'))
+    try {
+      const args = []
+      if (fleetFile !== null) {
+        writeFileSync(join(dir, 'fleet.json'), fleetFile)
+        args.push('--fleet', fleetFile === MISSING ? join(dir, 'absent.json') : join(dir, 'fleet.json'))
+      }
+      return guard({ before: base === null ? {} : { 'fleet.json': base }, after: { [path]: body, ...extra }, message, args, env: { PRIVATE_REPOS: names } })
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  }
   const fails = (body, opts) => {
     const r = run(body, opts)
     assert.equal(r.status, 1, `expected a refusal for ${JSON.stringify(body)}: ${r.out}`)
@@ -1852,18 +1867,22 @@ describe('privacy guard: the public sites fleet.json lists count as said, with n
     for (const bad of ['', 'not json', '{}', '{"projects":{}}']) assert.throws(() => fleetSites(bad), /fleet\.json/, bad)
   })
 
-  it('lets the site through in a README link and a commit message, and refuses it when the base has no fleet.json', () => {
+  it('lets the site through in a README link and a commit message, and refuses it without the fleet', () => {
     passes(`Visit [the site](https://${NAME}/about)\n`)
     passes(`${NAME} is live.\n`)
     passes('ok\n', { path: 'a.md', message: `Link ${NAME} from the README` })
-    // The deliberate break: take the fleet away and the same text is refused.
-    fails(`Visit https://${NAME}/\n`, { base: null })
-    fails(`Visit https://${NAME}/\n`, { base: fleet(`${ORG}other-site.org`) })
+    // The deliberate break: take the site out of the fleet, or the fleet away, and the same text is refused.
+    fails(`Visit https://${NAME}/\n`, { fleetFile: null })
+    fails(`Visit https://${NAME}/\n`, { fleetFile: fleet(`${ORG}other-site.org`) })
+    fails(`${NAME} is live.\n`, { fleetFile: fleet({ slug: `${ORG}${NAME}`, publicSite: false }) })
   })
 
-  it('reads the fleet from the base, never from the change itself', () => {
-    fails(`Visit https://${NAME}/\n`, { base: null, extra: { 'fleet.json': FLEET } })
-    fails(`Visit https://${NAME}/\n`, { base: fleet(`${ORG}other-site.org`), extra: { 'fleet.json': FLEET } })
+  it('reads a fleet.json in the base, and never one the change itself adds', () => {
+    // CI in this repository: the base holds fleet.json. A malformed one stops the run, which shows it is read.
+    assert.equal(run('ok\n', { fleetFile: null, base: FLEET }).status, 0)
+    assert.equal(run('ok\n', { fleetFile: null, base: 'not json' }).status, 2)
+    fails(`Visit https://${NAME}/\n`, { fleetFile: null, extra: { 'fleet.json': FLEET } })
+    fails(`Visit https://${NAME}/\n`, { fleetFile: null, base: fleet(`${ORG}other-site.org`), extra: { 'fleet.json': FLEET } })
   })
 
   it('refuses the near-miss names: a different TLD, a longer name, a prefixed name', () => {
@@ -1884,20 +1903,11 @@ describe('privacy guard: the public sites fleet.json lists count as said, with n
   })
 
   it('stops, rather than reading as no sites, when the fleet is malformed or the named file is missing', () => {
-    const bad = run('ok\n', { base: 'not json' })
+    const bad = run('ok\n', { fleetFile: 'not json' })
     assert.equal(bad.status, 2, bad.out)
     assert.match(bad.out, /fleet\.json is not valid JSON/)
-    const missing = run('ok\n', { args: ['--fleet', join(tmpdir(), 'no-such-fleet-file.json')] })
+    const missing = run('ok\n', { fleetFile: MISSING })
     assert.equal(missing.status, 2, missing.out)
-    // A fleet file the caller names replaces the base's copy (the hook's installed one).
-    const dir = mkdtempSync(join(tmpdir(), 'fleet-arg-'))
-    try {
-      writeFileSync(join(dir, 'fleet.json'), FLEET)
-      const named = run(`Visit https://${NAME}/\n`, { base: null, args: ['--fleet', join(dir, 'fleet.json')] })
-      assert.equal(named.status, 0, named.out)
-    } finally {
-      rmSync(dir, { recursive: true, force: true })
-    }
   })
 
   it('does not count a fleet site as a new allowlist site line', () => {

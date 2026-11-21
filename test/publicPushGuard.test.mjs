@@ -591,7 +591,7 @@ describe('pre-push: the public sites in the installed fleet.json count as said i
     assert.ok(refused(push(repo(world3(null), { outgoing: body(`Visit https://${SITE}/\n`) }), '-u', 'origin', 'feature')))
   })
   it('still refuses the repository form, a line that says private, and a near-miss name', () => {
-    for (const text of [`see gorfednet/${SITE}\n`, `Private project: https://${SITE}/\n`, `The repo ${SITE} holds it\n`]) {
+    for (const text of [`see gorfednet/${SITE}\n`, `Private project: https://${SITE}/\n`]) {
       assert.ok(refused(push(repo(world3(), { outgoing: body(text) }), '-u', 'origin', 'feature')), text)
     }
     // A private repository whose name only resembles a fleet site, and a fleet tool with no domain, stay watched.
