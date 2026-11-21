@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-11-21T00:44:09.553Z",
-  "renderedAt": "2026-11-21T00:44:09.553Z",
+  "generatedAt": "2026-11-21T02:32:03.605Z",
+  "renderedAt": "2026-11-21T02:32:03.605Z",
   "repos": [
     {
       "slug": "gorfednet/bindercurve.com",
@@ -9,7 +9,7 @@
       "openPrCount": 12,
       "lapsedBacklogCount": 16,
       "noPrCount": 80,
-      "idlePrCount": 7,
+      "idlePrCount": 6,
       "duplicatePrCount": 0,
       "dependabotRedCount": 3,
       "kitVersion": "0.61.0",
@@ -23,7 +23,7 @@
       "slug": "gorfednet/4thcltr.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 12,
+      "openPrCount": 13,
       "lapsedBacklogCount": 21,
       "noPrCount": 31,
       "idlePrCount": 6,
@@ -119,9 +119,9 @@
       "slug": "gorfednet/gorfmusic.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 7,
+      "openPrCount": 6,
       "lapsedBacklogCount": 2,
-      "noPrCount": 3,
+      "noPrCount": 4,
       "idlePrCount": 2,
       "duplicatePrCount": 0,
       "dependabotRedCount": 2,
@@ -185,15 +185,27 @@
       "mainRed": false,
       "openPrs": [
         {
-          "number": 283,
-          "title": "Board follow-up: hand-offs stay rows, stalled rows surface, no board from a cut pass (plan row 1.55)",
+          "number": 285,
+          "title": "Privacy guard: a push can add its first site line and link the site together",
           "ageDays": 0,
           "labels": [],
-          "draft": false,
-          "review": "clean",
-          "headSha": "f1e2d7f498af11d19259dfcc24be645b2470a865",
+          "draft": true,
+          "review": "findings",
+          "headSha": "01a620cdc0087d1e2007a4c67820100f07a7a8b1",
           "ci": "green",
-          "next": "Merge once the Claude review reads clean on the final head f1e2d7f; Desk labels (control-plane paths: `ship-bot/`). CI is green on that head, and Desk's ready-for-review started the review, so no `claude review` comment is needed",
+          "next": "Merge once CI and the Claude review are clean",
+          "author": "gorfednet"
+        },
+        {
+          "number": 284,
+          "title": "1.61: context-cap hook holds new tool work past 200k tokens until /handoff",
+          "ageDays": 0,
+          "labels": [],
+          "draft": true,
+          "review": "not-run",
+          "headSha": "420e1f9a3a9d5ee8215eb12ed1f29ac45cc1c518",
+          "ci": "green",
+          "next": "Merge once gates are clean.",
           "author": "gorfednet"
         },
         {
@@ -677,7 +689,7 @@
       "openPrCount": 13,
       "lapsedBacklogCount": 3,
       "noPrCount": 47,
-      "idlePrCount": 3,
+      "idlePrCount": 5,
       "duplicatePrCount": 0,
       "dependabotRedCount": 5,
       "kitVersion": null,
@@ -742,7 +754,7 @@
       "openPrCount": 8,
       "lapsedBacklogCount": 1,
       "noPrCount": 1,
-      "idlePrCount": 4,
+      "idlePrCount": 7,
       "duplicatePrCount": 0,
       "dependabotRedCount": 0,
       "kitVersion": "0.65.0",
@@ -758,14 +770,14 @@
       "openPrCount": 10,
       "lapsedBacklogCount": 34,
       "noPrCount": 7,
-      "idlePrCount": 7,
+      "idlePrCount": 8,
       "duplicatePrCount": 1,
       "dependabotRedCount": 2,
       "kitVersion": "0.65.0",
       "kitPin": {
         "ref": "main"
       },
-      "alertsOverdue": 0
+      "alertsOverdue": 1
     },
     {
       "slug": "gorfednet/papers.4thcltr.com",
@@ -808,7 +820,9 @@
           "number": 29,
           "title": "Research: AI Use Levels in audio and other media",
           "ageDays": 0,
-          "labels": [],
+          "labels": [
+            "ready-to-merge"
+          ],
           "draft": false,
           "review": "clean",
           "headSha": "d358003f20ac194c184a32cad86cb1a5277cfc6c",
@@ -876,7 +890,7 @@
       "openPrCount": 8,
       "lapsedBacklogCount": 6,
       "noPrCount": 3,
-      "idlePrCount": 5,
+      "idlePrCount": 7,
       "duplicatePrCount": 0,
       "dependabotRedCount": 1,
       "kitVersion": "0.65.0",
@@ -891,7 +905,7 @@
       "mainRed": false,
       "openPrCount": 25,
       "lapsedBacklogCount": 0,
-      "noPrCount": 6,
+      "noPrCount": 11,
       "idlePrCount": 6,
       "duplicatePrCount": 0,
       "dependabotRedCount": 0,
@@ -907,8 +921,8 @@
     "gorfednet/TowIt",
     "gorfednet/wychwood"
   ],
-  "branchesReadAt": "2026-11-20T02:32:04.472Z",
-  "carried": true,
+  "branchesReadAt": "2026-11-21T02:32:03.605Z",
+  "carried": false,
   "localCounts": {
     "rows": {
       "dirtyClones": {
@@ -956,11 +970,11 @@
     }
   },
   "inventory": {
-    "measuredAt": "2026-11-21T00:44:09.553Z",
+    "measuredAt": "2026-11-21T02:32:03.605Z",
     "counts": {
       "pr": {
-        "total": 163,
-        "orphans": 81
+        "total": 164,
+        "orphans": 82
       },
       "session": null,
       "worktree": null,
@@ -971,6 +985,22 @@
       }
     },
     "orphans": [
+      {
+        "kind": "pr",
+        "repo": "gorfednet/plex-lastfm-sync",
+        "ref": "#4",
+        "label": "fix: --help exit code, drop arbitrary ratingKey length cap",
+        "private": false,
+        "lapsed": false
+      },
+      {
+        "kind": "pr",
+        "repo": "gorfednet/.github",
+        "ref": "#285",
+        "label": "Privacy guard: a push can add its first site line and link the site together",
+        "private": false,
+        "lapsed": false
+      },
       {
         "kind": "pr",
         "repo": "gorfednet/plex-lastfm-sync",
@@ -992,14 +1022,6 @@
         "repo": "gorfednet/ACID2REAPER",
         "ref": "#9",
         "label": "README: replace the last em dash",
-        "private": false,
-        "lapsed": false
-      },
-      {
-        "kind": "pr",
-        "repo": "gorfednet/gorfednet",
-        "ref": "#7",
-        "label": "Profile README: add plex-lastfm-sync",
         "private": false,
         "lapsed": false
       },
@@ -1105,8 +1127,8 @@
     "planRead": true
   },
   "dotgithub": {
-    "measuredAt": "2026-11-21T00:45:06.675Z",
-    "branches": 48,
+    "measuredAt": "2026-11-21T02:33:06.972Z",
+    "branches": 49,
     "merged": 3,
     "exposedFiles": 61,
     "rulesNotChecked": [],
