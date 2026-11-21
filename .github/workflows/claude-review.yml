@@ -76,6 +76,7 @@ jobs:
     permissions: {}
     outputs:
       go: ${{ steps.trigger.outputs.go }}
+      force: ${{ steps.trigger.outputs.force }}
     steps:
       # The job's `if` only prefilters a comment (the words appear somewhere, and contains() is
       # case-insensitive). This decides: a review is asked for when one line of the comment,
@@ -91,14 +92,18 @@ jobs:
         run: |
           set -euo pipefail
           go=true
+          force=false
           if [[ "$EVENT" == issue_comment ]]; then
             go=false
             while IFS= read -r line || [[ -n "$line" ]]; do
               line="$(printf '%s' "${line%$'\r'}" | tr '[:upper:]' '[:lower:]' | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')"
               if [[ "$line" == "claude review" ]]; then go=true; fi
+              # `claude review force` also reviews a head that already has a verdict.
+              if [[ "$line" == "claude review force" ]]; then go=true; force=true; fi
             done <<<"$BODY"
           fi
           echo "go=${go}" >> "$GITHUB_OUTPUT"
+          echo "force=${force}" >> "$GITHUB_OUTPUT"
           echo "review requested: ${go}"
 
   review:
@@ -134,24 +139,38 @@ jobs:
       # the bot has already posted a verdict for exactly that head, this run is a duplicate and
       # every later step skips. A different head has a different sha and is never skipped; a
       # review that failed before its verdict comment leaves none, so a retry still runs (ops 188
-      # took 11 reviewer runs for 3 lines). A review is repeated on the same head only by a new commit.
+      # took 11 reviewer runs for 3 lines). Two ways to review the same head again: a comment
+      # line `claude review force` (a retarget, or a verdict that says it could not read everything),
+      # or a new commit. A draft that ship-bot readies keeps its draft-time review of the same
+      # head: the ready_for_review run skips, on purpose. Each comment counts by its first marker
+      # only, as scripts/lib/reviewVerdict.mjs reads it, in the same shape.
+      # A pending `force` run can be replaced by a later plain request in the group: send force last.
       - name: Skip a head that already has a verdict
         id: dup
         env:
           GH_TOKEN: ${{ github.token }}
           NUMBER: ${{ steps.pr.outputs.number }}
           HEAD: ${{ steps.pr.outputs.head }}
+          FORCE: ${{ needs.trigger.outputs.force }}
         run: |
           set -euo pipefail
-          bodies="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/issues/${NUMBER}/comments" \
-            --jq '.[] | select(.user.login == "github-actions[bot]") | .body')"
-          # The same shape as MARKER in scripts/lib/reviewVerdict.mjs: a line review-status.mjs
-          # would read as a verdict. A looser match could skip a head the gate reads as not-run.
-          if grep -Eq "<!--[[:space:]]*claude-review[[:space:]]+head=${HEAD}[[:space:]]+findings=[0-9]+([[:space:]]+blocking=[0-9]+)?[[:space:]]*-->" <<<"$bodies"; then
-            echo "skip=true" >> "$GITHUB_OUTPUT"
-            echo "head ${HEAD} already has a review verdict: skipping this duplicate request"
-          else
+          if [[ "${FORCE:-false}" == true ]]; then
             echo "skip=false" >> "$GITHUB_OUTPUT"
+            echo "forced: reviewing ${HEAD} again"
+            exit 0
+          fi
+          encoded="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/issues/${NUMBER}/comments" \
+            --jq '.[] | select(.user.login == "github-actions[bot]") | .body | @base64')"
+          skip=false
+          while IFS= read -r one; do
+            [[ -n "$one" ]] || continue
+            marker="$(base64 --decode <<<"$one" | grep -Eo '<!--[[:space:]]*claude-review[[:space:]]+head=[0-9a-f]{40}[[:space:]]+findings=[0-9]+([[:space:]]+blocking=[0-9]+)?[[:space:]]*-->' | sed -n 1p || true)"
+            [[ -n "$marker" ]] || continue
+            if [[ "$(sed -E 's/.*head=([0-9a-f]{40}).*/\1/' <<<"$marker")" == "$HEAD" ]]; then skip=true; fi
+          done <<<"$encoded"
+          echo "skip=${skip}" >> "$GITHUB_OUTPUT"
+          if [[ "$skip" == true ]]; then
+            echo "head ${HEAD} already has a review verdict: skipping this duplicate request"
           fi
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7

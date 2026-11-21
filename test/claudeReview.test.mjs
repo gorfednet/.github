@@ -228,9 +228,10 @@ describe('one finished review per head', () => {
     const body = step(workflow, 'Skip a head that already has a verdict')
     assert.ok(workflow.indexOf('- name: Resolve the pull request head') < workflow.indexOf('- name: Skip a head that already has a verdict'))
     assert.match(body, /github-actions\[bot\]/)
-    assert.match(body, /claude-review\[\[:space:\]\]\+head=\$\{HEAD\}/)
-    assert.match(body, /skip=true/)
-    assert.match(body, /skip=false/)
+    assert.match(body, /claude-review\[\[:space:\]\]\+head=\[0-9a-f\]\{40\}/)
+    assert.match(body, /== "\$HEAD"/)
+    assert.match(body, /skip=\$\{skip\}/)
+    assert.match(body, /FORCE: \$\{\{ needs\.trigger\.outputs\.force \}\}/)
   })
 
   describe('the step run against a stub gh', () => {
@@ -242,7 +243,7 @@ describe('one finished review per head', () => {
     const bot = (text) => ({ login: 'github-actions[bot]', body: text })
     const line = (head, tail = 'findings=0 blocking=0 -->') => `Reviewed.\n<!-- claude-review head=${head} ${tail}`
     /** Runs the step with `pages` of comments (the stub prints each page's jq result) and returns skip. */
-    function skip(pages, head = HEAD) {
+    function skip(pages, head = HEAD, force = '') {
       const dir = mkdtempSync(join(tmpdir(), 'dup-'))
       try {
         // The stub hands back the raw comments and runs the step's own --jq filter through real jq,
@@ -256,7 +257,7 @@ describe('one finished review per head', () => {
         writeFileSync(join(dir, 'step.sh'), script)
         const out = join(dir, 'out')
         writeFileSync(out, '')
-        execFileSync('bash', [join(dir, 'step.sh')], { env: { PATH: `${dir}:${process.env.PATH}`, GITHUB_REPOSITORY: 'o/r', GITHUB_OUTPUT: out, NUMBER: '1', HEAD: head } })
+        execFileSync('bash', [join(dir, 'step.sh')], { env: { PATH: `${dir}:${process.env.PATH}`, GITHUB_REPOSITORY: 'o/r', GITHUB_OUTPUT: out, NUMBER: '1', HEAD: head, FORCE: force } })
         return /skip=(\w+)/.exec(readFileSync(out, 'utf8'))[1]
       } finally {
         rmSync(dir, { recursive: true, force: true })
@@ -272,6 +273,16 @@ describe('one finished review per head', () => {
       assert.equal(skip([[bot(line(HEAD, 'findings=N blocking=M -->'))]]), 'false')
       assert.equal(skip([[bot(line(HEAD, 'findings=2, blocking=1 -->'))]]), 'false')
       assert.equal(skip([[bot(`<!-- claude-review head=${HEAD} findings=2`)]]), 'false')
+    })
+    it('reads only the first marker in a comment, as the parser does', () => {
+      const two = (first, second) => bot(`${line(first)}\nEarlier review quoted:\n${line(second)}`)
+      assert.equal(skip([[two(OTHER, HEAD)]]), 'false')
+      assert.equal(skip([[two(HEAD, OTHER)]]), 'true')
+    })
+    it('`claude review force` reviews a head that already has a verdict; plain does not', () => {
+      assert.equal(skip([[bot(line(HEAD))]], HEAD, 'true'), 'false')
+      assert.equal(skip([[bot(line(HEAD))]], HEAD, 'false'), 'true')
+      assert.equal(skip([[bot(line(HEAD))]], HEAD, ''), 'true')
     })
     it('finds a verdict that sits after a large comment', () => {
       assert.equal(skip([[bot('x'.repeat(200000)), bot(line(HEAD))]]), 'true')
@@ -425,8 +436,10 @@ describe('the review trigger', () => {
     const out = join(dir, 'out')
     writeFileSync(out, '')
     execFileSync('bash', ['-c', script], { env: { PATH: process.env.PATH, EVENT: event, BODY: body, GITHUB_OUTPUT: out } })
-    const go = /go=(\w+)/.exec(readFileSync(out, 'utf8'))?.[1]
+    const text = readFileSync(out, 'utf8')
+    const go = /go=(\w+)/.exec(text)?.[1]
     rmSync(dir, { recursive: true, force: true })
+    decide.force = /force=(\w+)/.exec(text)?.[1]
     return go
   }
 
@@ -435,6 +448,18 @@ describe('the review trigger', () => {
     assert.equal(decide('issue_comment', 'claude review\nThe push only fixed lint.'), 'true')
     assert.equal(decide('issue_comment', 'Merged main after #12; a clean merge.\nclaude review'), 'true')
     assert.equal(decide('issue_comment', 'One.\r\n  Claude Review  \r\nTwo.'), 'true')
+  })
+
+  it('reads `claude review force` as a forced request and plain `claude review` as not forced', () => {
+    assert.equal(decide('issue_comment', 'claude review force'), 'true')
+    assert.equal(decide.force, 'true')
+    assert.equal(decide('issue_comment', 'Retargeted.\n  Claude Review Force  '), 'true')
+    assert.equal(decide.force, 'true')
+    assert.equal(decide('issue_comment', 'claude review'), 'true')
+    assert.equal(decide.force, 'false')
+    assert.equal(decide('issue_comment', 'please claude review force this'), 'false')
+    assert.equal(decide('pull_request'), 'true')
+    assert.equal(decide.force, 'false')
   })
 
   it('does not fire on the phrase inside prose, a longer word, or a code-quoted mention', () => {
