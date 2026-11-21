@@ -1035,11 +1035,19 @@
     },
     {
       "id": "privacy-guard-site-line-clears-its-own-domain",
-      "guards": "The line that adds `site <domain>` is not read for its own domain, so a repository with no allowlist can add its first one. Without it the first line is refused and there is no way in.",
+      "guards": "A single new `site <domain>` line the range adds counts for that range, so a repository with no allowlist can add its first line and link the site together. Without it the first line is refused and there is no way in.",
       "command": "node --test --test-name-pattern='lets a repository add its first site line' test/privacyGuard.test.mjs",
       "file": "scripts/privacy-guard.mjs",
-      "find": "hit.value.toLowerCase() === isSiteLine(text)) continue",
-      "replace": "false) continue"
+      "find": "allow.bootSites = added.size === 1 ? [...added] : []",
+      "replace": "allow.bootSites = []"
+    },
+    {
+      "id": "privacy-guard-one-new-site-per-range",
+      "guards": "Only one new site line per range counts. Without the cap a push could list several private names as sites and publish them in one go.",
+      "command": "node --test --test-name-pattern='lets a repository add its first site line' test/privacyGuard.test.mjs",
+      "file": "scripts/privacy-guard.mjs",
+      "find": "added.size === 1 ?",
+      "replace": "added.size >= 1 ?"
     }
   ]
 }
