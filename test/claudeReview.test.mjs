@@ -421,13 +421,15 @@ describe('the review trigger', () => {
   })
 })
 
+const EXPR = "fromJSON(github.event.repository.visibility == 'public' && '\"ubuntu-latest\"' || inputs.runs-on == '' && vars.HEAVY_RUNS_ON == '' && 'no pool for this repository - set HEAVY_RUNS_ON' || github.event.repository.visibility != '' && (contains(inputs.runs-on != '' && inputs.runs-on || vars.HEAVY_RUNS_ON, 'ubuntu-') || contains(inputs.runs-on != '' && inputs.runs-on || vars.HEAVY_RUNS_ON, 'macos-') || contains(inputs.runs-on != '' && inputs.runs-on || vars.HEAVY_RUNS_ON, 'windows-')) && 'hosted runner refused for a private repository - use the pool label' || inputs.runs-on != '' && inputs.runs-on || vars.HEAVY_RUNS_ON)"
+
 describe('where the shared reviewer runs', () => {
   it('runs every job on the caller pool, with no hosted fallback and no startup failure when it is unset', () => {
     const jobs = workflow.slice(workflow.indexOf('\njobs:'))
     const runsOn = [...jobs.matchAll(/^\s{4}runs-on: (.+)$/gm)].map((match) => match[1])
     assert.ok(runsOn.length >= 2, 'found a runs-on line for both jobs')
     for (const value of runsOn) {
-      assert.equal(value, '${{ ' + "fromJSON(github.event.repository.visibility == 'public' && '\"ubuntu-latest\"' || inputs.runs-on != '' && inputs.runs-on || vars.HEAVY_RUNS_ON != '' && vars.HEAVY_RUNS_ON || '[\"self-hosted\",\"no-pool-label-set\"]')" + ' }}')
+      assert.equal(value, '${{ ' + EXPR + ' }}')
     }
     assert.doesNotMatch(workflow, /runs-on: ubuntu/)
     assert.doesNotMatch(workflow.replaceAll("github.event.repository.visibility == 'public' && '\"ubuntu-latest\"'", ''), /"ubuntu-latest"/, 'a hosted value only for a public caller')

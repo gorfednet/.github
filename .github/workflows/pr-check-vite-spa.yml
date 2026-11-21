@@ -11,7 +11,7 @@ on:
           GitHub-hosted, which is free (owner, 2026-11-20: free runners only), whatever this input
           or the variable say: the pool serves no public repository. A scheduled run's event carries no
           repository, so that rule can't see one: a public caller on a schedule passes a hosted runs-on
-          itself. With neither set, a private one asks for a label no runner carries and waits, spending no paid minutes.
+          itself. A private caller with neither set, or with a hosted name, fails at once with a message that names the fix; no job queues.
         required: false
         type: string
         default: ""
@@ -215,7 +215,7 @@ on:
         default: ""
 jobs:
   check:
-    runs-on: ${{ fromJSON(github.event.repository.visibility == 'public' && '"ubuntu-latest"' || inputs.runs-on != '' && inputs.runs-on || vars.HEAVY_RUNS_ON != '' && vars.HEAVY_RUNS_ON || '["self-hosted","no-pool-label-set"]') }}
+    runs-on: ${{ fromJSON(github.event.repository.visibility == 'public' && '"ubuntu-latest"' || inputs.runs-on == '' && vars.HEAVY_RUNS_ON == '' && 'no pool for this repository - set HEAVY_RUNS_ON' || github.event.repository.visibility != '' && (contains(inputs.runs-on != '' && inputs.runs-on || vars.HEAVY_RUNS_ON, 'ubuntu-') || contains(inputs.runs-on != '' && inputs.runs-on || vars.HEAVY_RUNS_ON, 'macos-') || contains(inputs.runs-on != '' && inputs.runs-on || vars.HEAVY_RUNS_ON, 'windows-')) && 'hosted runner refused for a private repository - use the pool label' || inputs.runs-on != '' && inputs.runs-on || vars.HEAVY_RUNS_ON) }}
     timeout-minutes: ${{ inputs.timeout-minutes }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7

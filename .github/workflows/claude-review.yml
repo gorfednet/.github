@@ -25,8 +25,10 @@
 # runners entirely, only rely on local infra") replaces the decision of 2026-10-19 that kept
 # secret-holding jobs hosted. A public caller always runs GitHub-hosted, which is free (owner,
 # 2026-11-20: free runners only), whatever the input or the variable say: the pool serves no public
-# repository. With neither set, a private caller waits for a label no
-# runner carries, so it gets no review until it has a served one. Paid minutes are never used.
+# repository. A private caller with neither
+# set, or with a hosted runner name (ubuntu-, macos-, windows-), fails at once with a message that
+# names the fix: a job that waited for a label no runner carries would sit queued for a day and
+# alert nobody. Paid minutes are never used.
 #
 # A pull request whose head is in another repository (a fork) is never reviewed here, on either
 # trigger: the review job holds the token and runs on the pool, and a fork's head must not reach it.
@@ -47,7 +49,7 @@ on:
           GitHub-hosted, which is free (owner, 2026-11-20: free runners only), whatever this input
           or the variable say: the pool serves no public repository. A scheduled run's event carries no
           repository, so that rule can't see one: a public caller on a schedule passes a hosted runs-on
-          itself. With neither set, a private one asks for a label no runner carries and waits, spending no paid minutes.
+          itself. A private caller with neither set, or with a hosted name, fails at once with a message that names the fix; no job queues.
         required: false
         type: string
         default: ""
@@ -83,7 +85,7 @@ jobs:
        ((github.event.comment.user.type != 'Bot' &&
          contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)) ||
         (vars.SHIP_BOT_LOGIN != '' && github.event.comment.user.login == vars.SHIP_BOT_LOGIN)))
-    runs-on: ${{ fromJSON(github.event.repository.visibility == 'public' && '"ubuntu-latest"' || inputs.runs-on != '' && inputs.runs-on || vars.HEAVY_RUNS_ON != '' && vars.HEAVY_RUNS_ON || '["self-hosted","no-pool-label-set"]') }}
+    runs-on: ${{ fromJSON(github.event.repository.visibility == 'public' && '"ubuntu-latest"' || inputs.runs-on == '' && vars.HEAVY_RUNS_ON == '' && 'no pool for this repository - set HEAVY_RUNS_ON' || github.event.repository.visibility != '' && (contains(inputs.runs-on != '' && inputs.runs-on || vars.HEAVY_RUNS_ON, 'ubuntu-') || contains(inputs.runs-on != '' && inputs.runs-on || vars.HEAVY_RUNS_ON, 'macos-') || contains(inputs.runs-on != '' && inputs.runs-on || vars.HEAVY_RUNS_ON, 'windows-')) && 'hosted runner refused for a private repository - use the pool label' || inputs.runs-on != '' && inputs.runs-on || vars.HEAVY_RUNS_ON) }}
     timeout-minutes: 2
     permissions:
       pull-requests: read
@@ -145,7 +147,7 @@ jobs:
   review:
     needs: trigger
     if: needs.trigger.outputs.go == 'true'
-    runs-on: ${{ fromJSON(github.event.repository.visibility == 'public' && '"ubuntu-latest"' || inputs.runs-on != '' && inputs.runs-on || vars.HEAVY_RUNS_ON != '' && vars.HEAVY_RUNS_ON || '["self-hosted","no-pool-label-set"]') }}
+    runs-on: ${{ fromJSON(github.event.repository.visibility == 'public' && '"ubuntu-latest"' || inputs.runs-on == '' && vars.HEAVY_RUNS_ON == '' && 'no pool for this repository - set HEAVY_RUNS_ON' || github.event.repository.visibility != '' && (contains(inputs.runs-on != '' && inputs.runs-on || vars.HEAVY_RUNS_ON, 'ubuntu-') || contains(inputs.runs-on != '' && inputs.runs-on || vars.HEAVY_RUNS_ON, 'macos-') || contains(inputs.runs-on != '' && inputs.runs-on || vars.HEAVY_RUNS_ON, 'windows-')) && 'hosted runner refused for a private repository - use the pool label' || inputs.runs-on != '' && inputs.runs-on || vars.HEAVY_RUNS_ON) }}
     timeout-minutes: 30
     permissions:
       contents: read

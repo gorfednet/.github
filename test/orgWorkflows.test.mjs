@@ -1008,6 +1008,9 @@ function hostedWithoutReason(text) {
   return bare
 }
 
+const EXPR = "fromJSON(github.event.repository.visibility == 'public' && '\"ubuntu-latest\"' || inputs.runs-on == '' && vars.HEAVY_RUNS_ON == '' && 'no pool for this repository - set HEAVY_RUNS_ON' || github.event.repository.visibility != '' && (contains(inputs.runs-on != '' && inputs.runs-on || vars.HEAVY_RUNS_ON, 'ubuntu-') || contains(inputs.runs-on != '' && inputs.runs-on || vars.HEAVY_RUNS_ON, 'macos-') || contains(inputs.runs-on != '' && inputs.runs-on || vars.HEAVY_RUNS_ON, 'windows-')) && 'hosted runner refused for a private repository - use the pool label' || inputs.runs-on != '' && inputs.runs-on || vars.HEAVY_RUNS_ON)"
+const RUNS_ON_EXPRESSION = '${{ ' + EXPR + ' }}'
+
 describe('reusable workflows have no hosted fallback (owner, 2026-11-20)', () => {
   const reusable = readdirSync(WORKFLOWS).filter((f) => /^(pr-check-.*|browser-compat|production-healthcheck)\.yml$/.test(f)) // claude-review.yml has its own test
   it('finds the reusable workflows', () => {
@@ -1025,18 +1028,31 @@ describe('reusable workflows have no hosted fallback (owner, 2026-11-20)', () =>
       // Every `runs-on:` line, not only those with an expression: a literal label would otherwise be skipped.
       const runsOn = [...text.matchAll(/^\s+runs-on: (.+)$/gm)].map((m) => m[1])
       assert.ok(runsOn.length >= 1, 'found a job runs-on line')
-      for (const value of runsOn) assert.equal(value, '${{ ' + "fromJSON(github.event.repository.visibility == 'public' && '\"ubuntu-latest\"' || inputs.runs-on != '' && inputs.runs-on || vars.HEAVY_RUNS_ON != '' && vars.HEAVY_RUNS_ON || '[\"self-hosted\",\"no-pool-label-set\"]')" + ' }}')
+      for (const value of runsOn) assert.equal(value, RUNS_ON_EXPRESSION)
     })
   }
 })
 
 describe('the reusable runs-on expression, evaluated', () => {
+  it('has no ": " in the plain YAML scalar, which would make the workflow file invalid', () => {
+    assert.doesNotMatch(RUNS_ON_EXPRESSION, /: /)
+  })
   // GitHub's && and || return their operands, as JavaScript's do, and a missing context is ''.
-  const where = (ctx) => {
+  const raw = (ctx) => {
     const text = readFileSync(join(WORKFLOWS, 'claude-review.yml'), 'utf8')
     const line = text.match(/^\s+runs-on: \$\{\{ fromJSON\((.+)\) \}\}$/m)[1]
-    const evaluate = new Function('github', 'inputs', 'vars', `return ${line.replaceAll('inputs.runs-on', "inputs['runs-on']")}`)
-    return JSON.parse(evaluate({ event: { repository: { visibility: ctx.visibility ?? '' } } }, { 'runs-on': ctx.input ?? '' }, { HEAVY_RUNS_ON: ctx.variable ?? '' }))
+    const evaluate = new Function('github', 'inputs', 'vars', 'contains', 'fromJSON', `return ${line.replaceAll('inputs.runs-on', "inputs['runs-on']")}`)
+    // Actions' contains() on strings ignores case.
+    const contains = (haystack, needle) => String(haystack).toLowerCase().includes(String(needle).toLowerCase())
+    return evaluate({ event: { repository: { visibility: ctx.visibility ?? '' } } }, { 'runs-on': ctx.input ?? '' }, { HEAVY_RUNS_ON: ctx.variable ?? '' }, contains, (x) => x)
+  }
+  const where = (ctx) => JSON.parse(raw(ctx))
+  // A string that is not JSON makes fromJSON fail the job at once, with the text in the error, so
+  // the job never queues for a runner that doesn't exist.
+  const fails = (ctx, message) => {
+    const value = raw(ctx)
+    assert.throws(() => JSON.parse(value), 'the runs-on value must not parse, so the job fails at startup')
+    assert.match(value, message)
   }
   it('sends a public caller hosted whatever the variable or the input say', () => {
     assert.equal(where({ visibility: 'public' }), 'ubuntu-latest')
@@ -1046,11 +1062,22 @@ describe('the reusable runs-on expression, evaluated', () => {
   it('sends a private caller to the input, else the variable, else a label nothing carries', () => {
     assert.deepEqual(where({ visibility: 'private', variable: '["self-hosted","linux","x-heavy"]' }), ['self-hosted', 'linux', 'x-heavy'])
     assert.deepEqual(where({ visibility: 'private', input: '["self-hosted","linux","y-heavy"]', variable: '["self-hosted","linux","x-heavy"]' }), ['self-hosted', 'linux', 'y-heavy'])
-    assert.deepEqual(where({ visibility: 'private' }), ['self-hosted', 'no-pool-label-set'])
+  })
+  it('fails a private caller with no pool label at once, naming the fix', () => {
+    fails({ visibility: 'private' }, /no pool for this repository.*HEAVY_RUNS_ON/)
+    fails({ visibility: 'internal' }, /no pool for this repository/)
+  })
+  it('refuses a hosted runner name for a private caller, from the variable or the input', () => {
+    for (const name of ['"ubuntu-latest"', '["ubuntu-24.04"]', '"macos-14"', '["windows-latest"]', '"Ubuntu-Latest"']) {
+      fails({ visibility: 'private', variable: name }, /hosted runner refused/)
+      fails({ visibility: 'private', input: name }, /hosted runner refused/)
+    }
+    assert.deepEqual(where({ visibility: 'private', input: '["self-hosted","linux","x-heavy"]', variable: '"ubuntu-latest"' }), ['self-hosted', 'linux', 'x-heavy'], 'only the value that is used counts')
   })
   it('lets a scheduled run, which has no repository, use the input or the variable', () => {
     assert.equal(where({ input: '"ubuntu-latest"' }), 'ubuntu-latest')
-    assert.deepEqual(where({}), ['self-hosted', 'no-pool-label-set'])
+    fails({}, /no pool for this repository/)
+    assert.deepEqual(where({ variable: '["self-hosted","linux","x-heavy"]' }), ['self-hosted', 'linux', 'x-heavy'])
   })
 })
 
