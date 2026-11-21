@@ -1800,7 +1800,7 @@ describe('privacy guard: a `site <domain>` line makes the name count as said', (
       sh(dir, 'add', '-A')
       sh(dir, 'commit', '-q', '-m', 'base')
       sh(dir, 'checkout', '-q', '-b', 'pr')
-      writeFileSync(join(dir, '.github', 'privacy-guard-allow.txt'), `site ${NAME}\nrepo ${NAME}\n`)
+      writeFileSync(join(dir, '.github', 'privacy-guard-allow.txt'), `site ${NAME}\nemail ${NAME}\n`)
       sh(dir, 'add', '-A')
       sh(dir, 'commit', '-q', '-m', 'second')
       const empty = join(dir, 'empty-allow.txt')
