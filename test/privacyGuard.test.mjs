@@ -1911,8 +1911,16 @@ describe('privacy guard: the public sites fleet.json lists count as said, with n
   })
 
   it('does not count a fleet site as a new allowlist site line', () => {
-    // The pull request adds the first allowlist line for the same site: nothing is added twice or counted new.
-    const r = run('ok\n', { extra: { '.github/privacy-guard-allow.txt': `site ${NAME}\n` } })
+    // The change lists the fleet site and one more. Fleet sites are already listed, so only the other one is new:
+    // one new site, which clears. Counted the other way round the two would be 2 new lines and clear nothing.
+    const OTHER = 'other-site.com'
+    const lines = `site ${NAME}\nsite ${OTHER}\n`
+    const r = run(`Visit https://${OTHER}/\n`, { names: `${NAME},${OTHER}`, extra: { '.github/privacy-guard-allow.txt': lines } })
     assert.equal(r.status, 0, r.out)
+    assert.doesNotMatch(r.out, /new site lines/)
+    // Without the fleet the same change lists 2 new sites and clears neither.
+    const without = run(`Visit https://${OTHER}/\n`, { names: `${NAME},${OTHER}`, fleetFile: null, extra: { '.github/privacy-guard-allow.txt': lines } })
+    assert.equal(without.status, 1, without.out)
+    assert.match(without.out, /2 new site lines/)
   })
 })

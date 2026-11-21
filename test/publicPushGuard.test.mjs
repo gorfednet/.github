@@ -576,7 +576,9 @@ describe('pre-push: the public sites in the installed fleet.json count as said i
   const SITE = 'example-site.org'
   const world3 = (fleet = { projects: [{ slug: `gorfednet/${SITE}` }, { slug: 'gorfednet/plain-tool' }] }) => {
     const w = world({ listOut: `gorfednet/ops\ngorfednet/${SITE}\ngorfednet/plain-tool\n` })
-    if (fleet !== null) writeFileSync(join(w.hooks, 'fleet.json'), typeof fleet === 'string' ? fleet : JSON.stringify(fleet))
+    // null: no installed copy at all (an older install). The installer put the real one there, so take it away.
+    if (fleet === null) rmSync(join(w.hooks, 'fleet.json'))
+    else writeFileSync(join(w.hooks, 'fleet.json'), typeof fleet === 'string' ? fleet : JSON.stringify(fleet))
     return w
   }
   const body = (text) => ({ 'README.md': text })
