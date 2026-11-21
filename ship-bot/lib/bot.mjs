@@ -15,7 +15,7 @@ import { HOLD_LABEL, READY_LABEL } from './config.mjs'
 import { diagnosisJob, jobsDir, stallJob, writeJobOnce } from './herdr-jobs.mjs'
 import { DeployLog, deployMerged, envSecrets, matchingFiles, pagesSecrets, preflight, realFs, selectSteps } from './deploy.mjs'
 import { controlPlaneFiles, draftClaim, draftIneligibleReason } from './drafts.mjs'
-import { MAX_RERUNS_PER_HEAD, TIMEOUT_ANNOTATION, evaluatePull, ineligibleReason, unmergeableReason } from './gates.mjs'
+import { CONFLICTED, MAX_RERUNS_PER_HEAD, TIMEOUT_ANNOTATION, evaluatePull, ineligibleReason, unmergeableReason } from './gates.mjs'
 import { RateLimitError, guardWrites } from './github.mjs'
 import { HOTFIX_LABEL, RELEASE_LABEL, planDeploy } from './deploy-plan.mjs'
 import { Redactor, publicNames } from './redact.mjs'
@@ -348,7 +348,9 @@ async function processRepo(ctx, repo) {
     const pr = await ctx.github.getPull(repo.slug, listed.number)
     const skip2 = ineligibleReason(pr, repo, defaultBranch, ctx.config.allowedAuthors) ?? unmergeableReason(pr)
     if (skip2) {
-      ctx.say('debug', `${repo.slug}#${pr.number}: ignored (${skip2})`)
+      // Only unmergeableReason answers CONFLICTED, and it is asked only once the full read is eligible: labelled, no hold, not a draft.
+      if (skip2 === CONFLICTED) sayConflicted(ctx, repo, pr)
+      else ctx.say('debug', `${repo.slug}#${pr.number}: ignored (${skip2})`)
       // GitHub's "not computed yet" after a push is transient: keep the label rather than flap it.
       if (!/not computed yet/.test(skip2)) await dropStaleNeedsFix(ctx, repo, pr, skip2)
       continue
@@ -357,6 +359,22 @@ async function processRepo(ctx, repo) {
     // One merge per repo per run: the next run re-reads everything fresh.
     if (acted) return
   }
+}
+
+/**
+ * A labelled pull request that conflicts with its base (plan row 1.59): someone decided it merges, and nothing
+ * will merge it until a person or a session merges the base in. The board is told on every pass, so the row
+ * stays a decision. The log gets one warning per head, then debug lines: a pass every 2 minutes would
+ * otherwise write 720 a day. A dry run or a repository that is not live keeps no memory, so it only tells the board.
+ */
+function sayConflicted(ctx, repo, pr) {
+  const text = `${repo.slug}#${pr.number} (${short(pr.head.sha)}): not merging: labelled ${READY_LABEL} but it conflicts with its base. Merge the base in and push; a conflict resolution that changes code needs a new review`
+  ctx.board.conflicted(repo.slug, pr.number)
+  if (ctx.dry) return ctx.say('debug', text)
+  const nowIso = ctx.clock.now().toISOString()
+  const headState = ctx.state.head(repo.slug, pr.number, pr.head.sha, nowIso)
+  ctx.say(headState.conflictSaidAt ? 'debug' : 'warn', text)
+  headState.conflictSaidAt ??= nowIso
 }
 
 /**

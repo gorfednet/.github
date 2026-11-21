@@ -40,9 +40,10 @@ export function ineligibleReason(pr, repo, defaultBranch, allowedAuthors) {
 }
 
 /** After GET /pulls/N: GitHub must have computed mergeability and found no conflict. */
+export const CONFLICTED = 'conflicts with its base'
 export function unmergeableReason(full) {
   if (full.mergeable === true && full.mergeable_state !== 'dirty') return null
-  if (full.mergeable === false || full.mergeable_state === 'dirty') return 'conflicts with its base'
+  if (full.mergeable === false || full.mergeable_state === 'dirty') return CONFLICTED
   return 'mergeability not computed yet'
 }
 

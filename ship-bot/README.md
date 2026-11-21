@@ -588,7 +588,8 @@ dispatch workflows. The bot's client has one Actions write, the rerun, and
 - **Every open pull request it saw:** `~/.ship-bot/board.json` (plan row 1.55).
   A live or observing pass over every repo replaces it at the end. A hand dry
   run and a `--repo` pass leave it alone. `ship-bot.mjs --board` prints the rows
-  that need a decision, longest-standing first, in at most 40 lines.
+  that need a decision, in at most 40 lines: labelled but conflicted first,
+  then longest-standing first.
 
 ### The board
 
@@ -610,6 +611,13 @@ anyway, and its `reason` is the pass's own log lines for that pull request.
   one when that line says merge, ship-bot or Fable, names Desk or a person,
   addresses anyone but the session, or is a label, ready or approval step. Nor is a draft with no
   unchecked line. `--board` gives these one count line, not rows.
+- **Labelled but conflicted (plan row 1.59).** A pull request that carries
+  `ready-to-merge` and conflicts with its base gets `conflicted: true` and is
+  a `needs-decision` row on every pass. `--board` counts these in its first
+  line, lists them before every other row and marks each `conflicted`. The
+  log gets one warning per head, `labelled ready-to-merge but it conflicts
+  with its base`. A conflicted draft, an unlabelled one, a held one and one
+  whose mergeability GitHub hasn't computed yet are not marked.
 - **Stalled rows join the list.** `--board` also lists a row that has been
   `waiting` for over 6 hours and an `in-progress` draft not updated for over
   3 days, each marked `stalled`. It judges that when it prints.
