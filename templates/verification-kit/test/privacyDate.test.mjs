@@ -223,16 +223,24 @@ describe('check-privacy-date', () => {
     assert.equal(r.status, 0, r.stderr)
   })
 
-  it('fails closed when the base copy cannot be read by the new region or the old entry differs', () => {
-    const dir = repo({ base: pageHtml(), change: undefined })
-    const article = pageHtml().replace('<main', '<article').replace('</main>', '</article>')
-    writeFileSync(join(dir, 'privacy.html'), article)
-    writeFileSync(join(dir, 'privacy.config.json'), JSON.stringify({ pages: [{ ...CONFIG.pages[0], region: ['<article', '</article>'] }] }))
+  it('fails when the PR edits the policy and widens exclude to hide the edit', () => {
+    const dir = repo({ base: pageHtml(), change: pageHtml({ body: sentences + ' We now also keep logs.' }) })
+    writeFileSync(join(dir, 'privacy.config.json'), JSON.stringify({ pages: [{ ...CONFIG.pages[0], exclude: ['We now also keep logs\\.'] }] }))
     git(dir, ['add', '-A'])
-    git(dir, ['commit', '-qm', 'article'], { GIT_AUTHOR_DATE: '2026-11-20T12:00:00-05:00' })
+    git(dir, ['commit', '-qm', 'hide'], { GIT_AUTHOR_DATE: '2026-11-20T12:00:00-05:00' })
     const r = run(dir)
     assert.equal(r.status, 1)
-    assert.match(r.stderr, /cannot be read with this config/)
+    assert.match(r.stderr, /changes the config's region, exclude or datePattern/)
+  })
+
+  it('fails when the PR drops a guarded page from the config', () => {
+    const dir = repo({ base: pageHtml(), change: undefined })
+    writeFileSync(join(dir, 'privacy.config.json'), JSON.stringify({ pages: [{ ...CONFIG.pages[0], name: 'other' }] }))
+    git(dir, ['add', '-A'])
+    git(dir, ['commit', '-qm', 'drop'], { GIT_AUTHOR_DATE: '2026-11-20T12:00:00-05:00' })
+    const r = run(dir)
+    assert.equal(r.status, 1)
+    assert.match(r.stderr, /in the base config but not in this PR's config/)
   })
 
   it('fails closed on an abbreviated shown date it cannot match, and reads a matching one', () => {

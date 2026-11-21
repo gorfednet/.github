@@ -211,42 +211,35 @@ function dayIn(zone, instant) {
 
 
 /** A page's policy and date at the merge base, or null only when the page did not exist there. */
-function readBase(page, dateFile, mergeBase, head, cwd, configRel) {
-  const attempt = (pg, file, dFile) => {
+function readBase(page, dateFile, mergeBase, cwd, baseEntry) {
+  const same = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null)
+  // The scope of what counts as policy text is part of the contract. A PR that
+  // widens an exclude or narrows a region could hide its own edit, so the scope
+  // may not change in the PR that changes the page: land it on its own.
+  if (baseEntry && !(same(baseEntry.region, page.region) && same(baseEntry.exclude, page.exclude) && same(baseEntry.datePattern, page.datePattern))) {
+    bail(`page "${page.name}": this PR changes the config's region, exclude or datePattern. What counts as policy text may not change in a PR that could use it to hide an edit. Land the config change on its own, with the page untouched.`)
+  }
+  const attempt = (file, dFile) => {
     const source = showAt(mergeBase, file, cwd)
     if (source === null) return undefined
     const dateSource = dFile === file ? source : showAt(mergeBase, dFile, cwd)
     if (dateSource === null) return undefined
     try {
-      return readPolicy({ ...pg, file }, source, dateSource)
+      return readPolicy({ ...page, file }, source, dateSource)
     } catch (cause) {
       if (cause instanceof PrivacyDateError) return undefined
       throw cause
     }
   }
-  let baseHadConfigEntry = false
-  const direct = attempt(page, page.file, dateFile)
+  const direct = attempt(page.file, dateFile)
   if (direct) return direct
-  if (configRel) {
-    const baseConfigText = showAt(mergeBase, configRel, cwd)
-    if (baseConfigText !== null) {
-      try {
-        const old = JSON.parse(baseConfigText).pages?.find((p) => p.name === page.name)
-        const same = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null)
-        // Only a moved file may be read with the old entry: a changed region, exclude or
-        // date pattern would make the two policy strings differ for reasons that are not words.
-        if (old && same(old.region, page.region) && same(old.exclude, page.exclude) && same(old.datePattern, page.datePattern)) {
-          baseHadConfigEntry = true
-          const viaOld = attempt(old, old.file, old.dateFile ?? old.file)
-          if (viaOld) return viaOld
-        }
-      } catch {
-        /* an unreadable base config falls through to the error path */
-      }
-    }
+  // Same scope, different file: the page moved. Read it where it used to be.
+  if (baseEntry) {
+    const viaOld = attempt(baseEntry.file, baseEntry.dateFile ?? baseEntry.file)
+    if (viaOld) return viaOld
+    return bail(`page "${page.name}": the copy at the merge base cannot be read with this config, so there is nothing to compare. Land the config change in its own PR.`)
   }
-  if (showAt(mergeBase, page.file, cwd) === null && !baseHadConfigEntry) return null
-  return bail(`page "${page.name}": the copy at the merge base cannot be read with this config, or the base's own config (when only the file moved), so there is nothing to compare. Land the config or region change in its own PR.`)
+  return null
 }
 
 export function runCheck({ config, base, head, today, tz, cwd, configRel = null }) {
@@ -267,6 +260,23 @@ export function runCheck({ config, base, head, today, tz, cwd, configRel = null 
     return out
   }
 
+  // A page the base config guarded cannot be dropped by this PR's config.
+  let baseConfig = null
+  if (configRel) {
+    const text = showAt(mergeBase, configRel, cwd)
+    if (text !== null) {
+      try {
+        baseConfig = JSON.parse(text)
+      } catch {
+        baseConfig = null
+      }
+    }
+  }
+  for (const old of baseConfig?.pages ?? []) {
+    if (!config.pages.some((p) => p.name === old.name)) {
+      bail(`page "${old.name}" is in the base config but not in this PR's config. Removing a guarded page needs its own PR.`)
+    }
+  }
   const problems = []
   const allDays = []
   const seen = []
@@ -289,7 +299,8 @@ export function runCheck({ config, base, head, today, tz, cwd, configRel = null 
     // The base copy is read with this config; failing that with the base's own
     // config (a PR that edits the region or moves the page). A base that cannot be read is an
     // error, never "everything changed", which would demand a false date.
-    const before = readBase(page, dateFile, mergeBase, head, cwd, configRel)
+    const baseEntry = baseConfig?.pages?.find((p) => p.name === page.name) ?? null
+    const before = readBase(page, dateFile, mergeBase, cwd, baseEntry)
     const prDates = daysFor([page.file, dateFile])
     allDays.push(...prDates)
     problems.push(...judge(page.name, before, after, prDates))

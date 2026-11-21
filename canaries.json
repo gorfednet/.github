@@ -1088,6 +1088,14 @@
       "file": "templates/verification-kit/bin/check-privacy-date.mjs",
       "find": "after.date < before.date",
       "replace": "after.date < \"0000\""
+    },
+    {
+      "id": "privacy-date-scope-change-refused",
+      "guards": "A PR may not change what counts as policy text (region, exclude, datePattern) in the same change as the page. Without it a widened exclude hides the edit and the date stays stale.",
+      "command": "node --test --test-name-pattern='widens exclude to hide the edit' templates/verification-kit/test/privacyDate.test.mjs",
+      "file": "templates/verification-kit/bin/check-privacy-date.mjs",
+      "find": "if (baseEntry && !(same(baseEntry.region",
+      "replace": "if (false && !(same(baseEntry.region"
     }
   ]
 }
