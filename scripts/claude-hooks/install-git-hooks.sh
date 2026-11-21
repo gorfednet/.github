@@ -28,10 +28,12 @@ NODE_BIN="$(resolve_node)" || { echo "install-git-hooks.sh: no usable Node. Noth
 for f in scripts/claude-hooks/public-push-guard.mjs scripts/privacy-guard.mjs; do
   git -C "$src" show "$rev:$f" > "$tmp/$(basename "$f")"
 done
+# The fleet list: its public sites count as said in every repository the hook guards.
+git -C "$src" show "$rev:fleet.json" > "$tmp/fleet.json"
 git -C "$src" show "$rev:scripts/claude-hooks/git-hooks/hook" > "$tmp/hook"
 chmod +x "$tmp/hook"
 printf '%s\n' "$NODE_BIN" > "$tmp/node-path"
-for f in public-push-guard.mjs privacy-guard.mjs hook node-path; do
+for f in public-push-guard.mjs privacy-guard.mjs fleet.json hook node-path; do
   mv -f "$tmp/$f" "$dest/$f"
 done
 # Every client and receive-side hook name is linked: a global core.hooksPath hides every repository's .git/hooks, so a

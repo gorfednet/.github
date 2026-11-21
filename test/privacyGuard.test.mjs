@@ -17,6 +17,7 @@ import { fileURLToPath } from 'node:url'
 import {
   checkCounts,
   parseAddedLines,
+  fleetSites,
   parseAllowlist,
   parseNewFiles,
   parsePrivateRepos,
@@ -62,6 +63,7 @@ function guard({
   mergeFiles = {},
   steps = [],
   head = 'pr',
+  args = [],
 } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'privacy-guard-'))
   try {
@@ -102,7 +104,7 @@ function guard({
       sh(dir, 'add', '-A')
       sh(dir, 'commit', '-q', '-m', mergeMessage)
     }
-    const r = spawnSync('node', [GUARD, '--base', 'main', '--head', head, '--dir', dir], {
+    const r = spawnSync('node', [GUARD, '--base', 'main', '--head', head, '--dir', dir, ...args], {
       encoding: 'utf8',
       env: { PATH: process.env.PATH, HOME: process.env.HOME, PRIVATE_REPOS: 'secret-repo,other-one', ...env },
     })
@@ -1821,5 +1823,86 @@ describe('privacy guard: a `site <domain>` line makes the name count as said', (
       assert.equal(r.status, 1, `${v}: ${r.out}`)
       assert.throws(() => parseAllowlist(`site ${v}\n`), /allowlist line 1/)
     }
+  })
+})
+
+describe('privacy guard: the public sites fleet.json lists count as said, with no allowlist line', () => {
+  // A private repository named for a public site that the fleet lists. The repository has no
+  // `site` line of its own: the base's fleet.json is the plan of record.
+  const NAME = 'example-site.org'
+  const ORG = 'gorfednet' + '/'
+  const fleet = (...slugs) => JSON.stringify({ projects: slugs.map((slug) => (typeof slug === 'string' ? { slug } : slug)) })
+  const FLEET = fleet(`${ORG}${NAME}`, `${ORG}.github`, `${ORG}plain-tool`)
+  const run = (body, { path = 'README.md', message = 'pr', base = FLEET, names = NAME, extra = {}, args = [] } = {}) =>
+    guard({ before: base === null ? {} : { 'fleet.json': base }, after: { [path]: body, ...extra }, message, args, env: { PRIVATE_REPOS: names } })
+  const fails = (body, opts) => {
+    const r = run(body, opts)
+    assert.equal(r.status, 1, `expected a refusal for ${JSON.stringify(body)}: ${r.out}`)
+    assert.match(r.out, /\[private-repo\]/)
+  }
+  const passes = (body, opts) => {
+    const r = run(body, opts)
+    assert.equal(r.status, 0, `expected a pass for ${JSON.stringify(body)}: ${r.out}`)
+  }
+
+  it('reads the site domains out of the fleet and nothing else', () => {
+    assert.deepEqual(fleetSites(fleet(`${ORG}Example-Site.org`, `${ORG}.github`, `${ORG}plain-tool`, `${ORG}notes.md`, `${ORG}x.github`)), ['example-site.org'])
+    assert.deepEqual(fleetSites(fleet({ slug: `${ORG}${NAME}`, publicSite: false }, `${ORG}other-site.com`)), ['other-site.com'], 'a project can opt out')
+    assert.deepEqual(fleetSites(fleet({ note: 'no slug' })), [])
+    for (const bad of ['', 'not json', '{}', '{"projects":{}}']) assert.throws(() => fleetSites(bad), /fleet\.json/, bad)
+  })
+
+  it('lets the site through in a README link and a commit message, and refuses it when the base has no fleet.json', () => {
+    passes(`Visit [the site](https://${NAME}/about)\n`)
+    passes(`${NAME} is live.\n`)
+    passes('ok\n', { path: 'a.md', message: `Link ${NAME} from the README` })
+    // The deliberate break: take the fleet away and the same text is refused.
+    fails(`Visit https://${NAME}/\n`, { base: null })
+    fails(`Visit https://${NAME}/\n`, { base: fleet(`${ORG}other-site.org`) })
+  })
+
+  it('reads the fleet from the base, never from the change itself', () => {
+    fails(`Visit https://${NAME}/\n`, { base: null, extra: { 'fleet.json': FLEET } })
+    fails(`Visit https://${NAME}/\n`, { base: fleet(`${ORG}other-site.org`), extra: { 'fleet.json': FLEET } })
+  })
+
+  it('refuses the near-miss names: a different TLD, a longer name, a prefixed name', () => {
+    fails('Visit example-site.net now\n', { names: 'example-site.net' })
+    fails('Visit example-sites.org now\n', { names: 'example-sites.org' })
+    fails('Visit my-example-site.org now\n', { names: 'my-example-site.org' })
+    fails('Visit secret-repo now\n', { names: 'secret-repo' })
+  })
+
+  it('still refuses private or visibility beside it, and the repository form', () => {
+    fails(`Private project: https://${NAME}/\n`)
+    fails(`The private one: ${NAME}\n`)
+    fails(`| ${NAME} | private |\n`)
+    fails(`visibility of ${NAME}\n`)
+    fails(`see ${ORG}${NAME}\n`)
+    fails(`https://github.com/${ORG}${NAME}\n`)
+    fails(`git clone git@github.com:${ORG}${NAME}.git\n`)
+  })
+
+  it('stops, rather than reading as no sites, when the fleet is malformed or the named file is missing', () => {
+    const bad = run('ok\n', { base: 'not json' })
+    assert.equal(bad.status, 2, bad.out)
+    assert.match(bad.out, /fleet\.json is not valid JSON/)
+    const missing = run('ok\n', { args: ['--fleet', join(tmpdir(), 'no-such-fleet-file.json')] })
+    assert.equal(missing.status, 2, missing.out)
+    // A fleet file the caller names replaces the base's copy (the hook's installed one).
+    const dir = mkdtempSync(join(tmpdir(), 'fleet-arg-'))
+    try {
+      writeFileSync(join(dir, 'fleet.json'), FLEET)
+      const named = run(`Visit https://${NAME}/\n`, { base: null, args: ['--fleet', join(dir, 'fleet.json')] })
+      assert.equal(named.status, 0, named.out)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('does not count a fleet site as a new allowlist site line', () => {
+    // The pull request adds the first allowlist line for the same site: nothing is added twice or counted new.
+    const r = run('ok\n', { extra: { '.github/privacy-guard-allow.txt': `site ${NAME}\n` } })
+    assert.equal(r.status, 0, r.out)
   })
 })
