@@ -595,10 +595,13 @@ describe('pre-push: the public sites in the installed fleet.json count as said i
       assert.ok(refused(push(repo(world3(), { outgoing: body(text) }), '-u', 'origin', 'feature')), text)
     }
     // A private repository whose name only resembles a fleet site, and a fleet tool with no domain, stay watched.
-    const w = world({ listOut: 'gorfednet/ops\ngorfednet/example-sites.org\ngorfednet/plain-tool\n' })
-    writeFileSync(join(w.hooks, 'fleet.json'), JSON.stringify({ projects: [{ slug: `gorfednet/${SITE}` }, { slug: 'gorfednet/plain-tool' }] }))
+    const near = () => {
+      const w = world({ listOut: 'gorfednet/ops\ngorfednet/example-sites.org\ngorfednet/plain-tool\n' })
+      writeFileSync(join(w.hooks, 'fleet.json'), JSON.stringify({ projects: [{ slug: `gorfednet/${SITE}` }, { slug: 'gorfednet/plain-tool' }] }))
+      return w
+    }
     for (const text of ['Visit example-sites.org now\n', 'Visit plain-tool now\n']) {
-      assert.ok(refused(push(repo(w, { outgoing: body(text) }), '-u', 'origin', 'feature')), text)
+      assert.ok(refused(push(repo(near(), { outgoing: body(text) }), '-u', 'origin', 'feature')), text)
     }
   })
   it('refuses the push when the installed fleet.json is broken', () => {
