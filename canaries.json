@@ -1043,7 +1043,7 @@
     },
     {
       "id": "privacy-guard-one-new-site-per-range",
-      "guards": "Only one new site line per range counts. Without the cap a push could list several private names as sites and publish them in one go.",
+      "guards": "Only one new site line per range clears. Without the cap, a push could link or name more than one new site elsewhere in the range. The allowlist's own site lines still publish each name they list.",
       "command": "node --test --test-name-pattern='lets a repository add its first site line' test/privacyGuard.test.mjs",
       "file": "scripts/privacy-guard.mjs",
       "find": "added.size === 1 ?",
