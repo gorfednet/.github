@@ -5,7 +5,7 @@ Shared CI and tooling for the gorfednet sites.
 ## What's here
 
 - **Pull request checks**: reusable `pr-check-*` workflows in `.github/workflows/` for static sites, Vite apps, Flask apps and full-stack projects
-- **Claude review**: `claude-review.yml` reviews a pull request when it opens or leaves draft. A `claude review` comment runs it again. `scripts/review-status.mjs` reads its verdict for a merge gate.
+- **Claude review**: `claude-review.yml` reviews a pull request when it opens or leaves draft. A `claude review` comment runs it again on a new head; on a head that already has a verdict it skips, and `claude review force` reviews it again. `scripts/review-status.mjs` reads its verdict for a merge gate.
 - **Verification kit and rules**: `templates/verification-kit/` holds the checks. `docs/verification-rules.md` holds the rules they enforce.
 - **ship-bot**: `ship-bot/` merges pull requests that carry `ready-to-merge` once their checks pass
 - **Janitor**: `janitor/` closes out merged work each day

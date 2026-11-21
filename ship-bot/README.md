@@ -320,11 +320,12 @@ merge goes in a fresh pull request.
 Then it comments once, "Ship-bot: gates clean, marking ready and labelling;
 merges on the next pass", adds `ready-to-merge` and marks the pull request
 ready. The ordinary merge path takes it after that, re-reading every gate.
-Leaving draft fires `ready_for_review`, which starts a second Claude review of
-the same commit, so the bot holds that commit for `reviewGraceMinutes` (15 by
-default) and then waits for that review's check like any other; its verdict,
-if it finds something, keeps the pull request from merging until each thread
-is answered. A repository in observation (`live` false) logs `would mark ready
+Leaving draft fires `ready_for_review`. That run skips when the commit already
+has a verdict from its draft-time review (one review per head), so the verdict
+the bot waits on is the draft-time one. The bot still holds the commit for
+`reviewGraceMinutes` (15 by default) and then waits for the review check like
+any other; a verdict that finds something keeps the pull request from merging
+until each thread is answered. A repository in observation (`live` false) logs `would mark ready
 and add ready-to-merge` and does nothing.
 
 ### Control-plane drafts (plan row 1.59)
