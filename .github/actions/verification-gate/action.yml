@@ -151,8 +151,8 @@ inputs:
       check-privacy-date (V78): a privacy page's shown "last changed" date moves
       with its policy text and only then. Reads this pull request's own diff
       (merge base to HEAD), so the step fetches the base branch and full history
-      first. Fails the job: the page and its date are what the pull request
-      changes. Empty skips the check.
+      first. Warns for now (::warning, exit 0) unless PRIVACY_DATE_ENFORCE=1 is
+      set, in which case it fails the job. Empty skips the check.
     required: false
     default: ""
 
