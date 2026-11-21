@@ -219,8 +219,10 @@ jobs:
             echo "head ${HEAD} already has a review verdict: skipping this duplicate request"
             # A person who asked sees why nothing ran. Never on a pull_request event (leaving
             # draft), and never a marker or a line that is only the trigger phrase.
+            # --repo is required: this step runs before actions/checkout, so gh has no git
+            # repository to read (4thcltr.com run 44933695692, 21 Nov 2026).
             if [[ "$EVENT" == issue_comment ]]; then
-              gh pr comment "$NUMBER" --body "A review of \`${HEAD:0:9}\` already exists: ${verdict_url}. No new review ran. To review this head again, post the words claude review force on a line of their own, or push a new commit."
+              gh pr comment "$NUMBER" --repo "$GITHUB_REPOSITORY" --body "A review of \`${HEAD:0:9}\` already exists: ${verdict_url}. No new review ran. To review this head again, post the words claude review force on a line of their own, or push a new commit."
             fi
           fi
 
