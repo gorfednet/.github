@@ -1420,10 +1420,20 @@ async function tellNotLive(ctx, repo, pr, tag) {
   const entry = (told[pr.number] = { sha: pr.head.sha, at: before?.at ?? real.clock.now().toISOString(), delivered: false, tries: (before?.tries ?? 0) + 1 })
   real.state.save()
   if (!before) ctx.say('info', `${tag}: every gate passed, and this repository is not live: telling the owner once for this head`)
-  const text = `${repo.name} #${pr.number} is labelled ${READY_LABEL} and passed every gate, but ${repo.slug} is not live in ship-bot's config, so nothing merges it. It merges on the first pass after the repository is set live.`
+  const text = `${repo.name} #${pr.number} is labelled ${READY_LABEL} and passed every gate, but ${repo.slug} is not live in ship-bot's config, so nothing merges it. ${notLiveNext(repo)}`
   entry.delivered = await notify(real, text, true, { mac: !before })
   real.state.save()
   return Boolean(before)
+}
+
+/**
+ * What stands between a ready pull request in a not-live repository and its merge. A row with unconfirmed TODOs is
+ * refused by a live run (processRepo), so "set it live" alone would be a promise the bot does not keep.
+ */
+function notLiveNext(repo) {
+  const todos = repo.todo?.length ?? 0
+  if (todos > 0) return `Setting the repository live is not enough yet: its config row still has ${todos} unconfirmed TODO${todos === 1 ? '' : 's'}, and a live run refuses the repository until each is confirmed and removed.`
+  return 'It can merge once the repository is set live, if every gate still passes on that pass.'
 }
 
 /** Keep `notLiveTold` to the pull requests still open, and drop it once the repository is live. Observed and live passes only: a dry run saves nothing. */

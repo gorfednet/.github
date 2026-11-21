@@ -32,7 +32,7 @@ describe('a mergeable, labelled pull request in a repository that is not live', 
     const w = world()
     await w.run()
     assert.equal(w.mac().length, 1)
-    assert.deepEqual(w.posts, [{ url: 'https://ntfy.example.test/ops-report', body: `site #7 is labelled ready-to-merge and passed every gate, but ${SLUG} is not live in ship-bot's config, so nothing merges it. It merges on the first pass after the repository is set live.` }])
+    assert.deepEqual(w.posts, [{ url: 'https://ntfy.example.test/ops-report', body: `site #7 is labelled ready-to-merge and passed every gate, but ${SLUG} is not live in ship-bot's config, so nothing merges it. It can merge once the repository is set live, if every gate still passes on that pass.` }])
     assert.equal(w.lines('info', /OBSERVE \(repo not live\) .*#7 .*would merge \(/).length, 1)
     assert.deepEqual(w.told(), { 7: { sha: HEAD, at: '2026-10-09T12:00:00.000Z', delivered: true, tries: 1 } })
     assert.deepEqual(w.github.writes, [], 'an observed repository is never written to')
@@ -43,6 +43,18 @@ describe('a mergeable, labelled pull request in a repository that is not live', 
     assert.equal(w.posts.length, 1, 'one ntfy message')
     assert.equal(w.lines('info', /would merge/).length, 1, 'later passes say it at debug')
     assert.equal(w.lines('debug', /OBSERVE \(repo not live\) .*#7 .*would merge \(/).length, 3)
+  })
+
+  it('promises no merge on going live while the row has unconfirmed TODOs: a live run refuses such a repository', async () => {
+    const w = world({ repos: [repo({ todo: ['confirm the deploy command', 'confirm the expected checks'] })] })
+    await w.run()
+    assert.equal(w.posts.length, 1)
+    assert.match(w.posts[0].body, /so nothing merges it\. Setting the repository live is not enough yet: its config row still has 2 unconfirmed TODOs, and a live run refuses the repository until each is confirmed and removed\.$/)
+    assert.doesNotMatch(w.posts[0].body, /It can merge once|merges on the first pass/)
+    // Near miss: 1 TODO is singular, and a row with none keeps the plain sentence (asserted in the first test).
+    const one = world({ repos: [repo({ todo: ['confirm the deploy command'] })] })
+    await one.run()
+    assert.match(one.posts[0].body, /still has 1 unconfirmed TODO, and/)
   })
 
   it('a new head is told again, and a second ready pull request waits its turn behind the first', async () => {
