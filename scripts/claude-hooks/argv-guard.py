@@ -49,6 +49,9 @@ import sys
 
 DYN = "\x00"  # stands for text only the shell knows: $(...), `...`, ${...}
 MAX_DEPTH = 6
+# context-cap.py (plan row 1.61) loads this file for its parser and sets this to a list. parse() then
+# appends each output redirection target (`> file`, `>> file`, `&> file`) to it. None here: this hook reads none.
+REDIRECTS: list[str] | None = None
 
 _HEREDOC = re.compile(r"<<(-?)[ \t]*(?:'([^'\n]*)'|\"([^\"\n]*)\"|(\\?)([A-Za-z_][\w.-]*))")
 _ASSIGN = re.compile(r"^[A-Za-z_]\w*\+?=")
@@ -179,14 +182,18 @@ def parse(text: str, out: list, depth: int = 0) -> None:
     words: list[str] = []
     cur: list[str] | None = None
     skip_word = False  # the next word is a redirection target
+    writes = False  # that redirection writes a file
     pending: list[tuple[str, bool, bool, bool]] = []  # heredocs opened on this line
 
     def end_word() -> None:
-        nonlocal cur, skip_word
+        nonlocal cur, skip_word, writes
         if cur is None:
             return
         if skip_word:
             skip_word = False
+            if writes and REDIRECTS is not None:
+                REDIRECTS.append("".join(cur))
+            writes = False
         else:
             words.append("".join(cur))
         cur = None
@@ -309,6 +316,7 @@ def parse(text: str, out: list, depth: int = 0) -> None:
             if text.startswith("<<<", i):
                 i += 3
                 skip_word = True
+                writes = False
             elif text.startswith("<<", i) and _HEREDOC.match(text, i):
                 m = _HEREDOC.match(text, i)
                 first = words[0].rsplit("/", 1)[-1] if words else ""
@@ -318,8 +326,10 @@ def parse(text: str, out: list, depth: int = 0) -> None:
             elif text[i + 1 : i + 2] == "(":
                 i += 1  # <(cmd) or >(cmd): the `(` starts a command
             else:
+                op = i
                 while i < n and text[i] in "<>|":
                     i += 1
+                writes = ">" in text[op:i]
                 if i < n and text[i] == "&":
                     i += 1
                     m2 = re.compile(r"\d+|-").match(text, i)
