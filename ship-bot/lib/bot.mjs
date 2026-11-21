@@ -344,7 +344,9 @@ async function processRepo(ctx, repo) {
     }
     const skip = ineligibleReason(listed, repo, defaultBranch, ctx.config.allowedAuthors)
     if (skip) {
-      ctx.say('debug', `${repo.slug}#${listed.number}: ignored (${skip})`)
+      // A control-plane pull request the bot took out of draft for its review, still unlabelled: the board row says whose move it is.
+      const readied = skip === `no ${READY_LABEL} label` && ctx.state.data.prs[`${repo.slug}#${listed.number}`]?.readiedForReview
+      ctx.say('debug', `${repo.slug}#${listed.number}: ${readied ? `ignored (no ${READY_LABEL} label): the bot marked this control-plane pull request ready for its Claude review and adds no label. A person labels it after reading the diff and a clean review` : `ignored (${skip})`}`)
       await dropStaleNeedsFix(ctx, repo, listed, skip)
       continue
     }
@@ -477,6 +479,8 @@ async function processPull(ctx, repo, pr, defaultBranch) {
   let result = await evaluatePull(ctx, repo, pr, { headState, requireClean, controlPlane })
   // A merge never rests on a remembered gate answer: run every script again.
   if (result.ready && result.cached) result = await evaluatePull(ctx, repo, pr, { headState, fresh: true, requireClean, controlPlane })
+  // Only readyForReview asks for a result without the review gate. One here would be a bug: nothing merges on it.
+  if (result.reviewSkipped) throw new Error('a gate result without the review reached the merge path')
   ctx.board.gated(repo.slug, pr, result, headState)
   await syncNeedsFix(ctx, repo, pr, result)
   // A cancelled run that alone blocks this head is rerun once, and the pass says nothing else about it.
@@ -820,8 +824,7 @@ async function takeDraft(ctx, repo, listed, defaultBranch) {
   // moves the head, and processPull drops a bot label from a moved head.
   const touched = controlPlaneFiles(await ctx.github.listPullFiles(repo.slug, pr.number), repo.slug)
   if (touched.length > 0) {
-    ctx.say('info', `${tag}: draft left alone (${claim}): it changes control-plane paths (${listPaths(touched)}); a person labels it`)
-    await postOnce(ctx, repo, pr.number, sha, 'control-plane', controlPlaneComment(touched, 'mark this draft ready'))
+    await readyForReview(ctx, repo, pr, { tag, claim, touched })
     return
   }
   const headState = ctx.state.head(repo.slug, pr.number, sha, ctx.clock.now().toISOString())
@@ -874,6 +877,55 @@ async function takeDraft(ctx, repo, listed, defaultBranch) {
   headState.readiedAt = ctx.clock.now().toISOString()
   ctx.state.save()
   ctx.say('info', `${tag}: marked ready and labelled ${READY_LABEL}; the merge path takes it next pass`)
+}
+
+export const CONTROL_PLANE_READY_COMMENT = 'Ship-bot: checks green, marking ready so the Claude review of this commit starts. No label from the bot'
+
+/**
+ * A control-plane draft whose `## Next` says merge (plan row 1.59). The order for such a pull request is ready,
+ * then the review that leaving draft starts, then a label on a clean read of that review. The bot takes the first
+ * step and holds the second; the label stays a person's (plan row 1.12: a change to what merges unattended is
+ * read by someone before it merges). So this never adds `ready-to-merge`, never posts DRAFT_READY_COMMENT and
+ * never sets `botReadied`: the merge path's guards on a pull request the bot readied are for the other kind.
+ *
+ * It marks the draft ready once per pull request, when every gate but the review is clean on its head, and only
+ * in a repository with the Claude reviewer (without one there is no review to start). A draft that already
+ * carries `ready-to-merge` is left alone: that label came before the review, and readying it would let it merge.
+ * A draft the bot readied once and someone made a draft again is theirs.
+ */
+async function readyForReview(ctx, repo, pr, { tag, claim, touched }) {
+  const sha = pr.head.sha
+  const paths = listPaths(touched)
+  const prState = ctx.state.pr(repo.slug, pr.number)
+  const leave = (why, level = 'debug') => ctx.say(level, `${tag}: draft left alone (${claim}): it changes control-plane paths (${paths}); ${why}`)
+  if (!repo.claudeReview) {
+    leave('a person labels it', 'info')
+    await postOnce(ctx, repo, pr.number, sha, 'control-plane', controlPlaneComment(touched, 'mark this draft ready'))
+    return
+  }
+  if ((pr.labels ?? []).some((l) => l.name === READY_LABEL)) return leave(`it already carries ${READY_LABEL}, from before its review; a person marks it ready`, 'info')
+  if (prState.readiedForReview) return leave(`the bot marked it ready for review once (${prState.readiedForReview.at}) and it is a draft again; it is a person's now`)
+  if (!pr.node_id) return leave('GitHub gave no node id to mark it ready with', 'warn')
+  const headState = ctx.state.head(repo.slug, pr.number, sha, ctx.clock.now().toISOString())
+  const result = await evaluatePull(ctx, repo, pr, { headState, draft: true, skipReview: true })
+  ctx.board.gated(repo.slug, pr, { ...result, ready: false }, headState)
+  if (!result.ready) {
+    for (const block of result.blocks) ctx.say(block.kind === 'wait' ? 'debug' : 'info', `${tag}: not marking ready for review (${claim}): ${block.reason}`)
+    return
+  }
+  // Whatever happens next, this row is a person's decision: the bot adds no label here.
+  ctx.board.decide(repo.slug, pr.number)
+  if (ctx.dry) return ctx.say('info', `${tag}: would mark ready so its Claude review starts (${claim}); it changes control-plane paths (${paths}), so no label: a person labels it after reading the diff and a clean review`)
+  // The comment goes first, as in takeDraft: once the draft is ready this code never runs for it again, so a comment that failed after
+  // markReady would never be posted. It is once per head, so a markReady that fails and is retried does not repeat it.
+  await postOnce(ctx, repo, pr.number, sha, 'control-plane-ready', `${CONTROL_PLANE_READY_COMMENT}: this changes control-plane paths, which change what merges unattended (plan row 1.12):\n\n${touched.slice(0, 20).map((p) => `- \`${p}\``).join('\n')}${touched.length > 20 ? '\n- ...' : ''}\n\nA person adds \`${READY_LABEL}\` after reading the diff and a clean review of this commit. The bot then merges it like any labelled pull request.`)
+  await ctx.github.markReady(pr.node_id)
+  const at = ctx.clock.now().toISOString()
+  prState.readiedForReview = { sha, at }
+  // Should a person label it at once, the merge path still gives the ready-for-review review time to start.
+  headState.readiedAt = at
+  ctx.state.save()
+  ctx.say('info', `${tag}: checks green (${claim}): marked ready so the Claude review of this head starts. It changes control-plane paths (${paths}), so the bot adds no label: a person labels it after reading the diff and a clean review`)
 }
 
 /**

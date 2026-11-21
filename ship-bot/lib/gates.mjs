@@ -531,12 +531,16 @@ export async function evaluateReview(ctx, repo, pr, sha, { headSince, memo, draf
  * says so with `cached: true`; the caller re-runs fresh before acting on a
  * ready result.
  *
+ * `skipReview` leaves gate (d) out and marks the result `reviewSkipped: true`. It is only for marking a
+ * control-plane draft ready so that its review starts (bot.mjs readyForReview): such a result is never a reason
+ * to label or merge.
+ *
  * `checks` (passing, failing, pending or unread) and `review` (review-status's verdict, or null when no
  * gate got that far) say what was read on the way, for the board (lib/board.mjs). Nothing decides on them.
  *
  * @returns {Promise<{ready: boolean, blocks: object[], cached: boolean, checks: string, review: string|null}>}
  */
-export async function evaluatePull(ctx, repo, pr, { headState, fresh = false, draft = false, requireClean = false, controlPlane = null }) {
+export async function evaluatePull(ctx, repo, pr, { headState, fresh = false, draft = false, requireClean = false, controlPlane = null, skipReview = false }) {
   const sha = pr.head.sha
   const now = ctx.clock.now()
   const memo = { inputs: '', fresh, used: false }
@@ -639,6 +643,7 @@ export async function evaluatePull(ctx, repo, pr, { headState, fresh = false, dr
 
   // (d) the Claude reviewer's verdict on this head. A clean review that is
   // required cannot come from a repo with no reviewer: fail closed.
+  if (skipReview) return { ready: true, blocks: [], cached: memo.used, ...seen, reviewSkipped: true }
   if (requireClean && !repo.claudeReview) {
     return blocked([{ key: 'review-required', kind: 'fail', noStall: true, reason: 'The bot readied this pull request itself and the repo deploys, so it needs a clean Claude review, but this repo has no Claude reviewer configured. A person labels it.' }])
   }

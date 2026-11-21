@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { rmSync } from 'node:fs'
 import { describe, it } from 'node:test'
-import { DRAFT_READY_COMMENT } from '../lib/bot.mjs'
+import { CONTROL_PLANE_READY_COMMENT, DRAFT_READY_COMMENT } from '../lib/bot.mjs'
 import { controlPlaneFiles, draftClaim, firstNextItem, isMergeInstruction, uncheckedNextItems } from '../lib/drafts.mjs'
 import { FakeGitHub, HEAD, SLUG, makePr, makeRunner, repoEntry, scenario } from './fakes.mjs'
 
@@ -407,9 +407,10 @@ describe('plan row 1.12: control-plane paths', () => {
   })
 
   for (const file of ['.github/workflows/claude-review.yml', 'ship-bot/lib/drafts.mjs', 'scripts/gates/check-closing-keywords.mjs', 'scripts/review-status.mjs', 'REVIEW.md', 'janitor/prompt.md', 'capacity/starter.mjs']) {
-    it(`a draft that changes ${file} stays draft: no ready, no label, no gate run`, async () => {
+    it(`a draft that changes ${file} is never labelled by the bot: with no reviewer it stays draft, with one it is only marked ready`, async () => {
+      // No Claude reviewer on the repository: nothing to start, so the draft stays a draft (plan row 1.12, unchanged).
       const gh = new FakeGitHub({ pulls: [draft()], files: ['src/app.ts', file] })
-      const s = scenario({ repos: reviewed(), github: gh })
+      const s = scenario({ repos: [repoEntry({ mode: undefined, claudeReview: false })].map(({ envFiles, setup, deploy, deployOn, deployOnMergeReason, ...r }) => ({ ...r, mode: 'merge-only', reason: 'r' })), github: gh })
       await s.run()
       assert.equal(writes(gh, 'markReady').length + writes(gh, 'addLabels').length, 0)
       assert.equal(s.runner.ofKind('gate').length, 0)
@@ -419,6 +420,17 @@ describe('plan row 1.12: control-plane paths', () => {
       await s.run()
       assert.equal(gh.commentsPosted().length, 1, 'said once per head')
       assert.ok(s.logs.some((l) => new RegExp(`draft left alone \\(## Next says "merge"\\): it changes control-plane paths \\(${file.replace(/[.]/g, '\\.')}\\); a person labels it`).test(l)), s.logs.join('\n'))
+
+      // With the reviewer (plan row 1.59): marked ready so the review starts. Still no label, and no merge, however many passes.
+      const gh2 = new FakeGitHub({ pulls: [draft()], files: ['src/app.ts', file] })
+      const s2 = scenario({ repos: reviewed(), github: gh2 })
+      for (let pass = 0; pass < 3; pass += 1) {
+        await s2.run()
+        s2.clock.advance(s2.config.reviewGraceMinutes)
+      }
+      assert.equal(writes(gh2, 'markReady').length, 1)
+      assert.equal(writes(gh2, 'addLabels').length + writes(gh2, 'mergePull').length, 0)
+      assert.equal(readyComments(gh2).length, 0, 'never the comment that marks a pull request as readied and labelled by the bot')
     })
   }
 
@@ -427,20 +439,21 @@ describe('plan row 1.12: control-plane paths', () => {
   const dotRepo = () => [repoEntry({ claudeReview: true, slug: DOT, dir: 'dotgithub' })]
   const dotHead = (sha) => ({ sha, repo: { full_name: DOT } })
 
-  it('in gorfednet/.github a draft that changes docs/claude-home/rules/x.md stays draft; the same draft in another repo is readied', async () => {
+  it('in gorfednet/.github a draft that changes docs/claude-home/rules/x.md gets no label; the same draft in another repo is readied and labelled', async () => {
     const file = 'docs/claude-home/rules/x.md'
     const gh = new FakeGitHub({ pulls: [draft({ head: dotHead(HEAD) })], files: [file] })
     const s = scenario({ repos: dotRepo(), github: gh })
     await s.run()
-    assert.equal(writes(gh, 'markReady').length + writes(gh, 'addLabels').length, 0)
-    assert.equal(s.runner.ofKind('gate').length, 0)
-    const said = gh.commentsPosted().filter((c) => /Ship bot will not mark this draft ready: it changes control-plane paths/.test(c.body))
+    assert.equal(writes(gh, 'addLabels').length, 0, 'control plane here: readied for its review, never labelled')
+    assert.equal(readyComments(gh).length, 0)
+    const said = gh.commentsPosted().filter((c) => c.body.startsWith(CONTROL_PLANE_READY_COMMENT))
     assert.equal(said.length, 1)
     assert.ok(said[0].body.includes(file))
 
     const other = new FakeGitHub({ pulls: [draft()], files: [file] })
     await scenario({ repos: reviewed(), github: other }).run()
-    assert.equal(writes(other, 'markReady').length, 1, 'the path is ordinary docs outside gorfednet/.github')
+    assert.equal(writes(other, 'markReady').length, 1)
+    assert.equal(writes(other, 'addLabels').length, 1, 'the path is ordinary docs outside gorfednet/.github, so the bot labels it too')
   })
 
   it('in gorfednet/.github a draft the bot readied does not merge once a new head touches docs/claude-home/', async () => {
@@ -593,5 +606,164 @@ describe('plan row 1.12: a bot-readied draft in a deploy repo needs a clean revi
     const s = scenario({ repos: reviewed(), github: gh })
     await s.run()
     assert.equal(writes(gh, 'mergePull').length, 1)
+  })
+})
+
+describe('plan row 1.59: a control-plane draft whose ## Next says merge is marked ready for its review, and a person labels it', () => {
+  const FILE = 'ship-bot/lib/gates.mjs'
+  const world = (pr = draft(), extra = {}) => new FakeGitHub({ pulls: [pr], files: ['src/app.ts', FILE], ...extra })
+  const cpComments = (gh) => gh.commentsPosted().filter((c) => c.body.startsWith(CONTROL_PLANE_READY_COMMENT))
+  const gateNames = (s) => s.runner.ofKind('gate').map((c) => c.args[0].split('/').pop())
+  const red = [{ name: 'check / check', status: 'completed', conclusion: 'failure', started_at: '2026-10-09T10:00:00Z' }]
+
+  it('marks it ready once its checks are green, without reading or asking for a review, and says whose move it is', async () => {
+    const gh = world()
+    const s = scenario({ repos: reviewed(), github: gh })
+    await s.run()
+    assert.deepEqual(writes(gh, 'markReady'), [{ name: 'markReady', nodeId: 'PR_node7' }])
+    assert.deepEqual(gateNames(s), ['assert-checks-started.mjs', 'check-closing-keywords.mjs'], 'the review gate is not part of readying')
+    assert.equal(gh.commentsPosted().some((c) => c.body.trim() === 'claude review'), false, 'leaving draft starts the review; the bot asks for none')
+    assert.equal(cpComments(gh).length, 1)
+    assert.match(cpComments(gh)[0].body, /`ship-bot\/lib\/gates\.mjs`[\s\S]*A person adds `ready-to-merge` after reading the diff and a clean review/)
+    const pr = s.state().data.prs[`${SLUG}#7`]
+    assert.equal(pr.readiedForReview.sha, HEAD)
+    assert.deepEqual([pr.botReadied, pr.botLabelled], [undefined, undefined], 'not a pull request the bot readied and labelled')
+    assert.ok(s.logs.some((l) => /^info .*checks green \(## Next says "merge"\): marked ready so the Claude review of this head starts\..*the bot adds no label/.test(l)), s.logs.join('\n'))
+    // Later passes: unlabelled, so nothing more is written, and the log says whose move it is.
+    const before = gh.writes.length
+    await s.run()
+    assert.equal(gh.writes.length, before)
+    assert.ok(s.logs.some((l) => /^debug .*#7: ignored \(no ready-to-merge label\): the bot marked this control-plane pull request ready for its Claude review and adds no label/.test(l)))
+  })
+
+  it('then merges only once a person labels it and the review reads clean, after the review has had time to start', async () => {
+    const gh = world()
+    const s = scenario({ repos: reviewed(), github: gh })
+    await s.run()
+    gh.pulls[0].labels = [{ name: 'ready-to-merge' }]
+    await s.run()
+    assert.equal(writes(gh, 'mergePull').length, 0, 'labelled at once: the ready-for-review review is given time to start')
+    s.clock.advance(s.config.reviewGraceMinutes)
+    await s.run()
+    assert.equal(writes(gh, 'mergePull').length, 1, 'a person\'s label on a clean review merges; the bot-readied guard is for the other kind')
+  })
+
+  it('a person\'s label does not merge it while the review has a Medium finding', async () => {
+    const gh = world(draft(), { threads: [{ isResolved: false, author: 'github-actions', body: 'Medium: x', url: 'u', path: FILE, line: 1, comments: [{ author: 'github-actions', createdAt: '2026-10-09T12:01:00Z', commit: HEAD }, { author: 'gorfednet', createdAt: '2026-10-09T12:02:00Z', commit: HEAD }] }] })
+    const runner = makeRunner({ handle: (cmd) => (isStatus(cmd) ? { code: 1, stdout: `#7  findings  Claude reviewed aaaaaaaaa: 1 finding(s)\n` } : undefined) })
+    const s = scenario({ repos: reviewed(), github: gh, runner })
+    await s.run()
+    assert.equal(writes(gh, 'markReady').length, 1)
+    gh.pulls[0].labels = [{ name: 'ready-to-merge' }]
+    s.clock.advance(s.config.reviewGraceMinutes)
+    await s.run()
+    assert.equal(writes(gh, 'mergePull').length, 0)
+    assert.ok(s.logs.some((l) => /changes control-plane paths and a Medium or High thread was raised/.test(l)), s.logs.join('\n'))
+  })
+
+  it('near misses stay drafts: red or running checks, a hold, no merge line, a wait line, a conflict', async () => {
+    const cases = {
+      'red checks': world(draft(), { runs: red }),
+      'running checks': world(draft(), { runs: [{ name: 'check / check', status: 'in_progress', conclusion: null, started_at: '2026-10-09T11:59:00Z' }] }),
+      hold: world(draft({ labels: [{ name: 'hold' }] })),
+      'no merge line': world(draft({ body: NEXT_OTHER })),
+      'a wait line': world(draft({ body: '## Next\n- [ ] merge\n- [ ] wait for the owner\n' })),
+      'a conflict': world(draft({ mergeable: false, mergeable_state: 'dirty' })),
+    }
+    for (const [name, gh] of Object.entries(cases)) {
+      const s = scenario({ repos: reviewed(), github: gh })
+      await s.run()
+      assert.equal(writes(gh, 'markReady').length + writes(gh, 'addLabels').length + cpComments(gh).length, 0, name)
+      assert.equal(s.state().data.prs[`${SLUG}#7`]?.readiedForReview, undefined, name)
+    }
+  })
+
+  it('near miss: a draft that already carries ready-to-merge is left a draft, since readying it would let it merge before its review', async () => {
+    const gh = world(draft({ labels: [{ name: 'ready-to-merge' }] }))
+    const s = scenario({ repos: reviewed(), github: gh })
+    await s.run()
+    s.clock.advance(s.config.reviewGraceMinutes)
+    await s.run()
+    assert.equal(writes(gh, 'markReady').length + writes(gh, 'mergePull').length, 0)
+    assert.ok(s.logs.some((l) => /draft left alone .*it already carries ready-to-merge, from before its review; a person marks it ready/.test(l)), s.logs.join('\n'))
+  })
+
+  it('readies once per pull request: made a draft again, it is a person\'s', async () => {
+    const gh = world()
+    const s = scenario({ repos: reviewed(), github: gh })
+    await s.run()
+    gh.pulls[0].draft = true
+    gh.pulls[0].head.sha = 'd'.repeat(40)
+    gh.runsBySha = { ['d'.repeat(40)]: gh.runs }
+    await s.run()
+    await s.run()
+    assert.equal(writes(gh, 'markReady').length, 1)
+    assert.ok(s.logs.some((l) => /the bot marked it ready for review once .* and it is a draft again; it is a person's now/.test(l)), s.logs.join('\n'))
+  })
+
+  it('a dry run and a repository that is not live only say what they would do', async () => {
+    const dry = world()
+    const s = scenario({ repos: reviewed(), github: dry })
+    await s.run('dry-run')
+    assert.deepEqual(dry.writes, [])
+    assert.ok(s.logs.some((l) => /would mark ready so its Claude review starts .*so no label/.test(l)), s.logs.join('\n'))
+    const observed = world()
+    const o = scenario({ repos: [repoEntry({ claudeReview: true, live: false })], github: observed })
+    await o.run()
+    await o.run()
+    assert.deepEqual(observed.writes, [])
+    assert.equal(o.state().data.prs[`${SLUG}#7`], undefined)
+  })
+
+  it('a failed markReady leaves no record and is tried again; the comment is posted first, once', async () => {
+    const gh = world()
+    const real = gh.markReady.bind(gh)
+    gh.markReady = async () => { throw Object.assign(new Error('boom'), { status: 502 }) }
+    const s = scenario({ repos: reviewed(), github: gh })
+    await s.run()
+    assert.equal(s.state().data.prs[`${SLUG}#7`]?.readiedForReview, undefined)
+    assert.equal(cpComments(gh).length, 1)
+    gh.markReady = real
+    await s.run()
+    assert.equal(writes(gh, 'markReady').length, 1)
+    assert.equal(cpComments(gh).length, 1, 'not repeated')
+  })
+
+  it('a comment that fails is tried again before the draft is readied, so the hand-off is never left unsaid', async () => {
+    const gh = world()
+    const real = gh.createComment.bind(gh)
+    gh.createComment = async () => { throw Object.assign(new Error('boom'), { status: 502 }) }
+    const s = scenario({ repos: reviewed(), github: gh })
+    await s.run()
+    assert.equal(writes(gh, 'markReady').length, 0, 'still a draft, so the next pass comes back to it')
+    gh.createComment = real
+    await s.run()
+    assert.deepEqual([writes(gh, 'markReady').length, cpComments(gh).length], [1, 1])
+  })
+
+  it('after a lost state file the pull request is still a person\'s to label: nothing the bot wrote makes it bot-readied', async () => {
+    const gh = world()
+    const s = scenario({ repos: reviewed(), github: gh })
+    await s.run()
+    rmSync(s.statePath)
+    gh.pulls[0].labels = [{ name: 'ready-to-merge' }]
+    s.clock.advance(s.config.reviewGraceMinutes)
+    await s.run()
+    assert.equal(writes(gh, 'mergePull').length, 1)
+    assert.equal(writes(gh, 'removeLabel').length, 0)
+  })
+
+  it('the board row is a decision, never ready', async () => {
+    const gh = world()
+    const s = scenario({ repos: reviewed(), github: gh })
+    const summary = {}
+    await s.run('live', { summary })
+    const row = summary.board.rows.find((r) => r.number === 7)
+    assert.deepEqual([row.state, row.controlPlane, row.checks, row.review], ['needs-decision', true, 'passing', null])
+    const next = {}
+    await s.run('live', { summary: next })
+    const later = next.board.rows.find((r) => r.number === 7)
+    assert.equal(later.state, 'needs-decision')
+    assert.match(later.reason, /a person labels it after reading the diff and a clean review/i)
   })
 })
