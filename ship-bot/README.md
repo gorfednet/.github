@@ -556,8 +556,8 @@ anyway, and its `reason` is the pass's own log lines for that pull request.
   `in-progress` or `needs-decision`.
 - **`in-progress`** is a working draft: no `hold`, no `ready-to-merge`, and
   its first unchecked `## Next` line is a session's own step. A draft is not
-  one when that line says merge, names Desk or a person, addresses anyone but
-  the session, or is a label, ready or approval step. Nor is a draft with no
+  one when that line says merge, ship-bot or Fable, names Desk or a person,
+  addresses anyone but the session, or is a label, ready or approval step. Nor is a draft with no
   unchecked line. `--board` gives these one count line, not rows.
 - **Stalled rows join the list.** `--board` also lists a row that has been
   `waiting` for over 6 hours and an `in-progress` draft not updated for over
@@ -567,6 +567,9 @@ anyway, and its `reason` is the pass's own log lines for that pull request.
   `updated_at`. An observing pass keeps no memory, so it has only `updated_at`.
 - **A moved head.** `head` is the commit the row describes. When a later read
   in the same pass saw another, `headMovedTo` names it.
+- **A stale board says so.** `--board` prints `STALE` in its first line when
+  `at` is over 6 minutes old, about 3 passes. The passes since then ended
+  early, or could not build or write it; the log says which.
 - **It can be 3 minutes old.** Anything that writes (a label, a ready, a
   resolve) checks the head it acts on first.
 - **A failed write** logs `could not write the board` and changes nothing else.

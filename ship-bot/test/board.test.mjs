@@ -140,12 +140,15 @@ describe('the board a pass builds', () => {
   })
 
   it('a first unchecked line that hands off to Desk or a person, or is a label or ready step, is no draft in progress', async () => {
-    const firsts = ['Desk: Fable read, ready and label', 'label it ready-to-merge', 'Mark it ready for review', 'Michael reads the copy', 'Someone approves the wording', 'Reviewer: read the diff', 'finish the tests', 'address the review findings', 'get the fixtures in shape']
+    const handed = ['Desk: Fable read, ready and label', 'label it ready-to-merge', 'Mark it ready for review', 'Michael reads the copy', 'Someone approves the wording', 'Reviewer: read the diff', 'Review clean, then ship-bot merges', 'ship-bot readies and merges once gates pass', 'shipbot takes it from here', 'the merge follows the review', 'readied by the bot after the gates', 'a Fable read of the diff', '**Reviewer:** read the diff', '`reviewer`: read the diff']
+    // The near misses: a session's own step, also when the line is addressed to the session or its builder.
+    const own = ['finish the tests', 'address the review findings', 'get the fixtures in shape', 'Session: finish the tests', 'Builder: fix the lint', '**This session:** rerun the gate']
+    const firsts = [...handed, ...own]
     const pulls = firsts.map((first, i) => makePr({ number: i + 1, draft: true, labels: [], body: `## Next\n- [x] done\n- [ ] ${first}\n- [ ] merge; Desk labels` }))
     // The near miss: the same own step on a draft that already carries ready-to-merge is a decision, never in progress.
-    pulls.push(makePr({ number: 10, draft: true, body: '## Next\n- [ ] finish the tests' }))
+    pulls.push(makePr({ number: 99, draft: true, body: '## Next\n- [ ] finish the tests' }))
     const board = await boardOf(scenario({ github: new FakeGitHub({ pulls }) }))
-    assert.deepEqual(board.rows.map((r) => r.state), [...Array(6).fill('needs-decision'), ...Array(3).fill('in-progress'), 'needs-decision'])
+    assert.deepEqual(board.rows.map((r) => [r.next, r.state]), [...handed.map((l) => [l, 'needs-decision']), ...own.map((l) => [l, 'in-progress']), ['finish the tests', 'needs-decision']])
   })
 
   it('a pass cut by the quota floor hands back no board, and a board that cannot be built changes nothing', async () => {
@@ -290,5 +293,9 @@ describe('writing and printing the board', () => {
     assert.equal(aged[1], '1 drafts in progress (updated in the last 3 days; not listed)')
     assert.deepEqual(aged.slice(2).map((l) => l.replace(/ \(aaaaaaa\).*?(\[|reason)/, ' $1').slice(OTHER.length)), ['#4 [stalled in-progress] reason 4', '#1 [stalled waiting] reason 1'])
     assert.match(aged[0], /5 open, 0 need a decision, 2 waiting, 0 ready, 1 held/)
+    // A board no pass has replaced for over 6 minutes (3 passes) says so; at 6 minutes it does not.
+    const header = (minutes) => formatBoard({ at, mode: 'live', rows: [] }, new Date(new Date(at).getTime() + minutes * 60000))[0]
+    assert.match(header(7), /^board 2026-10-09T12:00:00.000Z \(7m old, STALE: no pass has replaced it for over 6 minutes\), /)
+    assert.match(header(6), /^board 2026-10-09T12:00:00.000Z \(6m old\), /)
   })
 })

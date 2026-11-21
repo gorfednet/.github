@@ -40,14 +40,18 @@ const earlier = (a, b) => [a, b].filter((t) => t && Number.isFinite(new Date(t).
 /** How long a waiting row, or a draft in progress, may sit before `--board` lists it with the decisions. */
 export const STALLED_WAITING_HOURS = 6
 export const STALLED_DRAFT_DAYS = 3
+/** About 3 passes. A board older than this was not replaced by the last passes (they ended early, or could not build or write it). */
+export const BOARD_STALE_MINUTES = 6
 
 /**
  * A first unchecked line that is someone else's move: it names Desk or a person, opens by addressing anyone but the
- * session ("Reviewer: ..."), or is a label, ready or approval step. It errs toward a hand-off: a row too many is
+ * session ("Reviewer: ..."), says ship-bot, Fable or merge anywhere in it, or is a label, ready or approval step.
+ * It errs toward a hand-off: a row too many is
  * read and skipped, while a hand-off counted as work in progress is never seen.
  */
-const HANDOFF = /\b(desk|owner|michael|person|human|someone|label\w*|ready|approv\w*|sign[- ]?off|decid\w*|decision)\b/i
-const ADDRESSED = /^\W*(?!(?:this )?(?:session|builder)\b)[A-Za-z][\w -]{0,30}:\s/i
+const HANDOFF = /\b(desk|owner|michael|person|human|someone|fable|ship-?bot|label\w*|read(?:y|ies|ied)|merg\w*|approv\w*|sign[- ]?off|decid\w*|decision)\b/i
+/** `Reviewer: ...`, also with markdown around the name or the colon (`**Reviewer:** ...`). A line addressed to the session or its builder is its own step. */
+const ADDRESSED = /^\W*(?!(?:this )?(?:session|builder)\b)[A-Za-z][\w -]{0,30}[*_`]*:[*_`]*\s/i
 
 /** Is the first unchecked `## Next` line a session's own step: there is one, it is no merge instruction, and it hands nothing to anyone? */
 const ownStep = (pr) => {
@@ -186,7 +190,8 @@ const age = (fromIso, now) => {
 export function formatBoard(board, now = new Date(), max = BOARD_MAX_LINES) {
   const rows = Array.isArray(board?.rows) ? board.rows : []
   const count = (state) => rows.filter((r) => r.state === state).length
-  const lines = [`board ${board.at} (${age(board.at, now)} old), ship-bot ${board.installedSha ? String(board.installedSha).slice(0, 7) : 'from a checkout'}, ${board.mode}: ${rows.length} open, ${count('needs-decision')} need a decision, ${count('waiting')} waiting, ${count('ready')} ready, ${count('held')} held, ${count('not-reached')} not reached`]
+  const stale = (now - new Date(board.at)) / 60000 > BOARD_STALE_MINUTES ? `, STALE: no pass has replaced it for over ${BOARD_STALE_MINUTES} minutes` : ''
+  const lines = [`board ${board.at} (${age(board.at, now)} old${stale}), ship-bot ${board.installedSha ? String(board.installedSha).slice(0, 7) : 'from a checkout'}, ${board.mode}: ${rows.length} open, ${count('needs-decision')} need a decision, ${count('waiting')} waiting, ${count('ready')} ready, ${count('held')} held, ${count('not-reached')} not reached`]
   const skipped = (board.skipped ?? []).map((s) => `skipped ${s.repository}: ${s.why}`.slice(0, 200))
   // A row with no time is never called stalled: nothing says how long it has sat.
   const hours = (r) => (r.since ? (now - new Date(r.since)) / 3600000 : 0)
