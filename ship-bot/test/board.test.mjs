@@ -193,6 +193,79 @@ describe('the board a pass builds', () => {
   })
 })
 
+describe('a labelled pull request that conflicts with its base (plan row 1.59)', () => {
+  const dirty = (over = {}) => makePr({ mergeable: false, mergeable_state: 'dirty', updated_at: '2026-10-09T11:00:00Z', ...over })
+  const warned = (s) => s.logs.filter((l) => /^warn .*labelled ready-to-merge but it conflicts with its base/.test(l))
+
+  it('is a marked decision row with its repository and number, and the log says so once per head', async () => {
+    const github = new FakeGitHub({ pulls: [dirty()] })
+    const s = scenario({ repos: [mergeOnly()], github })
+    const board = await boardOf(s)
+    assert.deepEqual([row(board, 7).repository, row(board, 7).number, row(board, 7).state, row(board, 7).conflicted, row(board, 7).mergeable], [SLUG, 7, 'needs-decision', true, false])
+    assert.match(row(board, 7).reason, /^not merging: labelled ready-to-merge but it conflicts with its base\. Merge the base in and push/)
+    assert.equal(warned(s).length, 1)
+    assert.match(warned(s)[0], new RegExp(`^warn ${SLUG}#7 \\(${HEAD.slice(0, 7)}\\): `))
+    // The next pass: still a marked row, no second warning, nothing written to GitHub.
+    const again = await boardOf(s)
+    assert.deepEqual([row(again, 7).state, row(again, 7).conflicted], ['needs-decision', true])
+    assert.equal(warned(s).length, 1, 'one warning per head')
+    assert.deepEqual(github.writes, [])
+    // A push that still conflicts is a new head: said again.
+    github.pulls[0].head.sha = MOVED
+    await boardOf(s)
+    assert.equal(warned(s).length, 2)
+  })
+
+  it('GitHub calling it dirty is enough, whatever mergeable says', async () => {
+    for (const pr of [dirty({ mergeable: null }), dirty({ mergeable: true }), dirty({ mergeable_state: 'unknown' })]) {
+      const board = await boardOf(scenario({ repos: [mergeOnly()], github: new FakeGitHub({ pulls: [pr] }) }))
+      assert.equal(row(board, 7).conflicted, true, JSON.stringify([pr.mergeable, pr.mergeable_state]))
+    }
+  })
+
+  it('near misses are not marked: no label, hold, a draft, mergeability not computed, and a clean one', async () => {
+    const cases = {
+      'no label': dirty({ labels: [] }),
+      hold: dirty({ labels: [{ name: 'ready-to-merge' }, { name: 'hold' }] }),
+      draft: dirty({ draft: true, labels: [], body: '## Next\n- [ ] Merge.' }),
+      'a labelled draft': dirty({ draft: true }),
+      'not computed yet': dirty({ mergeable: null, mergeable_state: 'unknown' }),
+      clean: makePr(),
+    }
+    for (const [name, pr] of Object.entries(cases)) {
+      const s = scenario({ repos: [mergeOnly()], github: new FakeGitHub({ pulls: [pr] }) })
+      const board = await boardOf(s)
+      assert.equal('conflicted' in row(board, 7), false, name)
+      assert.equal(warned(s).length, 0, name)
+    }
+  })
+
+  it('a dry run and a repository that is not live mark the row and keep the log quiet', async () => {
+    const dry = scenario({ repos: [mergeOnly()], github: new FakeGitHub({ pulls: [dirty()] }) })
+    assert.equal(row(await boardOf(dry, 'dry-run'), 7).conflicted, true)
+    assert.equal(dry.logs.filter((l) => /^(warn|info) .*conflicts with its base/.test(l)).length, 0)
+    const observed = scenario({ repos: [mergeOnly({ live: false })], github: new FakeGitHub({ pulls: [dirty()] }) })
+    const board = await boardOf(observed)
+    assert.deepEqual([row(board, 7).state, row(board, 7).conflicted], ['needs-decision', true])
+    assert.equal(observed.logs.filter((l) => /^(warn|info) .*conflicts with its base/.test(l)).length, 0)
+  })
+
+  it('--board counts them, lists them before older rows and marks them', () => {
+    const at = '2026-10-09T12:00:00.000Z'
+    const mk = (n, since, extra = {}) => ({ repository: OTHER, number: n, head: HEAD, state: 'needs-decision', since, checks: null, review: null, draft: false, labels: [], reason: `reason ${n}`, ...extra })
+    const rows = [mk(1, '2026-09-01T00:00:00Z'), mk(2, '2026-10-09T11:00:00Z', { conflicted: true }), mk(3, '2026-10-08T00:00:00Z', { conflicted: true }), mk(4, '2026-10-01T00:00:00Z', { conflicted: true, state: 'held' }), mk(5, '2026-10-02T00:00:00Z', { conflicted: 'yes' })]
+    const lines = formatBoard({ at, mode: 'live', rows }, new Date(at))
+    assert.match(lines[0], /5 open, 4 need a decision \(2 labelled but conflicted\), 0 waiting/)
+    assert.deepEqual(lines.slice(1).map((l) => /#(\d+) /.exec(l)[1]), ['3', '2', '1', '5'], 'conflicted first, each group longest-standing first; a held row is not listed')
+    assert.match(lines[1], /checks:- review:- \[conflicted\] reason 3$/)
+    assert.doesNotMatch(lines[4], /conflicted/, 'only the value true marks a row')
+    // With more decisions than lines, the conflicted rows are still the ones shown.
+    const many = [...Array.from({ length: 60 }, (_, i) => mk(100 + i, '2026-08-01T00:00:00Z')), mk(7, '2026-10-09T11:59:00Z', { conflicted: true })]
+    assert.match(formatBoard({ at, mode: 'live', rows: many }, new Date(at))[1], /#7 .*\[conflicted\]/)
+    assert.doesNotMatch(formatBoard({ at, mode: 'live', rows: [mk(1, at)] }, new Date(at))[0], /conflicted/, 'no count when there is none')
+  })
+})
+
 describe('writing and printing the board', () => {
   function harness({ pulls = [makePr()], configOverrides = {} } = {}) {
     const home = mkdtempSync(join(tmpdir(), 'ship-bot-board-'))

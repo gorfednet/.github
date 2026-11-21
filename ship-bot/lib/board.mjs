@@ -77,6 +77,10 @@ export class Board {
     this.decide = quiet((slug, number) => {
       this.rows.get(`${slug}#${number}`).loud = true
     })
+    /** A labelled pull request that conflicts with its base: a decision row on every pass, marked so `--board` lists it first. */
+    this.conflicted = quiet((slug, number) => {
+      Object.assign(this.rows.get(`${slug}#${number}`), { loud: true, conflicted: true })
+    })
   }
 
   /** The same client, with the three reads the board is built from also recorded. Results pass through untouched. */
@@ -138,6 +142,8 @@ export class Board {
    * own step: no merge line, nothing handed to Desk or a person, no label or
    * ready step, no hold and no ready-to-merge label), and
    * needs-decision for everything else the bot is not going to move by itself.
+   * A row with `conflicted: true` is a needs-decision row for a pull request that carries ready-to-merge and
+   * conflicts with its base. The field is absent on every other row, a conflicted draft or unlabelled one included.
    */
   #state(row) {
     if (row.merged) return 'merged'
@@ -186,7 +192,7 @@ const age = (fromIso, now) => {
 }
 
 /**
- * `--board`: the rows that need a decision, longest-standing first, in at most `max` lines. A row that has been
+ * `--board`: the rows that need a decision, labelled-but-conflicted ones first, then longest-standing first, in at most `max` lines. A row that has been
  * waiting for over STALLED_WAITING_HOURS, or a draft in progress not updated for over STALLED_DRAFT_DAYS, is listed
  * with them and marked stalled. That is judged here, against the reader's clock, not in the file.
  */
@@ -194,12 +200,15 @@ export function formatBoard(board, now = new Date(), max = BOARD_MAX_LINES) {
   const rows = Array.isArray(board?.rows) ? board.rows : []
   const count = (state) => rows.filter((r) => r.state === state).length
   const stale = (now - new Date(board.at)) / 60000 > BOARD_STALE_MINUTES ? `, STALE: no pass has replaced it for over ${BOARD_STALE_MINUTES} minutes` : ''
-  const lines = [`board ${board.at} (${age(board.at, now)} old${stale}), ship-bot ${board.installedSha ? String(board.installedSha).slice(0, 7) : 'from a checkout'}, ${board.mode}: ${rows.length} open, ${count('needs-decision')} need a decision, ${count('waiting')} waiting, ${count('ready')} ready, ${count('held')} held, ${count('not-reached')} not reached`]
+  // Labelled and conflicted (plan row 1.59): the merge was decided and cannot happen. Counted in the first line and listed before every other row.
+  const conflicted = (r) => r.conflicted === true && r.state === 'needs-decision'
+  const stuck = rows.filter(conflicted).length
+  const lines = [`board ${board.at} (${age(board.at, now)} old${stale}), ship-bot ${board.installedSha ? String(board.installedSha).slice(0, 7) : 'from a checkout'}, ${board.mode}: ${rows.length} open, ${count('needs-decision')} need a decision${stuck > 0 ? ` (${stuck} labelled but conflicted)` : ''}, ${count('waiting')} waiting, ${count('ready')} ready, ${count('held')} held, ${count('not-reached')} not reached`]
   const skipped = (board.skipped ?? []).map((s) => `skipped ${s.repository}: ${s.why}`.slice(0, 200))
   // A row with no time is never called stalled: nothing says how long it has sat.
   const hours = (r) => (r.since ? (now - new Date(r.since)) / 3600000 : 0)
   const stalled = (r) => (r.state === 'waiting' && hours(r) > STALLED_WAITING_HOURS) || (r.state === 'in-progress' && hours(r) > STALLED_DRAFT_DAYS * 24)
-  const decide = rows.filter((r) => r.state === 'needs-decision' || stalled(r)).sort((a, b) => String(a.since ?? '').localeCompare(String(b.since ?? '')))
+  const decide = rows.filter((r) => r.state === 'needs-decision' || stalled(r)).sort((a, b) => Number(conflicted(b)) - Number(conflicted(a)) || String(a.since ?? '').localeCompare(String(b.since ?? '')))
   const fresh = rows.filter((r) => r.state === 'in-progress' && !stalled(r)).length
   if (fresh > 0) lines.push(`${fresh} drafts in progress (updated in the last ${STALLED_DRAFT_DAYS} days; not listed)`)
   const skipLines = skipped.slice(0, 5)
@@ -207,7 +216,7 @@ export function formatBoard(board, now = new Date(), max = BOARD_MAX_LINES) {
   const room = max - lines.length - skipLines.length
   const shown = decide.length > room ? decide.slice(0, room - 1) : decide
   for (const r of shown) {
-    const flags = [stalled(r) ? `stalled ${r.state}` : null, r.draft ? 'draft' : null, r.controlPlane ? 'control-plane' : null, r.headMovedTo ? `head moved to ${String(r.headMovedTo).slice(0, 7)}` : null].filter(Boolean)
+    const flags = [conflicted(r) ? 'conflicted' : null, stalled(r) ? `stalled ${r.state}` : null, r.draft ? 'draft' : null, r.controlPlane ? 'control-plane' : null, r.headMovedTo ? `head moved to ${String(r.headMovedTo).slice(0, 7)}` : null].filter(Boolean)
     lines.push(`${r.repository}#${r.number} (${String(r.head).slice(0, 7)}) ${age(r.since, now)} checks:${r.checks ?? '-'} review:${r.review ?? '-'}${flags.length ? ` [${flags.join(', ')}]` : ''} ${String(r.reason).split('\n')[0]}`.slice(0, 240))
   }
   if (shown.length < decide.length) lines.push(`and ${decide.length - shown.length} more that need a decision`)

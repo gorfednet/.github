@@ -15,7 +15,7 @@ pull request, asks:
    **`ready-to-merge`** label, and does it **not** carry **`hold`**?
 2. Did **every check pass** on the latest commit, including the specific
    checks that repository is supposed to run? A check that is still running,
-   failed, was cancelled, or never ran at all means "not yet".
+   failed, was cancelled, or never ran at all means "not yet". (A cancelled run that is the only thing in the way is rerun once: see "Cancelled runs" below.)
 3. Did the **Claude reviewer review the latest commit**, and either find
    nothing or have **every one of its comments answered**, with a reply
    written after the comment or by resolving it? (Exception: a pull request that changes control-plane paths and has a Medium or High thread merges only on a clean review of a new head; a reply never lifts it, and resolving lifts it only for a thread opened on an earlier commit, which then does not count.) It reads this with
@@ -129,6 +129,17 @@ go-live (owner, 7 November 2026) is merge-only in `.github`, assess,
 career-portfolio, heuristics.4thcltr.com and papers.4thcltr.com, and ops since
 11 November 2026 (its row says what its one check proves). In a live pass a repository whose own flag
 is off is still read and logged, with `OBSERVE (repo not live)` on each line.
+
+**A ready pull request in a repository that isn't live (plan row 1.59).** When
+a labelled pull request passes every gate there, nothing will merge it. The
+bot tells you once per pull request and head, on the Mac and through ntfy:
+`<repo> #<n> is labelled ready-to-merge and passed every gate, but <slug> is
+not live`. After that its `would merge` lines are debug lines, so the log
+stays quiet. A notice ntfy didn't accept is sent to ntfy again on later
+passes, 5 times in all. A dry run, and a pass whose global `live` is off,
+tell nobody. The record is `notLiveTold` under the repository in
+`state.json`. It drops a pull request that closed, and goes once the
+repository is live.
 
 Before switching a repository on, check that its `expectedChecks` still match
 what its CI posts (a renamed job would make the bot wait forever):
@@ -291,8 +302,8 @@ bot now takes a draft itself when **all** of these hold:
   `infra/`, `scripts/`, `inventory-patches/`, `credentials.json`, `rotations.json`, `crawler-policy.json` and `cta-sites.json`
   (plan row 3.20f).
   Matching ignores case, and a rename counts by its old name too. Such a draft
-  changes what merges unattended, so the bot comments once per commit naming
-  the paths and leaves it to the owning session (plan row 1.12);
+  changes what merges unattended, so the bot never labels it (plan row 1.12).
+  What it does instead is under "Control-plane drafts" below;
 - in a repository that deploys, its review is `clean`. Answered findings are
   not enough there: every session posts as the owner's login, so an answer
   proves no person read the finding. A deploy repository with no Claude
@@ -315,6 +326,31 @@ default) and then waits for that review's check like any other; its verdict,
 if it finds something, keeps the pull request from merging until each thread
 is answered. A repository in observation (`live` false) logs `would mark ready
 and add ready-to-merge` and does nothing.
+
+### Control-plane drafts (plan row 1.59)
+
+The order for a control-plane pull request is ready, then the review that
+leaving draft starts, then a label on a clean read of that review. The bot
+takes the first step and holds the second. The label stays a person's.
+
+- **When.** The draft's `## Next` says merge as above, it has no `hold` and no
+  conflict, the repository has the Claude reviewer, and every check is green
+  on its latest commit. The review isn't read at this point, and the bot asks
+  for none: leaving draft starts it.
+- **What.** The bot marks it ready and comments once, "Ship-bot: checks
+  green, marking ready so the Claude review of this commit starts. No label
+  from the bot", with the paths. It adds no label and records
+  `readiedForReview` on the pull request in `state.json`.
+- **Then.** A person adds `ready-to-merge` after reading the diff and a clean
+  review. The bot merges it like any labelled pull request. If the label
+  lands at once, the merge still waits `reviewGraceMinutes` for the new
+  review to start.
+- **Not readied:** a draft that already carries `ready-to-merge` (that label
+  came before the review), one the bot readied once and someone made a draft
+  again, and any draft in a repository with no reviewer, which gets the old
+  comment and stays a draft.
+- **On the board** the row is `needs-decision`, and its reason says a person
+  labels it.
 
 The label the bot adds is its own, not a person's sign-off: before every
 later pass merges such a pull request, the bot reads `## Next` again and
@@ -517,14 +553,68 @@ that quota with every session. It keeps its share small:
 
 **Its own quota: the GitHub App.** `github-app/manifest.json` describes a
 private App with only what the bot needs (read metadata, checks, commit
-statuses, Actions and issues; write contents, pull requests and workflow
-files, since merging a pull request that changes a workflow needs it).
+statuses and issues; write contents, pull requests, workflow files, since
+merging a pull request that changes a workflow needs it, and Actions, for
+the one rerun of a cancelled run).
 `node ~/.ship-bot/app/github-app/create.mjs` creates it in one browser step,
 saves its private key to `~/.ship-bot/github-app.pem` (mode 600, outside every
 repository) and adds `githubApp: { appId, privateKeyFile }` to the config.
 Once the App is installed on the gorfednet account (a user account, so the script uses the user "new App" page), each pass mints an installation
 token and the log's pass line ends `as GitHub App <id>`. If minting fails, the
 pass logs an error and falls back to `gh auth token`.
+
+## Cancelled runs (plan row 1.59)
+
+A cancelled check is never a pass. Two things can clear one:
+
+- **A later green run replaces it.** Adding `ready-to-merge` can cancel the
+  running CI and start a new run. A cancelled check is ignored once a later
+  run of the same workflow and event on the same head finished green.
+  A rerun counts the same way: a cancelled check from attempt 1 is ignored
+  once a later attempt of its own run finished green, and waits while that
+  attempt is running.
+- **The bot reruns it, once.** When a labelled head has nothing red, nothing
+  running and nothing replacing the cancelled run, the bot asks GitHub to
+  rerun that run's cancelled jobs (what `gh run rerun <id> --failed` does)
+  and logs `reran the cancelled jobs of workflow run <id>`.
+
+The rerun is narrow on purpose:
+
+- every other check and status on the head is green, and no required check
+  is missing or skipped;
+- the run is the newest of its workflow on the head, and the whole run
+  ended `cancelled`;
+- it has sat cancelled for 10 minutes, so a label's own replacement run has
+  had time to appear. Until then the head waits: no comment, and the log
+  line is `a cancelled workflow run is all that blocks this head`;
+- it is on attempt 1 or 2, and the bot hasn't asked for it before on this
+  head;
+- it was a cancel and not a timeout. A job that runs past `timeout-minutes`
+  reports `cancelled` on the job and on the run, so before a rerun the bot
+  reads the annotations of each cancelled check run in it (1 request each,
+  10 at most, once per run and head). `exceeded the maximum execution time`
+  on any of them, a read that fails or more than 10 to read means no rerun,
+  and the log says `not rerunning cancelled workflow run <id>`;
+- where the repository has `requireChecksAfterLabel`, the run was created
+  after the label. A rerun of an older run would start new checks after the
+  label and pass for the labelled run;
+- at most 2 reruns per head in all, counting ones GitHub refused.
+
+Anything unreadable means no rerun. A run that is cancelled again after the
+bot's rerun gets the usual "checks did not pass" comment and waits for a
+person. `hold` stops it, like everything else.
+
+The bot can't tell who cancelled a run. A run a person cancelled on purpose
+on a labelled head is rerun too, 10 minutes later, unless the pull request
+carries `hold` or loses its label first.
+
+The rerun needs the GitHub App's **Actions** permission set to **Read and
+write** (App settings, Permissions, then accept the change on the
+installation). Until then GitHub answers 403, the bot logs one warning per
+run and head, and the pull request gets the usual comment. GitHub has no
+narrower permission: Actions write also lets the App's token cancel runs and
+dispatch workflows. The bot's client has one Actions write, the rerun, and
+`guardWrites` lists it.
 
 ## Where to look
 
@@ -537,7 +627,8 @@ pass logs an error and falls back to `gh auth token`.
 - **Every open pull request it saw:** `~/.ship-bot/board.json` (plan row 1.55).
   A live or observing pass over every repo replaces it at the end. A hand dry
   run and a `--repo` pass leave it alone. `ship-bot.mjs --board` prints the rows
-  that need a decision, longest-standing first, in at most 40 lines.
+  that need a decision, in at most 40 lines: labelled but conflicted first,
+  then longest-standing first.
 
 ### The board
 
@@ -559,6 +650,13 @@ anyway, and its `reason` is the pass's own log lines for that pull request.
   one when that line says merge, ship-bot or Fable, names Desk or a person,
   addresses anyone but the session, or is a label, ready or approval step. Nor is a draft with no
   unchecked line. `--board` gives these one count line, not rows.
+- **Labelled but conflicted (plan row 1.59).** A pull request that carries
+  `ready-to-merge` and conflicts with its base gets `conflicted: true` and is
+  a `needs-decision` row on every pass. `--board` counts these in its first
+  line, lists them before every other row and marks each `conflicted`. The
+  log gets one warning per head, `labelled ready-to-merge but it conflicts
+  with its base`. A conflicted draft, an unlabelled one, a held one and one
+  whose mergeability GitHub hasn't computed yet are not marked.
 - **Stalled rows join the list.** `--board` also lists a row that has been
   `waiting` for over 6 hours and an `in-progress` draft not updated for over
   3 days, each marked `stalled`. It judges that when it prints.
@@ -783,7 +881,8 @@ merged. Each pass logs `gate scripts from the ...` with the source.
   repositories (a lock file, `~/.ship-bot/run.lock`).
 - A repository merges only when the global `live` and its own `live` are both
   true; otherwise a live pass observes it (reads, no writes, lines marked
-  `OBSERVE (repo not live)`, nothing remembered in the state file).
+  `OBSERVE (repo not live)`, nothing remembered in the state file but which
+  ready pull requests you were told about).
 - Before the first merge in a deploy-mode repository each run, the config's
   `preflight` steps (ssh to the NAS and to the Docker host) must succeed; if
   not, only merge-only repositories merge that run.
