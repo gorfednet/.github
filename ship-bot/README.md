@@ -568,8 +568,10 @@ anyway, and its `reason` is the pass's own log lines for that pull request.
 - **A moved head.** `head` is the commit the row describes. When a later read
   in the same pass saw another, `headMovedTo` names it.
 - **A stale board says so.** `--board` prints `STALE` in its first line when
-  `at` is over 6 minutes old, about 3 passes. The passes since then ended
-  early, or could not build or write it; the log says which.
+  `at` is over 20 minutes old. A pass writes the board when it ends, and one
+  pass can run a gate or a deploy for about 15 minutes, so a younger board
+  may only be waiting on a pass still running. Past 20, the passes since ended
+  early or could not build or write it; the log says which.
 - **It can be 3 minutes old.** Anything that writes (a label, a ready, a
   resolve) checks the head it acts on first.
 - **A failed write** logs `could not write the board` and changes nothing else.

@@ -40,8 +40,11 @@ const earlier = (a, b) => [a, b].filter((t) => t && Number.isFinite(new Date(t).
 /** How long a waiting row, or a draft in progress, may sit before `--board` lists it with the decisions. */
 export const STALLED_WAITING_HOURS = 6
 export const STALLED_DRAFT_DAYS = 3
-/** About 3 passes. A board older than this was not replaced by the last passes (they ended early, or could not build or write it). */
-export const BOARD_STALE_MINUTES = 6
+/**
+ * A pass writes the board when it ends, and one pass can run a long gate or a deploy for about 15 minutes. So a
+ * board is only called stale past 20: by then the passes since were cut short, or could not build or write it.
+ */
+export const BOARD_STALE_MINUTES = 20
 
 /**
  * A first unchecked line that is someone else's move: it names Desk or a person, opens by addressing anyone but the

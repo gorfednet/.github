@@ -293,9 +293,10 @@ describe('writing and printing the board', () => {
     assert.equal(aged[1], '1 drafts in progress (updated in the last 3 days; not listed)')
     assert.deepEqual(aged.slice(2).map((l) => l.replace(/ \(aaaaaaa\).*?(\[|reason)/, ' $1').slice(OTHER.length)), ['#4 [stalled in-progress] reason 4', '#1 [stalled waiting] reason 1'])
     assert.match(aged[0], /5 open, 0 need a decision, 2 waiting, 0 ready, 1 held/)
-    // A board no pass has replaced for over 6 minutes (3 passes) says so; at 6 minutes it does not.
+    // A board no pass has replaced for over 20 minutes says so. One pass can run a gate or a deploy for 15, so 15 and 20 do not.
     const header = (minutes) => formatBoard({ at, mode: 'live', rows: [] }, new Date(new Date(at).getTime() + minutes * 60000))[0]
-    assert.match(header(7), /^board 2026-10-09T12:00:00.000Z \(7m old, STALE: no pass has replaced it for over 6 minutes\), /)
-    assert.match(header(6), /^board 2026-10-09T12:00:00.000Z \(6m old\), /)
+    assert.match(header(21), /^board 2026-10-09T12:00:00.000Z \(21m old, STALE: no pass has replaced it for over 20 minutes\), /)
+    assert.match(header(20), /^board 2026-10-09T12:00:00.000Z \(20m old\), /)
+    assert.match(header(15), /^board 2026-10-09T12:00:00.000Z \(15m old\), /)
   })
 })
