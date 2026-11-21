@@ -205,6 +205,11 @@ test('past the cap, every call a handoff needs still runs', () => {
     "gh api -X GET search/issues -f q='repo:o/r is:pr author:@me'",
     "gh api graphql -f query='query { viewer { login } }'",
     'gh pr -R o/r view 12',
+    'gh pr list --label ready-to-merge --json number',
+    'gh pr list -l hold',
+    'sort -u "$d/a" | uniq -c',
+    'cp -r "$d/a" "$d/b"',
+    'git diff --stat origin/main',
     'gh pr view 12 -R o/r --json body',
   ]) passes(bash(command), command);
   passes(call('Write', { file_path: '/w/home/.claude/projects/-w-repo/memory/note.md', content: 'x' }), 'a memory file');
@@ -266,6 +271,15 @@ test('past the cap, shell work that is not a handoff is refused', () => {
     ['gh pr create -l ready-to-merge --title x --body y', /a label is a merge decision/],
     ['gh pr create -lready-to-merge --title x --body y', /a label is a merge decision/],
     ['cp -t src/ "$d/x.js"', /cp -t/],
+    // review round 2
+    ['cp -rt src/ "$d/x.js"', /cp -t/],
+    ['sort -uo src/app.js "$d/a"', /sort -o/],
+    ['case x in *) ;; esac; ./build.sh', /`build\.sh`/],
+    ['case x in a) ./build.sh;; esac', /`build\.sh`/],
+    ['case x in a) scripts/build.sh;; esac', /`build\.sh`/],
+    ['git diff origin/main --output=src/app.js', /--output/],
+    ['git log --outp src/app.js -3', /--output/],
+    ['git show HEAD --output /w/repo/a.patch', /--output/],
     ['cp --target-directory=src "$d/x.js"', /cp -t/],
     ['uniq "$d/in.txt" src/a.js', /`uniq` touches/],
     ['echo x > src/app.js; cd .', /redirects into `src\/app\.js`/],

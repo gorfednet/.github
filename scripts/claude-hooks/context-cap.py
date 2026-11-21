@@ -348,8 +348,8 @@ class Shell:
             return None
         if words[-1] == "]]" and (words[0].startswith("-") or (len(words) > 2 and words[1] in _TEST_OPS)):
             return None  # the tail of `[[ a && -f b ]]`, which the parser split at `&&`
-        if self.arms and len(words) == 1 and re.fullmatch(r"[\w.*?\[\]/-]+", words[0]) and not re.fullmatch(r"[a-z][a-z0-9-]*", words[0]):
-            return None  # `*)` or `v1.*)`: a case arm's pattern, never a command name
+        if self.arms and len(words) == 1 and re.fullmatch(r"[\w.*?\[\]-]+", words[0]) and re.search(r"[*?\[]", words[0]):
+            return None  # `*)` or `v1.*)`: a case arm's pattern. A glob with no slash names no command worth running.
         if ag.DYN in words[0] or "$" in words[0]:
             return None  # the command's name is only known to the shell
         name, args = words[0].rsplit("/", 1)[-1], words[1:]
@@ -387,12 +387,12 @@ class Shell:
             return "`sed -i` edits a file in place"
         if name == "find" and any(a in ("-delete", "-exec", "-execdir", "-ok", "-okdir") or a.startswith("-fprint") for a in args):
             return "`find` with -exec or -delete changes files"
-        if name == "sort" and any(a.startswith(("-o", "--output")) for a in args):
+        if name == "sort" and any(a.startswith("--output") or re.match(r"-[A-Za-z]*o", a) for a in args):
             return "`sort -o` writes a file"
         if name in ("tee", "touch", "rm", "mv") or (name == "cat" and self.closed):
             return self._operands_ok(name, args)
         if name == "cp":
-            if any(a.startswith(("-t", "--target-directory")) for a in args):
+            if any(a.startswith("--target-directory") or re.match(r"-[A-Za-z]*t", a) for a in args):
                 return "`cp -t` names its target where this hook doesn't read it"
             operands = [a for a in args if not a.startswith("-")]
             return self._operands_ok(name, operands[-1:])
@@ -422,9 +422,11 @@ class Shell:
         sub, rest = args[i], args[i + 1 :]
         if ag.DYN in sub or "$" in sub:
             return None
+        flags = [a for a in rest if a.startswith("-")]
+        if sub in ag._LOG_FAMILY and any(ag._is_prefix(a.split("=", 1)[0], "--output") for a in flags if a.startswith("--")):
+            return f"`git {sub} --output` writes a file"
         if sub in (_GIT_CLOSED if self.closed else _GIT_OPEN):
             return None
-        flags = [a for a in rest if a.startswith("-")]
         operands = [a for a in rest if not a.startswith("-")]
         if sub == "restore" and any(a == "--staged" or (a.startswith("-") and not a.startswith("--") and "S" in a) for a in flags):
             if not any(a.startswith("--w") or (not a.startswith("--") and "W" in a) for a in flags):
@@ -487,11 +489,11 @@ class Shell:
         subs = table[group]
         if subs is None or "--help" in rest:
             return None
-        if group == "pr" and any(a.startswith(("--add-label", "--remove-label", "--label")) or re.match(r"-l", a) for a in rest):
-            return "a label is a merge decision, and its gates can't run past the cap"
         while rest[:1] and rest[0] in ("-R", "--repo"):
             rest = rest[2:]
         sub = next((a for a in rest if not a.startswith("-")), None)
+        if group == "pr" and sub in ("create", "edit") and any(a.startswith(("--add-label", "--remove-label", "--label")) or re.match(r"-l", a) for a in rest):
+            return "a label is a merge decision, and its gates can't run past the cap"
         if sub is None or sub in subs:
             return None
         return f"{label} isn't part of a handoff"
