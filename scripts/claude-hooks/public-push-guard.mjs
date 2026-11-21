@@ -211,6 +211,9 @@ export async function checkPush(remote, url, updates) {
 async function scan({ sets, mod, ctx, names, where, updates, allowText, scratch }) {
   const allowFile = join(scratch, 'allow.txt')
   writeFileSync(allowFile, allowText)
+  // Always handed over: without --fleet the guard reads fleet.json from the pushed repository's own base. No installed copy is an empty file (no sites).
+  const fleetFile = existsSync(FLEET) ? FLEET : join(scratch, 'fleet.json')
+  if (fleetFile !== FLEET) writeFileSync(fleetFile, '')
   const fail = (what) => refuse(`${what} would publish private detail to ${where}, which is public (or not known to be private).\nNothing was sent.`)
   // A name is read both ways: as path parts (`notes/<name>.md`) and as words, which also split on `_` and other joins (`notes/<name>_v2`).
   // A hyphen joins a longer name in both readings, as in the CI guard, so `<name>-v2` is not the name.
@@ -233,7 +236,7 @@ async function scan({ sets, mod, ctx, names, where, updates, allowText, scratch 
     }
   }
   for (const { tip, base, count } of sets) {
-    const r = run(process.execPath, [realpathSync(GUARD), '--base', base, '--head', tip, '--dir', '.', '--allow', allowFile, ...(existsSync(FLEET) ? ['--fleet', FLEET] : [])], { timeout: 300_000, env: { ...process.env, PRIVATE_REPOS: names, GITHUB_ACTIONS: '' } })
+    const r = run(process.execPath, [realpathSync(GUARD), '--base', base, '--head', tip, '--dir', '.', '--allow', allowFile, '--fleet', fleetFile], { timeout: 300_000, env: { ...process.env, PRIVATE_REPOS: names, GITHUB_ACTIONS: '' } })
     const out = `${r.stdout}${r.stderr}`.trim()
     if (r.status === 0 && /^privacy-guard: OK/m.test(out)) continue
     refuse(`${count} outgoing commit${count === 1 ? '' : 's'} to ${where}, which is public (or not known to be private), would publish private detail (guard exit ${r.status}).\n${out}\nNothing was sent.`)
