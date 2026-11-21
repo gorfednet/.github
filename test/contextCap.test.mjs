@@ -271,6 +271,7 @@ test('past the cap, shell work that is not a handoff is refused', () => {
     ['gh pr create -l ready-to-merge --title x --body y', /a label is a merge decision/],
     ['gh pr create -lready-to-merge --title x --body y', /a label is a merge decision/],
     ['cp -t src/ "$d/x.js"', /cp -t/],
+    ['gh pr checks 12 --watch --interval 60', /waits on CI/],
     // review round 2
     ['cp -rt src/ "$d/x.js"', /cp -t/],
     ['sort -uo src/app.js "$d/a"', /sort -o/],
@@ -324,7 +325,10 @@ test('temp files: /tmp, /private/tmp and TMPDIR by default, and nothing that onl
   refused(write('/tmpx/a.js'));
   refused(write('/tmp/../w/repo/a.js'));
   refused(write('/w/repo/tmp/a.js'));
-  refused(call('Write', { file_path: '/w/scratch/body.md', content: 'x' }, { env: { ...env, TMPDIR: 'relative' } }), null, 'a relative TMPDIR');
+  // A relative TMPDIR resolves against the hook's own working directory, which is this process's. It opens nothing.
+  const relative = { env: { ...env, TMPDIR: 'relative' } };
+  refused(call('Write', { file_path: join(process.cwd(), 'relative', 'body.md'), content: 'x' }, relative), null, 'a relative TMPDIR, resolved');
+  refused(call('Write', { file_path: 'relative/body.md', content: 'x' }, { ...relative, cwd: '/w' }), null, 'a relative TMPDIR, as typed');
 });
 
 test('a command the parser cannot read, or whose target only the shell knows, passes', () => {

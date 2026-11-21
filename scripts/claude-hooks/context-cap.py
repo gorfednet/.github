@@ -492,6 +492,8 @@ class Shell:
         while rest[:1] and rest[0] in ("-R", "--repo"):
             rest = rest[2:]
         sub = next((a for a in rest if not a.startswith("-")), None)
+        if group == "pr" and sub == "checks" and any(a.startswith("--watch") for a in rest):
+            return "`gh pr checks --watch` waits on CI, and the next session does that"
         if group == "pr" and sub in ("create", "edit") and any(a.startswith(("--add-label", "--remove-label", "--label")) or re.match(r"-l", a) for a in rest):
             return "a label is a merge decision, and its gates can't run past the cap"
         if sub is None or sub in subs:
