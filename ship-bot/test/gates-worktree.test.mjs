@@ -248,12 +248,12 @@ describe('a row\'s own tool worktree and its refresh command (a CLI installed fr
   })
 
   it('after advancing the worktree it runs the refresh in it, with the bot\'s environment and the row\'s timeout, and says what it printed', async () => {
-    const runner = runnerWith(() => ({ stdout: 'install-local: wrote x\ninstall-local: smoke ok: propose 0.1.0 at origin/main ddddddd\n' }))
+    const runner = runnerWith(() => ({ stdout: 'install-local: wrote x\ninstall-local: smoke ok: example 0.1.0 at origin/main ddddddd\n' }))
     const s = scenario({ repos: [row()], github: new FakeGitHub({ pulls: [pr()] }), runner })
     await s.run()
     const [call] = refreshes(s)
     assert.deepEqual([call.cmd, call.args, call.cwd, call.timeoutMs], ['bash', ['tools/install-local.sh'], worktree(s), 7 * 60_000])
-    assert.ok(s.logs.some((l) => /the example command: refreshed: install-local: smoke ok: propose 0\.1\.0/.test(l)), s.logs.join('\n'))
+    assert.ok(s.logs.some((l) => /the example command: refreshed: install-local: smoke ok: example 0\.1\.0/.test(l)), s.logs.join('\n'))
     // It ran after the checkout, not before.
     const order = runner.calls.map((c) => (c.cmd === 'bash' ? 'refresh' : c.args?.[2]))
     assert.ok(order.indexOf('refresh') > order.indexOf('checkout'), order.join(','))
