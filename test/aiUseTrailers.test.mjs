@@ -146,6 +146,18 @@ describe('near misses that must pass', () => {
   })
 })
 
+describe('tags the spec allows', () => {
+  it('passes a non-model tool and a reach parenthetical beside a Claude model', () => {
+    const run = gate(repo([good('Claude Opus 5.5 + Cursor', ['Opus 5.5']), good('Claude Opus 5.5 (agent)', ['Opus 5.5'])]))
+    assert.equal(run.code, 0, run.err)
+  })
+
+  it('passes a person\'s own tag with no Claude co-author and no pointer', () => {
+    const run = gate(repo(['Change\n\nAI-Use: L1 drafted (Claude Opus 5.5)']))
+    assert.equal(run.code, 0, run.err)
+  })
+})
+
 describe('a later commit corrects a pushed one (never a rewrite)', () => {
   it('passes when a good later commit names the bad one', () => {
     const dir = repo([`Change\n\n${CO('Sonnet 5.5')}`])
@@ -156,6 +168,15 @@ describe('a later commit corrects a pushed one (never a rewrite)', () => {
     const run = gate(dir)
     assert.equal(run.code, 0, run.err)
     assert.match(run.out, /1 corrected by a later commit/)
+  })
+
+  it('fails when the correcting commit carries no tag at all', () => {
+    const dir = repo([`Change\n\n${CO('Sonnet 5.5')}`])
+    const bad = git(dir, 'rev-parse', 'topic').slice(0, 9)
+    writeFileSync(path.join(dir, 'fix.txt'), 'x\n')
+    git(dir, 'add', '.')
+    git(dir, 'commit', '-q', '-m', `fixup\n\nAI-Use-Corrects: ${bad}`)
+    assert.equal(gate(dir).code, 1)
   })
 
   it('fails when the correcting commit is itself bad', () => {

@@ -68,7 +68,9 @@ export function commitProblems({ message, parents }, lib, { exempt = false } = {
   const [tag] = tags
   for (const problem of trailers.checkTag(tag, spec)) problems.push(`${tag}: ${problem}`)
   if (agent && !/^AI-Use: L[23]\b/.test(tag)) problems.push(`${tag}: an agent commit is L3, or L2 when the owner said yes beforehand`)
-  if (standing.length === 0) problems.push('no AI-Use-Standing line beside the tag')
+  // The pointer is the delegation's (spec 1.3: required when the tag was written under one), so a
+  // person's own tag, with no Claude co-author, needs none. A pointer that is there is still checked.
+  if (agent && standing.length === 0) problems.push('no AI-Use-Standing line beside the tag')
   if (standing.length > 1) problems.push(`${standing.length} AI-Use-Standing lines on one commit`)
   for (const line of standing) {
     for (const problem of trailers.checkStanding(line, spec)) problems.push(`${line}: ${problem}`)
@@ -85,11 +87,15 @@ export function commitProblems({ message, parents }, lib, { exempt = false } = {
     if (tools.length > 0) {
       const ordered = order.orderTools(tools, models)
       if (ordered.join(' + ') !== tools.join(' + ')) problems.push(`tools out of order, expected ${ordered.join(' + ')}`)
-      const bare = (name) => name.replace(/^Claude /, '')
-      const named = new Set(tools.map(bare))
-      const coAuthors = new Set([...message.matchAll(CO_AUTHOR_MODEL)].map((m) => bare(m[1].trim())))
-      const differs = agent && named.size !== coAuthors.size || [...named].some((name) => !coAuthors.has(name))
-      if (differs) problems.push(`Co-Authored-By names ${[...coAuthors].join(' + ') || 'no model'}, the tag names ${[...named].join(' + ')}`)
+      // Co-Authored-By only names models. Compare the tag's listed models (group 0 of the order) and
+      // ignore other tools and any reach parenthetical, such as "Cursor" or "Claude Opus 5.5 (agent)".
+      if (agent) {
+        const bare = (name) => name.replace(/\s*\([^()]*\)\s*$/, '').replace(/^Claude /, '').trim()
+        const named = new Set(tools.filter((tool) => order.classify(tool, models).group === 0).map(bare))
+        const coAuthors = new Set([...message.matchAll(CO_AUTHOR_MODEL)].map((m) => bare(m[1])))
+        const differs = named.size !== coAuthors.size || [...named].some((name) => !coAuthors.has(name))
+        if (differs) problems.push(`Co-Authored-By names ${[...coAuthors].join(' + ') || 'no model'}, the tag names ${[...named].join(' + ') || 'no listed model'}`)
+      }
     }
   }
   return problems
@@ -139,8 +145,8 @@ export async function main(argv) {
   let corrected = 0
   const results = commits.map((commit) => ({ commit, problems: commitProblems(commit, lib, { exempt }) }))
   // A pushed commit is never rewritten (shipping.md), so a later commit in the same PR can correct
-  // it: `AI-Use-Corrects: <sha prefix>`, and the correcting commit itself has to pass.
-  const correctors = results.filter((r) => r.problems.length === 0 && !exempt).flatMap((r) => [...r.commit.message.matchAll(CORRECTS)].map((m) => m[1].toLowerCase()))
+  // it: `AI-Use-Corrects: <sha prefix>`, and the correcting commit itself has to carry exactly one tag and pass.
+  const correctors = results.filter((r) => r.problems.length === 0 && !exempt && lib.trailers.tagLines(r.commit.message).length === 1).flatMap((r) => [...r.commit.message.matchAll(CORRECTS)].map((m) => m[1].toLowerCase()))
   for (const { commit, problems } of results) {
     if (CLAUDE_CO_AUTHOR.test(commit.message)) agent += 1
     if (problems.length === 0) continue
