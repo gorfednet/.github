@@ -744,10 +744,14 @@ node ~/.ship-bot/app/ship-bot.mjs --record-deployed heuristics.4thcltr.com <full
 changing nothing, when:
 
 - the repository is not in the config, or the sha is not 40 characters;
-- the repository is blocked (that case is `--unblock <repo> --deployed <sha>`);
+- the repository is blocked (that case is `--unblock <repo> --deployed <sha>`),
+  or a deploy is on record as in progress;
+- its row has `pausedIfChanged` paths or `onlyIfChanged` deploy steps: a site
+  release id cannot vouch for an API or worker, and with no record the bot
+  treats every path as changed, which is the safe reading;
 - GitHub does not compare the sha as on the default branch;
 - a deploy is on record and the sha is behind it or does not follow it;
-- `--live-id` is given and does not end in the sha.
+- `--live-id` is given and is not `<stamp>-<sha prefix>` ending in the sha.
 
 The bot cannot read the server. Proving what is live is the caller's job:
 `site-deploy.sh list` marks the current release, and its id ends in the commit

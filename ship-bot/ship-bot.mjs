@@ -21,7 +21,8 @@
  *                                          record a hand deploy on a repo that is not blocked: writes lastDeployedSha
  *                                          when the full sha is on the default branch and not behind the recorded one.
  *                                          --live-id is the current release's id from `site-deploy.sh list`; it must
- *                                          end in that sha or nothing is recorded. A blocked repo stays --unblock.
+ *                                          end in that sha or nothing is recorded. A blocked repo stays --unblock;
+ *                                          a repo with pausedIfChanged or onlyIfChanged steps is refused.
  *   node ship-bot.mjs --config <path>      default ~/.ship-bot/config.json
  *   node ship-bot.mjs --verbose            also print why each PR was ignored
  *   node ship-bot.mjs --rotate-log <path>  first move <path> to <path>.1 if it is over 5 MB
@@ -106,9 +107,13 @@ export function parseArgs(argv) {
     else if (flag === '--unblock') args.unblock = value()
     else if (flag === '--deployed') args.deployed = value()
     else if (flag === '--record-deployed') {
+      if (args.recordDeployed) throw new Error('--record-deployed can be given once')
       const name = value()
       args.recordDeployed = { name, sha: value() }
-    } else if (flag === '--live-id') args.liveId = value()
+    } else if (flag === '--live-id') {
+      if (args.liveId !== undefined) throw new Error('--live-id can be given once')
+      args.liveId = value()
+    }
     else if (flag === '--rotate-log') args.rotateLog = value()
     else if (flag === '--set-live') args.setLive = parseBool(flag, value())
     else if (flag === '--set-repo-live') {
@@ -126,6 +131,9 @@ export function parseArgs(argv) {
   if (args.summaryJson && args.mode === 'live') throw new Error('--summary-json is for a dry pass; it cannot be used with --live')
   if (args.recordDeployed && args.unblock) throw new Error('--record-deployed is for a repo that is not blocked; it cannot be used with --unblock')
   if (args.recordDeployed && args.deployed !== undefined) throw new Error('--deployed belongs to --unblock; --record-deployed takes the sha as its second value')
+  // It writes state whatever the mode, and main() runs these others first and would drop it without a word.
+  if (args.recordDeployed && args.mode === 'dry-run') throw new Error('--record-deployed writes the state file; it has no dry run')
+  if (args.recordDeployed && (args.setLive !== undefined || args.setRepoLive || args.selfTest)) throw new Error('--record-deployed cannot be combined with --set-live, --set-repo-live or --self-test')
   if (args.liveId !== undefined && !args.recordDeployed) throw new Error('--live-id is only for --record-deployed')
   args.mode ??= 'dry-run'
   return args
@@ -787,8 +795,9 @@ export function pausedRefusal(repo, blocked, deployed) {
  * prefix of `sha`? Returns the refusal, or null when it does.
  */
 export function liveIdRefusal(liveId, sha) {
-  const tail = String(liveId).toLowerCase().split('-').at(-1)
-  if (namesSha(tail, sha)) return null
+  // A bare sha is not an id read from the list: the stamp before the last hyphen must be there too.
+  const [, tail] = /^.*[^-]-([0-9a-f]+)$/.exec(String(liveId).toLowerCase()) ?? []
+  if (tail && namesSha(tail, sha)) return null
   return `--live-id ${String(liveId).slice(0, 80)} does not end in ${sha.slice(0, 7)}: the live release was not built from that commit.`
 }
 
@@ -834,6 +843,11 @@ async function recordDeployed(config, { name, sha: given }, liveId, deps, print)
     deps.out(`${repo.slug}: ${why} Nothing was changed.`)
     return code
   }
+  // A site release id cannot vouch for a step that deploys something else. With no record every path counts as
+  // changed, so nothing is skipped and a paused path pauses; a record narrows that to the diff since it.
+  if (repo.pausedIfChanged?.length || repo.deploy?.some((step) => step?.onlyIfChanged)) {
+    return refuse('this repo has pausedIfChanged paths or onlyIfChanged deploy steps, and a hand record cannot prove those parts were deployed.')
+  }
   const sha = fullSha(String(given).toLowerCase())
   if (!sha) return refuse(`--record-deployed ${String(given).slice(0, 40)} is not a full 40-character commit sha.`)
   if (liveId !== undefined) {
@@ -848,6 +862,7 @@ async function recordDeployed(config, { name, sha: given }, liveId, deps, print)
   try {
     const state = new StateStore(join(config.stateDir, 'state.json')).load()
     const rs = state.repo(repo.slug)
+    if (rs.deployInProgress) return refuse(`a deploy of ${String(rs.deployInProgress.sha ?? '').slice(0, 7) || 'an unknown commit'} is on record as in progress; the next live pass settles it.`)
     if (rs.blocked) return refuse(`blocked (${rs.blocked.reason}). A block is lifted, and its deploy recorded, with: ship-bot --unblock ${repo.name} --deployed <sha>.`)
     if (rs.lastDeployedSha === sha) {
       deps.out(`${repo.slug}: ${sha.slice(0, 7)} is already the recorded deploy.`)
