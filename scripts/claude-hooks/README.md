@@ -50,7 +50,7 @@ A `PreToolUse` hook on every tool. Once a session's context passes 200,000 token
 
 - Context size is the newest main-chain assistant message's usage in the transcript (`transcript_path`): input plus cache read plus cache creation tokens. 200,000 passes and 200,001 is refused. A compacted session is under the cap again.
 - Why: sessions past the cap processed 26% of all tokens in the week of 13 to 19 November 2026, and 3 sessions passed 300,000 on 20 November. The cap was a rule nothing enforced.
-- At 180,000 it warns once, as context for the model, on the first call after the session crosses that line. It refuses nothing there.
+- At 180,000 it warns, as context for the model, on each tool call of the reply that crosses that line. Later replies get no warning. The hook keeps no state, so a reply with 3 tool calls gets it 3 times. It refuses nothing there.
 - Refused past the cap: `Agent`, `Task`, `Workflow`, `WebFetch`, `WebSearch`, and `Edit`, `Write`, `MultiEdit` or `NotebookEdit` outside the handoff's files.
 - The handoff's files: `docs/handoff/<date>-*.md`, `control/handoff/<date>-*.md`, `docs/backlog.json`, a memory file (`~/.claude/projects/*/memory/*.md`) and temp files (`/tmp`, `/private/tmp`, `$TMPDIR`).
 - Every other tool passes: `Read`, `Grep`, `Glob`, `Skill`, session tools, MCP tools.

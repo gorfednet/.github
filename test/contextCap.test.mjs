@@ -134,7 +134,7 @@ test('near misses: paths that only look like a handoff file or a temp file', () 
   refused(write(join(process.cwd(), 'relative', 'body.md'), { env: { ...env, TMPDIR: 'relative' } }), null, 'a relative TMPDIR');
 });
 
-test('one warning as the session crosses 180,000, and nothing is refused there', () => {
+test('a warning in the reply that crosses 180,000, none in later replies, and nothing is refused there', () => {
   const warned = (r) => {
     assert.equal(r.status, 0);
     assert.equal(r.stderr, '');
@@ -143,7 +143,9 @@ test('one warning as the session crosses 180,000, and nothing is refused there',
     assert.match(out.additionalContext, /^context-cap \(plan row 1\.61\): this session's context is 18\d,\d{3} tokens\. At 200,000 new work is held/);
     assert.match(out.additionalContext, /\/handoff <topic> and start the successor session/);
   };
-  warned(call('Edit', EDIT, { transcriptPath: at(180_000, 179_999) }));
+  const crossing = at(180_000, 179_999);
+  warned(call('Edit', EDIT, { transcriptPath: crossing }));
+  warned(call('Read', { file_path: '/w/a' }, { transcriptPath: crossing }), 'a second call in the same reply');
   warned(call('Bash', { command: 'npm test' }, { transcriptPath: at(185_000, 120_000) }));
   warned(call('Read', { file_path: '/w/a' }, { transcriptPath: transcript([assistant(120_000), assistant(181_000), assistant(181_000)]) }), 'one reply, several lines');
   passes(call('Edit', EDIT, { transcriptPath: at(179_999, 120_000) }), 'under the line');

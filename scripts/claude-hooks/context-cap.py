@@ -12,8 +12,8 @@ tokens, and on 20 November three sessions passed 300,000.
 Context size is the newest main-chain assistant message's usage in the
 transcript (`transcript_path`): input + cache read + cache creation tokens.
 
-  180,000  one warning as the session crosses it, as context for the model.
-           Nothing is refused.
+  180,000  a warning on each tool call of the reply that crosses it, as
+           context for the model. Later replies get none. Nothing is refused.
   200,001  refused: Agent, Task, Workflow, WebFetch, WebSearch, and Edit,
            Write, MultiEdit or NotebookEdit outside the handoff's files
            (`docs/handoff/<date>-*.md`, `control/handoff/<date>-*.md`,
@@ -170,7 +170,8 @@ def decide(payload: dict) -> tuple[str | None, str | None]:
         return None, None
     cap = DESK_CAP if is_desk(payload) else CAP
     if tokens <= cap:
-        # Once, as the session crosses the line: the reply before this one was still under it.
+        # Only in the reply that crosses the line: the one before it was still under. The hook keeps no state,
+        # so each tool call of that reply gets the warning.
         if cap == CAP and (before is None or before < WARN):
             return None, WARNING.format(tokens=tokens, cap=cap)
         return None, None
