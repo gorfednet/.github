@@ -130,6 +130,17 @@ career-portfolio, heuristics.4thcltr.com and papers.4thcltr.com, and ops since
 11 November 2026 (its row says what its one check proves). In a live pass a repository whose own flag
 is off is still read and logged, with `OBSERVE (repo not live)` on each line.
 
+**A ready pull request in a repository that isn't live (plan row 1.59).** When
+a labelled pull request passes every gate there, nothing will merge it. The
+bot tells you once per pull request and head, on the Mac and through ntfy:
+`<repo> #<n> is labelled ready-to-merge and passed every gate, but <slug> is
+not live`. After that its `would merge` lines are debug lines, so the log
+stays quiet. A notice ntfy didn't accept is sent to ntfy again on later
+passes, 5 times in all. A dry run, and a pass whose global `live` is off,
+tell nobody. The record is `notLiveTold` under the repository in
+`state.json`. It drops a pull request that closed, and goes once the
+repository is live.
+
 Before switching a repository on, check that its `expectedChecks` still match
 what its CI posts (a renamed job would make the bot wait forever):
 
@@ -842,7 +853,8 @@ merged. Each pass logs `gate scripts from the ...` with the source.
   repositories (a lock file, `~/.ship-bot/run.lock`).
 - A repository merges only when the global `live` and its own `live` are both
   true; otherwise a live pass observes it (reads, no writes, lines marked
-  `OBSERVE (repo not live)`, nothing remembered in the state file).
+  `OBSERVE (repo not live)`, nothing remembered in the state file but which
+  ready pull requests you were told about).
 - Before the first merge in a deploy-mode repository each run, the config's
   `preflight` steps (ssh to the NAS and to the Docker host) must succeed; if
   not, only merge-only repositories merge that run.

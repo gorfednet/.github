@@ -239,7 +239,8 @@ function sayUsage(ctx) {
  * merge, no comment, no notification, and nothing it decides reaches the
  * state file (a "would comment" mark saved there would stop the real comment
  * once the repository goes live). Its lines are marked OBSERVE, like a pass
- * whose global live is false.
+ * whose global live is false. The one exception is tellNotLive: a ready
+ * pull request there is told to the owner once, and that record is kept.
  */
 function repoContext(ctx, repo, deps) {
   if (ctx.dry || repo.live) return ctx
@@ -260,6 +261,8 @@ function repoContext(ctx, repo, deps) {
     say(level, text) {
       ctx.say(level, `OBSERVE (repo not live) ${text}`)
     },
+    /** The live pass this repository is observed in: its state file and its notifications, for the one thing an observed repository tells the owner (tellNotLive). */
+    notLive: ctx,
   }
   return observed
 }
@@ -321,6 +324,7 @@ async function processRepo(ctx, repo) {
   // A release or hotfix goes first (plan row 1.25): its head must contain main, so a plain merge ahead of it would force a new gate and smoke.
   const deploysFirst = (p) => ((p.labels ?? []).some((l) => [RELEASE_LABEL, HOTFIX_LABEL].includes(String(l.name).toLowerCase())) ? 0 : 1)
   const pulls = [...(await ctx.github.listOpenPulls(repo.slug))].sort((a, b) => deploysFirst(a) - deploysFirst(b) || a.number - b.number)
+  forgetNotLiveTold(ctx, repo, pulls)
 
   for (const listed of pulls) {
     // A person who took the bot's label off has taken the pull request back:
@@ -582,7 +586,9 @@ async function processPull(ctx, repo, pr, defaultBranch) {
   }
   ctx.pass.merges += 1
   if (ctx.dry) {
-    await dryRunMerge(ctx, repo, pr, tag, plan)
+    // A repository that is not live in a live pass: the owner hears once per head, and the "would merge" lines after that are debug.
+    const told = ctx.notLive ? await tellNotLive(ctx, repo, pr, tag) : false
+    await dryRunMerge(told ? { ...ctx, say: (level, text) => ctx.say(level === 'info' ? 'debug' : level, text) } : ctx, repo, pr, tag, plan)
     return true
   }
   return liveMerge(ctx, repo, pr, tag, plan)
@@ -1488,6 +1494,54 @@ async function holdForStaleInstall(ctx, repo, pr, tag) {
 function notDeployedWhy(repo) {
   if (repo.deployOn === 'merge') return 'no Release line in the description, so it was not tagged and not deployed. A release pull request carries `Release: X.Y.Z One sentence.` on its own line'
   return `not deployed: this repo deploys only from a release. It goes live with the next pull request labelled \`${RELEASE_LABEL}\` (or \`${HOTFIX_LABEL}\` for a security or outage fix)`
+}
+
+/** How many passes a not-live notice ntfy did not accept is sent again, without the Mac notification. */
+export const NOT_LIVE_NOTICE_TRIES = 5
+
+/**
+ * A labelled pull request passed every gate in a repository whose own `live` is false, in a live pass (plan row
+ * 1.59): nothing will merge it, and before this the only sign was "OBSERVE ... would merge" in the log on every
+ * pass. The owner is told once per pull request and head, on the Mac and through ntfy.
+ *
+ * `ctx` is the observed context, which keeps no memory, so the record goes in the live pass's own state file
+ * (`ctx.notLive`), under the repository: `notLiveTold[<number>] = {sha, at, delivered, tries}`. It is written
+ * before the notification, so a crash never repeats one. A notice ntfy did not accept is sent to ntfy again on
+ * later passes, NOT_LIVE_NOTICE_TRIES times in all. A dry run and a pass whose global `live` is false have no
+ * `notLive` and tell nobody.
+ *
+ * @returns {Promise<boolean>} whether this head was already told on an earlier pass
+ */
+async function tellNotLive(ctx, repo, pr, tag) {
+  const real = ctx.notLive
+  const told = (real.state.repo(repo.slug).notLiveTold ??= {})
+  const before = told[pr.number]?.sha === pr.head.sha ? told[pr.number] : null
+  if (before && (before.delivered || !real.config.ntfy || !(before.tries < NOT_LIVE_NOTICE_TRIES))) return true
+  const entry = (told[pr.number] = { sha: pr.head.sha, at: before?.at ?? real.clock.now().toISOString(), delivered: false, tries: (before?.tries ?? 0) + 1 })
+  real.state.save()
+  if (!before) ctx.say('info', `${tag}: every gate passed, and this repository is not live: telling the owner once for this head`)
+  const text = `${repo.name} #${pr.number} is labelled ${READY_LABEL} and passed every gate, but ${repo.slug} is not live in ship-bot's config, so nothing merges it. ${notLiveNext(repo)}`
+  entry.delivered = await notify(real, text, true, { mac: !before })
+  real.state.save()
+  return Boolean(before)
+}
+
+/**
+ * What stands between a ready pull request in a not-live repository and its merge. A row with unconfirmed TODOs is
+ * refused by a live run (processRepo), so "set it live" alone would be a promise the bot does not keep.
+ */
+function notLiveNext(repo) {
+  const todos = repo.todo?.length ?? 0
+  if (todos > 0) return `Setting the repository live is not enough yet: its config row still has ${todos} unconfirmed TODO${todos === 1 ? '' : 's'}, and a live run refuses the repository until each is confirmed and removed.`
+  return 'It can merge once the repository is set live, if every gate still passes on that pass.'
+}
+
+/** Keep `notLiveTold` to the pull requests still open, and drop it once the repository is live. Observed and live passes only: a dry run saves nothing. */
+function forgetNotLiveTold(ctx, repo, pulls) {
+  const rs = (ctx.notLive ?? ctx).state.data.repos[repo.slug]
+  if (!rs?.notLiveTold || (ctx.dry && !ctx.notLive)) return
+  if (!ctx.notLive) delete rs.notLiveTold
+  else for (const n of Object.keys(rs.notLiveTold)) if (!pulls.some((p) => String(p.number) === n)) delete rs.notLiveTold[n]
 }
 
 async function dryRunMerge(ctx, repo, pr, tag, plan) {
