@@ -245,9 +245,14 @@ describe('one finished review per head', () => {
     function skip(pages, head = HEAD) {
       const dir = mkdtempSync(join(tmpdir(), 'dup-'))
       try {
-        const bodies = pages.flat().filter((c) => c.login === 'github-actions[bot]').map((c) => c.body)
-        writeFileSync(join(dir, 'bodies'), bodies.join('\n'))
-        writeFileSync(join(dir, 'gh'), '#!/bin/sh\ncase "$*" in *--paginate*) ;; *) echo "stub gh needs --paginate" >&2; exit 9 ;; esac\ncat "$(dirname "$0")/bodies"\n', { mode: 0o755 })
+        // The stub hands back the raw comments and runs the step's own --jq filter through real jq,
+        // so the bot filter that ships is the one under test (jq missing is an error, never a skip).
+        writeFileSync(join(dir, 'comments.json'), JSON.stringify(pages.flat().map((c) => ({ user: { login: c.login }, body: c.body }))))
+        writeFileSync(
+          join(dir, 'gh'),
+          '#!/bin/sh\ncase "$*" in *--paginate*) ;; *) echo "stub gh needs --paginate" >&2; exit 9 ;; esac\nwhile [ $# -gt 0 ]; do [ "$1" = --jq ] && filter="$2"; shift; done\n[ -n "$filter" ] || exit 8\njq -r "$filter" "$(dirname "$0")/comments.json"\n',
+          { mode: 0o755 },
+        )
         writeFileSync(join(dir, 'step.sh'), script)
         const out = join(dir, 'out')
         writeFileSync(out, '')
