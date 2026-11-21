@@ -918,6 +918,16 @@
         "test (24)"
       ],
       "note": "ci / test names the matrix legs (Node 22 and 24). review / review and review / trigger come from the Claude reviewer caller (claudeReview): until its workflow (plex-lastfm-sync pull request 3) is on main and the review secret is set, review-status.mjs reads not-run and the bot holds each pull request."
+    },
+    {
+      "slug": "gorfednet/gorfednet",
+      "dir": "gorfednet",
+      "mode": "merge-only",
+      "reason": "no deploy: a profile README that github.com renders from main, with no build, so nothing ships from a merge (plan row 1.81, 21 November 2026)",
+      "claudeReview": true,
+      "live": false,
+      "expectedChecks": [],
+      "note": "The repository has no CI workflow, so expectedChecks is empty. review / review and review / trigger come from the Claude reviewer caller (claudeReview) and the verdict comes from review-status.mjs, so the bot holds each pull request until the review reads clean."
     }
   ]
 }

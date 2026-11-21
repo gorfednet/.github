@@ -39,7 +39,8 @@
       { "slug": "gorfednet/subrythm.com", "dir": "subrythm.com" },
       { "slug": "gorfednet/rowanmcarthur.com", "dir": "rowanmcarthur.com" },
       { "slug": "gorfednet/ACID2REAPER", "dir": "ACID2Reaper" },
-      { "slug": "gorfednet/plex-lastfm-sync", "dir": "plex-lastfm-sync" }
+      { "slug": "gorfednet/plex-lastfm-sync", "dir": "plex-lastfm-sync" },
+      { "slug": "gorfednet/gorfednet", "dir": "gorfednet" }
     ] }
   ]
 }

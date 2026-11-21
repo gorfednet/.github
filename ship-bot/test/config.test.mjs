@@ -166,6 +166,8 @@ describe('config validation', () => {
       'ai-use-levels': 'merge-only',
       // Public, no deploy: a service run by hand from a clone (plan row 6.6d, 20 November 2026).
       'plex-lastfm-sync': 'merge-only',
+      // Public, no deploy: the profile README renders from main (plan row 1.81, 21 November 2026).
+      gorfednet: 'merge-only',
     })
   })
 
