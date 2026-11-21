@@ -261,6 +261,16 @@ test('past the cap, shell work that is not a handoff is refused', () => {
     ['mv "$d/a.js" src/a.js', /`mv` touches/],
     ['mv src/a.js "$d/a.js"', /`mv` touches/],
     ['gh pr edit 12 --add-label ready-to-merge', /a label is a merge decision/],
+    // review round 1
+    ['gh pr create --label ready-to-merge --title x --body-file "$d/b.md"', /a label is a merge decision/],
+    ['gh pr create -l ready-to-merge --title x --body y', /a label is a merge decision/],
+    ['gh pr create -lready-to-merge --title x --body y', /a label is a merge decision/],
+    ['cp -t src/ "$d/x.js"', /cp -t/],
+    ['cp --target-directory=src "$d/x.js"', /cp -t/],
+    ['uniq "$d/in.txt" src/a.js', /`uniq` touches/],
+    ['echo x > src/app.js; cd .', /redirects into `src\/app\.js`/],
+    ['cp "$d/a.js" src/a.js && cd /w/other', /`cp` touches/],
+    ['cd /w/other && echo x > /w/repo/src/app.js', /redirects into/],
     ["gh api graphql -f query='mutation { x }'", /`gh api`/],
     ['gh api -X GET repos/o/r --input body.json', /`gh api`/],
     ['case x in a) npm test;; esac', /`npm`/],
@@ -390,6 +400,8 @@ function repoWithHandoff({ commit = true, date = today, dir = 'docs' } = {}) {
 
 test('once this session\'s handoff is committed, reads end and only publishing it runs', () => {
   const f = repoWithHandoff();
+  mkdirSync(join(f.repo, 'src'));
+  writeFileSync(join(f.repo, 'docs', 'backlog.json'), '{}');
   const opts = { transcriptPath: transcript([user, f.wrote(), user, assistant(260_000)]), cwd: f.repo };
   const r = call('Read', { file_path: join(f.repo, 'README.md') }, opts);
   refused(r, /Read reads, and the handoff is already committed/);
@@ -404,6 +416,12 @@ test('once this session\'s handoff is committed, reads end and only publishing i
     ['cat README.md', /`cat` touches/],
     ['ls', /`ls` reads, and the handoff is already committed/],
     ['rg -n x src', /`rg` reads/],
+    // review round 1: a filter with a file operand is a read
+    ['grep -rn x src', /`grep` reads `src`/],
+    ['sed -n 1,400p README.md', /`sed` reads `README\.md`/],
+    [`head -50 ${f.repo}/README.md`, /`head` reads/],
+    ['git status | tail -3 README.md', /`tail` reads/],
+    ['gh pr create --draft --label ready-to-merge --title x --body y', /a label is a merge decision/],
     ['find . -name x', /`find` reads/],
     ['git show HEAD', /`git show` reads, and the handoff is already committed/],
     ['git switch -c more-work', /`git switch`/],
@@ -429,6 +447,10 @@ test('once this session\'s handoff is committed, reads end and only publishing i
     "gh pr view 12 --json body -q .body | grep -n '^## Next'",
     'git fetch origin',
     'git pull --rebase origin work',
+    'gh pr view 12 --json body -q .body | grep -c README',
+    'git log --oneline | grep -n src',
+    'sed -n 1,40p docs/backlog.json',
+    `tail -5 docs/handoff/${today}-topic.md`,
     'gh pr view --json number,body',
     'd=$(mktemp -d) && gh pr view --json body -q .body > "$d/body.md"',
     `gh pr edit 12 --body-file ${TEMP}/body.md`,

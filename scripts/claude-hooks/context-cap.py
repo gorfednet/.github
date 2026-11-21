@@ -81,9 +81,10 @@ _PLAIN_CLOSED = {
     "cat", "pwd", "date", "echo", "printf", "true", "false", "test", "[", "[[", "cd", "pushd", "popd", "basename",
     "dirname", "mktemp", "mkdir", "sleep", "wait", "read", "export", "set", "unset", "local", ":", "tee", "touch",
     "rm", "cp", "mv", "exit", "return",
-    # filters: a publishing command is piped through them (`git push 2>&1 | tail -5`, `gh pr view ... | jq`)
-    "head", "tail", "jq", "grep", "egrep", "wc", "sort", "uniq", "cut", "tr", "sed", "awk",
 }
+# A publishing command is piped through these (`git push 2>&1 | tail -5`, `gh pr view ... | jq`), so they stay.
+_FILTERS = {"head", "tail", "jq", "grep", "egrep", "wc", "sort", "uniq", "cut", "tr", "sed", "awk"}
+_PLAIN_CLOSED |= _FILTERS
 _HEADERS = {"for", "select", "case", "esac", "function"}
 _TEST_OPS = {"==", "=", "!=", "=~", "-eq", "-ne", "-lt", "-gt", "-le", "-ge", "-nt", "-ot"}
 
@@ -311,17 +312,22 @@ class Shell:
         self.ag.REDIRECTS = []
         self.ag.parse(text, commands, depth)
         targets = self.ag.REDIRECTS
-        for words in commands:
+        moved_at = len(commands)  # index of the first `cd`: only what comes after it is relative to somewhere else
+        for k, words in enumerate(commands):
             names = [w.rsplit("/", 1)[-1] for w in words if w not in self.ag._KEYWORDS]
-            self.moved = self.moved or names[:1] in (["cd"], ["pushd"])
+            if names[:1] in (["cd"], ["pushd"]):
+                moved_at = min(moved_at, k)
             self.arms = self.arms or names[:1] == ["case"]
-        for target in targets:
-            if not _shell_path_ok(target, self.cwd, self.ag.DYN, self.moved):
+        before = self.moved
+        for target, k in targets:
+            if not _shell_path_ok(target, self.cwd, self.ag.DYN, before or k > moved_at):
                 return f"the command redirects into `{target[:80]}`, which isn't a handoff file"
-        for words in commands:
+        for k, words in enumerate(commands):
+            self.moved = before or k > moved_at
             why = self.words(words, depth)
             if why:
                 return why
+        self.moved = before or moved_at < len(commands)
         return None
 
     def _operands_ok(self, name: str, args: list[str]) -> str | None:
@@ -386,8 +392,24 @@ class Shell:
         if name in ("tee", "touch", "rm", "mv") or (name == "cat" and self.closed):
             return self._operands_ok(name, args)
         if name == "cp":
+            if any(a.startswith(("-t", "--target-directory")) for a in args):
+                return "`cp -t` names its target where this hook doesn't read it"
             operands = [a for a in args if not a.startswith("-")]
             return self._operands_ok(name, operands[-1:])
+        if name == "uniq":
+            return self._operands_ok(name, [a for a in args if not a.startswith("-")][1:])  # the second operand is its output
+        if self.closed and name in _FILTERS:
+            # In a pipe a filter reads no file. An operand that is a file here is a read, unless it's the handoff's own.
+            operands = [a for a in args if not a.startswith("-")]
+            if name in ("grep", "egrep", "sed", "jq", "awk") and not any(a in ("-e", "-f") or a.startswith("--regexp") for a in args):
+                operands = operands[1:]  # the pattern, script or filter, which can share a name with a file
+            for a in [] if name == "tr" else operands:
+                if self.ag.DYN in a or "$" in a or (self.moved and not a.startswith(("/", "~"))):
+                    continue
+                path = os.path.expanduser(a)
+                path = path if os.path.isabs(path) else os.path.join(self.cwd or "/", path)
+                if os.path.exists(path) and not writable(a, self.cwd):
+                    return f"`{name}` reads `{a[:80]}`, and the handoff is already committed"
         return None
 
     def git(self, args: list[str]) -> str | None:
@@ -465,7 +487,7 @@ class Shell:
         subs = table[group]
         if subs is None or "--help" in rest:
             return None
-        if group == "pr" and any(a.startswith(("--add-label", "--remove-label")) for a in rest):
+        if group == "pr" and any(a.startswith(("--add-label", "--remove-label", "--label")) or re.match(r"-l", a) for a in rest):
             return "a label is a merge decision, and its gates can't run past the cap"
         while rest[:1] and rest[0] in ("-R", "--repo"):
             rest = rest[2:]

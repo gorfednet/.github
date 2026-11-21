@@ -50,8 +50,9 @@ import sys
 DYN = "\x00"  # stands for text only the shell knows: $(...), `...`, ${...}
 MAX_DEPTH = 6
 # context-cap.py (plan row 1.61) loads this file for its parser and sets this to a list. parse() then
-# appends each output redirection target (`> file`, `>> file`, `&> file`) to it. None here: this hook reads none.
-REDIRECTS: list[str] | None = None
+# appends each output redirection (`> file`, `>> file`, `&> file`) to it as (target, number of commands parsed
+# before it). None here: this hook reads none.
+REDIRECTS: list[tuple[str, int]] | None = None
 
 _HEREDOC = re.compile(r"<<(-?)[ \t]*(?:'([^'\n]*)'|\"([^\"\n]*)\"|(\\?)([A-Za-z_][\w.-]*))")
 _ASSIGN = re.compile(r"^[A-Za-z_]\w*\+?=")
@@ -192,7 +193,7 @@ def parse(text: str, out: list, depth: int = 0) -> None:
         if skip_word:
             skip_word = False
             if writes and REDIRECTS is not None:
-                REDIRECTS.append("".join(cur))
+                REDIRECTS.append(("".join(cur), len(out)))
             writes = False
         else:
             words.append("".join(cur))
