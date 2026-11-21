@@ -17,7 +17,7 @@
  *   node ship-bot.mjs --unblock MoonMan    clear a block left by a failed deploy
  *   node ship-bot.mjs --unblock MoonMan --deployed <sha>
  *                                          clear a paused deploy's block once that commit was deployed by hand
- *   node ship-bot.mjs --record-deployed MoonMan <sha> [--live-id <release id>]
+ *   node ship-bot.mjs --record-deployed MoonMan <sha> --live-id <release id>
  *                                          record a hand deploy on a repo that is not blocked: writes lastDeployedSha
  *                                          when the full sha is on the default branch and not behind the recorded one.
  *                                          --live-id is the current release's id from `site-deploy.sh list`; it must
@@ -60,7 +60,7 @@ import { formatValidation, validateExpectedChecks } from './lib/validate.mjs'
 
 const USAGE =
   'usage: ship-bot.mjs [--dry-run | --live] [--once] [--repo <name>]... [--config <path>] [--verbose] [--unblock <name> [--deployed <sha>]] [--rotate-log <path>] [--summary-json]\n' +
-  '       ship-bot.mjs --record-deployed <name> <sha> [--live-id <release id>]\n' +
+  '       ship-bot.mjs --record-deployed <name> <sha> --live-id <release id>\n' +
   '       ship-bot.mjs --set-live true|false | --set-repo-live <slug> true|false | --validate [--repo <name>]... | --check-preflight | --self-test | --board'
 
 const parseBool = (flag, v) => {
@@ -826,7 +826,7 @@ export async function recordRefusal(github, slug, sha, recorded) {
  * is not blocked (plan row 1.34). Until this flag only the bot's own deploy and
  * `--unblock --deployed` wrote lastDeployedSha, so a repository deployed by its
  * session had none, or kept an old one. It cannot see the server: the caller
- * proves the live release with `site-deploy.sh list` and may pass its id as
+ * proves the live release with `site-deploy.sh list` and must pass its id as
  * `--live-id`, which must end in the sha. Exit 0 recorded (or already
  * recorded), 2 refused, 1 could not check (a pass is running, no token,
  * GitHub failed). Every exit but the first changes nothing.
@@ -850,12 +850,10 @@ async function recordDeployed(config, { name, sha: given }, liveId, deps, print)
   }
   const sha = fullSha(String(given).toLowerCase())
   if (!sha) return refuse(`--record-deployed ${String(given).slice(0, 40)} is not a full 40-character commit sha.`)
-  if (liveId !== undefined) {
-    const mismatch = liveIdRefusal(liveId, sha)
-    if (mismatch) return refuse(mismatch)
-  } else {
-    deps.out(`${repo.slug}: this records ${sha.slice(0, 7)} as live without reading the server. Check first: \`site-deploy.sh list\` marks the current release, and its id must end in ${sha.slice(0, 7)} (pass it as --live-id to have it checked).`)
-  }
+  // Required: a record on the caller's word could let a hotfix deploy merges that were never released.
+  if (liveId === undefined) return refuse(`--live-id is required. \`site-deploy.sh list\` marks the current release; pass its id, which must end in ${sha.slice(0, 7)}.`)
+  const mismatch = liveIdRefusal(liveId, sha)
+  if (mismatch) return refuse(mismatch)
   // A running pass saves its own copy of state.json over anything written here (see unblock), so never write under it.
   const lock = acquireLock(lockPath(config.stateDir))
   if (!lock.ok) return refuse(`a pass is running (${lock.holder}); run this again once it ends.`, 1)
