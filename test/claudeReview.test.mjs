@@ -312,14 +312,15 @@ describe('the caller template', () => {
     assert.match(template, /issue_comment:\n\s+types: \[created\]/)
   })
 
-  it('passes the token and never routes the reviewer to the pool', () => {
+  it('passes the token and routes the reviewer to the caller pool', () => {
     assert.match(template, /CLAUDE_CODE_OAUTH_TOKEN: \$\{\{ secrets\.CLAUDE_CODE_OAUTH_TOKEN \}\}/)
-    // The reviewer holds a secret; secret-holding jobs stay GitHub-hosted (owner, 2026-10-19).
-    assert.doesNotMatch(template, /HEAVY_RUNS_ON/)
+    // The owner's 2026-11-20 instruction replaced the 2026-10-19 rule that kept secret jobs hosted.
+    assert.match(template, /runs-on: \$\{\{ vars\.HEAVY_RUNS_ON \}\}/)
   })
 
   it('grants every permission the shared job asks for, since a called job cannot exceed its caller', () => {
-    const asked = workflow.slice(workflow.indexOf('    permissions:'), workflow.indexOf('    concurrency:'))
+    const review = workflow.slice(workflow.indexOf('\n  review:'))
+    const asked = review.slice(review.indexOf('    permissions:'), review.indexOf('    concurrency:'))
     const permissions = [...asked.matchAll(/^\s{6}([a-z-]+): (\w+)$/gm)].map((match) => `${match[1]}: ${match[2]}`)
     assert.ok(permissions.length >= 4, `parsed ${permissions.length} permissions`)
     for (const permission of permissions) assert.ok(template.includes(`  ${permission}\n`), permission)
@@ -416,17 +417,75 @@ describe('the review trigger', () => {
     assert.match(review, /\n    needs: trigger\n/)
     assert.match(review, /\n    if: needs\.trigger\.outputs\.go == 'true'\n/)
     assert.match(review, /concurrency:/)
-    assert.match(job('trigger'), /go: \$\{\{ steps\.trigger\.outputs\.go \}\}/)
+    assert.match(job('trigger'), /go: \$\{\{ steps\.fork\.outputs\.go \|\| steps\.trigger\.outputs\.go \}\}/)
   })
 })
 
+const EXPR = "fromJSON(github.event.repository.visibility == 'public' && '\"ubuntu-latest\"' || inputs.runs-on == '' && vars.HEAVY_RUNS_ON == '' && 'no pool for this repository - set HEAVY_RUNS_ON' || github.event.repository.visibility != '' && (contains(inputs.runs-on != '' && inputs.runs-on || vars.HEAVY_RUNS_ON, 'ubuntu-') || contains(inputs.runs-on != '' && inputs.runs-on || vars.HEAVY_RUNS_ON, 'macos-') || contains(inputs.runs-on != '' && inputs.runs-on || vars.HEAVY_RUNS_ON, 'windows-')) && 'hosted runner refused for a private repository - use the pool label' || inputs.runs-on != '' && inputs.runs-on || vars.HEAVY_RUNS_ON)"
+
 describe('where the shared reviewer runs', () => {
-  it('always runs GitHub-hosted, whatever a caller passes, because it holds the OAuth secret', () => {
+  it('runs every job on the caller pool, with no hosted fallback and no startup failure when it is unset', () => {
     const jobs = workflow.slice(workflow.indexOf('\njobs:'))
     const runsOn = [...jobs.matchAll(/^\s{4}runs-on: (.+)$/gm)].map((match) => match[1])
-    assert.ok(runsOn.length >= 1, 'found runs-on lines')
-    for (const value of runsOn) assert.equal(value, 'ubuntu-latest')
-    assert.doesNotMatch(jobs, /inputs\.runs-on/)
+    assert.ok(runsOn.length >= 2, 'found a runs-on line for both jobs')
+    for (const value of runsOn) {
+      assert.equal(value, '${{ ' + EXPR + ' }}')
+    }
+    assert.doesNotMatch(workflow, /runs-on: ubuntu/)
+    assert.doesNotMatch(workflow.replaceAll("github.event.repository.visibility == 'public' && '\"ubuntu-latest\"'", ''), /"ubuntu-latest"/, 'a hosted value only for a public caller')
+    const input = workflow.slice(workflow.indexOf('      runs-on:\n'), workflow.indexOf('      model:'))
+    assert.match(input, /required: false/)
+  })
+})
+
+describe('a pull request from a fork is never reviewed', () => {
+  const FORK = step(workflow, 'Refuse a pull request from a fork')
+  const script = (() => {
+    const at = FORK.indexOf('run: |\n')
+    const lines = FORK.slice(at + 'run: |\n'.length).split('\n')
+    const end = lines.findIndex((l) => l.trim() !== '' && !l.startsWith(' '.repeat(10)))
+    return (end === -1 ? lines : lines.slice(0, end)).map((l) => l.replace(/^ {10}/, '')).join('\n')
+  })()
+  // `gh` is a stub that prints GH_HEAD (or fails when it is "FAIL"), so no network is used.
+  const decide = (event, { payload = '', api = '' } = {}) => {
+    const dir = mkdtempSync(join(tmpdir(), 'review-fork-'))
+    const out = join(dir, 'out')
+    writeFileSync(out, '')
+    mkdirSync(join(dir, 'bin'))
+    writeFileSync(join(dir, 'bin', 'gh'), '#!/bin/sh\n[ "$GH_HEAD" = FAIL ] && exit 1\nprintf %s "$GH_HEAD"\n', { mode: 0o755 })
+    try {
+      execFileSync('bash', ['-c', script], {
+        env: { PATH: `${join(dir, 'bin')}:${process.env.PATH}`, EVENT: event, BASE_REPO: 'example/repo', PAYLOAD_HEAD_REPO: payload, NUMBER: '7', GH_HEAD: api, GITHUB_OUTPUT: out },
+        stdio: 'pipe',
+      })
+    } catch {
+      rmSync(dir, { recursive: true, force: true })
+      return 'failed'
+    }
+    const go = /go=(\w+)/.exec(readFileSync(out, 'utf8'))?.[1]
+    rmSync(dir, { recursive: true, force: true })
+    return go
+  }
+
+  it('proceeds only when the head repository is this one, on the pull_request path', () => {
+    assert.equal(decide('pull_request', { payload: 'example/repo' }), 'true')
+    assert.equal(decide('pull_request', { payload: 'someone/repo' }), 'false')
+    assert.equal(decide('pull_request', { payload: '' }), 'false')
+  })
+
+  it('reads the head repository from the API on the comment path, refuses a fork, and fails the job on a failed read', () => {
+    assert.equal(decide('issue_comment', { api: 'example/repo' }), 'true')
+    assert.equal(decide('issue_comment', { api: 'someone/repo' }), 'false')
+    assert.equal(decide('issue_comment', { api: '' }), 'false')
+    // A failed read is red, so a 'claude review' comment that did nothing is visible (Fable, 2026-11-20).
+    assert.equal(decide('issue_comment', { api: 'FAIL' }), 'failed')
+  })
+
+  it('is wired into the trigger job output and the condition, with read access to pull requests only', () => {
+    const trigger = workflow.slice(workflow.indexOf('\n  trigger:'), workflow.indexOf('\n  review:'))
+    assert.match(trigger, /github\.event\.pull_request\.head\.repo\.full_name == github\.repository/)
+    assert.match(trigger, /go: \$\{\{ steps\.fork\.outputs\.go \|\| steps\.trigger\.outputs\.go \}\}/)
+    assert.match(trigger, /permissions:\n      pull-requests: read\n/)
   })
 })
 

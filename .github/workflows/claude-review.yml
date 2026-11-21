@@ -18,9 +18,20 @@
 # (`sk-ant-api...`) with its own spending cap. The "Pick the credential" step tells them apart by
 # prefix, so a repository switches by replacing the secret's value, with no caller change. An API
 # key keeps reviews off the subscription's weekly limit (owner, 2026-10-27: the shared limit was
-# reached and every review failed). It always runs GitHub-hosted (ubuntu-latest): it holds
-# that secret, and secret-holding jobs stay off the self-hosted pool (owner decision 2026-10-19).
-# The `runs-on` input is still accepted from older callers and ignored.
+# reached and every review failed).
+#
+# Both jobs run on the caller's pool: the optional `runs-on` input (JSON), else the caller's
+# HEAVY_RUNS_ON variable. The owner's instruction of 2026-11-20 ("we need to stop using github
+# runners entirely, only rely on local infra") replaces the decision of 2026-10-19 that kept
+# secret-holding jobs hosted. A public caller always runs GitHub-hosted, which is free (owner,
+# 2026-11-20: free runners only), whatever the input or the variable say: the pool serves no public
+# repository. A private caller with neither
+# set, or with a hosted runner name (ubuntu-, macos-, windows-), fails at once with a message that
+# names the fix: a job that waited for a label no runner carries would sit queued for a day and
+# alert nobody. Paid minutes are never used.
+#
+# A pull request whose head is in another repository (a fork) is never reviewed here, on either
+# trigger: the review job holds the token and runs on the pool, and a fork's head must not reach it.
 #
 # The verdict is machine-readable: the review ends with one pull request comment carrying
 # `<!-- claude-review head=<sha> findings=<n> blocking=<m> -->`, which scripts/review-status.mjs (in this
@@ -32,9 +43,13 @@ on:
     inputs:
       runs-on:
         description: >-
-          Ignored, kept so existing callers do not break. Both jobs always run GitHub-hosted:
-          the review job holds CLAUDE_CODE_OAUTH_TOKEN, and secret-holding jobs stay off the
-          self-hosted pool (owner decision 2026-10-19).
+          Where every job runs, as JSON: a label string or an array of labels, e.g.
+          '["self-hosted","linux","4c-heavy"]'. Optional: left empty, the caller's HEAVY_RUNS_ON
+          variable is used, so no caller has to pass it. A public caller always runs
+          GitHub-hosted, which is free (owner, 2026-11-20: free runners only), whatever this input
+          or the variable say: the pool serves no public repository. A scheduled run's event carries no
+          repository, so that rule can't see one: a public caller on a schedule passes a hosted runs-on
+          itself. A private caller with neither set, or with a hosted name, fails at once with a message that names the fix; no job queues.
         required: false
         type: string
         default: ""
@@ -63,19 +78,19 @@ jobs:
   trigger:
     if: >-
       (github.event_name == 'pull_request' && !github.event.pull_request.draft &&
-       github.event.pull_request.user.login != 'dependabot[bot]') ||
+       github.event.pull_request.user.login != 'dependabot[bot]' &&
+       github.event.pull_request.head.repo.full_name == github.repository) ||
       (github.event_name == 'issue_comment' && github.event.issue.pull_request &&
        contains(github.event.comment.body, 'claude review') &&
        ((github.event.comment.user.type != 'Bot' &&
          contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)) ||
         (vars.SHIP_BOT_LOGIN != '' && github.event.comment.user.login == vars.SHIP_BOT_LOGIN)))
-    # The runs-on input is accepted and ignored.
-    # Hosted: a review request should not wait behind the self-hosted pool's queue (seconds of work).
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(github.event.repository.visibility == 'public' && '"ubuntu-latest"' || inputs.runs-on == '' && vars.HEAVY_RUNS_ON == '' && 'no pool for this repository - set HEAVY_RUNS_ON' || github.event.repository.visibility != '' && (contains(inputs.runs-on != '' && inputs.runs-on || vars.HEAVY_RUNS_ON, 'ubuntu-') || contains(inputs.runs-on != '' && inputs.runs-on || vars.HEAVY_RUNS_ON, 'macos-') || contains(inputs.runs-on != '' && inputs.runs-on || vars.HEAVY_RUNS_ON, 'windows-')) && 'hosted runner refused for a private repository - use the pool label' || inputs.runs-on != '' && inputs.runs-on || vars.HEAVY_RUNS_ON) }}
     timeout-minutes: 2
-    permissions: {}
+    permissions:
+      pull-requests: read
     outputs:
-      go: ${{ steps.trigger.outputs.go }}
+      go: ${{ steps.fork.outputs.go || steps.trigger.outputs.go }}
     steps:
       # The job's `if` only prefilters a comment (the words appear somewhere, and contains() is
       # case-insensitive). This decides: a review is asked for when one line of the comment,
@@ -101,11 +116,38 @@ jobs:
           echo "go=${go}" >> "$GITHUB_OUTPUT"
           echo "review requested: ${go}"
 
+      # A fork head never reaches the review job. The pull_request payload carries the head
+      # repository; an issue_comment payload does not, so it is read from the API. A failed read
+      # fails the job. A deleted head repository is refused, never assumed to be this one.
+      - name: Refuse a pull request from a fork
+        id: fork
+        if: steps.trigger.outputs.go == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          BASE_REPO: ${{ github.repository }}
+          PAYLOAD_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
+        run: |
+          set -euo pipefail
+          head="$PAYLOAD_HEAD_REPO"
+          if [[ "$EVENT" == issue_comment ]]; then
+            # A failed read is red, never a silent skip: only a fork, or a deleted head
+            # repository (an empty name), skips the review.
+            if ! head="$(gh api "repos/${BASE_REPO}/pulls/${NUMBER}" --jq '.head.repo.full_name // ""')"; then
+              echo "::error::Could not read pull request ${NUMBER} to check its head repository."
+              exit 1
+            fi
+          fi
+          go=false
+          if [[ -n "$head" && "$head" == "$BASE_REPO" ]]; then go=true; fi
+          echo "go=${go}" >> "$GITHUB_OUTPUT"
+          echo "head repository: ${head:-unknown}; review: ${go}"
+
   review:
     needs: trigger
     if: needs.trigger.outputs.go == 'true'
-    # Hosted: holds CLAUDE_CODE_OAUTH_TOKEN; secret-holding jobs stay off the pool (owner, 2026-10-19).
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(github.event.repository.visibility == 'public' && '"ubuntu-latest"' || inputs.runs-on == '' && vars.HEAVY_RUNS_ON == '' && 'no pool for this repository - set HEAVY_RUNS_ON' || github.event.repository.visibility != '' && (contains(inputs.runs-on != '' && inputs.runs-on || vars.HEAVY_RUNS_ON, 'ubuntu-') || contains(inputs.runs-on != '' && inputs.runs-on || vars.HEAVY_RUNS_ON, 'macos-') || contains(inputs.runs-on != '' && inputs.runs-on || vars.HEAVY_RUNS_ON, 'windows-')) && 'hosted runner refused for a private repository - use the pool label' || inputs.runs-on != '' && inputs.runs-on || vars.HEAVY_RUNS_ON) }}
     timeout-minutes: 30
     permissions:
       contents: read

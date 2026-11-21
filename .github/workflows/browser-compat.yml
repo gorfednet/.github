@@ -5,12 +5,13 @@ on:
     inputs:
       runs-on:
         description: >-
-          Where the job runs, as JSON: a label string or an array of labels, e.g.
-          '["self-hosted","linux","4c-heavy"]' from the caller's HEAVY_RUNS_ON variable. Every
-          CI job runs on the dapyllil pool by default (owner, 2026-10-19), so a caller passes
-          its pool labels; left empty it is GitHub-hosted ubuntu-latest, as before this input
-          existed. A caller routing to the pool must also gate on its pool-liveness preflight,
-          because a label no runner carries is not red, it is queued.
+          Where every job runs, as JSON: a label string or an array of labels, e.g.
+          '["self-hosted","linux","4c-heavy"]'. Optional: left empty, the caller's HEAVY_RUNS_ON
+          variable is used, so no caller has to pass it. A public caller always runs
+          GitHub-hosted, which is free (owner, 2026-11-20: free runners only), whatever this input
+          or the variable say: the pool serves no public repository. A scheduled run's event carries no
+          repository, so that rule can't see one: a public caller on a schedule passes a hosted runs-on
+          itself. A private caller with neither set, or with a hosted name, fails at once with a message that names the fix; no job queues.
         required: false
         type: string
         default: ""
@@ -96,7 +97,7 @@ jobs:
   # Emits the matrix. A bad webkit-shards value fails here, and compat is then skipped, which
   # compat-success reports as red.
   plan:
-    runs-on: ${{ fromJSON(inputs.runs-on != '' && inputs.runs-on || '"ubuntu-latest"') }}
+    runs-on: ${{ fromJSON(github.event.repository.visibility == 'public' && '"ubuntu-latest"' || inputs.runs-on == '' && vars.HEAVY_RUNS_ON == '' && 'no pool for this repository - set HEAVY_RUNS_ON' || github.event.repository.visibility != '' && (contains(inputs.runs-on != '' && inputs.runs-on || vars.HEAVY_RUNS_ON, 'ubuntu-') || contains(inputs.runs-on != '' && inputs.runs-on || vars.HEAVY_RUNS_ON, 'macos-') || contains(inputs.runs-on != '' && inputs.runs-on || vars.HEAVY_RUNS_ON, 'windows-')) && 'hosted runner refused for a private repository - use the pool label' || inputs.runs-on != '' && inputs.runs-on || vars.HEAVY_RUNS_ON) }}
     timeout-minutes: 5
     outputs:
       matrix: ${{ steps.plan.outputs.matrix }}
@@ -113,7 +114,7 @@ jobs:
   compat:
     name: compat (${{ matrix.label }})
     needs: plan
-    runs-on: ${{ fromJSON(inputs.runs-on != '' && inputs.runs-on || '"ubuntu-latest"') }}
+    runs-on: ${{ fromJSON(github.event.repository.visibility == 'public' && '"ubuntu-latest"' || inputs.runs-on == '' && vars.HEAVY_RUNS_ON == '' && 'no pool for this repository - set HEAVY_RUNS_ON' || github.event.repository.visibility != '' && (contains(inputs.runs-on != '' && inputs.runs-on || vars.HEAVY_RUNS_ON, 'ubuntu-') || contains(inputs.runs-on != '' && inputs.runs-on || vars.HEAVY_RUNS_ON, 'macos-') || contains(inputs.runs-on != '' && inputs.runs-on || vars.HEAVY_RUNS_ON, 'windows-')) && 'hosted runner refused for a private repository - use the pool label' || inputs.runs-on != '' && inputs.runs-on || vars.HEAVY_RUNS_ON) }}
     timeout-minutes: 25
     strategy:
       fail-fast: false
@@ -208,7 +209,7 @@ jobs:
           retention-days: 7
 
   compat-success:
-    runs-on: ${{ fromJSON(inputs.runs-on != '' && inputs.runs-on || '"ubuntu-latest"') }}
+    runs-on: ${{ fromJSON(github.event.repository.visibility == 'public' && '"ubuntu-latest"' || inputs.runs-on == '' && vars.HEAVY_RUNS_ON == '' && 'no pool for this repository - set HEAVY_RUNS_ON' || github.event.repository.visibility != '' && (contains(inputs.runs-on != '' && inputs.runs-on || vars.HEAVY_RUNS_ON, 'ubuntu-') || contains(inputs.runs-on != '' && inputs.runs-on || vars.HEAVY_RUNS_ON, 'macos-') || contains(inputs.runs-on != '' && inputs.runs-on || vars.HEAVY_RUNS_ON, 'windows-')) && 'hosted runner refused for a private repository - use the pool label' || inputs.runs-on != '' && inputs.runs-on || vars.HEAVY_RUNS_ON) }}
     timeout-minutes: 5
     needs: [plan, compat]
     if: always()

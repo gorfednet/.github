@@ -22,7 +22,7 @@ permissions:
 jobs:
   review:
     uses: gorfednet/.github/.github/workflows/claude-review.yml@main
-    with:
-      runs-on: ${{ vars.HEAVY_RUNS_ON }}
+    # No runs-on input: this repository is public, so the reusable always runs it GitHub-hosted, free.
+    # Never set HEAVY_RUNS_ON on a public repository: the pool serves none, and the reusable ignores it.
     secrets:
       CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
