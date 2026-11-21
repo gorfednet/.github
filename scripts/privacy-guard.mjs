@@ -844,7 +844,10 @@ export function run(argv, env = process.env, out = console) {
   // path and a line that says private stay read.
   // Counted against the allowlist the guard was given (main's, or the remote's default branch for
   // the hook), not the range, so a second push to a branch that already carries a site line from
-  // the first push counts both and clears neither.
+  // the first push counts both and clears neither. Only a line this range itself adds can clear
+  // (`written`, from the net diff against the merge base): a line a branch inherited, which main has
+  // since dropped, counts toward the cap and clears nothing.
+  const written = new Set((net?.added ?? []).filter((a) => a.path === ALLOWLIST_PATH).map((a) => isSiteLine(a.text)).filter(Boolean))
   const added = new Set()
   if (commits.length > 0) {
     let headList = ''
@@ -858,7 +861,7 @@ export function run(argv, env = process.env, out = console) {
       if (site && !allow.sites.includes(site)) added.add(site)
     }
   }
-  allow.bootSites = added.size === 1 ? [...added] : []
+  allow.bootSites = added.size === 1 && written.has([...added][0]) ? [...added] : []
   allow.sites.push(...allow.bootSites)
 
   const open = names.filter((n) => !allow.repos.includes(n))

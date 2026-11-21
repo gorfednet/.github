@@ -1672,6 +1672,30 @@ describe('privacy guard: a `site <domain>` line makes the name count as said', (
         rmSync(dir, { recursive: true, force: true })
       }
     }
+    // A line the branch inherited, which main has since dropped, is not one this range adds.
+    {
+      const dir = mkdtempSync(join(tmpdir(), 'privacy-guard-dropped-'))
+      try {
+        sh(dir, 'init', '-q', '-b', 'main')
+        mkdirSync(join(dir, '.github'), { recursive: true })
+        writeFileSync(join(dir, '.github', 'privacy-guard-allow.txt'), `site ${NAME}\n`)
+        writeFileSync(join(dir, 'README.md'), 'hi\n')
+        sh(dir, 'add', '-A')
+        sh(dir, 'commit', '-q', '-m', 'main has the site')
+        sh(dir, 'checkout', '-q', '-b', 'pr')
+        writeFileSync(join(dir, 'README.md'), `https://${NAME}/\n`)
+        sh(dir, 'add', '-A')
+        sh(dir, 'commit', '-q', '-m', 'link')
+        sh(dir, 'checkout', '-q', 'main')
+        writeFileSync(join(dir, '.github', 'privacy-guard-allow.txt'), '# dropped\n')
+        sh(dir, 'add', '-A')
+        sh(dir, 'commit', '-q', '-m', 'main drops it')
+        const r = spawnSync('node', [GUARD, '--base', 'main', '--head', 'pr', '--dir', dir], { encoding: 'utf8', env: { PATH: process.env.PATH, HOME: process.env.HOME, PRIVATE_REPOS: NAME } })
+        assert.equal(r.status, 1, `${r.stdout}${r.stderr}`)
+      } finally {
+        rmSync(dir, { recursive: true, force: true })
+      }
+    }
     // The repository reading is for the site this range lists. A site already on main keeps main's reading.
     passes(`The repo ${NAME} holds the code\n`)
     // More than one new site line in a range clears nothing: it can't be a first line.
