@@ -85,13 +85,18 @@ function workflowRunIdOf(run) {
  * Only a check run that is itself completed with conclusion `cancelled` can be
  * superseded, and only by a workflow run of the same workflow id and event, on
  * this head, with a strictly higher run id, that completed with success.
+ * A rerun is the other way one is replaced: it is a new attempt of the same
+ * run id, so no higher id ever appears. A cancelled check is superseded too
+ * when its own workflow run is on attempt 2 or later, completed with success,
+ * and the check finished at or before that attempt started (`run_started_at`).
+ * A check with no such times, or one that finished inside the attempt, is kept.
  * Anything else is kept: a red shard, a cancel whose workflow run can't be
  * found, a cancel with no later green run. Cancelled is never success.
  *
  * `workflowRuns`: undefined = not read (nothing was cancelled, nothing is
  * superseded); null = the read failed. Returns the runs to judge and the
- * cancelled checks that may yet be superseded (a later run of the workflow is
- * still going, or the read failed), which wait instead of failing.
+ * cancelled checks that may yet be superseded (a later run of the workflow, or
+ * a later attempt of its own run, is still going, or the read failed), which wait instead of failing.
  */
 export function dropSupersededCancels(runs, workflowRuns, sha) {
   const waiting = new Set()
@@ -106,6 +111,11 @@ export function dropSupersededCancels(runs, workflowRuns, sha) {
     }
     const own = byId.get(workflowRunIdOf(r))
     if (!own || own.head_sha !== sha) return true
+    // Its own run on a later attempt (a rerun keeps the run id). Only a check that finished before that attempt began is the earlier attempt's.
+    if (Number.isInteger(own.run_attempt) && own.run_attempt > 1 && r.completed_at && own.run_started_at && r.completed_at <= own.run_started_at) {
+      if (own.status === 'completed' && own.conclusion === 'success') return false
+      if (own.status !== 'completed') waiting.add(r)
+    }
     const later = list.filter(
       (w) => Number(w.id) > Number(own.id) && w.workflow_id === own.workflow_id && w.event === own.event && w.head_sha === sha,
     )
@@ -240,7 +250,7 @@ export function evaluateChecks({ runs, statuses, expectedChecks, graceOver, labe
 
   const pending = [
     ...others.filter((r) => r.status !== 'completed').map((r) => r.name),
-    ...waitingCancels.map((r) => `${r.name} (cancelled; a later run of its workflow may replace it)`),
+    ...waitingCancels.map((r) => `${r.name} (cancelled; a later run or attempt of its workflow may replace it)`),
     ...otherStatuses.filter((s) => s.state === 'pending').map((s) => s.context),
   ]
   const failed = [

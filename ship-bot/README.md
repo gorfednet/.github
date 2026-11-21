@@ -570,6 +570,9 @@ A cancelled check is never a pass. Two things can clear one:
 - **A later green run replaces it.** Adding `ready-to-merge` can cancel the
   running CI and start a new run. A cancelled check is ignored once a later
   run of the same workflow and event on the same head finished green.
+  A rerun counts the same way: a cancelled check from attempt 1 is ignored
+  once a later attempt of its own run finished green, and waits while that
+  attempt is running.
 - **The bot reruns it, once.** When a labelled head has nothing red, nothing
   running and nothing replacing the cancelled run, the bot asks GitHub to
   rerun that run's cancelled jobs (what `gh run rerun <id> --failed` does)
