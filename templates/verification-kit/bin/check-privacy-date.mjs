@@ -186,7 +186,7 @@ export function judge(name, before, after, requiredDay) {
     if (!requiredDay.has(after.date)) {
       problems.push(
         dateChanged
-          ? `${name}: the policy text changed and the date moved to ${after.date}, which is not the day of the latest commit that changed the policy text (${dates}).`
+          ? `${name}: the policy text changed and the date moved to ${after.date}, which is not the day of the latest commit that changed the policy text (${dates}). An amend, fixup or cherry-pick keeps its old author date: use git commit --amend --reset-author.`
           : `${name}: the policy text changed but the shown date is still ${after.date}. Move it to the day of the latest change to the policy text (${dates}).`,
       )
     } else if (before !== null && after.date < before.date) {
@@ -243,12 +243,16 @@ const sameScope = (a, b) => sameJson(a.region, b.region) && sameJson(a.exclude, 
 function latestPolicyDay({ page, dateFile, mergeBase, head, tz, cwd }) {
   const log = git(['log', '--no-merges', '--reverse', '--format=%H %aI', `${mergeBase}..${head}`, '--', page.file, dateFile], cwd).trim()
   let day = null
+  // The latest author day across all policy-changing commits, whatever the log order.
   for (const line of log.split('\n').filter(Boolean)) {
     const [sha, when] = line.split(' ')
     const now = tryRead(page, page.file, dateFile, sha, cwd)
     const prev = tryRead(page, page.file, dateFile, `${sha}^`, cwd)
     // A copy the config cannot read counts as changed: it is the safer reading.
-    if (now === null || prev === null || now.policy !== prev.policy) day = dayIn(tz, new Date(when))
+    if (now === null || prev === null || now.policy !== prev.policy) {
+      const d = dayIn(tz, new Date(when))
+      if (day === null || d > day) day = d
+    }
   }
   return day === null ? new Set() : new Set([day])
 }
@@ -316,11 +320,17 @@ export function runCheck({ config, base, head, today, tz, cwd, configRel = null 
 
     // Re-pointing the entry is accepted only as a real move: the old path is gone
     // at HEAD. Otherwise a stale copy could stand in for the page visitors read.
-    // Only `file` is locked: a date may move out of a shared constants or locale file.
-    if (baseEntry && oldFile !== page.file && oldFile !== dateFile && showAt(head, oldFile, cwd) !== null) {
+    // Whatever dateFile names, the old file must be gone: a copy plus a dateFile
+    // pointing at the real page would hide a policy edit.
+    if (baseEntry && oldFile !== page.file && showAt(head, oldFile, cwd) !== null) {
       bail(`page "${page.name}": this PR points the entry at ${page.file} but ${oldFile} still exists at HEAD. A re-pointed entry is accepted only when the old file is gone (a real move); otherwise a stale copy could hide an edit.`)
     }
     let before
+    // An explicit dateFile change is locked like the scope: a date read from another
+    // file could carry today's date while the page keeps its old one.
+    if (baseEntry && (baseEntry.dateFile ?? null) !== (page.dateFile ?? null) && pageTouched) {
+      bail(`page "${page.name}": this PR changes the entry's dateFile and also touches the page or a date file. Land the dateFile change on its own, with the page untouched.`)
+    }
     if (baseEntry && !sameScope(baseEntry, page) && pageTouched) {
       // What counts as policy text may not change in a PR that edits the page: a
       // widened exclude or narrowed region would hide the edit.

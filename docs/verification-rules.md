@@ -1092,8 +1092,9 @@ date was queried as possibly stale. It was right that day, by luck: nothing kept
 it right, so it becomes a contract.
 
 1. A pull request that changes a privacy page's policy text moves its shown date
-   to the day of the latest commit in that pull request that changed the policy
-   text (author date, read in America/Toronto), never to an earlier date. A date
+   to the latest author day across the commits in that pull request that changed
+   the policy text (read in America/Toronto; an amend or fixup keeps its old
+   author date, so use `--reset-author`), never to an earlier date. A date
    already showing that day stands, so a second same-day edit passes. Every date a
    visitor reads inside the matched line must be that same day.
 2. A shown date that moves with no change to the visible policy text is a
@@ -1108,8 +1109,10 @@ it right, so it becomes a contract.
 4. What counts as policy text is locked. A PR that changes an entry's region,
    exclude or datePattern and also touches the page fails; the same change with
    the page and its date file untouched passes. An entry's `file` may be
-   re-pointed only as a real move (the old file gone at HEAD), never to a copy;
-   the date file may move freely. Dropping a guarded page from the
+   re-pointed only as a real move (the old file gone at HEAD), never to a copy,
+   whatever `dateFile` names. A `dateFile` change is locked like the scope: it
+   fails in a PR that also touches the page or a date file, and passes alone.
+   Dropping a guarded page from the
    config, or a base config that does not parse, fails, and a renamed config is
    followed. It fails closed. A configured page that does not exist, a region or date
    pattern that matches nothing, a date it cannot parse, a page with under 200

@@ -321,15 +321,52 @@ describe('check-privacy-date', () => {
     assert.match(r.stderr, /shown date is still/)
   })
 
-  it('lets a date move to a different date file', () => {
-    const cfg = { pages: [{ name: 'p', file: 'privacy.html', region: ['<main', '</main>'], dateFile: 'a.ts', datePattern: "REVISED = '(\\d{4}-\\d\\d-\\d\\d)'" }] }
+  it('refuses a copy as file when dateFile names the real page', () => {
+    const dir = repo({ base: pageHtml(), change: undefined })
+    writeFileSync(join(dir, 'privacy-archive.html'), pageHtml())
+    writeFileSync(join(dir, 'privacy.html'), pageHtml({ body: sentences + ' We now also keep logs.' }))
+    writeFileSync(join(dir, 'privacy.config.json'), JSON.stringify({ pages: [{ ...CONFIG.pages[0], file: 'privacy-archive.html', dateFile: 'privacy.html' }] }))
+    git(dir, ['add', '-A'])
+    git(dir, ['commit', '-qm', 'repoint'], { GIT_AUTHOR_DATE: '2026-11-20T12:00:00-05:00' })
+    const r = run(dir)
+    assert.equal(r.status, 1)
+    assert.match(r.stderr, /still exists at HEAD/)
+  })
+
+  const dateFileCfg = { pages: [{ name: 'p', file: 'privacy.html', region: ['<main', '</main>'], dateFile: 'a.ts', datePattern: "REVISED = '(\\d{4}-\\d\\d-\\d\\d)'" }] }
+  const dateFileRepo = () => {
     const html = pageHtml().replace(/<p>Last changed.*?<\/p>/, '')
-    const dir = repo({ base: html, change: undefined, config: cfg, extraFiles: { 'a.ts': "export const REVISED = '2026-11-01'" } })
-    writeFileSync(join(dir, 'b.ts'), "export const REVISED = '2026-11-01'")
-    writeFileSync(join(dir, 'privacy.config.json'), JSON.stringify({ pages: [{ ...cfg.pages[0], dateFile: 'b.ts' }] }))
+    return repo({ base: html, change: undefined, config: dateFileCfg, extraFiles: { 'a.ts': "export const REVISED = '2026-11-01'", 'b.ts': "export const REVISED = '2026-11-01'" } })
+  }
+
+  it('lets a config-only PR move dateFile to another file', () => {
+    const dir = dateFileRepo()
+    writeFileSync(join(dir, 'privacy.config.json'), JSON.stringify({ pages: [{ ...dateFileCfg.pages[0], dateFile: 'b.ts' }] }))
     git(dir, ['add', '-A'])
     git(dir, ['commit', '-qm', 'move date'], { GIT_AUTHOR_DATE: '2026-11-20T12:00:00-05:00' })
     const r = run(dir)
     assert.equal(r.status, 0, r.stderr)
+  })
+
+  it('refuses a dateFile change in a PR that also edits the policy', () => {
+    const dir = dateFileRepo()
+    writeFileSync(join(dir, 'notes.ts'), "export const REVISED = '2026-11-20'")
+    writeFileSync(join(dir, 'privacy.html'), pageHtml({ body: sentences + ' We now also keep logs.' }).replace(/<p>Last changed.*?<\/p>/, ''))
+    writeFileSync(join(dir, 'privacy.config.json'), JSON.stringify({ pages: [{ ...dateFileCfg.pages[0], dateFile: 'notes.ts' }] }))
+    git(dir, ['add', '-A'])
+    git(dir, ['commit', '-qm', 'swap date file'], { GIT_AUTHOR_DATE: '2026-11-20T12:00:00-05:00' })
+    const r = run(dir)
+    assert.equal(r.status, 1)
+    assert.match(r.stderr, /changes the entry's dateFile/)
+  })
+
+  it('requires the latest author day across policy commits, whatever the log order', () => {
+    const dir = repo({ base: pageHtml(), change: pageHtml({ body: sentences + ' One.', date: '2026-11-20' }), onDay: '2026-11-20T12:00:00-05:00' })
+    writeFileSync(join(dir, 'privacy.html'), pageHtml({ body: sentences + ' One. Two.', date: '2026-11-18' }))
+    git(dir, ['commit', '-qam', 'older author day on top'], { GIT_AUTHOR_DATE: '2026-11-18T12:00:00-05:00' })
+    const r = run(dir)
+    assert.equal(r.status, 1)
+    assert.match(r.stderr, /\(2026-11-20\)/)
+    assert.match(r.stderr, /--reset-author/)
   })
 })

@@ -1108,10 +1108,10 @@
     {
       "id": "privacy-date-repoint-needs-a-real-move",
       "guards": "An entry re-pointed at a copy is refused while the old page still exists. Without it a stale copy stands in for the page and a policy edit keeps its old date.",
-      "command": "node --test --test-name-pattern='re-pointed at a copy' templates/verification-kit/test/privacyDate.test.mjs",
+      "command": "node --test --test-name-pattern='copy as file when dateFile' templates/verification-kit/test/privacyDate.test.mjs",
       "file": "templates/verification-kit/bin/check-privacy-date.mjs",
-      "find": "oldFile !== page.file && oldFile !== dateFile && showAt(head, oldFile, cwd) !== null) {",
-      "replace": "false) {"
+      "find": "baseEntry && oldFile !== page.file && showAt(head, oldFile, cwd) !== null) {",
+      "replace": "baseEntry && oldFile !== page.file && oldFile !== dateFile && showAt(head, oldFile, cwd) !== null) {"
     },
     {
       "id": "privacy-date-touched-by-blob-not-path",
@@ -1120,6 +1120,22 @@
       "file": "templates/verification-kit/bin/check-privacy-date.mjs",
       "find": "some((f) => blobAt(mergeBase, f) !== blobAt(head, f))",
       "replace": "some((f) => false)"
+    },
+    {
+      "id": "privacy-date-datefile-change-locked",
+      "guards": "A dateFile change is refused in a PR that also touches the page. Without it a policy edit takes its date from any file holding today's date.",
+      "command": "node --test --test-name-pattern='dateFile change in a PR that also edits' templates/verification-kit/test/privacyDate.test.mjs",
+      "file": "templates/verification-kit/bin/check-privacy-date.mjs",
+      "find": "if (baseEntry && (baseEntry.dateFile ?? null) !== (page.dateFile ?? null) && pageTouched) {",
+      "replace": "if (false) {"
+    },
+    {
+      "id": "privacy-date-latest-author-day",
+      "guards": "The required day is the latest author day across policy-changing commits, not the last in log order. Without it a reordered or amended history demands an older day than the text visitors read.",
+      "command": "node --test --test-name-pattern='latest author day across policy commits' templates/verification-kit/test/privacyDate.test.mjs",
+      "file": "templates/verification-kit/bin/check-privacy-date.mjs",
+      "find": "if (day === null || d > day) day = d",
+      "replace": "day = d"
     }
   ]
 }
