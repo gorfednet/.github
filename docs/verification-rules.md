@@ -1092,8 +1092,10 @@ date was queried as possibly stale. It was right that day, by luck: nothing kept
 it right, so it becomes a contract.
 
 1. A pull request that changes a privacy page's policy text moves its shown date
-   to the day of one of that pull request's own commits (author date, read in
-   America/Toronto). Policy text changed with the date untouched, or dated to
+   to the day of one of that pull request's own commits to the page (author date,
+   read in America/Toronto), never to an earlier date. A date already showing that
+   day stands, so a second same-day edit passes. Every date a visitor reads inside
+   the matched line must be that same day. Policy text changed with the date untouched, or dated to
    some other day, fails.
 2. A shown date that moves with no change to the policy text fails: a date with
    nothing behind it is as false as a stale one.

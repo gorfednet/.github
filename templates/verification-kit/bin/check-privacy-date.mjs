@@ -128,6 +128,7 @@ export function readPolicy(page, source, dateSource) {
     if (!end) bail(`${where}: the region end ${JSON.stringify(page.region[1])} matches nothing after the start.`)
     text = rest.slice(0, end.index + end[0].length)
   }
+  if (page.exclude !== undefined && !Array.isArray(page.exclude)) bail(`${where}: "exclude" must be an array of regexes.`)
   for (const pattern of page.exclude ?? []) {
     text = text.replace(new RegExp(compile(pattern, `${where} exclude`).source, 'gi'), ' ')
   }
@@ -138,6 +139,12 @@ export function readPolicy(page, source, dateSource) {
   }
   const date = parseDate(found[1])
   if (!date) bail(`${where}: "${found[1]}" is not a date I can parse (ISO, "18 November 2026" or "November 18, 2026").`)
+  // Every date-shaped string a visitor would read inside the match has to be the same day.
+  const shown = visibleText(found[0])
+  for (const m of shown.matchAll(/\b(\d{4}-\d{2}-\d{2}|\d{1,2} [A-Za-z]+,? \d{4}|[A-Za-z]+ \d{1,2},? \d{4})\b/g)) {
+    const other = parseDate(m[1])
+    if (other && other !== date) bail(`${where}: the shown text says ${m[1]} but the date captured is ${date}. They have to be the same day.`)
+  }
   text = text.replace(new RegExp(dateRe.source, 'gi'), ' ')
   const policy = visibleText(text)
   if (policy.length < MIN_POLICY_CHARS) {
@@ -155,11 +162,17 @@ export function judge(name, before, after, prDates) {
   const policyChanged = before === null || before.policy !== after.policy
   const dateChanged = before === null || before.date !== after.date
   const dates = [...prDates].sort().join(', ') || 'none'
-  if (policyChanged && !dateChanged) {
-    problems.push(`${name}: the policy text changed but the shown date is still ${after.date}. Move it to the day of this change (${dates}).`)
-  } else if (policyChanged && !prDates.has(after.date)) {
-    problems.push(`${name}: the policy text changed and the date moved to ${after.date}, which is not the day of any commit in this PR (${dates}).`)
-  } else if (!policyChanged && dateChanged) {
+  if (policyChanged) {
+    if (!prDates.has(after.date)) {
+      problems.push(
+        dateChanged
+          ? `${name}: the policy text changed and the date moved to ${after.date}, which is not the day of any commit to this page in this PR (${dates}).`
+          : `${name}: the policy text changed but the shown date is still ${after.date}. Move it to the day of this change (${dates}).`,
+      )
+    } else if (before !== null && after.date < before.date) {
+      problems.push(`${name}: the date moved back, from ${before.date} to ${after.date}.`)
+    }
+  } else if (dateChanged) {
     problems.push(`${name}: the date moved from ${before.date} to ${after.date} but the policy text did not change. A date with no change behind it is false.`)
   }
   return problems
@@ -197,16 +210,17 @@ export function runCheck({ config, base, head, today, tz, cwd }) {
   const mergeBase = git(['merge-base', base, head], cwd).trim()
   if (!mergeBase) bail(`no merge base between ${base} and ${head}. Fetch full history (fetch-depth: 0) so the PR's own diff can be read.`)
 
-  const prDates = new Set()
-  if (today) {
-    if (!parseDate(today)) bail(`--today wants YYYY-MM-DD, got ${JSON.stringify(today)}.`)
-    prDates.add(today)
-  } else {
-    const log = git(['log', '--no-merges', '--format=%aI', `${mergeBase}..${head}`], cwd).trim()
-    for (const line of log.split('\n').filter(Boolean)) prDates.add(dayIn(tz, new Date(line)))
+  if (today && !parseDate(today)) bail(`--today wants YYYY-MM-DD, got ${JSON.stringify(today)}.`)
+  const daysFor = (files) => {
+    if (today) return new Set([today])
+    const out = new Set()
+    const log = git(['log', '--no-merges', '--format=%aI', `${mergeBase}..${head}`, '--', ...files], cwd).trim()
+    for (const line of log.split('\n').filter(Boolean)) out.add(dayIn(tz, new Date(line)))
+    return out
   }
 
   const problems = []
+  const allDays = []
   const seen = []
   for (const page of config.pages) {
     for (const key of ['name', 'file', 'datePattern']) {
@@ -232,10 +246,12 @@ export function runCheck({ config, base, head, today, tz, cwd }) {
       if (!(cause instanceof PrivacyDateError)) throw cause
       before = null
     }
+    const prDates = daysFor([page.file, dateFile])
+    allDays.push(...prDates)
     problems.push(...judge(page.name, before, after, prDates))
     seen.push({ name: page.name, file: page.file, date: after.date, policyChanged: before === null || before.policy !== after.policy })
   }
-  return { problems, seen, prDates: [...prDates].sort() }
+  return { problems, seen, prDates: [...new Set(allDays)].sort() }
 }
 
 function parseArgs(argv) {
@@ -277,7 +293,7 @@ function main() {
       for (const p of result.problems) console.error(`✗ ${TOOL}: ${p}`)
       process.exit(1)
     }
-    console.error(`✓ ${TOOL}: ${result.seen.length} privacy page(s) agree with their dates (PR days: ${result.prDates.join(', ') || 'none'}).`)
+    console.error(`✓ ${TOOL}: ${result.seen.length} privacy page(s) agree with their dates (days of this PR's commits to the page: ${result.prDates.join(', ') || 'none'}).`)
   } catch (cause) {
     if (cause instanceof PrivacyDateError) {
       console.error(`✗ ${TOOL}: ${cause.message}`)

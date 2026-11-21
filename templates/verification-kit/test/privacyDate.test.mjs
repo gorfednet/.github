@@ -181,4 +181,35 @@ describe('check-privacy-date', () => {
     const r = run(repo({ base: pageHtml(), change: pageHtml({ body: sentences + ' More.', date: '2026-12-25' }) }), ['--today', '2026-12-25'])
     assert.equal(r.status, 0, r.stderr)
   })
+
+  it('passes a second same-day policy edit when the date already shows that day', () => {
+    const base = pageHtml({ date: '2026-11-20' })
+    const r = run(repo({ base, change: pageHtml({ date: '2026-11-20', body: sentences + ' A typo fix.' }) }))
+    assert.equal(r.status, 0, r.stderr)
+  })
+
+  it('fails a date that moves back, even to a day the PR has a commit', () => {
+    const r = run(repo({ base: pageHtml({ date: '2026-11-25' }), change: pageHtml({ date: '2026-11-20', body: sentences + ' More.' }) }))
+    assert.equal(r.status, 1)
+    assert.match(r.stderr, /moved back/)
+  })
+
+  it('fails when the visible date and the attribute disagree', () => {
+    const cfgVisible = { pages: [{ ...CONFIG.pages[0] }] }
+    const html = (shown) => pageHtml().replace('>shown<', `>${shown}<`)
+    const base = html('1 November 2026')
+    const change = html('1 November 2026').replace('2026-11-01', '2026-11-20').replace(sentences, sentences + ' More.')
+    const r = run(repo({ base, change, config: cfgVisible }))
+    assert.equal(r.status, 1)
+    assert.match(r.stderr, /shown text says 1 November 2026 but the date captured is 2026-11-20/)
+  })
+
+  it('counts only commits that touch the page as PR days', () => {
+    const dir = repo({ base: pageHtml(), change: pageHtml({ body: sentences + ' More.', date: '2026-11-22' }), onDay: '2026-11-20T12:00:00-05:00', extraFiles: {} })
+    writeFileSync(join(dir, 'other.txt'), 'x')
+    git(dir, ['add', '-A'])
+    git(dir, ['commit', '-qm', 'unrelated'], { GIT_AUTHOR_DATE: '2026-11-22T12:00:00-05:00' })
+    const r = run(dir)
+    assert.equal(r.status, 1, r.stderr)
+  })
 })
