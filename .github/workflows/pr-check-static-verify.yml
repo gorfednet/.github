@@ -223,6 +223,14 @@ on:
         required: false
         type: string
         default: ""
+      privacy-date-config:
+        description: >-
+          Path to the site's privacy-date config (JSON). Opts the site in to
+          check-privacy-date (V78): the privacy page's shown date moves with its
+          policy text and only then. Empty skips it.
+        required: false
+        type: string
+        default: ""
 jobs:
   check:
     runs-on: ${{ fromJSON(github.event.repository.visibility == 'public' && '"ubuntu-latest"' || inputs.runs-on == '' && vars.HEAVY_RUNS_ON == '' && 'no pool for this repository - set HEAVY_RUNS_ON' || github.event.repository.visibility != '' && (contains(inputs.runs-on != '' && inputs.runs-on || vars.HEAVY_RUNS_ON, 'ubuntu-') || contains(inputs.runs-on != '' && inputs.runs-on || vars.HEAVY_RUNS_ON, 'macos-') || contains(inputs.runs-on != '' && inputs.runs-on || vars.HEAVY_RUNS_ON, 'windows-')) && 'hosted runner refused for a private repository - use the pool label' || inputs.runs-on != '' && inputs.runs-on || vars.HEAVY_RUNS_ON) }}
@@ -303,3 +311,4 @@ jobs:
           sitemap-files: ${{ inputs.sitemap-files }}
           sitemap-allow-thin: ${{ inputs.sitemap-allow-thin }}
           sitemap-min-words: ${{ inputs.sitemap-min-words }}
+          privacy-date-config: ${{ inputs.privacy-date-config }}

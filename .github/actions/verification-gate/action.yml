@@ -145,6 +145,16 @@ inputs:
       a path with a reason instead.
     required: false
     default: ""
+  privacy-date-config:
+    description: >-
+      Path to the site's privacy-date config (JSON). Opts the site in to
+      check-privacy-date (V78): a privacy page's shown "last changed" date moves
+      with its policy text and only then. Reads this pull request's own diff
+      (merge base to HEAD), so the step fetches the base branch and full history
+      first. Warns for now (::warning, exit 0) unless PRIVACY_DATE_ENFORCE=1 is
+      set, in which case it fails the job. Empty skips the check.
+    required: false
+    default: ""
 
 runs:
   using: composite
@@ -325,6 +335,30 @@ runs:
           echo "::error title=Sitemap lists only pages worth indexing::The sitemap check failed or could not run: a listed URL is not a page worth indexing (canonical, noindex, redirect or thin content), or the sitemap file, the build or an option was missing or invalid. See this step's log."
           exit 1
         fi
+
+    - name: Privacy date moves with the policy text
+      if: ${{ !cancelled() && inputs.privacy-date-config != '' }}
+      shell: bash
+      env:
+        PRIVACY_BASE_REF: ${{ github.base_ref }}
+      run: |
+        # Warning-only for now (V78): every way this step can fail warns and exits 0
+        # unless PRIVACY_DATE_ENFORCE=1, until a plan row hardens it. The page and
+        # its date are what this pull request changes, so rule 5 allows it. The diff
+        # is the pull request's own: the merge base to HEAD. A shallow clone cannot
+        # show that, so deepen it.
+        soft() {
+          if [ "${PRIVACY_DATE_ENFORCE:-}" = "1" ]; then echo "::error title=Privacy date::$1"; exit 1; fi
+          echo "::warning title=Privacy date::$1"; exit 0
+        }
+        if [ "$(git rev-parse --is-shallow-repository)" = "true" ]; then
+          git fetch --no-tags --unshallow origin || soft "the clone could not be deepened, so the pull request's own diff was not read."
+        fi
+        base="${PRIVACY_BASE_REF:-main}"
+        git fetch --no-tags origin "+refs/heads/${base}:refs/remotes/origin/${base}" || soft "the base branch ${base} could not be fetched, so the pull request's own diff was not read."
+        node "$VERIFICATION_GATE_KIT/bin/check-privacy-date.mjs" \
+          --config "${{ inputs.privacy-date-config }}" \
+          --base "origin/${base}" || soft "the privacy-date check did not run to a verdict. See this step's log."
 
     - name: Error pages ship with the site
       if: ${{ !cancelled() && inputs.error-page-root != '' }}
