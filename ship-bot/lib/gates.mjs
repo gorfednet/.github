@@ -149,6 +149,8 @@ export const TIMEOUT_ANNOTATION = /exceeded the maximum execution time/i
  * - where the repository requires checks that started after the label (`requireAfterLabel`), that run was
  *   created at or after `labeledAt`: a rerun gives a run from before the label new check runs that start after
  *   it, and those would pass for the labelled run the repository asks for;
+ *   and every green expected check or status started at or after `labeledAt` too (one from before the label
+ *   still blocks the head, so the rerun would be spent for nothing);
  * - that run has at least 1 cancelled check run with an id, and the plan needs at most MAX_ANNOTATION_READS reads;
  * - the bot has asked for none of those runs before on this head (`asked`), and they and the earlier asks
  *   together stay within MAX_RERUNS_PER_HEAD.
@@ -170,6 +172,11 @@ export function cancelledRunsToRerun({ runs, statuses, workflowRuns, sha, now, a
     const named = latest.filter((r) => r.name === name)
     if (named.length === 0 && !contexts.has(name)) return none
     if (named.some((r) => r.conclusion !== 'success' && r.conclusion !== 'cancelled')) return none
+    // The same after-label test evaluateChecks applies: a green required check from before the label still blocks, and no rerun of another run lifts that.
+    if (requireAfterLabel) {
+      if (named.some((r) => r.conclusion === 'success' && !(labeledAt && r.started_at && r.started_at >= labeledAt))) return none
+      if (latestPerContext(statuses).some((x) => x.context === name && !(labeledAt && x.created_at && x.created_at >= labeledAt))) return none
+    }
   }
   const byId = new Map(workflowRuns.map((w) => [Number(w.id), w]))
   const ids = new Set()
