@@ -216,6 +216,7 @@ function readBase(page, dateFile, mergeBase, head, cwd, configRel) {
       throw cause
     }
   }
+  let baseHadConfigEntry = false
   const direct = attempt(page, page.file, dateFile)
   if (direct) return direct
   if (configRel) {
@@ -224,24 +225,17 @@ function readBase(page, dateFile, mergeBase, head, cwd, configRel) {
       try {
         const old = JSON.parse(baseConfigText).pages?.find((p) => p.name === page.name)
         if (old) {
+          baseHadConfigEntry = true
           const viaOld = attempt(old, old.file, old.dateFile ?? old.file)
           if (viaOld) return viaOld
         }
       } catch {
-        /* an unreadable base config falls through to the rename and error paths */
+        /* an unreadable base config falls through to the error path */
       }
     }
   }
-  const renames = git(['diff', '--find-renames', '--name-status', mergeBase, head], cwd)
-    .split('\n')
-    .map((l) => l.split('\t'))
-    .filter((c) => c[0]?.startsWith('R') && c[2] === page.file)
-  for (const [, from] of renames) {
-    const viaRename = attempt(page, from, dateFile === page.file ? from : dateFile)
-    if (viaRename) return viaRename
-  }
-  if (showAt(mergeBase, page.file, cwd) === null && renames.length === 0) return null
-  return bail(`page "${page.name}": the copy at the merge base cannot be read with this config, the base's own config or a rename source, so there is nothing to compare. Land the config or region change in its own PR, or move the page by rename.`)
+  if (showAt(mergeBase, page.file, cwd) === null && !baseHadConfigEntry) return null
+  return bail(`page "${page.name}": the copy at the merge base cannot be read with this config, or the base's own config, so there is nothing to compare. Land the config or region change in its own PR.`)
 }
 
 export function runCheck({ config, base, head, today, tz, cwd, configRel = null }) {
@@ -282,8 +276,7 @@ export function runCheck({ config, base, head, today, tz, cwd, configRel = null 
       bail(`page "${page.name}": ${page.file} does not exist at ${head}. A privacy page the check cannot find is an error: if the page moved, update the config in the same PR.`)
     }
     // The base copy is read with this config; failing that with the base's own
-    // config (a PR that edits the region); failing that from the file's rename
-    // source (a PR that moves the page). A base that still cannot be read is an
+    // config (a PR that edits the region or moves the page). A base that cannot be read is an
     // error, never "everything changed", which would demand a false date.
     const before = readBase(page, dateFile, mergeBase, head, cwd, configRel)
     const prDates = daysFor([page.file, dateFile])

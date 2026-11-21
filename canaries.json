@@ -1088,14 +1088,6 @@
       "file": "templates/verification-kit/bin/check-privacy-date.mjs",
       "find": "after.date < before.date",
       "replace": "after.date < \"0000\""
-    },
-    {
-      "id": "privacy-date-rename-source",
-      "guards": "A moved page is compared with its rename source, so a move needs no false date bump.",
-      "command": "node --test --test-name-pattern='a page moved by rename' templates/verification-kit/test/privacyDate.test.mjs",
-      "file": "templates/verification-kit/bin/check-privacy-date.mjs",
-      "find": "c[0]?.startsWith('R') && c[2] === page.file",
-      "replace": "false"
     }
   ]
 }

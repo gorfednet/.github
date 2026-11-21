@@ -213,7 +213,7 @@ describe('check-privacy-date', () => {
     assert.equal(r.status, 1, r.stderr)
   })
 
-  it('a page moved by rename, text untouched, needs no date change', () => {
+  it('a page moved with its config, text untouched, needs no date change', () => {
     const dir = repo({ base: pageHtml(), change: undefined })
     git(dir, ['mv', 'privacy.html', 'privacy-new.html'])
     writeFileSync(join(dir, 'privacy.config.json'), JSON.stringify({ pages: [{ ...CONFIG.pages[0], file: 'privacy-new.html' }] }))
