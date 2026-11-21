@@ -731,6 +731,31 @@ repository. Once someone has checked the live site:
 node ~/.ship-bot/app/ship-bot.mjs --unblock MoonMan
 ```
 
+## After a hand deploy with no block
+
+A repository deployed by hand, or by its own session, while it was not blocked
+has no deploy on record, or an old one. Record it:
+
+```bash
+node ~/.ship-bot/app/ship-bot.mjs --record-deployed heuristics.4thcltr.com <full sha> --live-id <release id>
+```
+
+`--record-deployed` writes `lastDeployedSha` and nothing else. It refuses,
+changing nothing, when:
+
+- the repository is not in the config, or the sha is not 40 characters;
+- the repository is blocked (that case is `--unblock <repo> --deployed <sha>`);
+- GitHub does not compare the sha as on the default branch;
+- a deploy is on record and the sha is behind it or does not follow it;
+- `--live-id` is given and does not end in the sha.
+
+The bot cannot read the server. Proving what is live is the caller's job:
+`site-deploy.sh list` marks the current release, and its id ends in the commit
+it was built from. Pass that id as `--live-id`. Without it the command prints
+the check as a reminder and records the sha on your word. GitHub's compare
+proves the commit is in the default branch's history, not that it was ever the
+branch tip. While a pass is running it writes nothing and exits 1: run it again.
+
 ## For a session (not the owner)
 
 ```bash
