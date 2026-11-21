@@ -1,0 +1,209 @@
+{
+  "name": "AI Use Levels",
+  "version": "1.3",
+  "canonical": "https://papers.4thcltr.com/ai-use-levels/",
+  "licence": "CC-BY-4.0",
+  "slots": [
+    { "id": "level", "order": 1, "required": "always" },
+    { "id": "hand", "order": 2, "required": "recommended" },
+    { "id": "door", "order": 3, "required": "at L2 and L3" },
+    { "id": "flag", "order": 4, "required": "when true" },
+    {
+      "id": "tool",
+      "order": 5,
+      "required": "at L1 and above",
+      "free": true,
+      "reach": ["chat", "IDE", "app", "API", "agent"]
+    }
+  ],
+  "tokens": [
+    {
+      "id": "L0",
+      "slot": "level",
+      "name": "None",
+      "meaning": "No AI touched it.",
+      "test": null,
+      "since": "1.0",
+      "deprecated": null
+    },
+    {
+      "id": "L1",
+      "slot": "level",
+      "name": "Suggested",
+      "meaning": "It could change nothing by itself. A person moved every piece of its output into the work (pasted, typed, accepted, pressed send).",
+      "test": "Did anything take effect except by a person's own action? No.",
+      "since": "1.0",
+      "deprecated": null
+    },
+    {
+      "id": "L2",
+      "slot": "level",
+      "name": "Supervised",
+      "meaning": "It made changes itself, and each change waited for a person's yes before it took effect.",
+      "test": "Could a person have stopped every change before it counted? Yes.",
+      "since": "1.0",
+      "deprecated": null
+    },
+    {
+      "id": "L3",
+      "slot": "level",
+      "name": "Unattended",
+      "meaning": "It made changes itself without waiting for anyone.",
+      "test": "Did anything take effect before a person could stop it? Yes.",
+      "since": "1.0",
+      "deprecated": null
+    },
+    {
+      "id": "touched",
+      "slot": "hand",
+      "name": "touched",
+      "meaning": "Corrections and local changes to a person's material: polish, autocomplete, spot fixes, formatting.",
+      "test": "Would a reader recognize anything of its output in the final? Barely.",
+      "since": "1.0",
+      "deprecated": null
+    },
+    {
+      "id": "drafted",
+      "slot": "hand",
+      "name": "drafted",
+      "meaning": "It produced a first version a person substantially reworked.",
+      "test": "Its shape survives; most of the words or code are a person's.",
+      "since": "1.0",
+      "deprecated": null
+    },
+    {
+      "id": "made",
+      "slot": "hand",
+      "name": "made",
+      "meaning": "The final is substantially its output; a person chose, read, maybe trimmed.",
+      "test": "Its words, code or pixels survive.",
+      "since": "1.0",
+      "deprecated": null
+    },
+    {
+      "id": "undo",
+      "slot": "door",
+      "name": "undo",
+      "meaning": "Everything it changed can be reversed by the tagger alone, asking nobody: a branch, a versioned document, a trash can, a staging system nobody else saw.",
+      "test": "Could you put it all back in minutes without telling anyone? Yes.",
+      "since": "1.0",
+      "deprecated": null
+    },
+    {
+      "id": "no undo",
+      "slot": "door",
+      "name": "no undo",
+      "meaning": "At least one change cannot be taken back: sent, paid, deployed, deleted without backup, published, told someone. Reaching a person or system you do not control always counts, even if a rollback exists, because they saw it.",
+      "test": "Did anything leave your control? Yes.",
+      "since": "1.0",
+      "deprecated": null
+    },
+    {
+      "id": "unread",
+      "slot": "flag",
+      "name": "unread",
+      "meaning": "No accountable person has read the result. A state, not a level: it is removed when a person reads.",
+      "test": "Has someone accountable for the work read the result? No.",
+      "since": "1.0",
+      "deprecated": null
+    }
+  ],
+  "marks": [
+    {
+      "level": "L0",
+      "dot": "none",
+      "name": "AI USE LEVEL ZERO SYMBOL",
+      "spoken": "AI use level zero, None",
+      "braille": "⠠⠇⠼⠚",
+      "brailleName": "⠠⠝⠕⠝⠑",
+      "files": {
+        "light": "marks/l0-light.svg",
+        "dark": "marks/l0-dark.svg"
+      },
+      "since": "1.1"
+    },
+    {
+      "level": "L1",
+      "dot": "outside the circle",
+      "name": "AI USE LEVEL ONE SYMBOL",
+      "spoken": "AI use level one, Suggested",
+      "braille": "⠠⠇⠼⠁",
+      "brailleName": "⠠⠎⠥⠛⠛⠑⠎⠞⠑⠙",
+      "files": {
+        "light": "marks/l1-light.svg",
+        "dark": "marks/l1-dark.svg"
+      },
+      "since": "1.1"
+    },
+    {
+      "level": "L2",
+      "dot": "on the circle's edge",
+      "name": "AI USE LEVEL TWO SYMBOL",
+      "spoken": "AI use level two, Supervised",
+      "braille": "⠠⠇⠼⠃",
+      "brailleName": "⠠⠎⠥⠏⠑⠗⠧⠊⠎⠑⠙",
+      "files": {
+        "light": "marks/l2-light.svg",
+        "dark": "marks/l2-dark.svg"
+      },
+      "since": "1.1"
+    },
+    {
+      "level": "L3",
+      "dot": "inside the circle",
+      "name": "AI USE LEVEL THREE SYMBOL",
+      "spoken": "AI use level three, Unattended",
+      "braille": "⠠⠇⠼⠉",
+      "brailleName": "⠠⠥⠝⠁⠞⠞⠑⠝⠙⠑⠙",
+      "files": {
+        "light": "marks/l3-light.svg",
+        "dark": "marks/l3-dark.svg"
+      },
+      "since": "1.1"
+    }
+  ],
+  "machineForm": {
+    "trailer": "AI-Use",
+    "pattern": "AI-Use: <level> [hand] [door] [flag] [(<tool>)] [v<major>]",
+    "level0": "AI-Use: L0",
+    "versionToken": "absent means v1",
+    "standing": {
+      "trailer": "AI-Use-Standing",
+      "pattern": "AI-Use-Standing: <URL or path> <YYYY-MM-DD>",
+      "target": "A URL (https or http) or a path a reader of the tag can open, with no spaces. A path stays inside the repository the work is in. It holds a dated standing statement: a delegation of the confirmation or a standing tag.",
+      "date": "The date the statement carries. Where one page holds several statements, the date of the one the tag relies on. Under a delegation, the delegation's date.",
+      "forms": {
+        "line": "AI-Use-Standing: <URL or path> <YYYY-MM-DD>",
+        "meta": "<meta name=\"AI-Use-Standing\" content=\"<URL or path> <YYYY-MM-DD>\">",
+        "text": "standing <URL or path> <YYYY-MM-DD>"
+      },
+      "requiredWhen": "the tag was written under a delegation",
+      "changesLevel": false,
+      "since": "1.3"
+    }
+  },
+  "confirmation": {
+    "default": "A person confirms or corrects a tag before it goes on anything.",
+    "delegation": "The accountable person may delegate the confirmation in a dated standing statement. The agent then writes the tag. The person stays accountable and can correct it later.",
+    "statementNames": ["date", "accountable person", "what it covers"],
+    "statementPlace": "Where a reader of the tags can open it. A private rules file alone isn't enough.",
+    "underDelegation": [
+      "The agent writes unread unless it saw the person read the result.",
+      "Unsure between 2 Hand rungs, it takes the larger.",
+      "Unsure between 2 Levels, it takes the higher.",
+      "The tag carries a pointer to the delegation statement."
+    ],
+    "since": "1.3"
+  },
+  "toolOrder": {
+    "rule": "Several tools are joined with a plus and ordered by capability, then by recency. The order says nothing about which tool had the biggest hand.",
+    "groups": ["models on the ranked list, in list order", "unversioned names of models on the list, alphabetical", "every other tool, alphabetical"],
+    "list": "models.json",
+    "since": "1.3"
+  },
+  "absence": "No tag means nothing claimed. It never means L0.",
+  "marksStatus": {
+    "braille": "braille spells the level token (L0 to L3); brailleName spells the level name; both uncontracted UEB, pending a braille reader's check",
+    "unicode": "not encoded; see SPEC.md section 12"
+  }
+}

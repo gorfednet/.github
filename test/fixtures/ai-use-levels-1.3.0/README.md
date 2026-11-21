@@ -1,0 +1,1 @@
+Five files copied unchanged from `gorfednet/ai-use-levels` at tag v1.3.0 (commit 5b16d551d5e2da5f937632f1294298942e5c1f81): `spec.json`, `models.json`, `scripts/check-trailers.mjs`, `scripts/order-tools.mjs`, `test/lib/spec.mjs`. The tests of `scripts/gates/check-ai-use-trailers.mjs` run it against this copy. CC-BY-4.0, from the public repository.
