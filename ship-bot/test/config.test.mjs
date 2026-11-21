@@ -92,6 +92,27 @@ describe('config validation', () => {
     assert.ok(normalizeConfig(example(), { home: HOME }).repos.filter((r) => r.mode === 'deploy').every((r) => r.deployOn === 'release'))
   })
 
+  it('toolWorktree: an optional per-row worktree for an installed command, with an optional refresh (21 November 2026)', () => {
+    const merge = (tw) => ({ slug: 'gorfednet/m', dir: 'm', mode: 'merge-only', reason: 'x', claudeReview: true, expectedChecks: ['c'], toolWorktree: tw })
+    const good = { name: 'm-main', tools: 'the m command', refresh: ['bash', 'tools/install-local.sh'], refreshTimeoutMinutes: 20 }
+    assert.deepEqual(validateConfig(base([merge(good)])), [])
+    assert.deepEqual(validateConfig(base([merge({ name: 'm-main', tools: 'the m command' })])), [])
+    assert.deepEqual(validateConfig(base([deployRepo({ toolWorktree: good })])), [])
+    assert.match(problemsFor(base([merge('m-main')])), /toolWorktree: must be an object/)
+    assert.match(problemsFor(base([merge({ ...good, name: 'tools' })])), /toolWorktree\.name: required, .* ending in "-main"/)
+    assert.match(problemsFor(base([merge({ ...good, name: '../x-main' })])), /toolWorktree\.name/)
+    assert.match(problemsFor(base([merge({ ...good, tools: ' ' })])), /toolWorktree\.tools: required/)
+    assert.match(problemsFor(base([merge({ ...good, refresh: [] })])), /toolWorktree\.refresh: must be a non-empty command array/)
+    assert.match(problemsFor(base([merge({ ...good, refresh: 'bash x' })])), /toolWorktree\.refresh: must be a non-empty command array/)
+    assert.match(problemsFor(base([merge({ ...good, refreshTimeoutMinutes: 0 })])), /refreshTimeoutMinutes: must be a whole number from 1 to 60/)
+    assert.match(problemsFor(base([merge({ name: 'm-main', tools: 'x', refreshTimeoutMinutes: 5 })])), /refreshTimeoutMinutes: only with refresh/)
+    assert.match(problemsFor(base([merge({ ...good, cwd: '/' })])), /toolWorktree: unknown key "cwd"/)
+    const out = normalizeConfig(base([merge(good), merge(undefined)].map((r, i) => ({ ...r, slug: `gorfednet/m${i}`, dir: `m${i}` }))), { home: HOME }).repos
+    assert.deepEqual(out[0].toolWorktree, good)
+    assert.equal(out[1].toolWorktree, null)
+    assert.equal(normalizeConfig(base([merge({ name: 'm-main', tools: 'x', refresh: ['a'] })]), { home: HOME }).repos[0].toolWorktree.refreshTimeoutMinutes, 15)
+  })
+
   it('release: an optional object with a letters-only tagPrefix; defaults to v; off for every other row', () => {
     assert.deepEqual(validateConfig(base([deployRepo({ release: {} })])), [])
     assert.deepEqual(validateConfig(base([deployRepo({ release: { tagPrefix: 'rel' } })])), [])

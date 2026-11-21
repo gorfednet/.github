@@ -48,8 +48,8 @@ import { parseGitHubSlug } from './lib/githubSlug.mjs'
 import { keepMap } from './branch-sweep-propose.mjs'
 import { isMain } from './lib/isMain.mjs'
 
-export const PROTECTED_NAMES = new Set(['gates-main', 'tools-main', 'desk-log', 'janitor-main'])
-const PROTECTED_BRANCHES = new Set(['main', 'master', 'status', 'desk-log', 'gates-main', 'tools-main', 'janitor-main'])
+export const PROTECTED_NAMES = new Set(['gates-main', 'tools-main', 'propose-main', 'desk-log', 'janitor-main'])
+const PROTECTED_BRANCHES = new Set(['main', 'master', 'status', 'desk-log', 'gates-main', 'tools-main', 'propose-main', 'janitor-main'])
 /** Ignored paths a worktree may hold that are safe to delete with it. Anything else ignored keeps the worktree. */
 const DISPOSABLE = new Set(['node_modules', '.DS_Store'])
 

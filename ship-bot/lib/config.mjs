@@ -52,7 +52,7 @@ const TOP_KEYS = new Set([
 ])
 const SCRIPT_KEYS = ['assertChecksStarted', 'reviewStatus', 'checkClosingKeywords']
 
-const COMMON_REPO_KEYS = ['slug', 'dir', 'mode', 'note', 'todo', 'live', 'claudeReview', 'expectedChecks', 'coveredChecks', 'requireChecksAfterLabel', 'draftReady']
+const COMMON_REPO_KEYS = ['slug', 'dir', 'mode', 'note', 'todo', 'live', 'claudeReview', 'expectedChecks', 'coveredChecks', 'requireChecksAfterLabel', 'draftReady', 'toolWorktree']
 const NTFY_KEYS = new Set(['url', 'topic', 'tokenFile'])
 const GITHUB_APP_KEYS = new Set(['appId', 'privateKeyFile', 'owner', 'installationId', 'slug'])
 const DEPLOY_REPO_KEYS = [
@@ -92,6 +92,7 @@ const RETIRED_KEYS = {
 const STEP_KEYS = new Set(['name', 'command', 'timeoutMinutes', 'onlyIfChanged', 'onlyAfterFailureOf', 'note'])
 const SIBLING_KEYS = new Set(['dir', 'slug', 'branch'])
 const RELEASE_KEYS = new Set(['tagPrefix'])
+const TOOL_WORKTREE_KEYS = new Set(['name', 'tools', 'refresh', 'refreshTimeoutMinutes'])
 
 export class ConfigError extends Error {
   constructor(problems) {
@@ -167,6 +168,25 @@ function validateSteps(steps, where, problems, { allowOnlyIfChanged, allowOnlyAf
   })
 }
 
+/**
+ * A row's own tool worktree (lib/gates-worktree.mjs): a detached `.claude/worktrees/<name>` in the row's clone that an installed
+ * tool runs from, advanced to origin/main after every merge. `refresh` is a command run in that worktree after each advance
+ * (install dependencies, rewrite a wrapper, smoke it). It lives in the owner-applied config, never in public code, so the
+ * public repository names no private row.
+ */
+function validateToolWorktree(tw, label, problems) {
+  const at = `${label}.toolWorktree`
+  if (!isObject(tw)) return problems.push(`${at}: must be an object { "name": "x-main", "tools": "what runs from it", "refresh": [command, ...] }`)
+  checkUnknownKeys(tw, TOOL_WORKTREE_KEYS, at, problems)
+  if (typeof tw.name !== 'string' || !/^[a-z0-9][a-z0-9-]{0,40}-main$/.test(tw.name)) problems.push(`${at}.name: required, lower-case letters, digits and "-", ending in "-main" (the janitor keeps those worktrees)`)
+  if (!isNonEmptyString(tw.tools)) problems.push(`${at}.tools: required, a few words naming what runs from it (it is quoted in a notification)`)
+  if (tw.refresh !== undefined && (!isStringArray(tw.refresh) || tw.refresh.length === 0)) problems.push(`${at}.refresh: must be a non-empty command array, run in the worktree after each advance`)
+  if (tw.refreshTimeoutMinutes !== undefined && !(Number.isInteger(tw.refreshTimeoutMinutes) && tw.refreshTimeoutMinutes >= 1 && tw.refreshTimeoutMinutes <= 60)) {
+    problems.push(`${at}.refreshTimeoutMinutes: must be a whole number from 1 to 60`)
+  }
+  if (tw.refreshTimeoutMinutes !== undefined && tw.refresh === undefined) problems.push(`${at}.refreshTimeoutMinutes: only with refresh`)
+}
+
 function validateRepo(repo, i, problems, seen) {
   const where = `repos[${i}]`
   if (!isObject(repo)) {
@@ -202,6 +222,8 @@ function validateRepo(repo, i, problems, seen) {
   if (repo.coveredChecks !== undefined && !isStringArray(repo.coveredChecks)) {
     problems.push(`${label}.coveredChecks: must be an array of check names or name prefixes`)
   }
+
+  if (repo.toolWorktree !== undefined) validateToolWorktree(repo.toolWorktree, label, problems)
 
   if (repo.mode === 'off') return
 
@@ -445,6 +467,10 @@ export function normalizeConfig(raw, { home = homedir() } = {}) {
         // false opts a repo out of marking its own drafts ready (lib/drafts.mjs).
         draftReady: repo.draftReady ?? true,
         reason: repo.reason ?? '',
+        // null: no tool runs from this row's clone beyond the built-in ones (lib/gates-worktree.mjs).
+        toolWorktree: repo.toolWorktree
+          ? { name: repo.toolWorktree.name, tools: repo.toolWorktree.tools, refresh: repo.toolWorktree.refresh ?? null, refreshTimeoutMinutes: repo.toolWorktree.refreshTimeoutMinutes ?? 15 }
+          : null,
       }
       if (repo.mode !== 'deploy') return base
       const workDir = repo.workDir ? x(repo.workDir) : join(workRoot, repo.dir)

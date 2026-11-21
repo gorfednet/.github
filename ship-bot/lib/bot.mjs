@@ -1001,13 +1001,18 @@ async function advanceTools(ctx, repo) {
     result = { ok: false, reason: `unexpected error: ${cause.message}` }
   }
   if (result.ok) {
-    if (ctx.state.data.toolsRefused?.[wt.name]) {
-      delete ctx.state.data.toolsRefused[wt.name]
-      ctx.state.save()
-    }
     const cleared = result.cleared ? `, after clearing ${result.cleared.length} untracked files identical to the committed ones` : ''
     ctx.say('info', `${wt.tools}: ${wt.path} ${result.changed ? 'advanced to' : 'already at'} origin/main ${short(result.sha)}${cleared}`)
-    return
+    // The worktree is at origin/main. A row that installs a command from it (a `refresh`) now brings that install up to it. This runs even when the
+    // checkout did not move: it is idempotent, and a refresh that failed after an earlier advance would otherwise never be retried.
+    if (wt.refresh) result = await refreshTools(ctx, wt)
+    if (result.ok) {
+      if (ctx.state.data.toolsRefused?.[wt.name]) {
+        delete ctx.state.data.toolsRefused[wt.name]
+        ctx.state.save()
+      }
+      return
+    }
   }
   ctx.say('error', `${wt.tools} not advanced: ${result.reason}`)
   // One notification per distinct reason: a clash that needs a person would otherwise ring on every merge.
@@ -1016,6 +1021,20 @@ async function advanceTools(ctx, repo) {
   memo[wt.name] = result.reason
   ctx.state.save()
   await notify(ctx, `${wt.tools} are stale after a ${repo.slug} merge: ${result.reason}`, true)
+}
+
+/** Runs a row's `refresh` command in its tool worktree. A timeout, a spawn error or a non-zero exit is a failure that names the first line of what it said. */
+async function refreshTools(ctx, wt) {
+  const [cmd, ...args] = wt.refresh
+  const r = await ctx.runner.run({ kind: 'workspace', cmd, args, cwd: wt.path, env: ctx.baseEnv, timeoutMs: (wt.refreshTimeoutMinutes ?? 15) * 60_000 })
+  if (r.code === 0 && !r.timedOut && !r.error) {
+    const last = String(r.stdout ?? '').trim().split('\n').filter(Boolean).at(-1)
+    ctx.say('info', `${wt.tools}: refreshed${last ? `: ${last}` : ''}`)
+    return { ok: true }
+  }
+  const said = String(r.stderr || r.stdout || r.error || '').trim().split('\n').filter(Boolean).at(-1) ?? 'no output'
+  const why = r.timedOut ? `the refresh command timed out after ${wt.refreshTimeoutMinutes ?? 15} minutes` : `the refresh command failed (exit ${r.code ?? r.error}): ${ctx.redactor.apply(said)}`
+  return { ok: false, reason: `${wt.path} is at origin/main but ${why}` }
 }
 
 /**

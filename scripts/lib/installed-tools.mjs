@@ -26,7 +26,7 @@ import { homedir } from 'node:os'
 import { dirname, join, relative, resolve, sep } from 'node:path'
 
 /** Worktree names ship-bot advances (ship-bot/lib/gates-worktree.mjs TOOL_WORKTREES). */
-export const TOOL_WORKTREE_NAMES = ['gates-main', 'tools-main']
+export const TOOL_WORKTREE_NAMES = ['gates-main', 'tools-main', 'propose-main']
 
 /** Installed copies of committed files: where the copy lives (under home) and its source (clone dir, path). */
 export const COPIES = [

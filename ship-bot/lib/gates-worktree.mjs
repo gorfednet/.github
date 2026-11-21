@@ -37,9 +37,14 @@ export const TOOL_WORKTREES = {
 export const GATES_REPO = 'gorfednet/.github'
 export const GATES_WORKTREE = ['.claude', 'worktrees', TOOL_WORKTREES[GATES_REPO].name]
 
-/** The tool worktree a merge into `repo` must advance, or null. Only deploy rows carry sourceDir, so the clone is built from sourceRoot and the row's dir. */
+/**
+ * The tool worktree a merge into `repo` must advance, or null. Only deploy rows carry sourceDir, so the clone is built from
+ * sourceRoot and the row's dir. A row's own `toolWorktree` (the owner-applied config) wins over the built-in table, and may
+ * carry a `refresh` command that runs in the worktree after each advance (21 November 2026: an installed CLI needs its
+ * dependencies and a smoke after the checkout moves, which a bare checkout does not give it).
+ */
 export function toolWorktreeFor(config, repo) {
-  const t = TOOL_WORKTREES[repo.slug]
+  const t = repo.toolWorktree ?? TOOL_WORKTREES[repo.slug]
   if (!t) return null
   return { ...t, path: join(repo.sourceDir ?? join(config.sourceRoot, repo.dir), '.claude', 'worktrees', t.name) }
 }
