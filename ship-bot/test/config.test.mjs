@@ -160,8 +160,6 @@ describe('config validation', () => {
       wychwood: 'off',
       // ops has no test CI; its one check is the Claude review caller's review / review (owner, 11 November 2026).
       ops: 'merge-only',
-      // Plan row 5.6's scratch repository, registered by scripts/register-repo.mjs (13 November 2026).
-      'scratch-bootstrap-5-6': 'merge-only',
       // Public, no deploy: its release workflow only publishes a GitHub Release on a v* tag (plan row 5.6a, 17 November 2026).
       'ai-use-levels': 'merge-only',
       // Public, no deploy: a service run by hand from a clone (plan row 6.6d, 20 November 2026).

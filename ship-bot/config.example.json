@@ -884,17 +884,6 @@
       "note": "ops has no test CI. Its one workflow is the Claude review caller, whose review / review check attaches only when a pull request opens, so it is not an expected check (a push after ready left ops 62, 74, 76 and 77 waiting on it). The verdict comes from review-status.mjs (claudeReview); a check that does appear must still pass."
     },
     {
-      "slug": "gorfednet/scratch-bootstrap-5-6",
-      "dir": "scratch-bootstrap-5-6",
-      "mode": "merge-only",
-      "reason": "a new repository: deploy steps come in a later patch, once it has something to deploy",
-      "claudeReview": true,
-      "live": false,
-      "expectedChecks": [
-        "check / check"
-      ]
-    },
-    {
       "slug": "gorfednet/ai-use-levels",
       "dir": "ai-use-levels",
       "mode": "merge-only",

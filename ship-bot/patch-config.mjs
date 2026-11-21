@@ -11,6 +11,9 @@
  * A patch may also carry "add": [row, ...], whole rows for repositories the
  * config does not have yet (scripts/register-repo.mjs writes these). An added
  * row whose slug is already in the config is refused, never merged.
+ * A patch may also carry "remove": [slug, ...], rows to drop for repositories
+ * that were archived or deleted (21 November 2026). A
+ * slug the config does not have is refused.
  * A patch may also carry "set": {"key": value}, top-level keys such as ntfy
  * (16 November 2026: the live config had no ntfy block and the patch format
  * had no way to add one). A null value removes the key. "repos" and "live"
@@ -60,6 +63,15 @@ export function applyPatch(raw, patch) {
     }
     raw.repos.push(structuredClone(row))
     changed.push(`${row.slug}: added row`)
+  }
+  for (const slug of patch.remove ?? []) {
+    const at = typeof slug === 'string' ? raw.repos.findIndex((r) => r.slug === slug) : -1
+    if (at < 0) {
+      problems.push(`${slug}: no such row to remove`)
+      continue
+    }
+    raw.repos.splice(at, 1)
+    changed.push(`${slug}: removed row`)
   }
   for (const [slug, fields] of Object.entries(patch.repos ?? {})) {
     const row = raw.repos.find((r) => r.slug === slug)
