@@ -1,15 +1,15 @@
 {
-  "generatedAt": "2026-11-20T22:32:04.376Z",
-  "renderedAt": "2026-11-20T22:32:04.376Z",
+  "generatedAt": "2026-11-21T00:44:09.553Z",
+  "renderedAt": "2026-11-21T00:44:09.553Z",
   "repos": [
     {
       "slug": "gorfednet/bindercurve.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 14,
+      "openPrCount": 12,
       "lapsedBacklogCount": 16,
       "noPrCount": 80,
-      "idlePrCount": 9,
+      "idlePrCount": 7,
       "duplicatePrCount": 0,
       "dependabotRedCount": 3,
       "kitVersion": "0.61.0",
@@ -40,7 +40,7 @@
       "redacted": true,
       "mainRed": true,
       "openPrCount": 2,
-      "lapsedBacklogCount": 3,
+      "lapsedBacklogCount": 4,
       "noPrCount": 6,
       "idlePrCount": 0,
       "duplicatePrCount": 0,
@@ -122,7 +122,7 @@
       "openPrCount": 7,
       "lapsedBacklogCount": 2,
       "noPrCount": 3,
-      "idlePrCount": 3,
+      "idlePrCount": 2,
       "duplicatePrCount": 0,
       "dependabotRedCount": 2,
       "kitVersion": "0.65.0",
@@ -136,7 +136,7 @@
       "redacted": true,
       "mainRed": false,
       "openPrCount": 7,
-      "lapsedBacklogCount": 2,
+      "lapsedBacklogCount": 3,
       "noPrCount": 20,
       "idlePrCount": 3,
       "duplicatePrCount": 0,
@@ -185,27 +185,39 @@
       "mainRed": false,
       "openPrs": [
         {
-          "number": 278,
-          "title": "pr-cost: sweep records merged PRs from ship-bot's log",
+          "number": 283,
+          "title": "Board follow-up: hand-offs stay rows, stalled rows surface, no board from a cut pass (plan row 1.55)",
           "ageDays": 0,
           "labels": [],
           "draft": false,
           "review": "clean",
-          "headSha": "2fe96f7830c353d77bc5b6238d4623f2c81251d9",
+          "headSha": "f1e2d7f498af11d19259dfcc24be645b2470a865",
           "ci": "green",
-          "next": "Merge once CI is green and the review is clean (Fable review done; its fixes are in the second commit, a stray `node_modules` link removed).",
+          "next": "Merge once the Claude review reads clean on the final head f1e2d7f; Desk labels (control-plane paths: `ship-bot/`). CI is green on that head, and Desk's ready-for-review started the review, so no `claude review` comment is needed",
           "author": "gorfednet"
         },
         {
-          "number": 277,
-          "title": "Allowlist: the owner's own public sites",
+          "number": 282,
+          "title": "Register plex-lastfm-sync with the fleet and ship-bot (plan row 6.6d)",
           "ageDays": 0,
           "labels": [],
           "draft": true,
-          "review": "not-run",
-          "headSha": "22d20143fa132056fa9bd20c981a81594b057d7f",
+          "review": "clean",
+          "headSha": "b531866e4ee253ae59a772d9d246097e34a0fe35",
           "ci": "green",
-          "next": "Merge 272 first, then retarget this PR to main and merge.",
+          "next": "Merge once the review reads clean (Desk labels).",
+          "author": "gorfednet"
+        },
+        {
+          "number": 281,
+          "title": "Fleet status: public repository faces and release lag (plan 1.66)",
+          "ageDays": 0,
+          "labels": [],
+          "draft": true,
+          "review": "findings",
+          "headSha": "79c3573425ea357ab6baa1b626b364340e05d7b7",
+          "ci": "green",
+          "next": "merge once review reads clean (Desk labels)",
           "author": "gorfednet"
         },
         {
@@ -259,7 +271,7 @@
         {
           "number": 267,
           "title": "Content guidelines: the AI statement lives in the AI use overlay",
-          "ageDays": 1,
+          "ageDays": 2,
           "labels": [
             "hold"
           ],
@@ -680,6 +692,18 @@
       "mainRed": false,
       "openPrs": [
         {
+          "number": 9,
+          "title": "README: replace the last em dash",
+          "ageDays": 0,
+          "labels": [],
+          "draft": true,
+          "review": "not-run",
+          "headSha": "0f0c7f1ac32e2dd9b06d8fb7cc911b228c2a464c",
+          "ci": "red",
+          "next": "Merge once the review reads clean. Desk labels.",
+          "author": "gorfednet"
+        },
+        {
           "number": 8,
           "title": "Drain: Acid3 sample fixtures",
           "ageDays": 7,
@@ -732,7 +756,7 @@
       "redacted": true,
       "mainRed": false,
       "openPrCount": 10,
-      "lapsedBacklogCount": 4,
+      "lapsedBacklogCount": 34,
       "noPrCount": 7,
       "idlePrCount": 7,
       "duplicatePrCount": 1,
@@ -785,11 +809,11 @@
           "title": "Research: AI Use Levels in audio and other media",
           "ageDays": 0,
           "labels": [],
-          "draft": true,
-          "review": "findings",
-          "headSha": "a48c586f8952b59b07c2d4a52e556cec5155da90",
+          "draft": false,
+          "review": "clean",
+          "headSha": "d358003f20ac194c184a32cad86cb1a5277cfc6c",
           "ci": "green",
-          "next": "Owner confirms the wording and the tag, then merge",
+          "next": "Merge once review reads clean",
           "author": "gorfednet"
         },
         {
@@ -865,7 +889,7 @@
       "slug": "gorfednet/ops",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 18,
+      "openPrCount": 25,
       "lapsedBacklogCount": 0,
       "noPrCount": 6,
       "idlePrCount": 6,
@@ -932,11 +956,11 @@
     }
   },
   "inventory": {
-    "measuredAt": "2026-11-20T22:32:04.376Z",
+    "measuredAt": "2026-11-21T00:44:09.553Z",
     "counts": {
       "pr": {
-        "total": 153,
-        "orphans": 78
+        "total": 163,
+        "orphans": 81
       },
       "session": null,
       "worktree": null,
@@ -949,9 +973,41 @@
     "orphans": [
       {
         "kind": "pr",
+        "repo": "gorfednet/plex-lastfm-sync",
+        "ref": "#3",
+        "label": "Fleet registration: reviewer caller, REVIEW.md, CLAUDE.md, backlog",
+        "private": false,
+        "lapsed": false
+      },
+      {
+        "kind": "pr",
         "repo": "gorfednet/.github",
-        "ref": "#277",
-        "label": "Allowlist: the owner's own public sites",
+        "ref": "#282",
+        "label": "Register plex-lastfm-sync with the fleet and ship-bot (plan row 6.6d)",
+        "private": false,
+        "lapsed": false
+      },
+      {
+        "kind": "pr",
+        "repo": "gorfednet/ACID2REAPER",
+        "ref": "#9",
+        "label": "README: replace the last em dash",
+        "private": false,
+        "lapsed": false
+      },
+      {
+        "kind": "pr",
+        "repo": "gorfednet/gorfednet",
+        "ref": "#7",
+        "label": "Profile README: add plex-lastfm-sync",
+        "private": false,
+        "lapsed": false
+      },
+      {
+        "kind": "pr",
+        "repo": "gorfednet/plex-lastfm-sync",
+        "ref": "#2",
+        "label": "README polish and 1.0.0 changelog",
         "private": false,
         "lapsed": false
       },
@@ -1044,13 +1100,13 @@
         "lapsed": true
       }
     ],
-    "hiddenPrivate": 68,
+    "hiddenPrivate": 67,
     "privateReposNotItemised": 18,
     "planRead": true
   },
   "dotgithub": {
-    "measuredAt": "2026-11-20T22:32:58.184Z",
-    "branches": 47,
+    "measuredAt": "2026-11-21T00:45:06.675Z",
+    "branches": 48,
     "merged": 3,
     "exposedFiles": 61,
     "rulesNotChecked": [],
