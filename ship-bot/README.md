@@ -291,8 +291,8 @@ bot now takes a draft itself when **all** of these hold:
   `infra/`, `scripts/`, `inventory-patches/`, `credentials.json`, `rotations.json`, `crawler-policy.json` and `cta-sites.json`
   (plan row 3.20f).
   Matching ignores case, and a rename counts by its old name too. Such a draft
-  changes what merges unattended, so the bot comments once per commit naming
-  the paths and leaves it to the owning session (plan row 1.12);
+  changes what merges unattended, so the bot never labels it (plan row 1.12).
+  What it does instead is under "Control-plane drafts" below;
 - in a repository that deploys, its review is `clean`. Answered findings are
   not enough there: every session posts as the owner's login, so an answer
   proves no person read the finding. A deploy repository with no Claude
@@ -315,6 +315,31 @@ default) and then waits for that review's check like any other; its verdict,
 if it finds something, keeps the pull request from merging until each thread
 is answered. A repository in observation (`live` false) logs `would mark ready
 and add ready-to-merge` and does nothing.
+
+### Control-plane drafts (plan row 1.59)
+
+The order for a control-plane pull request is ready, then the review that
+leaving draft starts, then a label on a clean read of that review. The bot
+takes the first step and holds the second. The label stays a person's.
+
+- **When.** The draft's `## Next` says merge as above, it has no `hold` and no
+  conflict, the repository has the Claude reviewer, and every check is green
+  on its latest commit. The review isn't read at this point, and the bot asks
+  for none: leaving draft starts it.
+- **What.** The bot marks it ready and comments once, "Ship-bot: checks
+  green, marked ready so the Claude review of this commit starts. No label
+  from the bot", with the paths. It adds no label and records
+  `readiedForReview` on the pull request in `state.json`.
+- **Then.** A person adds `ready-to-merge` after reading the diff and a clean
+  review. The bot merges it like any labelled pull request. If the label
+  lands at once, the merge still waits `reviewGraceMinutes` for the new
+  review to start.
+- **Not readied:** a draft that already carries `ready-to-merge` (that label
+  came before the review), one the bot readied once and someone made a draft
+  again, and any draft in a repository with no reviewer, which gets the old
+  comment and stays a draft.
+- **On the board** the row is `needs-decision`, and its reason says a person
+  labels it.
 
 The label the bot adds is its own, not a person's sign-off: before every
 later pass merges such a pull request, the bot reads `## Next` again and
