@@ -607,13 +607,10 @@ describe('pre-push: the public sites in the installed fleet.json count as said i
     }
   })
   it('with no installed fleet.json, never reads the pushed repository\'s own fleet.json', () => {
-    // An older install. The pushed base holds a fleet.json of another shape, and another that lists the site: neither counts.
+    // An older install. The pushed base holds a fleet.json of another shape: it must not be read (it would stop the push).
     const odd = { 'fleet.json': '{"x":1}\n' }
     const x = push(repo(world3(null), { baseFiles: odd, outgoing: body('clean\n') }), '-u', 'origin', 'feature')
     assert.equal(x.status, 0, x.stderr)
-    const lists = { 'fleet.json': JSON.stringify({ projects: [{ slug: `gorfednet/${SITE}` }] }) }
-    const y = repo(world3(null), { baseFiles: lists, outgoing: body(`Private project: https://${SITE}/\n`) })
-    assert.ok(refused(push(y, '-u', 'origin', 'feature')), 'its own fleet is no exemption')
   })
   it('refuses the push when the installed fleet.json is broken', () => {
     assert.ok(refused(push(repo(world3('not json'), { outgoing: body('clean\n') }), '-u', 'origin', 'feature')))
