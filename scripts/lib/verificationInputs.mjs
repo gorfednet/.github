@@ -182,6 +182,15 @@ export const VERIFICATION_INPUTS = {
         type: string
         default: ""`,
 
+  'privacy-date-config': `      privacy-date-config:
+        description: >-
+          Path to the site's privacy-date config (JSON). Opts the site in to
+          check-privacy-date (V78): the privacy page's shown date moves with its
+          policy text and only then. Empty skips it.
+        required: false
+        type: string
+        default: ""`,
+
   'allow-machine-paths': `      allow-machine-paths:
         description: >-
           Space-separated substrings waiving a deliberate absolute path from
@@ -219,6 +228,7 @@ export const GATE_ARGUMENTS = {
   'sitemap-files': 'sitemap-files',
   'sitemap-allow-thin': 'sitemap-allow-thin',
   'sitemap-min-words': 'sitemap-min-words',
+  'privacy-date-config': 'privacy-date-config',
   'allow-machine-paths': 'allow-machine-paths',
 }
 

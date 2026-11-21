@@ -1085,6 +1085,39 @@ steps). The live half is never a pull request gate: a pull request check fails
 only on what the pull request can change (the 2026-10 right-sizing), and a live
 site is not that.
 
+**V78. A privacy page's shown date moves with its policy text, and only then.**
+Every site that publishes a privacy page tells visitors "Last changed <date>.
+When this page changes, that date changes with it." On 20 November 2026 one site's
+date was queried as possibly stale. It was right that day, by luck: nothing kept
+it right, so it becomes a contract.
+
+1. A pull request that changes a privacy page's policy text moves its shown date
+   to the day of one of that pull request's own commits (author date, read in
+   America/Toronto). Policy text changed with the date untouched, or dated to
+   some other day, fails.
+2. A shown date that moves with no change to the policy text fails: a date with
+   nothing behind it is as false as a stale one.
+3. The policy text is the visible text of the page's configured region, with
+   tags, comments, whitespace and the date itself taken out, minus any excluded
+   pattern. Header, nav and footer are excluded by region or pattern in the
+   site's `privacy-date.config.json`, so a footer-only change stays green.
+4. It fails closed. A configured page that does not exist, a region or date
+   pattern that matches nothing, a date it cannot parse, a page with under 200
+   characters of policy text left, an empty page list, or a base branch it cannot
+   resolve is an error, never a pass. A site that moves its privacy page updates
+   the config in the same pull request.
+5. It reads only the pull request's own diff (merge base to HEAD, plus its commit
+   dates). No network, no other repository, no clock: dates and other
+   repositories belong in scheduled reports (rule 5).
+
+Checked by `check-privacy-date.mjs`, run from the kit at the ref the caller pinned
+when the caller sets `privacy-date-config`. Level: **fail**, for the same reason as
+V77: the page and its date are what the pull request changes. Opt in per site by
+adding the config file and the input; the step deepens a shallow clone and fetches
+the base branch itself. Limits: it compares visible text, so a changed link target
+or attribute with identical words is not seen, and a policy that lives in several
+files needs one entry per file.
+
 ## Provenance
 
 Every rule above was first written in
@@ -1186,6 +1219,7 @@ defect.
 | The social card is the image it says it is | Failed on an og:image that is not a real image of the stated size | `::warning`, job passes | The warning; `production-healthcheck.yml` fetches the live card (`check-live-og-image.mjs`), which is the half a pull request could never see |
 | Error pages ship with the site | Failed on a missing or placeholder 404.html or 500.html | `::warning`, job passes | The warning; the live probe in `production-healthcheck.yml` for the server half (V66), which is the stronger check |
 | Sitemap lists only pages worth indexing (V77) | Did not exist in the gate; added 2026-11 as an opt-in step | Fails the job, only for a caller that sets a sitemap input (decided). The one step in this table that is not softened: the sitemap is build output the pull request changes, so rule 5 allows it. A site that sets `sitemap-origin` without `publish-root` fails too | The step's own log; `production-healthcheck.yml`'s live sitemap step for what the server answers, which a pull request cannot see |
+| Privacy date moves with the policy text (V78) | Did not exist in the gate; added 2026-11 as an opt-in step | Fails the job, only for a caller that sets `privacy-date-config`. Like V77 it reads what the pull request changes (its own diff), so rule 5 allows it | The step's own log; the config names the page, region and date pattern |
 | Paths are derived, not named | Failed on a tracked absolute machine path; failed everywhere on 2026-10-15 if the consumer's vendored kit lacked the checker | `::warning`, job passes. The grace date and its test seam are deleted | The warning; this repository applies the same checker to itself (`selfAppliedCheckers`), enforced. The date logic is gone because a date is not something a pull request can change |
 | No generated files tracked in git | Failed on tracked build output | `::warning`, job passes | The warning; this repository applies the same checker to itself, enforced |
 | Backlog describes reality | Failed on a malformed or lapsed backlog entry, including a `reviewBy` date in the past on a landed entry | `::warning`, job passes | The warning; this repository's own backlog shape is still enforced in `verification-kit.yml`, including `--verify-prs`; `fleet-audit.yml` lists lapsed `reviewBy` dates per repository on its schedule. Since 2026-10-16 `check-backlog.mjs` itself prints a lapsed date as a warning and never fails on one (below) |

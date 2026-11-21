@@ -58,6 +58,8 @@ export const NOT_APPLICABLE = {
     'Fetches a card from a running origin. There is no origin for an org repository.',
   'check-sitemap-pages.mjs':
     'Reads the pages a sitemap lists in a publish root. This repository publishes no site and no sitemap.',
+  'check-privacy-date.mjs':
+    'Reads a site\'s privacy page and its shown date across a pull request. This repository publishes no privacy page.',
   'check-og-image.mjs':
     'Wants a social card in a publish root. This repository publishes no site.',
   'check-page-metadata.mjs':
