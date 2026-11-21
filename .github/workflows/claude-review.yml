@@ -128,13 +128,41 @@ jobs:
           echo "head=${pull%% *}" >> "$GITHUB_OUTPUT"
           echo "base=${pull##* }" >> "$GITHUB_OUTPUT"
 
+      # One finished review per head. The concurrency group above queues a second request behind
+      # a running review (it never cancels one, so a head's review is never lost). The head is
+      # resolved here, when the job starts, so a queued run always reviews the newest head. If
+      # the bot has already posted a verdict for exactly that head, this run is a duplicate and
+      # every later step skips. A different head has a different sha and is never skipped; a
+      # review that failed before its verdict comment leaves none, so a retry still runs (ops 188
+      # took 11 reviewer runs for 3 lines). A review is repeated on the same head only by a new commit.
+      - name: Skip a head that already has a verdict
+        id: dup
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NUMBER: ${{ steps.pr.outputs.number }}
+          HEAD: ${{ steps.pr.outputs.head }}
+        run: |
+          set -euo pipefail
+          bodies="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/issues/${NUMBER}/comments" \
+            --jq '.[] | select(.user.login == "github-actions[bot]") | .body')"
+          # The same shape as MARKER in scripts/lib/reviewVerdict.mjs: a line review-status.mjs
+          # would read as a verdict. A looser match could skip a head the gate reads as not-run.
+          if grep -Eq "<!--[[:space:]]*claude-review[[:space:]]+head=${HEAD}[[:space:]]+findings=[0-9]+([[:space:]]+blocking=[0-9]+)?[[:space:]]*-->" <<<"$bodies"; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "head ${HEAD} already has a review verdict: skipping this duplicate request"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        if: steps.dup.outputs.skip != 'true'
         with:
           ref: ${{ steps.pr.outputs.head }}
           fetch-depth: 0
 
       # From gorfednet/.github@main, never from the checkout: see the action's description.
       - name: Build the review input
+        if: steps.dup.outputs.skip != 'true'
         uses: gorfednet/.github/.github/actions/review-input@main
         with:
           base: ${{ steps.pr.outputs.base }}
@@ -145,6 +173,7 @@ jobs:
       # gorfed.net, bindercurve.com, assess and ops keep Opus under "auto". Matching is by
       # repository name, case-insensitive (ACID2REAPER's remote is spelled in capitals).
       - name: Pick the model
+        if: steps.dup.outputs.skip != 'true'
         id: model
         env:
           REPO: ${{ github.repository }}
@@ -165,6 +194,7 @@ jobs:
       # The secret holds either a subscription token or an API key; pass it to the matching input.
       # Fails closed: an empty or unrecognised value is an error, never a silent skip.
       - name: Pick the credential
+        if: steps.dup.outputs.skip != 'true'
         id: auth
         env:
           CREDENTIAL: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
@@ -177,6 +207,7 @@ jobs:
           esac
 
       - name: Review
+        if: steps.dup.outputs.skip != 'true'
         uses: anthropics/claude-code-action@f3b070c88125d33dbae5653df5f143101d4ea9dc # v1.0.276
         with:
           anthropic_api_key: ${{ steps.auth.outputs.kind == 'api' && secrets.CLAUDE_CODE_OAUTH_TOKEN || '' }}
