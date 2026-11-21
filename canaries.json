@@ -1136,6 +1136,14 @@
       "file": "templates/verification-kit/bin/check-privacy-date.mjs",
       "find": "if (day === null || d > day) day = d",
       "replace": "day = d"
+    },
+    {
+      "id": "privacy-date-default-path-warns",
+      "guards": "With PRIVACY_DATE_ENFORCE unset a real problem prints ::warning and exits 0. Without it the warning-only ship condition is lost and a site job fails.",
+      "command": "node --test --test-name-pattern='default path, with ENFORCE unset' templates/verification-kit/test/privacyDate.test.mjs",
+      "file": "templates/verification-kit/bin/check-privacy-date.mjs",
+      "find": "      if (!ENFORCE) {\n        for (const p of result.problems)",
+      "replace": "      if (false) {\n        for (const p of result.problems)"
     }
   ]
 }

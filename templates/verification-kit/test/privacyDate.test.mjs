@@ -369,4 +369,13 @@ describe('check-privacy-date', () => {
     assert.match(r.stderr, /\(2026-11-20\)/)
     assert.match(r.stderr, /--reset-author/)
   })
+
+  it('warns and exits 0 on the default path, with ENFORCE unset', () => {
+    const dir = repo({ base: pageHtml(), change: pageHtml({ body: sentences + ' We now also keep logs.' }) })
+    const env = { ...process.env }
+    delete env.PRIVACY_DATE_ENFORCE
+    const r = spawnSync('node', [CHECKER, '--config', 'privacy.config.json', '--base', 'origin/main'], { cwd: dir, encoding: 'utf8', env })
+    assert.equal(r.status, 0, r.stderr)
+    assert.match(r.stderr, /::warning title=Privacy date::.*shown date is still/)
+  })
 })

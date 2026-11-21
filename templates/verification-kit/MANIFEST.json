@@ -47,7 +47,7 @@
     "test/ogImage.test.mjs": "3df8526c99473bfb568d40d4c6d8079b6f9c80abd2cfda490d5176188796af1f",
     "test/outboundLinks.test.mjs": "7d0b1b2791f0a59520ec42f5c5c0d3bd5a6a1a25f6b0e8d960f8f575ef2a5688",
     "test/pageMetadata.test.mjs": "77a74d4b70019117dc88f782dd973cc4880e797954bfd33465871139dc0e7a32",
-    "test/privacyDate.test.mjs": "bc7551956ffcb3d114dcb15ba221d04b54598a9bc388c6c2da3657b7a014b7f5",
+    "test/privacyDate.test.mjs": "fa400bf65aeef8427897c669ae8430e708ad2049582f6eeab9c3253c684bf855",
     "test/refreshKitHandoff.test.mjs": "58f2380adcc2829e66ddb9654d95441eb25de716af2574f1e2f741dbc5f34336",
     "test/reportIssues.test.mjs": "1e9829bab43d2a5207ddd98e5c1f110a551dcc1aacd9a8d77a9912a31c9e6b61",
     "test/ruleCitations.test.mjs": "adca35331c0a5b6b6b62ff5c51aa4e7229bba09f4b9420d152fb45f9c98821ba",
