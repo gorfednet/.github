@@ -25,6 +25,8 @@ A signed credit on an About page may name the maker in the third person ("MoonMa
 
 On heuristics.4thcltr.com the method and limits lines say "I", because Michael built the method and signs the reviewed tiers. One "I" opener in a paragraph is enough. The analysis, the browser and the page are the subjects of the other sentences (see Register). A finding keeps the page element as its subject ("The Sort control hides 3 of the 7 options at 390 px"), because the finding is about the page, not about the reviewer.
 
+A site's AI collaboration statement, the words on how AI took part in the writing, is a note inside its AI use overlay. It is never in the footer. That holds for a site without the shared footer when it adds one.
+
 ## Voice
 
 1. **Say the thing first.** Open with the fault, the offer, the fact. Never open with praise and pivot ("Polished and consistent. The work left is in the corners."). If a reader needs to know what works, it is one plain sentence at the end.
