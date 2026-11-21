@@ -101,6 +101,10 @@ describe('config validation', () => {
     assert.match(problemsFor(base([merge('m-main')])), /toolWorktree: must be an object/)
     assert.match(problemsFor(base([merge({ ...good, name: 'tools' })])), /toolWorktree\.name: required, .* ending in "-main"/)
     assert.match(problemsFor(base([merge({ ...good, name: '../x-main' })])), /toolWorktree\.name/)
+    assert.match(problemsFor(base([merge({ ...good, name: 'gates-main' })])), /"gates-main" is a built-in tool worktree's name/)
+    assert.match(problemsFor(base([merge({ ...good, name: 'tools-main' })])), /"tools-main" is a built-in/)
+    const twoRows = [merge(good), { ...merge(good), slug: 'gorfednet/n', dir: 'n' }]
+    assert.match(problemsFor(base(twoRows)), /toolWorktree\.name: "m-main" is used by two rows/)
     assert.match(problemsFor(base([merge({ ...good, tools: ' ' })])), /toolWorktree\.tools: required/)
     assert.match(problemsFor(base([merge({ ...good, refresh: [] })])), /toolWorktree\.refresh: must be a non-empty command array/)
     assert.match(problemsFor(base([merge({ ...good, refresh: 'bash x' })])), /toolWorktree\.refresh: must be a non-empty command array/)
