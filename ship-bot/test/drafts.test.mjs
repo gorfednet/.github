@@ -715,18 +715,30 @@ describe('plan row 1.59: a control-plane draft whose ## Next says merge is marke
     assert.equal(o.state().data.prs[`${SLUG}#7`], undefined)
   })
 
-  it('a failed markReady leaves no record and no comment, and is tried again', async () => {
+  it('a failed markReady leaves no record and is tried again; the comment is posted first, once', async () => {
     const gh = world()
     const real = gh.markReady.bind(gh)
     gh.markReady = async () => { throw Object.assign(new Error('boom'), { status: 502 }) }
     const s = scenario({ repos: reviewed(), github: gh })
     await s.run()
     assert.equal(s.state().data.prs[`${SLUG}#7`]?.readiedForReview, undefined)
-    assert.equal(cpComments(gh).length, 0)
+    assert.equal(cpComments(gh).length, 1)
     gh.markReady = real
     await s.run()
     assert.equal(writes(gh, 'markReady').length, 1)
-    assert.equal(cpComments(gh).length, 1)
+    assert.equal(cpComments(gh).length, 1, 'not repeated')
+  })
+
+  it('a comment that fails is tried again before the draft is readied, so the hand-off is never left unsaid', async () => {
+    const gh = world()
+    const real = gh.createComment.bind(gh)
+    gh.createComment = async () => { throw Object.assign(new Error('boom'), { status: 502 }) }
+    const s = scenario({ repos: reviewed(), github: gh })
+    await s.run()
+    assert.equal(writes(gh, 'markReady').length, 0, 'still a draft, so the next pass comes back to it')
+    gh.createComment = real
+    await s.run()
+    assert.deepEqual([writes(gh, 'markReady').length, cpComments(gh).length], [1, 1])
   })
 
   it('after a lost state file the pull request is still a person\'s to label: nothing the bot wrote makes it bot-readied', async () => {

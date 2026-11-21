@@ -773,7 +773,7 @@ async function takeDraft(ctx, repo, listed, defaultBranch) {
   ctx.say('info', `${tag}: marked ready and labelled ${READY_LABEL}; the merge path takes it next pass`)
 }
 
-export const CONTROL_PLANE_READY_COMMENT = 'Ship-bot: checks green, marked ready so the Claude review of this commit starts. No label from the bot'
+export const CONTROL_PLANE_READY_COMMENT = 'Ship-bot: checks green, marking ready so the Claude review of this commit starts. No label from the bot'
 
 /**
  * A control-plane draft whose `## Next` says merge (plan row 1.59). The order for such a pull request is ready,
@@ -810,6 +810,9 @@ async function readyForReview(ctx, repo, pr, { tag, claim, touched }) {
   // Whatever happens next, this row is a person's decision: the bot adds no label here.
   ctx.board.decide(repo.slug, pr.number)
   if (ctx.dry) return ctx.say('info', `${tag}: would mark ready so its Claude review starts (${claim}); it changes control-plane paths (${paths}), so no label: a person labels it after reading the diff and a clean review`)
+  // The comment goes first, as in takeDraft: once the draft is ready this code never runs for it again, so a comment that failed after
+  // markReady would never be posted. It is once per head, so a markReady that fails and is retried does not repeat it.
+  await postOnce(ctx, repo, pr.number, sha, 'control-plane-ready', `${CONTROL_PLANE_READY_COMMENT}: this changes control-plane paths, which change what merges unattended (plan row 1.12):\n\n${touched.slice(0, 20).map((p) => `- \`${p}\``).join('\n')}${touched.length > 20 ? '\n- ...' : ''}\n\nA person adds \`${READY_LABEL}\` after reading the diff and a clean review of this commit. The bot then merges it like any labelled pull request.`)
   await ctx.github.markReady(pr.node_id)
   const at = ctx.clock.now().toISOString()
   prState.readiedForReview = { sha, at }
@@ -817,7 +820,6 @@ async function readyForReview(ctx, repo, pr, { tag, claim, touched }) {
   headState.readiedAt = at
   ctx.state.save()
   ctx.say('info', `${tag}: checks green (${claim}): marked ready so the Claude review of this head starts. It changes control-plane paths (${paths}), so the bot adds no label: a person labels it after reading the diff and a clean review`)
-  await postOnce(ctx, repo, pr.number, sha, 'control-plane-ready', `${CONTROL_PLANE_READY_COMMENT}: this changes control-plane paths, which change what merges unattended (plan row 1.12):\n\n${touched.slice(0, 20).map((p) => `- \`${p}\``).join('\n')}${touched.length > 20 ? '\n- ...' : ''}\n\nA person adds \`${READY_LABEL}\` after reading the diff and a clean review of this commit. The bot then merges it like any labelled pull request.`)
 }
 
 /**

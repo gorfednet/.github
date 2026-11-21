@@ -327,7 +327,7 @@ takes the first step and holds the second. The label stays a person's.
   on its latest commit. The review isn't read at this point, and the bot asks
   for none: leaving draft starts it.
 - **What.** The bot marks it ready and comments once, "Ship-bot: checks
-  green, marked ready so the Claude review of this commit starts. No label
+  green, marking ready so the Claude review of this commit starts. No label
   from the bot", with the paths. It adds no label and records
   `readiedForReview` on the pull request in `state.json`.
 - **Then.** A person adds `ready-to-merge` after reading the diff and a clean
