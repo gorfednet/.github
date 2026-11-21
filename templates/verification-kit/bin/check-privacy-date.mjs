@@ -76,11 +76,11 @@ export function parseDate(raw) {
   let m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text)
   let y, mo, d
   if (m) [y, mo, d] = [m[1], m[2], m[3]]
-  else if ((m = /^(\d{1,2}) ([A-Za-z]+),? (\d{4})$/.exec(text))) {
+  else if ((m = /^(\d{1,2}) ([A-Za-z]+\.?),? (\d{4})$/.exec(text))) {
     d = m[1]
     mo = monthNumber(m[2])
     y = m[3]
-  } else if ((m = /^([A-Za-z]+) (\d{1,2}),? (\d{4})$/.exec(text))) {
+  } else if ((m = /^([A-Za-z]+\.?) (\d{1,2}),? (\d{4})$/.exec(text))) {
     mo = monthNumber(m[1])
     d = m[2]
     y = m[3]

@@ -241,6 +241,8 @@ describe('check-privacy-date', () => {
     assert.equal(run(repo({ base, change: same })).status, 1)
     const ok = same.replace('Nov 1, 2026', 'Nov 20, 2026')
     assert.equal(run(repo({ base, change: ok })).status, 0)
+    const dotted = same.replace('Nov 1, 2026', 'Nov. 20, 2026')
+    assert.equal(run(repo({ base, change: dotted })).status, 0)
     const odd = base.replace('Nov 1, 2026', 'Foo 1, 2026')
     assert.equal(run(repo({ base: odd, change: odd })).status, 1)
   })
