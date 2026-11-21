@@ -193,7 +193,21 @@ test('past the cap, every call a handoff needs still runs', () => {
     'if [[ -f docs/backlog.json && -d docs ]]; then echo yes; fi',
     'echo done >&2',
     'rm -rf "$d"',
+    // the Fable read's false refusals
+    'd=$(mktemp -d) && cd "$d" && gh pr view 12 --json body -q .body > body.md',
+    'git pull --rebase origin feat/x',
+    'case "$(git branch --show-current)" in main) echo stop;; *) echo ok;; esac',
+    `jq '.items[0].updated = "${today}"' docs/backlog.json > "$d/b.json" && mv "$d/b.json" docs/backlog.json`,
+    'git symbolic-ref --short HEAD',
+    'git diff-index --quiet HEAD --',
+    'git tag --points-at HEAD',
+    'git cherry -v origin/main',
+    "gh api -X GET search/issues -f q='repo:o/r is:pr author:@me'",
+    "gh api graphql -f query='query { viewer { login } }'",
+    'gh pr -R o/r view 12',
+    'gh pr view 12 -R o/r --json body',
   ]) passes(bash(command), command);
+  passes(call('Write', { file_path: '/w/home/.claude/projects/-w-repo/memory/note.md', content: 'x' }), 'a memory file');
 });
 
 test('past the cap, shell work that is not a handoff is refused', () => {
@@ -239,6 +253,18 @@ test('past the cap, shell work that is not a handoff is refused', () => {
     ['ssh host "git status"', /`ssh`/],
     ['hc run --bg --name gate -- npm test', /`hc`/],
     ['sudo ls', /`sudo`/],
+    // the Fable read's bypasses
+    ["echo 'make build' | bash", /`bash` with no -c/],
+    ['cat "$d/steps.sh" | sh', /`sh` with no -c/],
+    ['sort -o src/app.js "$d/app.js"', /sort -o/],
+    ['make all ]]', /`make`/],
+    ['mv "$d/a.js" src/a.js', /`mv` touches/],
+    ['mv src/a.js "$d/a.js"', /`mv` touches/],
+    ['gh pr edit 12 --add-label ready-to-merge', /a label is a merge decision/],
+    ["gh api graphql -f query='mutation { x }'", /`gh api`/],
+    ['gh api -X GET repos/o/r --input body.json', /`gh api`/],
+    ['case x in a) npm test;; esac', /`npm`/],
+    ['case x in a) make;; esac', /`make`/],
   ]) refused(bash(command), why, command);
 });
 
@@ -250,6 +276,10 @@ test('near misses: text that names refused work, and paths that only look like a
   refused(call('Write', { file_path: '/w/repo/docs/handoff.md', content: 'x' }));
   refused(call('Write', { file_path: '/w/repo/docs/handoff/run.sh', content: 'x' }));
   refused(call('Write', { file_path: '/w/repo/src/docs/handoffs/a.md', content: 'x' }));
+  refused(call('Write', { file_path: '/w/repo/src/docs/handoff/component.md', content: 'x' }), null, 'no date in the name');
+  refused(call('Write', { file_path: `/w/repo/docs/handoff/sub/${today}-topic.md`, content: 'x' }), null, 'a directory below');
+  refused(call('Write', { file_path: '/w/home/.claude/projects/-w-repo/memory/run.sh', content: 'x' }));
+  refused(call('Write', { file_path: '/w/home/.claude/settings.json', content: 'x' }));
   refused(call('Write', { file_path: '/w/repo/docs/handoff/../../src/a.md', content: 'x' }));
   refused(call('Edit', { file_path: '/w/repo/backlog.json' }));
   refused(call('Edit', { file_path: '/w/repo/src/backlog.json' }));
@@ -323,7 +353,7 @@ test('a subagent call passes: its context is not this transcript', () => {
 
 test('Desk is exempt by session id, and only that session', () => {
   const file = join(fresh('desk'), 'context-cap-exempt');
-  writeFileSync(file, 'retiring-desk\n  desk-session  \n');
+  writeFileSync(file, 'retiring-desk\n\n  desk-session  \n');
   const env = { CONTEXT_CAP_EXEMPT_FILE: file };
   const edit = { file_path: '/w/repo/src/app.js' };
   passes(call('Edit', edit, { env, extra: { session_id: 'desk-session' } }));
@@ -354,7 +384,7 @@ function repoWithHandoff({ commit = true, date = today, dir = 'docs' } = {}) {
     git('add', '-A');
     git('commit', '-q', '-m', 'handoff');
   }
-  const wrote = (tool = 'Write', path = handoff) => assistant(250_000, [{ type: 'tool_use', id: 't1', name: tool, input: { file_path: path, content: '# Handoff\n' } }]);
+  const wrote = (tool = 'Write', path = handoff, tokens = 250_000) => assistant(tokens, [{ type: 'tool_use', id: 't1', name: tool, input: { file_path: path, content: '# Handoff\n' } }]);
   return { repo, handoff, git, wrote };
 }
 
@@ -373,9 +403,9 @@ test('once this session\'s handoff is committed, reads end and only publishing i
   for (const [command, why] of [
     ['cat README.md', /`cat` touches/],
     ['ls', /`ls` reads, and the handoff is already committed/],
-    ['grep -rn x src', /`grep` reads/],
+    ['rg -n x src', /`rg` reads/],
+    ['find . -name x', /`find` reads/],
     ['git show HEAD', /`git show` reads, and the handoff is already committed/],
-    ['git fetch origin', /`git fetch`/],
     ['git switch -c more-work', /`git switch`/],
     ['git branch more-work', /`git branch`/],
     ['gh pr checks 12', /`gh pr checks`/],
@@ -391,6 +421,14 @@ test('once this session\'s handoff is committed, reads end and only publishing i
     'git rev-parse origin/work',
     'git branch --show-current',
     'git add docs/backlog.json && git commit -m "Backlog stamps" && git push',
+    // the Fable read: publishing commands are piped, and a rejected push needs a pull
+    'git push 2>&1 | tail -5',
+    'git push -u origin work 2>&1 | tail -3',
+    'git status --short | head',
+    'gh pr view --json number,body | jq -r .body > "$d/body.md"',
+    "gh pr view 12 --json body -q .body | grep -n '^## Next'",
+    'git fetch origin',
+    'git pull --rebase origin work',
     'gh pr view --json number,body',
     'd=$(mktemp -d) && gh pr view --json body -q .body > "$d/body.md"',
     `gh pr edit 12 --body-file ${TEMP}/body.md`,
@@ -426,6 +464,15 @@ test('near misses: a handoff that is not committed, not today\'s or not this ses
   writeFileSync(edited.handoff, '# Handoff\nmore\n');
   opts = { transcriptPath: transcript([edited.wrote(), assistant(260_000)]), cwd: edited.repo };
   passes(read(opts), 'committed, then edited again');
+
+  // Written before the cap was passed (the Fable read): it can't cover the work since, so /handoff is still owed.
+  const early = repoWithHandoff();
+  opts = { transcriptPath: transcript([early.wrote('Write', early.handoff, 90_000), assistant(201_000)]), cwd: early.repo };
+  passes(read(opts), 'a handoff from before the cap');
+  stillHeld(opts);
+  const atCap = repoWithHandoff();
+  opts = { transcriptPath: transcript([atCap.wrote('Write', atCap.handoff, CAP), assistant(201_000)]), cwd: atCap.repo };
+  passes(read(opts), 'a handoff written at exactly the cap');
 
   const old = repoWithHandoff({ date: '2026-01-05' });
   opts = { transcriptPath: transcript([old.wrote(), assistant(260_000)]), cwd: old.repo };

@@ -27,8 +27,9 @@ Past the cap, before this session's handoff is committed:
 Once the handoff is committed (a `docs/handoff/` or `control/handoff/` file
 dated today in Eastern time that this session wrote with Edit or Write, tracked
 and unmodified in git), the read allowance ends too: only the handoff's own
-files, git add/commit/push/status/log/diff and gh pr view/list/create/edit/
-comment still run, so the session can publish it and end the turn.
+files, git add/commit/push/pull/fetch/status/log/diff, gh pr view/list/create/
+edit/comment and the filters they are piped through still run, so the session can publish it and end the turn. A handoff
+written before the cap was passed doesn't count: it can't cover the work since.
 
 Exempt: a subagent's calls (`agent_id` in the input: its context isn't this
 transcript's, and Agent is refused past the cap, so none starts there), and
@@ -73,22 +74,27 @@ _PLAIN_OPEN = {
     "realpath", "readlink", "which", "type", "stat", "file", "tree", "mktemp", "mkdir", "diff", "cmp", "sleep",
     "wait", "read", "export", "set", "unset", "local", ":", "shasum", "md5", "nl", "column", "comm", "rev",
     "fold", "seq", "expr", "uname", "whoami", "id", "df", "du", "awk", "sed", "find", "cp", "tee", "touch", "rm",
-    "less", "more", "exit", "return", "break", "continue", "shift", "hash", "umask",
+    "less", "more", "exit", "return", "break", "continue", "shift", "hash", "umask", "mv",
 }
 # Closed: once it is committed, what publishing it still takes.
 _PLAIN_CLOSED = {
     "cat", "pwd", "date", "echo", "printf", "true", "false", "test", "[", "[[", "cd", "pushd", "popd", "basename",
     "dirname", "mktemp", "mkdir", "sleep", "wait", "read", "export", "set", "unset", "local", ":", "tee", "touch",
-    "rm", "cp", "exit", "return",
+    "rm", "cp", "mv", "exit", "return",
+    # filters: a publishing command is piped through them (`git push 2>&1 | tail -5`, `gh pr view ... | jq`)
+    "head", "tail", "jq", "grep", "egrep", "wc", "sort", "uniq", "cut", "tr", "sed", "awk",
 }
 _HEADERS = {"for", "select", "case", "esac", "function"}
+_TEST_OPS = {"==", "=", "!=", "=~", "-eq", "-ne", "-lt", "-gt", "-le", "-ge", "-nt", "-ot"}
 
 _GIT_OPEN = {
     "status", "log", "diff", "show", "rev-parse", "rev-list", "ls-files", "ls-remote", "ls-tree", "merge-base",
     "describe", "blame", "shortlog", "reflog", "cat-file", "name-rev", "for-each-ref", "show-ref", "grep", "fetch",
     "count-objects", "var", "version", "help", "diff-tree", "check-ignore", "whatchanged", "add", "commit", "push",
+    "pull",  # a rejected push needs it before the handoff can be published
+    "symbolic-ref", "diff-index", "diff-files", "cherry",
 }
-_GIT_CLOSED = {"status", "log", "diff", "rev-parse", "add", "commit", "push"}
+_GIT_CLOSED = {"status", "log", "diff", "rev-parse", "add", "commit", "push", "fetch", "pull", "symbolic-ref", "diff-index"}
 _GH_OPEN = {
     "pr": {"view", "list", "edit", "comment", "create", "checks", "status", "diff"},
     "issue": {"view", "list", "comment", "status"},
@@ -175,9 +181,14 @@ def today_et(now: float | None = None) -> str:
     return time.strftime("%Y-%m-%d", time.localtime(now))
 
 
+_HANDOFF_NAME = re.compile(r"\d{4}-\d\d-\d\d-[^/]+\.md$")
+_MEMORY = re.compile(r"/\.claude/projects/[^/]+/memory/[^/]+\.md$")
+
+
 def is_handoff(path: str) -> bool:
+    """`docs/handoff/<date>-<topic>.md` or `control/handoff/<date>-<topic>.md`, the file directly in that directory."""
     parts = path.split("/")
-    return path.endswith(".md") and any((parts[i], parts[i + 1]) in _HANDOFF_DIRS for i in range(len(parts) - 2))
+    return len(parts) >= 3 and (parts[-3], parts[-2]) in _HANDOFF_DIRS and bool(_HANDOFF_NAME.match(parts[-1]))
 
 
 def _committed(path: str) -> bool:
@@ -195,7 +206,7 @@ def _committed(path: str) -> bool:
 
 
 def committed_handoff(transcript: str, today: str) -> str | None:
-    """The handoff file dated today that this session wrote with Edit or Write and that is committed, if any."""
+    """The handoff dated today that this session wrote with Edit or Write past the cap and that is committed, if any."""
     if os.path.getsize(transcript) > SCAN_MAX:
         return None
     seen: list[str] = []
@@ -218,7 +229,8 @@ def committed_handoff(transcript: str, today: str) -> str | None:
                 if not isinstance(target, str) or not os.path.isabs(target):
                     continue
                 target = os.path.normpath(target)
-                if is_handoff(target) and os.path.basename(target).startswith(today) and target not in seen:
+                # Written past the cap: an earlier handoff doesn't cover the work done since.
+                if is_handoff(target) and os.path.basename(target).startswith(today) and target not in seen and (_usage(line) or 0) > CAP:
                     seen.append(target)
     for target in reversed(seen):
         if _committed(target):
@@ -258,14 +270,16 @@ def writable(path: str, cwd: str) -> bool:
     absolute = os.path.normpath(path if os.path.isabs(path) else os.path.join(cwd or "/", path))
     if absolute in _DEVICES or is_handoff(absolute):
         return True
-    if absolute.endswith("/docs/backlog.json"):
+    if absolute.endswith("/docs/backlog.json") or _MEMORY.search(absolute):
         return True
     return any(absolute == root or absolute.startswith(root + "/") for root in _temp_roots())
 
 
-def _shell_path_ok(word: str, cwd: str, dyn: str) -> bool:
-    """A path in a shell command: one only the shell knows (a variable, a substitution) passes unread."""
+def _shell_path_ok(word: str, cwd: str, dyn: str, moved: bool = False) -> bool:
+    """A path in a shell command: one only the shell knows (a variable, a substitution, relative after a `cd`) passes unread."""
     if not word or dyn in word or "$" in word:
+        return True
+    if moved and not word.startswith(("/", "~")):
         return True
     return writable(word, cwd)
 
@@ -286,6 +300,8 @@ def load_parser():
 class Shell:
     def __init__(self, ag, cwd: str, closed: bool):
         self.ag, self.cwd, self.closed = ag, cwd, closed
+        self.moved = False  # the command changes directory, so a relative path is not under `cwd`
+        self.arms = False  # the command has a `case`, so a lone word can be an arm's pattern
 
     def text(self, text: str, depth: int = 0) -> str | None:
         """Why the shell text is refused, or None."""
@@ -294,8 +310,13 @@ class Shell:
         commands: list = []
         self.ag.REDIRECTS = []
         self.ag.parse(text, commands, depth)
-        for target in self.ag.REDIRECTS:
-            if not _shell_path_ok(target, self.cwd, self.ag.DYN):
+        targets = self.ag.REDIRECTS
+        for words in commands:
+            names = [w.rsplit("/", 1)[-1] for w in words if w not in self.ag._KEYWORDS]
+            self.moved = self.moved or names[:1] in (["cd"], ["pushd"])
+            self.arms = self.arms or names[:1] == ["case"]
+        for target in targets:
+            if not _shell_path_ok(target, self.cwd, self.ag.DYN, self.moved):
                 return f"the command redirects into `{target[:80]}`, which isn't a handoff file"
         for words in commands:
             why = self.words(words, depth)
@@ -305,7 +326,7 @@ class Shell:
 
     def _operands_ok(self, name: str, args: list[str]) -> str | None:
         for a in args:
-            if not a.startswith("-") and not _shell_path_ok(a, self.cwd, self.ag.DYN):
+            if not a.startswith("-") and not _shell_path_ok(a, self.cwd, self.ag.DYN, self.moved):
                 return f"`{name}` touches `{a[:80]}`, which isn't a handoff file"
         return None
 
@@ -317,8 +338,12 @@ class Shell:
         while i < len(words) and (words[i] in ag._KEYWORDS or ag._ASSIGN.match(words[i])):
             i += 1
         words = words[i:]
-        if not words or words[0] in _HEADERS or words[-1] == "]]":
+        if not words or words[0] in _HEADERS:
             return None
+        if words[-1] == "]]" and (words[0].startswith("-") or (len(words) > 2 and words[1] in _TEST_OPS)):
+            return None  # the tail of `[[ a && -f b ]]`, which the parser split at `&&`
+        if self.arms and len(words) == 1 and re.fullmatch(r"[\w.*?\[\]/-]+", words[0]) and not re.fullmatch(r"[a-z][a-z0-9-]*", words[0]):
+            return None  # `*)` or `v1.*)`: a case arm's pattern, never a command name
         if ag.DYN in words[0] or "$" in words[0]:
             return None  # the command's name is only known to the shell
         name, args = words[0].rsplit("/", 1)[-1], words[1:]
@@ -345,7 +370,7 @@ class Shell:
                 elif a[:1] not in "-+":
                     return f"`{name} {a[:60]}` runs a script"
                 j += 1
-            return None  # a shell reading stdin: a heredoc fed to it was parsed as code above
+            return f"`{name}` with no -c runs whatever its stdin holds"
         if name == "eval":
             return self.text(" ".join(args), depth + 1)
         if name not in (_PLAIN_CLOSED if self.closed else _PLAIN_OPEN):
@@ -356,7 +381,9 @@ class Shell:
             return "`sed -i` edits a file in place"
         if name == "find" and any(a in ("-delete", "-exec", "-execdir", "-ok", "-okdir") or a.startswith("-fprint") for a in args):
             return "`find` with -exec or -delete changes files"
-        if name in ("tee", "touch", "rm") or (name == "cat" and self.closed):
+        if name == "sort" and any(a.startswith(("-o", "--output")) for a in args):
+            return "`sort -o` writes a file"
+        if name in ("tee", "touch", "rm", "mv") or (name == "cat" and self.closed):
             return self._operands_ok(name, args)
         if name == "cp":
             operands = [a for a in args if not a.startswith("-")]
@@ -396,7 +423,7 @@ class Shell:
                 if len(operands) == 1 and not any(a.startswith(("--unset", "--remove", "--rename", "--edit", "-e", "--add", "--replace")) for a in flags):
                     return None  # `git config user.name` reads one value
             elif sub == "tag":
-                if not operands or any(a in ("-l", "--list") for a in flags):
+                if not operands or any(a in ("-l", "--list", "-n") or a.startswith(("--points-at", "--contains", "--merged", "--sort")) for a in flags):
                     return None
             elif sub == "stash":
                 if operands[:1] in (["list"], ["show"]):
@@ -426,12 +453,22 @@ class Shell:
         if group not in table:
             return f"{label} isn't part of a handoff"
         if group == "api":
+            method = [rest[k + 1].upper() if a in ("-X", "--method") and k + 1 < len(rest) else a.split("=", 1)[-1].upper() if a.startswith("--method=") else a[2:].upper()
+                      for k, a in enumerate(rest) if a in ("-X", "--method") or a.startswith("--method=") or (a.startswith("-X") and len(a) > 2)]
+            if method == ["GET"] and not any(a.startswith("--input") for a in rest):
+                return None  # with GET, fields are the query string
+            if "graphql" in rest and not method and not any(re.search(r"\bmutation\b", a) or a.startswith(("--input", "-F", "--field")) for a in rest):
+                return None  # a GraphQL query
             if any(_GH_API_WRITES.match(a) for a in rest):
                 return "`gh api` with a method, a field or an input writes"
             return None
         subs = table[group]
         if subs is None or "--help" in rest:
             return None
+        if group == "pr" and any(a.startswith(("--add-label", "--remove-label")) for a in rest):
+            return "a label is a merge decision, and its gates can't run past the cap"
+        while rest[:1] and rest[0] in ("-R", "--repo"):
+            rest = rest[2:]
         sub = next((a for a in rest if not a.startswith("-")), None)
         if sub is None or sub in subs:
             return None
