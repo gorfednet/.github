@@ -1078,8 +1078,8 @@
       "guards": "Only a commit that changed the policy text supplies the required day. Without it a footer-only commit on a later day makes that day valid.",
       "command": "node --test --test-name-pattern='counts only commits that change the policy text' templates/verification-kit/test/privacyDate.test.mjs",
       "file": "templates/verification-kit/bin/check-privacy-date.mjs",
-      "find": "now.policy !== prev.policy) day",
-      "replace": "true) day"
+      "find": "now.policy !== prev.policy) {",
+      "replace": "true) {"
     },
     {
       "id": "privacy-date-no-backdating",

@@ -60,7 +60,7 @@ function repo({ base, change, onDay = '2026-11-20T12:00:00-05:00', config = CONF
 }
 
 const run = (dir, extra = []) =>
-  spawnSync('node', [CHECKER, '--config', 'privacy.config.json', '--base', 'origin/main', ...extra], { cwd: dir, encoding: 'utf8' })
+  spawnSync('node', [CHECKER, '--config', 'privacy.config.json', '--base', 'origin/main', ...extra], { cwd: dir, encoding: 'utf8', env: { ...process.env, PRIVACY_DATE_ENFORCE: '1' } })
 
 describe('parseDate', () => {
   it('reads the three forms and refuses the rest', () => {
@@ -160,7 +160,7 @@ describe('check-privacy-date', () => {
   it('fails closed on an empty page list and an unresolvable base', () => {
     assert.equal(run(repo({ base: pageHtml(), change: pageHtml(), config: { pages: [] } })).status, 1)
     const dir = repo({ base: pageHtml(), change: pageHtml() })
-    const r = spawnSync('node', [CHECKER, '--config', 'privacy.config.json', '--base', 'origin/missing'], { cwd: dir, encoding: 'utf8' })
+    const r = spawnSync('node', [CHECKER, '--config', 'privacy.config.json', '--base', 'origin/missing'], { cwd: dir, encoding: 'utf8', env: { ...process.env, PRIVACY_DATE_ENFORCE: '1' } })
     assert.equal(r.status, 1)
     assert.match(r.stderr, /failed/)
   })
@@ -287,7 +287,7 @@ describe('check-privacy-date', () => {
     writeFileSync(join(dir, 'privacy.moved.json'), JSON.stringify({ pages: [{ ...CONFIG.pages[0], exclude: ['We now also keep logs\\.'] }] }))
     git(dir, ['add', '-A'])
     git(dir, ['commit', '-qm', 'move config'], { GIT_AUTHOR_DATE: '2026-11-20T12:00:00-05:00' })
-    const r = spawnSync('node', [CHECKER, '--config', 'privacy.moved.json', '--base', 'origin/main'], { cwd: dir, encoding: 'utf8' })
+    const r = spawnSync('node', [CHECKER, '--config', 'privacy.moved.json', '--base', 'origin/main'], { cwd: dir, encoding: 'utf8', env: { ...process.env, PRIVACY_DATE_ENFORCE: '1' } })
     assert.equal(r.status, 1)
     assert.match(r.stderr, /changes the config's region, exclude or datePattern/)
   })

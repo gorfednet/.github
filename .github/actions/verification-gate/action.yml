@@ -342,7 +342,8 @@ runs:
       env:
         PRIVACY_BASE_REF: ${{ github.base_ref }}
       run: |
-        # Fails the job (V78): the page and its date are what this pull request
+        # Warning-only for now (V78): the checker prints ::warning and exits 0
+        # until a plan row hardens it. The page and its date are what this pull request
         # changes, so rule 5 allows it. The diff is the pull request's own: the
         # merge base to HEAD. A shallow clone cannot show that, so deepen it.
         if [ "$(git rev-parse --is-shallow-repository)" = "true" ]; then

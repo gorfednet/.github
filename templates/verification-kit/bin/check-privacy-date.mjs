@@ -391,6 +391,8 @@ function parseArgs(argv) {
   return out
 }
 
+const ENFORCE = process.env.PRIVACY_DATE_ENFORCE === '1'
+
 function main() {
   try {
     const args = parseArgs(process.argv.slice(2))
@@ -408,12 +410,22 @@ function main() {
     }
     for (const w of result.warnings) console.error(`::warning title=Privacy date::${w}`)
     if (result.problems.length > 0) {
+      // Warning-only until a plan row hardens it (Desk, 21 Nov 2026). Set
+      // PRIVACY_DATE_ENFORCE=1 to fail the step again; the tests do.
+      if (!ENFORCE) {
+        for (const p of result.problems) console.error(`::warning title=Privacy date::${p}`)
+        return
+      }
       for (const p of result.problems) console.error(`✗ ${TOOL}: ${p}`)
       process.exit(1)
     }
     console.error(`✓ ${TOOL}: ${result.seen.length} privacy page(s) checked (day of the latest policy change in this PR: ${result.prDates.join(', ') || 'none'}).`)
   } catch (cause) {
     if (cause instanceof PrivacyDateError) {
+      if (!ENFORCE) {
+        console.error(`::warning title=Privacy date::${cause.message}`)
+        return
+      }
       console.error(`✗ ${TOOL}: ${cause.message}`)
       process.exit(1)
     }

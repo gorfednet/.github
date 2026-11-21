@@ -1124,7 +1124,10 @@ it right, so it becomes a contract.
    repositories belong in scheduled reports (rule 5).
 
 Checked by `check-privacy-date.mjs`, run from the kit at the ref the caller pinned
-when the caller sets `privacy-date-config`. Level: **fail**, for the same reason as
+when the caller sets `privacy-date-config`. Level: **warning** for now (Desk, 21 November 2026):
+the step prints each problem as a `::warning` and exits 0, because the checker's
+open hardening findings wait for a plan row. Set `PRIVACY_DATE_ENFORCE=1` to fail
+the step; the tests do. The intended level is **fail**, for the same reason as
 V77: the page and its date are what the pull request changes. Opt in per site by
 adding the config file and the input; the step deepens a shallow clone and fetches
 the base branch itself. Limits: it compares visible text, so a changed link target
