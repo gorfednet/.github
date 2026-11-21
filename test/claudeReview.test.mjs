@@ -233,6 +233,47 @@ describe('one finished review per head', () => {
     assert.match(body, /skip=false/)
   })
 
+  describe('the step run against a stub gh', () => {
+    const HEAD = 'a'.repeat(40)
+    const OTHER = 'b'.repeat(40)
+    const body = step(workflow, 'Skip a head that already has a verdict')
+    const at = body.indexOf('run: |\n') + 'run: |\n'.length
+    const script = body.slice(at).split('\n').map((l) => l.slice(10)).join('\n')
+    const bot = (text) => ({ login: 'github-actions[bot]', body: text })
+    const line = (head, tail = 'findings=0 blocking=0 -->') => `Reviewed.\n<!-- claude-review head=${head} ${tail}`
+    /** Runs the step with `pages` of comments (the stub prints each page's jq result) and returns skip. */
+    function skip(pages, head = HEAD) {
+      const dir = mkdtempSync(join(tmpdir(), 'dup-'))
+      try {
+        const bodies = pages.flat().filter((c) => c.login === 'github-actions[bot]').map((c) => c.body)
+        writeFileSync(join(dir, 'bodies'), bodies.join('\n'))
+        writeFileSync(join(dir, 'gh'), '#!/bin/sh\ncase "$*" in *--paginate*) ;; *) echo "stub gh needs --paginate" >&2; exit 9 ;; esac\ncat "$(dirname "$0")/bodies"\n', { mode: 0o755 })
+        writeFileSync(join(dir, 'step.sh'), script)
+        const out = join(dir, 'out')
+        writeFileSync(out, '')
+        execFileSync('bash', [join(dir, 'step.sh')], { env: { PATH: `${dir}:${process.env.PATH}`, GITHUB_REPOSITORY: 'o/r', GITHUB_OUTPUT: out, NUMBER: '1', HEAD: head } })
+        return /skip=(\w+)/.exec(readFileSync(out, 'utf8'))[1]
+      } finally {
+        rmSync(dir, { recursive: true, force: true })
+      }
+    }
+    it('skips a head the bot already gave a verdict', () => assert.equal(skip([[bot(line(HEAD))]]), 'true'))
+    it('skips on a verdict without blocking, as the parser accepts', () => assert.equal(skip([[bot(line(HEAD, 'findings=2 -->'))]]), 'true'))
+    it('runs for a verdict on another head', () => assert.equal(skip([[bot(line(OTHER))]]), 'false'))
+    it('runs when there are no comments', () => assert.equal(skip([[]]), 'false'))
+    it('runs for a bot comment with no marker', () => assert.equal(skip([[bot('Reviewed, nothing found.')]]), 'false'))
+    it('runs for a marker a person pasted', () => assert.equal(skip([[{ login: 'someone', body: line(HEAD) }]]), 'false'))
+    it('runs for a malformed marker the parser would not read', () => {
+      assert.equal(skip([[bot(line(HEAD, 'findings=N blocking=M -->'))]]), 'false')
+      assert.equal(skip([[bot(line(HEAD, 'findings=2, blocking=1 -->'))]]), 'false')
+      assert.equal(skip([[bot(`<!-- claude-review head=${HEAD} findings=2`)]]), 'false')
+    })
+    it('finds a verdict that sits after a large comment', () => {
+      assert.equal(skip([[bot('x'.repeat(200000)), bot(line(HEAD))]]), 'true')
+      assert.equal(skip([[bot(line(HEAD)), bot('y'.repeat(200000))]]), 'true')
+    })
+  })
+
   it('skips every step after it, so a duplicate runs no checkout, no credential read and no review', () => {
     const after = workflow.slice(workflow.indexOf('- name: Skip a head that already has a verdict'))
     const steps = after.split('\n      - ').slice(1)

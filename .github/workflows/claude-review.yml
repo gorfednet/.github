@@ -134,7 +134,7 @@ jobs:
       # the bot has already posted a verdict for exactly that head, this run is a duplicate and
       # every later step skips. A different head has a different sha and is never skipped; a
       # review that failed before its verdict comment leaves none, so a retry still runs (ops 188
-      # took 11 reviewer runs for 3 lines).
+      # took 11 reviewer runs for 3 lines). A review is repeated on the same head only by a new commit.
       - name: Skip a head that already has a verdict
         id: dup
         env:
@@ -145,7 +145,9 @@ jobs:
           set -euo pipefail
           bodies="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/issues/${NUMBER}/comments" \
             --jq '.[] | select(.user.login == "github-actions[bot]") | .body')"
-          if printf '%s\n' "$bodies" | grep -Eq "<!--[[:space:]]*claude-review[[:space:]]+head=${HEAD}[[:space:]]"; then
+          # The same shape as MARKER in scripts/lib/reviewVerdict.mjs: a line review-status.mjs
+          # would read as a verdict. A looser match could skip a head the gate reads as not-run.
+          if grep -Eq "<!--[[:space:]]*claude-review[[:space:]]+head=${HEAD}[[:space:]]+findings=[0-9]+([[:space:]]+blocking=[0-9]+)?[[:space:]]*-->" <<<"$bodies"; then
             echo "skip=true" >> "$GITHUB_OUTPUT"
             echo "head ${HEAD} already has a review verdict: skipping this duplicate request"
           else
