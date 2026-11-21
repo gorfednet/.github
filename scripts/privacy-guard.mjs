@@ -58,7 +58,8 @@
  * numbers (an npm tag) is a version tag, not an email.
  *
  * The allowlist is read from the BASE revision (main's tip for a pull request), never from the
- * change: an exemption takes effect once its own pull request has merged, on the next run of a
+ * change, with one exception: a single new `site` line the range adds counts for that range (the
+ * first line of a repository with no allowlist). Every other exemption takes effect once its own pull request has merged, on the next run of a
  * waiting pull request, with no merge of main needed. Format in .github/privacy-guard-allow.txt.
  *
  * A false positive in a commit that is not the tip cannot be fixed forward: the commit stays
@@ -429,13 +430,16 @@ export function scanText(raw, { privateRepo, bareNames, saidNames, allow }, rule
       }
     }
   }
-  // A listed site's domain next to the word repo or repository is the repository, not the site.
-  if (on('private-repo') && bare === 'word' && allow.sites.length > 0) {
-    const REPO = '(?:repos?|repositor(?:y|ies))'
-    for (const site of allow.sites) {
+  // A site this range itself lists (the bootstrap case) has had no review on main yet, so its
+  // domain near the word repo or repository, or with a .git or .wiki ending, is read as the repository.
+  // A site already on main keeps main's reading. The hit carries its own value, so a file at the
+  // merge base can't hold it.
+  if (on('private-repo') && bare === 'word' && allow.bootSites?.length > 0) {
+    const REPO = '\\b(?:repos?|repositor(?:y|ies))\\b'
+    for (const site of allow.bootSites) {
       const name = site.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-      const near = new RegExp(`\\b${REPO}\\b[\\s:'"\`(\\[<*_-]{0,4}${name}(?![\\w-])|(?<![\\w-])${name}[\\s:'"\`)\\]>*_-]{0,4}\\b${REPO}\\b`, 'gi')
-      for (const m of text.matchAll(near)) add('private-repo', [site])
+      const near = new RegExp(`${REPO}[^\\n]{0,24}?(?<![\\w-])${name}(?![\\w-])|(?<![\\w-])${name}(?:\\.(?:git|wiki)\\b|(?![\\w-])[^\\n]{0,24}?${REPO})`, 'gi')
+      for (const _ of text.matchAll(near)) add('private-repo', [`${site} (as a repository)`])
     }
   }
   if (on('owner-quote')) add('owner-quote', all(OWNER_QUOTE, text))
@@ -827,12 +831,17 @@ export function run(argv, env = process.env, out = console) {
 
   // A repository's first allowlist line can't be on the base yet. A `site` line this range adds to
   // the allowlist (the whole line, nothing else on it, a domain with a web TLD) counts for the range
-  // too, so the same push can name the site. It reads from the net diff, so a line added and then
-  // removed counts for nothing. Bare names, `gorfednet/<name>` and a line that says private stay read.
+  // too, so the same push can name the site. Net diff only, so a line added and then removed counts
+  // for nothing, and only one new site per range: more than one clears nothing. The name is then
+  // read for the repository forms too (`bootSites`, see scanText). Bare names in paths, the org
+  // path and a line that says private stay read.
+  const added = new Set()
   for (const { path, text } of net?.added ?? []) {
     const site = path === ALLOWLIST_PATH ? isSiteLine(text) : null
-    if (site && !allow.sites.includes(site)) allow.sites.push(site)
+    if (site && !allow.sites.includes(site)) added.add(site)
   }
+  allow.bootSites = added.size === 1 ? [...added] : []
+  allow.sites.push(...allow.bootSites)
 
   const open = names.filter((n) => !allow.repos.includes(n))
   // A bare name is watched only while the repository has never said it. Most private

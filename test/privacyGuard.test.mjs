@@ -1638,9 +1638,13 @@ describe('privacy guard: a `site <domain>` line makes the name count as said', (
     // The same push can link the site: the line counts for the range, as if main held it.
     assert.equal(add(`site ${NAME}\n`, { 'README.md': `Music: [listen](https://${NAME}/)\n` }).status, 0, 'the README link rides with the first line')
     // It clears only what a said name is cleared for. The repository forms and the private words are still read.
-    for (const body of [`see ${ORG}${NAME}\n`, `https://github.com/${ORG}${NAME}\n`, `Private project: https://${NAME}/\n`, `The repo ${NAME} holds the code\n`, `| ${NAME} | private |\n`]) {
+    for (const body of [`see ${ORG}${NAME}\n`, `https://github.com/${ORG}${NAME}\n`, `Private project: https://${NAME}/\n`, `The repo ${NAME} holds the code\n`, `| ${NAME} | private |\n`, `${NAME}.git\n`, `the repository for ${NAME}\n`, `repo: ${NAME}\n`, `${NAME}'s repo\n`, `gh repo clone ${NAME}\n`]) {
       assert.equal(add(`site ${NAME}\n`, { 'README.md': body }).status, 1, body)
     }
+    // The repository reading is for the site this range lists. A site already on main keeps main's reading.
+    passes(`The repo ${NAME} holds the code\n`)
+    // More than one new site line in a range clears nothing: it can't be a first line.
+    assert.equal(guard({ before: { 'README.md': 'hello\n' }, after: { '.github/privacy-guard-allow.txt': `site ${NAME}\nsite other-music.com\n`, 'README.md': `https://${NAME}/\n` }, allow: false, env: { PRIVATE_REPOS: `${NAME},other-music.com` } }).status, 1)
     // A name no site line covers is read as before, and the line clears its own domain only.
     assert.equal(add(`site ${NAME}\n`, { 'README.md': 'https://other-secret.com/\n' }).status, 0, 'unlisted names are not in PRIVATE_REPOS here')
     assert.equal(guard({ before: { 'README.md': 'hello\n' }, after: { '.github/privacy-guard-allow.txt': `site ${NAME}\n`, 'README.md': 'https://other-secret.com/\n' }, allow: false, env: { PRIVATE_REPOS: `${NAME},other-secret.com` } }).status, 1, 'a second private name stays watched')
