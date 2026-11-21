@@ -158,6 +158,19 @@ describe('tags the spec allows', () => {
   })
 })
 
+describe('review round 2', () => {
+  it('a model newer than the pinned list still matches its Co-Authored-By', () => {
+    const run = gate(repo([good('Claude Opus 9.9', ['Opus 9.9'])]))
+    assert.equal(run.code, 0, run.err)
+  })
+
+  it('a pointer with no tag beside it fails, on a merge commit too', () => {
+    const run = gate(repo([good()], { mergeMainBad: true, mergeMessage: 'Merge main\n\nAI-Use-Standing: docs/x.md 2026-02-30' }))
+    assert.equal(run.code, 1)
+    assert.match(run.err, /no AI-Use tag beside it/)
+  })
+})
+
 describe('a later commit corrects a pushed one (never a rewrite)', () => {
   it('passes when a good later commit names the bad one', () => {
     const dir = repo([`Change\n\n${CO('Sonnet 5.5')}`])

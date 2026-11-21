@@ -61,6 +61,7 @@ export function commitProblems({ message, parents }, lib, { exempt = false } = {
   if (!agent && tags.length === 0 && standing.length === 0) return []
   const problems = []
   if (tags.length === 0) {
+    if (standing.length > 0) return ['an AI-Use-Standing line with no AI-Use tag beside it']
     if (parents > 1) return []
     return ['no AI-Use trailer on a commit with a Claude Co-Authored-By']
   }
@@ -91,7 +92,10 @@ export function commitProblems({ message, parents }, lib, { exempt = false } = {
       // ignore other tools and any reach parenthetical, such as "Cursor" or "Claude Opus 5.5 (agent)".
       if (agent) {
         const bare = (name) => name.replace(/\s*\([^()]*\)\s*$/, '').replace(/^Claude /, '').trim()
-        const named = new Set(tools.filter((tool) => order.classify(tool, models).group === 0).map(bare))
+        // A model newer than the pinned models.json is unlisted (group 2). It still reads as a Claude model, so a
+        // new release doesn't fail every PR before the pin moves.
+        const isModel = (tool) => order.classify(tool, models).group === 0 || /^Claude .*\d/.test(tool.replace(/\s*\([^()]*\)\s*$/, ''))
+        const named = new Set(tools.filter(isModel).map(bare))
         const coAuthors = new Set([...message.matchAll(CO_AUTHOR_MODEL)].map((m) => bare(m[1])))
         const differs = named.size !== coAuthors.size || [...named].some((name) => !coAuthors.has(name))
         if (differs) problems.push(`Co-Authored-By names ${[...coAuthors].join(' + ') || 'no model'}, the tag names ${[...named].join(' + ') || 'no listed model'}`)
