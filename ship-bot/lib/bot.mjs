@@ -871,9 +871,10 @@ async function takeDraft(ctx, repo, listed, defaultBranch) {
   // Remembered whoever owns the label: a draft a person had labelled is still
   // one the bot readied, so the merge path keeps its guards (round 1 on #156).
   prState.botReadied = { sha, at: ctx.clock.now().toISOString() }
-  // Leaving draft fires ready_for_review, which starts a second Claude review
-  // of this head; processPull holds the head until that run has had time to
-  // appear among the checks (reviewer finding on #119).
+  // Leaving draft fires ready_for_review. The run appears among the checks but
+  // skips when this head already has a verdict from its draft-time review
+  // (claude-review.yml, one review per head); processPull holds the head until
+  // that run has had time to appear (reviewer finding on #119).
   headState.readiedAt = ctx.clock.now().toISOString()
   ctx.state.save()
   ctx.say('info', `${tag}: marked ready and labelled ${READY_LABEL}; the merge path takes it next pass`)
