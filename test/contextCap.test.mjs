@@ -146,7 +146,8 @@ test('near misses: paths that only look like a handoff file or a temp file', () 
   passes(write('/tmp/x/body.md', { env }));
   passes(write('/private/tmp/x/body.md', { env }));
   passes(write('/w/scratch/T/body.md', { env }));
-  for (const path of ['/w/scratch/Tx/body.md', '/tmpx/a.js', '/tmp/../w/repo/a.js', join(REPO, 'tmp', 'a.js')]) refused(write(path, { env }), null, path);
+  // Fixed paths here: on Linux this suite's own directory is under /tmp, which the unpinned roots allow.
+  for (const path of ['/w/scratch/Tx/body.md', '/tmpx/a.js', '/tmp/../w/repo/a.js', '/w/repo/tmp/a.js']) refused(write(path, { env }), null, path);
   // A relative TMPDIR resolves against the hook's own working directory, which is this process's. It opens nothing.
   refused(write(join(process.cwd(), 'relative', 'body.md'), { env: { ...env, TMPDIR: 'relative' } }), null, 'a relative TMPDIR');
 });
