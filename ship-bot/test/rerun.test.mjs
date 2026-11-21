@@ -339,6 +339,49 @@ describe('a labelled head blocked only by a cancelled run', () => {
     assert.match(gh.commentsPosted()[0].body, /required checks never appeared on this head: deploy/)
   })
 
+  it('a cancelled check whose name does not return in the rerun waits while attempt 2 runs, then stops blocking once it is green', async () => {
+    // A matrix `e2e` cancelled before it expanded: attempt 2 reports `e2e (1)`, and GitHub still lists the attempt-1 `e2e` as the latest of its name.
+    const stale = jobRun('e2e', 'cancelled', 1, 10, { completed_at: '2026-10-09T11:40:00Z' })
+    const gh = world({ runs: [jobRun('check / check', 'success', 2, 11), stale] })
+    const s = scenario({ github: gh })
+    await s.run()
+    assert.equal(reruns(gh).length, 1)
+    const attempt2 = (over) => [wf(1, { run_attempt: 2, run_started_at: '2026-10-09T12:00:30Z', updated_at: '2026-10-09T12:00:30Z', ...over }), wf(2, { workflow_id: 901, conclusion: 'success' })]
+    gh.runs = [jobRun('check / check', 'success', 2, 11), stale, jobRun('e2e (1)', null, 1, 20, { status: 'in_progress' })]
+    gh.workflowRuns = attempt2({ status: 'in_progress', conclusion: null })
+    s.clock.advance(2)
+    await s.run()
+    assert.equal(gh.commentsPosted().length, 0, 'no refusal while the rerun is going')
+    gh.runs = [jobRun('check / check', 'success', 2, 11), stale, jobRun('e2e (1)', 'success', 1, 20)]
+    gh.workflowRuns = attempt2({ conclusion: 'success' })
+    s.clock.advance(10)
+    await s.run()
+    assert.equal(gh.writes.filter((w) => w.name === 'mergePull').length, 1)
+    assert.equal(gh.commentsPosted().filter((c) => /did not pass/.test(c.body)).length, 0)
+  })
+
+  it('near miss: a green attempt 2 does not clear a cancelled check that finished inside it, one with no times, or attempt 2 that failed', async () => {
+    const world2 = (staleOver, wfOver = {}) => {
+      const gh = world({ runs: [jobRun('check / check', 'success', 2, 11), jobRun('e2e', 'cancelled', 1, 10, staleOver), jobRun('e2e (1)', 'success', 1, 20)], workflowRuns: [wf(1, { run_attempt: 2, conclusion: 'success', run_started_at: '2026-10-09T11:45:00Z', ...wfOver }), wf(2, { workflow_id: 901, conclusion: 'success' })] })
+      return gh
+    }
+    for (const [staleOver, wfOver, why] of [
+      [{ completed_at: '2026-10-09T11:46:00Z' }, {}, 'finished after attempt 2 began'],
+      [{}, {}, 'no completed_at'],
+      [{ completed_at: '2026-10-09T11:40:00Z' }, { run_started_at: undefined }, 'no run_started_at'],
+      [{ completed_at: '2026-10-09T11:40:00Z' }, { run_attempt: 1 }, 'still attempt 1'],
+      [{ completed_at: '2026-10-09T11:40:00Z' }, { conclusion: 'failure' }, 'attempt 2 failed'],
+    ]) {
+      const gh = world2(staleOver, wfOver)
+      await scenario({ github: gh }).run()
+      assert.equal(gh.writes.filter((w) => w.name === 'mergePull').length, 0, why)
+      assert.equal(reruns(gh).length, 0, why)
+    }
+    const ok = world2({ completed_at: '2026-10-09T11:40:00Z' })
+    await scenario({ github: ok }).run()
+    assert.equal(ok.writes.filter((w) => w.name === 'mergePull').length, 1)
+  })
+
   it('merges on a later pass once the rerun is green', async () => {
     const gh = world()
     const s = scenario({ github: gh })
