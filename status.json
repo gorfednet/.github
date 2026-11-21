@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-11-21T20:31:52.672Z",
-  "renderedAt": "2026-11-21T20:31:52.672Z",
+  "generatedAt": "2026-11-21T22:32:00.211Z",
+  "renderedAt": "2026-11-21T22:32:00.211Z",
   "repos": [
     {
       "slug": "gorfednet/bindercurve.com",
@@ -119,7 +119,7 @@
       "slug": "gorfednet/gorfmusic.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 8,
+      "openPrCount": 7,
       "lapsedBacklogCount": 2,
       "noPrCount": 4,
       "idlePrCount": 3,
@@ -185,14 +185,38 @@
       "mainRed": false,
       "openPrs": [
         {
+          "number": 302,
+          "title": "privacy-guard: public sites in fleet.json count as said fleet-wide (row 1.91)",
+          "ageDays": 0,
+          "labels": [],
+          "draft": false,
+          "review": "findings",
+          "headSha": "8be367f5b14a3484c49002b036f417b9a0939c0a",
+          "ci": "pending",
+          "next": "merge: full guard and hook suites green, `claude review` clean, then Desk reads the diff and labels",
+          "author": "gorfednet"
+        },
+        {
+          "number": 301,
+          "title": "content-guidelines: legally required notice stays beside the form (plan 2.19)",
+          "ageDays": 0,
+          "labels": [],
+          "draft": true,
+          "review": "findings",
+          "headSha": "2bad2054d1f43954e53468f9653f522df8d9547d",
+          "ci": "green",
+          "next": "Plan row 2.19: Desk labels `ready-to-merge` after `claude review` is clean (control-plane path, so a session doesn't label).",
+          "author": "gorfednet"
+        },
+        {
           "number": 299,
           "title": "Gate: AI Use Levels trailers on every agent commit (plan row 1.90)",
           "ageDays": 0,
           "labels": [],
           "draft": false,
-          "review": "findings",
-          "headSha": "9d731e1c2120bfff576c62098e5b4b033d797b38",
-          "ci": "pending",
+          "review": "clean",
+          "headSha": "1b0be68c4d22933972116146d27e5f89addca396",
+          "ci": "green",
           "next": "Claude review clean, then merge.",
           "author": "gorfednet"
         },
@@ -273,7 +297,7 @@
         {
           "number": 254,
           "title": "1.30i: guard reads dot joins and the tagger line; installed-tools flags a missing guard install",
-          "ageDays": 3,
+          "ageDays": 4,
           "labels": [],
           "draft": false,
           "review": "clean",
@@ -285,7 +309,7 @@
         {
           "number": 103,
           "title": "Handoff: recovery of 38 failed Herdr jobs",
-          "ageDays": 11,
+          "ageDays": 12,
           "labels": [],
           "draft": false,
           "review": "findings",
@@ -648,7 +672,7 @@
       "lastDeploy": null,
       "incidents7d": 4,
       "dependabotRed": 0,
-      "kitVersion": "0.67.0",
+      "kitVersion": "0.68.0",
       "kitPin": {
         "ref": "main"
       },
@@ -723,7 +747,7 @@
       "slug": "gorfednet/career-portfolio",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 8,
+      "openPrCount": 9,
       "lapsedBacklogCount": 1,
       "noPrCount": 1,
       "idlePrCount": 6,
@@ -894,7 +918,7 @@
       "slug": "gorfednet/ops",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 33,
+      "openPrCount": 31,
       "lapsedBacklogCount": 0,
       "noPrCount": 11,
       "idlePrCount": 9,
@@ -961,7 +985,7 @@
     }
   },
   "inventory": {
-    "measuredAt": "2026-11-21T20:31:52.672Z",
+    "measuredAt": "2026-11-21T22:32:00.211Z",
     "counts": {
       "pr": {
         "total": 181,
@@ -976,6 +1000,22 @@
       }
     },
     "orphans": [
+      {
+        "kind": "pr",
+        "repo": "gorfednet/.github",
+        "ref": "#302",
+        "label": "privacy-guard: public sites in fleet.json count as said fleet-wide (row 1.91)",
+        "private": false,
+        "lapsed": false
+      },
+      {
+        "kind": "pr",
+        "repo": "gorfednet/.github",
+        "ref": "#301",
+        "label": "content-guidelines: legally required notice stays beside the form (plan 2.19)",
+        "private": false,
+        "lapsed": false
+      },
       {
         "kind": "pr",
         "repo": "gorfednet/.github",
@@ -1089,13 +1129,13 @@
         "lapsed": true
       }
     ],
-    "hiddenPrivate": 84,
+    "hiddenPrivate": 82,
     "privateReposNotItemised": 18,
     "planRead": true
   },
   "dotgithub": {
-    "measuredAt": "2026-11-21T20:33:01.353Z",
-    "branches": 47,
+    "measuredAt": "2026-11-21T22:33:14.942Z",
+    "branches": 49,
     "merged": 3,
     "exposedFiles": 54,
     "rulesNotChecked": [],
