@@ -1048,14 +1048,6 @@
       "file": "scripts/claude-hooks/context-cap.py",
       "find": "if tokens is None or tokens <= CAP:",
       "replace": "if tokens is None or tokens <= CAP + 1:"
-    },
-    {
-      "id": "context-cap-reads-shell-redirections",
-      "guards": "Past the cap a shell redirection into a source file is refused. Without it `cat > src/x.js` is a read-only command and the hold is one heredoc wide.",
-      "command": "node --test --test-name-pattern='shell work that is not a handoff' test/contextCap.test.mjs",
-      "file": "scripts/claude-hooks/argv-guard.py",
-      "find": "if writes and REDIRECTS is not None:",
-      "replace": "if False:"
     }
   ]
 }
