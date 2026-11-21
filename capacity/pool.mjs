@@ -6,7 +6,7 @@
 import fs from 'node:fs'
 import { execFileSync } from 'node:child_process'
 
-export const POOL = { queuePushGapMs: 60 * 60 * 1000, staleMs: 15 * 60 * 1000, maxSkewMs: 60 * 1000, defaultOrg: '', queuedPerPage: 20, reposPerPage: 100 }
+export const POOL = { queuePushGapMs: 60 * 60 * 1000, staleMs: 15 * 60 * 1000, maxSkewMs: 60 * 1000, defaultOrg: '', queuedPerPage: 20, reposPerPage: 100, concurrency: 6, deadlineMs: 120 * 1000 }
 
 /** The ETag cache: url -> { etag, body }. Unreadable or malformed means empty: every read is then a full one. */
 export function loadEtags(file, readFile = (p) => fs.readFileSync(p, 'utf8')) {
@@ -85,7 +85,7 @@ export async function listRepos({ read, org = POOL.defaultOrg }) {
  * ok: some served repository's heartbeat is fresh and nothing waits over 15 minutes.
  * down: every heartbeat is stale. queued: a queued run has waited over 15 minutes. unknown: a read failed, or no repository has a heartbeat.
  */
-export async function checkPool({ read, now, org = POOL.defaultOrg }) {
+export async function checkPool({ read, now, org = POOL.defaultOrg, deadlineAt = Infinity }) {
   const failures = []
   let repos
   try { repos = await listRepos({ read, org }) } catch (e) { return { state: 'unknown', reason: `repository list: ${String(e.message).slice(0, 120)}`, repos: 0, queued: [], behind: [], stale: [] } }
@@ -94,28 +94,32 @@ export async function checkPool({ read, now, org = POOL.defaultOrg }) {
   const queued = []
   const behind = []
   let newestMinutes = null
-  for (const repo of repos) {
+  const probe = async (repo) => {
+    // Every read is refused once the deadline has passed, so a stalled answer cannot be followed by another wait.
+    const bounded = (url, reduce) => { if (Date.now() > deadlineAt) throw new Error('pool check deadline passed'); return read(url, reduce) }
     try {
-      const v = await read(`/repos/${repo}/actions/variables/HEAVY_RUNNER_HEARTBEAT`)
-      if (v.status === 404) continue // not a pool repository
+      const v = await bounded(`/repos/${repo}/actions/variables/HEAVY_RUNNER_HEARTBEAT`)
+      if (v.status === 404) return // not a pool repository
       const beat = Number(v.body?.value) * 1000
       let age = Number.isFinite(beat) ? now - beat : Infinity
       if (age < -POOL.maxSkewMs) age = Infinity // dated in the future: the clocks disagree, so it proves nothing is alive
       served.push(repo)
       if (age > POOL.staleMs) stale.push(repo)
       if (Number.isFinite(age)) newestMinutes = newestMinutes === null ? Math.floor(age / 60000) : Math.min(newestMinutes, Math.floor(age / 60000))
-      // A queued run, and a job still queued inside a run that has started: a run is in_progress as soon as one of its jobs runs.
       // A 404 on a pool repository's run or job list is a failed read, never "nothing queued".
-      const answer = async (url, reduce) => { const r = await read(url, reduce); if (r.status === 404) throw new Error(`HTTP 404 for ${url}`); return r }
-      const q = await answer(`/repos/${repo}/actions/runs?status=queued&per_page=${POOL.queuedPerPage}`, reduceRuns)
-      const times = (q.body?.runs ?? []).map((r) => Date.parse(r.created_at)).filter(Number.isFinite)
-      const started = await answer(`/repos/${repo}/actions/runs?status=in_progress&per_page=${POOL.queuedPerPage}`, reduceRuns)
+      const answer = async (url, reduce) => { const r = await bounded(url, reduce); if (r.status === 404) throw new Error(`HTTP 404 for ${url}`); return r }
+      // Only a job that asks for a self-hosted runner is the pool's wait, whether its run is queued or already started
+      // (a run is in_progress as soon as one of its jobs runs). A queued run's jobs are read for their own created_at and labels.
+      const times = []
       let running = false // a job of this repository is running on a self-hosted runner right now: the pool is serving it
-      for (const run of started.body?.runs ?? []) {
-        const j = await answer(`/repos/${repo}/actions/runs/${run.id}/jobs?filter=latest&per_page=100`, reduceJobs)
-        for (const job of j.body?.jobs ?? []) {
-          if (job.status === 'queued' && job.labels.includes('self-hosted')) times.push(Date.parse(job.created_at))
-          if (job.status === 'in_progress' && job.labels.includes('self-hosted')) running = true
+      for (const status of ['queued', 'in_progress']) {
+        const list = await answer(`/repos/${repo}/actions/runs?status=${status}&per_page=${POOL.queuedPerPage}`, reduceRuns)
+        for (const run of list.body?.runs ?? []) {
+          const j = await answer(`/repos/${repo}/actions/runs/${run.id}/jobs?filter=latest&per_page=100`, reduceJobs)
+          for (const job of j.body?.jobs ?? []) {
+            if (job.status === 'queued' && job.labels.includes('self-hosted')) times.push(Date.parse(job.created_at))
+            if (job.status === 'in_progress' && job.labels.includes('self-hosted')) running = true
+          }
         }
       }
       const waits = times.filter(Number.isFinite)
@@ -126,6 +130,9 @@ export async function checkPool({ read, now, org = POOL.defaultOrg }) {
       }
     } catch (e) { failures.push(`${repo}: ${String(e.message).slice(0, 80)}`) }
   }
+  // A few repositories at a time: the whole check is bounded by `deadlineAt`, not by the sum of its reads.
+  let next = 0
+  await Promise.all(Array.from({ length: Math.min(POOL.concurrency, repos.length) }, async () => { while (next < repos.length) await probe(repos[next++]) }))
   queued.sort((a, b) => b.minutes - a.minutes)
   const base = { repos: served.length, queued, behind, stale, ...(newestMinutes === null ? {} : { newestHeartbeatMinutes: newestMinutes }) }
   if (failures.length) return { state: 'unknown', reason: `${failures.length} read(s) failed, first: ${failures[0]}`, ...base }
@@ -158,15 +165,16 @@ export function poolMessage(p, lastKey) {
 }
 
 /** Production reader: the gh token, an ETag cache beside capacity.json. Returns { pool(now), save() }. */
-export function productionPool({ cacheFile, org = process.env.CAPACITY_POOL_ORG ?? POOL.defaultOrg, fetchImpl = fetch, tokenFn = ghToken }) {
+export function productionPool({ deadlineMs = POOL.deadlineMs, cacheFile, org = process.env.CAPACITY_POOL_ORG ?? POOL.defaultOrg, fetchImpl = fetch, tokenFn = ghToken }) {
   const cache = loadEtags(cacheFile)
   const used = new Set()
   let token
+  const deadlineAt = Date.now() + deadlineMs
   const get = async (url, headers) => {
     token ??= tokenFn()
     const res = await fetchImpl(`https://api.github.com${url}`, {
       headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', 'User-Agent': 'gorfednet-capacity', ...headers },
-      signal: AbortSignal.timeout(20000),
+      signal: AbortSignal.timeout(Math.max(1, Math.min(20000, deadlineAt - Date.now()))),
     })
     const etag = res.headers.get('etag')
     return { status: res.status, etag, body: res.status === 200 ? await res.json() : null }
@@ -175,7 +183,7 @@ export function productionPool({ cacheFile, org = process.env.CAPACITY_POOL_ORG 
   return {
     stats,
     pool: async (now) => {
-      try { return await checkPool({ read, now, org }) } catch (e) { return { state: 'unknown', reason: String(e.message).slice(0, 120), repos: 0, queued: [], behind: [], stale: [] } }
+      try { return await checkPool({ read, now, org, deadlineAt }) } catch (e) { return { state: 'unknown', reason: String(e.message).slice(0, 120), repos: 0, queued: [], behind: [], stale: [] } }
     },
     save: () => saveEtags(cacheFile, cache, used),
   }

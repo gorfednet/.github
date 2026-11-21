@@ -197,7 +197,10 @@ export async function run(deps) {
   // Pool liveness (README): its own state and its own change-only push, apart from the machine's. It never throws.
   if (deps.pool) {
     let p
-    try { p = await deps.pool(now) } catch (e) { p = { state: 'unknown', reason: String(e.message).slice(0, 120), repos: 0, queued: [], stale: [] } }
+    // Bounded: a stalled GitHub must not hold back capacity.json or the dead-man ping. Past the deadline the pool reads `unknown`.
+    const limit = deps.poolDeadlineMs ?? 150 * 1000
+    let timer
+    try { p = await Promise.race([deps.pool(now), new Promise((_, rej) => { timer = setTimeout(() => rej(new Error(`pool check passed its ${Math.round(limit / 1000)} s deadline`)), limit) })]) } catch (e) { p = { state: 'unknown', reason: String(e.message).slice(0, 120), repos: 0, queued: [], stale: [] } } finally { clearTimeout(timer) }
     const key = poolKey(p)
     let lastKey = prev?.pool && 'lastPushedKey' in prev.pool ? prev.pool.lastPushedKey : null
     let queueAt = p.state === 'queued' && prev?.pool?.state === 'queued' ? (prev.pool.lastQueuePushAt ?? null) : null // the hour runs only while the queue stays the last thing said

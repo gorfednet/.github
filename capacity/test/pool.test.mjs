@@ -6,7 +6,10 @@ import { run, errorRecord, makePush, productionDeps } from '../capacity.mjs'
 const NOW = Date.parse('2026-11-20T15:00:00Z')
 const MIN = 60 * 1000
 const beat = (minAgo) => ({ value: String(Math.floor((NOW - minAgo * MIN) / 1000)) })
-const runs = (...minAgo) => ({ workflow_runs: minAgo.map((m) => ({ created_at: new Date(NOW - m * MIN).toISOString(), name: 'x' })) })
+// A queued run's wait is read from its jobs, so each run made here has a queued self-hosted job of that age (answered by `fake` unless a test routes its own).
+const jobAges = new Map()
+let nextRunId = 5000
+const runs = (...minAgo) => ({ workflow_runs: minAgo.map((m) => { const id = nextRunId++; jobAges.set(id, m); return { id, created_at: new Date(NOW - m * MIN).toISOString(), name: 'x' } }) })
 const LIST = '/orgs/example-org/repos?type=all&per_page=100'
 
 /** A fake GitHub: `routes` maps a url to a body, a status number, or a function (headers) => response. */
@@ -15,6 +18,8 @@ function fake(routes) {
   const get = async (url, headers) => {
     calls.push({ url, headers })
     const r = routes[url]
+    const jm = /\/actions\/runs\/(\d+)\/jobs/.exec(url)
+    if (r === undefined && jm && jobAges.has(Number(jm[1]))) return { status: 200, etag: null, body: { jobs: [{ status: 'queued', labels: ['self-hosted', 'linux'], created_at: new Date(NOW - jobAges.get(Number(jm[1])) * MIN).toISOString() }] } }
     if (r === undefined && /status=in_progress/.test(url)) return { status: 200, etag: null, body: { workflow_runs: [] } }
     if (r === undefined) return { status: 404, etag: null, body: null }
     if (typeof r === 'function') return r(headers)
@@ -90,7 +95,8 @@ test('archived repositories are left out', async () => {
 })
 
 test('a 304 is answered from the cache, with If-None-Match sent', async () => {
-  const routes = { [LIST]: repos('a'), [hb('a')]: beat(1), [qd('a')]: runs(20) }
+  const queuedRun = runs(20)
+  const routes = { [LIST]: repos('a'), [hb('a')]: beat(1), [qd('a')]: queuedRun, [jobsOf('a', queuedRun.workflow_runs[0].id)]: { jobs: [{ status: 'queued', labels: ['self-hosted'], created_at: new Date(NOW - 20 * MIN).toISOString() }] } }
   const first = await check(routes)
   assert.equal(first.stats.notModified, 0)
   assert.equal(first.p.state, 'queued')
@@ -99,8 +105,8 @@ test('a 304 is answered from the cache, with If-None-Match sent', async () => {
   const { read, stats } = cachedReader({ get: second.get, cache: first.cache, used: new Set() })
   const again = await checkPool({ read, now: NOW, org: 'example-org' })
   assert.equal(again.state, 'queued')
-  assert.equal(stats.notModified, 3)
-  assert.equal(stats.reads, 4)
+  assert.equal(stats.notModified, 4)
+  assert.equal(stats.reads, 5)
 })
 
 test('a 304 with nothing cached is an error, not a guess', async () => {
@@ -245,12 +251,41 @@ test('queued behind the repository\'s own running CI is no alert; with nothing r
   assert.deepEqual(idle.p.behind, [])
 })
 
-test('a re-run of an old run is aged from this attempt, not its first one', async () => {
+test('a re-run of an old run is aged from this attempt\'s job, not the run\'s first attempt', async () => {
   const rerun = { workflow_runs: [{ id: 9, created_at: new Date(NOW - 1440 * MIN).toISOString(), run_started_at: new Date(NOW - 2 * MIN).toISOString(), name: 'x' }] }
-  const r = await check({ [LIST]: repos('a'), [hb('a')]: beat(1), [qd('a')]: rerun })
+  const jobAt = (m) => ({ jobs: [{ status: 'queued', labels: ['self-hosted'], created_at: new Date(NOW - m * MIN).toISOString() }] })
+  const r = await check({ [LIST]: repos('a'), [hb('a')]: beat(1), [qd('a')]: rerun, [jobsOf('a', 9)]: jobAt(2) })
   assert.equal(r.p.state, 'ok')
-  const old = { workflow_runs: [{ id: 9, created_at: new Date(NOW - 1440 * MIN).toISOString(), run_started_at: new Date(NOW - 30 * MIN).toISOString(), name: 'x' }] }
-  assert.equal((await check({ [LIST]: repos('a'), [hb('a')]: beat(1), [qd('a')]: old })).p.state, 'queued')
+  assert.equal((await check({ [LIST]: repos('a'), [hb('a')]: beat(1), [qd('a')]: rerun, [jobsOf('a', 9)]: jobAt(30) })).p.state, 'queued')
+})
+
+test('a queued run whose jobs ask for a hosted runner is not the pool\'s wait', async () => {
+  const q = { workflow_runs: [{ id: 8, created_at: new Date(NOW - 40 * MIN).toISOString(), name: 'x' }] }
+  const hosted = { jobs: [{ status: 'queued', labels: ['macos-latest'], created_at: new Date(NOW - 40 * MIN).toISOString() }] }
+  const r = await check({ [LIST]: repos('a'), [hb('a')]: beat(1), [qd('a')]: q, [jobsOf('a', 8)]: hosted })
+  assert.equal(r.p.state, 'ok')
+  assert.deepEqual(r.p.queued, [])
+})
+
+test('a stalled GitHub ends the pool check at its deadline: unknown, not a hang', async () => {
+  const get = async (url) => (url === LIST ? { status: 200, etag: null, body: repos('a', 'b', 'c') } : new Promise((r) => setTimeout(() => r({ status: 200, etag: null, body: /HEARTBEAT/.test(url) ? beat(1) : { workflow_runs: [] } }), 60)))
+  const { read } = cachedReader({ get, cache: {}, used: new Set() })
+  const t0 = Date.now()
+  const p = await checkPool({ read, now: NOW, org: 'example-org', deadlineAt: Date.now() + 100 })
+  assert.equal(p.state, 'unknown')
+  assert.match(p.reason, /deadline/)
+  assert.ok(Date.now() - t0 < 2000)
+})
+
+test('run() writes capacity.json and returns when the pool read never answers', async () => {
+  const h = harness([OK])
+  h.deps.pool = () => new Promise(() => {})
+  h.deps.poolDeadlineMs = 50
+  const out = await run(h.deps)
+  assert.equal(out.pool.state, 'unknown')
+  assert.match(out.pool.reason, /deadline/)
+  assert.equal(out.state, 'headroom')
+  assert.equal(h.file.pool.state, 'unknown', 'capacity.json written')
 })
 
 test('pool queue goes out at most once an hour, and at once again after the pool was ok', async () => {
