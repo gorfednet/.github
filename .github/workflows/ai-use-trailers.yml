@@ -13,8 +13,8 @@
 # with `git log`.
 #
 # Runs on the caller's pool like the other shared workflows (the optional `runs-on` input as JSON, else
-# the caller's HEAVY_RUNS_ON variable). A public caller, or a private one with neither set, runs on
-# `ubuntu-latest`: the job is a checkout and one `git log`, about 1 minute.
+# the caller's HEAVY_RUNS_ON variable). A public caller runs GitHub-hosted; a private one with neither
+# set, or with a hosted runner name, fails at once (REVIEW.md, owner 2026-11-20).
 name: ai-use-trailers
 
 on:
@@ -37,10 +37,10 @@ permissions:
 jobs:
   trailers:
     name: trailers
-    runs-on: ${{ fromJSON(github.event.repository.private == false && '"ubuntu-latest"' || inputs.runs-on || vars.HEAVY_RUNS_ON || '"ubuntu-latest"') }}
+    runs-on: ${{ fromJSON(github.event.repository.visibility == 'public' && '"ubuntu-latest"' || inputs.runs-on == '' && vars.HEAVY_RUNS_ON == '' && 'no pool for this repository - set HEAVY_RUNS_ON' || github.event.repository.visibility != '' && (contains(inputs.runs-on != '' && inputs.runs-on || vars.HEAVY_RUNS_ON, 'ubuntu-') || contains(inputs.runs-on != '' && inputs.runs-on || vars.HEAVY_RUNS_ON, 'macos-') || contains(inputs.runs-on != '' && inputs.runs-on || vars.HEAVY_RUNS_ON, 'windows-')) && 'hosted runner refused for a private repository - use the pool label' || inputs.runs-on != '' && inputs.runs-on || vars.HEAVY_RUNS_ON) }}
     timeout-minutes: 10
-    # A fork's head is never read here: the caller's history is the only input, and a fork's pull
-    # request reaches the caller as a pull_request event with no secrets.
+    # The job reads the pull request's commits with `git log` and runs no code from them. A fork's
+    # pull request reaches it as a pull_request event with no secrets.
     steps:
       - name: Check out the pull request's history
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7

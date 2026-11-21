@@ -13,7 +13,11 @@
  * In an exempt repository (--exempt: the repositories where the author confirms each tag, see the delegation page in ai-use-levels)
  * it requires the opposite: no `AI-Use` or `AI-Use-Standing` line on any commit.
  *
- * What it cannot see: an agent commit with no Claude `Co-Authored-By`, whether a tag is true, and
+ * A pushed commit is never rewritten, so a later commit on the same PR may carry
+ * `AI-Use-Corrects: <7 to 40 characters of the sha>` and pass the rules itself; that excuses the named
+ * commit. (A convention of this gate, not of the spec.)
+ *
+ * What it cannot see: an agent commit with no Claude `Co-Authored-By` and no tag, whether a tag is true, and
  * whether a merge commit was conflict free. A merge commit with no tag passes, because a
  * conflict-free merge takes no line (shipping.md); one that carries a tag is checked like any other.
  * It reads no network: the spec comes from --spec-dir, a checkout of ai-use-levels at a pinned ref.
@@ -28,8 +32,9 @@ import { readFileSync, realpathSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
-const CLAUDE_CO_AUTHOR = /^Co-Authored-By:.*(Claude|Anthropic)/im
-const CO_AUTHOR_MODEL = /^Co-Authored-By:\s*(Claude [^<]*?)\s*</gim
+const CLAUDE_CO_AUTHOR = /^Co-Authored-By:\s*Claude /im
+const CORRECTS = /^AI-Use-Corrects:[ \t]*([0-9a-f]{7,40})[ \t]*$/gim
+const CO_AUTHOR_MODEL = /^Co-Authored-By:[ \t]*(Claude [^<\n]*?)[ \t]*</gim
 const STANDING_URL = /^AI-Use-Standing: https:\/\/\S+ \d{4}-\d{2}-\d{2}$/
 
 /** Loads the pinned ai-use-levels files from a checkout. */
@@ -52,7 +57,8 @@ export function commitProblems({ message, parents }, lib, { exempt = false } = {
   if (exempt) {
     return [...tags, ...standing].map((line) => `a trailer where the delegation exempts this repository: ${line}`)
   }
-  if (!CLAUDE_CO_AUTHOR.test(message)) return []
+  const agent = CLAUDE_CO_AUTHOR.test(message)
+  if (!agent && tags.length === 0 && standing.length === 0) return []
   const problems = []
   if (tags.length === 0) {
     if (parents > 1) return []
@@ -61,12 +67,14 @@ export function commitProblems({ message, parents }, lib, { exempt = false } = {
   if (tags.length > 1) problems.push(`${tags.length} AI-Use lines on one commit`)
   const [tag] = tags
   for (const problem of trailers.checkTag(tag, spec)) problems.push(`${tag}: ${problem}`)
+  if (agent && !/^AI-Use: L[23]\b/.test(tag)) problems.push(`${tag}: an agent commit is L3, or L2 when the owner said yes beforehand`)
   if (standing.length === 0) problems.push('no AI-Use-Standing line beside the tag')
+  if (standing.length > 1) problems.push(`${standing.length} AI-Use-Standing lines on one commit`)
   for (const line of standing) {
     for (const problem of trailers.checkStanding(line, spec)) problems.push(`${line}: ${problem}`)
     if (!STANDING_URL.test(line)) problems.push(`${line}: the target must be an https URL a reader can open`)
   }
-  const listed = /\((.*)\)\s*$/.exec(tag)?.[1]
+  const listed = /\((.*)\)(?:\s+v\d+)?\s*$/.exec(tag)?.[1]
   if (listed) {
     let tools = []
     try {
@@ -80,7 +88,7 @@ export function commitProblems({ message, parents }, lib, { exempt = false } = {
       const bare = (name) => name.replace(/^Claude /, '')
       const named = new Set(tools.map(bare))
       const coAuthors = new Set([...message.matchAll(CO_AUTHOR_MODEL)].map((m) => bare(m[1].trim())))
-      const differs = named.size !== coAuthors.size || [...named].some((name) => !coAuthors.has(name))
+      const differs = agent && named.size !== coAuthors.size || [...named].some((name) => !coAuthors.has(name))
       if (differs) problems.push(`Co-Authored-By names ${[...coAuthors].join(' + ') || 'no model'}, the tag names ${[...named].join(' + ')}`)
     }
   }
@@ -128,15 +136,22 @@ export async function main(argv) {
   }
   let agent = 0
   let bad = 0
-  for (const commit of commits) {
+  let corrected = 0
+  const results = commits.map((commit) => ({ commit, problems: commitProblems(commit, lib, { exempt }) }))
+  // A pushed commit is never rewritten (shipping.md), so a later commit in the same PR can correct
+  // it: `AI-Use-Corrects: <sha prefix>`, and the correcting commit itself has to pass.
+  const correctors = results.filter((r) => r.problems.length === 0 && !exempt).flatMap((r) => [...r.commit.message.matchAll(CORRECTS)].map((m) => m[1].toLowerCase()))
+  for (const { commit, problems } of results) {
     if (CLAUDE_CO_AUTHOR.test(commit.message)) agent += 1
-    const problems = commitProblems(commit, lib, { exempt })
-    if (problems.length > 0) {
-      bad += 1
-      console.error(`${commit.sha.slice(0, 9)}\n  ${problems.join('\n  ')}`)
+    if (problems.length === 0) continue
+    if (correctors.some((prefix) => commit.sha.startsWith(prefix))) {
+      corrected += 1
+      continue
     }
+    bad += 1
+    console.error(`${commit.sha.slice(0, 9)}\n  ${problems.join('\n  ')}`)
   }
-  console.log(`check-ai-use-trailers: ${commits.length} commit(s), ${agent} with a Claude co-author, ${bad} bad${exempt ? ' (exempt repository)' : ''}`)
+  console.log(`check-ai-use-trailers: ${commits.length} commit(s), ${agent} with a Claude co-author, ${bad} bad${corrected ? `, ${corrected} corrected by a later commit` : ''}${exempt ? ' (exempt repository)' : ''}`)
   return bad === 0 ? 0 : 1
 }
 
