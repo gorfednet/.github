@@ -545,7 +545,8 @@ The rerun is narrow on purpose:
 - the run is the newest of its workflow on the head, and the whole run
   ended `cancelled`;
 - it has sat cancelled for 10 minutes, so a label's own replacement run has
-  had time to appear;
+  had time to appear. Until then the head waits: no comment, and the log
+  line is `a cancelled workflow run is all that blocks this head`;
 - it is on attempt 1 or 2, and the bot hasn't asked for it before on this
   head;
 - at most 2 reruns per head in all, counting ones GitHub refused.

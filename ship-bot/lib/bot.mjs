@@ -579,7 +579,7 @@ async function processPull(ctx, repo, pr, defaultBranch) {
 async function rerunCancelled(ctx, repo, headState, tag, ids) {
   const fresh = ids.filter((id) => !headState.reruns?.[id])
   if (fresh.length === 0) return false
-  // The cap is for the head's whole life, not one pass: every ask counts, the refused ones too.
+  // gates.mjs already holds the offer to the cap; this is the same rule where the write is made. Every ask counts, the refused ones too.
   if (Object.keys(headState.reruns ?? {}).length + fresh.length > MAX_RERUNS_PER_HEAD) return false
   if (ctx.dry) {
     ctx.say('info', `${tag}: would rerun cancelled workflow run(s) ${fresh.join(', ')}: every other check on this head is green`)
