@@ -124,7 +124,8 @@ export async function main(argv) {
       console.log(JSON.stringify({ recorded: false, reason: 'no transcript tokens matched this pull request', repo: rec.repo, number: rec.number }))
       return 0
     }
-    if (prior && prior.total === rec.total && prior.state === rec.state) {
+    // A swept row has no branch or line counts, so a record that brings them is never "unchanged".
+    if (prior && prior.total === rec.total && prior.state === rec.state && prior.branch === rec.branch && prior.additions === rec.additions) {
       console.log(JSON.stringify({ recorded: false, reason: 'unchanged since the last line', repo: rec.repo, number: rec.number }))
       return 0
     }

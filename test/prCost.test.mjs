@@ -488,6 +488,18 @@ describe('sweep: merged PRs from the merger log', () => {
     assert.equal(rows.find((r) => r.number === 7).total, 1111 + 4444, 'A: its own work before its link and the tail after its merge')
     assert.equal(rows.find((r) => r.number === 8).total, 2222, 'B: the work before B\'s link, from min 20')
   })
+  it('record replaces a swept row with the fuller one, even when the total is the same', () => {
+    const dir = projects({ 'p/S1.jsonl': [assistant({ min: 1 }), assistant({ min: 2, usage: [2, 20, 200, 2000] }), link('o/.github', 7, 3)] })
+    const log = join(dir, 'ship.log')
+    writeFileSync(log, `${T(5)} info  o/.github#7 (abc1234): merged as def5678\n`)
+    const out = join(dir, 'ledger.jsonl')
+    assert.equal(JSON.parse(run('sweep', '--ship-log', log, '--since', T(0), '--projects', dir, '--out', out).stdout).recorded, 1)
+    const r = run('record', '--repo', 'o/.github', '--number', '7', '--state', 'MERGED', '--branch', 'claude/a-1', '--worktree', WT, '--title', 'Fix it', '--additions', '11', '--deletions', '2', '--closed', T(5), '--projects', dir, '--out', out)
+    assert.equal(JSON.parse(r.stdout).recorded, true, 'the swept row has no branch or line counts, so the record is not unchanged')
+    const last = readFileSync(out, 'utf8').trim().split('\n').map(JSON.parse).at(-1)
+    assert.deepEqual([last.branch, last.additions, last.kind], ['claude/a-1', 11, 'fix'])
+    assert.equal(JSON.parse(run('record', '--repo', 'o/.github', '--number', '7', '--state', 'MERGED', '--branch', 'claude/a-1', '--worktree', WT, '--title', 'Fix it', '--additions', '11', '--deletions', '2', '--closed', T(5), '--projects', dir, '--out', out).stdout).recorded, false, 'a second identical record is still a no-op')
+  })
   it('a merge under 2 hours old is left for the next run', () => {
     const dir = projects({ 'p/S1.jsonl': [assistant({ min: 1 }), link('o/.github', 7, 3)] })
     const log = join(dir, 'ship.log')
