@@ -63,6 +63,13 @@ const bail = (message) => {
   throw new PrivacyDateError(message)
 }
 
+/** A full or abbreviated English month name to 1..12, or 0. */
+function monthNumber(name) {
+  const n = name.toLowerCase().replace(/\.$/, '')
+  const i = MONTHS.findIndex((m) => m === n || (n.length >= 3 && m.startsWith(n.slice(0, 3)) && (n.length === 3 || n === 'sept')))
+  return i + 1
+}
+
 /** "2026-11-18", "18 November 2026" or "November 18, 2026" to ISO, or null. */
 export function parseDate(raw) {
   const text = String(raw).trim().replace(/\s+/g, ' ')
@@ -71,10 +78,10 @@ export function parseDate(raw) {
   if (m) [y, mo, d] = [m[1], m[2], m[3]]
   else if ((m = /^(\d{1,2}) ([A-Za-z]+),? (\d{4})$/.exec(text))) {
     d = m[1]
-    mo = MONTHS.indexOf(m[2].toLowerCase()) + 1
+    mo = monthNumber(m[2])
     y = m[3]
   } else if ((m = /^([A-Za-z]+) (\d{1,2}),? (\d{4})$/.exec(text))) {
-    mo = MONTHS.indexOf(m[1].toLowerCase()) + 1
+    mo = monthNumber(m[1])
     d = m[2]
     y = m[3]
   } else return null
@@ -141,9 +148,10 @@ export function readPolicy(page, source, dateSource) {
   if (!date) bail(`${where}: "${found[1]}" is not a date I can parse (ISO, "18 November 2026" or "November 18, 2026").`)
   // Every date-shaped string a visitor would read inside the match has to be the same day.
   const shown = visibleText(found[0])
-  for (const m of shown.matchAll(/\b(\d{4}-\d{2}-\d{2}|\d{1,2} [A-Za-z]+,? \d{4}|[A-Za-z]+ \d{1,2},? \d{4})\b/g)) {
+  for (const m of shown.matchAll(/\b(\d{4}-\d{2}-\d{2}|\d{1,2} [A-Za-z]+\.?,? \d{4}|[A-Za-z]+\.? \d{1,2},? \d{4})\b/g)) {
     const other = parseDate(m[1])
-    if (other && other !== date) bail(`${where}: the shown text says ${m[1]} but the date captured is ${date}. They have to be the same day.`)
+    if (!other) bail(`${where}: the shown text has "${m[1]}", which looks like a date but is not one I can parse. A date it cannot parse is an error.`)
+    if (other !== date) bail(`${where}: the shown text says ${m[1]} but the date captured is ${date}. They have to be the same day.`)
   }
   text = text.replace(new RegExp(dateRe.source, 'gi'), ' ')
   const policy = visibleText(text)
@@ -224,7 +232,10 @@ function readBase(page, dateFile, mergeBase, head, cwd, configRel) {
     if (baseConfigText !== null) {
       try {
         const old = JSON.parse(baseConfigText).pages?.find((p) => p.name === page.name)
-        if (old) {
+        const same = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null)
+        // Only a moved file may be read with the old entry: a changed region, exclude or
+        // date pattern would make the two policy strings differ for reasons that are not words.
+        if (old && same(old.region, page.region) && same(old.exclude, page.exclude) && same(old.datePattern, page.datePattern)) {
           baseHadConfigEntry = true
           const viaOld = attempt(old, old.file, old.dateFile ?? old.file)
           if (viaOld) return viaOld
@@ -235,7 +246,7 @@ function readBase(page, dateFile, mergeBase, head, cwd, configRel) {
     }
   }
   if (showAt(mergeBase, page.file, cwd) === null && !baseHadConfigEntry) return null
-  return bail(`page "${page.name}": the copy at the merge base cannot be read with this config, or the base's own config, so there is nothing to compare. Land the config or region change in its own PR.`)
+  return bail(`page "${page.name}": the copy at the merge base cannot be read with this config, or the base's own config (when only the file moved), so there is nothing to compare. Land the config or region change in its own PR.`)
 }
 
 export function runCheck({ config, base, head, today, tz, cwd, configRel = null }) {

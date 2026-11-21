@@ -223,22 +223,25 @@ describe('check-privacy-date', () => {
     assert.equal(r.status, 0, r.stderr)
   })
 
-  it('a region edit in the PR is read against the base config, not a false change', () => {
+  it('fails closed when the base copy cannot be read by the new region or the old entry differs', () => {
     const dir = repo({ base: pageHtml(), change: undefined })
-    writeFileSync(join(dir, 'privacy.config.json'), JSON.stringify({ pages: [{ ...CONFIG.pages[0], region: ['<h1', '</main>'] }] }))
+    const article = pageHtml().replace('<main', '<article').replace('</main>', '</article>')
+    writeFileSync(join(dir, 'privacy.html'), article)
+    writeFileSync(join(dir, 'privacy.config.json'), JSON.stringify({ pages: [{ ...CONFIG.pages[0], region: ['<article', '</article>'] }] }))
     git(dir, ['add', '-A'])
-    git(dir, ['commit', '-qm', 'region'], { GIT_AUTHOR_DATE: '2026-11-20T12:00:00-05:00' })
+    git(dir, ['commit', '-qm', 'article'], { GIT_AUTHOR_DATE: '2026-11-20T12:00:00-05:00' })
     const r = run(dir)
-    assert.equal(r.status, 0, r.stderr)
+    assert.equal(r.status, 1)
+    assert.match(r.stderr, /cannot be read with this config/)
   })
 
-  it('fails closed when a moved page has no readable base copy', () => {
-    const dir = repo({ base: pageHtml(), change: undefined })
-    git(dir, ['mv', 'privacy.html', 'privacy-new.html'])
-    writeFileSync(join(dir, 'privacy-new.html'), 'tiny')
-    writeFileSync(join(dir, 'privacy.config.json'), JSON.stringify({ pages: [{ ...CONFIG.pages[0], file: 'privacy-new.html', region: ['<h1', '</h1>'] }] }))
-    git(dir, ['add', '-A'])
-    git(dir, ['commit', '-qm', 'bad'], { GIT_AUTHOR_DATE: '2026-11-20T12:00:00-05:00' })
-    assert.equal(run(dir).status, 1)
+  it('fails closed on an abbreviated shown date it cannot match, and reads a matching one', () => {
+    const base = pageHtml().replace('>shown<', '>Nov 1, 2026<')
+    const same = base.replace(sentences, sentences + ' More.').replace('2026-11-01', '2026-11-20')
+    assert.equal(run(repo({ base, change: same })).status, 1)
+    const ok = same.replace('Nov 1, 2026', 'Nov 20, 2026')
+    assert.equal(run(repo({ base, change: ok })).status, 0)
+    const odd = base.replace('Nov 1, 2026', 'Foo 1, 2026')
+    assert.equal(run(repo({ base: odd, change: odd })).status, 1)
   })
 })
