@@ -1641,6 +1641,37 @@ describe('privacy guard: a `site <domain>` line makes the name count as said', (
     for (const body of [`see ${ORG}${NAME}\n`, `https://github.com/${ORG}${NAME}\n`, `Private project: https://${NAME}/\n`, `The repo ${NAME} holds the code\n`, `| ${NAME} | private |\n`, `${NAME}.git\n`, `the repository for ${NAME}\n`, `repo: ${NAME}\n`, `${NAME}'s repo\n`, `gh repo clone ${NAME}\n`]) {
       assert.equal(add(`site ${NAME}\n`, { 'README.md': body }).status, 1, body)
     }
+    // A path is read too: the repository forms as a path part.
+    for (const path of [`repos/${NAME}/notes.md`, `${NAME}.git/HEAD`, `${NAME}.md`]) {
+      assert.equal(add(`site ${NAME}\n`, { [path]: 'x\n' }).status, 1, path)
+    }
+    assert.equal(add(`site ${NAME}\n`, { 'docs/listen.md': 'x\n' }).status, 0)
+    // The cap holds across pushes: the hook's base is the published boundary and its allowlist is main's.
+    {
+      const dir = mkdtempSync(join(tmpdir(), 'privacy-guard-two-'))
+      try {
+        sh(dir, 'init', '-q', '-b', 'main')
+        writeFileSync(join(dir, 'README.md'), 'hi\n')
+        sh(dir, 'add', '-A')
+        sh(dir, 'commit', '-q', '-m', 'base')
+        sh(dir, 'checkout', '-q', '-b', 'pr')
+        mkdirSync(join(dir, '.github'), { recursive: true })
+        writeFileSync(join(dir, '.github', 'privacy-guard-allow.txt'), `site ${NAME}\n`)
+        sh(dir, 'add', '-A')
+        sh(dir, 'commit', '-q', '-m', 'first push')
+        sh(dir, 'branch', 'pushed')
+        writeFileSync(join(dir, '.github', 'privacy-guard-allow.txt'), `site ${NAME}\nsite other-music.com\n`)
+        writeFileSync(join(dir, 'README.md'), 'https://other-music.com/\n')
+        sh(dir, 'add', '-A')
+        sh(dir, 'commit', '-q', '-m', 'second push')
+        const empty = join(dir, 'empty-allow.txt')
+        writeFileSync(empty, '')
+        const r = spawnSync('node', [GUARD, '--base', 'pushed', '--head', 'pr', '--dir', dir, '--allow', empty], { encoding: 'utf8', env: { PATH: process.env.PATH, HOME: process.env.HOME, PRIVATE_REPOS: `${NAME},other-music.com` } })
+        assert.equal(r.status, 1, `${r.stdout}${r.stderr}`)
+      } finally {
+        rmSync(dir, { recursive: true, force: true })
+      }
+    }
     // The repository reading is for the site this range lists. A site already on main keeps main's reading.
     passes(`The repo ${NAME} holds the code\n`)
     // More than one new site line in a range clears nothing: it can't be a first line.

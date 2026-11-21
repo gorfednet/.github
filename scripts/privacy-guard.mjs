@@ -442,6 +442,13 @@ export function scanText(raw, { privateRepo, bareNames, saidNames, allow }, rule
       for (const _ of text.matchAll(near)) add('private-repo', [`${site} (as a repository)`])
     }
   }
+  // The same site, as a path part (`repos/<site>/`, `<site>.git/`, `<site>.md`), is the repository too.
+  if (on('private-repo') && bare === 'path' && allow.bootSites?.length > 0) {
+    for (const site of allow.bootSites) {
+      const name = site.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      for (const _ of text.matchAll(new RegExp(`(?:^|/)${name}(?:\\.[A-Za-z0-9]+)?(?=/|$)`, 'gi'))) add('private-repo', [`${site} (as a repository)`])
+    }
+  }
   if (on('owner-quote')) add('owner-quote', all(OWNER_QUOTE, text))
   if (on('email')) {
     add(
@@ -835,10 +842,21 @@ export function run(argv, env = process.env, out = console) {
   // for nothing, and only one new site per range: more than one clears nothing. The name is then
   // read for the repository forms too (`bootSites`, see scanText). Bare names in paths, the org
   // path and a line that says private stay read.
+  // Counted against the allowlist the guard was given (main's, or the remote's default branch for
+  // the hook), not the range, so a second push to a branch that already carries a site line from
+  // the first push counts both and clears neither.
   const added = new Set()
-  for (const { path, text } of net?.added ?? []) {
-    const site = path === ALLOWLIST_PATH ? isSiteLine(text) : null
-    if (site && !allow.sites.includes(site)) added.add(site)
+  if (commits.length > 0) {
+    let headList = ''
+    try {
+      headList = git(dir, ['show', `${headSha}:${ALLOWLIST_PATH}`])
+    } catch {
+      // no allowlist at the head
+    }
+    for (const line of headList.split('\n')) {
+      const site = isSiteLine(line)
+      if (site && !allow.sites.includes(site)) added.add(site)
+    }
   }
   allow.bootSites = added.size === 1 ? [...added] : []
   allow.sites.push(...allow.bootSites)
