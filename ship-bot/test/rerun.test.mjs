@@ -144,6 +144,19 @@ describe('cancelledRunsToRerun: the run must be the labelled one, and its cancel
     assert.deepEqual(labelled('2026-10-09T11:00:00Z', { requireAfterLabel: false }), OFFER)
   })
 
+  it('where checks must start after the label, a green required check from before the label means no rerun: it would still block', () => {
+    const AFTER = '2026-10-09T11:36:00Z'
+    const green = (startedAt) => [jobRun('check / check', 'success', 2, 11, { started_at: startedAt }), jobRun('e2e', 'cancelled', 1, 10)]
+    const required = (over) => labelled(AFTER, { expectedChecks: ['check / check', 'e2e'], ...over })
+    assert.deepEqual(required({ runs: green('2026-10-09T11:30:00Z') }), NONE, 'green, but from before the label')
+    assert.deepEqual(required({ runs: green(undefined) }), NONE, 'no start time')
+    assert.deepEqual(required({ runs: green(AFTER), expectedChecks: ['check / check', 'deploy'], statuses: [{ context: 'deploy', state: 'success', created_at: '2026-10-09T11:30:00Z' }] }), NONE, 'a required status from before the label')
+    // Near misses: green after the label, an old green check nobody requires, and the same old check where the repository does not ask.
+    assert.deepEqual(required({ runs: green(AFTER) }), OFFER)
+    assert.deepEqual(required({ runs: green('2026-10-09T11:30:00Z'), expectedChecks: ['e2e'] }), OFFER)
+    assert.deepEqual(required({ runs: green('2026-10-09T11:30:00Z'), requireAfterLabel: false }), OFFER)
+  })
+
   it('names the cancelled check runs of each offered run, and offers nothing when one has no id or there are too many to read', () => {
     const many = (n) => runs(...Array.from({ length: n - 1 }, (_, i) => jobRun(`e2e (${i})`, 'cancelled', 1, 100 + i)))
     assert.deepEqual(plan({ runs: many(3) }).checks, { 1: [10, 100, 101] })
@@ -240,9 +253,13 @@ describe('a job that hit its timeout reports cancelled, and is not rerun', () =>
     assert.equal(reruns(before).length, 0)
     assert.equal(reads(before).length, 0)
     // Near miss: the same run, created after the label.
-    const after = world({}, { events, workflowRuns: [wf(1, { created_at: '2026-10-09T11:36:00Z' }), wf(2, { workflow_id: 901, conclusion: 'success' })] })
+    const after = world({}, { events, runs: [jobRun('check / check', 'success', 2, 11, { started_at: '2026-10-09T11:37:00Z' }), jobRun('e2e', 'cancelled', 1, 10)], workflowRuns: [wf(1, { created_at: '2026-10-09T11:36:00Z' }), wf(2, { workflow_id: 901, conclusion: 'success' })] })
     await scenario({ github: after, repos: [repoEntry({ requireChecksAfterLabel: true })] }).run()
     assert.deepEqual(reruns(after).map((w) => w.runId), [1])
+    // And the labelled run cancelled beside a required check that is green from before the label: still blocked, so no rerun.
+    const stale = world({}, { events, workflowRuns: [wf(1, { created_at: '2026-10-09T11:36:00Z' }), wf(2, { workflow_id: 901, conclusion: 'success' })] })
+    await scenario({ github: stale, repos: [repoEntry({ requireChecksAfterLabel: true })] }).run()
+    assert.equal(reruns(stale).length, 0)
   })
 })
 
