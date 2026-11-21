@@ -5,7 +5,7 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import { FakeGitHub, HEAD, SLUG, makePr, repoEntry, scenario } from './fakes.mjs'
-import { MAX_RERUN_ATTEMPT, RERUN_SETTLE_MINUTES, cancelledRunsToRerun } from '../lib/gates.mjs'
+import { MAX_ANNOTATION_READS, MAX_RERUN_ATTEMPT, RERUN_SETTLE_MINUTES, TIMEOUT_ANNOTATION, cancelledRunsToRerun } from '../lib/gates.mjs'
 import { RateLimitError, createGitHubClient, guardWrites } from '../lib/github.mjs'
 
 const NOW = new Date('2026-10-09T12:00:00Z')
@@ -17,7 +17,9 @@ const runs = (...more) => [jobRun('check / check', 'success', 2, 11), jobRun('e2
 const flows = (...more) => [wf(1), wf(2, { workflow_id: 901, conclusion: 'success' }), ...more]
 const plan = (over = {}) => cancelledRunsToRerun({ runs: runs(), statuses: [], workflowRuns: flows(), sha: HEAD, now: NOW, ...over })
 const offer = (over = {}) => plan(over).ids
-const NONE = { ids: [], settling: false }
+const NONE = { ids: [], settling: false, checks: {} }
+const SETTLING = { ids: [], settling: true, checks: {} }
+const OFFER = { ids: [1], settling: false, checks: { 1: [10] } }
 
 describe('cancelledRunsToRerun: which cancelled workflow runs the bot may rerun', () => {
   it('offers the cancelled run when every other check on the head is green', () => {
@@ -59,21 +61,21 @@ describe('cancelledRunsToRerun: which cancelled workflow runs the bot may rerun'
   it('a young cancel is settling, not refused: a label cancels a run and starts its replacement moments later', () => {
     const minutesAgo = (m) => new Date(NOW.getTime() - m * 60000).toISOString()
     const at = (updated_at) => plan({ workflowRuns: [wf(1, { updated_at })] })
-    assert.deepEqual(at(minutesAgo(RERUN_SETTLE_MINUTES - 1)), { ids: [], settling: true })
-    assert.deepEqual(at(minutesAgo(0)), { ids: [], settling: true })
-    assert.deepEqual(at(minutesAgo(-2)), { ids: [], settling: true }, 'a clock a little behind GitHub’s')
-    assert.deepEqual(at(minutesAgo(RERUN_SETTLE_MINUTES)), { ids: [1], settling: false })
+    assert.deepEqual(at(minutesAgo(RERUN_SETTLE_MINUTES - 1)), SETTLING)
+    assert.deepEqual(at(minutesAgo(0)), SETTLING)
+    assert.deepEqual(at(minutesAgo(-2)), SETTLING, 'a clock a little behind GitHub’s')
+    assert.deepEqual(at(minutesAgo(RERUN_SETTLE_MINUTES)), OFFER)
     assert.deepEqual(at(undefined), NONE, 'no time')
     assert.deepEqual(at('yesterday'), NONE, 'an unreadable time')
     assert.deepEqual(at(minutesAgo(-30)), NONE, 'a time well in the future')
     // One settled and one young cancel: nothing is rerun until both have settled.
     const two = { runs: [jobRun('a', 'cancelled', 1, 10), jobRun('b', 'cancelled', 2, 11)], workflowRuns: [wf(1), wf(2, { workflow_id: 901, updated_at: minutesAgo(1) })] }
-    assert.deepEqual(plan(two), { ids: [], settling: true })
+    assert.deepEqual(plan(two), SETTLING)
   })
 
   it('settling is only for a head that would be rerun: anything else in the way is not a wait', () => {
     const young = wf(1, { updated_at: new Date(NOW.getTime() - 60000).toISOString() })
-    assert.deepEqual(plan({ workflowRuns: [young] }), { ids: [], settling: true })
+    assert.deepEqual(plan({ workflowRuns: [young] }), SETTLING)
     assert.deepEqual(plan({ workflowRuns: [young], runs: runs(jobRun('lint', 'failure', 2, 12)) }), NONE, 'a red check')
     assert.deepEqual(plan({ workflowRuns: [{ ...young, run_attempt: MAX_RERUN_ATTEMPT }] }), NONE, 'out of attempts')
     assert.deepEqual(plan({ workflowRuns: [young], asked: [1] }), NONE, 'the bot already asked for this run')
@@ -82,10 +84,10 @@ describe('cancelledRunsToRerun: which cancelled workflow runs the bot may rerun'
   })
 
   it('offers nothing while a required check is missing or was skipped: no rerun of another run lifts that', () => {
-    assert.deepEqual(plan({ expectedChecks: ['check / check'] }), { ids: [1], settling: false }, 'present and green')
-    assert.deepEqual(plan({ expectedChecks: ['check / check', 'e2e'] }), { ids: [1], settling: false }, 'the cancelled check is itself required')
+    assert.deepEqual(plan({ expectedChecks: ['check / check'] }), OFFER, 'present and green')
+    assert.deepEqual(plan({ expectedChecks: ['check / check', 'e2e'] }), OFFER, 'the cancelled check is itself required')
     assert.deepEqual(plan({ expectedChecks: ['check / check', 'deploy'] }), NONE, 'missing')
-    assert.deepEqual(plan({ expectedChecks: ['deploy'], statuses: [{ context: 'deploy', state: 'success', created_at: SETTLED }] }), { ids: [1], settling: false }, 'present as a status')
+    assert.deepEqual(plan({ expectedChecks: ['deploy'], statuses: [{ context: 'deploy', state: 'success', created_at: SETTLED }] }), OFFER, 'present as a status')
     for (const conclusion of ['skipped', 'neutral']) assert.deepEqual(plan({ expectedChecks: ['lint'], runs: runs(jobRun('lint', conclusion, 2, 12)) }), NONE, conclusion)
     assert.deepEqual(plan({ expectedChecks: null }), NONE, 'unreadable')
     // Still settling: the missing check is refused now, not hidden behind a 10-minute wait.
@@ -113,7 +115,8 @@ describe('cancelledRunsToRerun: which cancelled workflow runs the bot may rerun'
   })
 
   it('offers only the newest cancelled run of a workflow', () => {
-    assert.deepEqual(offer({ workflowRuns: flows(wf(3)) }), [3])
+    assert.deepEqual(plan({ workflowRuns: flows(wf(3)), runs: runs(jobRun('setup', 'cancelled', 3, 13)) }), { ids: [3], settling: false, checks: { 3: [13] } })
+    assert.deepEqual(offer({ workflowRuns: flows(wf(3)) }), [], 'the newest run has no cancelled check run to read annotations from')
     assert.deepEqual(offer({ workflowRuns: flows(wf(3, { event: 'push' })) }), [1], 'another event is another series')
   })
 
@@ -122,6 +125,124 @@ describe('cancelledRunsToRerun: which cancelled workflow runs the bot may rerun'
     const list = [wf(1), wf(2, { workflow_id: 901 }), wf(3, { workflow_id: 902 })]
     assert.deepEqual(offer({ runs: three.slice(0, 2), workflowRuns: list }), [1, 2])
     assert.deepEqual(offer({ runs: three, workflowRuns: list }), [])
+  })
+})
+
+describe('cancelledRunsToRerun: the run must be the labelled one, and its cancelled check runs readable', () => {
+  const LABELLED = '2026-10-09T11:35:00Z'
+  const labelled = (createdAt, over = {}) => plan({ requireAfterLabel: true, labeledAt: LABELLED, workflowRuns: [wf(1, { created_at: createdAt }), wf(2, { workflow_id: 901, conclusion: 'success' })], ...over })
+
+  it('where checks must start after the label, a run created before the label is never offered: its rerun would pass for the labelled run', () => {
+    assert.deepEqual(labelled('2026-10-09T11:34:59Z'), NONE, 'created a second before the label')
+    assert.deepEqual(labelled(undefined), NONE, 'no creation time')
+    assert.deepEqual(labelled('2026-10-09T11:36:00Z', { labeledAt: undefined }), NONE, 'the label time could not be read')
+  })
+
+  it('near miss: a run created at or after the label is offered, and so is an older run where the repository does not ask', () => {
+    assert.deepEqual(labelled(LABELLED), OFFER)
+    assert.deepEqual(labelled('2026-10-09T11:36:00Z'), OFFER)
+    assert.deepEqual(labelled('2026-10-09T11:00:00Z', { requireAfterLabel: false }), OFFER)
+  })
+
+  it('names the cancelled check runs of each offered run, and offers nothing when one has no id or there are too many to read', () => {
+    const many = (n) => runs(...Array.from({ length: n - 1 }, (_, i) => jobRun(`e2e (${i})`, 'cancelled', 1, 100 + i)))
+    assert.deepEqual(plan({ runs: many(3) }).checks, { 1: [10, 100, 101] })
+    assert.equal(plan({ runs: many(MAX_ANNOTATION_READS) }).checks[1].length, MAX_ANNOTATION_READS)
+    assert.deepEqual(plan({ runs: many(MAX_ANNOTATION_READS + 1) }), NONE, 'one read too many')
+    assert.deepEqual(plan({ runs: [jobRun('check / check', 'success', 2, 11), jobRun('e2e', 'cancelled', 1, undefined)] }), NONE, 'no check run id')
+    assert.deepEqual(plan({ runs: [jobRun('check / check', 'success', 2, 11), jobRun('e2e', 'cancelled', 1, '10')] }), NONE, 'an id that is not a number')
+  })
+})
+
+describe('a job that hit its timeout reports cancelled, and is not rerun', () => {
+  const reruns = (gh) => gh.writes.filter((w) => w.name === 'rerunFailedJobs')
+  const reads = (gh) => gh.calls.filter((c) => c.name === 'listCheckRunAnnotations')
+  const world = (annotations, over = {}) => Object.assign(new FakeGitHub({ runs: runs(), workflowRuns: flows(), ...over }), { annotations })
+  // What GitHub wrote on a job that ran past timeout-minutes (read from a real run, 21 November 2026), and on a plain cancel.
+  const TIMED_OUT = [{ annotation_level: 'failure', path: '.github', title: '', message: 'The job has exceeded the maximum execution time of 45m0s' }, { annotation_level: 'failure', path: '.github', title: '', message: 'The operation was canceled.' }]
+  const CANCELLED = [{ annotation_level: 'failure', path: '.github', title: '', message: 'The operation was canceled.' }]
+
+  it('the pattern matches both of GitHub’s wordings and not a plain cancel', () => {
+    assert.match('The job has exceeded the maximum execution time of 45m0s', TIMEOUT_ANNOTATION)
+    assert.match('The job running on runner pool-1 has exceeded the maximum execution time of 35 minutes.', TIMEOUT_ANNOTATION)
+    assert.doesNotMatch('The operation was canceled.', TIMEOUT_ANNOTATION)
+    assert.doesNotMatch('Canceling since a higher priority waiting request for this concurrency group exists', TIMEOUT_ANNOTATION)
+  })
+
+  it('a timeout annotation on the cancelled check run refuses the rerun, once, with a warning and the usual refusal', async () => {
+    const gh = world({ 10: TIMED_OUT })
+    const s = scenario({ github: gh })
+    await s.run()
+    await s.run()
+    assert.equal(reruns(gh).length, 0)
+    assert.deepEqual(reads(gh).map((c) => c.args), [[SLUG, 10]], '1 read, never repeated')
+    assert.ok(s.logs.some((l) => /^warn .*not rerunning cancelled workflow run 1: check run 10 hit its timeout/.test(l)), s.logs.join('\n'))
+    assert.match(s.state().data.prs[`${SLUG}#7`].heads[HEAD].reruns[1].refused, /hit its timeout/)
+    assert.match(gh.commentsPosted()[0].body, /checks did not pass on this head: e2e \(cancelled\)/)
+  })
+
+  it('a timeout on any one of a run’s cancelled check runs refuses the whole run', async () => {
+    const gh = world({ 12: TIMED_OUT, 10: CANCELLED }, { runs: runs(jobRun('e2e (2)', 'cancelled', 1, 12)) })
+    await scenario({ github: gh }).run()
+    assert.equal(reruns(gh).length, 0)
+    assert.deepEqual(reads(gh).map((c) => c.args[1]), [10, 12])
+  })
+
+  it('near miss: a plain cancel annotation, or none, is rerun after 1 read', async () => {
+    for (const annotations of [{ 10: CANCELLED }, {}]) {
+      const gh = world(annotations)
+      await scenario({ github: gh }).run()
+      assert.deepEqual(reruns(gh).map((w) => w.runId), [1])
+      assert.equal(reads(gh).length, 1)
+    }
+  })
+
+  it('fails closed when the annotations cannot be read: no rerun, and no second read on this head', async () => {
+    for (const broken of [async () => { throw new Error('GET /repos/x/check-runs/10/annotations -> 502: Bad Gateway') }, async () => null, async () => Array.from({ length: 100 }, () => CANCELLED[0])]) {
+      const gh = world({})
+      let asks = 0
+      gh.listCheckRunAnnotations = async () => {
+        asks += 1
+        return broken()
+      }
+      const s = scenario({ github: gh })
+      await s.run()
+      await s.run()
+      assert.equal(reruns(gh).length, 0)
+      assert.equal(asks, 1)
+      assert.ok(s.logs.some((l) => /^warn .*not rerunning cancelled workflow run 1: .*nothing says it was a cancel and not a timeout/.test(l)), s.logs.join('\n'))
+      assert.equal(gh.commentsPosted().length, 1)
+    }
+  })
+
+  it('an annotation read the quota refused was never made, so the next pass reads again', async () => {
+    const gh = world({})
+    const real = gh.listCheckRunAnnotations.bind(gh)
+    gh.listCheckRunAnnotations = async () => {
+      throw new RateLimitError({ remaining: 0, resetAt: null, resource: 'core', status: 403 })
+    }
+    const s = scenario({ github: gh })
+    await s.run()
+    assert.equal(s.state().data.prs[`${SLUG}#7`]?.heads?.[HEAD]?.reruns?.[1], undefined)
+    gh.listCheckRunAnnotations = real
+    s.clock.advance(120)
+    const store = s.state()
+    delete store.data.rateLimits
+    store.save()
+    await s.run()
+    assert.equal(reruns(gh).length, 1)
+  })
+
+  it('a run from before the label is not rerun where the repository requires checks after the label', async () => {
+    const events = [{ event: 'labeled', label: { name: 'ready-to-merge' }, created_at: '2026-10-09T11:35:00Z' }]
+    const before = world({}, { events, workflowRuns: [wf(1, { created_at: '2026-10-09T11:30:00Z' }), wf(2, { workflow_id: 901, conclusion: 'success' })] })
+    await scenario({ github: before, repos: [repoEntry({ requireChecksAfterLabel: true })] }).run()
+    assert.equal(reruns(before).length, 0)
+    assert.equal(reads(before).length, 0)
+    // Near miss: the same run, created after the label.
+    const after = world({}, { events, workflowRuns: [wf(1, { created_at: '2026-10-09T11:36:00Z' }), wf(2, { workflow_id: 901, conclusion: 'success' })] })
+    await scenario({ github: after, repos: [repoEntry({ requireChecksAfterLabel: true })] }).run()
+    assert.deepEqual(reruns(after).map((w) => w.runId), [1])
   })
 })
 
@@ -239,10 +360,17 @@ describe('a labelled head blocked only by a cancelled run', () => {
     const s = scenario({ github: dry })
     await s.run('dry-run')
     assert.equal(dry.writes.length, 0)
-    assert.ok(s.logs.some((l) => /would rerun cancelled workflow run\(s\) 1/.test(l.text ?? l)), JSON.stringify(s.logs.slice(-3)))
+    const would = /would rerun cancelled workflow run\(s\) 1/
+    assert.ok(s.logs.some((l) => l.startsWith('debug ') && would.test(l)), JSON.stringify(s.logs.slice(-3)))
     const observed = world()
-    await scenario({ github: observed, repos: [repoEntry({ live: false })] }).run()
+    const o = scenario({ github: observed, repos: [repoEntry({ live: false })] })
+    await o.run()
+    await o.run()
     assert.equal(observed.writes.length, 0)
+    // Nothing is remembered for a repository that is not live, so the line would repeat every pass: debug only, and no annotation read.
+    assert.equal(o.logs.filter((l) => would.test(l) && !l.startsWith('debug ')).length, 0, o.logs.join('\n'))
+    assert.ok(o.logs.some((l) => would.test(l)))
+    for (const gh of [dry, observed]) assert.equal(gh.calls.filter((c) => c.name === 'listCheckRunAnnotations').length, 0)
   })
 
   it('a refused rerun is said once as a warning, is not tried again, and the head gets the usual refusal', async () => {
@@ -298,5 +426,23 @@ describe('rerunFailedJobs on the real client', () => {
       await assert.rejects(async () => client.rerunFailedJobs('example-org/example-site', bad), /a workflow run id is a positive integer/, String(bad))
     }
     assert.equal(seen.length, 1, 'no request for anything but a run id')
+  })
+
+  it('reads one check run’s annotations in 1 GET, and nothing for what is not a check run id', async () => {
+    const seen = []
+    let body = '[{"message":"The operation was canceled."}]'
+    const fetchImpl = async (url, init) => {
+      seen.push(`${init.method} ${url}`)
+      return { status: 200, ok: true, headers: new Map(), text: async () => body }
+    }
+    const client = createGitHubClient({ token: 'x', fetchImpl })
+    assert.deepEqual(await client.listCheckRunAnnotations('example-org/example-site', 10), [{ message: 'The operation was canceled.' }])
+    assert.deepEqual(seen, ['GET https://api.github.com/repos/example-org/example-site/check-runs/10/annotations?per_page=100'])
+    for (const bad of ['10/../../x', '10', 0, -1, 1.5, undefined]) {
+      await assert.rejects(async () => client.listCheckRunAnnotations('example-org/example-site', bad), /a check run id is a positive integer/, String(bad))
+    }
+    assert.equal(seen.length, 1)
+    body = '{"message":"unexpected"}'
+    await assert.rejects(async () => client.listCheckRunAnnotations('example-org/example-site', 11), /expected an array/)
   })
 })

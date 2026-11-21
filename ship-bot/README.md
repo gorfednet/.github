@@ -550,16 +550,32 @@ The rerun is narrow on purpose:
   line is `a cancelled workflow run is all that blocks this head`;
 - it is on attempt 1 or 2, and the bot hasn't asked for it before on this
   head;
+- it was a cancel and not a timeout. A job that runs past `timeout-minutes`
+  reports `cancelled` on the job and on the run, so before a rerun the bot
+  reads the annotations of each cancelled check run in it (1 request each,
+  10 at most, once per run and head). `exceeded the maximum execution time`
+  on any of them, a read that fails or more than 10 to read means no rerun,
+  and the log says `not rerunning cancelled workflow run <id>`;
+- where the repository has `requireChecksAfterLabel`, the run was created
+  after the label. A rerun of an older run would start new checks after the
+  label and pass for the labelled run;
 - at most 2 reruns per head in all, counting ones GitHub refused.
 
 Anything unreadable means no rerun. A run that is cancelled again after the
 bot's rerun gets the usual "checks did not pass" comment and waits for a
 person. `hold` stops it, like everything else.
 
+The bot can't tell who cancelled a run. A run a person cancelled on purpose
+on a labelled head is rerun too, 10 minutes later, unless the pull request
+carries `hold` or loses its label first.
+
 The rerun needs the GitHub App's **Actions** permission set to **Read and
 write** (App settings, Permissions, then accept the change on the
 installation). Until then GitHub answers 403, the bot logs one warning per
-run and head, and the pull request gets the usual comment.
+run and head, and the pull request gets the usual comment. GitHub has no
+narrower permission: Actions write also lets the App's token cancel runs and
+dispatch workflows. The bot's client has one Actions write, the rerun, and
+`guardWrites` lists it.
 
 ## Where to look
 
