@@ -1881,8 +1881,13 @@ describe('privacy guard: the public sites fleet.json lists count as said, with n
     // CI in this repository: the base holds fleet.json. A malformed one stops the run, which shows it is read.
     assert.equal(run('ok\n', { fleetFile: null, base: FLEET }).status, 0)
     assert.equal(run('ok\n', { fleetFile: null, base: 'not json' }).status, 2)
-    fails(`Visit https://${NAME}/\n`, { fleetFile: null, extra: { 'fleet.json': FLEET } })
-    fails(`Visit https://${NAME}/\n`, { fleetFile: null, base: fleet(`${ORG}other-site.org`), extra: { 'fleet.json': FLEET } })
+    // The added fleet.json is itself flagged (its slug is the repository form), so the refusal must also name the README:
+    // had the head's fleet been read, the README link would pass and only fleet.json would be flagged.
+    for (const opts of [{ fleetFile: null, extra: { 'fleet.json': FLEET } }, { fleetFile: null, base: fleet(`${ORG}other-site.org`), extra: { 'fleet.json': FLEET } }]) {
+      const r = run(`Visit https://${NAME}/\n`, opts)
+      assert.equal(r.status, 1, r.out)
+      assert.match(r.out, /README\.md:1: .*\[private-repo\]/)
+    }
   })
 
   it('refuses the near-miss names: a different TLD, a longer name, a prefixed name', () => {
