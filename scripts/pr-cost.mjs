@@ -8,6 +8,7 @@
  *                                   [--title T] [--additions N] [--deletions N] [--created ISO] [--closed ISO] [--label L]...
  *                                   [--infra] [--out ~/.desk/pr-cost.jsonl]
  *   node scripts/pr-cost.mjs backfill --repo owner/name --prs <gh-pr-list.json> [--out FILE]
+ *   node scripts/pr-cost.mjs sweep  --ship-log FILE [--ship-log FILE]... [--since ISO] [--out ~/.desk/pr-cost.jsonl]
  *   node scripts/pr-cost.mjs window [--days 7]
  *   node scripts/pr-cost.mjs report [--days 7] [--file ~/.desk/pr-cost.jsonl]
  *
@@ -16,6 +17,13 @@
  * already holds the same total (a rerun adds nothing; a later session on the same PR adds a fresh line, which replaces it).
  * `backfill` records every PR in a file of `gh pr list --state merged --json number,title,headRefName,state,additions,deletions,createdAt,mergedAt,closedAt,labels`
  * output with one transcript scan (a first fill, or a run the janitor missed). It matches by branch, then by the sessions' own PR links.
+ * `sweep` records every PR the merger's log says it merged since `--since` (default 14 days) and the ledger doesn't hold yet,
+ * with one transcript scan and no network call. The log has no branch, so a session's own pr-link attributes the tokens.
+ * One attribution: every row already in the ledger (by branch or swept) is named to the scan, so a message is claimed once.
+ * Known limits: the log keeps about 4 days, so sweep daily (the output says when the logs begin); a session's tokens go to
+ * the PRs it links, split by link times, and a PR's post-merge tail (up to 2 hours) is its own only on a branch it worked on;
+ * a swept row has no title or branch, so its kind is feature or infra only.
+ * It exists because `record` ran only when the janitor archived a session, and a dry janitor archives none.
  * `window` prints this window's tokens split attributed / unattributed.
  * `report` prints the numbers fleet-status shows (by repository and kind, 5 dearest, tokens per added line, unattributed).
  * `--projects DIR` reads another transcript folder (default ~/.claude/projects).
@@ -25,14 +33,14 @@
  */
 import { appendFileSync, mkdirSync, readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { dirname } from 'node:path'
+import { dirname, join } from 'node:path'
 
 import { isMain } from './lib/isMain.mjs'
-import { DEFAULT_FILE, DEFAULT_PROJECTS, collectPrCost, costRecord, infraRepo, latestPerPr, readLines, scanAll, sumModels, totalTokens, windowTotals } from './lib/prCost.mjs'
+import { DEFAULT_FILE, deployMergesBefore, ledgerNamed, mergesFromShipLog, DEFAULT_PROJECTS, collectPrCost, costRecord, infraRepo, latestPerPr, readLines, scanAll, sumModels, totalTokens, windowTotals } from './lib/prCost.mjs'
 
 function parseArgs(argv) {
-  const opts = { labels: [] }
-  const takes = new Set(['--repo', '--number', '--branch', '--worktree', '--since', '--state', '--title', '--additions', '--deletions', '--created', '--closed', '--out', '--days', '--file', '--projects', '--label', '--prs', '--pr-json'])
+  const opts = { labels: [], shipLogs: [] }
+  const takes = new Set(['--repo', '--number', '--branch', '--worktree', '--since', '--state', '--title', '--additions', '--deletions', '--created', '--closed', '--out', '--days', '--file', '--projects', '--label', '--prs', '--pr-json', '--ship-log', '--deploy-logs'])
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]
     if (a === '--infra') opts.infra = true
@@ -40,6 +48,7 @@ function parseArgs(argv) {
       const v = argv[++i]
       if (v === undefined) throw new Error(`${a} needs a value`)
       if (a === '--label') opts.labels.push(v)
+      else if (a === '--ship-log') opts.shipLogs.push(v)
       else opts[a.slice(2)] = v
     } else throw new Error(`unknown argument ${a}`)
   }
@@ -65,7 +74,9 @@ export function earlierOnBranch(file, repo, branch, number) {
 }
 
 export async function prTokens(opts, ledger = DEFAULT_FILE) {
-  const prs = [...earlierOnBranch(ledger, opts.repo, opts.branch, Number(opts.number)), { repo: opts.repo, number: int(opts.number, '--number'), branch: opts.branch, worktree: opts.worktree, endsAt: opts.closed ? Date.parse(opts.closed) : undefined }]
+  const own = [...earlierOnBranch(ledger, opts.repo, opts.branch, Number(opts.number)), { repo: opts.repo, number: int(opts.number, '--number'), branch: opts.branch, worktree: opts.worktree, endsAt: opts.closed ? Date.parse(opts.closed) : undefined }]
+  // The rest of the ledger is named too, so work a row already holds is not billed to this PR again.
+  const prs = [...own, ...ledgerNamed(readLines(ledger), new Set(own.map((p) => `${p.repo}#${p.number}`)))]
   const sinceMs = opts.since ? Date.parse(opts.since) : null
   if (opts.since && Number.isNaN(sinceMs)) throw new Error(`--since is not a date: ${opts.since}`)
   const { perPr, files } = await scanAll(opts.projects ?? DEFAULT_PROJECTS, { sinceMs, prs })
@@ -113,7 +124,8 @@ export async function main(argv) {
       console.log(JSON.stringify({ recorded: false, reason: 'no transcript tokens matched this pull request', repo: rec.repo, number: rec.number }))
       return 0
     }
-    if (prior && prior.total === rec.total && prior.state === rec.state) {
+    // A swept row has no branch or line counts, so a record that brings them is never "unchanged".
+    if (prior && prior.total === rec.total && prior.state === rec.state && prior.branch === rec.branch && prior.additions === rec.additions) {
       console.log(JSON.stringify({ recorded: false, reason: 'unchanged since the last line', repo: rec.repo, number: rec.number }))
       return 0
     }
@@ -149,6 +161,66 @@ export async function main(argv) {
     console.log(JSON.stringify({ repo: opts.repo, file: tidy(out), results }))
     return 0
   }
+  if (cmd === 'sweep') {
+    if (!opts.shipLogs.length) throw new Error('--ship-log <file> is required')
+    const days = opts.since ? null : 14
+    const sinceMs = opts.since ? Date.parse(opts.since) : Date.now() - days * 86400000
+    if (Number.isNaN(sinceMs)) throw new Error(`--since is not a date: ${opts.since}`)
+    const out = opts.out ?? DEFAULT_FILE
+    // Each log is read once. One missing log is skipped with a warning and a count (a fresh install has no `.1` yet);
+    // every log missing is an error, never an empty sweep: an empty one would look like a quiet week.
+    const texts = []
+    let skippedLogs = 0
+    for (const f of opts.shipLogs) {
+      try {
+        texts.push(readFileSync(f, 'utf8'))
+      } catch (e) {
+        if (e.code !== 'ENOENT') throw e
+        skippedLogs += 1
+        console.error(`pr-cost: skipped a missing ship-bot log: ${tidy(f)}`)
+      }
+    }
+    if (!texts.length) throw new Error('no ship-bot log could be read')
+    // Callers pass the live log and its rotated copy (`.1`). A quiet night, or a fresh log after a rotation, holds pass lines
+    // and no merge line, which is fine. Text with no timestamped ship-bot line at all is a wrong file or a changed format.
+    const logLine = /^\d{4}-\d\d-\d\dT[\d:.]+Z\s+\w+\s+\S/m
+    if (!texts.some((t) => logLine.test(t))) throw new Error('the ship-bot log holds no ship-bot log line')
+    const merges = texts.flatMap((t) => mergesFromShipLog(t)).filter((m) => Date.parse(m.mergedAt) >= sinceMs)
+    // Where the logs begin. A merge that rotated out before the first janitor run after it is invisible here, so say when the
+    // logs start, and count the merges a gh-free source (ship-bot's deploy logs, one per deploy) knows of from before that.
+    const firsts = texts.map((t) => [...t.matchAll(/^(\d{4}-\d\d-\d\dT[\d:.]+Z)\s/gm)].map((m) => Date.parse(m[1]))).filter((x) => x.length).map((x) => Math.min(...x))
+    const earliestMs = Math.min(...firsts)
+    const earliestLogAt = new Date(earliestMs).toISOString()
+    if (earliestMs > sinceMs) console.error(`pr-cost: the log begins at ${earliestLogAt}, after --since ${new Date(sinceMs).toISOString()}: merges before it cannot be seen here`)
+    // A PR merged under 2 hours ago is left for the next run: the work billed to it runs to merge + 2 hours, and a row is never rewritten.
+    // It is still named to the scan, so a later PR does not take its work.
+    const settledBefore = Date.now() - 2 * 3600000
+    const uniqueAll = [...new Map(merges.map((m) => [`${m.repo}#${m.number}`, m])).values()]
+    const unique = uniqueAll.filter((m) => Date.parse(m.mergedAt) <= settledBefore)
+    const ledgerLines = readLines(out)
+    const held = latestPerPr(ledgerLines)
+    const todo = unique.filter((m) => !held.some((l) => l.repo === m.repo && l.number === m.number && l.state === 'MERGED'))
+    const fleet = JSON.parse(readFileSync(new URL('../fleet.json', import.meta.url), 'utf8'))
+    const knownUnrecordedBeforeLog = deployMergesBefore(opts['deploy-logs'] ?? join(homedir(), '.ship-bot', 'logs', 'deploys'), sinceMs, earliestMs).filter((d) => !held.some((l) => l.state === 'MERGED' && l.number === d.number && l.repo.endsWith(`/${d.repo}`))).length
+    // Every other PR is named too, so each message is claimed once: ledger rows by branch or by merge window, and merges
+    // the log shows that are not recorded yet. A later PR does not take their work.
+    const own = uniqueAll.filter((m) => !held.some((l) => l.repo === m.repo && l.number === m.number && l.state === 'MERGED')).map((m) => ({ repo: m.repo, number: m.number, endsAt: Date.parse(m.mergedAt), linkOnly: true }))
+    const named = [...own, ...ledgerNamed(ledgerLines, new Set(own.map((p) => `${p.repo}#${p.number}`)))]
+    const { perPr } = await scanAll(opts.projects ?? DEFAULT_PROJECTS, { sinceMs: sinceMs - 14 * 86400000, prs: named })
+    const results = []
+    for (const m of todo) {
+      const models = perPr.get(`${m.repo}#${m.number}`) ?? {}
+      const rec = costRecord({ repo: m.repo, number: m.number, state: 'MERGED', additions: null, deletions: null, closedAt: m.mergedAt, infra: infraRepo(m.repo, fleet) }, models)
+      const recorded = rec.total > 0
+      if (recorded) {
+        mkdirSync(dirname(out), { recursive: true })
+        appendFileSync(out, `${JSON.stringify(rec)}\n`)
+      }
+      results.push({ repo: m.repo, number: m.number, total: rec.total, recorded })
+    }
+    console.log(JSON.stringify({ merged: unique.length, alreadyHeld: unique.length - todo.length, recorded: results.filter((r) => r.recorded).length, noTranscript: results.filter((r) => !r.recorded).length, skippedLogs, earliestLogAt, knownUnrecordedBeforeLog, file: tidy(out), results }))
+    return 0
+  }
   if (cmd === 'window') {
     console.log(JSON.stringify(await windowTotals({ projects: opts.projects ?? DEFAULT_PROJECTS, days: opts.days ? int(opts.days, '--days') : 7 })))
     return 0
@@ -161,7 +233,7 @@ export async function main(argv) {
     console.log(JSON.stringify(report))
     return 0
   }
-  throw new Error('first argument must be pr, record, backfill, window or report')
+  throw new Error('first argument must be pr, record, backfill, sweep, window or report')
 }
 
 if (isMain(import.meta.url)) {

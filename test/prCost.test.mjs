@@ -10,6 +10,7 @@ import { join } from 'node:path'
 import { describe, it } from 'node:test'
 
 import { attribute, withWindows, classifyKind, collectPrCost, costRecord, costReport, groupBySession, infraRepo, matchesPr, scanAll, scanFile, sumModels, totalTokens } from '../scripts/lib/prCost.mjs'
+import { mergesFromShipLog } from '../scripts/lib/prCost.mjs'
 import { compact, renderPrCost } from '../scripts/write-status-md.mjs'
 
 const CLI = new URL('../scripts/pr-cost.mjs', import.meta.url).pathname
@@ -314,6 +315,77 @@ describe('the command', () => {
   })
 })
 
+
+describe('one attribution across branch rows and swept rows', () => {
+  const run = (...args) => spawnSync(process.execPath, [CLI, ...args], { encoding: 'utf8' })
+  const rows = (out) => readFileSync(out, 'utf8').trim().split('\n').map(JSON.parse)
+  const sweepLog = (dir, lines) => {
+    const log = join(dir, 'ship.log')
+    writeFileSync(log, lines.join('\n') + '\n')
+    return log
+  }
+  const recordBranch = (dir, out, number, branch, closedMin) => run('record', '--repo', 'o/.github', '--number', String(number), '--state', 'MERGED', '--branch', branch, '--worktree', WT, '--closed', T(closedMin), '--projects', dir, '--out', out)
+  const A = (min, usage) => assistant({ min, usage, branch: 'claude/a-1' })
+  const B = (min, usage) => assistant({ min, usage, branch: 'claude/b-2' })
+
+  it('record A by branch, then sweep B: B does not take A\'s branch work', () => {
+    // A: branch work at 1, 2 and review rounds at 40, link A at 3, A merged at 60. B: work at 150, link B at 160, merged at 200.
+    const dir = projects({ 'p/S1.jsonl': [A(1, [1, 10, 100, 1000]), A(2, [1, 10, 100, 1000]), link('o/.github', 7, 3), A(40, [2, 20, 200, 2000]), B(150, [4, 40, 400, 4000]), link('o/.github', 8, 160)] })
+    const out = join(dir, 'ledger.jsonl')
+    assert.equal(JSON.parse(recordBranch(dir, out, 7, 'claude/a-1', 60).stdout).recorded, true)
+    const log = sweepLog(dir, [`${T(200)} info  o/.github#8 (abc1235): merged as def5679`])
+    const j = JSON.parse(run('sweep', '--ship-log', log, '--since', T(0), '--projects', dir, '--out', out).stdout)
+    assert.equal(j.recorded, 1)
+    const b = rows(out).find((r) => r.number === 8)
+    assert.equal(b.total, 4444, 'B holds only its own work, not the 2,222 of A\'s review rounds')
+  })
+  it('sweep A, then record B by branch: B does not take A\'s post-merge tail', () => {
+    // A linked at 3, merged at 60. Its tail runs on A's branch at 90 (inside merge + 2 h). B works on its own branch at 150 and links at 160.
+    const dir = projects({ 'p/S1.jsonl': [A(1, [1, 10, 100, 1000]), link('o/.github', 7, 3), A(90, [2, 20, 200, 2000]), B(150, [4, 40, 400, 4000]), link('o/.github', 8, 160)] })
+    const out = join(dir, 'ledger.jsonl')
+    const log = sweepLog(dir, [`${T(60)} info  o/.github#7 (abc1234): merged as def5678`])
+    assert.equal(JSON.parse(run('sweep', '--ship-log', log, '--since', T(0), '--projects', dir, '--out', out).stdout).recorded, 1)
+    assert.equal(rows(out).find((r) => r.number === 7).total, 1111 + 2222, 'A\'s swept row holds its work and its tail')
+    assert.equal(JSON.parse(recordBranch(dir, out, 8, 'claude/b-2', 200).stdout).recorded, true)
+    assert.equal(rows(out).filter((r) => r.number === 8).at(-1).total, 4444, 'B holds only its own work')
+  })
+  it('work after merge + 2 h that a link would credit to a swept PR is counted as unattributed, not lost', async () => {
+    const dir = projects({ 'p/S1.jsonl': [assistant({ min: 1 }), link('o/.github', 7, 3), assistant({ min: 700, usage: [4, 40, 400, 4000] })] })
+    const file = join(dir, 'ledger.jsonl')
+    writeFileSync(file, `${JSON.stringify({ repo: 'o/.github', number: 7, branch: null, kind: 'feature', state: 'MERGED', additions: null, deletions: null, createdAt: null, closedAt: T(5), recordedAt: T(6), models: { 'claude-sonnet-5-5': { input: 1, cacheRead: 10, cacheWrite: 100, output: 1000, messages: 1 } }, fresh: 1101, total: 1111 })}\n`)
+    const c = await collectPrCost({ projects: dir, file, now: new Date(Date.parse(T(0)) + 86400000) })
+    assert.equal(c.unattributed.tokens, 4444, 'the message after the tail is on no row, so it is in "match no PR"')
+  })
+  it('the sweep says when its logs start and counts deploys it knows of from before them', () => {
+    const dir = projects({ 'p/S1.jsonl': [assistant({ min: 1 }), link('o/.github', 7, 3)] })
+    const log = sweepLog(dir, [`${T(300)} info  o/.github#7 (abc1234): merged as def5678`])
+    const deploys = join(dir, 'deploys')
+    mkdirSync(deploys)
+    writeFileSync(join(deploys, '2026-11-10T12-30-00-000Z-.github-pr5.log'), '')
+    writeFileSync(join(deploys, '2026-11-10T12-45-00-000Z-.github-pr6.log'), '')
+    writeFileSync(join(deploys, '2026-11-10T18-00-00-000Z-.github-pr9.log'), '')
+    const out = join(dir, 'ledger.jsonl')
+    writeFileSync(out, `${JSON.stringify({ repo: 'o/.github', number: 6, branch: 'x', kind: 'feature', state: 'MERGED', closedAt: T(-30), recordedAt: T(0), models: {}, fresh: 1, total: 1 })}\n`)
+    const r = run('sweep', '--ship-log', log, '--deploy-logs', deploys, '--since', T(0), '--projects', dir, '--out', out)
+    assert.equal(r.status, 0, r.stderr)
+    const j = JSON.parse(r.stdout)
+    assert.equal(j.earliestLogAt, T(300))
+    assert.equal(j.knownUnrecordedBeforeLog, 1, 'PR 5 merged before the log began and is not in the ledger; 6 is; 9 is after the log began')
+    assert.match(r.stderr, /log begins at/)
+  })
+})
+
+describe('ship-bot\'s merge line', () => {
+  // The sweep parses the line ship-bot writes when it merges. A reworded line must fail here, not stop the ledger silently.
+  const src = readFileSync(new URL('../ship-bot/lib/bot.mjs', import.meta.url), 'utf8')
+  it('is still the one mergesFromShipLog reads', () => {
+    assert.match(src, /ctx\.say\('info', `\$\{tag\}: merged as \$\{short\(mergeSha\)\}`\)/)
+    assert.match(src, /const tag = `\$\{repo\.slug\}#\$\{pr\.number\} \(\$\{short\(sha\)\}\)`/)
+    const line = '2026-11-20T14:40:38.679Z info  gorfednet/example-site.org#36 (6d05c0c): merged as ef44a1c'
+    assert.deepEqual(mergesFromShipLog(line).map((m) => `${m.repo}#${m.number}`), ['gorfednet/example-site.org#36'])
+  })
+})
+
 describe('janitor prompt', () => {
   const prompt = readFileSync(new URL('../janitor/PROMPT.md', import.meta.url), 'utf8')
   it('records the cost before it archives, and a failed record never blocks archiving', () => {
@@ -321,14 +393,152 @@ describe('janitor prompt', () => {
     assert.match(prompt, /With `own` `merged`, its own pull request merged too: record its cost \(step 4\.7\), then archive it/)
     assert.match(prompt, /pr-cost\.mjs record/)
     assert.match(prompt, /a failed cost line never blocks archiving/)
-    const step = prompt.match(/7\. Cost \(plan row 1\.26\)[\s\S]*?(?=\n5\. Worktrees)/)[0]
+    const step = prompt.match(/7\. Cost \(plan row 1\.26\)[\s\S]*?(?=\n4b\. Cost sweep|\n5\. Worktrees)/)[0]
     assert.match(step, /--pr-json \$R\/pr-<id8>\.json/)
     assert.doesNotMatch(step, /--title|--label/, 'no pull request text on the command line')
     const unmerged = prompt.match(/- `unmerged`, idle under 48 hours[^\n]*/)[0]
     for (const field of ['title', 'additions', 'deletions', 'createdAt', 'closedAt', 'mergedAt', 'labels']) assert.ok(unmerged.includes(field), `the call step 4.7 reuses must ask for ${field}`)
     assert.match(step, /with no pull request, or only an `OPEN` one, has no cost line yet: skip it/)
   })
+  it('runs the cost sweep as its own step, so a run that archives nothing still sweeps', () => {
+    const perSession = prompt.match(/7\. Cost \(plan row 1\.26\)[\s\S]*?(?=\n4b\. Cost sweep|\n5\. Worktrees)/)[0]
+    assert.doesNotMatch(perSession, /pr-cost\.mjs sweep/, 'not under the per-session step')
+    const own = prompt.match(/\n4b\. Cost sweep[^\n]*/)?.[0]
+    assert.ok(own, 'a numbered step 4b')
+    assert.match(own, /pr-cost\.mjs sweep --ship-log ~\/\.ship-bot\/logs\/ship-bot\.log\.1 --ship-log ~\/\.ship-bot\/logs\/ship-bot\.log/)
+    assert.match(own, /every run/i)
+    assert.ok(prompt.indexOf('\n4b. Cost sweep') < prompt.indexOf('\n5. Worktrees'))
+  })
 })
 
 // groupBySession is exercised through scanAll; keep the import honest.
 assert.equal(typeof groupBySession, 'function')
+
+describe('sweep: merged PRs from the merger log', () => {
+  const run = (...args) => spawnSync(process.execPath, [CLI, ...args], { encoding: 'utf8' })
+  const LOG = [
+    `${T(5)} info  o/.github#7 (abc1234): merged as def5678`,
+    `${T(6)} info  o/.github#7 (abc1234): merged as def5678`,
+    `${T(7)} info  o/.github#8 (abc1235, draft): draft left alone`,
+    `${T(8)} info  o/.github#9 (abc1236): not merging: review has findings`,
+    `${T(9)} warn  o/.github#10 (abc1237): merged as def5680`,
+    `${T(10)} info  o/other#11 (abc1238): merged as def5679`,
+  ].join('\n')
+  const setup = () => {
+    const dir = projects({ 'p/S1.jsonl': [assistant({ min: 1 }), assistant({ min: 2, usage: [2, 20, 200, 2000] }), link('o/.github', 7, 3)] })
+    const log = join(dir, 'ship.log')
+    writeFileSync(log, LOG)
+    return { dir, log, out: join(dir, 'ledger.jsonl') }
+  }
+  it('reads only real merge lines, once per PR', () => {
+    assert.deepEqual(mergesFromShipLog(LOG).map((m) => `${m.repo}#${m.number}`), ['o/.github#7', 'o/other#11'])
+    assert.deepEqual(mergesFromShipLog('not a log'), [])
+  })
+  it('records a merged PR through its session pr-link, and a rerun adds nothing', () => {
+    const { dir, log, out } = setup()
+    const args = ['sweep', '--ship-log', log, '--since', T(0), '--projects', dir, '--out', out]
+    const first = JSON.parse(run(...args).stdout)
+    assert.equal(first.merged, 2)
+    assert.equal(first.recorded, 1, 'o/other#11 has no transcript, so it adds no line')
+    assert.equal(first.noTranscript, 1)
+    const rows = readFileSync(out, 'utf8').trim().split('\n').map(JSON.parse)
+    assert.deepEqual(rows.map((r) => [r.repo, r.number, r.state, r.total]), [['o/.github', 7, 'MERGED', 3333]])
+    assert.equal(rows[0].closedAt, T(5))
+    const second = JSON.parse(run(...args).stdout)
+    assert.equal(second.alreadyHeld, 1)
+    assert.equal(second.recorded, 0)
+    assert.equal(readFileSync(out, 'utf8').trim().split('\n').length, 1)
+  })
+  it('work after a PR merged is not billed to it, even when it is the session\'s last link', () => {
+    const dir = projects({ 'p/S1.jsonl': [assistant({ min: 1 }), assistant({ min: 2, usage: [2, 20, 200, 2000] }), link('o/.github', 7, 3), assistant({ min: 600, usage: [4, 40, 400, 4000] })] })
+    const log = join(dir, 'ship.log')
+    writeFileSync(log, `${T(5)} info  o/.github#7 (abc1234): merged as def5678\n`)
+    const out = join(dir, 'ledger.jsonl')
+    const j = JSON.parse(run('sweep', '--ship-log', log, '--since', T(0), '--projects', dir, '--out', out).stdout)
+    assert.equal(j.recorded, 1)
+    assert.equal(JSON.parse(readFileSync(out, 'utf8').trim()).total, 3333, 'the message 10 hours after the merge is the next change\'s')
+  })
+  it('a session that links a second PR is not billed twice: the first PR keeps its post-merge work (A merged, B swept later)', () => {
+    // Link A at min 3, A merged at min 10, work on it to min 50 (inside merge + 2 h), the next change's work at min 200, link B at min 210.
+    const dir = projects({ 'p/S1.jsonl': [assistant({ min: 1 }), link('o/.github', 7, 3), assistant({ min: 50, usage: [2, 20, 200, 2000] }), assistant({ min: 200, usage: [4, 40, 400, 4000], branch: 'claude/b-2' }), link('o/.github', 8, 210)] })
+    const log = join(dir, 'ship.log')
+    writeFileSync(log, `${T(10)} info  o/.github#7 (abc1234): merged as def5678\n${T(220)} info  o/.github#8 (abc1235): merged as def5679\n`)
+    const out = join(dir, 'ledger.jsonl')
+    const day1 = JSON.parse(run('sweep', '--ship-log', log, '--since', T(0), '--projects', dir, '--out', out).stdout)
+    assert.equal(day1.recorded, 2, 'both swept on one run is the simple case')
+    const rows = readFileSync(out, 'utf8').trim().split('\n').map(JSON.parse)
+    const total = (n) => rows.find((r) => r.number === n).total
+    // Day 1 sweeps A alone, day 2 sweeps B with A already held: rebuild that order.
+    const out2 = join(dir, 'ledger2.jsonl')
+    writeFileSync(out2, `${JSON.stringify({ repo: 'o/.github', number: 7, state: 'MERGED', closedAt: T(10), recordedAt: T(15), total: total(7), models: {} })}\n`)
+    const day2 = JSON.parse(run('sweep', '--ship-log', log, '--since', T(0), '--projects', dir, '--out', out2).stdout)
+    assert.equal(day2.recorded, 1)
+    const b = readFileSync(out2, 'utf8').trim().split('\n').map(JSON.parse).find((r) => r.number === 8)
+    assert.equal(b.total, 4444, 'B holds only the work after A\'s window, not the 2,222 A already holds')
+    assert.equal(total(7), 1111 + 2222, 'A holds its own work and its post-merge work')
+  })
+  it('overlapping PRs: work on B before A merged stays B\'s, only the tail after A\'s merge is A\'s', () => {
+    // Link A at min 3 (A's branch), B's work from min 20 (B's branch), link B at min 60, A merged at min 120, tail work on A's branch at min 150, B merged at min 400.
+    const dir = projects({ 'p/S1.jsonl': [assistant({ min: 1 }), link('o/.github', 7, 3), assistant({ min: 20, usage: [2, 20, 200, 2000], branch: 'claude/b-2' }), link('o/.github', 8, 60), assistant({ min: 150, usage: [4, 40, 400, 4000] })] })
+    const log = join(dir, 'ship.log')
+    writeFileSync(log, `${T(120)} info  o/.github#7 (abc1234): merged as def5678\n${T(400)} info  o/.github#8 (abc1235): merged as def5679\n`)
+    const out = join(dir, 'ledger.jsonl')
+    JSON.parse(run('sweep', '--ship-log', log, '--since', T(0), '--projects', dir, '--out', out).stdout)
+    const rows = readFileSync(out, 'utf8').trim().split('\n').map(JSON.parse)
+    assert.equal(rows.find((r) => r.number === 7).total, 1111 + 4444, 'A: its own work before its link and the tail after its merge')
+    assert.equal(rows.find((r) => r.number === 8).total, 2222, 'B: the work before B\'s link, from min 20')
+  })
+  it('record replaces a swept row with the fuller one, even when the total is the same', () => {
+    const dir = projects({ 'p/S1.jsonl': [assistant({ min: 1 }), assistant({ min: 2, usage: [2, 20, 200, 2000] }), link('o/.github', 7, 3)] })
+    const log = join(dir, 'ship.log')
+    writeFileSync(log, `${T(5)} info  o/.github#7 (abc1234): merged as def5678\n`)
+    const out = join(dir, 'ledger.jsonl')
+    assert.equal(JSON.parse(run('sweep', '--ship-log', log, '--since', T(0), '--projects', dir, '--out', out).stdout).recorded, 1)
+    const r = run('record', '--repo', 'o/.github', '--number', '7', '--state', 'MERGED', '--branch', 'claude/a-1', '--worktree', WT, '--title', 'Fix it', '--additions', '11', '--deletions', '2', '--closed', T(5), '--projects', dir, '--out', out)
+    assert.equal(JSON.parse(r.stdout).recorded, true, 'the swept row has no branch or line counts, so the record is not unchanged')
+    const last = readFileSync(out, 'utf8').trim().split('\n').map(JSON.parse).at(-1)
+    assert.deepEqual([last.branch, last.additions, last.kind], ['claude/a-1', 11, 'fix'])
+    assert.equal(JSON.parse(run('record', '--repo', 'o/.github', '--number', '7', '--state', 'MERGED', '--branch', 'claude/a-1', '--worktree', WT, '--title', 'Fix it', '--additions', '11', '--deletions', '2', '--closed', T(5), '--projects', dir, '--out', out).stdout).recorded, false, 'a second identical record is still a no-op')
+  })
+  it('a merge under 2 hours old is left for the next run', () => {
+    const dir = projects({ 'p/S1.jsonl': [assistant({ min: 1 }), link('o/.github', 7, 3)] })
+    const log = join(dir, 'ship.log')
+    writeFileSync(log, `${new Date(Date.now() - 30 * 60000).toISOString()} info  o/.github#7 (abc1234): merged as def5678\n`)
+    const j = JSON.parse(run('sweep', '--ship-log', log, '--since', T(0), '--projects', dir, '--out', join(dir, 'l.jsonl')).stdout)
+    assert.deepEqual([j.merged, j.recorded], [0, 0])
+  })
+  it('one missing log is skipped with a warning and a count; all missing is an error', () => {
+    const { dir, log, out } = setup()
+    const r = run('sweep', '--ship-log', join(dir, 'gone.log.1'), '--ship-log', log, '--since', T(0), '--projects', dir, '--out', out)
+    assert.equal(r.status, 0, r.stderr)
+    assert.equal(JSON.parse(r.stdout).skippedLogs, 1)
+    assert.match(r.stderr, /skipped a missing ship-bot log/)
+    assert.equal(run('sweep', '--ship-log', join(dir, 'gone.log'), '--projects', dir, '--out', out).status, 2)
+  })
+  it('ignores merges before --since', () => {
+    const { dir, log, out } = setup()
+    const j = JSON.parse(run('sweep', '--ship-log', log, '--since', T(9), '--projects', dir, '--out', out).stdout)
+    assert.equal(j.merged, 1)
+    assert.equal(j.recorded, 0)
+  })
+  it('a file that is not a ship-bot log is an error, but a quiet night (pass lines, no merge) is not', () => {
+    const { dir, out } = setup()
+    const wrong = join(dir, 'format-changed.log')
+    writeFileSync(wrong, 'nothing here is a log line\nmerged as abc\n')
+    const r = run('sweep', '--ship-log', wrong, '--since', T(0), '--projects', dir, '--out', out)
+    assert.equal(r.status, 2)
+    assert.match(r.stderr, /holds no ship-bot log line/)
+    const quiet = join(dir, 'quiet.log')
+    writeFileSync(quiet, [`${T(5)} info  o/.github#9 (abc1236): not merging: review has findings`, `${T(6)} info  o/.github#8 (abc1235, draft): draft left alone`].join('\n'))
+    const q = run('sweep', '--ship-log', quiet, '--since', T(0), '--projects', dir, '--out', out)
+    assert.equal(q.status, 0, q.stderr)
+    assert.equal(JSON.parse(q.stdout).merged, 0)
+  })
+  it('a missing log is an error, never an empty sweep', () => {
+    const { dir, out } = setup()
+    const r = run('sweep', '--ship-log', join(dir, 'gone.log'), '--projects', dir, '--out', out)
+    assert.notEqual(r.status, 0)
+    assert.match(r.stderr, /^pr-cost: /)
+    assert.equal(run('sweep', '--projects', dir, '--out', out).status, 2)
+  })
+})
