@@ -106,6 +106,28 @@ describe('a labelled head blocked only by a cancelled run', () => {
     assert.equal(gh.writes.filter((w) => w.name === 'mergePull').length, 0, 'cancelled is never a pass')
   })
 
+  it('the cap of 2 counts every rerun the head ever had, not one pass', async () => {
+    const gh = world()
+    const s = scenario({ github: gh })
+    await s.run()
+    assert.deepEqual(reruns(gh).map((w) => w.runId), [1])
+    // Run 1 went green. Later, runs 5 and 6 of two other workflows are cancelled on the same head.
+    const later = () => [jobRun('check / check', 'success', 2, 11), jobRun('e2e (1)', 'success', 1, 20), jobRun('lint', 'cancelled', 5, 30), jobRun('types', 'cancelled', 6, 31)]
+    gh.runs = later()
+    gh.workflowRuns = [wf(1, { conclusion: 'success', run_attempt: 2 }), wf(2, { workflow_id: 901, conclusion: 'success' }), wf(5, { workflow_id: 902 }), wf(6, { workflow_id: 903 })]
+    await s.run()
+    assert.deepEqual(reruns(gh).map((w) => w.runId), [1], '1 already asked plus 2 new would be 3')
+    assert.match(gh.commentsPosted()[0].body, /lint \(cancelled\), types \(cancelled\)/)
+    // One more cancelled run is the head's second and last.
+    const one = world()
+    const t = scenario({ github: one })
+    await t.run()
+    one.runs = later().slice(0, 3)
+    one.workflowRuns = [wf(1, { conclusion: 'success', run_attempt: 2 }), wf(2, { workflow_id: 901, conclusion: 'success' }), wf(5, { workflow_id: 902 })]
+    await t.run()
+    assert.deepEqual(reruns(one).map((w) => w.runId), [1, 5])
+  })
+
   it('merges on a later pass once the rerun is green', async () => {
     const gh = world()
     const s = scenario({ github: gh })

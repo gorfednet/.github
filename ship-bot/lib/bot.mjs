@@ -15,7 +15,7 @@ import { HOLD_LABEL, READY_LABEL } from './config.mjs'
 import { diagnosisJob, jobsDir, stallJob, writeJobOnce } from './herdr-jobs.mjs'
 import { DeployLog, deployMerged, envSecrets, matchingFiles, pagesSecrets, preflight, realFs, selectSteps } from './deploy.mjs'
 import { controlPlaneFiles, draftClaim, draftIneligibleReason } from './drafts.mjs'
-import { evaluatePull, ineligibleReason, unmergeableReason } from './gates.mjs'
+import { MAX_RERUNS_PER_HEAD, evaluatePull, ineligibleReason, unmergeableReason } from './gates.mjs'
 import { RateLimitError, guardWrites } from './github.mjs'
 import { HOTFIX_LABEL, RELEASE_LABEL, planDeploy } from './deploy-plan.mjs'
 import { Redactor, publicNames } from './redact.mjs'
@@ -574,11 +574,13 @@ async function processPull(ctx, repo, pr, defaultBranch) {
  * Rerun the cancelled workflow runs that alone keep a labelled head from green (plan row 1.59; gates.mjs
  * `cancelledRunsToRerun` decides which). Each run is asked for once per head: the ask is written to the state
  * file before the call, so a crash or a refusal never repeats it. A run the bot already asked for and that is
- * cancelled again is a person's. Returns whether a rerun was asked for (or would be) this pass.
+ * cancelled again is a person's, and so is a head that would pass MAX_RERUNS_PER_HEAD asks in all. Returns whether a rerun was asked for (or would be) this pass.
  */
 async function rerunCancelled(ctx, repo, headState, tag, ids) {
   const fresh = ids.filter((id) => !headState.reruns?.[id])
   if (fresh.length === 0) return false
+  // The cap is for the head's whole life, not one pass: every ask counts, the refused ones too.
+  if (Object.keys(headState.reruns ?? {}).length + fresh.length > MAX_RERUNS_PER_HEAD) return false
   if (ctx.dry) {
     ctx.say('info', `${tag}: would rerun cancelled workflow run(s) ${fresh.join(', ')}: every other check on this head is green`)
     return true

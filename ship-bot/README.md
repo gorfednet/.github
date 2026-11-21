@@ -548,7 +548,7 @@ The rerun is narrow on purpose:
   had time to appear;
 - it is on attempt 1 or 2, and the bot hasn't asked for it before on this
   head;
-- at most 2 runs per head.
+- at most 2 reruns per head in all, counting ones GitHub refused.
 
 Anything unreadable means no rerun. A run that is cancelled again after the
 bot's rerun gets the usual "checks did not pass" comment and waits for a

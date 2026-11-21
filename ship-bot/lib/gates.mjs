@@ -119,7 +119,7 @@ export function dropSupersededCancels(runs, workflowRuns, sha) {
 export const MAX_RERUN_ATTEMPT = 3
 /** How long a workflow run must have sat cancelled before the bot reruns it: a label's own replacement run needs time to appear. */
 export const RERUN_SETTLE_MINUTES = 10
-/** More cancelled workflow runs than this on one head is a pattern for a person, not a rerun. */
+/** More cancelled workflow runs than this on one head is a pattern for a person, not a rerun. bot.mjs counts every rerun it ever asked for on the head against it, not only this pass's. */
 export const MAX_RERUNS_PER_HEAD = 2
 
 /**
