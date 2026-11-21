@@ -905,6 +905,19 @@
         "ci / test"
       ],
       "note": "ci / test is the one CI check. review / review and review / trigger come from the Claude reviewer caller (claudeReview): until its workflow (ai-use-levels pull request 25) is on main, review-status.mjs reads not-run and the bot holds each pull request."
+    },
+    {
+      "slug": "gorfednet/plex-lastfm-sync",
+      "dir": "plex-lastfm-sync",
+      "mode": "merge-only",
+      "reason": "no deploy: it is a service the owner runs by hand from a git clone, and nothing ships from a merge (plan row 6.6d, 20 November 2026)",
+      "claudeReview": true,
+      "live": false,
+      "expectedChecks": [
+        "test (22)",
+        "test (24)"
+      ],
+      "note": "ci / test names the matrix legs (Node 22 and 24). review / review and review / trigger come from the Claude reviewer caller (claudeReview): until its workflow (plex-lastfm-sync pull request 3) is on main and the review secret is set, review-status.mjs reads not-run and the bot holds each pull request."
     }
   ]
 }

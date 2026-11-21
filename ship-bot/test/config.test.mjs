@@ -164,6 +164,8 @@ describe('config validation', () => {
       'scratch-bootstrap-5-6': 'merge-only',
       // Public, no deploy: its release workflow only publishes a GitHub Release on a v* tag (plan row 5.6a, 17 November 2026).
       'ai-use-levels': 'merge-only',
+      // Public, no deploy: a service run by hand from a clone (plan row 6.6d, 20 November 2026).
+      'plex-lastfm-sync': 'merge-only',
     })
   })
 
