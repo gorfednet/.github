@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-11-21T18:32:07.072Z",
-  "renderedAt": "2026-11-21T18:32:07.072Z",
+  "generatedAt": "2026-11-21T20:31:52.672Z",
+  "renderedAt": "2026-11-21T20:31:52.672Z",
   "repos": [
     {
       "slug": "gorfednet/bindercurve.com",
@@ -26,7 +26,7 @@
       "openPrCount": 15,
       "lapsedBacklogCount": 21,
       "noPrCount": 31,
-      "idlePrCount": 6,
+      "idlePrCount": 8,
       "duplicatePrCount": 0,
       "dependabotRedCount": 0,
       "kitVersion": "0.63.0",
@@ -38,8 +38,8 @@
     {
       "slug": "gorfednet/gorfed.net",
       "redacted": true,
-      "mainRed": true,
-      "openPrCount": 4,
+      "mainRed": false,
+      "openPrCount": 3,
       "lapsedBacklogCount": 4,
       "noPrCount": 6,
       "idlePrCount": 0,
@@ -106,7 +106,7 @@
       "openPrCount": 5,
       "lapsedBacklogCount": 0,
       "noPrCount": 2,
-      "idlePrCount": 3,
+      "idlePrCount": 4,
       "duplicatePrCount": 0,
       "dependabotRedCount": 2,
       "kitVersion": "0.65.0",
@@ -185,15 +185,27 @@
       "mainRed": false,
       "openPrs": [
         {
-          "number": 282,
-          "title": "Register plex-lastfm-sync with the fleet and ship-bot (plan row 6.6d)",
+          "number": 299,
+          "title": "Gate: AI Use Levels trailers on every agent commit (plan row 1.90)",
           "ageDays": 0,
           "labels": [],
-          "draft": true,
-          "review": "clean",
-          "headSha": "b531866e4ee253ae59a772d9d246097e34a0fe35",
+          "draft": false,
+          "review": "findings",
+          "headSha": "9d731e1c2120bfff576c62098e5b4b033d797b38",
+          "ci": "pending",
+          "next": "Claude review clean, then merge.",
+          "author": "gorfednet"
+        },
+        {
+          "number": 297,
+          "title": "Register gorfednet/gorfednet (profile) with the fleet and ship-bot (plan row 1.81)",
+          "ageDays": 0,
+          "labels": [],
+          "draft": false,
+          "review": "not-run",
+          "headSha": "8da1e243a19ee9207801f69fada0fe1031d2a0df",
           "ci": "green",
-          "next": "Merge once the review reads clean (Desk labels).",
+          "next": "Desk labels after a clean review of the head (ship-bot, fleet.json and config paths are control-plane). Comment `claude review` once the head is non-draft",
           "author": "gorfednet"
         },
         {
@@ -211,7 +223,7 @@
         {
           "number": 276,
           "title": "Template: LICENSE starts from the owner's standard copyright line",
-          "ageDays": 0,
+          "ageDays": 1,
           "labels": [],
           "draft": true,
           "review": "not-run",
@@ -249,7 +261,7 @@
         {
           "number": 266,
           "title": "AI credit ledger tool: scripts/ai-credits.mjs (plan row 1.40)",
-          "ageDays": 2,
+          "ageDays": 3,
           "labels": [],
           "draft": false,
           "review": "findings",
@@ -620,8 +632,16 @@
       ],
       "idlePrs": [
         {
-          "number": 103,
+          "number": 266,
           "idleDays": 3
+        },
+        {
+          "number": 254,
+          "idleDays": 3
+        },
+        {
+          "number": 103,
+          "idleDays": 4
         }
       ],
       "duplicatePrs": [],
@@ -722,7 +742,7 @@
       "openPrCount": 12,
       "lapsedBacklogCount": 34,
       "noPrCount": 7,
-      "idlePrCount": 7,
+      "idlePrCount": 8,
       "duplicatePrCount": 0,
       "dependabotRedCount": 2,
       "kitVersion": "0.65.0",
@@ -738,7 +758,7 @@
       "openPrCount": 4,
       "lapsedBacklogCount": 0,
       "noPrCount": 5,
-      "idlePrCount": 1,
+      "idlePrCount": 2,
       "duplicatePrCount": 0,
       "dependabotRedCount": 1,
       "kitVersion": "0.65.0",
@@ -761,7 +781,7 @@
       "kitPin": {
         "ref": "main"
       },
-      "alertsOverdue": 0
+      "alertsOverdue": null
     },
     {
       "slug": "gorfednet/ai-use-levels",
@@ -822,6 +842,39 @@
       "alertsOverdue": 0
     },
     {
+      "slug": "gorfednet/plex-lastfm-sync",
+      "defaultBranch": "main",
+      "mainRed": false,
+      "openPrs": [
+        {
+          "number": 4,
+          "title": "fix: --help exit code, drop arbitrary ratingKey length cap",
+          "ageDays": 0,
+          "labels": [],
+          "draft": false,
+          "review": "not-run",
+          "headSha": "24c1f4cea7b8306e1b599d87368360fc38d75b60",
+          "ci": "red",
+          "next": null,
+          "author": "salazr"
+        }
+      ],
+      "branchesAhead": [],
+      "lapsedBacklog": [],
+      "backlogOpen": [],
+      "idlePrs": [],
+      "duplicatePrs": [],
+      "lastDeploy": null,
+      "incidents7d": 0,
+      "dependabotRed": 0,
+      "kitVersion": null,
+      "kitPin": {
+        "none": true
+      },
+      "alertsOverdue": null,
+      "alertsUnread": "alerts-off"
+    },
+    {
       "slug": "gorfednet/assess",
       "redacted": true,
       "mainRed": false,
@@ -840,11 +893,11 @@
     {
       "slug": "gorfednet/ops",
       "redacted": true,
-      "mainRed": true,
-      "openPrCount": 30,
+      "mainRed": false,
+      "openPrCount": 33,
       "lapsedBacklogCount": 0,
       "noPrCount": 11,
-      "idlePrCount": 8,
+      "idlePrCount": 9,
       "duplicatePrCount": 0,
       "dependabotRedCount": 0,
       "kitVersion": null,
@@ -908,11 +961,11 @@
     }
   },
   "inventory": {
-    "measuredAt": "2026-11-21T18:32:07.072Z",
+    "measuredAt": "2026-11-21T20:31:52.672Z",
     "counts": {
       "pr": {
-        "total": 180,
-        "orphans": 95
+        "total": 181,
+        "orphans": 96
       },
       "session": null,
       "worktree": null,
@@ -923,6 +976,30 @@
       }
     },
     "orphans": [
+      {
+        "kind": "pr",
+        "repo": "gorfednet/.github",
+        "ref": "#299",
+        "label": "Gate: AI Use Levels trailers on every agent commit (plan row 1.90)",
+        "private": false,
+        "lapsed": false
+      },
+      {
+        "kind": "pr",
+        "repo": "gorfednet/.github",
+        "ref": "#297",
+        "label": "Register gorfednet/gorfednet (profile) with the fleet and ship-bot (plan row 1.81)",
+        "private": false,
+        "lapsed": false
+      },
+      {
+        "kind": "pr",
+        "repo": "gorfednet/gorfednet",
+        "ref": "#9",
+        "label": "Add the Claude reviewer: caller, REVIEW.md, CLAUDE.md",
+        "private": false,
+        "lapsed": false
+      },
       {
         "kind": "pr",
         "repo": "gorfednet/gorfednet",
@@ -941,33 +1018,9 @@
       },
       {
         "kind": "pr",
-        "repo": "gorfednet/plex-lastfm-sync",
-        "ref": "#3",
-        "label": "Fleet registration: reviewer caller, REVIEW.md, CLAUDE.md, backlog",
-        "private": false,
-        "lapsed": false
-      },
-      {
-        "kind": "pr",
-        "repo": "gorfednet/.github",
-        "ref": "#282",
-        "label": "Register plex-lastfm-sync with the fleet and ship-bot (plan row 6.6d)",
-        "private": false,
-        "lapsed": false
-      },
-      {
-        "kind": "pr",
         "repo": "gorfednet/ACID2REAPER",
         "ref": "#9",
         "label": "README: replace the last em dash",
-        "private": false,
-        "lapsed": false
-      },
-      {
-        "kind": "pr",
-        "repo": "gorfednet/plex-lastfm-sync",
-        "ref": "#2",
-        "label": "README polish and 1.0.0 changelog",
         "private": false,
         "lapsed": false
       },
@@ -984,14 +1037,6 @@
         "repo": "gorfednet/.github",
         "ref": "#276",
         "label": "Template: LICENSE starts from the owner's standard copyright line",
-        "private": false,
-        "lapsed": false
-      },
-      {
-        "kind": "pr",
-        "repo": "gorfednet/plex-lastfm-sync",
-        "ref": "#1",
-        "label": "Licence: name the copyright holder and sites",
         "private": false,
         "lapsed": false
       },
@@ -1044,13 +1089,13 @@
         "lapsed": true
       }
     ],
-    "hiddenPrivate": 82,
+    "hiddenPrivate": 84,
     "privateReposNotItemised": 18,
     "planRead": true
   },
   "dotgithub": {
-    "measuredAt": "2026-11-21T18:33:27.796Z",
-    "branches": 46,
+    "measuredAt": "2026-11-21T20:33:01.353Z",
+    "branches": 47,
     "merged": 3,
     "exposedFiles": 54,
     "rulesNotChecked": [],
