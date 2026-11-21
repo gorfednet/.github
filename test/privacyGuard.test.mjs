@@ -1696,6 +1696,51 @@ describe('privacy guard: a `site <domain>` line makes the name count as said', (
         rmSync(dir, { recursive: true, force: true })
       }
     }
+    // Two pushes on one branch, the way the hook sees them: --base is push 1, the allowlist is main's (empty).
+    const twoPush = (first, second, message = 'second push') => {
+      const dir = mkdtempSync(join(tmpdir(), 'privacy-guard-seq-'))
+      try {
+        sh(dir, 'init', '-q', '-b', 'main')
+        writeFileSync(join(dir, 'README.md'), 'hi\n')
+        sh(dir, 'add', '-A')
+        sh(dir, 'commit', '-q', '-m', 'base')
+        sh(dir, 'checkout', '-q', '-b', 'pr')
+        const put = (files) => {
+          for (const [f, body] of Object.entries(files)) {
+            mkdirSync(join(dir, f, '..'), { recursive: true })
+            writeFileSync(join(dir, f), body)
+          }
+        }
+        put(first)
+        sh(dir, 'add', '-A')
+        sh(dir, 'commit', '-q', '-m', 'first push')
+        sh(dir, 'branch', 'pushed')
+        put(second)
+        sh(dir, 'add', '-A')
+        sh(dir, 'commit', '-q', '-m', message)
+        const empty = join(dir, '..', `empty-${process.pid}.txt`)
+        writeFileSync(empty, '')
+        return spawnSync('node', [GUARD, '--base', 'pushed', '--head', 'pr', '--dir', dir, '--allow', empty], { encoding: 'utf8', env: { PATH: process.env.PATH, HOME: process.env.HOME, PRIVATE_REPOS: NAME } })
+      } finally {
+        rmSync(dir, { recursive: true, force: true })
+      }
+    }
+    const SITE_LINE = { '.github/privacy-guard-allow.txt': `site ${NAME}\n` }
+    const both = { ...SITE_LINE, 'README.md': `https://${NAME}/\n` }
+    assert.equal(twoPush(both, { 'docs/n.md': `The repo ${NAME} holds the code\n` }).status, 1, 'the repository reading follows the site into later pushes')
+    assert.equal(twoPush(both, { 'docs/n.md': `Listen at https://${NAME}/\n` }).status, 0, 'a plain link in a later push is fine')
+    // Documented limit: the first push carries only the line, so a later push linking the site isn't a first line.
+    assert.equal(twoPush(SITE_LINE, { 'README.md': `https://${NAME}/\n` }).status, 1, 'single-push only')
+    // A commit message names the site beside the word repo in everyday words.
+    assert.equal(guard({ before: { 'README.md': 'hello\n' }, after: { ...SITE_LINE }, allow: false, message: `Site line for ${NAME} so the repo README can link it`, env: { PRIVATE_REPOS: NAME } }).status, 0)
+    // Two site lines alone pass (the line is not read for its own domain), and clear nothing else.
+    {
+      const two = (extra = {}) => guard({ before: { 'README.md': 'hello\n' }, after: { '.github/privacy-guard-allow.txt': `site ${NAME}\nsite other-music.com\n`, ...extra }, allow: false, env: { PRIVATE_REPOS: `${NAME},other-music.com` } })
+      const r = two()
+      assert.equal(r.status, 0, r.out)
+      assert.match(r.out, /none of them is cleared/)
+      assert.equal(two({ 'README.md': `https://${NAME}/\n` }).status, 1)
+    }
     // The repository reading is for the site this range lists. A site already on main keeps main's reading.
     passes(`The repo ${NAME} holds the code\n`)
     // More than one new site line in a range clears nothing: it can't be a first line.

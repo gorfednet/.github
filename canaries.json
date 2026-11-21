@@ -1048,6 +1048,14 @@
       "file": "scripts/privacy-guard.mjs",
       "find": "added.size === 1 ?",
       "replace": "added.size >= 1 ?"
+    },
+    {
+      "id": "privacy-guard-two-site-lines-alone-pass",
+      "guards": "A site line is not read for its own domain, which is the only route for two or more new sites. Without it the allowlist lines themselves are refused.",
+      "command": "node --test --test-name-pattern='lets a repository add its first site line' test/privacyGuard.test.mjs",
+      "file": "scripts/privacy-guard.mjs",
+      "find": "hit.value.toLowerCase() === isSiteLine(text)) continue",
+      "replace": "false) continue"
     }
   ]
 }

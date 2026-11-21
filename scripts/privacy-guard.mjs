@@ -398,7 +398,7 @@ const versionLikeDomain = (address) => /^\d+\.\d/.test(address.slice(address.las
  * or a commit message is not checked for emails). `bare` is how a bare private repository
  * name is read in this text: 'word', 'path', or null for not at all. `svg` drops drawing data.
  */
-export function scanText(raw, { privateRepo, bareNames, saidNames, allow }, rules = Object.keys(RULES), bare = null, svg = false) {
+export function scanText(raw, { privateRepo, bareNames, saidNames, allow }, rules = Object.keys(RULES), bare = null, svg = false, fileText = false) {
   const text = raw.replace(/\0/g, '') // a UTF-16 file read as bytes has a NUL between letters
   const on = (r) => rules.includes(r)
   const hits = []
@@ -434,7 +434,7 @@ export function scanText(raw, { privateRepo, bareNames, saidNames, allow }, rule
   // domain near the word repo or repository, or with a .git or .wiki ending, is read as the repository.
   // A site already on main keeps main's reading. The hit carries its own value, so a file at the
   // merge base can't hold it.
-  if (on('private-repo') && bare === 'word' && allow.bootSites?.length > 0) {
+  if (on('private-repo') && bare === 'word' && fileText && allow.bootSites?.length > 0) {
     const REPO = '\\b(?:repos?|repositor(?:y|ies))\\b'
     for (const site of allow.bootSites) {
       const name = site.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
@@ -723,7 +723,7 @@ function scanDiff({ files, newFiles, added }, sha, ctx, base, origin) {
   for (const { path, line, text } of added) {
     linesRead += 1
     filesRead.add(path)
-    for (const hit of scanText(text, ctx, undefined, bareScope(path), svgContext(path, text))) {
+    for (const hit of scanText(text, ctx, undefined, bareScope(path), svgContext(path, text), true)) {
       if (pathExempt(path, hit.rule, allow)) continue
       // The line that adds a site to the allowlist names it: it can't clear itself on main otherwise.
       if (path === ALLOWLIST_PATH && hit.rule === 'private-repo' && hit.value.toLowerCase() === isSiteLine(text)) continue
@@ -861,8 +861,11 @@ export function run(argv, env = process.env, out = console) {
       if (site && !allow.sites.includes(site)) added.add(site)
     }
   }
-  allow.bootSites = added.size === 1 && written.has([...added][0]) ? [...added] : []
-  allow.sites.push(...allow.bootSites)
+  // The one new site is read as a repository in file text and paths whether or not this range wrote
+  // it (a later push on the same branch still carries it). Only a line the range wrote clears.
+  allow.bootSites = added.size === 1 ? [...added] : []
+  allow.sites.push(...allow.bootSites.filter((x) => written.has(x)))
+  if (added.size > 1) out.error(`privacy-guard: note: ${added.size} new site lines in the allowlist, so none of them is cleared (one new site at a time). The names they list are read as before.`)
 
   const open = names.filter((n) => !allow.repos.includes(n))
   // A bare name is watched only while the repository has never said it. Most private
