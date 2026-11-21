@@ -5,7 +5,9 @@
 # on `pull_request: [opened, ready_for_review]` and `issue_comment: [created]`. The job reviews when a
 # pull request opens or leaves draft, and again whenever an owner, member or collaborator posts a
 # comment with a line that is exactly "claude review" (any case; other lines may explain): once at open, once more on the final head after a push that changed code someone
-# wrote, which keeps reviews inside the Max plan's limits.
+# wrote, which keeps reviews inside the Max plan's limits. A head that already has a verdict is not
+# reviewed twice: the repeat request skips and says so in one comment, and a line "claude review force"
+# (or a new commit) reviews that head again.
 #
 # A pull request Dependabot opens is not reviewed on `pull_request` (7 November 2026): GitHub runs
 # that event for dependabot[bot] with read-only secrets, so the review job could not read
@@ -152,6 +154,7 @@ jobs:
           NUMBER: ${{ steps.pr.outputs.number }}
           HEAD: ${{ steps.pr.outputs.head }}
           FORCE: ${{ needs.trigger.outputs.force }}
+          EVENT: ${{ github.event_name }}
         run: |
           set -euo pipefail
           if [[ "${FORCE:-false}" == true ]]; then
@@ -160,17 +163,23 @@ jobs:
             exit 0
           fi
           encoded="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/issues/${NUMBER}/comments" \
-            --jq '.[] | select(.user.login == "github-actions[bot]") | .body | @base64')"
+            --jq '.[] | select(.user.login == "github-actions[bot]") | [.html_url, (.body | @base64)] | @tsv')"
           skip=false
-          while IFS= read -r one; do
-            [[ -n "$one" ]] || continue
+          verdict_url=""
+          while IFS=$'\t' read -r url one; do
+            [[ -n "${one:-}" ]] || continue
             marker="$(base64 --decode <<<"$one" | grep -Eo '<!--[[:space:]]*claude-review[[:space:]]+head=[0-9a-f]{40}[[:space:]]+findings=[0-9]+([[:space:]]+blocking=[0-9]+)?[[:space:]]*-->' | sed -n 1p || true)"
             [[ -n "$marker" ]] || continue
-            if [[ "$(sed -E 's/.*head=([0-9a-f]{40}).*/\1/' <<<"$marker")" == "$HEAD" ]]; then skip=true; fi
+            if [[ "$(sed -E 's/.*head=([0-9a-f]{40}).*/\1/' <<<"$marker")" == "$HEAD" ]]; then skip=true; verdict_url="$url"; fi
           done <<<"$encoded"
           echo "skip=${skip}" >> "$GITHUB_OUTPUT"
           if [[ "$skip" == true ]]; then
             echo "head ${HEAD} already has a review verdict: skipping this duplicate request"
+            # A person who asked sees why nothing ran. Never on a pull_request event (leaving
+            # draft), and never a marker or a line that is only the trigger phrase.
+            if [[ "$EVENT" == issue_comment ]]; then
+              gh pr comment "$NUMBER" --body "A review of \`${HEAD:0:9}\` already exists: ${verdict_url}. No new review ran. To review this head again, post the words claude review force on a line of their own, or push a new commit."
+            fi
           fi
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7

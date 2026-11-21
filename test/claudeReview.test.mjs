@@ -243,26 +243,28 @@ describe('one finished review per head', () => {
     const bot = (text) => ({ login: 'github-actions[bot]', body: text })
     const line = (head, tail = 'findings=0 blocking=0 -->') => `Reviewed.\n<!-- claude-review head=${head} ${tail}`
     /** Runs the step with `pages` of comments (the stub prints each page's jq result) and returns skip. */
-    function skip(pages, head = HEAD, force = '') {
+    function run(pages, head = HEAD, force = '', event = 'issue_comment') {
       const dir = mkdtempSync(join(tmpdir(), 'dup-'))
       try {
         // The stub hands back the raw comments and runs the step's own --jq filter through real jq,
         // so the bot filter that ships is the one under test (jq missing is an error, never a skip).
-        writeFileSync(join(dir, 'comments.json'), JSON.stringify(pages.flat().map((c) => ({ user: { login: c.login }, body: c.body }))))
+        writeFileSync(join(dir, 'comments.json'), JSON.stringify(pages.flat().map((c, i) => ({ user: { login: c.login }, body: c.body, html_url: `https://x/c${i}` }))))
         writeFileSync(
           join(dir, 'gh'),
-          '#!/bin/sh\ncase "$*" in *--paginate*) ;; *) echo "stub gh needs --paginate" >&2; exit 9 ;; esac\nwhile [ $# -gt 0 ]; do [ "$1" = --jq ] && filter="$2"; shift; done\n[ -n "$filter" ] || exit 8\njq -r "$filter" "$(dirname "$0")/comments.json"\n',
+          '#!/bin/sh\nif [ "$1" = pr ]; then printf \'%s\\n\' "$*" >> "$(dirname "$0")/posted"; exit 0; fi\ncase "$*" in *--paginate*) ;; *) echo "stub gh needs --paginate" >&2; exit 9 ;; esac\nwhile [ $# -gt 0 ]; do [ "$1" = --jq ] && filter="$2"; shift; done\n[ -n "$filter" ] || exit 8\njq -r "$filter" "$(dirname "$0")/comments.json"\n',
           { mode: 0o755 },
         )
         writeFileSync(join(dir, 'step.sh'), script)
         const out = join(dir, 'out')
         writeFileSync(out, '')
-        execFileSync('bash', [join(dir, 'step.sh')], { env: { PATH: `${dir}:${process.env.PATH}`, GITHUB_REPOSITORY: 'o/r', GITHUB_OUTPUT: out, NUMBER: '1', HEAD: head, FORCE: force } })
-        return /skip=(\w+)/.exec(readFileSync(out, 'utf8'))[1]
+        execFileSync('bash', [join(dir, 'step.sh')], { env: { PATH: `${dir}:${process.env.PATH}`, GITHUB_REPOSITORY: 'o/r', GITHUB_OUTPUT: out, NUMBER: '1', HEAD: head, FORCE: force, EVENT: event } })
+        const posted = existsSync(join(dir, 'posted')) ? readFileSync(join(dir, 'posted'), 'utf8') : ''
+        return { skip: /skip=(\w+)/.exec(readFileSync(out, 'utf8'))[1], posted }
       } finally {
         rmSync(dir, { recursive: true, force: true })
       }
     }
+    const skip = (...args) => run(...args).skip
     it('skips a head the bot already gave a verdict', () => assert.equal(skip([[bot(line(HEAD))]]), 'true'))
     it('skips on a verdict without blocking, as the parser accepts', () => assert.equal(skip([[bot(line(HEAD, 'findings=2 -->'))]]), 'true'))
     it('runs for a verdict on another head', () => assert.equal(skip([[bot(line(OTHER))]]), 'false'))
@@ -283,6 +285,22 @@ describe('one finished review per head', () => {
       assert.equal(skip([[bot(line(HEAD))]], HEAD, 'true'), 'false')
       assert.equal(skip([[bot(line(HEAD))]], HEAD, 'false'), 'true')
       assert.equal(skip([[bot(line(HEAD))]], HEAD, ''), 'true')
+    })
+    it('says why on a skipped comment request: names the verdict and force, carries no marker and no bare trigger line', () => {
+      const { skip: result, posted } = run([[bot('Intro.'), bot(line(HEAD))]])
+      assert.equal(result, 'true')
+      assert.match(posted, /^pr comment 1 --body /)
+      assert.match(posted, /https:\/\/x\/c1/)
+      assert.match(posted, /claude review force/)
+      assert.doesNotMatch(posted, /claude-review head=/)
+      assert.ok(!posted.split('\n').some((l) => /^\s*claude review( force)?\s*$/i.test(l)))
+    })
+    it('posts nothing when it does not skip, on force, or on a pull_request event', () => {
+      assert.equal(run([[bot(line(OTHER))]]).posted, '')
+      assert.equal(run([[bot(line(HEAD))]], HEAD, 'true').posted, '')
+      const leftDraft = run([[bot(line(HEAD))]], HEAD, '', 'pull_request')
+      assert.equal(leftDraft.skip, 'true')
+      assert.equal(leftDraft.posted, '')
     })
     it('finds a verdict that sits after a large comment', () => {
       assert.equal(skip([[bot('x'.repeat(200000)), bot(line(HEAD))]]), 'true')
@@ -515,6 +533,8 @@ describe('the review trigger', () => {
     assert.match(review, /\n    if: needs\.trigger\.outputs\.go == 'true'\n/)
     assert.match(review, /concurrency:/)
     assert.match(job('trigger'), /go: \$\{\{ steps\.trigger\.outputs\.go \}\}/)
+    // The review job reads `needs.trigger.outputs.force`; without this output the override is silently off.
+    assert.match(job('trigger'), /force: \$\{\{ steps\.trigger\.outputs\.force \}\}/)
   })
 })
 
