@@ -16,7 +16,7 @@
  *   by that one extra ask. gh is only ever asked for the whole list, never about one repository.
  * - The target's allowlist is read from the remote's default branch tip, as the remote reports it now,
  *   never from the push boundary, the working tree or any commit the pusher sent: a change can't clear
- *   itself, and a branch cut before an exemption landed still sees it.
+ *   itself (one new `site` line counts for its own push), and a branch cut before an exemption landed still sees it.
  * - Outgoing commits are those reachable from the sent shas and not from anything the remote
  *   holds now (`git ls-remote`, not tracking refs, which go stale). scripts/privacy-guard.mjs
  *   reads them (messages, every commit's diff, the net diff). Ref names, and an annotated tag's

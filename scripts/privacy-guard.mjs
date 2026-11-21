@@ -58,7 +58,8 @@
  * numbers (an npm tag) is a version tag, not an email.
  *
  * The allowlist is read from the BASE revision (main's tip for a pull request), never from the
- * change: an exemption takes effect once its own pull request has merged, on the next run of a
+ * change, with one exception: a single new `site` line the range adds counts for that range (the
+ * first line of a repository with no allowlist). Every other exemption takes effect once its own pull request has merged, on the next run of a
  * waiting pull request, with no merge of main needed. Format in .github/privacy-guard-allow.txt.
  *
  * A false positive in a commit that is not the tip cannot be fixed forward: the commit stays
@@ -397,7 +398,7 @@ const versionLikeDomain = (address) => /^\d+\.\d/.test(address.slice(address.las
  * or a commit message is not checked for emails). `bare` is how a bare private repository
  * name is read in this text: 'word', 'path', or null for not at all. `svg` drops drawing data.
  */
-export function scanText(raw, { privateRepo, bareNames, saidNames, allow }, rules = Object.keys(RULES), bare = null, svg = false) {
+export function scanText(raw, { privateRepo, bareNames, saidNames, allow }, rules = Object.keys(RULES), bare = null, svg = false, fileText = false) {
   const text = raw.replace(/\0/g, '') // a UTF-16 file read as bytes has a NUL between letters
   const on = (r) => rules.includes(r)
   const hits = []
@@ -427,6 +428,25 @@ export function scanText(raw, { privateRepo, bareNames, saidNames, allow }, rule
         }
         at += line.length + 1
       }
+    }
+  }
+  // A site this range itself lists (the bootstrap case) has had no review on main yet, so its
+  // domain near the word repo or repository, or with a .git or .wiki ending, is read as the repository.
+  // A site already on main keeps main's reading. The hit carries its own value, so a file at the
+  // merge base can't hold it.
+  if (on('private-repo') && bare === 'word' && fileText && allow.bootSites?.length > 0) {
+    const REPO = '\\b(?:repos?|repositor(?:y|ies))\\b'
+    for (const site of allow.bootSites) {
+      const name = site.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      const near = new RegExp(`${REPO}[^\\n]{0,24}?(?<![\\w-])${name}(?![\\w-])|(?<![\\w-])${name}(?:\\.(?:git|wiki)\\b|(?![\\w-])[^\\n]{0,24}?${REPO})`, 'gi')
+      for (const _ of text.matchAll(near)) add('private-repo', [`${site} (as a repository)`])
+    }
+  }
+  // The same site, as a path part (`repos/<site>/`, `<site>.git/`, `<site>.md`), is the repository too.
+  if (on('private-repo') && bare === 'path' && allow.bootSites?.length > 0) {
+    for (const site of allow.bootSites) {
+      const name = site.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      for (const _ of text.matchAll(new RegExp(`(?:^|/)${name}(?:\\.[A-Za-z0-9]+)?(?=/|$)`, 'gi'))) add('private-repo', [`${site} (as a repository)`])
     }
   }
   if (on('owner-quote')) add('owner-quote', all(OWNER_QUOTE, text))
@@ -703,7 +723,7 @@ function scanDiff({ files, newFiles, added }, sha, ctx, base, origin) {
   for (const { path, line, text } of added) {
     linesRead += 1
     filesRead.add(path)
-    for (const hit of scanText(text, ctx, undefined, bareScope(path), svgContext(path, text))) {
+    for (const hit of scanText(text, ctx, undefined, bareScope(path), svgContext(path, text), true)) {
       if (pathExempt(path, hit.rule, allow)) continue
       // The line that adds a site to the allowlist names it: it can't clear itself on main otherwise.
       if (path === ALLOWLIST_PATH && hit.rule === 'private-repo' && hit.value.toLowerCase() === isSiteLine(text)) continue
@@ -815,6 +835,37 @@ export function run(argv, env = process.env, out = console) {
     out.error(`privacy-guard: ${error.message}`)
     return 2
   }
+
+  // A repository's first allowlist line can't be on the base yet. A `site` line this range adds to
+  // the allowlist (the whole line, nothing else on it, a domain with a web TLD) counts for the range
+  // too, so the same push can name the site. Net diff only, so a line added and then removed counts
+  // for nothing, and only one new site per range: more than one clears nothing. The name is then
+  // read for the repository forms too (`bootSites`, see scanText). Bare names in paths, the org
+  // path and a line that says private stay read.
+  // Counted against the allowlist the guard was given (main's, or the remote's default branch for
+  // the hook), not the range, so a second push to a branch that already carries a site line from
+  // the first push counts both and clears neither. Only a line this range itself adds can clear
+  // (`written`, from the net diff against the merge base): a line a branch inherited, which main has
+  // since dropped, counts toward the cap and clears nothing.
+  const written = new Set((net?.added ?? []).filter((a) => a.path === ALLOWLIST_PATH).map((a) => isSiteLine(a.text)).filter(Boolean))
+  const added = new Set()
+  if (commits.length > 0) {
+    let headList = ''
+    try {
+      headList = git(dir, ['show', `${headSha}:${ALLOWLIST_PATH}`])
+    } catch {
+      // no allowlist at the head
+    }
+    for (const line of headList.split('\n')) {
+      const site = isSiteLine(line)
+      if (site && !allow.sites.includes(site)) added.add(site)
+    }
+  }
+  // The one new site is read as a repository in file text and paths whether or not this range wrote
+  // it (a later push on the same branch still carries it). Only a line the range wrote clears.
+  allow.bootSites = added.size === 1 ? [...added] : []
+  allow.sites.push(...allow.bootSites.filter((x) => written.has(x)))
+  if (added.size > 1) out.error(`privacy-guard: note: ${added.size} new site lines in the allowlist, so none of them is cleared (one new site at a time). The names they list are read as before.`)
 
   const open = names.filter((n) => !allow.repos.includes(n))
   // A bare name is watched only while the repository has never said it. Most private
