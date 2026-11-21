@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-11-21T10:32:04.855Z",
-  "renderedAt": "2026-11-21T10:32:04.855Z",
+  "generatedAt": "2026-11-21T12:32:03.412Z",
+  "renderedAt": "2026-11-21T12:32:03.412Z",
   "repos": [
     {
       "slug": "gorfednet/bindercurve.com",
@@ -226,10 +226,10 @@
           "ageDays": 0,
           "labels": [],
           "draft": false,
-          "review": "clean",
-          "headSha": "fb0ea64b727957b1cea3b9a0db787a139a0b9716",
-          "ci": "green",
-          "next": "Merge after .github 273 merges and its capacity check (`capacity/pool.mjs`) is installed. Desk labels in that order; no hold.",
+          "review": "not-run",
+          "headSha": "b149070debe0efe96684768b650e12c57077bbd7",
+          "ci": "pending",
+          "next": "Hold for the owner's answer on the review token on the pool (Desk asks).",
           "author": "gorfednet"
         },
         {
@@ -853,7 +853,7 @@
       "slug": "gorfednet/ops",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 26,
+      "openPrCount": 27,
       "lapsedBacklogCount": 0,
       "noPrCount": 11,
       "idlePrCount": 7,
@@ -920,11 +920,11 @@
     }
   },
   "inventory": {
-    "measuredAt": "2026-11-21T10:32:04.855Z",
+    "measuredAt": "2026-11-21T12:32:03.412Z",
     "counts": {
       "pr": {
-        "total": 168,
-        "orphans": 83
+        "total": 169,
+        "orphans": 85
       },
       "session": null,
       "worktree": null,
@@ -1056,12 +1056,12 @@
         "lapsed": true
       }
     ],
-    "hiddenPrivate": 70,
+    "hiddenPrivate": 72,
     "privateReposNotItemised": 18,
     "planRead": true
   },
   "dotgithub": {
-    "measuredAt": "2026-11-21T10:33:10.469Z",
+    "measuredAt": "2026-11-21T12:32:53.998Z",
     "branches": 46,
     "merged": 3,
     "exposedFiles": 61,
