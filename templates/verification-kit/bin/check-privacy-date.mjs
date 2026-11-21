@@ -12,11 +12,17 @@
  * policy text and the shown date at the merge base, the same at HEAD, and the
  * author dates of the commits in between. No network, no other repository.
  *
- *   - Policy text changed, date unchanged            -> fail
- *   - Policy text changed, date not a PR commit date -> fail (a stale or invented date)
- *   - Date changed, policy text unchanged            -> fail (a date with nothing behind it)
- *   - Neither changed, or both changed and the date is the day of one of the
- *     PR's commits                                   -> pass
+ *   - Policy text changed, date unchanged               -> fail
+ *   - Policy text changed, date not the day of the latest
+ *     commit that changed it (or earlier than before)    -> fail
+ *   - Shown words and the date attribute disagree        -> fail
+ *   - Date changed, visible policy text unchanged        -> ::warning (a link,
+ *     attribute, excluded region or imported text may have changed)
+ *   - Neither changed, or both moved to the right day    -> pass
+ *
+ * The config is a contract too: a PR may not change an entry's region, exclude
+ * or datePattern in the same change that touches the page, may not drop a guarded
+ * page, and may re-point an entry's file only as a real move (the old file gone).
  *
  * "Policy text" is the visible text of the configured region of the configured
  * file, with the date itself, tags, comments and whitespace taken out. Shared
@@ -262,7 +268,6 @@ export function runCheck({ config, base, head, today, tz, cwd, configRel = null 
     .split('\n')
     .filter(Boolean)
     .map((l) => l.split('\t'))
-  const touched = new Set(changed.flatMap((c) => c.slice(1)))
 
   // The base config guards what the PR may not quietly change. Read it where it
   // was at the merge base, following a rename of the config file. Absent at the
@@ -298,16 +303,22 @@ export function runCheck({ config, base, head, today, tz, cwd, configRel = null 
     const baseEntry = baseConfig?.pages.find((p) => p.name === page.name) ?? null
     const oldFile = baseEntry?.file ?? page.file
     const oldDateFile = baseEntry?.dateFile ?? baseEntry?.file ?? dateFile
-    const pageTouched = [page.file, dateFile, oldFile, oldDateFile].some((f) => touched.has(f))
+    // Compare blobs, not path strings: "./privacy.html" and non-ASCII names never
+    // match a diff's output, and a missed edit would pass.
+    const blobAt = (rev, f) => {
+      try {
+        return git(['rev-parse', `${rev}:${f}`], cwd).trim()
+      } catch {
+        return null
+      }
+    }
+    const pageTouched = [page.file, dateFile, oldFile, oldDateFile].some((f) => blobAt(mergeBase, f) !== blobAt(head, f))
 
     // Re-pointing the entry is accepted only as a real move: the old path is gone
     // at HEAD. Otherwise a stale copy could stand in for the page visitors read.
-    if (baseEntry && (oldFile !== page.file || oldDateFile !== dateFile)) {
-      for (const gone of new Set([oldFile, oldDateFile])) {
-        if (gone !== page.file && gone !== dateFile && showAt(head, gone, cwd) !== null) {
-          bail(`page "${page.name}": this PR points the entry at ${page.file} but ${gone} still exists at HEAD. A re-pointed entry is accepted only when the old file is gone (a real move); otherwise a stale copy could hide an edit.`)
-        }
-      }
+    // Only `file` is locked: a date may move out of a shared constants or locale file.
+    if (baseEntry && oldFile !== page.file && oldFile !== dateFile && showAt(head, oldFile, cwd) !== null) {
+      bail(`page "${page.name}": this PR points the entry at ${page.file} but ${oldFile} still exists at HEAD. A re-pointed entry is accepted only when the old file is gone (a real move); otherwise a stale copy could hide an edit.`)
     }
     let before
     if (baseEntry && !sameScope(baseEntry, page) && pageTouched) {
@@ -390,7 +401,7 @@ function main() {
       for (const p of result.problems) console.error(`✗ ${TOOL}: ${p}`)
       process.exit(1)
     }
-    console.error(`✓ ${TOOL}: ${result.seen.length} privacy page(s) agree with their dates (days of this PR's commits to the page: ${result.prDates.join(', ') || 'none'}).`)
+    console.error(`✓ ${TOOL}: ${result.seen.length} privacy page(s) checked (day of the latest policy change in this PR: ${result.prDates.join(', ') || 'none'}).`)
   } catch (cause) {
     if (cause instanceof PrivacyDateError) {
       console.error(`✗ ${TOOL}: ${cause.message}`)

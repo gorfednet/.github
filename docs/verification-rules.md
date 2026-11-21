@@ -1107,7 +1107,9 @@ it right, so it becomes a contract.
    site's `privacy-date.config.json`, so a footer-only change stays green.
 4. What counts as policy text is locked. A PR that changes an entry's region,
    exclude or datePattern and also touches the page fails; the same change with
-   the page and its date file untouched passes. Dropping a guarded page from the
+   the page and its date file untouched passes. An entry's `file` may be
+   re-pointed only as a real move (the old file gone at HEAD), never to a copy;
+   the date file may move freely. Dropping a guarded page from the
    config, or a base config that does not parse, fails, and a renamed config is
    followed. It fails closed. A configured page that does not exist, a region or date
    pattern that matches nothing, a date it cannot parse, a page with under 200

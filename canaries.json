@@ -1110,8 +1110,16 @@
       "guards": "An entry re-pointed at a copy is refused while the old page still exists. Without it a stale copy stands in for the page and a policy edit keeps its old date.",
       "command": "node --test --test-name-pattern='re-pointed at a copy' templates/verification-kit/test/privacyDate.test.mjs",
       "file": "templates/verification-kit/bin/check-privacy-date.mjs",
-      "find": "if (gone !== page.file && gone !== dateFile && showAt(head, gone, cwd) !== null) {",
-      "replace": "if (false) {"
+      "find": "oldFile !== page.file && oldFile !== dateFile && showAt(head, oldFile, cwd) !== null) {",
+      "replace": "false) {"
+    },
+    {
+      "id": "privacy-date-touched-by-blob-not-path",
+      "guards": "Whether the page changed is decided by comparing blobs, so a ./ or non-ASCII path in the config still sees an edit. Without it every policy edit to such a page passes.",
+      "command": "node --test --test-name-pattern='./privacy.html' templates/verification-kit/test/privacyDate.test.mjs",
+      "file": "templates/verification-kit/bin/check-privacy-date.mjs",
+      "find": "some((f) => blobAt(mergeBase, f) !== blobAt(head, f))",
+      "replace": "some((f) => false)"
     }
   ]
 }

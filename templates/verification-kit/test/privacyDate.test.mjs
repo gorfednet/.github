@@ -312,4 +312,24 @@ describe('check-privacy-date', () => {
     assert.equal(r.status, 1)
     assert.match(r.stderr, /still exists at HEAD/)
   })
+
+  it('catches a policy edit when the config names the page as ./privacy.html', () => {
+    const cfg = { pages: [{ ...CONFIG.pages[0], file: './privacy.html' }] }
+    const dir = repo({ base: pageHtml(), change: pageHtml({ body: sentences + ' We now also keep logs.' }), config: cfg })
+    const r = run(dir)
+    assert.equal(r.status, 1, r.stderr)
+    assert.match(r.stderr, /shown date is still/)
+  })
+
+  it('lets a date move to a different date file', () => {
+    const cfg = { pages: [{ name: 'p', file: 'privacy.html', region: ['<main', '</main>'], dateFile: 'a.ts', datePattern: "REVISED = '(\\d{4}-\\d\\d-\\d\\d)'" }] }
+    const html = pageHtml().replace(/<p>Last changed.*?<\/p>/, '')
+    const dir = repo({ base: html, change: undefined, config: cfg, extraFiles: { 'a.ts': "export const REVISED = '2026-11-01'" } })
+    writeFileSync(join(dir, 'b.ts'), "export const REVISED = '2026-11-01'")
+    writeFileSync(join(dir, 'privacy.config.json'), JSON.stringify({ pages: [{ ...cfg.pages[0], dateFile: 'b.ts' }] }))
+    git(dir, ['add', '-A'])
+    git(dir, ['commit', '-qm', 'move date'], { GIT_AUTHOR_DATE: '2026-11-20T12:00:00-05:00' })
+    const r = run(dir)
+    assert.equal(r.status, 0, r.stderr)
+  })
 })
