@@ -1,15 +1,15 @@
 {
-  "generatedAt": "2026-11-21T04:31:58.017Z",
-  "renderedAt": "2026-11-21T04:31:58.017Z",
+  "generatedAt": "2026-11-21T06:36:26.159Z",
+  "renderedAt": "2026-11-21T06:36:26.159Z",
   "repos": [
     {
       "slug": "gorfednet/bindercurve.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 15,
+      "openPrCount": 17,
       "lapsedBacklogCount": 16,
       "noPrCount": 80,
-      "idlePrCount": 6,
+      "idlePrCount": 7,
       "duplicatePrCount": 0,
       "dependabotRedCount": 3,
       "kitVersion": "0.61.0",
@@ -138,7 +138,7 @@
       "openPrCount": 7,
       "lapsedBacklogCount": 3,
       "noPrCount": 20,
-      "idlePrCount": 3,
+      "idlePrCount": 4,
       "duplicatePrCount": 0,
       "dependabotRedCount": 1,
       "kitVersion": "0.65.0",
@@ -170,7 +170,7 @@
       "openPrCount": 8,
       "lapsedBacklogCount": 1,
       "noPrCount": 1,
-      "idlePrCount": 5,
+      "idlePrCount": 6,
       "duplicatePrCount": 0,
       "dependabotRedCount": 1,
       "kitVersion": "0.65.0",
@@ -230,18 +230,6 @@
           "headSha": "fb0ea64b727957b1cea3b9a0db787a139a0b9716",
           "ci": "green",
           "next": "Merge after .github 273 merges and its capacity check (`capacity/pool.mjs`) is installed. Desk labels in that order; no hold.",
-          "author": "gorfednet"
-        },
-        {
-          "number": 273,
-          "title": "Capacity check: pool liveness from heartbeats and queued runs",
-          "ageDays": 0,
-          "labels": [],
-          "draft": false,
-          "review": "clean",
-          "headSha": "a2e97364ed40f88cb74cd6dbdf1448c22ea8eba2",
-          "ci": "green",
-          "next": "Merge (ship-bot) once `review-status.mjs` reads clean on a2e9736 (round 6 review requested). It merges the same day as MoonMan 352, which drops its own heartbeat step and leaves this as the only dead-pool alarm.",
           "author": "gorfednet"
         },
         {
@@ -661,7 +649,7 @@
     {
       "slug": "gorfednet/MoonMan",
       "redacted": true,
-      "mainRed": false,
+      "mainRed": true,
       "openPrCount": 12,
       "lapsedBacklogCount": 3,
       "noPrCount": 47,
@@ -743,7 +731,7 @@
       "slug": "gorfednet/heuristics.4thcltr.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 10,
+      "openPrCount": 11,
       "lapsedBacklogCount": 34,
       "noPrCount": 7,
       "idlePrCount": 8,
@@ -832,7 +820,7 @@
         },
         {
           "number": 3,
-          "idleDays": 25
+          "idleDays": 26
         }
       ],
       "duplicatePrs": [],
@@ -865,10 +853,10 @@
       "slug": "gorfednet/ops",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 25,
+      "openPrCount": 26,
       "lapsedBacklogCount": 0,
       "noPrCount": 11,
-      "idlePrCount": 6,
+      "idlePrCount": 7,
       "duplicatePrCount": 0,
       "dependabotRedCount": 0,
       "kitVersion": null,
@@ -932,11 +920,11 @@
     }
   },
   "inventory": {
-    "measuredAt": "2026-11-21T04:31:58.017Z",
+    "measuredAt": "2026-11-21T06:36:26.159Z",
     "counts": {
       "pr": {
-        "total": 167,
-        "orphans": 82
+        "total": 170,
+        "orphans": 83
       },
       "session": null,
       "worktree": null,
@@ -1022,14 +1010,6 @@
       {
         "kind": "pr",
         "repo": "gorfednet/.github",
-        "ref": "#273",
-        "label": "Capacity check: pool liveness from heartbeats and queued runs",
-        "private": false,
-        "lapsed": false
-      },
-      {
-        "kind": "pr",
-        "repo": "gorfednet/.github",
         "ref": "#267",
         "label": "Content guidelines: the AI statement lives in the AI use overlay",
         "private": false,
@@ -1076,13 +1056,13 @@
         "lapsed": true
       }
     ],
-    "hiddenPrivate": 68,
+    "hiddenPrivate": 70,
     "privateReposNotItemised": 18,
     "planRead": true
   },
   "dotgithub": {
-    "measuredAt": "2026-11-21T04:32:55.774Z",
-    "branches": 47,
+    "measuredAt": "2026-11-21T06:37:16.448Z",
+    "branches": 46,
     "merged": 3,
     "exposedFiles": 61,
     "rulesNotChecked": [],
