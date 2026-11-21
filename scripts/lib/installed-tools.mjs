@@ -3,14 +3,15 @@
  *
  * Every tool this Mac runs must come from a detached worktree that ship-bot advances after each merge
  * (`.claude/worktrees/gates-main` in .github, `.claude/worktrees/tools-main` in ops), or be a copy of a
- * committed file. Four kinds are read:
+ * committed file. Five kinds are read:
  *
  *   - links: symlinks in ~/.local/bin and ~/.config/herdr-core that point under the clone root;
  *   - LaunchAgents: net.gorfed.*.plist program arguments under the clone root;
  *   - copies: the files `COPIES` names (hooks, the capacity app, ship-bot's install and its gate scripts), matched by
  *     content against every committed version of their source on origin/main;
  *   - mirrors: every file of ops control/claude-home/ that ~/.claude should hold (rules, agents, skills, CLAUDE.md, settings.json),
- *     and the hooks from this repository's scripts/claude-hooks/ (plan row 1.30 moved the rest of the copy to private ops).
+ *     and the hooks from this repository's scripts/claude-hooks/ (plan row 1.30 moved the rest of the copy to private ops);
+ *   - the public-push guard (`GIT_HOOKS`): its copies, its pre-push link and the global core.hooksPath. Missing is drift here.
  *
  * A link or agent is flagged when it resolves into a working checkout instead of a tool worktree, or when
  * its worktree's HEAD is behind origin/main. A copy is flagged when it differs from origin/main: the
@@ -21,7 +22,7 @@
  * one in a repository a tool comes from) means the result is not a measurement, and the row is null.
  */
 import { execFileSync } from 'node:child_process'
-import { existsSync, lstatSync, readdirSync, readlinkSync, realpathSync, statSync, readFileSync } from 'node:fs'
+import { accessSync, constants, existsSync, lstatSync, readdirSync, readlinkSync, realpathSync, statSync, readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join, relative, resolve, sep } from 'node:path'
 
@@ -50,6 +51,23 @@ export const COPIES = [
   { tool: 'fleet-janitor task', copy: '.claude/scheduled-tasks/fleet-janitor/SKILL.md', clone: 'gorfednet.github', source: 'janitor/SKILL.md' },
   { tool: '~/.claude hooks', mirrorDir: '.claude/hooks', clone: 'gorfednet.github', sourceDir: 'scripts/claude-hooks', include: ['gh-poll-guard.py', 'always-pr-remind.py', 'argv-guard.py', 'desk-event.py', 'context-cap.py'] },
 ]
+
+/**
+ * The public-push guard (plan rows 1.30g and 1.30i). install-git-hooks.sh copies these files into ~/.claude/git-hooks, links
+ * every hook name (pre-push among them) to `hook`, and points the global core.hooksPath there. Unlike the other copies, a
+ * missing install is drift: once main ships the guard, a Mac without it publishes to public repositories unchecked.
+ */
+export const GIT_HOOKS = {
+  tool: 'public-push guard',
+  dir: '.claude/git-hooks',
+  clone: 'gorfednet.github',
+  link: 'pre-push',
+  files: [
+    { name: 'public-push-guard.mjs', source: 'scripts/claude-hooks/public-push-guard.mjs' },
+    { name: 'privacy-guard.mjs', source: 'scripts/privacy-guard.mjs' },
+    { name: 'hook', source: 'scripts/claude-hooks/git-hooks/hook' },
+  ],
+}
 
 const LINK_DIRS = ['.local/bin', '.config/herdr-core', '.config/herdr-core/templates']
 
@@ -449,7 +467,78 @@ export function installedTools({ home = homedir(), root, launchAgents } = {}) {
     if (stale > 0) behind.push({ tool: c.tool, source: `~/${c.copyDir}`, behind: worst, detail: `copy of ${c.clone}/${c.sourceDir}: ${stale} files behind`, items })
     if (aheadItems.length > 0) behind.push({ tool: c.tool, source: `~/${c.copyDir}`, behind: null, ahead: true, detail: `copy of ${c.clone}/${c.sourceDir}: ${aheadItems.length} files ahead of main or unmirrored (not behind)`, items: aheadItems })
   }
+  const hooksClone = join(root, GIT_HOOKS.clone)
+  const hooks = existsSync(hooksClone) ? gitHookDrift(home, hooksClone) : null // a missing clone is already unread above
+  if (hooks) {
+    checked++
+    repos.add(hooksClone)
+    behind.push(...hooks.out)
+    unread.push(...hooks.unread)
+  }
   return { behind, checked, unread, repos: [...repos] }
+}
+
+/** The global core.hooksPath as git reads it for `home`: '' when unset, null when git can't say. */
+function globalHooksPath(home) {
+  const env = { ...process.env, HOME: home, XDG_CONFIG_HOME: join(home, '.config') }
+  if (home !== homedir()) delete env.GIT_CONFIG_GLOBAL // another home (a test's) reads that home's config, not this user's
+  try {
+    return execFileSync('git', ['config', '--global', '--get', 'core.hooksPath'], { encoding: 'utf8', env, stdio: ['ignore', 'pipe', 'pipe'] }).trim()
+  } catch (e) {
+    return e.status === 1 ? '' : null // exit 1 is "not set"
+  }
+}
+
+/**
+ * The public-push guard's install: what is missing (core.hooksPath, the pre-push link, a file), then each installed file against
+ * main like any copy. Nothing is expected before main ships the guard.
+ */
+export function gitHookDrift(home, clone) {
+  const g = GIT_HOOKS
+  if (tryGit(clone, 'rev-parse', '--verify', '--quiet', `origin/main:${g.files[0].source}`) === null) return null
+  const dir = join(home, g.dir)
+  const out = []
+  const unread = []
+  const missing = []
+  const hooksPath = globalHooksPath(home)
+  if (hooksPath === null) unread.push('git config --global core.hooksPath')
+  else if (resolve(hooksPath.replace(/^~(?=\/|$)/, home)) !== dir) missing.push('core.hooksPath')
+  let linked = false
+  try {
+    linked = lstatSync(join(dir, g.link)).isSymbolicLink() && readlinkSync(join(dir, g.link)) === 'hook'
+  } catch {
+    // no link
+  }
+  if (!linked) missing.push(g.link)
+  try {
+    accessSync(join(dir, 'hook'), constants.X_OK)
+  } catch {
+    if (existsSync(join(dir, 'hook'))) missing.push('hook (not executable)') // git skips a hook it can't run, so it guards nothing
+  }
+  let worst = 0
+  const items = []
+  const aheadItems = []
+  for (const f of g.files) {
+    const file = join(dir, f.name)
+    if (!existsSync(file)) {
+      missing.push(f.name)
+      continue
+    }
+    const blob = tryGit(clone, 'hash-object', '--', file)
+    const head = tryGit(clone, 'rev-parse', '--verify', '--quiet', `origin/main:${f.source}`)
+    if (blob && head && blob === head) continue
+    const r = head ? behindForBlob(clone, f.source, blob) : { unread: true }
+    if (r.unread) unread.push(`~/${g.dir}/${f.name}`)
+    else if (r.behind === null) aheadItems.push(f.name)
+    else {
+      worst = Math.max(worst, r.behind)
+      items.push(f.name)
+    }
+  }
+  if (missing.length > 0) out.push({ tool: g.tool, source: `~/${g.dir}`, behind: null, detail: `not installed: ${missing.join(', ')} missing (scripts/claude-hooks/install-git-hooks.sh from origin/main)`, items: missing })
+  if (items.length > 0) out.push({ tool: g.tool, source: `~/${g.dir}`, behind: worst, detail: `copy of ${g.clone}: ${items.length} files behind`, items })
+  if (aheadItems.length > 0) out.push({ tool: g.tool, source: `~/${g.dir}`, behind: null, ahead: true, detail: `copy of ${g.clone}: ${aheadItems.length} files ahead of main or unmirrored (not behind)`, items: aheadItems })
+  return { out, unread }
 }
 
 /** The renderer's text for one entry. */

@@ -20,7 +20,7 @@
  * - Outgoing commits are those reachable from the sent shas and not from anything the remote
  *   holds now (`git ls-remote`, not tracking refs, which go stale). scripts/privacy-guard.mjs
  *   reads them (messages, every commit's diff, the net diff). Ref names, and an annotated tag's
- *   own name and message, are read here.
+ *   own name, tagger line and message, are read here.
  * - It fails closed once the remote is public: any error ends in a refusal (exit 1).
  *
  * Installed by install-git-hooks.sh into ~/.claude/git-hooks, with privacy-guard.mjs beside it.
@@ -38,6 +38,7 @@ const GUARD = process.env.PUBLIC_PUSH_GUARD_SCRIPT || join(HERE, 'privacy-guard.
 const REFRESH_AFTER_MS = 24 * 60 * 60 * 1000
 const ZERO = /^0+$/
 const NAME_RULES = ['private-ip', 'session-id', 'tailnet-name', 'internal-host', 'private-repo']
+const TAGGER_RULES = ['private-ip', 'session-id', 'tailnet-name', 'internal-host']
 
 class Refuse extends Error {}
 const refuse = (message) => {
@@ -198,26 +199,50 @@ export async function checkPush(remote, url, updates) {
   }
 }
 
+const HELD = '\u0001' // stands in for a dotted private name's own dots while every other dot is read as a slash (scanText drops NUL, not this)
+
+/**
+ * Which readings find a private repository name in a ref or tag name: [] when none does.
+ *   path  path parts with any extension (`notes/<name>.bak`); a dotted name is read whole
+ *   word  words, which also split on `_`, `@`, `+`, `=` and `,` (`notes/<name>_v2`); a said name counts beside `private`
+ *   dots  words again, with every dot read as a slash except a dotted private name's own (`v2.<name>`, `<site>.migration`,
+ *         `v2.<name>_x`, `private.<name>`), since the other two take a dot join for a host
+ * A hyphen joins a longer name in every reading, as in the CI guard, so `<name>-v2` is not the name.
+ */
+export function nameReadings(mod, ctx, names, text) {
+  const dotted = String(names).split(',').filter((n) => n.includes('.')).sort((a, b) => b.length - a.length)
+  let held = text
+  for (const n of dotted) held = held.replace(new RegExp(n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'), (m) => m.replaceAll('.', HELD))
+  const split = held.replace(/\./g, '/').replaceAll(HELD, '.')
+  const out = []
+  if (mod.scanText(text, ctx, NAME_RULES, 'path').length > 0) out.push('path')
+  if (mod.scanText(text, ctx, NAME_RULES, 'word').length > 0) out.push('word')
+  if (mod.scanText(split, ctx, NAME_RULES, 'word').length > 0) out.push('dots')
+  return out
+}
+
 async function scan({ sets, mod, ctx, names, where, updates, allowText, scratch }) {
   const allowFile = join(scratch, 'allow.txt')
   writeFileSync(allowFile, allowText)
   const fail = (what) => refuse(`${what} would publish private detail to ${where}, which is public (or not known to be private).\nNothing was sent.`)
-  // A name is read both ways: as path parts (`notes/<name>.md`) and as words, which also split on `_` and other joins (`notes/<name>_v2`).
-  // A hyphen joins a longer name in both readings, as in the CI guard, so `<name>-v2` is not the name.
-  const nameHolds = (text) => ['path', 'word'].some((mode) => mod.scanText(text, ctx, NAME_RULES, mode).length > 0)
+  const nameHolds = (text) => nameReadings(mod, ctx, names, text).length > 0
   for (const u of updates) {
     // Branch and tag names are public too, and so is an annotated tag's message.
     if (nameHolds(u.rref)) fail('a branch or tag name in this push')
     // Read the objects being sent, not the local ref: a push of `<sha>:refs/tags/v1` has no local ref name. A tag can point at a tag.
     let obj = u.sha
     let depth = 0
-    for (; git(['cat-file', '-t', obj]).stdout.trim() === 'tag'; depth += 1) {
+    // A failed type read is "can't tell", never "not a tag": it would end the chain unread.
+    for (; must(['cat-file', '-t', obj], 'read the type of a sent object').trim() === 'tag'; depth += 1) {
       if (depth === 20) refuse('a chain of more than 20 tags can\'t be read to its end.')
       const [header, ...message] = must(['cat-file', 'tag', obj], 'read a tag').split('\n\n')
       const shown = u.rref.replace(/^refs\/tags\//, '').slice(0, 40)
       // The tag object carries its own name, which a push under another ref name (`<tag>:refs/tags/v1`) still publishes.
       const own = /^tag (.*)$/m.exec(header)?.[1] ?? refuse('a tag object has no name line, so it can\'t be read.')
       if (nameHolds(own)) fail(`the name inside tag ${shown}`)
+      // The tagger line is published too. A default identity is built from the machine's host name. Private repository names are not
+      // read here: the owner's own address is at a domain that is one.
+      if (mod.scanText(/^tagger (.*)$/m.exec(header)?.[1] ?? '', ctx, TAGGER_RULES).length > 0) fail(`the tagger line of tag ${shown}`)
       if (mod.scanText(message.join('\n\n'), ctx, [...NAME_RULES, 'owner-quote'], 'word').length > 0) fail(`the message of tag ${shown}`)
       obj = /^object (\S+)/.exec(header)?.[1] ?? refuse('a tag object has no target, so it can\'t be read.')
     }
