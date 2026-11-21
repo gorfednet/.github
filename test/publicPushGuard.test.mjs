@@ -526,6 +526,15 @@ describe('pre-push: a `site` line makes the name count as said', () => {
     assert.equal(x.status, 0, x.stderr)
     assert.ok(refused(push(repo(world2(), { outgoing: body }), '-u', 'origin', 'feature')), 'without the site line the name is watched')
   })
+  it('lets the first push carry the site line and the README link together, and refuses the link in a push without the line', () => {
+    const body = { '.github/privacy-guard-allow.txt': `site ${SITE}\n`, 'README.md': `Music: [listen](https://${SITE}/)\n` }
+    const x = push(repo(world2(), { outgoing: body }), '-u', 'origin', 'feature')
+    assert.equal(x.status, 0, x.stderr)
+    for (const bad of [`see gorfednet/${SITE}\n`, `Private project: https://${SITE}/\n`, `The repo ${SITE} holds it\n`]) {
+      const r = repo(world2(), { outgoing: { ...body, 'README.md': bad } })
+      assert.ok(refused(push(r, '-u', 'origin', 'feature')), bad)
+    }
+  })
   it('still refuses the repository form and a line that says private', () => {
     for (const body of [`see gorfednet/${SITE}\n`, `Private project: https://${SITE}/\n`]) {
       const r = repo(world2(), { baseFiles: base, outgoing: { 'docs/n.md': body } })

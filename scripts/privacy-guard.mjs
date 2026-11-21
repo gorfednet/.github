@@ -429,6 +429,15 @@ export function scanText(raw, { privateRepo, bareNames, saidNames, allow }, rule
       }
     }
   }
+  // A listed site's domain next to the word repo or repository is the repository, not the site.
+  if (on('private-repo') && bare === 'word' && allow.sites.length > 0) {
+    const REPO = '(?:repos?|repositor(?:y|ies))'
+    for (const site of allow.sites) {
+      const name = site.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      const near = new RegExp(`\\b${REPO}\\b[\\s:'"\`(\\[<*_-]{0,4}${name}(?![\\w-])|(?<![\\w-])${name}[\\s:'"\`)\\]>*_-]{0,4}\\b${REPO}\\b`, 'gi')
+      for (const m of text.matchAll(near)) add('private-repo', [site])
+    }
+  }
   if (on('owner-quote')) add('owner-quote', all(OWNER_QUOTE, text))
   if (on('email')) {
     add(
@@ -814,6 +823,15 @@ export function run(argv, env = process.env, out = console) {
   } catch (error) {
     out.error(`privacy-guard: ${error.message}`)
     return 2
+  }
+
+  // A repository's first allowlist line can't be on the base yet. A `site` line this range adds to
+  // the allowlist (the whole line, nothing else on it, a domain with a web TLD) counts for the range
+  // too, so the same push can name the site. It reads from the net diff, so a line added and then
+  // removed counts for nothing. Bare names, `gorfednet/<name>` and a line that says private stay read.
+  for (const { path, text } of net?.added ?? []) {
+    const site = path === ALLOWLIST_PATH ? isSiteLine(text) : null
+    if (site && !allow.sites.includes(site)) allow.sites.push(site)
   }
 
   const open = names.filter((n) => !allow.repos.includes(n))

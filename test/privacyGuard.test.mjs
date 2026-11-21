@@ -1635,15 +1635,47 @@ describe('privacy guard: a `site <domain>` line makes the name count as said', (
       guard({ before: { 'README.md': 'hello\n' }, after: { '.github/privacy-guard-allow.txt': line, ...files }, allow: false, env: { PRIVATE_REPOS: NAME } })
     const r = add(`site ${NAME}\n`)
     assert.equal(r.status, 0, r.out)
-    // The line clears nothing else: the same push naming the repository, or the README link, is read.
-    assert.equal(add(`site ${NAME}\n`, { 'README.md': `https://${NAME}/\n` }).status, 1, 'the README link needs the line on main first')
-    assert.equal(add(`site ${NAME}\n`, { 'a.md': `see ${ORG}${NAME}\n` }).status, 1)
-    assert.equal(add(`site ${NAME}\n`, { 'b.md': `${NAME}.git\n` }).status, 1)
+    // The same push can link the site: the line counts for the range, as if main held it.
+    assert.equal(add(`site ${NAME}\n`, { 'README.md': `Music: [listen](https://${NAME}/)\n` }).status, 0, 'the README link rides with the first line')
+    // It clears only what a said name is cleared for. The repository forms and the private words are still read.
+    for (const body of [`see ${ORG}${NAME}\n`, `https://github.com/${ORG}${NAME}\n`, `Private project: https://${NAME}/\n`, `The repo ${NAME} holds the code\n`, `| ${NAME} | private |\n`]) {
+      assert.equal(add(`site ${NAME}\n`, { 'README.md': body }).status, 1, body)
+    }
+    // A name no site line covers is read as before, and the line clears its own domain only.
+    assert.equal(add(`site ${NAME}\n`, { 'README.md': 'https://other-secret.com/\n' }).status, 0, 'unlisted names are not in PRIVATE_REPOS here')
+    assert.equal(guard({ before: { 'README.md': 'hello\n' }, after: { '.github/privacy-guard-allow.txt': `site ${NAME}\n`, 'README.md': 'https://other-secret.com/\n' }, allow: false, env: { PRIVATE_REPOS: `${NAME},other-secret.com` } }).status, 1, 'a second private name stays watched')
+    // A site line added and removed again in the same range clears nothing.
+    {
+      const dir = mkdtempSync(join(tmpdir(), 'privacy-guard-gone-'))
+      try {
+        sh(dir, 'init', '-q', '-b', 'main')
+        writeFileSync(join(dir, 'README.md'), 'hi\n')
+        sh(dir, 'add', '-A')
+        sh(dir, 'commit', '-q', '-m', 'base')
+        sh(dir, 'checkout', '-q', '-b', 'pr')
+        mkdirSync(join(dir, '.github'), { recursive: true })
+        writeFileSync(join(dir, '.github', 'privacy-guard-allow.txt'), `site ${NAME}\n`)
+        sh(dir, 'add', '-A')
+        sh(dir, 'commit', '-q', '-m', 'add')
+        rmSync(join(dir, '.github', 'privacy-guard-allow.txt'))
+        writeFileSync(join(dir, 'README.md'), `https://${NAME}/\n`)
+        sh(dir, 'add', '-A')
+        sh(dir, 'commit', '-q', '-m', 'drop')
+        const empty = join(dir, 'empty-allow.txt')
+        writeFileSync(empty, '')
+        const r = spawnSync('node', [GUARD, '--base', 'main', '--head', 'pr', '--dir', dir, '--allow', empty], { encoding: 'utf8', env: { PATH: process.env.PATH, HOME: process.env.HOME, PRIVATE_REPOS: NAME } })
+        assert.equal(r.status, 1, `${r.stdout}${r.stderr}`)
+      } finally {
+        rmSync(dir, { recursive: true, force: true })
+      }
+    }
     // Not a way to publish a name: a comment on the line, a repo line, a name with no dot, another file.
     assert.equal(add(`site ${NAME} # the private repo\n`).status, 1)
     assert.equal(add(`repo ${NAME}\n`).status, 1)
     assert.equal(guard({ allow: false, after: { '.github/privacy-guard-allow.txt': 'site secret-repo\n' }, env: { PRIVATE_REPOS: 'secret-repo' } }).status, 1)
-    assert.equal(add(`site ${NAME}\n`, { 'docs/privacy-guard-allow.txt': `site ${NAME}\n` }).status, 1)
+    // The same line in another file is not an allowlist line: with the real one present it says only the said name.
+    assert.equal(add(`site ${NAME}\n`, { 'docs/privacy-guard-allow.txt': `site ${NAME}\n` }).status, 0)
+    assert.equal(guard({ before: { 'README.md': 'hello\n' }, after: { 'docs/privacy-guard-allow.txt': `site ${NAME}\n` }, allow: false, env: { PRIVATE_REPOS: NAME } }).status, 1, 'a site line in any other file clears nothing')
   })
 
   it('parses site lines and refuses a value that is not a domain', () => {
