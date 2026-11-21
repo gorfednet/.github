@@ -251,7 +251,7 @@ describe('one finished review per head', () => {
         writeFileSync(join(dir, 'comments.json'), JSON.stringify(pages.flat().map((c, i) => ({ user: { login: c.login }, body: c.body, html_url: `https://x/c${i}` }))))
         writeFileSync(
           join(dir, 'gh'),
-          '#!/bin/sh\nif [ "$1" = pr ]; then printf \'%s\\n\' "$*" >> "$(dirname "$0")/posted"; exit 0; fi\ncase "$*" in *--paginate*) ;; *) echo "stub gh needs --paginate" >&2; exit 9 ;; esac\nwhile [ $# -gt 0 ]; do [ "$1" = --jq ] && filter="$2"; shift; done\n[ -n "$filter" ] || exit 8\njq -r "$filter" "$(dirname "$0")/comments.json"\n',
+          '#!/bin/sh\nif [ "$1" = pr ]; then case "$*" in *"--repo o/r"*) ;; *) echo "fatal: not a git repository (gh pr needs --repo before checkout)" >&2; exit 128 ;; esac; printf \'%s\\n\' "$*" >> "$(dirname "$0")/posted"; exit 0; fi\ncase "$*" in *--paginate*) ;; *) echo "stub gh needs --paginate" >&2; exit 9 ;; esac\nwhile [ $# -gt 0 ]; do [ "$1" = --jq ] && filter="$2"; shift; done\n[ -n "$filter" ] || exit 8\njq -r "$filter" "$(dirname "$0")/comments.json"\n',
           { mode: 0o755 },
         )
         writeFileSync(join(dir, 'step.sh'), script)
@@ -289,7 +289,7 @@ describe('one finished review per head', () => {
     it('says why on a skipped comment request: names the verdict and force, carries no marker and no bare trigger line', () => {
       const { skip: result, posted } = run([[bot('Intro.'), bot(line(HEAD))]])
       assert.equal(result, 'true')
-      assert.match(posted, /^pr comment 1 --body /)
+      assert.match(posted, /^pr comment 1 --repo o\/r --body /)
       assert.match(posted, /https:\/\/x\/c1/)
       assert.match(posted, /claude review force/)
       assert.doesNotMatch(posted, /claude-review head=/)
@@ -306,6 +306,18 @@ describe('one finished review per head', () => {
       assert.equal(skip([[bot('x'.repeat(200000)), bot(line(HEAD))]]), 'true')
       assert.equal(skip([[bot(line(HEAD)), bot('y'.repeat(200000))]]), 'true')
     })
+  })
+
+  it('every gh call before the checkout names its repository, because no git repository exists there yet', () => {
+    // 4thcltr.com run 44933695692 (21 Nov 2026): a duplicate request ran `gh pr comment` with no
+    // --repo, before actions/checkout, and the job failed with "fatal: not a git repository".
+    const early = workflow.slice(workflow.indexOf('  trigger:\n'), workflow.indexOf('- uses: actions/checkout@'))
+    const calls = [...early.matchAll(/\bgh (?:pr|api|issue)\b[^\n]*/g)].map((m) => m[0])
+    assert.ok(calls.length >= 4, `found ${calls.length} gh calls`)
+    for (const call of calls) {
+      // A paginated read puts its path on the same line; `gh pr`/`gh issue` need --repo.
+      assert.match(call, /--repo "\$GITHUB_REPOSITORY"|"repos\/\$\{(GITHUB_REPOSITORY|BASE_REPO)\}\//, call)
+    }
   })
 
   it('skips every step after it, so a duplicate runs no checkout, no credential read and no review', () => {
