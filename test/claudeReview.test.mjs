@@ -223,6 +223,33 @@ describe('the review job never runs code from the checkout under review', () => 
   })
 })
 
+describe('one finished review per head', () => {
+  it('checks for a verdict on this exact head, from the review bot only, after the head resolves', () => {
+    const body = step(workflow, 'Skip a head that already has a verdict')
+    assert.ok(workflow.indexOf('- name: Resolve the pull request head') < workflow.indexOf('- name: Skip a head that already has a verdict'))
+    assert.match(body, /github-actions\[bot\]/)
+    assert.match(body, /claude-review\[\[:space:\]\]\+head=\$\{HEAD\}/)
+    assert.match(body, /skip=true/)
+    assert.match(body, /skip=false/)
+  })
+
+  it('skips every step after it, so a duplicate runs no checkout, no credential read and no review', () => {
+    const after = workflow.slice(workflow.indexOf('- name: Skip a head that already has a verdict'))
+    const steps = after.split('\n      - ').slice(1)
+    assert.ok(steps.length >= 5, `found ${steps.length} later steps`)
+    for (const text of steps) assert.match(text, /\n\s+if: steps\.dup\.outputs\.skip != 'true'\n/, text.split('\n')[0])
+  })
+
+  it('still queues rather than cancels, so a newer head’s review is never dropped', () => {
+    assert.match(workflow, /concurrency:\n\s+group: claude-review-[^\n]+\n\s+cancel-in-progress: false/)
+  })
+
+  it('the head compared is the one resolved when the job starts, not the one at trigger time', () => {
+    assert.match(step(workflow, 'Skip a head that already has a verdict'), /HEAD: \$\{\{ steps\.pr\.outputs\.head \}\}/)
+    assert.match(step(workflow, 'Resolve the pull request head'), /pulls\/\$\{NUMBER\}/)
+  })
+})
+
 describe('the verdict and the tools', () => {
   it('allows the read-only git commands the reviewer needs and no write command', () => {
     const allowed = /--allowedTools "([^"]+)"/.exec(step(workflow, 'Review'))?.[1]?.split(',') ?? []
