@@ -103,6 +103,9 @@ describe('config validation', () => {
     assert.match(problemsFor(base([merge({ ...good, name: '../x-main' })])), /toolWorktree\.name/)
     assert.match(problemsFor(base([merge({ ...good, name: 'gates-main' })])), /"gates-main" is a built-in tool worktree's name/)
     assert.match(problemsFor(base([merge({ ...good, name: 'tools-main' })])), /"tools-main" is a built-in/)
+    const ops = { ...merge(good), slug: 'gorfednet/ops', dir: 'ops' }
+    assert.match(problemsFor(base([ops])), /gorfednet\/ops already has a built-in tool worktree/)
+    assert.match(problemsFor(base([{ ...merge(good), slug: 'gorfednet/.github', dir: 'gorfednet.github' }])), /already has a built-in tool worktree/)
     const twoRows = [merge(good), { ...merge(good), slug: 'gorfednet/n', dir: 'n' }]
     assert.match(problemsFor(base(twoRows)), /toolWorktree\.name: "m-main" is used by two rows/)
     assert.match(problemsFor(base([merge({ ...good, tools: ' ' })])), /toolWorktree\.tools: required/)

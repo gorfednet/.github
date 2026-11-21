@@ -175,11 +175,13 @@ function validateSteps(steps, where, problems, { allowOnlyIfChanged, allowOnlyAf
  * (install dependencies, rewrite a wrapper, smoke it). It lives in the owner-applied config, never in public code, so the
  * public repository names no private row.
  */
-function validateToolWorktree(tw, label, problems, seen) {
+function validateToolWorktree(tw, label, problems, seen, repo) {
   const at = `${label}.toolWorktree`
   if (!isObject(tw)) return problems.push(`${at}: must be an object { "name": "x-main", "tools": "what runs from it", "refresh": [command, ...] }`)
   checkUnknownKeys(tw, TOOL_WORKTREE_KEYS, at, problems)
   if (typeof tw.name !== 'string' || !/^[a-z0-9][a-z0-9-]{0,40}-main$/.test(tw.name)) problems.push(`${at}.name: required, lower-case letters, digits and "-", ending in "-main" (the janitor keeps those worktrees)`)
+  // toolWorktreeFor lets a row's own entry replace the built-in one, so a row that already has a built-in worktree (gates, ops) would stop advancing it.
+  if (TOOL_WORKTREES[repo.slug]) problems.push(`${at}: ${repo.slug} already has a built-in tool worktree, and a toolWorktree here would replace it`)
   // advanceTools keys its refusal memo (state.toolsRefused) and ownInstallFreshness reads it by name: a shared name would share one memo.
   if (typeof tw.name === 'string') {
     if (Object.values(TOOL_WORKTREES).some((t) => t.name === tw.name)) problems.push(`${at}.name: "${tw.name}" is a built-in tool worktree's name`)
@@ -230,7 +232,7 @@ function validateRepo(repo, i, problems, seen) {
     problems.push(`${label}.coveredChecks: must be an array of check names or name prefixes`)
   }
 
-  if (repo.toolWorktree !== undefined) validateToolWorktree(repo.toolWorktree, label, problems, seen)
+  if (repo.toolWorktree !== undefined) validateToolWorktree(repo.toolWorktree, label, problems, seen, repo)
 
   if (repo.mode === 'off') return
 
