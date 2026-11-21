@@ -43,11 +43,13 @@ export const greenRuns = (names = ['check / check'], startedAt = '2026-10-09T12:
   names.map((name) => ({ name, status: 'completed', conclusion: 'success', started_at: startedAt }))
 
 export class FakeGitHub {
-  constructor({ pulls = [makePr()], pullsBySlug = undefined, runs = greenRuns(), runsBySha = undefined, statuses = [], reviews = [], comments = [], events = [], threads = [], files = [], mergedPulls = [], mergedPullsBySlug = undefined } = {}) {
+  constructor({ pulls = [makePr()], pullsBySlug = undefined, runs = greenRuns(), runsBySha = undefined, statuses = [], reviews = [], comments = [], events = [], threads = [], files = [], mergedPulls = [], mergedPullsBySlug = undefined, workflowRuns = [] } = {}) {
     this.pulls = pulls
     /** Optional: a separate list of pull requests per repository. */
     this.pullsBySlug = pullsBySlug
     this.runs = runs
+    /** Workflow runs on the head (id, workflow_id, event, head_sha, status, conclusion), for superseded cancels. */
+    this.workflowRuns = workflowRuns
     /** Optional: check runs per head sha (falls back to `runs`). --validate reads several heads. */
     this.runsBySha = runsBySha
     /** Merged pull requests, newest first, for --validate. */
@@ -68,6 +70,8 @@ export class FakeGitHub {
     this.branchSha = PARENT
     /** GitHub's compare status of main...head for a release; 'ahead' unless a test sets it. */
     this.compare = 'ahead'
+    /** Compare statuses by `base...head`, for --record-deployed; a pair not listed falls back to `compare` against main. */
+    this.compares = {}
     /** Called on each getPull; lets a test move the head between reads. */
     this.onGetPull = null
   }
@@ -107,6 +111,11 @@ export class FakeGitHub {
     return structuredClone(this.runsBySha?.[sha] ?? this.runs)
   }
 
+  async listWorkflowRuns(slug, sha) {
+    this.log('listWorkflowRuns', slug, sha)
+    return structuredClone(this.workflowRunsBySha?.[sha] ?? this.workflowRuns ?? [])
+  }
+
   async getBranchSha(slug, branch) {
     this.log('getBranchSha', slug, branch)
     if (branch !== 'main') throw new Error(`the fake has only main, not ${branch}`)
@@ -116,6 +125,9 @@ export class FakeGitHub {
 
   async compareStatus(slug, base, head) {
     this.log('compareStatus', slug, base, head)
+    const pair = this.compares[`${base}...${head}`]
+    if (pair instanceof Error) throw pair
+    if (pair !== undefined) return pair
     if (base !== 'main') throw new Error(`the fake compares only against main, not ${base}`)
     return this.compare
   }
@@ -184,6 +196,18 @@ export class FakeGitHub {
     const pr = this.pullsFor(slug).find((p) => p.number === n)
     pr.labels = pr.labels.filter((l) => l.name !== label)
     return pr.labels
+  }
+
+  /** Annotations per check run id (`this.annotations`); none by default, as on a plain cancel. */
+  async listCheckRunAnnotations(slug, checkRunId) {
+    this.log('listCheckRunAnnotations', slug, checkRunId)
+    return structuredClone(this.annotations?.[checkRunId] ?? [])
+  }
+
+  async rerunFailedJobs(slug, runId) {
+    this.log('rerunFailedJobs', slug, runId)
+    this.writes.push({ name: 'rerunFailedJobs', slug, runId })
+    return null
   }
 
   async markReady(nodeId) {

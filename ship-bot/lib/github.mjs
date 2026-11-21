@@ -3,7 +3,7 @@
  *
  * Tests never construct this; they inject a fake with the same methods. The
  * method list below is the whole surface, and only `createComment`,
- * `mergePull`, `createRelease`, `markReady` and `addLabels` write. `guardWrites` wraps any client so a dry run cannot reach
+ * `mergePull`, `createRelease`, `markReady`, `addLabels`, `removeLabel` and `rerunFailedJobs` write. `guardWrites` wraps any client so a dry run cannot reach
  * them even if the bot's own logic were wrong.
  *
  * Quota (plan row 1.3, 13 November 2026: the owner's 5,000 an hour ran out at
@@ -21,7 +21,7 @@
 const API = 'https://api.github.com'
 export const MIN_REMAINING = 200
 
-export const WRITE_METHODS = new Set(['createComment', 'mergePull', 'createRelease', 'markReady', 'addLabels', 'removeLabel'])
+export const WRITE_METHODS = new Set(['createComment', 'mergePull', 'createRelease', 'markReady', 'addLabels', 'removeLabel', 'rerunFailedJobs'])
 
 export class GitHubError extends Error {
   constructor(method, path, status, message) {
@@ -164,6 +164,7 @@ export function createGitHubClient({ token, fetchImpl = globalThis.fetch, api = 
     listPullFiles: (slug, n) => paginate(`/repos/${slug}/pulls/${n}/files`, (d) => d, 3000),
     listCheckRuns: (slug, sha) =>
       paginate(`/repos/${slug}/commits/${sha}/check-runs?filter=latest`, (d) => d?.check_runs),
+    listWorkflowRuns: (slug, sha) => paginate(`/repos/${slug}/actions/runs?head_sha=${sha}`, (d) => d?.workflow_runs),
     listStatuses: (slug, sha) => paginate(`/repos/${slug}/commits/${sha}/status`, (d) => d?.statuses),
     listReviews: (slug, n) => paginate(`/repos/${slug}/pulls/${n}/reviews`),
     /** Every tag name, for a release's "higher than the newest tag" check. */
@@ -212,6 +213,18 @@ export function createGitHubClient({ token, fetchImpl = globalThis.fetch, api = 
         if (d?.markPullRequestReadyForReview?.pullRequest?.isDraft !== false) throw new GitHubError('POST', '/graphql', 'not-ready', 'GitHub did not confirm the pull request left draft')
         return true
       }),
+    /** The annotations on one check run, first 100. A job that ran past its timeout says so only here. One GET. */
+    listCheckRunAnnotations: async (slug, checkRunId) => {
+      if (!Number.isSafeInteger(checkRunId) || checkRunId <= 0) throw new GitHubError('GET', `/repos/${slug}/check-runs`, 'bad-check-run-id', 'a check run id is a positive integer')
+      const data = await request('GET', `/repos/${slug}/check-runs/${checkRunId}/annotations?per_page=100`)
+      if (!Array.isArray(data)) throw new GitHubError('GET', `/repos/${slug}/check-runs/${checkRunId}/annotations`, 'bad-shape', 'expected an array')
+      return data
+    },
+    /** What `gh run rerun <id> --failed` does: a new attempt of the run's failed and cancelled jobs. Needs the App's Actions permission to be write. */
+    rerunFailedJobs: async (slug, runId) => {
+      if (!Number.isSafeInteger(runId) || runId <= 0) throw new GitHubError('POST', `/repos/${slug}/actions/runs`, 'bad-run-id', 'a workflow run id is a positive integer')
+      return request('POST', `/repos/${slug}/actions/runs/${runId}/rerun-failed-jobs`)
+    },
     createRelease: (slug, { tag, name, body }) => request('POST', `/repos/${slug}/releases`, { tag_name: tag, name, body }),
     mergePull: (slug, n, { sha }) =>
       request('PUT', `/repos/${slug}/pulls/${n}/merge`, { merge_method: 'merge', sha }),

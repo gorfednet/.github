@@ -157,7 +157,230 @@ describe('command line', () => {
     assert.equal(await main(['--unblock', 'site', '--deployed', 'eeeeeee'], h.deps), 0)
     assert.equal(read().blocked, undefined)
     assert.equal(read().lastDeployedSha, sha)
-    assert.ok(read().lastReleasedAt, 'a release deployed by hand starts the weekly clock')
+    assert.ok(read().lastReleasedAt, 'a release deployed by hand records the release time')
+  })
+
+  it('--unblock --deployed records the commit on a failed block too, and refuses one the block cannot vouch for', async () => {
+    const h = harness()
+    const statePath = join(h.config.stateDir, 'state.json')
+    const failed = 'e'.repeat(40)
+    const stale = 'd'.repeat(40)
+    const read = () => JSON.parse(readFileSync(statePath, 'utf8')).repos['gorfednet/site']
+    const seed = (blocked) => {
+      const store = new StateStore(statePath)
+      Object.assign(store.repo('gorfednet/site'), { blocked, lastDeployedSha: stale })
+      store.save()
+    }
+    // A failed block that kept its merge commit: a short prefix names it.
+    seed({ reason: 'deploy failed', at: 'x', failedSha: failed })
+    assert.equal(await main(['--unblock', 'site', '--deployed', 'ffffffff'], h.deps), 2)
+    assert.ok(read().blocked, 'a sha that is not the failed deploy is refused')
+    assert.equal(read().lastDeployedSha, stale)
+    assert.equal(await main(['--unblock', 'site', '--deployed', 'not-a-sha'], h.deps), 2)
+    assert.equal(await main(['--unblock', 'site', '--deployed', 'eeeeeee'], h.deps), 0)
+    assert.equal(read().blocked, undefined)
+    assert.equal(read().lastDeployedSha, failed)
+    // An older failed block with no recorded commit: only a full sha is accepted.
+    seed({ reason: 'deploy failed', at: 'x' })
+    assert.equal(await main(['--unblock', 'site', '--deployed', 'fffffff'], h.deps), 2)
+    assert.ok(read().blocked, 'a short sha cannot be checked, so it is refused')
+    assert.equal(await main(['--unblock', 'site', '--deployed', 'f'.repeat(40)], h.deps), 0)
+    assert.equal(read().lastDeployedSha, 'f'.repeat(40))
+    // Without --deployed a failed block clears and leaves lastDeployedSha alone.
+    seed({ reason: 'deploy failed', at: 'x', failedSha: failed })
+    assert.equal(await main(['--unblock', 'site'], h.deps), 0)
+    assert.equal(read().lastDeployedSha, stale)
+  })
+
+  describe('--record-deployed (plan row 1.34)', () => {
+    const NEW = 'e'.repeat(40)
+    const OLD = 'd'.repeat(40)
+    const SLUG = 'gorfednet/site'
+    const LIVE = ['--live-id', '20261121T150000Z-eeeeeee']
+    /** A harness whose repo has `repoState` on disk, and GitHub answering `compares`; main...NEW is 'behind' (on main) unless overridden. */
+    const recordHarness = ({ repoState, compares = {}, lock, configOverrides } = {}) => {
+      const h = harness({ lock, configOverrides })
+      h.github.compares = { [`main...${NEW}`]: 'behind', ...compares }
+      const statePath = join(h.config.stateDir, 'state.json')
+      if (repoState) {
+        const store = new StateStore(statePath)
+        Object.assign(store.repo(SLUG), repoState)
+        store.save()
+      }
+      const read = () => (existsSync(statePath) ? JSON.parse(readFileSync(statePath, 'utf8')).repos[SLUG] : undefined)
+      return { ...h, read, text: () => h.out.join('\n') }
+    }
+
+    it('records a commit on main for a repo with no deploy on record, and writes nothing to GitHub', async () => {
+      const h = recordHarness()
+      assert.equal(await main(['--record-deployed', 'site', NEW, ...LIVE], h.deps), 0, h.text())
+      assert.equal(h.read().lastDeployedSha, NEW)
+      assert.equal(h.read().lastReleasedAt, undefined, 'a hand record is not a release time')
+      assert.match(h.text(), /recorded eeeeeee as deployed \(no deploy was on record\)/)
+      assert.equal(h.github.writes.length, 0)
+      assert.deepEqual(h.github.calls.filter((c) => c.name === 'compareStatus').map((c) => c.args), [[SLUG, 'main', NEW]])
+      assert.equal(existsSync(join(h.config.stateDir, 'run.lock')), false, 'the lock is released')
+    })
+
+    it('moves a recorded deploy forward, and accepts the same commit again without a GitHub call', async () => {
+      const h = recordHarness({ repoState: { lastDeployedSha: OLD }, compares: { [`${OLD}...${NEW}`]: 'ahead' } })
+      assert.equal(await main(['--record-deployed', 'site', NEW.toUpperCase(), ...LIVE], h.deps), 0, h.text())
+      assert.equal(h.read().lastDeployedSha, NEW)
+      assert.match(h.text(), /was ddddddd/)
+      const calls = h.github.calls.length
+      assert.equal(await main(['--record-deployed', 'site', NEW, ...LIVE], h.deps), 0)
+      assert.match(h.text(), /already the recorded deploy/)
+      assert.equal(h.github.calls.length, calls)
+    })
+
+    it('refuses a sha behind the recorded deploy, or one that does not follow it', async () => {
+      for (const status of ['behind', 'diverged', null]) {
+        const h = recordHarness({ repoState: { lastDeployedSha: OLD }, compares: { [`${OLD}...${NEW}`]: status } })
+        assert.equal(await main(['--record-deployed', 'site', NEW, ...LIVE], h.deps), 2, `${status}: ${h.text()}`)
+        assert.equal(h.read().lastDeployedSha, OLD, `${status}: the record stays`)
+        assert.match(h.text(), status === 'behind' ? /eeeeeee is behind the recorded deploy ddddddd\. Nothing was changed/ : /does not follow the recorded deploy ddddddd/)
+      }
+    })
+
+    it('refuses a sha that is not on main, and one GitHub cannot compare', async () => {
+      for (const status of ['ahead', 'diverged', null]) {
+        const h = recordHarness({ compares: { [`main...${NEW}`]: status } })
+        assert.equal(await main(['--record-deployed', 'site', NEW, ...LIVE], h.deps), 2, `${status}: ${h.text()}`)
+        assert.match(h.text(), /eeeeeee is not on main/)
+        assert.equal(h.read()?.lastDeployedSha, undefined, `${status}: nothing recorded`)
+      }
+      const gone = recordHarness({ compares: { [`main...${NEW}`]: new Error(`GET /compare -> 404 ${TOKEN}`) } })
+      assert.equal(await main(['--record-deployed', 'site', NEW, ...LIVE], gone.deps), 1)
+      assert.match(gone.text(), /GitHub could not compare eeeeeee/)
+      assert.ok(!gone.text().includes(TOKEN))
+      assert.equal(gone.read()?.lastDeployedSha, undefined)
+    })
+
+    it('refuses a blocked repo, names --unblock, and makes no GitHub call', async () => {
+      const blocked = { reason: 'deploy failed', at: 'x', failedSha: NEW }
+      const h = recordHarness({ repoState: { blocked, lastDeployedSha: OLD } })
+      assert.equal(await main(['--record-deployed', 'site', NEW, ...LIVE], h.deps), 2)
+      assert.match(h.text(), /blocked \(deploy failed\).*ship-bot --unblock site --deployed <sha>.*Nothing was changed/)
+      assert.deepEqual(h.read(), { blocked, lastDeployedSha: OLD })
+      assert.equal(h.constructed(), 0)
+    })
+
+    it('refuses an unknown repo and a short or malformed sha before anything runs', async () => {
+      const h = recordHarness()
+      assert.equal(await main(['--record-deployed', 'nope', NEW, ...LIVE], h.deps), 2)
+      assert.equal(await main(['--record-deployed', 'site', 'eeeeeee', ...LIVE], h.deps), 2)
+      assert.equal(await main(['--record-deployed', 'site', 'not-a-sha', ...LIVE], h.deps), 2)
+      assert.match(h.text(), /not a full 40-character commit sha/)
+      assert.equal(h.read(), undefined)
+      assert.equal(h.constructed(), 0)
+      assert.equal(h.runner.calls.length, 0)
+    })
+
+    it('--live-id is required and must end in the sha: without it, or on a mismatch, nothing is recorded', async () => {
+      const h = recordHarness()
+      assert.equal(await main(['--record-deployed', 'site', NEW], h.deps), 2)
+      assert.match(h.text(), /--live-id is required\. `site-deploy\.sh list` marks the current release; pass its id, which must end in eeeeeee\. Nothing was changed/)
+      assert.equal(h.read(), undefined)
+      for (const id of ['20261121T150000Z-ddddddd', '20261121T150000Z', 'eeeeeee-20261121T150000Z', '20261121T150000Z-eee', 'eeeeeee', NEW, '-eeeeeee']) {
+        assert.equal(await main(['--record-deployed', 'site', NEW, '--live-id', id], h.deps), 2, id)
+      }
+      assert.match(h.text(), /--live-id 20261121T150000Z-ddddddd does not end in eeeeeee/)
+      assert.equal(h.read(), undefined)
+      assert.equal(h.constructed(), 0)
+      h.out.length = 0
+      assert.equal(await main(['--record-deployed', 'site', NEW, '--live-id', '20261121T150000Z-eeeeeee'], h.deps), 0, h.text())
+      assert.equal(h.read().lastDeployedSha, NEW)
+    })
+
+    it('records the tip of main, which GitHub compares as identical', async () => {
+      const h = recordHarness({ repoState: { lastDeployedSha: OLD }, compares: { [`main...${NEW}`]: 'identical', [`${OLD}...${NEW}`]: 'ahead' } })
+      assert.equal(await main(['--record-deployed', 'site', NEW, ...LIVE], h.deps), 0, h.text())
+      assert.equal(h.read().lastDeployedSha, NEW)
+    })
+
+    it('refuses a repo with a deploy on record as in progress', async () => {
+      const deployInProgress = { pr: 7, sha: NEW, stage: 'deploy', startedAt: 'x' }
+      const h = recordHarness({ repoState: { deployInProgress } })
+      assert.equal(await main(['--record-deployed', 'site', NEW, ...LIVE], h.deps), 2)
+      assert.match(h.text(), /a deploy of eeeeeee is on record as in progress/)
+      assert.deepEqual(h.read(), { deployInProgress })
+      assert.equal(h.constructed(), 0)
+    })
+
+    it('refuses a repo whose row has pausedIfChanged paths or onlyIfChanged steps: a site release id cannot vouch for them', async () => {
+      const rows = [
+        repoEntry({ envFiles: [], pausedIfChanged: ['server/'] }),
+        repoEntry({ envFiles: [], deploy: [{ name: 'site', command: ['make', 'deploy'] }, { name: 'api', command: ['make', 'api'], onlyIfChanged: ['api/'] }] }),
+      ]
+      for (const row of rows) {
+        const h = recordHarness({ configOverrides: { repos: [row] } })
+        assert.equal(await main(['--record-deployed', 'site', NEW, '--live-id', '20261121T150000Z-eeeeeee'], h.deps), 2, h.text())
+        assert.match(h.text(), /pausedIfChanged paths or onlyIfChanged deploy steps.*Nothing was changed/)
+        assert.equal(h.read(), undefined)
+        assert.equal(h.constructed(), 0)
+      }
+    })
+
+    it('fails closed, exit 1 or 2, with the record intact: no token, no default branch, a GitHub error, a recorded value that is no sha', async () => {
+      const seeded = (extra = {}) => recordHarness({ repoState: { lastDeployedSha: OLD }, compares: { [`${OLD}...${NEW}`]: 'ahead' }, ...extra })
+      const noToken = seeded()
+      noToken.deps.runner = makeRunner({ handle: () => ({ code: 1, stderr: 'no auth' }) })
+      assert.equal(await main(['--record-deployed', 'site', NEW, ...LIVE], noToken.deps), 1)
+      assert.match(noToken.text(), /no GitHub token/)
+      assert.equal(noToken.read().lastDeployedSha, OLD)
+      const noBranch = seeded()
+      noBranch.github.getRepo = async () => ({})
+      assert.equal(await main(['--record-deployed', 'site', NEW, ...LIVE], noBranch.deps), 2)
+      assert.match(noBranch.text(), /did not report a default branch/)
+      assert.equal(noBranch.read().lastDeployedSha, OLD)
+      const failing = seeded({ compares: { [`${OLD}...${NEW}`]: new Error('boom') } })
+      assert.equal(await main(['--record-deployed', 'site', NEW, ...LIVE], failing.deps), 1)
+      assert.equal(failing.read().lastDeployedSha, OLD)
+      const odd = recordHarness({ repoState: { lastDeployedSha: 'ddddddd' } })
+      assert.equal(await main(['--record-deployed', 'site', NEW, ...LIVE], odd.deps), 2)
+      assert.match(odd.text(), /recorded lastDeployedSha is not a commit sha/)
+      assert.equal(odd.read().lastDeployedSha, 'ddddddd')
+    })
+
+    it('writes nothing while a pass holds the lock, and says to run it again', async () => {
+      const h = recordHarness({ repoState: { lastDeployedSha: OLD }, compares: { [`${OLD}...${NEW}`]: 'ahead' }, lock: { pid: process.pid, startedAt: 'now' } })
+      assert.equal(await main(['--record-deployed', 'site', NEW, ...LIVE], h.deps), 1)
+      assert.match(h.text(), /a pass is running/)
+      assert.equal(h.read().lastDeployedSha, OLD)
+      assert.equal(h.constructed(), 0)
+    })
+
+    it('its arguments: two values, never with --unblock or --deployed, and --live-id only with it', () => {
+      assert.deepEqual(parseArgs(['--record-deployed', 'site', NEW]).recordDeployed, { name: 'site', sha: NEW })
+      assert.throws(() => parseArgs(['--record-deployed', 'site']), /--record-deployed needs a value/)
+      assert.throws(() => parseArgs(['--record-deployed', 'site', NEW, '--unblock', 'site']), /cannot be used with --unblock/)
+      assert.throws(() => parseArgs(['--record-deployed', 'site', NEW, '--deployed', NEW]), /--deployed belongs to --unblock/)
+      assert.throws(() => parseArgs(['--live-id', 'x']), /--live-id is only for --record-deployed/)
+      assert.throws(() => parseArgs(['--record-deployed', 'site', NEW, '--dry-run']), /has no dry run/)
+      assert.throws(() => parseArgs(['--record-deployed', 'site', NEW, '--record-deployed', 'site', NEW]), /can be given once/)
+      assert.throws(() => parseArgs(['--record-deployed', 'site', NEW, '--live-id', 'a-eeeeeee', '--live-id', 'b-eeeeeee']), /can be given once/)
+      for (const other of [['--set-live', 'true'], ['--set-repo-live', 'gorfednet/site', 'true'], ['--self-test']]) {
+        assert.throws(() => parseArgs(['--record-deployed', 'site', NEW, ...other]), /cannot be combined/)
+      }
+    })
+  })
+
+  it('a queued unblock of a failed block records --deployed when the next pass applies it', async () => {
+    const h = harness({ lock: { pid: process.pid, startedAt: 'now' } })
+    const statePath = join(h.config.stateDir, 'state.json')
+    const failed = 'e'.repeat(40)
+    const store = new StateStore(statePath)
+    Object.assign(store.repo('gorfednet/site'), { blocked: { reason: 'deploy failed', at: '2026-10-09T11:00:00.000Z', failedSha: failed }, lastDeployedSha: 'd'.repeat(40) })
+    store.save()
+    assert.equal(await main(['--unblock', 'site', '--deployed', 'ffffffff'], h.deps), 2)
+    assert.match(h.out.join('\n'), /does not name the failed deploy's commit eeeeeee/)
+    assert.equal(existsSync(join(h.config.stateDir, 'unblock')), false)
+    assert.equal(await main(['--unblock', 'site', '--deployed', 'eeeeeee'], h.deps), 0)
+    rmSync(join(h.config.stateDir, 'run.lock'))
+    assert.equal(await main(['--live', '--once'], h.deps), 0, h.out.join('\n'))
+    const after = JSON.parse(readFileSync(statePath, 'utf8')).repos['gorfednet/site']
+    assert.equal(after.blocked, undefined)
+    assert.equal(after.lastDeployedSha, failed)
   })
 
   it('a queued unblock of a paused deploy needs --deployed too; without it the block stays', async () => {

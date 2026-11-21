@@ -224,6 +224,15 @@
       "owner": "gorf",
       "verifiedAt": "2026-11-17",
       "note": "The AI Use Levels spec: four words that say what one piece of work owes to generative AI. Public. Tier 0 until the verification kit (its pull request 3) and a backlog reach main. Registered by scripts/register-repo.mjs on 2026-11-17 for ship-bot (plan row 5.6a)."
+    },
+    {
+      "slug": "gorfednet/plex-lastfm-sync",
+      "archetype": "tool",
+      "tier": 0,
+      "monitorClass": "tool",
+      "owner": "gorf",
+      "verifiedAt": "2026-11-20",
+      "note": "Keeps Plex 5-star ratings and Last.fm loves in step, in both directions. Public, self-hosted Node.js service with no dependencies. Tier 0 until the verification kit and a backlog reach main. Registered by scripts/register-repo.mjs on 2026-11-20 (plan row 6.6d)."
     }
   ]
 }

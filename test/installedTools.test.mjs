@@ -298,6 +298,17 @@ describe('gate scripts and the ~/.claude mirror (plan row 1.18)', () => {
     put(join(f.home, '.claude', 'hooks', 'always-pr-remind.py'), '# fixed\n')
     assert.deepEqual(named(f, '~/.claude hooks'), [])
   })
+
+  it('an installed desk-event.py that falls behind main is reported', () => {
+    const f = fixture()
+    commitFile(f, 'scripts/claude-hooks/desk-event.py', '# old\n')
+    commitFile(f, 'scripts/claude-hooks/desk-event.py', '# fixed\n')
+    put(join(f.home, '.claude', 'hooks', 'desk-event.py'), '# old\n')
+    const [b] = named(f, '~/.claude hooks')
+    assert.equal(b.behind, 1)
+    put(join(f.home, '.claude', 'hooks', 'desk-event.py'), '# fixed\n')
+    assert.deepEqual(named(f, '~/.claude hooks'), [])
+  })
 })
 
 describe('installed-drift notification (plan row 1.18)', () => {

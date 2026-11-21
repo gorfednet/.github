@@ -1063,13 +1063,76 @@ canonicalized to the home page. anal0g's `/legal/` was a meta-refresh stub.
 
 Checked offline by `check-sitemap-pages.mjs` against the build output, in the
 pull request checks of each site that runs it (the shared verification gate runs
-it against `publish-root` when the caller sets `sitemap-origin`, at warning level
-like its neighbours; empty skips it, so turn it on per site once the site is
-clean: backlog `sitemap-pages-not-in-gate`), and live on a schedule by `production-healthcheck.yml` (the sitemap
+it against `publish-root` when the caller sets `sitemap-origin`; empty skips it,
+so turn it on per site once the site is clean: backlog `sitemap-pages-not-in-gate`).
+Level: **fail** (decided). The sitemap is build output the pull
+request changes, so rule 5 allows a failing step, and a warning here would repeat
+the 12 November sweep: green checks over pages a crawler rejects. Set
+`sitemap-origin` without `publish-root` and the step fails too, because a
+check that cannot find the build has checked nothing. Optional inputs reach the
+checker one for one: `sitemap-files` (`--sitemap`, default `sitemap.xml`),
+`sitemap-allow-thin` (`--allow-thin`, one path per entry, each with its reason
+written beside it in the caller) and `sitemap-min-words` (`--min-words`, default
+150; never raised to pass). Any one of the four sitemap inputs runs the step, and
+`sitemap-origin` missing then fails it. The checker runs from the kit at the ref
+the caller pinned (`verification-gate@main` today), so tightening it turns every
+opted-in caller red when it merges: a checker change needs a fleet dry run first.
+Why fail when the metadata, og:image and error-page rows are softened: those read
+rendered quality signals with false positives, while a sitemap listing a noindex
+or redirected URL is an unambiguous defect. The live half runs on a schedule in `production-healthcheck.yml` (the sitemap
 step, plus the opt-in `expect-www-redirect` and `expect-error-pages-hidden`
 steps). The live half is never a pull request gate: a pull request check fails
 only on what the pull request can change (the 2026-10 right-sizing), and a live
 site is not that.
+
+**V78. A privacy page's shown date moves with its policy text, and only then.**
+Every site that publishes a privacy page tells visitors "Last changed <date>.
+When this page changes, that date changes with it." On 20 November 2026 one site's
+date was queried as possibly stale. It was right that day, by luck: nothing kept
+it right, so it becomes a contract.
+
+1. A pull request that changes a privacy page's policy text moves its shown date
+   to the latest author day across the commits in that pull request that changed
+   the policy text (read in America/Toronto; an amend or fixup keeps its old
+   author date, so use `--reset-author`), never to an earlier date. A date
+   already showing that day stands, so a second same-day edit passes. Every date a
+   visitor reads inside the matched line must be that same day.
+2. A shown date that moves with no change to the visible policy text is a
+   `::warning`, not a failure: a link target, an attribute, an excluded region or
+   text imported from another file can change a policy without changing what the
+   check can see, and entries that share one date file would otherwise fail the
+   untouched entry. A visible text change with no date move still fails.
+3. The policy text is the visible text of the page's configured region, with
+   tags, comments, whitespace and the date itself taken out, minus any excluded
+   pattern. Header, nav and footer are excluded by region or pattern in the
+   site's `privacy-date.config.json`, so a footer-only change stays green.
+4. What counts as policy text is locked. A PR that changes an entry's region,
+   exclude or datePattern and also touches the page fails; the same change with
+   the page and its date file untouched passes. An entry's `file` may be
+   re-pointed only as a real move (the old file gone at HEAD), never to a copy,
+   whatever `dateFile` names. A `dateFile` change is locked like the scope: it
+   fails in a PR that also touches the page or a date file, and passes alone.
+   Dropping a guarded page from the
+   config, or a base config that does not parse, fails, and a renamed config is
+   followed. It fails closed. A configured page that does not exist, a region or date
+   pattern that matches nothing, a date it cannot parse, a page with under 200
+   characters of policy text left, an empty page list, or a base branch it cannot
+   resolve is an error, never a pass. A site that moves its privacy page updates
+   the config in the same pull request.
+5. It reads only the pull request's own diff (merge base to HEAD, plus its commit
+   dates). No network, no other repository, no clock: dates and other
+   repositories belong in scheduled reports (rule 5).
+
+Checked by `check-privacy-date.mjs`, run from the kit at the ref the caller pinned
+when the caller sets `privacy-date-config`. Level: **warning** for now (Desk, 21 November 2026):
+the step prints each problem as a `::warning` and exits 0, because the checker's
+open hardening findings wait for a plan row. Set `PRIVACY_DATE_ENFORCE=1` to fail
+the step; the tests do. The intended level is **fail**, for the same reason as
+V77: the page and its date are what the pull request changes. Opt in per site by
+adding the config file and the input; the step deepens a shallow clone and fetches
+the base branch itself. Limits: it compares visible text, so a changed link target
+or attribute with identical words is not seen, and a policy that lives in several
+files needs one entry per file.
 
 ## Provenance
 
@@ -1171,6 +1234,8 @@ defect.
 | Page metadata is per-page and correct | Failed on missing or duplicated canonical, title, description or JSON-LD | `::warning`, job passes | The warning, with the checker's output in the log; the consumer's e2e specs for pages it owns; `production-healthcheck.yml`'s live probes of what is actually served |
 | The social card is the image it says it is | Failed on an og:image that is not a real image of the stated size | `::warning`, job passes | The warning; `production-healthcheck.yml` fetches the live card (`check-live-og-image.mjs`), which is the half a pull request could never see |
 | Error pages ship with the site | Failed on a missing or placeholder 404.html or 500.html | `::warning`, job passes | The warning; the live probe in `production-healthcheck.yml` for the server half (V66), which is the stronger check |
+| Sitemap lists only pages worth indexing (V77) | Did not exist in the gate; added 2026-11 as an opt-in step | Fails the job, only for a caller that sets a sitemap input (decided). The one step in this table that is not softened: the sitemap is build output the pull request changes, so rule 5 allows it. A site that sets `sitemap-origin` without `publish-root` fails too | The step's own log; `production-healthcheck.yml`'s live sitemap step for what the server answers, which a pull request cannot see |
+| Privacy date moves with the policy text (V78) | Did not exist in the gate; added 2026-11 as an opt-in step | `::warning`, exit 0, only for a caller that sets `privacy-date-config`, unless `PRIVACY_DATE_ENFORCE=1` is set, which fails the job. Like V77 it reads what the pull request changes (its own diff), so rule 5 allows the fail level it is meant to reach | The step's own log; the config names the page, region and date pattern |
 | Paths are derived, not named | Failed on a tracked absolute machine path; failed everywhere on 2026-10-15 if the consumer's vendored kit lacked the checker | `::warning`, job passes. The grace date and its test seam are deleted | The warning; this repository applies the same checker to itself (`selfAppliedCheckers`), enforced. The date logic is gone because a date is not something a pull request can change |
 | No generated files tracked in git | Failed on tracked build output | `::warning`, job passes | The warning; this repository applies the same checker to itself, enforced |
 | Backlog describes reality | Failed on a malformed or lapsed backlog entry, including a `reviewBy` date in the past on a landed entry | `::warning`, job passes | The warning; this repository's own backlog shape is still enforced in `verification-kit.yml`, including `--verify-prs`; `fleet-audit.yml` lists lapsed `reviewBy` dates per repository on its schedule. Since 2026-10-16 `check-backlog.mjs` itself prints a lapsed date as a warning and never fails on one (below) |

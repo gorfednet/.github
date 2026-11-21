@@ -223,6 +223,83 @@ describe('the same check name more than once on a head', () => {
   })
 })
 
+describe('a cancelled run superseded by a later green run of the same workflow', () => {
+  // Adding ready-to-merge cancels the running CI and starts a labelled run: the cancelled run's unexpanded
+  // `e2e` job has no namesake among the new run's `e2e (1)` .. `e2e (8)`.
+  const jobRun = (name, conclusion, runId, id, extra = {}) => ({ name, status: 'completed', conclusion, started_at: '2026-10-09T12:00:00Z', id, details_url: `https://actions.example/gorfednet/site/actions/runs/${runId}/job/${id}`, ...extra })
+  const wf = (id, extra = {}) => ({ id, workflow_id: 900, event: 'pull_request', head_sha: HEAD, status: 'completed', conclusion: 'success', ...extra })
+  // Green run 2 (check and e2e shards) plus a cancelled `e2e` from run 1.
+  const runs = (cancelledIn = 1, greenIn = 2) => [jobRun('check / check', 'success', greenIn, 11), jobRun('e2e', 'cancelled', cancelledIn, 10), jobRun('e2e (1)', 'success', greenIn, 12)]
+  const trial = async (workflowRuns, runList = runs()) => {
+    const gh = new FakeGitHub({ runs: runList, workflowRuns })
+    await scenario({ github: gh }).run()
+    return gh
+  }
+  const outcome = async (workflowRuns, runList) => merges(await trial(workflowRuns, runList)).length
+
+  it('the cancelled job is ignored: the later run of its workflow on this head is green', async () => {
+    assert.equal(await outcome([wf(1, { conclusion: 'cancelled' }), wf(2)]), 1)
+  })
+
+  it('a cancel with no later green run of its workflow still blocks', async () => {
+    assert.equal(await outcome([wf(1, { conclusion: 'cancelled' })]), 0)
+    assert.equal(await outcome([wf(1, { conclusion: 'cancelled' }), wf(2, { conclusion: 'failure' })]), 0, 'a later red run does not supersede')
+  })
+
+  it('a green run that is EARLIER than the cancelled one does not supersede it', async () => {
+    // The cancelled e2e is in run 2; the green run is run 1. Equal ids are not later either.
+    assert.equal(await outcome([wf(1), wf(2, { conclusion: 'cancelled' })], runs(2, 1)), 0)
+    assert.equal(await outcome([wf(5), wf(5, { conclusion: 'cancelled' })], runs(5, 5)), 0, 'a run is not later than itself')
+  })
+
+  it('a cancelled check that maps to no workflow run still blocks, whatever else was listed', async () => {
+    const list = [wf(1, { conclusion: 'cancelled' }), wf(2)]
+    const cancelled = (extra) => [jobRun('check / check', 'success', 2, 11), jobRun('e2e', 'cancelled', 1, 10, extra), jobRun('e2e (1)', 'success', 2, 12)]
+    assert.equal(await outcome(list, cancelled({ details_url: undefined })), 0, 'no details_url')
+    assert.equal(await outcome(list, cancelled({ details_url: 'https://example.org/somewhere/else' })), 0, 'not an Actions URL')
+    assert.equal(await outcome(list, cancelled({ details_url: 'https://actions.example/gorfednet/site/actions/runs/999/job/10' })), 0, 'an unknown run id')
+  })
+
+  it('a red shard with no namesake beside a green run still blocks: only a cancelled check is superseded', async () => {
+    for (const conclusion of ['failure', 'timed_out']) {
+      // Run 1 was cancelled (its `e2e` job), and one of its shards had already gone red before that.
+      const list = [jobRun('check / check', 'success', 2, 11), jobRun('e2e', 'cancelled', 1, 9), jobRun('e2e (3)', conclusion, 1, 10), jobRun('e2e (1)', 'success', 2, 12)]
+      assert.equal(await outcome([wf(1, { conclusion: 'cancelled' }), wf(2)], list), 0, conclusion)
+    }
+  })
+
+  it('a later green run of a different workflow does not supersede', async () => {
+    assert.equal(await outcome([wf(1, { conclusion: 'cancelled' }), wf(2, { workflow_id: 901 })]), 0)
+    assert.equal(await outcome([wf(1, { conclusion: 'cancelled' }), wf(2, { event: 'push' })]), 0)
+  })
+
+  it('a later green run on a different head does not count', async () => {
+    assert.equal(await outcome([wf(1, { conclusion: 'cancelled' }), wf(2, { head_sha: 'd'.repeat(40) })]), 0)
+  })
+
+  it('while a later run of the same workflow is still going, the cancelled check waits and says nothing', async () => {
+    const gh = await trial([wf(1, { conclusion: 'cancelled' }), wf(2, { status: 'in_progress', conclusion: null })])
+    assert.equal(merges(gh).length, 0)
+    assert.equal(gh.writes.length, 0, 'a wait posts no comment')
+  })
+
+  it('unreadable workflow runs: the cancelled check waits and says nothing', async () => {
+    const gh = new FakeGitHub({ runs: runs() })
+    gh.listWorkflowRuns = async () => {
+      throw new Error('boom')
+    }
+    await scenario({ github: gh }).run()
+    assert.equal(merges(gh).length, 0)
+    assert.equal(gh.writes.length, 0, 'a wait posts no comment')
+  })
+
+  it('a cancel with no later run at all is a fail, which does say so', async () => {
+    const gh = await trial([wf(1, { conclusion: 'cancelled' })])
+    assert.equal(merges(gh).length, 0)
+    assert.match(gh.commentsPosted()[0].body, /checks did not pass on this head: e2e \(cancelled\)/)
+  })
+})
+
 describe('gate (c): expected checks present and successful', () => {
   it('does not merge when an expected check never appeared, and says so after the grace period', async () => {
     const gh = new FakeGitHub({ runs: greenRuns(['something else']) })
@@ -570,6 +647,7 @@ describe('deploying', () => {
     assert.match(body, /Rolled back by rollback steps: that succeeded/)
     assert.match(s.runner.ofKind('notify')[0].args[1], /FAILED, rolled back/)
     assert.match(s.state().repo(SLUG).blocked.reason, /rolled back/)
+    assert.equal(s.state().repo(SLUG).blocked.failedSha, MERGE, 'a failed deploy keeps its merge commit')
   })
 
   it('on a failed deploy step with no rollback configured: redeploys the previous commit', async () => {
@@ -935,6 +1013,15 @@ describe('safety rails', () => {
     await s.run()
     assert.equal(merges(s.github).length, 0)
     assert.match(s.state().repo(SLUG).blocked.reason, /stopped during deploy of #7/)
+  })
+
+  it('a crash during the deploy stage keeps the merge commit on the block, so --deployed can check it', async () => {
+    const s = scenario()
+    const st = s.state()
+    st.repo(SLUG).deployInProgress = { pr: 7, sha: HEAD, mergeSha: MERGE, stage: 'deploy', startedAt: '2026-10-09T11:00:00Z' }
+    st.save()
+    await s.run()
+    assert.equal(s.state().repo(SLUG).blocked.failedSha, MERGE)
   })
 
   it('--repo with a name that matches nothing fails closed', async () => {
@@ -1528,19 +1615,15 @@ describe('releases, not every merge (plan row 1.25)', () => {
     }
   })
 
-  it('at most one release a week: a second one within 6 days waits unless it says Early release', async () => {
-    const recent = { lastDeployedSha: LAST, lastReleasedAt: '2026-10-06T12:00:00Z' }
-    const s = rel({ state: recent })
+  it('milestone releases: a second release 1 day after the first is accepted, with or without an old Early release line', async () => {
+    const dayAfter = { lastDeployedSha: LAST, lastReleasedAt: '2026-10-08T12:00:00Z' }
+    const s = rel({ state: dayAfter })
     await s.run()
-    assert.equal(merges(s.github).length, 0)
-    assert.match(bodies(s.github)[0], /the last release here was on 6 October 2026, and a repo gets at most one release a week, so the next goes from 12 October 2026/)
-    const early = rel({ state: recent, body: `${NOTES}Early release: the owner asked for the price fix today\n` })
-    await early.run()
-    assert.equal(merges(early.github).length, 1)
-    assert.deepEqual(early.runner.commandLines('deploy'), ['make deploy'])
-    const weekLater = rel({ state: { lastDeployedSha: LAST, lastReleasedAt: '2026-10-03T11:00:00Z' } })
-    await weekLater.run()
-    assert.equal(merges(weekLater.github).length, 1)
+    assert.equal(merges(s.github).length, 1)
+    assert.deepEqual(s.runner.commandLines('deploy'), ['make deploy'])
+    const old = rel({ state: dayAfter, body: `${NOTES}Early release: the owner asked for the price fix today\n` })
+    await old.run()
+    assert.equal(merges(old.github).length, 1)
   })
 
   it('a hotfix deploys on merge when it names its exemption and main is still the last deploy', async () => {
@@ -1550,7 +1633,7 @@ describe('releases, not every merge (plan row 1.25)', () => {
       assert.equal(merges(s.github).length, 1, ex)
       assert.deepEqual(s.runner.commandLines('deploy'), ['make deploy'], ex)
       assert.equal(s.state().repo(SLUG).lastDeployedSha, MERGE)
-      assert.equal(s.state().repo(SLUG).lastReleasedAt, undefined, 'a hotfix is not a release and does not reset the weekly clock')
+      assert.equal(s.state().repo(SLUG).lastReleasedAt, undefined, 'a hotfix is not a release and is not recorded as a release')
     }
   })
 
@@ -1702,7 +1785,7 @@ describe('releases: what the first review found (plan row 1.25)', () => {
     assert.deepEqual(capital.runner.commandLines('deploy'), ['make deploy'], 'a capitalised label is the same label')
   })
 
-  it('a failed or paused release leaves lastReleasedAt alone, so the weekly clock does not start', async () => {
+  it('a failed or paused release leaves lastReleasedAt alone, so no release time is recorded', async () => {
     const failed = rel({ runner: makeRunner({ handle: (cmd) => (cmd.kind === 'setup' ? { code: 1 } : undefined) }), state: { lastDeployedSha: LAST } })
     await failed.run()
     assert.equal(merges(failed.github).length, 1)
@@ -1772,19 +1855,13 @@ describe('releases: what the first review found (plan row 1.25)', () => {
     assert.equal(merges(s.github).length, 1)
   })
 
-  it('an unreadable lastReleasedAt refuses the release rather than skipping the weekly limit', async () => {
-    const s = rel({ state: { lastDeployedSha: LAST, lastReleasedAt: 'yesterday-ish' } })
-    await s.run()
-    assert.equal(merges(s.github).length, 0)
-    assert.match(bodies(s.github)[0], /last release \(yesterday-ish\) is unreadable/)
-  })
-
-  it('a waiting release gets one comment, not a new one every pass', async () => {
-    const s = rel({ state: { lastDeployedSha: LAST, lastReleasedAt: '2026-10-08T12:00:00Z' } })
+  it('a refused release gets one comment, not a new one every pass', async () => {
+    const s = rel({ body: '## Release notes\n\n- a\n\nSmoke: y\n' })
     await s.run()
     s.clock.advance(300)
     await s.run()
     assert.equal(bodies(s.github).length, 1)
+    assert.match(bodies(s.github)[0], /no `Local gate:` line/)
   })
 
   it('a hotfix on a tag repo needs its Release line, then tags and deploys', async () => {

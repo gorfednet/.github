@@ -12,7 +12,7 @@
     "issues": "read",
     "checks": "read",
     "statuses": "read",
-    "actions": "read",
+    "actions": "write",
     "workflows": "write"
   }
 }

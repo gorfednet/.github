@@ -4,6 +4,39 @@ A check taken out on purpose is a recorded decision, not a weakening
 (`~/.claude/rules/shipping.md`, "When CI is red"). Each entry says what the
 check caught, why it went, and what still catches that class. Newest first.
 
+## 2026-11-20: hosted runs for the shared reviewer and the production healthcheck
+
+**Two guarantees retired.** On 20 November 2026 the owner moved every paid CI job to local infrastructure. The same day the Actions budget began refusing every hosted job in private repositories.
+
+**What they caught:**
+- `claude-review.yml` ran hosted so the job holding the review token never ran on a self-hosted runner (owner decision, 19 October 2026).
+- `production-healthcheck.yml` ran hosted so a dead pool host, which also serves the sites, still showed as a red health check rather than a job that never starts.
+
+**Why they went:** the owner's instruction replaces the 19 October decision, and the budget stops both jobs anyway. He refined it the same day to allow free runners. So a public caller still runs both hosted; only private callers moved.
+
+**What catches that class now:**
+- The token, from a fork: the reviewer refuses a pull request whose head is a fork, on both triggers, so a fork's code never reaches the pool job that holds it. A failed read of the head repository fails the job. `test/claudeReview.test.mjs` covers both paths.
+- The token, from a same-repository pull request or a dependency install: pool jobs run that code on the same hosts, so the pool's per-job isolation is what keeps it from the review job's token. The design and its residual risk are recorded privately (ops, `control/handoff/2026-11-21-pool-reviewer.md`) and sent to the owner. The review job also runs only after the fork check.
+- A dead pool host: the capacity pool check (`capacity/pool.mjs`, run on a Mac off the pool) alerts on stale heartbeats and long queues. It merges first (.github 273) and is installed before this change merges.
+- The outside vantage of `production-healthcheck.yml`: it ran hosted, so it saw the sites from the public internet. On the pool it sees them from the home network, so some outages aren't visible to it. The gap and its follow-up are tracked privately. Public callers keep the hosted run, which still has the outside view.
+
+## 2026-11-17: vendored-kit version and missing-kit failures in fleet-status (plan row 2.9)
+
+**One failure removed, one check added.** `fleet-kit-versions` used to fail only on the vendored `verification-kit/` copy a repository carries. It now also fails on the gate ref the repository's workflows pin, because that ref is the kit the gate runs. The vendored-copy failure stays. The `missing` failure is the one retired.
+
+**What the removed failure caught:** the `missing` gap, a repository at tier 1 or above with no vendored kit at all.
+
+**Why it went:** the shared gate runs the kit at the pinned ref, not the vendored copy, so a repository with no copy but a current pin was reported red for nothing.
+
+**What stays:** a vendored copy far behind, ahead of or unreadable against the canonical kit still fails, in any repository that carries one. The gate no longer runs that copy, but `production-healthcheck.yml` still runs `verification-kit/bin/check-live-og-image.mjs` and `verification-kit/bin/assert-tests-executed.mjs` from the caller's checkout, so a stale copy is old code in the live monitor. The failure can go once that workflow runs the kit from its own checkout.
+
+**What catches that class now:**
+- A repository whose workflows call the gate fails when the pin is far behind, ahead of canonical, unreadable, or at mixed refs.
+- A tier 1 or above repository with no gate caller and no vendored kit run fails as an error row (`kitFailures` turns a `none` pin at tier 1 or above into `error`).
+- A call of a `pr-check-*` reusable workflow counts as a gate caller only when it passes a non-empty `verification-kit` at `@main`. Without that input the workflow skips its gate step, so the call is no caller and the row above applies (the old `missing` case). At any other ref the row fails as an error: the gate a pr-check workflow runs at that ref can't be read from the caller, and before the gate step existed it ran none.
+- A repository that runs its own `verification-kit/bin` is reported as `vendored` and still fails on its copy's gap.
+- `check-kit-drift` compares a vendored copy with its own manifest.
+
 ## 2026-11-16: two Node checks narrowed for the user-owned Node (plan row 3.20k)
 
 **Narrowed, not dropped.** Both stay in force. Each now has one exception, written so a patch needs no sudo and no reinstall of the agents. The ledger line is in `ship-bot/INCIDENTS.md` (16 November 2026, plan row 3.20k).
@@ -58,6 +91,29 @@ place for the host's full configuration.
 compares the record with the host itself. That is what the dated hash stood in
 for. 4thcltr.com's scheduled `check-live-headers.mjs` still compares that
 site's served headers with its repository's vhost.
+
+## 2026-11-18: the ship bot's release spacing and its unreadable release-time refusal
+
+**Removed:** from `ship-bot/lib/deploy-plan.mjs`, two refusals on a `release`
+pull request: the 6-day minimum between releases in one repository, with its
+`Early release: <why>` exemption line, and the refusal when `lastReleasedAt` in
+the state file could not be parsed. The `now` input and the `easternDay` helper
+that only they used went with them. Recording the release time on deploy is
+unchanged.
+
+**What they caught:** a second release inside 6 days of the last one, unless
+the body carried `Early release`; and a state file whose release time could not
+be read, which the bot refused rather than guess a spacing from.
+
+**Why they went:** on 18 November 2026 the owner moved releases from a weekly
+rhythm to milestones. With no weekly rhythm, spacing has nothing to protect.
+The unreadable-time refusal only guarded the spacing check.
+
+**What catches that class now:** the milestone decision itself, which makes a
+release a choice about what ships rather than a clock. A release still needs a
+`## Release notes` section with a bullet saying what ships, a `Local gate:`
+line, a `Smoke:` line, and a head that contains `main`. Ship-bot refuses one
+without them. An `Early release:` line no longer counts as a release note.
 
 ## 2026-10-19: the ship bot's Bugbot gate
 

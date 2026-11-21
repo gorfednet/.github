@@ -1,7 +1,7 @@
 {
-  "version": "0.64.0",
+  "version": "0.68.0",
   "files": {
-    "README.md": "41fc03ce1176db63d95c795824865bf0f1879de31ceef96a045ff00dc94af62b",
+    "README.md": "034a31841abc2f926d77dc43ae4b59588169e7ddf82e2a0a70b2645d1a09a81d",
     "bin/assert-checks-started.mjs": "9b32370e3b8ab4dae94c9b54abd46c6d364f81fb00b6f81ccbaf0e4d21b077f0",
     "bin/assert-tests-executed.mjs": "0c51a19cb8fa467bd8bf98fbbabb1e349cbe28ce125095fe302039e47f8db6fd",
     "bin/check-backlog.mjs": "573acfa446504f8b086451dec165b71f1a53fe5df0c936f5dc820f4eba436fab",
@@ -14,6 +14,7 @@
     "bin/check-machine-paths.mjs": "bf644aa8a33d16542388cfdea425d2cbcce295a4f54bdd5f1e3ce4e7cecdbc35",
     "bin/check-og-image.mjs": "6c9275a6e2d65f7dc4134ad55acda11bb60bd959eeaa6fd9d3cb0baef9e15223",
     "bin/check-page-metadata.mjs": "f876e3fdfa5d3cc03e993bac8e351d4c4b54aa180a662b2752309c7d84e65998",
+    "bin/check-privacy-date.mjs": "ae272c648d09c2c9faac69bbae0f7a9eddd0af73bea670083006d3caa4663ae0",
     "bin/check-rule-citations.mjs": "be89e3cc348acd56f4f8a99e817393b91bd3d0c46ff6a2a58d0669776ed0493f",
     "bin/check-sitemap-pages.mjs": "942526d343418a2fec791491f44390f475c88ccc2b7225b988a15d122cd85d66",
     "bin/check-tracked-artifacts.mjs": "ef4a8e1d674c2d883db4e37781167c9fab1f6a3b0461b16d0a4b067cd1dc6e9c",
@@ -46,6 +47,7 @@
     "test/ogImage.test.mjs": "3df8526c99473bfb568d40d4c6d8079b6f9c80abd2cfda490d5176188796af1f",
     "test/outboundLinks.test.mjs": "7d0b1b2791f0a59520ec42f5c5c0d3bd5a6a1a25f6b0e8d960f8f575ef2a5688",
     "test/pageMetadata.test.mjs": "77a74d4b70019117dc88f782dd973cc4880e797954bfd33465871139dc0e7a32",
+    "test/privacyDate.test.mjs": "fa400bf65aeef8427897c669ae8430e708ad2049582f6eeab9c3253c684bf855",
     "test/refreshKitHandoff.test.mjs": "58f2380adcc2829e66ddb9654d95441eb25de716af2574f1e2f741dbc5f34336",
     "test/reportIssues.test.mjs": "1e9829bab43d2a5207ddd98e5c1f110a551dcc1aacd9a8d77a9912a31c9e6b61",
     "test/ruleCitations.test.mjs": "adca35331c0a5b6b6b62ff5c51aa4e7229bba09f4b9420d152fb45f9c98821ba",
@@ -53,7 +55,7 @@
     "test/voice.test.mjs": "b67856f86125ef78e393bb30fc70d4829c12c01d7e672946c301eecce4db855b"
   },
   "companions": {
-    "docs/verification-rules.md": "58cadb458c9e6f7305f683206f1bca686e736095feb2d825f994131c152ae8ef",
-    "docs/content-guidelines.md": "444ba7dd9f531a49ebd653646e70de71d3ca0c12a3282432e42878f83d12eecd"
+    "docs/verification-rules.md": "71ad08bebe3f45094c18864b2e4b49314aafe754d8c17fc5cb481d0c0e3e1cca",
+    "docs/content-guidelines.md": "ffa321a347330401066f0ec5fb31c9efe409233bbdbad01d6a0209fa1d5e543b"
   }
 }

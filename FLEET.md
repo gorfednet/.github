@@ -16,7 +16,7 @@ embarrassing place to skip the gate.
 - **Tier 2** — Tier 1 plus an executed-count assertion wired to a real test report.
 - **Tier 3** — Tier 2 plus mutation canaries against its own gates.
 
-Currently 5 at tier 0, 9 at tier 1, 4 at tier 2, 3 at tier 3.
+Currently 6 at tier 0, 9 at tier 1, 4 at tier 2, 3 at tier 3.
 
 Adoption is opt-in per project. Every project already inherits one of the
 reusable `pr-check-*` workflows, so the gate defaults to **off**: a non-empty
@@ -49,6 +49,7 @@ gone stale, so someone re-checks the tier or lowers it.
 | [gorfednet/ACID2REAPER](https://github.com/gorfednet/ACID2REAPER) | tool | 0 | tool | gorf | 2026-09-25 | Desktop converter with PR CI and tagged releases. No production site to healthcheck. |
 | [gorfednet/ai-use-levels](https://github.com/gorfednet/ai-use-levels) | tool | 0 | tool | gorf | 2026-11-17 | The AI Use Levels spec: four words that say what one piece of work owes to generative AI. Public. Tier 0 until the verification kit (its pull request 3) and a backlog reach main. Registered by scripts/register-repo.mjs on 2026-11-17 for ship-bot (plan row 5.6a). |
 | [gorfednet/MoonMan](https://github.com/gorfednet/MoonMan) | vite-spa | 0 | active-site | gorf | 2026-09-25 | Active game with its own CI. Not a kit consumer yet, so tier 0 is the honest record. Weekly HTTP monitoring is enough until it vendors the kit. |
+| [gorfednet/plex-lastfm-sync](https://github.com/gorfednet/plex-lastfm-sync) | tool | 0 | tool | gorf | 2026-11-20 | Keeps Plex 5-star ratings and Last.fm loves in step, in both directions. Public, self-hosted Node.js service with no dependencies. Tier 0 until the verification kit and a backlog reach main. Registered by scripts/register-repo.mjs on 2026-11-20 (plan row 6.6d). |
 | [gorfednet/TowIt](https://github.com/gorfednet/TowIt) | python-flask | 0 | dormant | gorf | 2026-09-10 | DORMANT until 2027-03-14 — triggers are workflow_dispatch only and dependabot is removed, so tier 0 is the honest record: the gate is off in its workflow. Kept for revival: its 49 tests do have an executed-count floor, but pytest emits neither a Playwright nor a Vitest JSON report, so the floor lives in a pytest_collection_modifyitems hook in tests/conftest.py rather than in the shared assertion — which is why it was tier 1 and not 2 while it ran. Also the first repository to need rule-sources scoped, because it vendors a bundled AngularJS. |
 | [gorfednet/wychwood](https://github.com/gorfednet/wychwood) | vite-spa | 0 | dormant | gorf | 2026-09-10 | DORMANT until 2027-03-14 — triggers are workflow_dispatch only and dependabot is removed, so tier 0 is the honest record: the gate is off in its workflow. GitHub renamed the remote from wychwoodresort.com to wychwood; this slug follows the live repo. Kept for revival: its executed-count floor was wired through browser-compat, and its unit suite needed a second local floor because node --test with a shell glob exits 0 when the glob matches nothing. It never had a production monitor at all, which is still open in its backlog. |
 

@@ -1,21 +1,43 @@
 # Capacity check (plan row 1.9)
 
-A token-free LaunchAgent (`net.gorfed.capacity`, every 15 minutes) that writes `~/.desk/capacity.json`. Desk reads it first on every pass and fills free slots from the ranked plan.
+A LaunchAgent (`net.gorfed.capacity`, every 15 minutes) that makes local reads, plus the pool check's GitHub reads with the `gh` token, and writes `~/.desk/capacity.json`. Desk reads it first on every pass and fills free slots from the ranked plan.
 
 | State | Rule | Free slots |
 |-------|------|-----------|
 | `headroom` | 1-minute load under 0.7 x cores, at least 4 GB free, fewer than 5 working sessions | 5 minus working, capped at 2 (the builder rule) |
 | `hold` | load over cores, or under 4 GB free | 0 |
 | during a backup | CPU idle under 40% or under 4 GB free is `hold`; load is ignored. Otherwise `headroom` if fewer than 5 sessions are working | as `headroom` |
+| `hold` on usage | weekly usage at 90% or over (`reason` says so) | 0 |
 | `steady` | anything between | 0 |
 
 Inputs: `os.loadavg()` against `sysctl -n hw.ncpu`; free plus inactive pages from `vm_stat`; working sessions = non-archived files under the Claude app's `claude-code-sessions` store with `lastActivityAt` in the last 10 minutes (the store has no explicit running flag, so this is a proxy).
 
 Backups: Time Machine (`tmutil status` shows `Running = 1`) and Backblaze (a `bztransmit` process) make the load average count their disk waits, so while either runs the CPU idle figure (second `top` sample) replaces the load test. This is the rule of ops `builder-ok`. If the backup or the idle figure can't be read, the load rule applies. `capacity.json` carries `backup` and `idlePct`. After a change here, rerun `capacity/install.sh`.
 
-Pool queue: set `CAPACITY_QUEUE_CMD` to a command that prints one number (one cached read of the pool, never per repo). Unset, `poolQueue` is `null` and the message says "unknown queued". Weekly usage has no local source, so `weeklyUsage` is always `null`.
+Pool queue: set `CAPACITY_QUEUE_CMD` to a command that prints one number (one cached read of the pool, never per repo). Unset, `poolQueue` is `null` and the message says "unknown queued". Weekly usage is `usage.pct` in `~/.herdr-jobs/state.json`, the file `scripts/lib/usageAlert.mjs` reads. At 90 or over the state is `hold`. A missing or unreadable file, or a value that isn't a number from 0 to 1000, leaves the usual rules and records `weeklyUsage: null` with `weeklyUsageReason`. A reading's age comes from `usage.at` (epoch ms or ISO text) alone, never the file's mtime, which the reconciler rewrites on every job change. With no usable `usage.at` the reason is `no-timestamp`; more than 5 minutes in the future is `future-dated`. Usage only rises within a week, so a reading at 90 or over taken after the most recent Friday 05:00 America/Toronto reset (from the time-zone database) stays valid at any age, because Herdr skips refreshes while its hold file exists. A reading under 90 is `stale` after `USAGE_MAX_AGE_MS` (2 hours), and a 90 from before the reset is `stale` too, so it can't hold starts after the weekly reset. When Herdr's refresh fails it writes `usage.pct: null`; the check then keeps the last valid reading from `capacity.json` (`weeklyUsage`, `weeklyUsageAt`, reason `kept: ...`) instead of reading headroom. The hold pushes "hold: weekly usage at N%, ..." once, like any other hold: pushes follow the state, so an overload hold that begins or ends during a usage hold (still `hold`) pushes nothing more.
 
 ntfy topic `ops-report` (token from `~/.ship-bot/ntfy.token`) gets "headroom for N, M queued" or "overloaded, hold" only when the state changes. A change into `steady` pushes nothing.
+
+## Pool liveness (`pool` in capacity.json, owner 20 November 2026)
+
+The self-hosted pool serves each repository through its `HEAVY_RUNS_ON` variable, and the supervisor writes `HEAVY_RUNNER_HEARTBEAT` (unix seconds) on each served repository every 300 s. Each run reads the repository list once, paged and never committed: the token owner's own repositories (`GET /user/repos?affiliation=owner&per_page=100`, the account is a user, and `/orgs/<name>/repos` answers 404 for one), or an organization's (`GET /orgs/<org>/repos?type=all&per_page=100`) when `CAPACITY_POOL_ORG` names one. Archived repositories are skipped. Per repository:
+
+- `GET /repos/<r>/actions/variables/HEAVY_RUNNER_HEARTBEAT`: a 404 means not a pool repository, skipped. A heartbeat older than 15 minutes means not served.
+- `GET /repos/<r>/actions/runs?status=queued&per_page=20` (pool repositories only), then each run's jobs (`filter=latest`): the oldest queued job that asks for a `self-hosted` runner, aged from the job's own `created_at` (a re-run's new attempt, not the run's first), older than 15 minutes means queued with no runner.
+- `GET /repos/<r>/actions/runs?status=in_progress&per_page=20`, then `GET /repos/<r>/actions/runs/<id>/jobs?filter=latest&per_page=100` for each: a job still `queued` over 15 minutes inside a run that has started (a run is in progress as soon as one job runs) also counts as queued.
+
+A read that fails in transport is tried once more before it counts as failed, so one stalled connection among the reads doesn't raise `pool check failed`. A 404 on a run or job list, or a 200 without its `workflow_runs` or `jobs` list, is a failed read, not an empty queue. A heartbeat dated more than a minute in the future counts as stale. Only a queued job that asks for a self-hosted runner counts toward the wait. Pool lines go out on both paths, the box's ntfy and the off-box one (the public topic gets counts and a fixed reason only, such as `pool queue: 2 repositories, longest 41 min` and `pool check failed: 2 read(s) failed`, never a repository name), and `lastPushedKey` moves only when one delivered.
+
+| `pool.state` | Rule |
+|--------------|------|
+| `ok` | at least one heartbeat is fresh and nothing has queued past 15 minutes |
+| `down` | every heartbeat is stale |
+| `queued` | a queued run or job has waited over 15 minutes in a repository with no job running on a self-hosted runner (`queued` lists `{repo, minutes}`, the longest wait per repository). A wait behind the repository's own running CI is normal on a healthy pool: it is recorded as `behind` and is no alert |
+| `unknown` | any read failed, the repository list failed, or no repository has a heartbeat. Never `ok` |
+
+Every read sends `If-None-Match` from `~/.desk/capacity-etags.json` (beside capacity.json, pruned to the URLs of the last run), and a 304 is free. The heartbeat value changes every 300 s, so each run's heartbeat read per pool repository is a full, counted one: with 4 runs an hour that is about 96 counted reads an hour across the pool for heartbeats alone. Each 404 (the repositories that are not pool repositories, one heartbeat read each) is counted too, which brings an idle hour to about 130. The list, the run lists and the job lists are mostly 304s. The token is `GH_TOKEN`, else `gh auth token` (`install.sh` finds `gh` with `command -v` when it installs and puts its folder first on the plist PATH, and refuses to install without one; `/opt/homebrew/bin/gh` and `/usr/local/bin/gh` are still tried as a fallback). A missing token makes the state `unknown`.
+
+One ntfy line on each change of state or of the set of queued repositories, so a storm is one message and minutes moving alone is no change: `pool down: no heartbeat for 23 min` (the newest heartbeat's age), `pool queue: <repo> 41 min, <repo> 18 min`, `pool check failed: <reason>`, and `pool back` when it returns to `ok`. `pool queue` goes out at most once an hour (`pool.lastQueuePushAt`): a change inside the hour is recorded and not sent, and the gap resets when the pool is `ok`, so a queue that clears and returns pushes at once. `pool down` and `pool check failed` pushes on every change, but only from the second unknown run in a row (one failed check says nothing, and doesn't reset the hour for `pool queue`). A first `ok` says nothing. `pool.lastPushedKey` remembers what was last delivered, so a failed push is retried. The pool check never fails the run and is bounded: up to 6 repositories are read at once, every read stops at a 120 s deadline (the state is then `unknown`, reason `pool check deadline passed`), and `run()` stops waiting for the whole check at 150 s, so `capacity.json` and the dead-man ping are never held back by a stalled GitHub. `install.sh` copies `pool.mjs` beside `capacity.mjs`.
 
 Install: `capacity/install.sh` (runs the tests first), from the gates-main worktree only. The script refuses any other checkout, because a copy installed from a working checkout drifts behind main (13 November 2026: 3 commits behind). fleet-status's "Installed tools behind main" row reports a stale copy. Remove: `capacity/install.sh --uninstall`. Tests: `capacity/check.sh`.
 

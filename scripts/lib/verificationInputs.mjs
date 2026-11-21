@@ -159,6 +159,38 @@ export const VERIFICATION_INPUTS = {
         type: string
         default: ""`,
 
+  'sitemap-files': `      sitemap-files:
+        description: >-
+          Space-separated sitemap files under publish-root (repeated
+          --sitemap). Empty uses sitemap.xml.
+        required: false
+        type: string
+        default: ""`,
+
+  'sitemap-allow-thin': `      sitemap-allow-thin:
+        description: >-
+          Space-separated URL paths allowed to be shorter than the word floor
+          (repeated --allow-thin). Write the reason beside the value.
+        required: false
+        type: string
+        default: ""`,
+
+  'sitemap-min-words': `      sitemap-min-words:
+        description: >-
+          Visible-word floor for a listed page. Empty uses the checker's 150.
+        required: false
+        type: string
+        default: ""`,
+
+  'privacy-date-config': `      privacy-date-config:
+        description: >-
+          Path to the site's privacy-date config (JSON). Opts the site in to
+          check-privacy-date (V78): the privacy page's shown date moves with its
+          policy text and only then. Empty skips it.
+        required: false
+        type: string
+        default: ""`,
+
   'allow-machine-paths': `      allow-machine-paths:
         description: >-
           Space-separated substrings waiving a deliberate absolute path from
@@ -193,6 +225,10 @@ export const GATE_ARGUMENTS = {
   'error-page-root': 'error-page-root',
   'error-page-markers': 'error-page-markers',
   'sitemap-origin': 'sitemap-origin',
+  'sitemap-files': 'sitemap-files',
+  'sitemap-allow-thin': 'sitemap-allow-thin',
+  'sitemap-min-words': 'sitemap-min-words',
+  'privacy-date-config': 'privacy-date-config',
   'allow-machine-paths': 'allow-machine-paths',
 }
 

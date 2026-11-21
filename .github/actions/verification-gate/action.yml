@@ -120,6 +120,39 @@ inputs:
       publish-root: every listed URL must be self-canonical, carry no noindex or
       meta refresh, and have real content. Empty skips the check. Opt-in because
       a site must be clean first; turn it on per site after a kit refresh.
+      Unlike its neighbours this step fails the job (V77: the sitemap is build
+      output the pull request changes).
+    required: false
+    default: ""
+  sitemap-files:
+    description: >-
+      Space-separated sitemap files under publish-root, passed to the checker
+      as repeated `--sitemap`. A sitemap index is followed. Empty uses the
+      checker's default, `sitemap.xml`.
+    required: false
+    default: ""
+  sitemap-allow-thin:
+    description: >-
+      Space-separated URL paths allowed to have fewer words than
+      sitemap-min-words, passed as repeated `--allow-thin`. Each path needs its
+      reason written in the caller's workflow beside the value.
+    required: false
+    default: ""
+  sitemap-min-words:
+    description: >-
+      Visible-word floor for a listed page, passed as `--min-words`. Empty uses
+      the checker's default of 150. Never raise tolerance to pass; allow-list
+      a path with a reason instead.
+    required: false
+    default: ""
+  privacy-date-config:
+    description: >-
+      Path to the site's privacy-date config (JSON). Opts the site in to
+      check-privacy-date (V78): a privacy page's shown "last changed" date moves
+      with its policy text and only then. Reads this pull request's own diff
+      (merge base to HEAD), so the step fetches the base branch and full history
+      first. Warns for now (::warning, exit 0) unless PRIVACY_DATE_ENFORCE=1 is
+      set, in which case it fails the job. Empty skips the check.
     required: false
     default: ""
 
@@ -146,8 +179,10 @@ runs:
     # checks that remain report with a `::warning` annotation and do not fail
     # the job; docs/verification-rules.md ("2026-10 right-sizing") records, for
     # each one, what still catches its class. What stays enforced is what the
-    # change under review decides: the consumer's own build and tests, and the
-    # executed-count floor that proves they ran.
+    # change under review decides: the consumer's own build and tests, the
+    # executed-count floor that proves they ran, and the sitemap step for a
+    # caller that opts in (V77: a listed noindex or redirected URL is an
+    # unambiguous defect in build output, not a rendered-quality signal).
 
     # When a workflow says `uses: gorfednet/.github/.github/actions/verification-gate@<ref>`
     # the runner downloads this whole repository at <ref> and runs the action
@@ -276,18 +311,54 @@ runs:
         fi
 
     - name: Sitemap lists only pages worth indexing
-      if: ${{ !cancelled() && inputs.sitemap-origin != '' }}
+      if: ${{ !cancelled() && (inputs.sitemap-origin != '' || inputs.sitemap-files != '' || inputs.sitemap-allow-thin != '' || inputs.sitemap-min-words != '') }}
       shell: bash
       run: |
+        # Fails the job, unlike the steps around it: the sitemap is build
+        # output this pull request changes, so rule 5 allows it (V77).
+        # Any sitemap input opts in, so one set without sitemap-origin cannot
+        # skip silently.
+        if [ -z "${{ inputs.sitemap-origin }}" ]; then
+          echo "::error title=Sitemap check inputs agree::A sitemap input is set but sitemap-origin is empty, so the check cannot say which site the sitemap lists. Set sitemap-origin."
+          exit 1
+        fi
         if [ -z "${{ inputs.publish-root }}" ]; then
-          echo "::warning title=Sitemap check inputs agree::sitemap-origin is set but publish-root is empty, so there is no built site for the sitemap check to read. Set publish-root."
-          exit 0
+          echo "::error title=Sitemap check inputs agree::sitemap-origin is set but publish-root is empty, so there is no built site for the sitemap check to read. Set publish-root."
+          exit 1
         fi
         if ! node "$VERIFICATION_GATE_KIT/bin/check-sitemap-pages.mjs" \
           --root "${{ inputs.publish-root }}" \
-          --origin "${{ inputs.sitemap-origin }}"; then
-          echo "::warning title=Sitemap lists only pages worth indexing::A sitemap URL is not a page worth indexing (canonical, noindex, redirect or thin content). See this step's log."
+          --origin "${{ inputs.sitemap-origin }}" \
+          $(for file in ${{ inputs.sitemap-files }}; do printf -- '--sitemap %s ' "$file"; done) \
+          $(for path in ${{ inputs.sitemap-allow-thin }}; do printf -- '--allow-thin %s ' "$path"; done) \
+          $(for words in ${{ inputs.sitemap-min-words }}; do printf -- '--min-words %s ' "$words"; done); then
+          echo "::error title=Sitemap lists only pages worth indexing::The sitemap check failed or could not run: a listed URL is not a page worth indexing (canonical, noindex, redirect or thin content), or the sitemap file, the build or an option was missing or invalid. See this step's log."
+          exit 1
         fi
+
+    - name: Privacy date moves with the policy text
+      if: ${{ !cancelled() && inputs.privacy-date-config != '' }}
+      shell: bash
+      env:
+        PRIVACY_BASE_REF: ${{ github.base_ref }}
+      run: |
+        # Warning-only for now (V78): every way this step can fail warns and exits 0
+        # unless PRIVACY_DATE_ENFORCE=1, until a plan row hardens it. The page and
+        # its date are what this pull request changes, so rule 5 allows it. The diff
+        # is the pull request's own: the merge base to HEAD. A shallow clone cannot
+        # show that, so deepen it.
+        soft() {
+          if [ "${PRIVACY_DATE_ENFORCE:-}" = "1" ]; then echo "::error title=Privacy date::$1"; exit 1; fi
+          echo "::warning title=Privacy date::$1"; exit 0
+        }
+        if [ "$(git rev-parse --is-shallow-repository)" = "true" ]; then
+          git fetch --no-tags --unshallow origin || soft "the clone could not be deepened, so the pull request's own diff was not read."
+        fi
+        base="${PRIVACY_BASE_REF:-main}"
+        git fetch --no-tags origin "+refs/heads/${base}:refs/remotes/origin/${base}" || soft "the base branch ${base} could not be fetched, so the pull request's own diff was not read."
+        node "$VERIFICATION_GATE_KIT/bin/check-privacy-date.mjs" \
+          --config "${{ inputs.privacy-date-config }}" \
+          --base "origin/${base}" || soft "the privacy-date check did not run to a verdict. See this step's log."
 
     - name: Error pages ship with the site
       if: ${{ !cancelled() && inputs.error-page-root != '' }}

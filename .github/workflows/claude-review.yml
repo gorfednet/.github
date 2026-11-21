@@ -5,7 +5,9 @@
 # on `pull_request: [opened, ready_for_review]` and `issue_comment: [created]`. The job reviews when a
 # pull request opens or leaves draft, and again whenever an owner, member or collaborator posts a
 # comment with a line that is exactly "claude review" (any case; other lines may explain): once at open, once more on the final head after a push that changed code someone
-# wrote, which keeps reviews inside the Max plan's limits.
+# wrote, which keeps reviews inside the Max plan's limits. A head that already has a verdict is not
+# reviewed twice: the repeat request skips and says so in one comment, and a line "claude review force"
+# (or a new commit) reviews that head again.
 #
 # A pull request Dependabot opens is not reviewed on `pull_request` (7 November 2026): GitHub runs
 # that event for dependabot[bot] with read-only secrets, so the review job could not read
@@ -18,9 +20,20 @@
 # (`sk-ant-api...`) with its own spending cap. The "Pick the credential" step tells them apart by
 # prefix, so a repository switches by replacing the secret's value, with no caller change. An API
 # key keeps reviews off the subscription's weekly limit (owner, 2026-10-27: the shared limit was
-# reached and every review failed). It always runs GitHub-hosted (ubuntu-latest): it holds
-# that secret, and secret-holding jobs stay off the self-hosted pool (owner decision 2026-10-19).
-# The `runs-on` input is still accepted from older callers and ignored.
+# reached and every review failed).
+#
+# Both jobs run on the caller's pool: the optional `runs-on` input (JSON), else the caller's
+# HEAVY_RUNS_ON variable. The owner's instruction of 2026-11-20 ("we need to stop using github
+# runners entirely, only rely on local infra") replaces the decision of 2026-10-19 that kept
+# secret-holding jobs hosted. A public caller always runs GitHub-hosted, which is free (owner,
+# 2026-11-20: free runners only), whatever the input or the variable say: the pool serves no public
+# repository. A private caller with neither
+# set, or with a hosted runner name (ubuntu-, macos-, windows-), fails at once with a message that
+# names the fix: a job that waited for a label no runner carries would sit queued for a day and
+# alert nobody. Paid minutes are never used.
+#
+# A pull request whose head is in another repository (a fork) is never reviewed here, on either
+# trigger: the review job holds the token and runs on the pool, and a fork's head must not reach it.
 #
 # The verdict is machine-readable: the review ends with one pull request comment carrying
 # `<!-- claude-review head=<sha> findings=<n> blocking=<m> -->`, which scripts/review-status.mjs (in this
@@ -32,9 +45,13 @@ on:
     inputs:
       runs-on:
         description: >-
-          Ignored, kept so existing callers do not break. Both jobs always run GitHub-hosted:
-          the review job holds CLAUDE_CODE_OAUTH_TOKEN, and secret-holding jobs stay off the
-          self-hosted pool (owner decision 2026-10-19).
+          Where every job runs, as JSON: a label string or an array of labels, e.g.
+          '["self-hosted","linux","4c-heavy"]'. Optional: left empty, the caller's HEAVY_RUNS_ON
+          variable is used, so no caller has to pass it. A public caller always runs
+          GitHub-hosted, which is free (owner, 2026-11-20: free runners only), whatever this input
+          or the variable say: the pool serves no public repository. A scheduled run's event carries no
+          repository, so that rule can't see one: a public caller on a schedule passes a hosted runs-on
+          itself. A private caller with neither set, or with a hosted name, fails at once with a message that names the fix; no job queues.
         required: false
         type: string
         default: ""
@@ -63,19 +80,20 @@ jobs:
   trigger:
     if: >-
       (github.event_name == 'pull_request' && !github.event.pull_request.draft &&
-       github.event.pull_request.user.login != 'dependabot[bot]') ||
+       github.event.pull_request.user.login != 'dependabot[bot]' &&
+       github.event.pull_request.head.repo.full_name == github.repository) ||
       (github.event_name == 'issue_comment' && github.event.issue.pull_request &&
        contains(github.event.comment.body, 'claude review') &&
        ((github.event.comment.user.type != 'Bot' &&
          contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)) ||
         (vars.SHIP_BOT_LOGIN != '' && github.event.comment.user.login == vars.SHIP_BOT_LOGIN)))
-    # The runs-on input is accepted and ignored.
-    # Hosted: a review request should not wait behind the self-hosted pool's queue (seconds of work).
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(github.event.repository.visibility == 'public' && '"ubuntu-latest"' || inputs.runs-on == '' && vars.HEAVY_RUNS_ON == '' && 'no pool for this repository - set HEAVY_RUNS_ON' || github.event.repository.visibility != '' && (contains(inputs.runs-on != '' && inputs.runs-on || vars.HEAVY_RUNS_ON, 'ubuntu-') || contains(inputs.runs-on != '' && inputs.runs-on || vars.HEAVY_RUNS_ON, 'macos-') || contains(inputs.runs-on != '' && inputs.runs-on || vars.HEAVY_RUNS_ON, 'windows-')) && 'hosted runner refused for a private repository - use the pool label' || inputs.runs-on != '' && inputs.runs-on || vars.HEAVY_RUNS_ON) }}
     timeout-minutes: 2
-    permissions: {}
+    permissions:
+      pull-requests: read
     outputs:
-      go: ${{ steps.trigger.outputs.go }}
+      go: ${{ steps.fork.outputs.go || steps.trigger.outputs.go }}
+      force: ${{ steps.trigger.outputs.force }}
     steps:
       # The job's `if` only prefilters a comment (the words appear somewhere, and contains() is
       # case-insensitive). This decides: a review is asked for when one line of the comment,
@@ -91,21 +109,52 @@ jobs:
         run: |
           set -euo pipefail
           go=true
+          force=false
           if [[ "$EVENT" == issue_comment ]]; then
             go=false
             while IFS= read -r line || [[ -n "$line" ]]; do
               line="$(printf '%s' "${line%$'\r'}" | tr '[:upper:]' '[:lower:]' | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')"
               if [[ "$line" == "claude review" ]]; then go=true; fi
+              # `claude review force` also reviews a head that already has a verdict.
+              if [[ "$line" == "claude review force" ]]; then go=true; force=true; fi
             done <<<"$BODY"
           fi
           echo "go=${go}" >> "$GITHUB_OUTPUT"
+          echo "force=${force}" >> "$GITHUB_OUTPUT"
           echo "review requested: ${go}"
+
+      # A fork head never reaches the review job. The pull_request payload carries the head
+      # repository; an issue_comment payload does not, so it is read from the API. A failed read
+      # fails the job. A deleted head repository is refused, never assumed to be this one.
+      - name: Refuse a pull request from a fork
+        id: fork
+        if: steps.trigger.outputs.go == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          BASE_REPO: ${{ github.repository }}
+          PAYLOAD_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
+        run: |
+          set -euo pipefail
+          head="$PAYLOAD_HEAD_REPO"
+          if [[ "$EVENT" == issue_comment ]]; then
+            # A failed read is red, never a silent skip: only a fork, or a deleted head
+            # repository (an empty name), skips the review.
+            if ! head="$(gh api "repos/${BASE_REPO}/pulls/${NUMBER}" --jq '.head.repo.full_name // ""')"; then
+              echo "::error::Could not read pull request ${NUMBER} to check its head repository."
+              exit 1
+            fi
+          fi
+          go=false
+          if [[ -n "$head" && "$head" == "$BASE_REPO" ]]; then go=true; fi
+          echo "go=${go}" >> "$GITHUB_OUTPUT"
+          echo "head repository: ${head:-unknown}; review: ${go}"
 
   review:
     needs: trigger
     if: needs.trigger.outputs.go == 'true'
-    # Hosted: holds CLAUDE_CODE_OAUTH_TOKEN; secret-holding jobs stay off the pool (owner, 2026-10-19).
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(github.event.repository.visibility == 'public' && '"ubuntu-latest"' || inputs.runs-on == '' && vars.HEAVY_RUNS_ON == '' && 'no pool for this repository - set HEAVY_RUNS_ON' || github.event.repository.visibility != '' && (contains(inputs.runs-on != '' && inputs.runs-on || vars.HEAVY_RUNS_ON, 'ubuntu-') || contains(inputs.runs-on != '' && inputs.runs-on || vars.HEAVY_RUNS_ON, 'macos-') || contains(inputs.runs-on != '' && inputs.runs-on || vars.HEAVY_RUNS_ON, 'windows-')) && 'hosted runner refused for a private repository - use the pool label' || inputs.runs-on != '' && inputs.runs-on || vars.HEAVY_RUNS_ON) }}
     timeout-minutes: 30
     permissions:
       contents: read
@@ -128,13 +177,64 @@ jobs:
           echo "head=${pull%% *}" >> "$GITHUB_OUTPUT"
           echo "base=${pull##* }" >> "$GITHUB_OUTPUT"
 
+      # One finished review per head. The concurrency group above queues a second request behind
+      # a running review (it never cancels one, so a head's review is never lost). The head is
+      # resolved here, when the job starts, so a queued run always reviews the newest head. If
+      # the bot has already posted a verdict for exactly that head, this run is a duplicate and
+      # every later step skips. A different head has a different sha and is never skipped; a
+      # review that failed before its verdict comment leaves none, so a retry still runs (ops 188
+      # took 11 reviewer runs for 3 lines). Two ways to review the same head again: a comment
+      # line `claude review force` (a retarget, or a verdict that says it could not read everything),
+      # or a new commit. A draft that ship-bot readies keeps its draft-time review of the same
+      # head: the ready_for_review run skips, on purpose. Each comment counts by its first marker
+      # only, as scripts/lib/reviewVerdict.mjs reads it, in the same shape.
+      # A pending `force` run can be replaced by a later plain request in the group: send force last.
+      - name: Skip a head that already has a verdict
+        id: dup
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NUMBER: ${{ steps.pr.outputs.number }}
+          HEAD: ${{ steps.pr.outputs.head }}
+          FORCE: ${{ needs.trigger.outputs.force }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          if [[ "${FORCE:-false}" == true ]]; then
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            echo "forced: reviewing ${HEAD} again"
+            exit 0
+          fi
+          encoded="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/issues/${NUMBER}/comments" \
+            --jq '.[] | select(.user.login == "github-actions[bot]") | [.html_url, (.body | @base64)] | @tsv')"
+          skip=false
+          verdict_url=""
+          while IFS=$'\t' read -r url one; do
+            [[ -n "${one:-}" ]] || continue
+            marker="$(base64 --decode <<<"$one" | grep -Eo '<!--[[:space:]]*claude-review[[:space:]]+head=[0-9a-f]{40}[[:space:]]+findings=[0-9]+([[:space:]]+blocking=[0-9]+)?[[:space:]]*-->' | sed -n 1p || true)"
+            [[ -n "$marker" ]] || continue
+            if [[ "$(sed -E 's/.*head=([0-9a-f]{40}).*/\1/' <<<"$marker")" == "$HEAD" ]]; then skip=true; verdict_url="$url"; fi
+          done <<<"$encoded"
+          echo "skip=${skip}" >> "$GITHUB_OUTPUT"
+          if [[ "$skip" == true ]]; then
+            echo "head ${HEAD} already has a review verdict: skipping this duplicate request"
+            # A person who asked sees why nothing ran. Never on a pull_request event (leaving
+            # draft), and never a marker or a line that is only the trigger phrase.
+            # --repo is required: this step runs before actions/checkout, so gh has no git
+            # repository to read (4thcltr.com run 44933695692, 21 Nov 2026).
+            if [[ "$EVENT" == issue_comment ]]; then
+              gh pr comment "$NUMBER" --repo "$GITHUB_REPOSITORY" --body "A review of \`${HEAD:0:9}\` already exists: ${verdict_url}. No new review ran. To review this head again, post the words claude review force on a line of their own, or push a new commit."
+            fi
+          fi
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        if: steps.dup.outputs.skip != 'true'
         with:
           ref: ${{ steps.pr.outputs.head }}
           fetch-depth: 0
 
       # From gorfednet/.github@main, never from the checkout: see the action's description.
       - name: Build the review input
+        if: steps.dup.outputs.skip != 'true'
         uses: gorfednet/.github/.github/actions/review-input@main
         with:
           base: ${{ steps.pr.outputs.base }}
@@ -145,6 +245,7 @@ jobs:
       # gorfed.net, bindercurve.com, assess and ops keep Opus under "auto". Matching is by
       # repository name, case-insensitive (ACID2REAPER's remote is spelled in capitals).
       - name: Pick the model
+        if: steps.dup.outputs.skip != 'true'
         id: model
         env:
           REPO: ${{ github.repository }}
@@ -165,6 +266,7 @@ jobs:
       # The secret holds either a subscription token or an API key; pass it to the matching input.
       # Fails closed: an empty or unrecognised value is an error, never a silent skip.
       - name: Pick the credential
+        if: steps.dup.outputs.skip != 'true'
         id: auth
         env:
           CREDENTIAL: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
@@ -177,7 +279,8 @@ jobs:
           esac
 
       - name: Review
-        uses: anthropics/claude-code-action@1d6de8cb0c237e7c15e9e1bdf973826ebae490cc # v1.0.248
+        if: steps.dup.outputs.skip != 'true'
+        uses: anthropics/claude-code-action@f3b070c88125d33dbae5653df5f143101d4ea9dc # v1.0.276
         with:
           anthropic_api_key: ${{ steps.auth.outputs.kind == 'api' && secrets.CLAUDE_CODE_OAUTH_TOKEN || '' }}
           claude_code_oauth_token: ${{ steps.auth.outputs.kind == 'oauth' && secrets.CLAUDE_CODE_OAUTH_TOKEN || '' }}
@@ -244,4 +347,5 @@ jobs:
             <!-- claude-review head=${{ steps.pr.outputs.head }} findings=N blocking=M -->
           claude_args: |
             --model ${{ steps.model.outputs.model }}
+            --permission-mode default
             --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr view:*),Bash(git show:*),Bash(git log:*),Bash(git diff:*),Read,Grep,Glob"

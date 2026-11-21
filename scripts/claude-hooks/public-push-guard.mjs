@@ -16,7 +16,7 @@
  *   by that one extra ask. gh is only ever asked for the whole list, never about one repository.
  * - The target's allowlist is read from the remote's default branch tip, as the remote reports it now,
  *   never from the push boundary, the working tree or any commit the pusher sent: a change can't clear
- *   itself, and a branch cut before an exemption landed still sees it.
+ *   itself (one new `site` line counts for its own push), and a branch cut before an exemption landed still sees it.
  * - Outgoing commits are those reachable from the sent shas and not from anything the remote
  *   holds now (`git ls-remote`, not tracking refs, which go stale). scripts/privacy-guard.mjs
  *   reads them (messages, every commit's diff, the net diff). Ref names, and an annotated tag's
@@ -141,7 +141,7 @@ export async function loadGuard(list, allowText = '', head = '') {
   // As privacy-guard reads a bare name: watched while the remote's default branch has never said it, and on a line that says private once it has.
   // Without that commit here nothing counts as said, which watches every name.
   const known = /^[0-9a-f]{40,64}$/.test(head) && git(['cat-file', '-e', `${head}^{commit}`]).status === 0
-  const unsaid = open.filter((n) => !known || !mod.namedAtBase('.', head, n))
+  const unsaid = open.filter((n) => !known || (!allow.sites.includes(n.toLowerCase()) && !mod.namedAtBase('.', head, n)))
   const said = open.filter((n) => !unsaid.includes(n))
   const ctx = { privateRepo: mod.privateRepoPattern(open), bareNames: mod.bareNamePatterns(unsaid), saidNames: mod.bareNamePatterns(said).word, allow }
   return { mod, ctx, names }

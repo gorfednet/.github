@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -r ~/.claude/hooks/context-cap.py ] || exit 0; python3 -I ~/.claude/hooks/context-cap.py",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}

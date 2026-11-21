@@ -223,6 +223,120 @@ describe('the review job never runs code from the checkout under review', () => 
   })
 })
 
+describe('one finished review per head', () => {
+  it('checks for a verdict on this exact head, from the review bot only, after the head resolves', () => {
+    const body = step(workflow, 'Skip a head that already has a verdict')
+    assert.ok(workflow.indexOf('- name: Resolve the pull request head') < workflow.indexOf('- name: Skip a head that already has a verdict'))
+    assert.match(body, /github-actions\[bot\]/)
+    assert.match(body, /claude-review\[\[:space:\]\]\+head=\[0-9a-f\]\{40\}/)
+    assert.match(body, /== "\$HEAD"/)
+    assert.match(body, /skip=\$\{skip\}/)
+    assert.match(body, /FORCE: \$\{\{ needs\.trigger\.outputs\.force \}\}/)
+  })
+
+  describe('the step run against a stub gh', () => {
+    const HEAD = 'a'.repeat(40)
+    const OTHER = 'b'.repeat(40)
+    const body = step(workflow, 'Skip a head that already has a verdict')
+    const at = body.indexOf('run: |\n') + 'run: |\n'.length
+    const script = body.slice(at).split('\n').map((l) => l.slice(10)).join('\n')
+    const bot = (text) => ({ login: 'github-actions[bot]', body: text })
+    const line = (head, tail = 'findings=0 blocking=0 -->') => `Reviewed.\n<!-- claude-review head=${head} ${tail}`
+    /** Runs the step with `pages` of comments (the stub prints each page's jq result) and returns skip. */
+    function run(pages, head = HEAD, force = '', event = 'issue_comment') {
+      const dir = mkdtempSync(join(tmpdir(), 'dup-'))
+      try {
+        // The stub hands back the raw comments and runs the step's own --jq filter through real jq,
+        // so the bot filter that ships is the one under test (jq missing is an error, never a skip).
+        writeFileSync(join(dir, 'comments.json'), JSON.stringify(pages.flat().map((c, i) => ({ user: { login: c.login }, body: c.body, html_url: `https://x/c${i}` }))))
+        writeFileSync(
+          join(dir, 'gh'),
+          '#!/bin/sh\nif [ "$1" = pr ]; then case "$*" in *"--repo o/r"*) ;; *) echo "fatal: not a git repository (gh pr needs --repo before checkout)" >&2; exit 128 ;; esac; printf \'%s\\n\' "$*" >> "$(dirname "$0")/posted"; exit 0; fi\ncase "$*" in *--paginate*) ;; *) echo "stub gh needs --paginate" >&2; exit 9 ;; esac\nwhile [ $# -gt 0 ]; do [ "$1" = --jq ] && filter="$2"; shift; done\n[ -n "$filter" ] || exit 8\njq -r "$filter" "$(dirname "$0")/comments.json"\n',
+          { mode: 0o755 },
+        )
+        writeFileSync(join(dir, 'step.sh'), script)
+        const out = join(dir, 'out')
+        writeFileSync(out, '')
+        execFileSync('bash', [join(dir, 'step.sh')], { env: { PATH: `${dir}:${process.env.PATH}`, GITHUB_REPOSITORY: 'o/r', GITHUB_OUTPUT: out, NUMBER: '1', HEAD: head, FORCE: force, EVENT: event } })
+        const posted = existsSync(join(dir, 'posted')) ? readFileSync(join(dir, 'posted'), 'utf8') : ''
+        return { skip: /skip=(\w+)/.exec(readFileSync(out, 'utf8'))[1], posted }
+      } finally {
+        rmSync(dir, { recursive: true, force: true })
+      }
+    }
+    const skip = (...args) => run(...args).skip
+    it('skips a head the bot already gave a verdict', () => assert.equal(skip([[bot(line(HEAD))]]), 'true'))
+    it('skips on a verdict without blocking, as the parser accepts', () => assert.equal(skip([[bot(line(HEAD, 'findings=2 -->'))]]), 'true'))
+    it('runs for a verdict on another head', () => assert.equal(skip([[bot(line(OTHER))]]), 'false'))
+    it('runs when there are no comments', () => assert.equal(skip([[]]), 'false'))
+    it('runs for a bot comment with no marker', () => assert.equal(skip([[bot('Reviewed, nothing found.')]]), 'false'))
+    it('runs for a marker a person pasted', () => assert.equal(skip([[{ login: 'someone', body: line(HEAD) }]]), 'false'))
+    it('runs for a malformed marker the parser would not read', () => {
+      assert.equal(skip([[bot(line(HEAD, 'findings=N blocking=M -->'))]]), 'false')
+      assert.equal(skip([[bot(line(HEAD, 'findings=2, blocking=1 -->'))]]), 'false')
+      assert.equal(skip([[bot(`<!-- claude-review head=${HEAD} findings=2`)]]), 'false')
+    })
+    it('reads only the first marker in a comment, as the parser does', () => {
+      const two = (first, second) => bot(`${line(first)}\nEarlier review quoted:\n${line(second)}`)
+      assert.equal(skip([[two(OTHER, HEAD)]]), 'false')
+      assert.equal(skip([[two(HEAD, OTHER)]]), 'true')
+    })
+    it('`claude review force` reviews a head that already has a verdict; plain does not', () => {
+      assert.equal(skip([[bot(line(HEAD))]], HEAD, 'true'), 'false')
+      assert.equal(skip([[bot(line(HEAD))]], HEAD, 'false'), 'true')
+      assert.equal(skip([[bot(line(HEAD))]], HEAD, ''), 'true')
+    })
+    it('says why on a skipped comment request: names the verdict and force, carries no marker and no bare trigger line', () => {
+      const { skip: result, posted } = run([[bot('Intro.'), bot(line(HEAD))]])
+      assert.equal(result, 'true')
+      assert.match(posted, /^pr comment 1 --repo o\/r --body /)
+      assert.match(posted, /https:\/\/x\/c1/)
+      assert.match(posted, /claude review force/)
+      assert.doesNotMatch(posted, /claude-review head=/)
+      assert.ok(!posted.split('\n').some((l) => /^\s*claude review( force)?\s*$/i.test(l)))
+    })
+    it('posts nothing when it does not skip, on force, or on a pull_request event', () => {
+      assert.equal(run([[bot(line(OTHER))]]).posted, '')
+      assert.equal(run([[bot(line(HEAD))]], HEAD, 'true').posted, '')
+      const leftDraft = run([[bot(line(HEAD))]], HEAD, '', 'pull_request')
+      assert.equal(leftDraft.skip, 'true')
+      assert.equal(leftDraft.posted, '')
+    })
+    it('finds a verdict that sits after a large comment', () => {
+      assert.equal(skip([[bot('x'.repeat(200000)), bot(line(HEAD))]]), 'true')
+      assert.equal(skip([[bot(line(HEAD)), bot('y'.repeat(200000))]]), 'true')
+    })
+  })
+
+  it('every gh call before the checkout names its repository, because no git repository exists there yet', () => {
+    // 4thcltr.com run 44933695692 (21 Nov 2026): a duplicate request ran `gh pr comment` with no
+    // --repo, before actions/checkout, and the job failed with "fatal: not a git repository".
+    const early = workflow.slice(workflow.indexOf('  trigger:\n'), workflow.indexOf('- uses: actions/checkout@'))
+    const calls = [...early.matchAll(/\bgh (?:pr|api|issue)\b[^\n]*/g)].map((m) => m[0])
+    assert.ok(calls.length >= 4, `found ${calls.length} gh calls`)
+    for (const call of calls) {
+      // A paginated read puts its path on the same line; `gh pr`/`gh issue` need --repo.
+      assert.match(call, /--repo "\$GITHUB_REPOSITORY"|"repos\/\$\{(GITHUB_REPOSITORY|BASE_REPO)\}\//, call)
+    }
+  })
+
+  it('skips every step after it, so a duplicate runs no checkout, no credential read and no review', () => {
+    const after = workflow.slice(workflow.indexOf('- name: Skip a head that already has a verdict'))
+    const steps = after.split('\n      - ').slice(1)
+    assert.ok(steps.length >= 5, `found ${steps.length} later steps`)
+    for (const text of steps) assert.match(text, /\n\s+if: steps\.dup\.outputs\.skip != 'true'\n/, text.split('\n')[0])
+  })
+
+  it('still queues rather than cancels, so a newer head’s review is never dropped', () => {
+    assert.match(workflow, /concurrency:\n\s+group: claude-review-[^\n]+\n\s+cancel-in-progress: false/)
+  })
+
+  it('the head compared is the one resolved when the job starts, not the one at trigger time', () => {
+    assert.match(step(workflow, 'Skip a head that already has a verdict'), /HEAD: \$\{\{ steps\.pr\.outputs\.head \}\}/)
+    assert.match(step(workflow, 'Resolve the pull request head'), /pulls\/\$\{NUMBER\}/)
+  })
+})
+
 describe('the verdict and the tools', () => {
   it('allows the read-only git commands the reviewer needs and no write command', () => {
     const allowed = /--allowedTools "([^"]+)"/.exec(step(workflow, 'Review'))?.[1]?.split(',') ?? []
@@ -312,14 +426,15 @@ describe('the caller template', () => {
     assert.match(template, /issue_comment:\n\s+types: \[created\]/)
   })
 
-  it('passes the token and never routes the reviewer to the pool', () => {
+  it('passes the token and routes the reviewer to the caller pool', () => {
     assert.match(template, /CLAUDE_CODE_OAUTH_TOKEN: \$\{\{ secrets\.CLAUDE_CODE_OAUTH_TOKEN \}\}/)
-    // The reviewer holds a secret; secret-holding jobs stay GitHub-hosted (owner, 2026-10-19).
-    assert.doesNotMatch(template, /HEAVY_RUNS_ON/)
+    // The owner's 2026-11-20 instruction replaced the 2026-10-19 rule that kept secret jobs hosted.
+    assert.match(template, /runs-on: \$\{\{ vars\.HEAVY_RUNS_ON \}\}/)
   })
 
   it('grants every permission the shared job asks for, since a called job cannot exceed its caller', () => {
-    const asked = workflow.slice(workflow.indexOf('    permissions:'), workflow.indexOf('    concurrency:'))
+    const review = workflow.slice(workflow.indexOf('\n  review:'))
+    const asked = review.slice(review.indexOf('    permissions:'), review.indexOf('    concurrency:'))
     const permissions = [...asked.matchAll(/^\s{6}([a-z-]+): (\w+)$/gm)].map((match) => `${match[1]}: ${match[2]}`)
     assert.ok(permissions.length >= 4, `parsed ${permissions.length} permissions`)
     for (const permission of permissions) assert.ok(template.includes(`  ${permission}\n`), permission)
@@ -352,8 +467,10 @@ describe('the review trigger', () => {
     const out = join(dir, 'out')
     writeFileSync(out, '')
     execFileSync('bash', ['-c', script], { env: { PATH: process.env.PATH, EVENT: event, BODY: body, GITHUB_OUTPUT: out } })
-    const go = /go=(\w+)/.exec(readFileSync(out, 'utf8'))?.[1]
+    const text = readFileSync(out, 'utf8')
+    const go = /go=(\w+)/.exec(text)?.[1]
     rmSync(dir, { recursive: true, force: true })
+    decide.force = /force=(\w+)/.exec(text)?.[1]
     return go
   }
 
@@ -362,6 +479,18 @@ describe('the review trigger', () => {
     assert.equal(decide('issue_comment', 'claude review\nThe push only fixed lint.'), 'true')
     assert.equal(decide('issue_comment', 'Merged main after #12; a clean merge.\nclaude review'), 'true')
     assert.equal(decide('issue_comment', 'One.\r\n  Claude Review  \r\nTwo.'), 'true')
+  })
+
+  it('reads `claude review force` as a forced request and plain `claude review` as not forced', () => {
+    assert.equal(decide('issue_comment', 'claude review force'), 'true')
+    assert.equal(decide.force, 'true')
+    assert.equal(decide('issue_comment', 'Retargeted.\n  Claude Review Force  '), 'true')
+    assert.equal(decide.force, 'true')
+    assert.equal(decide('issue_comment', 'claude review'), 'true')
+    assert.equal(decide.force, 'false')
+    assert.equal(decide('issue_comment', 'please claude review force this'), 'false')
+    assert.equal(decide('pull_request'), 'true')
+    assert.equal(decide.force, 'false')
   })
 
   it('does not fire on the phrase inside prose, a longer word, or a code-quoted mention', () => {
@@ -416,17 +545,77 @@ describe('the review trigger', () => {
     assert.match(review, /\n    needs: trigger\n/)
     assert.match(review, /\n    if: needs\.trigger\.outputs\.go == 'true'\n/)
     assert.match(review, /concurrency:/)
-    assert.match(job('trigger'), /go: \$\{\{ steps\.trigger\.outputs\.go \}\}/)
+    assert.match(job('trigger'), /go: \$\{\{ steps\.fork\.outputs\.go \|\| steps\.trigger\.outputs\.go \}\}/)
+    // The review job reads `needs.trigger.outputs.force`; without this output the override is silently off.
+    assert.match(job('trigger'), /force: \$\{\{ steps\.trigger\.outputs\.force \}\}/)
   })
 })
 
+const EXPR = "fromJSON(github.event.repository.visibility == 'public' && '\"ubuntu-latest\"' || inputs.runs-on == '' && vars.HEAVY_RUNS_ON == '' && 'no pool for this repository - set HEAVY_RUNS_ON' || github.event.repository.visibility != '' && (contains(inputs.runs-on != '' && inputs.runs-on || vars.HEAVY_RUNS_ON, 'ubuntu-') || contains(inputs.runs-on != '' && inputs.runs-on || vars.HEAVY_RUNS_ON, 'macos-') || contains(inputs.runs-on != '' && inputs.runs-on || vars.HEAVY_RUNS_ON, 'windows-')) && 'hosted runner refused for a private repository - use the pool label' || inputs.runs-on != '' && inputs.runs-on || vars.HEAVY_RUNS_ON)"
+
 describe('where the shared reviewer runs', () => {
-  it('always runs GitHub-hosted, whatever a caller passes, because it holds the OAuth secret', () => {
+  it('runs every job on the caller pool, with no hosted fallback and no startup failure when it is unset', () => {
     const jobs = workflow.slice(workflow.indexOf('\njobs:'))
     const runsOn = [...jobs.matchAll(/^\s{4}runs-on: (.+)$/gm)].map((match) => match[1])
-    assert.ok(runsOn.length >= 1, 'found runs-on lines')
-    for (const value of runsOn) assert.equal(value, 'ubuntu-latest')
-    assert.doesNotMatch(jobs, /inputs\.runs-on/)
+    assert.ok(runsOn.length >= 2, 'found a runs-on line for both jobs')
+    for (const value of runsOn) {
+      assert.equal(value, '${{ ' + EXPR + ' }}')
+    }
+    assert.doesNotMatch(workflow, /runs-on: ubuntu/)
+    assert.doesNotMatch(workflow.replaceAll("github.event.repository.visibility == 'public' && '\"ubuntu-latest\"'", ''), /"ubuntu-latest"/, 'a hosted value only for a public caller')
+    const input = workflow.slice(workflow.indexOf('      runs-on:\n'), workflow.indexOf('      model:'))
+    assert.match(input, /required: false/)
+  })
+})
+
+describe('a pull request from a fork is never reviewed', () => {
+  const FORK = step(workflow, 'Refuse a pull request from a fork')
+  const script = (() => {
+    const at = FORK.indexOf('run: |\n')
+    const lines = FORK.slice(at + 'run: |\n'.length).split('\n')
+    const end = lines.findIndex((l) => l.trim() !== '' && !l.startsWith(' '.repeat(10)))
+    return (end === -1 ? lines : lines.slice(0, end)).map((l) => l.replace(/^ {10}/, '')).join('\n')
+  })()
+  // `gh` is a stub that prints GH_HEAD (or fails when it is "FAIL"), so no network is used.
+  const decide = (event, { payload = '', api = '' } = {}) => {
+    const dir = mkdtempSync(join(tmpdir(), 'review-fork-'))
+    const out = join(dir, 'out')
+    writeFileSync(out, '')
+    mkdirSync(join(dir, 'bin'))
+    writeFileSync(join(dir, 'bin', 'gh'), '#!/bin/sh\n[ "$GH_HEAD" = FAIL ] && exit 1\nprintf %s "$GH_HEAD"\n', { mode: 0o755 })
+    try {
+      execFileSync('bash', ['-c', script], {
+        env: { PATH: `${join(dir, 'bin')}:${process.env.PATH}`, EVENT: event, BASE_REPO: 'example/repo', PAYLOAD_HEAD_REPO: payload, NUMBER: '7', GH_HEAD: api, GITHUB_OUTPUT: out },
+        stdio: 'pipe',
+      })
+    } catch {
+      rmSync(dir, { recursive: true, force: true })
+      return 'failed'
+    }
+    const go = /go=(\w+)/.exec(readFileSync(out, 'utf8'))?.[1]
+    rmSync(dir, { recursive: true, force: true })
+    return go
+  }
+
+  it('proceeds only when the head repository is this one, on the pull_request path', () => {
+    assert.equal(decide('pull_request', { payload: 'example/repo' }), 'true')
+    assert.equal(decide('pull_request', { payload: 'someone/repo' }), 'false')
+    assert.equal(decide('pull_request', { payload: '' }), 'false')
+  })
+
+  it('reads the head repository from the API on the comment path, refuses a fork, and fails the job on a failed read', () => {
+    assert.equal(decide('issue_comment', { api: 'example/repo' }), 'true')
+    assert.equal(decide('issue_comment', { api: 'someone/repo' }), 'false')
+    assert.equal(decide('issue_comment', { api: '' }), 'false')
+    // A failed read is red, so a 'claude review' comment that did nothing is visible (Fable, 2026-11-20).
+    assert.equal(decide('issue_comment', { api: 'FAIL' }), 'failed')
+  })
+
+  it('is wired into the trigger job output and the condition, with read access to pull requests only', () => {
+    const trigger = workflow.slice(workflow.indexOf('\n  trigger:'), workflow.indexOf('\n  review:'))
+    assert.match(trigger, /github\.event\.pull_request\.head\.repo\.full_name == github\.repository/)
+    assert.match(trigger, /go: \$\{\{ steps\.fork\.outputs\.go \|\| steps\.trigger\.outputs\.go \}\}/)
+    assert.match(trigger, /permissions:\n      pull-requests: read\n/)
   })
 })
 

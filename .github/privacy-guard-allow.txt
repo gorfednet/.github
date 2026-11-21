@@ -1,11 +1,22 @@
 # Exemptions for scripts/privacy-guard.mjs. The guard reads this file from the base (main's
 # tip), so a pull request that adds an exemption gets it only after that pull request has
 # merged. A waiting pull request gets it on its next run, with no merge of main.
+# One exception: a single new `site` line counts for the push or pull request that adds it.
 # The guard flags a change to this file, its script or its workflow: read every line.
 #
 #   email <domain-or-address>     an address, or a domain and its subdomains
 #   path <glob> <rule,rule | *>   the named rules are not applied to matching files
 #   repo <name>                   a private repository whose name public files may use
+#   product <Name>                a public product name the private-repo rule would otherwise
+#                                 flag. Exact spelling and case, and a capital letter in it. Only
+#                                 the bare word, in prose: see isProductName in privacy-guard.mjs.
+#   site <domain>                 a public site whose domain is also a private repository's name
+#                                 (a web TLD only). Owner's rule of record (20 November 2026): "we can
+#                                 name public website URLs even if the repo and code is private." The name
+#                                 then counts as said: read beside private or visibility, and as
+#                                 gorfednet/<name>. This line isn't read for its own domain, so a
+#                                 repository adds its first one by itself (word the commit message
+#                                 without the name). The line shows the domain is listed: accepted.
 #   commit <sha>                  a commit (the full 40 hex) whose own diff and message are exempt.
 #                                 A pushed commit cannot be rewritten, so this clears a false
 #                                 positive in one that is not the tip. The net diff is still read.
@@ -18,9 +29,18 @@
 # line does the same for the local pre-push hook, which lists every private repository.
 repo ops
 
+# Public product names.
+product MoonMan
+product BinderCurve
+
 # Test fixtures hold planted bad values on purpose. Only this directory, so a folder
 # named fixtures somewhere else is not a way round the guard.
 path test/fixtures/** *
 
 # Commit b642bd3 (PR 241): its diff holds SSH-remote test fixtures for the public-push guard, no real address.
 commit b642bd39924c04e50b4ef17894fe417045b16464
+
+# The owner's own public sites, each also the name of a private repository.
+site gorfed.net
+site gorfmusic.com
+site 4thcltr.com

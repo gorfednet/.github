@@ -202,7 +202,6 @@ describe('verification-gate composite action', () => {
       ['Page metadata is per-page and correct', 'check-page-metadata.mjs'],
       ['The social card is the image it says it is', 'check-og-image.mjs'],
       ['Error pages ship with the site', 'check-error-pages.mjs'],
-      ['Sitemap lists only pages worth indexing', 'check-sitemap-pages.mjs'],
       ['Paths are derived, not named', 'check-machine-paths.mjs'],
       ['Backlog describes reality', 'check-backlog.mjs'],
     ]
@@ -211,7 +210,7 @@ describe('verification-gate composite action', () => {
       const kit = mkdtempSync(join(tmpdir(), 'gate-kit-'))
       try {
         mkdirSync(join(kit, 'bin'), { recursive: true })
-        for (const [, file] of SOFTENED) {
+        for (const [, file] of [...SOFTENED, ['', 'check-sitemap-pages.mjs']]) {
           writeFileSync(join(kit, 'bin', file), checkerBody, 'utf8')
         }
         let filled = stepScript(text, name)
@@ -224,6 +223,9 @@ describe('verification-gate composite action', () => {
           'inputs.error-page-root': 'dist',
           'inputs.error-page-markers': '',
           'inputs.sitemap-origin': 'https://example.test',
+          'inputs.sitemap-files': '',
+          'inputs.sitemap-allow-thin': '',
+          'inputs.sitemap-min-words': '',
           'inputs.source-dirs': '',
           'inputs.allow-machine-paths': '',
           'inputs.backlog': 'docs/backlog.json',
@@ -285,22 +287,85 @@ describe('verification-gate composite action', () => {
       assert.match(output, /--root\|dist\|--origin\|https:\/\/example\.test/)
     })
 
-    it('says the wiring is wrong, not the pages, when sitemap-origin is set and publish-root is not', () => {
+    it('fails, not warns, when sitemap-origin is set and publish-root is not (V77)', () => {
       const { code, output } = runWith(
         'Sitemap lists only pages worth indexing',
         'console.log("CHECKER RAN"); process.exit(1)\n',
         { 'inputs.publish-root': '' },
       )
-      assert.equal(code, 0, output)
-      assert.match(output, /sitemap-origin is set but publish-root is empty/)
-      assert.doesNotMatch(output, /CHECKER RAN|worth indexing \(canonical/)
+      assert.equal(code, 1, output)
+      assert.match(output, /::error title=Sitemap check inputs agree::sitemap-origin is set but publish-root is empty/)
+      assert.doesNotMatch(output, /CHECKER RAN/)
     })
 
-    it('skips the sitemap step unless a site opts in with sitemap-origin', () => {
-      assert.match(
-        text,
-        /- name: Sitemap lists only pages worth indexing\n\s+if: \$\{\{ !cancelled\(\) && inputs\.sitemap-origin != '' \}\}/,
+    it('the sitemap step fails the job on a finding, keeping the checker output (V77, proposed level)', () => {
+      const { code, output } = runWith(
+        'Sitemap lists only pages worth indexing',
+        'console.log("CHECKER SAID THIS"); process.exit(1)\n',
       )
+      assert.equal(code, 1, output)
+      assert.match(output, /CHECKER SAID THIS/)
+      assert.match(output, /::error title=Sitemap lists only pages worth indexing/)
+      assert.doesNotMatch(output, /::warning/)
+    })
+
+    it('the sitemap step is quiet and exits 0 when the checker passes', () => {
+      const { code, output } = runWith('Sitemap lists only pages worth indexing', 'console.log("fine")\n')
+      assert.equal(code, 0, output)
+      assert.doesNotMatch(output, /::warning|::error/)
+    })
+
+    it('passes each sitemap file, thin-page waiver and the word floor as separate arguments', () => {
+      const { code, output } = runWith(
+        'Sitemap lists only pages worth indexing',
+        'console.log(process.argv.slice(2).join("|"))\n',
+        {
+          'inputs.sitemap-files': 'sitemap.xml en/sitemap.xml',
+          'inputs.sitemap-allow-thin': '/legal /contact',
+          'inputs.sitemap-min-words': '80',
+        },
+      )
+      assert.equal(code, 0, output)
+      assert.match(
+        output,
+        /--sitemap\|sitemap\.xml\|--sitemap\|en\/sitemap\.xml\|--allow-thin\|\/legal\|--allow-thin\|\/contact\|--min-words\|80/,
+      )
+    })
+
+    it('passes no optional flag when the optional inputs are empty', () => {
+      const { code, output } = runWith(
+        'Sitemap lists only pages worth indexing',
+        'console.log("CHECKER RAN " + process.argv.slice(2).join("|"))\n',
+      )
+      assert.equal(code, 0, output)
+      assert.match(output, /CHECKER RAN --root\|dist\|--origin\|https:\/\/example\.test/)
+      assert.doesNotMatch(output, /--sitemap|--allow-thin|--min-words/)
+    })
+
+    it('fails when a sitemap input is set but sitemap-origin is empty, and does not run the checker', () => {
+      for (const input of ['sitemap-files', 'sitemap-allow-thin', 'sitemap-min-words']) {
+        const { code, output } = runWith(
+          'Sitemap lists only pages worth indexing',
+          'console.log("CHECKER RAN")\n',
+          { 'inputs.sitemap-origin': '', [`inputs.${input}`]: '1' },
+        )
+        assert.equal(code, 1, `${input}: ${output}`)
+        assert.match(output, /sitemap-origin is empty/)
+        assert.doesNotMatch(output, /CHECKER RAN/)
+      }
+    })
+
+    it('runs the sitemap step when any of the four sitemap inputs is set, and for no caller that sets none', () => {
+      const guard = text.match(/- name: Sitemap lists only pages worth indexing\n\s+if: (.*)\n/)
+      assert.ok(guard, 'sitemap step has no if:')
+      for (const input of ['sitemap-origin', 'sitemap-files', 'sitemap-allow-thin', 'sitemap-min-words']) {
+        assert.ok(guard[1].includes(`inputs.${input} != ''`), `${input} does not opt the step in`)
+      }
+      assert.ok(!guard[1].includes('inputs.publish-root'), 'publish-root alone must not opt a caller in')
+    })
+
+    it('names a could-not-run failure as well as a bad page', () => {
+      assert.match(text, /::error title=Sitemap lists only pages worth indexing::The sitemap check failed or could not run/)
     })
 
     it('carries no grace-date logic: a dated tripwire is not something a pull request can change', () => {
@@ -942,6 +1007,79 @@ function hostedWithoutReason(text) {
   })
   return bare
 }
+
+const EXPR = "fromJSON(github.event.repository.visibility == 'public' && '\"ubuntu-latest\"' || inputs.runs-on == '' && vars.HEAVY_RUNS_ON == '' && 'no pool for this repository - set HEAVY_RUNS_ON' || github.event.repository.visibility != '' && (contains(inputs.runs-on != '' && inputs.runs-on || vars.HEAVY_RUNS_ON, 'ubuntu-') || contains(inputs.runs-on != '' && inputs.runs-on || vars.HEAVY_RUNS_ON, 'macos-') || contains(inputs.runs-on != '' && inputs.runs-on || vars.HEAVY_RUNS_ON, 'windows-')) && 'hosted runner refused for a private repository - use the pool label' || inputs.runs-on != '' && inputs.runs-on || vars.HEAVY_RUNS_ON)"
+const RUNS_ON_EXPRESSION = '${{ ' + EXPR + ' }}'
+
+describe('reusable workflows have no hosted fallback (owner, 2026-11-20)', () => {
+  const reusable = readdirSync(WORKFLOWS).filter((f) => /^(pr-check-.*|browser-compat|production-healthcheck)\.yml$/.test(f)) // claude-review.yml has its own test
+  it('finds the reusable workflows', () => {
+    assert.ok(reusable.length >= 6, `found ${reusable.length}`)
+  })
+  for (const file of reusable) {
+    it(`${file} takes an optional runs-on that defaults to the caller's pool, never ubuntu-latest`, () => {
+      const text = readFileSync(join(WORKFLOWS, file), 'utf8')
+      const input = text.slice(text.indexOf('      runs-on:\n'), text.indexOf('\n      ', text.indexOf('required:')) + 40)
+      // Optional (Desk, 2026-11-20): a required input would fail every caller that passes none at startup.
+      assert.match(input, /required: false/, 'the runs-on input is optional')
+      assert.doesNotMatch(text, /runs-on:\s+(ubuntu|macos|windows)/, 'no job names a hosted runner')
+      // Free hosted runners only (owner, 2026-11-20: free runners only): ubuntu-latest appears only behind the public-repository gate.
+      assert.doesNotMatch(text.replaceAll("github.event.repository.visibility == 'public' && '\"ubuntu-latest\"'", ''), /ubuntu-latest/, 'a hosted value only for a public caller')
+      // Every `runs-on:` line, not only those with an expression: a literal label would otherwise be skipped.
+      const runsOn = [...text.matchAll(/^\s+runs-on: (.+)$/gm)].map((m) => m[1])
+      assert.ok(runsOn.length >= 1, 'found a job runs-on line')
+      for (const value of runsOn) assert.equal(value, RUNS_ON_EXPRESSION)
+    })
+  }
+})
+
+describe('the reusable runs-on expression, evaluated', () => {
+  it('has no ": " in the plain YAML scalar, which would make the workflow file invalid', () => {
+    assert.doesNotMatch(RUNS_ON_EXPRESSION, /: /)
+  })
+  // GitHub's && and || return their operands, as JavaScript's do, and a missing context is ''.
+  const raw = (ctx) => {
+    const text = readFileSync(join(WORKFLOWS, 'claude-review.yml'), 'utf8')
+    const line = text.match(/^\s+runs-on: \$\{\{ fromJSON\((.+)\) \}\}$/m)[1]
+    const evaluate = new Function('github', 'inputs', 'vars', 'contains', 'fromJSON', `return ${line.replaceAll('inputs.runs-on', "inputs['runs-on']")}`)
+    // Actions' contains() on strings ignores case.
+    const contains = (haystack, needle) => String(haystack).toLowerCase().includes(String(needle).toLowerCase())
+    return evaluate({ event: { repository: { visibility: ctx.visibility ?? '' } } }, { 'runs-on': ctx.input ?? '' }, { HEAVY_RUNS_ON: ctx.variable ?? '' }, contains, (x) => x)
+  }
+  const where = (ctx) => JSON.parse(raw(ctx))
+  // A string that is not JSON makes fromJSON fail the job at once, with the text in the error, so
+  // the job never queues for a runner that doesn't exist.
+  const fails = (ctx, message) => {
+    const value = raw(ctx)
+    assert.throws(() => JSON.parse(value), 'the runs-on value must not parse, so the job fails at startup')
+    assert.match(value, message)
+  }
+  it('sends a public caller hosted whatever the variable or the input say', () => {
+    assert.equal(where({ visibility: 'public' }), 'ubuntu-latest')
+    assert.equal(where({ visibility: 'public', variable: '["self-hosted","linux","x-heavy"]' }), 'ubuntu-latest')
+    assert.equal(where({ visibility: 'public', input: '["self-hosted","linux","x-heavy"]' }), 'ubuntu-latest')
+  })
+  it('sends a private caller to the input, else the variable, else a label nothing carries', () => {
+    assert.deepEqual(where({ visibility: 'private', variable: '["self-hosted","linux","x-heavy"]' }), ['self-hosted', 'linux', 'x-heavy'])
+    assert.deepEqual(where({ visibility: 'private', input: '["self-hosted","linux","y-heavy"]', variable: '["self-hosted","linux","x-heavy"]' }), ['self-hosted', 'linux', 'y-heavy'])
+  })
+  it('fails a private caller with no pool label at once, naming the fix', () => {
+    fails({ visibility: 'private' }, /no pool for this repository.*HEAVY_RUNS_ON/)
+    fails({ visibility: 'internal' }, /no pool for this repository/)
+  })
+  it('refuses a hosted runner name for a private caller, from the variable or the input', () => {
+    for (const name of ['"ubuntu-latest"', '["ubuntu-24.04"]', '"macos-14"', '["windows-latest"]', '"Ubuntu-Latest"']) {
+      fails({ visibility: 'private', variable: name }, /hosted runner refused/)
+      fails({ visibility: 'private', input: name }, /hosted runner refused/)
+    }
+    assert.deepEqual(where({ visibility: 'private', input: '["self-hosted","linux","x-heavy"]', variable: '"ubuntu-latest"' }), ['self-hosted', 'linux', 'x-heavy'], 'only the value that is used counts')
+  })
+  it('lets a scheduled run, which has no repository, use the input or the variable', () => {
+    assert.equal(where({ input: '"ubuntu-latest"' }), 'ubuntu-latest')
+    fails({}, /no pool for this repository/)
+    assert.deepEqual(where({ variable: '["self-hosted","linux","x-heavy"]' }), ['self-hosted', 'linux', 'x-heavy'])
+  })
+})
 
 describe('a hosted job says why it is not on the pool', () => {
   it('flags a bare hosted runner, a reason across a blank line, and a reason one job up', () => {

@@ -5,12 +5,13 @@ on:
     inputs:
       runs-on:
         description: >-
-          Where the job runs, as JSON: a label string or an array of labels, e.g.
-          '["self-hosted","linux","4c-heavy"]' from the caller's HEAVY_RUNS_ON variable. Every
-          CI job runs on the dapyllil pool by default (owner, 2026-10-19), so a caller passes
-          its pool labels; left empty it is GitHub-hosted ubuntu-latest, as before this input
-          existed. A caller routing to the pool must also gate on its pool-liveness preflight,
-          because a label no runner carries is not red, it is queued.
+          Where every job runs, as JSON: a label string or an array of labels, e.g.
+          '["self-hosted","linux","4c-heavy"]'. Optional: left empty, the caller's HEAVY_RUNS_ON
+          variable is used, so no caller has to pass it. A public caller always runs
+          GitHub-hosted, which is free (owner, 2026-11-20: free runners only), whatever this input
+          or the variable say: the pool serves no public repository. A scheduled run's event carries no
+          repository, so that rule can't see one: a public caller on a schedule passes a hosted runs-on
+          itself. A private caller with neither set, or with a hosted name, fails at once with a message that names the fix; no job queues.
         required: false
         type: string
         default: ""
@@ -96,13 +97,13 @@ jobs:
   # Emits the matrix. A bad webkit-shards value fails here, and compat is then skipped, which
   # compat-success reports as red.
   plan:
-    runs-on: ${{ fromJSON(inputs.runs-on != '' && inputs.runs-on || '"ubuntu-latest"') }}
+    runs-on: ${{ fromJSON(github.event.repository.visibility == 'public' && '"ubuntu-latest"' || inputs.runs-on == '' && vars.HEAVY_RUNS_ON == '' && 'no pool for this repository - set HEAVY_RUNS_ON' || github.event.repository.visibility != '' && (contains(inputs.runs-on != '' && inputs.runs-on || vars.HEAVY_RUNS_ON, 'ubuntu-') || contains(inputs.runs-on != '' && inputs.runs-on || vars.HEAVY_RUNS_ON, 'macos-') || contains(inputs.runs-on != '' && inputs.runs-on || vars.HEAVY_RUNS_ON, 'windows-')) && 'hosted runner refused for a private repository - use the pool label' || inputs.runs-on != '' && inputs.runs-on || vars.HEAVY_RUNS_ON) }}
     timeout-minutes: 5
     outputs:
       matrix: ${{ steps.plan.outputs.matrix }}
     steps:
       # Plain setup-node: no checkout here, so no package-lock.json to cache on or `npm ci`.
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: ${{ inputs.node-version }}
       - id: plan
@@ -113,7 +114,7 @@ jobs:
   compat:
     name: compat (${{ matrix.label }})
     needs: plan
-    runs-on: ${{ fromJSON(inputs.runs-on != '' && inputs.runs-on || '"ubuntu-latest"') }}
+    runs-on: ${{ fromJSON(github.event.repository.visibility == 'public' && '"ubuntu-latest"' || inputs.runs-on == '' && vars.HEAVY_RUNS_ON == '' && 'no pool for this repository - set HEAVY_RUNS_ON' || github.event.repository.visibility != '' && (contains(inputs.runs-on != '' && inputs.runs-on || vars.HEAVY_RUNS_ON, 'ubuntu-') || contains(inputs.runs-on != '' && inputs.runs-on || vars.HEAVY_RUNS_ON, 'macos-') || contains(inputs.runs-on != '' && inputs.runs-on || vars.HEAVY_RUNS_ON, 'windows-')) && 'hosted runner refused for a private repository - use the pool label' || inputs.runs-on != '' && inputs.runs-on || vars.HEAVY_RUNS_ON) }}
     timeout-minutes: 25
     strategy:
       fail-fast: false
@@ -150,7 +151,7 @@ jobs:
       # be guessed at (promptboi.com#44, 2026-10-11).
       - name: Upload Playwright test results
         if: ${{ failure() }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: playwright-${{ matrix.label }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: test-results/
@@ -199,7 +200,7 @@ jobs:
       # Sharded entries only: their reports go to compat-success, which sums them.
       - name: Upload shard report
         if: ${{ !cancelled() && matrix.shards != '' }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: compat-report-${{ matrix.report }}
           overwrite: true
@@ -208,7 +209,7 @@ jobs:
           retention-days: 7
 
   compat-success:
-    runs-on: ${{ fromJSON(inputs.runs-on != '' && inputs.runs-on || '"ubuntu-latest"') }}
+    runs-on: ${{ fromJSON(github.event.repository.visibility == 'public' && '"ubuntu-latest"' || inputs.runs-on == '' && vars.HEAVY_RUNS_ON == '' && 'no pool for this repository - set HEAVY_RUNS_ON' || github.event.repository.visibility != '' && (contains(inputs.runs-on != '' && inputs.runs-on || vars.HEAVY_RUNS_ON, 'ubuntu-') || contains(inputs.runs-on != '' && inputs.runs-on || vars.HEAVY_RUNS_ON, 'macos-') || contains(inputs.runs-on != '' && inputs.runs-on || vars.HEAVY_RUNS_ON, 'windows-')) && 'hosted runner refused for a private repository - use the pool label' || inputs.runs-on != '' && inputs.runs-on || vars.HEAVY_RUNS_ON) }}
     timeout-minutes: 5
     needs: [plan, compat]
     if: always()
@@ -225,12 +226,12 @@ jobs:
       # floor. Fails closed on a missing report. No-op when webkit-shards is 1.
       - name: Download shard reports
         if: ${{ !cancelled() && inputs.webkit-shards != '1' && needs.plan.result == 'success' }}
-        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: compat-report-*
           merge-multiple: true
           path: shard-reports
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         if: ${{ !cancelled() && inputs.webkit-shards != '1' && needs.plan.result == 'success' }}
         with:
           node-version: ${{ inputs.node-version }}

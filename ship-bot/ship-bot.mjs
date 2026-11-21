@@ -17,9 +17,18 @@
  *   node ship-bot.mjs --unblock MoonMan    clear a block left by a failed deploy
  *   node ship-bot.mjs --unblock MoonMan --deployed <sha>
  *                                          clear a paused deploy's block once that commit was deployed by hand
+ *   node ship-bot.mjs --record-deployed MoonMan <sha> --live-id <release id>
+ *                                          record a hand deploy on a repo that is not blocked: writes lastDeployedSha
+ *                                          when the full sha is on the default branch and not behind the recorded one.
+ *                                          --live-id is the current release's id from `site-deploy.sh list`; it must
+ *                                          end in that sha or nothing is recorded. A blocked repo stays --unblock;
+ *                                          a repo with pausedIfChanged or onlyIfChanged steps is refused.
  *   node ship-bot.mjs --config <path>      default ~/.ship-bot/config.json
  *   node ship-bot.mjs --verbose            also print why each PR was ignored
  *   node ship-bot.mjs --rotate-log <path>  first move <path> to <path>.1 if it is over 5 MB
+ *   node ship-bot.mjs --board              print the open pull requests that need a decision, longest-standing first, in at
+ *                                          most 40 lines, from the board the last live pass wrote (<stateDir>/board.json).
+ *                                          Reads that file only: no GitHub call, no pass.
  *   node ship-bot.mjs --self-test          read-only: import every module, resolve the gate scripts, load the state
  *                                          file; print one JSON line {ok, stateVersion, source}; exit 1 unless ok
  *   node ship-bot.mjs --dry-run --once --summary-json
@@ -33,6 +42,7 @@ import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync
 import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { setTimeout as sleep } from 'node:timers/promises'
+import { BOARD_FILE, formatBoard, readBoard, writeBoard } from './lib/board.mjs'
 import { runOnce, selectRepos } from './lib/bot.mjs'
 import { ping as heartbeat } from './lib/heartbeat.mjs'
 import { ConfigError, expandHome, loadConfig, validateConfig } from './lib/config.mjs'
@@ -50,7 +60,8 @@ import { formatValidation, validateExpectedChecks } from './lib/validate.mjs'
 
 const USAGE =
   'usage: ship-bot.mjs [--dry-run | --live] [--once] [--repo <name>]... [--config <path>] [--verbose] [--unblock <name> [--deployed <sha>]] [--rotate-log <path>] [--summary-json]\n' +
-  '       ship-bot.mjs --set-live true|false | --set-repo-live <slug> true|false | --validate [--repo <name>]... | --check-preflight | --self-test'
+  '       ship-bot.mjs --record-deployed <name> <sha> --live-id <release id>\n' +
+  '       ship-bot.mjs --set-live true|false | --set-repo-live <slug> true|false | --validate [--repo <name>]... | --check-preflight | --self-test | --board'
 
 const parseBool = (flag, v) => {
   if (v !== 'true' && v !== 'false') throw new Error(`${flag} takes true or false`)
@@ -66,12 +77,15 @@ export function parseArgs(argv) {
     verbose: false,
     unblock: undefined,
     deployed: undefined,
+    recordDeployed: undefined,
+    liveId: undefined,
     rotateLog: undefined,
     setLive: undefined,
     setRepoLive: undefined,
     validate: false,
     checkPreflight: false,
     selfTest: false,
+    board: false,
     summaryJson: false,
   }
   for (let i = 0; i < argv.length; i += 1) {
@@ -92,6 +106,14 @@ export function parseArgs(argv) {
     else if (flag === '--verbose') args.verbose = true
     else if (flag === '--unblock') args.unblock = value()
     else if (flag === '--deployed') args.deployed = value()
+    else if (flag === '--record-deployed') {
+      if (args.recordDeployed) throw new Error('--record-deployed can be given once')
+      const name = value()
+      args.recordDeployed = { name, sha: value() }
+    } else if (flag === '--live-id') {
+      if (args.liveId !== undefined) throw new Error('--live-id can be given once')
+      args.liveId = value()
+    }
     else if (flag === '--rotate-log') args.rotateLog = value()
     else if (flag === '--set-live') args.setLive = parseBool(flag, value())
     else if (flag === '--set-repo-live') {
@@ -100,12 +122,19 @@ export function parseArgs(argv) {
     } else if (flag === '--validate') args.validate = true
     else if (flag === '--check-preflight') args.checkPreflight = true
     else if (flag === '--self-test') args.selfTest = true
+    else if (flag === '--board') args.board = true
     else if (flag === '--summary-json') args.summaryJson = true
     else if (flag === '--help' || flag === '-h') args.help = true
     else throw new Error(`unknown argument ${flag}`)
   }
   // The summary is what a self-install judges a new version by, and that version must not act: dry passes only.
   if (args.summaryJson && args.mode === 'live') throw new Error('--summary-json is for a dry pass; it cannot be used with --live')
+  if (args.recordDeployed && args.unblock) throw new Error('--record-deployed is for a repo that is not blocked; it cannot be used with --unblock')
+  if (args.recordDeployed && args.deployed !== undefined) throw new Error('--deployed belongs to --unblock; --record-deployed takes the sha as its second value')
+  // It writes state whatever the mode, and main() runs these others first and would drop it without a word.
+  if (args.recordDeployed && args.mode === 'dry-run') throw new Error('--record-deployed writes the state file; it has no dry run')
+  if (args.recordDeployed && (args.setLive !== undefined || args.setRepoLive || args.selfTest)) throw new Error('--record-deployed cannot be combined with --set-live, --set-repo-live or --self-test')
+  if (args.liveId !== undefined && !args.recordDeployed) throw new Error('--live-id is only for --record-deployed')
   args.mode ??= 'dry-run'
   return args
 }
@@ -132,6 +161,7 @@ const defaultDeps = () => ({
   appToken: readAppToken,
   heartbeat: heartbeat,
   runner: realRunner,
+  writeBoard,
   clock: { now: () => new Date() },
   out: (line) => process.stdout.write(`${line}\n`),
   sleep: (ms) => sleep(ms),
@@ -185,7 +215,9 @@ export async function main(argv, overrides = {}) {
     }
 
     if (args.unblock) return unblock(config, args.unblock, deps, args.deployed)
+    if (args.recordDeployed) return recordDeployed(config, args.recordDeployed, args.liveId, deps, print)
     if (args.checkPreflight) return checkPreflight(config, deps)
+    if (args.board) return showBoard(config, deps)
     if (args.validate) return validate(config, args, deps, print)
 
     // Read again on every pass, so "live": false stops a running bot's merges
@@ -389,6 +421,15 @@ async function onePass(loaded, args, deps, print) {
       readCache.save()
     } catch (cause) {
       print('warn', `could not save the read cache: ${cause.message}`)
+    }
+    // The board (plan row 1.55): what this pass saw, for a reader. Only a pass the LaunchAgent would run over
+    // every repo writes it, so a hand dry run or a --repo pass never replaces it. A failed write changes nothing.
+    if (args.mode !== 'dry-run' && args.repos.length === 0 && pass.summary.board) {
+      try {
+        deps.writeBoard(join(config.stateDir, BOARD_FILE), { at: deps.clock.now().toISOString(), installedSha: gates.installedSha ?? null, mode: args.mode, ...pass.summary.board })
+      } catch (cause) {
+        print('warn', `could not write the board: ${String(cause.message).split('\n')[0].slice(0, 300)}`)
+      }
     }
     if (args.mode !== 'dry-run') await deps.heartbeat('ship-bot')
     pass.code = 0
@@ -609,6 +650,19 @@ async function checkPreflight(config, deps) {
   return failed === 0 ? 0 : 1
 }
 
+/** `--board`: print the last board's decision rows. Reads one local file. */
+function showBoard(config, deps) {
+  let board
+  try {
+    board = readBoard(join(config.stateDir, BOARD_FILE))
+  } catch (cause) {
+    deps.out(`ship-bot: no board to read (${cause.code ?? cause.message}); a live pass over every repo writes ${BOARD_FILE}`)
+    return 1
+  }
+  for (const line of formatBoard(board, deps.clock.now())) deps.out(line)
+  return 0
+}
+
 /** `--validate`: read-only, so it takes a token like a pass but never the lock. */
 async function validate(config, args, deps, print) {
   try {
@@ -666,8 +720,8 @@ function unblock(config, name, deps, deployed) {
       return 2
     }
     deps.out(`unblocking ${repo.slug} (was: ${rs.blocked.reason})`)
-    const recorded = clearBlock(rs, deps.clock.now())
-    if (recorded) deps.out(`${repo.slug}: recorded ${recorded.slice(0, 7)} as deployed (the paused commit a person deployed by hand); the next release diffs from there`)
+    const recorded = clearBlock(rs, deps.clock.now(), deployed)
+    if (recorded) deps.out(`${repo.slug}: recorded ${recorded.slice(0, 7)} as deployed (the commit a person deployed by hand); the next release diffs from there`)
     state.save()
     return 0
   } finally {
@@ -684,13 +738,13 @@ const unblockDir = (stateDir) => join(stateDir, 'unblock')
  * from the old commit, see the paused path again, and pause forever (plan row 1.25).
  * Returns the sha recorded, if any.
  */
-export function clearBlock(rs, now = new Date()) {
-  const sha = rs.blocked?.pausedSha
+export function clearBlock(rs, now = new Date(), deployed = undefined) {
   const wasRelease = rs.blocked?.pausedKind === 'release'
+  const sha = rs.blocked?.pausedSha ?? recordedSha(rs.blocked, deployed)
   delete rs.blocked
-  if (typeof sha === 'string' && /^[0-9a-f]{40}$/.test(sha)) {
+  if (fullSha(sha)) {
     rs.lastDeployedSha = sha
-    // A release deployed by hand still starts the weekly clock.
+    // A release deployed by hand still records the release time.
     if (wasRelease) rs.lastReleasedAt = now.toISOString()
     return sha
   }
@@ -698,16 +752,138 @@ export function clearBlock(rs, now = new Date()) {
 }
 
 /**
+ * The commit `--deployed` records on a block that carries no paused commit
+ * (a failed deploy): the failed deploy's own merge commit when the block kept
+ * it (a prefix of at least 7 characters names it), else a full 40-character
+ * sha the person typed. Anything else records nothing (and is refused first).
+ */
+function recordedSha(blocked, deployed) {
+  const given = String(deployed ?? '').toLowerCase()
+  if (!given) return null
+  const known = blocked?.failedSha
+  if (fullSha(known)) return namesSha(given, known) ? known : null
+  return fullSha(given)
+}
+
+/** `value` when it is a full 40-character lower-case commit sha, else null. The only form recorded as deployed without a block to vouch for it. */
+const fullSha = (value) => (typeof value === 'string' && /^[0-9a-f]{40}$/.test(value) ? value : null)
+
+/** Does `given` name the commit `sha`: a hex prefix of at least 7 characters. */
+const namesSha = (given, sha) => given.length >= 7 && /^[0-9a-f]+$/.test(given) && sha.startsWith(given)
+
+/**
  * Unblocking a paused deploy records a commit as live, so it needs the person
  * to name that commit (`--deployed <sha>`): "I checked the site" is not "I
- * deployed the API". Returns the refusal, or null when the unblock may go ahead.
+ * deployed the API". On a failed block `--deployed` is optional, but a value
+ * given must name a commit the block can vouch for (see recordedSha), or the
+ * unblock is refused. Returns the refusal, or null when the unblock may go ahead.
  */
 export function pausedRefusal(repo, blocked, deployed) {
   const sha = blocked?.pausedSha
-  if (!sha) return null
-  const given = String(deployed ?? '').toLowerCase()
-  if (given.length >= 7 && /^[0-9a-f]+$/.test(given) && sha.startsWith(given)) return null
+  if (!sha) {
+    if (deployed === undefined || deployed === null || deployed === '') return null
+    if (recordedSha(blocked, deployed)) return null
+    const known = typeof blocked?.failedSha === 'string' ? `the failed deploy's commit ${blocked.failedSha.slice(0, 7)}` : 'a full 40-character commit sha'
+    return `${repo.slug}: --deployed ${String(deployed).slice(0, 40)} does not name ${known}. Nothing was changed.`
+  }
+  if (namesSha(String(deployed ?? '').toLowerCase(), sha)) return null
   return `${repo.slug}: this block is a paused deploy of ${sha.slice(0, 7)}. Unblocking records that commit as live. Deploy it by hand first, then run: ship-bot --unblock ${repo.name} --deployed ${sha.slice(0, 7)}. Nothing was changed.`
+}
+
+/**
+ * Does a release id from `site-deploy.sh list` (`<UTC-stamp>-<sha>`) end in a
+ * prefix of `sha`? Returns the refusal, or null when it does.
+ */
+export function liveIdRefusal(liveId, sha) {
+  // A bare sha is not an id read from the list: the stamp before the last hyphen must be there too.
+  const [, tail] = /^.*[^-]-([0-9a-f]+)$/.exec(String(liveId).toLowerCase()) ?? []
+  if (tail && namesSha(tail, sha)) return null
+  return `--live-id ${String(liveId).slice(0, 80)} does not end in ${sha.slice(0, 7)}: the live release was not built from that commit.`
+}
+
+/**
+ * Why `sha` may not be recorded as deployed, or null when it may. The sha must
+ * be on the default branch (GitHub compares branch...sha as 'behind' or
+ * 'identical') and, when a deploy is on record, ahead of it: recording an
+ * older commit would make the next release deploy, as new, work that is live.
+ * Anything GitHub cannot compare is a refusal, never a pass.
+ */
+export async function recordRefusal(github, slug, sha, recorded) {
+  const branch = (await github.getRepo(slug))?.default_branch
+  if (!branch) return 'GitHub did not report a default branch'
+  const onMain = await github.compareStatus(slug, branch, sha)
+  if (onMain !== 'behind' && onMain !== 'identical') return `${sha.slice(0, 7)} is not on ${branch} (GitHub compares ${branch}...${sha.slice(0, 7)} as ${onMain ?? 'unknown'})`
+  if (!recorded) return null
+  if (!fullSha(recorded)) return `the recorded lastDeployedSha is not a commit sha, so ${sha.slice(0, 7)} cannot be compared with it`
+  const since = await github.compareStatus(slug, recorded, sha)
+  if (since === 'ahead') return null
+  if (since === 'behind') return `${sha.slice(0, 7)} is behind the recorded deploy ${recorded.slice(0, 7)}`
+  return `${sha.slice(0, 7)} does not follow the recorded deploy ${recorded.slice(0, 7)} (GitHub compares them as ${since ?? 'unknown'})`
+}
+
+/**
+ * `--record-deployed <repo> <sha>`: record a hand deploy on a repository that
+ * is not blocked (plan row 1.34). Until this flag only the bot's own deploy and
+ * `--unblock --deployed` wrote lastDeployedSha, so a repository deployed by its
+ * session had none, or kept an old one. It cannot see the server: the caller
+ * proves the live release with `site-deploy.sh list` and must pass its id as
+ * `--live-id`, which must end in the sha. Exit 0 recorded (or already
+ * recorded), 2 refused, 1 could not check (a pass is running, no token,
+ * GitHub failed). Every exit but the first changes nothing.
+ */
+async function recordDeployed(config, { name, sha: given }, liveId, deps, print) {
+  let repo
+  try {
+    ;[repo] = selectRepos(config.repos, [name])
+  } catch (cause) {
+    deps.out(`ship-bot: ${cause.message}`)
+    return 2
+  }
+  const refuse = (why, code = 2) => {
+    deps.out(`${repo.slug}: ${why} Nothing was changed.`)
+    return code
+  }
+  // A site release id cannot vouch for a step that deploys something else. With no record every path counts as
+  // changed, so nothing is skipped and a paused path pauses; a record narrows that to the diff since it.
+  if (repo.pausedIfChanged?.length || repo.deploy?.some((step) => step?.onlyIfChanged)) {
+    return refuse('this repo has pausedIfChanged paths or onlyIfChanged deploy steps, and a hand record cannot prove those parts were deployed.')
+  }
+  const sha = fullSha(String(given).toLowerCase())
+  if (!sha) return refuse(`--record-deployed ${String(given).slice(0, 40)} is not a full 40-character commit sha.`)
+  // Required: a record on the caller's word could let a hotfix deploy merges that were never released.
+  if (liveId === undefined) return refuse(`--live-id is required. \`site-deploy.sh list\` marks the current release; pass its id, which must end in ${sha.slice(0, 7)}.`)
+  const mismatch = liveIdRefusal(liveId, sha)
+  if (mismatch) return refuse(mismatch)
+  // A running pass saves its own copy of state.json over anything written here (see unblock), so never write under it.
+  const lock = acquireLock(lockPath(config.stateDir))
+  if (!lock.ok) return refuse(`a pass is running (${lock.holder}); run this again once it ends.`, 1)
+  try {
+    const state = new StateStore(join(config.stateDir, 'state.json')).load()
+    const rs = state.repo(repo.slug)
+    if (rs.deployInProgress) return refuse(`a deploy of ${String(rs.deployInProgress.sha ?? '').slice(0, 7) || 'an unknown commit'} is on record as in progress; the next live pass settles it.`)
+    if (rs.blocked) return refuse(`blocked (${rs.blocked.reason}). A block is lifted, and its deploy recorded, with: ship-bot --unblock ${repo.name} --deployed <sha>.`)
+    if (rs.lastDeployedSha === sha) {
+      deps.out(`${repo.slug}: ${sha.slice(0, 7)} is already the recorded deploy.`)
+      return 0
+    }
+    const auth = await readAuth(config, deps, print)
+    if (!auth) return refuse('no GitHub token, so the commit could not be checked.', 1)
+    const redact = new Redactor([auth.token])
+    let refused
+    try {
+      refused = await recordRefusal(guardWrites(deps.makeGithub(auth.token)), repo.slug, sha, rs.lastDeployedSha)
+    } catch (cause) {
+      return refuse(`GitHub could not compare ${sha.slice(0, 7)} (${redact.apply(String(cause.message)).slice(0, 300)}).`, 1)
+    }
+    if (refused) return refuse(`${refused}.`)
+    const was = rs.lastDeployedSha
+    rs.lastDeployedSha = sha
+    state.save()
+    deps.out(`${repo.slug}: recorded ${sha.slice(0, 7)} as deployed (${was ? `was ${String(was).slice(0, 7)}` : 'no deploy was on record'}); the next release diffs from there`)
+    return 0
+  } finally {
+    lock.release()
+  }
 }
 
 /** Apply the unblock requests left while a pass held the lock. Called by a pass that holds it, right after loading state. */
@@ -733,11 +909,11 @@ function applyUnblockRequests(config, state, print) {
       requestedAt = undefined
     }
     if (rs?.blocked && requestedAt && String(rs.blocked.at) <= String(requestedAt) && pausedRefusal({ slug, name: slug.split('/')[1] }, rs.blocked, deployed)) {
-      print('warn', `${slug}: an unblock request without the paused commit dropped; the block stays (${rs.blocked.reason})`)
+      print('warn', `${slug}: an unblock request ${rs.blocked.pausedSha ? 'without the paused commit' : `whose --deployed does not name the failed deploy's commit`} dropped; the block stays (${rs.blocked.reason})`)
     } else if (rs?.blocked && requestedAt && String(rs.blocked.at) <= String(requestedAt)) {
       print('info', `${slug}: unblocked on request (was: ${rs.blocked.reason})`)
-      const recorded = clearBlock(rs, new Date())
-      if (recorded) print('info', `${slug}: recorded ${recorded.slice(0, 7)} as deployed (the paused commit a person deployed by hand)`)
+      const recorded = clearBlock(rs, new Date(), deployed)
+      if (recorded) print('info', `${slug}: recorded ${recorded.slice(0, 7)} as deployed (the commit a person deployed by hand)`)
     } else if (rs?.blocked) {
       print('warn', `${slug}: an unblock request from ${requestedAt} is older than the block set at ${rs.blocked.at}; dropped, the block stays`)
     }

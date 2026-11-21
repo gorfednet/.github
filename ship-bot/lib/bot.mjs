@@ -10,14 +10,15 @@ import { createHash } from 'node:crypto'
 import * as nodeFs from 'node:fs'
 import os from 'node:os'
 import { join } from 'node:path'
+import { Board } from './board.mjs'
 import { HOLD_LABEL, READY_LABEL } from './config.mjs'
 import { diagnosisJob, jobsDir, stallJob, writeJobOnce } from './herdr-jobs.mjs'
 import { DeployLog, deployMerged, envSecrets, matchingFiles, pagesSecrets, preflight, realFs, selectSteps } from './deploy.mjs'
 import { controlPlaneFiles, draftClaim, draftIneligibleReason } from './drafts.mjs'
-import { evaluatePull, ineligibleReason, unmergeableReason } from './gates.mjs'
+import { CONFLICTED, MAX_RERUNS_PER_HEAD, TIMEOUT_ANNOTATION, evaluatePull, ineligibleReason, unmergeableReason } from './gates.mjs'
 import { RateLimitError, guardWrites } from './github.mjs'
 import { HOTFIX_LABEL, RELEASE_LABEL, planDeploy } from './deploy-plan.mjs'
-import { Redactor } from './redact.mjs'
+import { Redactor, publicNames } from './redact.mjs'
 import { guardCommands, succeeded } from './runner.mjs'
 import { GATES_REPO, advanceGatesWorktree, ownInstallFreshness, toolWorktreeFor } from './gates-worktree.mjs'
 import { STATE_VERSION, StateStore } from './state.mjs'
@@ -50,17 +51,24 @@ export async function runOnce(deps) {
   if (!dry && config.live !== true) throw new Error('live mode refused: the config does not say "live": true')
 
   const gitAuth = Buffer.from(`x-access-token:${token}`).toString('base64')
-  const redactor = new Redactor([token, gitAuth])
+  // A repo's own name is never a secret, whatever env file repeats it.
+  const redactor = new Redactor([token, gitAuth], { publicNames: publicNames(config.repos) })
   // The Pages token site-deploy.sh hands to wrangler: masked everywhere from the first line of the pass.
   redactor.add(pagesSecrets(config.stateDir, deps.fsx ?? realFs, deps.pagesFiles))
+  // The board (lib/board.mjs) listens to reads and log lines the pass makes anyway. It decides nothing.
+  const board = deps.board ?? new Board()
+  const github = board.tap(deps.github)
   const ctx = {
     config,
+    board,
+    /** The client before any dry-run guard, for a repo context that adds its own. */
+    rawGithub: github,
     dry,
     clock,
     token,
     gitAuth,
     redactor,
-    github: dry ? guardWrites(deps.github) : deps.github,
+    github: dry ? guardWrites(github) : github,
     runner: dry ? guardCommands(deps.runner) : deps.runner,
     state: stateStore,
     fsx: deps.fsx ?? realFs,
@@ -82,6 +90,7 @@ export async function runOnce(deps) {
     say(level, text) {
       const line = redactor.apply(text)
       this.decisions.push({ level, text: line })
+      board.heard(level, line)
       log(level, line)
     },
   }
@@ -148,6 +157,15 @@ export async function runOnce(deps) {
   if (!dry && summary.complete) recordPassErrors(stateStore.data, summary.repoErrors)
   sayUsage(ctx)
   stateStore.save()
+  // A pass cut by the quota floor saw only some repositories: it hands back no board, so the last whole one stays.
+  // Building it must not fail a pass that has already done its work.
+  if (!limited) {
+    try {
+      summary.board = board.snapshot(repos.map((r) => r.slug), (text) => redactor.apply(text))
+    } catch (cause) {
+      ctx.say('warn', `could not build the board: ${String(cause.message).split('\n')[0].slice(0, 300)}`)
+    }
+  }
   return ctx.decisions
 }
 
@@ -221,7 +239,8 @@ function sayUsage(ctx) {
  * merge, no comment, no notification, and nothing it decides reaches the
  * state file (a "would comment" mark saved there would stop the real comment
  * once the repository goes live). Its lines are marked OBSERVE, like a pass
- * whose global live is false.
+ * whose global live is false. The one exception is tellNotLive: a ready
+ * pull request there is told to the owner once, and that record is kept.
  */
 function repoContext(ctx, repo, deps) {
   if (ctx.dry || repo.live) return ctx
@@ -230,7 +249,7 @@ function repoContext(ctx, repo, deps) {
   const observed = {
     ...ctx,
     dry: true,
-    github: guardWrites(deps.github),
+    github: guardWrites(ctx.rawGithub),
     runner: guardCommands(deps.runner),
     state: shadow,
     // Its own counter: an observed repository never merges, so its "would
@@ -242,6 +261,8 @@ function repoContext(ctx, repo, deps) {
     say(level, text) {
       ctx.say(level, `OBSERVE (repo not live) ${text}`)
     },
+    /** The live pass this repository is observed in: its state file and its notifications, for the one thing an observed repository tells the owner (tellNotLive). */
+    notLive: ctx,
   }
   return observed
 }
@@ -259,7 +280,7 @@ function recoverInterruptedDeploys(ctx) {
       ctx.say('warn', `${slug}: ${reason} (live run would block this repo)`)
       continue
     }
-    rs.blocked = { reason, at: ctx.clock.now().toISOString(), pr: d.pr }
+    rs.blocked = { reason, at: ctx.clock.now().toISOString(), pr: d.pr, ...(d.mergeSha ? { failedSha: d.mergeSha } : {}) }
     delete rs.deployInProgress
     ctx.say('error', `${slug}: blocked: ${reason}`)
   }
@@ -303,6 +324,7 @@ async function processRepo(ctx, repo) {
   // A release or hotfix goes first (plan row 1.25): its head must contain main, so a plain merge ahead of it would force a new gate and smoke.
   const deploysFirst = (p) => ((p.labels ?? []).some((l) => [RELEASE_LABEL, HOTFIX_LABEL].includes(String(l.name).toLowerCase())) ? 0 : 1)
   const pulls = [...(await ctx.github.listOpenPulls(repo.slug))].sort((a, b) => deploysFirst(a) - deploysFirst(b) || a.number - b.number)
+  forgetNotLiveTold(ctx, repo, pulls)
 
   for (const listed of pulls) {
     // A person who took the bot's label off has taken the pull request back:
@@ -322,7 +344,9 @@ async function processRepo(ctx, repo) {
     }
     const skip = ineligibleReason(listed, repo, defaultBranch, ctx.config.allowedAuthors)
     if (skip) {
-      ctx.say('debug', `${repo.slug}#${listed.number}: ignored (${skip})`)
+      // A control-plane pull request the bot took out of draft for its review, still unlabelled: the board row says whose move it is.
+      const readied = skip === `no ${READY_LABEL} label` && ctx.state.data.prs[`${repo.slug}#${listed.number}`]?.readiedForReview
+      ctx.say('debug', `${repo.slug}#${listed.number}: ${readied ? `ignored (no ${READY_LABEL} label): the bot marked this control-plane pull request ready for its Claude review and adds no label. A person labels it after reading the diff and a clean review` : `ignored (${skip})`}`)
       await dropStaleNeedsFix(ctx, repo, listed, skip)
       continue
     }
@@ -330,7 +354,9 @@ async function processRepo(ctx, repo) {
     const pr = await ctx.github.getPull(repo.slug, listed.number)
     const skip2 = ineligibleReason(pr, repo, defaultBranch, ctx.config.allowedAuthors) ?? unmergeableReason(pr)
     if (skip2) {
-      ctx.say('debug', `${repo.slug}#${pr.number}: ignored (${skip2})`)
+      // Only unmergeableReason answers CONFLICTED, and it is asked only once the full read is eligible: labelled, no hold, not a draft.
+      if (skip2 === CONFLICTED) sayConflicted(ctx, repo, pr)
+      else ctx.say('debug', `${repo.slug}#${pr.number}: ignored (${skip2})`)
       // GitHub's "not computed yet" after a push is transient: keep the label rather than flap it.
       if (!/not computed yet/.test(skip2)) await dropStaleNeedsFix(ctx, repo, pr, skip2)
       continue
@@ -339,6 +365,22 @@ async function processRepo(ctx, repo) {
     // One merge per repo per run: the next run re-reads everything fresh.
     if (acted) return
   }
+}
+
+/**
+ * A labelled pull request that conflicts with its base (plan row 1.59): someone decided it merges, and nothing
+ * will merge it until a person or a session merges the base in. The board is told on every pass, so the row
+ * stays a decision. The log gets one warning per head, then debug lines: a pass every 2 minutes would
+ * otherwise write 720 a day. A dry run or a repository that is not live keeps no memory, so it only tells the board.
+ */
+function sayConflicted(ctx, repo, pr) {
+  const text = `${repo.slug}#${pr.number} (${short(pr.head.sha)}): not merging: labelled ${READY_LABEL} but it conflicts with its base. Merge the base in and push; a conflict resolution that changes code needs a new review`
+  ctx.board.conflicted(repo.slug, pr.number)
+  if (ctx.dry) return ctx.say('debug', text)
+  const nowIso = ctx.clock.now().toISOString()
+  const headState = ctx.state.head(repo.slug, pr.number, pr.head.sha, nowIso)
+  ctx.say(headState.conflictSaidAt ? 'debug' : 'warn', text)
+  headState.conflictSaidAt ??= nowIso
 }
 
 /**
@@ -437,7 +479,12 @@ async function processPull(ctx, repo, pr, defaultBranch) {
   let result = await evaluatePull(ctx, repo, pr, { headState, requireClean, controlPlane })
   // A merge never rests on a remembered gate answer: run every script again.
   if (result.ready && result.cached) result = await evaluatePull(ctx, repo, pr, { headState, fresh: true, requireClean, controlPlane })
+  // Only readyForReview asks for a result without the review gate. One here would be a bug: nothing merges on it.
+  if (result.reviewSkipped) throw new Error('a gate result without the review reached the merge path')
+  ctx.board.gated(repo.slug, pr, result, headState)
   await syncNeedsFix(ctx, repo, pr, result)
+  // A cancelled run that alone blocks this head is rerun once, and the pass says nothing else about it.
+  if (!result.ready && result.rerun?.length > 0 && (await rerunCancelled(ctx, repo, headState, tag, result.rerun, result.rerunChecks))) return false
   if (result.ready && headState.readiedAt && (ctx.clock.now() - new Date(headState.readiedAt)) / 60000 < ctx.config.reviewGraceMinutes) {
     ctx.say('debug', `${tag}: not merging: the bot marked this draft ready at ${headState.readiedAt}; giving the ready-for-review review time to start`)
     return false
@@ -494,7 +541,6 @@ async function processPull(ctx, repo, pr, defaultBranch) {
       mainSha: () => ctx.github.getBranchSha(repo.slug, defaultBranch),
       headCovers: () => ctx.github.compareStatus(repo.slug, defaultBranch, sha),
       repoState: ctx.state.repo(repo.slug),
-      now: ctx.clock.now(),
     })
     if (plan.kind === 'invalid') {
       ctx.say('warn', `${tag}: ready, but not merging: ${plan.reason}`)
@@ -544,10 +590,92 @@ async function processPull(ctx, repo, pr, defaultBranch) {
   }
   ctx.pass.merges += 1
   if (ctx.dry) {
-    await dryRunMerge(ctx, repo, pr, tag, plan)
+    // A repository that is not live in a live pass: the owner hears once per head, and the "would merge" lines after that are debug.
+    const told = ctx.notLive ? await tellNotLive(ctx, repo, pr, tag) : false
+    await dryRunMerge(told ? { ...ctx, say: (level, text) => ctx.say(level === 'info' ? 'debug' : level, text) } : ctx, repo, pr, tag, plan)
     return true
   }
   return liveMerge(ctx, repo, pr, tag, plan)
+}
+
+/**
+ * Rerun the cancelled workflow runs that alone keep a labelled head from green (plan row 1.59; gates.mjs
+ * `cancelledRunsToRerun` decides which). Each run is asked for once per head: the ask is written to the state
+ * file before anything else, so a crash or a refusal never repeats it. A run the bot already asked for and that is
+ * cancelled again is a person's, and so is a head that would pass MAX_RERUNS_PER_HEAD asks in all.
+ *
+ * A job that ran past its `timeout-minutes` reports `cancelled` on the job and on the run, and a timeout is
+ * never rerun (shipping.md: "a failed step, a timeout or a cancel is never a loss"; a timeout wants shards).
+ * So before the rerun the bot reads the annotations of each cancelled check run in the run, 1 GET each
+ * (`checks[id]`, held to MAX_ANNOTATION_READS by gates.mjs), and refuses the run when any says the job exceeded
+ * its maximum execution time, when a read fails, or when a list is too long to have been read whole. Each is
+ * the head's one ask for that run: nothing is read or tried again.
+ * Returns whether a rerun was asked for (or would be) this pass.
+ */
+async function rerunCancelled(ctx, repo, headState, tag, ids, checks = {}) {
+  const fresh = ids.filter((id) => !headState.reruns?.[id])
+  if (fresh.length === 0) return false
+  // gates.mjs already holds the offer to the cap; this is the same rule where the write is made. Every ask counts, the refused ones too.
+  if (Object.keys(headState.reruns ?? {}).length + fresh.length > MAX_RERUNS_PER_HEAD) return false
+  if (ctx.dry) {
+    // Nothing is remembered on a dry or observed pass, so this would repeat every pass: debug, and no annotation read.
+    ctx.say('debug', `${tag}: would rerun cancelled workflow run(s) ${fresh.join(', ')} unless an annotation says a job timed out: every other check on this head is green`)
+    return true
+  }
+  let asked = 0
+  for (const id of fresh) {
+    checkQuota(ctx)
+    headState.reruns ??= {}
+    headState.reruns[id] = { at: ctx.clock.now().toISOString() }
+    ctx.state.save()
+    try {
+      const why = await notACancel(ctx, repo, checks[id])
+      if (why) {
+        headState.reruns[id].refused = why
+        ctx.state.save()
+        ctx.say('warn', `${tag}: not rerunning cancelled workflow run ${id}: ${why}. Not tried again on this head`)
+        continue
+      }
+      await ctx.github.rerunFailedJobs(repo.slug, id)
+      asked += 1
+      ctx.say('info', `${tag}: reran the cancelled jobs of workflow run ${id}: every other check on this head is green. Once per run and head`)
+    } catch (cause) {
+      if (cause instanceof RateLimitError) {
+        // Refused before it was performed: not an ask.
+        delete headState.reruns[id]
+        ctx.state.save()
+        throw cause
+      }
+      headState.reruns[id].failed = true
+      ctx.state.save()
+      const hint = cause.status === 403 ? ' (the GitHub App needs the Actions permission set to write)' : ''
+      ctx.say('warn', `${tag}: could not rerun cancelled workflow run ${id}${hint}: ${String(cause.message).split('\n')[0].slice(0, 200)}. Not tried again on this head`)
+    }
+  }
+  return asked > 0
+}
+
+/**
+ * Why a cancelled workflow run is not proven to be a plain cancel, or '' when its annotations were all read and
+ * none names a timeout. Fail closed: no check run to read, a failed read and a full page are each a reason.
+ * A RateLimitError is thrown on, since that read was never made.
+ */
+async function notACancel(ctx, repo, checkRunIds) {
+  if (!Array.isArray(checkRunIds) || checkRunIds.length === 0) return 'the bot has no cancelled check run of it to read annotations from'
+  for (const checkRunId of checkRunIds) {
+    checkQuota(ctx)
+    let annotations
+    try {
+      annotations = await ctx.github.listCheckRunAnnotations(repo.slug, checkRunId)
+    } catch (cause) {
+      if (cause instanceof RateLimitError) throw cause
+      return `the annotations of check run ${checkRunId} could not be read (${String(cause.message).split('\n')[0].slice(0, 120)}), so nothing says it was a cancel and not a timeout`
+    }
+    if (!Array.isArray(annotations)) return `the annotations of check run ${checkRunId} could not be read, so nothing says it was a cancel and not a timeout`
+    if (annotations.some((a) => TIMEOUT_ANNOTATION.test(`${a?.title ?? ''} ${a?.message ?? ''}`))) return `check run ${checkRunId} hit its timeout (its annotation says the job exceeded the maximum execution time), and a timeout is not rerun`
+    if (annotations.length >= 100) return `check run ${checkRunId} has more annotations than 1 read returns, so nothing says it was a cancel and not a timeout`
+  }
+  return ''
 }
 
 /**
@@ -696,12 +824,12 @@ async function takeDraft(ctx, repo, listed, defaultBranch) {
   // moves the head, and processPull drops a bot label from a moved head.
   const touched = controlPlaneFiles(await ctx.github.listPullFiles(repo.slug, pr.number), repo.slug)
   if (touched.length > 0) {
-    ctx.say('info', `${tag}: draft left alone (${claim}): it changes control-plane paths (${listPaths(touched)}); a person labels it`)
-    await postOnce(ctx, repo, pr.number, sha, 'control-plane', controlPlaneComment(touched, 'mark this draft ready'))
+    await readyForReview(ctx, repo, pr, { tag, claim, touched })
     return
   }
   const headState = ctx.state.head(repo.slug, pr.number, sha, ctx.clock.now().toISOString())
   const result = await evaluatePull(ctx, repo, pr, { headState, draft: true, requireClean: repo.mode === 'deploy' })
+  ctx.board.gated(repo.slug, pr, result, headState)
   await syncNeedsFix(ctx, repo, pr, result)
   if (!result.ready) {
     for (const block of result.blocks) {
@@ -743,12 +871,62 @@ async function takeDraft(ctx, repo, listed, defaultBranch) {
   // Remembered whoever owns the label: a draft a person had labelled is still
   // one the bot readied, so the merge path keeps its guards (round 1 on #156).
   prState.botReadied = { sha, at: ctx.clock.now().toISOString() }
-  // Leaving draft fires ready_for_review, which starts a second Claude review
-  // of this head; processPull holds the head until that run has had time to
-  // appear among the checks (reviewer finding on #119).
+  // Leaving draft fires ready_for_review. The run appears among the checks but
+  // skips when this head already has a verdict from its draft-time review
+  // (claude-review.yml, one review per head); processPull holds the head until
+  // that run has had time to appear (reviewer finding on #119).
   headState.readiedAt = ctx.clock.now().toISOString()
   ctx.state.save()
   ctx.say('info', `${tag}: marked ready and labelled ${READY_LABEL}; the merge path takes it next pass`)
+}
+
+export const CONTROL_PLANE_READY_COMMENT = 'Ship-bot: checks green, marking ready so the Claude review of this commit starts. No label from the bot'
+
+/**
+ * A control-plane draft whose `## Next` says merge (plan row 1.59). The order for such a pull request is ready,
+ * then the review that leaving draft starts, then a label on a clean read of that review. The bot takes the first
+ * step and holds the second; the label stays a person's (plan row 1.12: a change to what merges unattended is
+ * read by someone before it merges). So this never adds `ready-to-merge`, never posts DRAFT_READY_COMMENT and
+ * never sets `botReadied`: the merge path's guards on a pull request the bot readied are for the other kind.
+ *
+ * It marks the draft ready once per pull request, when every gate but the review is clean on its head, and only
+ * in a repository with the Claude reviewer (without one there is no review to start). A draft that already
+ * carries `ready-to-merge` is left alone: that label came before the review, and readying it would let it merge.
+ * A draft the bot readied once and someone made a draft again is theirs.
+ */
+async function readyForReview(ctx, repo, pr, { tag, claim, touched }) {
+  const sha = pr.head.sha
+  const paths = listPaths(touched)
+  const prState = ctx.state.pr(repo.slug, pr.number)
+  const leave = (why, level = 'debug') => ctx.say(level, `${tag}: draft left alone (${claim}): it changes control-plane paths (${paths}); ${why}`)
+  if (!repo.claudeReview) {
+    leave('a person labels it', 'info')
+    await postOnce(ctx, repo, pr.number, sha, 'control-plane', controlPlaneComment(touched, 'mark this draft ready'))
+    return
+  }
+  if ((pr.labels ?? []).some((l) => l.name === READY_LABEL)) return leave(`it already carries ${READY_LABEL}, from before its review; a person marks it ready`, 'info')
+  if (prState.readiedForReview) return leave(`the bot marked it ready for review once (${prState.readiedForReview.at}) and it is a draft again; it is a person's now`)
+  if (!pr.node_id) return leave('GitHub gave no node id to mark it ready with', 'warn')
+  const headState = ctx.state.head(repo.slug, pr.number, sha, ctx.clock.now().toISOString())
+  const result = await evaluatePull(ctx, repo, pr, { headState, draft: true, skipReview: true })
+  ctx.board.gated(repo.slug, pr, { ...result, ready: false }, headState)
+  if (!result.ready) {
+    for (const block of result.blocks) ctx.say(block.kind === 'wait' ? 'debug' : 'info', `${tag}: not marking ready for review (${claim}): ${block.reason}`)
+    return
+  }
+  // Whatever happens next, this row is a person's decision: the bot adds no label here.
+  ctx.board.decide(repo.slug, pr.number)
+  if (ctx.dry) return ctx.say('info', `${tag}: would mark ready so its Claude review starts (${claim}); it changes control-plane paths (${paths}), so no label: a person labels it after reading the diff and a clean review`)
+  // The comment goes first, as in takeDraft: once the draft is ready this code never runs for it again, so a comment that failed after
+  // markReady would never be posted. It is once per head, so a markReady that fails and is retried does not repeat it.
+  await postOnce(ctx, repo, pr.number, sha, 'control-plane-ready', `${CONTROL_PLANE_READY_COMMENT}: this changes control-plane paths, which change what merges unattended (plan row 1.12):\n\n${touched.slice(0, 20).map((p) => `- \`${p}\``).join('\n')}${touched.length > 20 ? '\n- ...' : ''}\n\nA person adds \`${READY_LABEL}\` after reading the diff and a clean review of this commit. The bot then merges it like any labelled pull request.`)
+  await ctx.github.markReady(pr.node_id)
+  const at = ctx.clock.now().toISOString()
+  prState.readiedForReview = { sha, at }
+  // Should a person label it at once, the merge path still gives the ready-for-review review time to start.
+  headState.readiedAt = at
+  ctx.state.save()
+  ctx.say('info', `${tag}: checks green (${claim}): marked ready so the Claude review of this head starts. It changes control-plane paths (${paths}), so the bot adds no label: a person labels it after reading the diff and a clean review`)
 }
 
 /**
@@ -1356,6 +1534,8 @@ async function holdForStaleInstall(ctx, repo, pr, tag) {
   const mark = own.latest ?? 'unknown'
   const seen = held[key] === mark
   ctx.say(seen ? 'debug' : 'warn', text)
+  // Said as a warning once only, so the board is told outright: this row waits on a reinstall every pass.
+  ctx.board.decide(repo.slug, pr.number)
   await postOnce(ctx, repo, pr.number, pr.head.sha, 'stale-install', `Ship bot is not merging this yet. Every gate passed, but this pull request changes control-plane paths and ${why}. An out-of-date bot gates with out-of-date rules.\n\nIt merges on the first pass after ship-bot is reinstalled from origin/main. Nothing on this pull request needs to change.`)
   if (seen || ctx.dry) return
   held[key] = mark
@@ -1367,6 +1547,54 @@ async function holdForStaleInstall(ctx, repo, pr, tag) {
 function notDeployedWhy(repo) {
   if (repo.deployOn === 'merge') return 'no Release line in the description, so it was not tagged and not deployed. A release pull request carries `Release: X.Y.Z One sentence.` on its own line'
   return `not deployed: this repo deploys only from a release. It goes live with the next pull request labelled \`${RELEASE_LABEL}\` (or \`${HOTFIX_LABEL}\` for a security or outage fix)`
+}
+
+/** How many passes a not-live notice ntfy did not accept is sent again, without the Mac notification. */
+export const NOT_LIVE_NOTICE_TRIES = 5
+
+/**
+ * A labelled pull request passed every gate in a repository whose own `live` is false, in a live pass (plan row
+ * 1.59): nothing will merge it, and before this the only sign was "OBSERVE ... would merge" in the log on every
+ * pass. The owner is told once per pull request and head, on the Mac and through ntfy.
+ *
+ * `ctx` is the observed context, which keeps no memory, so the record goes in the live pass's own state file
+ * (`ctx.notLive`), under the repository: `notLiveTold[<number>] = {sha, at, delivered, tries}`. It is written
+ * before the notification, so a crash never repeats one. A notice ntfy did not accept is sent to ntfy again on
+ * later passes, NOT_LIVE_NOTICE_TRIES times in all. A dry run and a pass whose global `live` is false have no
+ * `notLive` and tell nobody.
+ *
+ * @returns {Promise<boolean>} whether this head was already told on an earlier pass
+ */
+async function tellNotLive(ctx, repo, pr, tag) {
+  const real = ctx.notLive
+  const told = (real.state.repo(repo.slug).notLiveTold ??= {})
+  const before = told[pr.number]?.sha === pr.head.sha ? told[pr.number] : null
+  if (before && (before.delivered || !real.config.ntfy || !(before.tries < NOT_LIVE_NOTICE_TRIES))) return true
+  const entry = (told[pr.number] = { sha: pr.head.sha, at: before?.at ?? real.clock.now().toISOString(), delivered: false, tries: (before?.tries ?? 0) + 1 })
+  real.state.save()
+  if (!before) ctx.say('info', `${tag}: every gate passed, and this repository is not live: telling the owner once for this head`)
+  const text = `${repo.name} #${pr.number} is labelled ${READY_LABEL} and passed every gate, but ${repo.slug} is not live in ship-bot's config, so nothing merges it. ${notLiveNext(repo)}`
+  entry.delivered = await notify(real, text, true, { mac: !before })
+  real.state.save()
+  return Boolean(before)
+}
+
+/**
+ * What stands between a ready pull request in a not-live repository and its merge. A row with unconfirmed TODOs is
+ * refused by a live run (processRepo), so "set it live" alone would be a promise the bot does not keep.
+ */
+function notLiveNext(repo) {
+  const todos = repo.todo?.length ?? 0
+  if (todos > 0) return `Setting the repository live is not enough yet: its config row still has ${todos} unconfirmed TODO${todos === 1 ? '' : 's'}, and a live run refuses the repository until each is confirmed and removed.`
+  return 'It can merge once the repository is set live, if every gate still passes on that pass.'
+}
+
+/** Keep `notLiveTold` to the pull requests still open, and drop it once the repository is live. Observed and live passes only: a dry run saves nothing. */
+function forgetNotLiveTold(ctx, repo, pulls) {
+  const rs = (ctx.notLive ?? ctx).state.data.repos[repo.slug]
+  if (!rs?.notLiveTold || (ctx.dry && !ctx.notLive)) return
+  if (!ctx.notLive) delete rs.notLiveTold
+  else for (const n of Object.keys(rs.notLiveTold)) if (!pulls.some((p) => String(p.number) === n)) delete rs.notLiveTold[n]
 }
 
 async function dryRunMerge(ctx, repo, pr, tag, plan) {
@@ -1479,7 +1707,8 @@ async function report(ctx, repo, pr, mergeSha, outcome, deployLog, release = nul
   const tag = `${repo.slug}#${pr.number}`
   const logTail = `<details><summary>Log tail (full log on the owner's Mac: ${deployLog.path})</summary>\n\n\`\`\`\n${deployLog.tail()}\n\`\`\`\n</details>`
   const block = (reason, extra = {}) => {
-    rs.blocked = { reason, at: ctx.clock.now().toISOString(), pr: pr.number, ...extra }
+    // failedSha lets `--unblock --deployed <sha>` check the commit a person says they deployed by hand.
+    rs.blocked = { reason, at: ctx.clock.now().toISOString(), pr: pr.number, failedSha: mergeSha, ...extra }
   }
   // A hotfix says so wherever a release would, so a run of them is visible (plan row 1.25).
   const as = plan?.kind === 'hotfix' ? ` as a hotfix (exemption: ${plan.exemption})` : plan?.kind === 'release' ? ' as a release' : ''
