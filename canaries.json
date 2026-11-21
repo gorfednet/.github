@@ -1064,6 +1064,38 @@
       "file": "scripts/claude-hooks/context-cap.py",
       "find": "    if tokens <= cap:",
       "replace": "    if tokens <= cap + 1:"
+    },
+    {
+      "id": "privacy-date-policy-change-needs-date",
+      "guards": "A policy change with the date untouched fails (V78). Without it the check passes every stale date.",
+      "command": "node --test --test-name-pattern='fails a policy change with the date left alone' templates/verification-kit/test/privacyDate.test.mjs",
+      "file": "templates/verification-kit/bin/check-privacy-date.mjs",
+      "find": "  if (policyChanged) {\n    if (!prDates.has(after.date)) {",
+      "replace": "  if (false) {\n    if (!prDates.has(after.date)) {"
+    },
+    {
+      "id": "privacy-date-only-page-commits-count",
+      "guards": "PR days come from commits touching the page. Without the path filter any commit in the PR supplies a valid day.",
+      "command": "node --test --test-name-pattern='counts only commits that touch the page' templates/verification-kit/test/privacyDate.test.mjs",
+      "file": "templates/verification-kit/bin/check-privacy-date.mjs",
+      "find": "`${mergeBase}..${head}`, '--', ...files]",
+      "replace": "`${mergeBase}..${head}`]"
+    },
+    {
+      "id": "privacy-date-no-backdating",
+      "guards": "A date moving backwards fails. Without it an old branch can date a policy change before the base date.",
+      "command": "node --test --test-name-pattern='fails a date that moves back' templates/verification-kit/test/privacyDate.test.mjs",
+      "file": "templates/verification-kit/bin/check-privacy-date.mjs",
+      "find": "after.date < before.date",
+      "replace": "after.date < \"0000\""
+    },
+    {
+      "id": "privacy-date-rename-source",
+      "guards": "A moved page is compared with its rename source, so a move needs no false date bump.",
+      "command": "node --test --test-name-pattern='a page moved by rename' templates/verification-kit/test/privacyDate.test.mjs",
+      "file": "templates/verification-kit/bin/check-privacy-date.mjs",
+      "find": "c[0]?.startsWith('R') && c[2] === page.file",
+      "replace": "false"
     }
   ]
 }

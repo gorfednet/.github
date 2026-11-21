@@ -212,4 +212,33 @@ describe('check-privacy-date', () => {
     const r = run(dir)
     assert.equal(r.status, 1, r.stderr)
   })
+
+  it('a page moved by rename, text untouched, needs no date change', () => {
+    const dir = repo({ base: pageHtml(), change: undefined })
+    git(dir, ['mv', 'privacy.html', 'privacy-new.html'])
+    writeFileSync(join(dir, 'privacy.config.json'), JSON.stringify({ pages: [{ ...CONFIG.pages[0], file: 'privacy-new.html' }] }))
+    git(dir, ['add', '-A'])
+    git(dir, ['commit', '-qm', 'move'], { GIT_AUTHOR_DATE: '2026-11-20T12:00:00-05:00' })
+    const r = run(dir)
+    assert.equal(r.status, 0, r.stderr)
+  })
+
+  it('a region edit in the PR is read against the base config, not a false change', () => {
+    const dir = repo({ base: pageHtml(), change: undefined })
+    writeFileSync(join(dir, 'privacy.config.json'), JSON.stringify({ pages: [{ ...CONFIG.pages[0], region: ['<h1', '</main>'] }] }))
+    git(dir, ['add', '-A'])
+    git(dir, ['commit', '-qm', 'region'], { GIT_AUTHOR_DATE: '2026-11-20T12:00:00-05:00' })
+    const r = run(dir)
+    assert.equal(r.status, 0, r.stderr)
+  })
+
+  it('fails closed when a moved page has no readable base copy', () => {
+    const dir = repo({ base: pageHtml(), change: undefined })
+    git(dir, ['mv', 'privacy.html', 'privacy-new.html'])
+    writeFileSync(join(dir, 'privacy-new.html'), 'tiny')
+    writeFileSync(join(dir, 'privacy.config.json'), JSON.stringify({ pages: [{ ...CONFIG.pages[0], file: 'privacy-new.html', region: ['<h1', '</h1>'] }] }))
+    git(dir, ['add', '-A'])
+    git(dir, ['commit', '-qm', 'bad'], { GIT_AUTHOR_DATE: '2026-11-20T12:00:00-05:00' })
+    assert.equal(run(dir).status, 1)
+  })
 })

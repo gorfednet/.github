@@ -201,7 +201,50 @@ function dayIn(zone, instant) {
   return `${get('year')}-${get('month')}-${get('day')}`
 }
 
-export function runCheck({ config, base, head, today, tz, cwd }) {
+
+/** A page's policy and date at the merge base, or null only when the page did not exist there. */
+function readBase(page, dateFile, mergeBase, head, cwd, configRel) {
+  const attempt = (pg, file, dFile) => {
+    const source = showAt(mergeBase, file, cwd)
+    if (source === null) return undefined
+    const dateSource = dFile === file ? source : showAt(mergeBase, dFile, cwd)
+    if (dateSource === null) return undefined
+    try {
+      return readPolicy({ ...pg, file }, source, dateSource)
+    } catch (cause) {
+      if (cause instanceof PrivacyDateError) return undefined
+      throw cause
+    }
+  }
+  const direct = attempt(page, page.file, dateFile)
+  if (direct) return direct
+  if (configRel) {
+    const baseConfigText = showAt(mergeBase, configRel, cwd)
+    if (baseConfigText !== null) {
+      try {
+        const old = JSON.parse(baseConfigText).pages?.find((p) => p.name === page.name)
+        if (old) {
+          const viaOld = attempt(old, old.file, old.dateFile ?? old.file)
+          if (viaOld) return viaOld
+        }
+      } catch {
+        /* an unreadable base config falls through to the rename and error paths */
+      }
+    }
+  }
+  const renames = git(['diff', '--find-renames', '--name-status', mergeBase, head], cwd)
+    .split('\n')
+    .map((l) => l.split('\t'))
+    .filter((c) => c[0]?.startsWith('R') && c[2] === page.file)
+  for (const [, from] of renames) {
+    const viaRename = attempt(page, from, dateFile === page.file ? from : dateFile)
+    if (viaRename) return viaRename
+  }
+  if (showAt(mergeBase, page.file, cwd) === null && renames.length === 0) return null
+  return bail(`page "${page.name}": the copy at the merge base cannot be read with this config, the base's own config or a rename source, so there is nothing to compare. Land the config or region change in its own PR, or move the page by rename.`)
+}
+
+export function runCheck({ config, base, head, today, tz, cwd, configRel = null }) {
   if (!config || !Array.isArray(config.pages) || config.pages.length === 0) {
     bail('the config lists no pages. A site with a privacy page has to name it; an empty list proves nothing.')
   }
@@ -238,14 +281,11 @@ export function runCheck({ config, base, head, today, tz, cwd }) {
     if (after === null) {
       bail(`page "${page.name}": ${page.file} does not exist at ${head}. A privacy page the check cannot find is an error: if the page moved, update the config in the same PR.`)
     }
-    // An unreadable base copy is not a reason to pass: treat it as "no page".
-    let before
-    try {
-      before = read(mergeBase)
-    } catch (cause) {
-      if (!(cause instanceof PrivacyDateError)) throw cause
-      before = null
-    }
+    // The base copy is read with this config; failing that with the base's own
+    // config (a PR that edits the region); failing that from the file's rename
+    // source (a PR that moves the page). A base that still cannot be read is an
+    // error, never "everything changed", which would demand a false date.
+    const before = readBase(page, dateFile, mergeBase, head, cwd, configRel)
     const prDates = daysFor([page.file, dateFile])
     allDays.push(...prDates)
     problems.push(...judge(page.name, before, after, prDates))
@@ -285,7 +325,8 @@ function main() {
       bail(`cannot read the config ${args.config} (${cause.code ?? cause.message}).`)
     }
     const cwd = git(['rev-parse', '--show-toplevel'], process.cwd()).trim()
-    const result = runCheck({ config, base: args.base, head: args.head, today: args.today, tz: args.tz, cwd })
+    const rel = git(['ls-files', '--full-name', '--', args.config], process.cwd()).trim() || null
+    const result = runCheck({ config, base: args.base, head: args.head, today: args.today, tz: args.tz, cwd, configRel: rel })
     for (const s of result.seen) {
       console.error(`  ${s.name}: ${s.file}, shown date ${s.date}, policy text ${s.policyChanged ? 'changed' : 'unchanged'}`)
     }
