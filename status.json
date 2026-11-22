@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-11-21T22:32:00.211Z",
-  "renderedAt": "2026-11-21T22:32:00.211Z",
+  "generatedAt": "2026-11-22T00:47:43.700Z",
+  "renderedAt": "2026-11-22T00:47:43.700Z",
   "repos": [
     {
       "slug": "gorfednet/bindercurve.com",
@@ -23,10 +23,10 @@
       "slug": "gorfednet/4thcltr.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 15,
+      "openPrCount": 13,
       "lapsedBacklogCount": 21,
       "noPrCount": 31,
-      "idlePrCount": 8,
+      "idlePrCount": 5,
       "duplicatePrCount": 0,
       "dependabotRedCount": 0,
       "kitVersion": "0.63.0",
@@ -39,7 +39,7 @@
       "slug": "gorfednet/gorfed.net",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 3,
+      "openPrCount": 5,
       "lapsedBacklogCount": 4,
       "noPrCount": 6,
       "idlePrCount": 0,
@@ -185,39 +185,27 @@
       "mainRed": false,
       "openPrs": [
         {
+          "number": 304,
+          "title": "ship-bot: a row can name its own tool worktree and a refresh command",
+          "ageDays": 0,
+          "labels": [],
+          "draft": false,
+          "review": "clean",
+          "headSha": "51b5bc9ff2273ad8ce51283efd68d89fad714eab",
+          "ci": "green",
+          "next": "Kit fix pushed: the inventory test caught the janitor's `-main` rule protecting a session worktree on a branch (`same-as-main`); it now protects a `<x>-main` worktree only when detached. Waiting on `kit` and the re-review of the final head.",
+          "author": "gorfednet"
+        },
+        {
           "number": 302,
           "title": "privacy-guard: public sites in fleet.json count as said fleet-wide (row 1.91)",
           "ageDays": 0,
           "labels": [],
           "draft": false,
-          "review": "findings",
-          "headSha": "8be367f5b14a3484c49002b036f417b9a0939c0a",
-          "ci": "pending",
-          "next": "merge: full guard and hook suites green, `claude review` clean, then Desk reads the diff and labels",
-          "author": "gorfednet"
-        },
-        {
-          "number": 301,
-          "title": "content-guidelines: legally required notice stays beside the form (plan 2.19)",
-          "ageDays": 0,
-          "labels": [],
-          "draft": true,
-          "review": "findings",
-          "headSha": "2bad2054d1f43954e53468f9653f522df8d9547d",
-          "ci": "green",
-          "next": "Plan row 2.19: Desk labels `ready-to-merge` after `claude review` is clean (control-plane path, so a session doesn't label).",
-          "author": "gorfednet"
-        },
-        {
-          "number": 299,
-          "title": "Gate: AI Use Levels trailers on every agent commit (plan row 1.90)",
-          "ageDays": 0,
-          "labels": [],
-          "draft": false,
           "review": "clean",
-          "headSha": "1b0be68c4d22933972116146d27e5f89addca396",
+          "headSha": "397e6410260e1603b3c432b7159d37ed6f8a0ff9",
           "ci": "green",
-          "next": "Claude review clean, then merge.",
+          "next": "merge: the 4-round review cap is reached. Rounds 1 to 4 found only low test-strength issues, all fixed and answered in-thread. The last push (397e641) only removes a test assertion that could not fail; no guard or hook code changed after 5f1e212, which round 4 read. Desk: Fable read, then label (no new `claude review` needed unless you want one)",
           "author": "gorfednet"
         },
         {
@@ -235,7 +223,7 @@
         {
           "number": 281,
           "title": "Fleet status: public repository faces and release lag (plan 1.66)",
-          "ageDays": 0,
+          "ageDays": 1,
           "labels": [],
           "draft": true,
           "review": "findings",
@@ -271,7 +259,7 @@
         {
           "number": 267,
           "title": "Content guidelines: the AI statement lives in the AI use overlay",
-          "ageDays": 2,
+          "ageDays": 3,
           "labels": [
             "hold"
           ],
@@ -292,30 +280,6 @@
           "headSha": "ecf9825109dfec5de0f4da06e63dfeaaf967549e",
           "ci": "green",
           "next": "Claude reviewer on this head; triage findings",
-          "author": "gorfednet"
-        },
-        {
-          "number": 254,
-          "title": "1.30i: guard reads dot joins and the tagger line; installed-tools flags a missing guard install",
-          "ageDays": 4,
-          "labels": [],
-          "draft": false,
-          "review": "clean",
-          "headSha": "d9c854acb1cef68be281152ea221476815219807",
-          "ci": "green",
-          "next": "Desk's narrow Fable read of the new head (control-plane paths: `scripts/`), then merge on a clean review.",
-          "author": "gorfednet"
-        },
-        {
-          "number": 103,
-          "title": "Handoff: recovery of 38 failed Herdr jobs",
-          "ageDays": 12,
-          "labels": [],
-          "draft": false,
-          "review": "findings",
-          "headSha": "91108205bc649c9b985761b45c8c9290a84df676",
-          "ci": "green",
-          "next": "Main session: run the gates and merge (docs-only).",
           "author": "gorfednet"
         }
       ],
@@ -658,21 +622,13 @@
         {
           "number": 266,
           "idleDays": 3
-        },
-        {
-          "number": 254,
-          "idleDays": 3
-        },
-        {
-          "number": 103,
-          "idleDays": 4
         }
       ],
       "duplicatePrs": [],
       "lastDeploy": null,
       "incidents7d": 4,
       "dependabotRed": 0,
-      "kitVersion": "0.68.0",
+      "kitVersion": "0.70.0",
       "kitPin": {
         "ref": "main"
       },
@@ -681,8 +637,8 @@
     {
       "slug": "gorfednet/MoonMan",
       "redacted": true,
-      "mainRed": true,
-      "openPrCount": 13,
+      "mainRed": false,
+      "openPrCount": 12,
       "lapsedBacklogCount": 3,
       "noPrCount": 47,
       "idlePrCount": 8,
@@ -702,7 +658,7 @@
         {
           "number": 9,
           "title": "README: replace the last em dash",
-          "ageDays": 0,
+          "ageDays": 1,
           "labels": [],
           "draft": true,
           "review": "not-run",
@@ -747,7 +703,7 @@
       "slug": "gorfednet/career-portfolio",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 9,
+      "openPrCount": 8,
       "lapsedBacklogCount": 1,
       "noPrCount": 1,
       "idlePrCount": 6,
@@ -762,11 +718,11 @@
     {
       "slug": "gorfednet/heuristics.4thcltr.com",
       "redacted": true,
-      "mainRed": true,
-      "openPrCount": 12,
+      "mainRed": false,
+      "openPrCount": 11,
       "lapsedBacklogCount": 34,
       "noPrCount": 7,
-      "idlePrCount": 8,
+      "idlePrCount": 7,
       "duplicatePrCount": 0,
       "dependabotRedCount": 2,
       "kitVersion": "0.65.0",
@@ -902,10 +858,10 @@
       "slug": "gorfednet/assess",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 8,
+      "openPrCount": 6,
       "lapsedBacklogCount": 6,
       "noPrCount": 3,
-      "idlePrCount": 6,
+      "idlePrCount": 3,
       "duplicatePrCount": 0,
       "dependabotRedCount": 2,
       "kitVersion": "0.65.0",
@@ -918,7 +874,7 @@
       "slug": "gorfednet/ops",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 31,
+      "openPrCount": 28,
       "lapsedBacklogCount": 0,
       "noPrCount": 11,
       "idlePrCount": 9,
@@ -985,11 +941,11 @@
     }
   },
   "inventory": {
-    "measuredAt": "2026-11-21T22:32:00.211Z",
+    "measuredAt": "2026-11-22T00:47:43.700Z",
     "counts": {
       "pr": {
-        "total": 181,
-        "orphans": 96
+        "total": 170,
+        "orphans": 89
       },
       "session": null,
       "worktree": null,
@@ -1003,24 +959,16 @@
       {
         "kind": "pr",
         "repo": "gorfednet/.github",
+        "ref": "#304",
+        "label": "ship-bot: a row can name its own tool worktree and a refresh command",
+        "private": false,
+        "lapsed": false
+      },
+      {
+        "kind": "pr",
+        "repo": "gorfednet/.github",
         "ref": "#302",
         "label": "privacy-guard: public sites in fleet.json count as said fleet-wide (row 1.91)",
-        "private": false,
-        "lapsed": false
-      },
-      {
-        "kind": "pr",
-        "repo": "gorfednet/.github",
-        "ref": "#301",
-        "label": "content-guidelines: legally required notice stays beside the form (plan 2.19)",
-        "private": false,
-        "lapsed": false
-      },
-      {
-        "kind": "pr",
-        "repo": "gorfednet/.github",
-        "ref": "#299",
-        "label": "Gate: AI Use Levels trailers on every agent commit (plan row 1.90)",
         "private": false,
         "lapsed": false
       },
@@ -1098,14 +1046,6 @@
       },
       {
         "kind": "pr",
-        "repo": "gorfednet/.github",
-        "ref": "#103",
-        "label": "Handoff: recovery of 38 failed Herdr jobs",
-        "private": false,
-        "lapsed": false
-      },
-      {
-        "kind": "pr",
         "repo": "gorfednet/ai-use-levels",
         "ref": "#3",
         "label": "Verification kit 0.48.0: the content guidelines and check-voice",
@@ -1129,13 +1069,13 @@
         "lapsed": true
       }
     ],
-    "hiddenPrivate": 82,
+    "hiddenPrivate": 77,
     "privateReposNotItemised": 18,
     "planRead": true
   },
   "dotgithub": {
-    "measuredAt": "2026-11-21T22:33:14.942Z",
-    "branches": 49,
+    "measuredAt": "2026-11-22T00:48:42.498Z",
+    "branches": 47,
     "merged": 3,
     "exposedFiles": 54,
     "rulesNotChecked": [],
