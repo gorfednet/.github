@@ -26,7 +26,7 @@ import { accessSync, constants, existsSync, lstatSync, readdirSync, readlinkSync
 import { homedir } from 'node:os'
 import { dirname, join, relative, resolve, sep } from 'node:path'
 
-/** Worktree names ship-bot advances (ship-bot/lib/gates-worktree.mjs TOOL_WORKTREES). */
+/** Worktree names ship-bot advances (ship-bot/lib/gates-worktree.mjs TOOL_WORKTREES), and any `<x>-main`: a row's own `toolWorktree` must be named that way. */
 export const TOOL_WORKTREE_NAMES = ['gates-main', 'tools-main']
 
 /** Installed copies of committed files: where the copy lives (under home) and its source (clone dir, path). */
@@ -253,7 +253,8 @@ function checkoutOf(target) {
   if (!top) return null
   const real = realpathSync(top)
   const name = real.split(sep).at(-1)
-  const tool = TOOL_WORKTREE_NAMES.includes(name) && real.split(sep).at(-2) === 'worktrees' && real.split(sep).at(-3) === '.claude'
+  const detached = tryGit(real, 'symbolic-ref', '-q', 'HEAD') === null // a row's own <x>-main tool worktree is detached; a session's branch checkout is a working checkout
+  const tool = (TOOL_WORKTREE_NAMES.includes(name) || (name.endsWith('-main') && detached)) && real.split(sep).at(-2) === 'worktrees' && real.split(sep).at(-3) === '.claude'
   return { top: real, tool }
 }
 

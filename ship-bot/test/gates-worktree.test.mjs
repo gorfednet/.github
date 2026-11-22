@@ -217,6 +217,107 @@ describe('ship-bot after a merge into gorfednet/.github', () => {
   })
 })
 
+describe('a row\'s own tool worktree and its refresh command (a CLI installed from origin/main)', () => {
+  const SLUG = 'gorfednet/example-cli'
+  const tw = (o = {}) => ({ name: 'example-main', tools: 'the example command', refresh: ['bash', 'tools/install-local.sh'], refreshTimeoutMinutes: 7, ...o })
+  const row = (o = {}) => mergeOnly({ slug: SLUG, dir: 'example-cli', toolWorktree: tw(), ...o })
+  const pr = (n = 1, sha = 'a') => makePr({ number: n, head: { sha: sha.repeat(40), repo: { full_name: SLUG } } })
+  const worktree = (s) => join(s.home, 'src', 'example-cli', '.claude', 'worktrees', 'example-main')
+  /** git answers like a worktree that moves to origin/main; `refresh` answers the refresh command. */
+  const runnerWith = (refresh, { head = 'a'.repeat(40) } = {}) => {
+    let at = head
+    return makeRunner({
+      handle: (c) => {
+        if (c.cmd === 'bash') return refresh(c)
+        if (c.cmd !== 'git') return undefined
+        if (c.args[2] === 'checkout') at = c.args.at(-1)
+        if (c.args[2] === 'rev-parse' && c.args[3] === '--show-prefix') return { stdout: '' }
+        if (c.args[2] === 'rev-parse') return { stdout: c.args[3] === 'HEAD' ? at : 'd'.repeat(40) }
+        return undefined
+      },
+    })
+  }
+  const refreshes = (s) => s.runner.calls.filter((c) => c.cmd === 'bash')
+
+  it('toolWorktreeFor: the row\'s own entry names the worktree under its clone, and beats nothing for a row without one', () => {
+    const config = { sourceRoot: '/src' }
+    const got = toolWorktreeFor(config, { slug: SLUG, dir: 'example-cli', toolWorktree: tw() })
+    assert.equal(got.path, '/src/example-cli/.claude/worktrees/example-main')
+    assert.deepEqual(got.refresh, ['bash', 'tools/install-local.sh'])
+    assert.equal(toolWorktreeFor(config, { slug: SLUG, dir: 'example-cli', toolWorktree: null }), null)
+  })
+
+  it('after advancing the worktree it runs the refresh in it, with the bot\'s environment and the row\'s timeout, and says what it printed', async () => {
+    const runner = runnerWith(() => ({ stdout: 'install-local: wrote x\ninstall-local: smoke ok: example 0.1.0 at origin/main ddddddd\n' }))
+    const s = scenario({ repos: [row()], github: new FakeGitHub({ pulls: [pr()] }), runner })
+    await s.run()
+    const [call] = refreshes(s)
+    assert.deepEqual([call.cmd, call.args, call.cwd, call.timeoutMs], ['bash', ['tools/install-local.sh'], worktree(s), 7 * 60_000])
+    assert.ok(s.logs.some((l) => /the example command: refreshed: install-local: smoke ok: example 0\.1\.0/.test(l)), s.logs.join('\n'))
+    // It ran after the checkout, not before.
+    const order = runner.calls.map((c) => (c.cmd === 'bash' ? 'refresh' : c.args?.[2]))
+    assert.ok(order.indexOf('refresh') > order.indexOf('checkout'), order.join(','))
+  })
+
+  it('runs the refresh even when the worktree was already at origin/main, so a refresh that failed once is retried', async () => {
+    const runner = runnerWith(() => ({ stdout: 'ok\n' }), { head: 'd'.repeat(40) })
+    const s = scenario({ repos: [row()], github: new FakeGitHub({ pulls: [pr()] }), runner })
+    await s.run()
+    assert.equal(runner.calls.filter((c) => c.cmd === 'git' && c.args[2] === 'checkout').length, 0, 'the checkout did not move')
+    assert.equal(refreshes(s).length, 1)
+  })
+
+  it('a failed refresh is an error and one notification per reason, and a later success clears it', async () => {
+    let fail = true
+    const runner = runnerWith(() => (fail ? { code: 1, stderr: 'install-local: smoke failed\n' } : { stdout: 'fine\n' }))
+    const s = scenario({ repos: [row()], github: new FakeGitHub({ pulls: [pr()] }), runner, configOverrides: { notify: true } })
+    await s.run()
+    assert.ok(s.logs.some((l) => /the example command not advanced: .*is at origin\/main but the refresh command failed \(exit 1\): install-local: smoke failed/.test(l)), s.logs.join('\n'))
+    assert.match(s.runner.ofKind('notify')[0].args[1], /the example command are stale after a gorfednet\/example-cli merge/)
+    s.github.pulls.push(pr(2, 'b'))
+    await s.run()
+    assert.equal(s.runner.ofKind('notify').filter((n) => /are stale/.test(n.args[1])).length, 1, 'the same failure notifies once')
+    fail = false
+    s.github.pulls.push(pr(3, 'c'))
+    await s.run()
+    assert.ok(s.logs.some((l) => /the example command: refreshed: fine/.test(l)))
+    fail = true
+    s.github.pulls.push(pr(4, 'e'))
+    await s.run()
+    assert.equal(s.runner.ofKind('notify').filter((n) => /are stale/.test(n.args[1])).length, 2, 'after a success the same failure is news again')
+  })
+
+  it('a refresh that times out says so', async () => {
+    const runner = runnerWith(() => ({ code: null, timedOut: true }))
+    const s = scenario({ repos: [row()], github: new FakeGitHub({ pulls: [pr()] }), runner })
+    await s.run()
+    assert.ok(s.logs.some((l) => /the refresh command timed out after 7 minutes/.test(l)), s.logs.join('\n'))
+  })
+
+  it('a refresh killed by a signal says which, not "exit undefined"', async () => {
+    const runner = runnerWith(() => ({ code: null, signal: 'SIGKILL' }))
+    const s = scenario({ repos: [row()], github: new FakeGitHub({ pulls: [pr()] }), runner })
+    await s.run()
+    assert.ok(s.logs.some((l) => /the refresh command failed \(killed by SIGKILL\)/.test(l)), s.logs.join('\n'))
+  })
+
+  it('a refused advance (dirty worktree) runs no refresh: the checkout has not moved', async () => {
+    const runner = makeRunner({ handle: (c) => (c.cmd === 'git' && c.args[2] === 'rev-parse' && c.args[3] === '--show-prefix' ? { stdout: '' } : c.cmd === 'git' && c.args[2] === 'rev-parse' ? { stdout: 'a'.repeat(40) } : c.cmd === 'git' && c.args[2] === 'status' ? { stdout: ' M src/cli.ts\n' } : undefined) })
+    const s = scenario({ repos: [row()], github: new FakeGitHub({ pulls: [pr()] }), runner })
+    await s.run()
+    assert.equal(refreshes(s).length, 0)
+    assert.ok(s.logs.some((l) => /not advanced: .*uncommitted changes/.test(l)))
+  })
+
+  it('the built-in rows have no refresh: a merge into ops runs no command in its worktree', async () => {
+    const runner = runnerWith(() => ({ stdout: 'should not run\n' }))
+    const ops = mergeOnly({ slug: 'gorfednet/ops', dir: 'ops' })
+    const s = scenario({ repos: [ops], github: new FakeGitHub({ pulls: [makePr({ head: { sha: 'a'.repeat(40), repo: { full_name: 'gorfednet/ops' } } })] }), runner })
+    await s.run()
+    assert.equal(refreshes(s).length, 0)
+  })
+})
+
 describe('ownInstallFreshness: the installed bot against origin/main (plan row 1.18)', () => {
   /** A clone whose origin/main has: a docs commit, then a ship-bot/ commit, then a docs commit. */
   function history() {

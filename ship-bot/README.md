@@ -872,6 +872,21 @@ phone. Untracked files stay (Herdr's importer writes generated jobs into
 cleared so the checkout can run. An untracked file that main adds with
 different bytes stops the advance the same way.
 
+A row of the live config may name a tool worktree of its own with `toolWorktree`
+(21 November 2026), for a command line tool that installs from its repository's
+clone: `{"name": "<x>-main", "tools": "what runs from it", "refresh": [command, ...],
+"refreshTimeoutMinutes": 15}`. The name must end in `-main` (the janitor keeps those
+worktrees). It lives in the owner-applied config, so the public repository names no
+private row. After each merge the bot advances `.claude/worktrees/<name>` in that
+row's clone exactly as above, then runs `refresh` in it with the bot's environment
+(install dependencies, rewrite a wrapper, smoke it). The refresh also runs when the
+checkout was already at origin/main, so one that failed is retried on the next merge.
+A failed or timed-out refresh is logged as an error and sent to the phone once per
+distinct reason, as a refused advance is, and a later success clears it. A refused
+advance runs no refresh. `refresh` is a command array run without a shell, in the
+worktree, from the checkout that merged: a script the repository carries, reviewed
+like any deploy step.
+
 Install rule (13 November 2026): every tool on this Mac installs from one of
 these ship-bot-advanced worktrees, never a working checkout. `install-gates.sh`,
 `capacity/install.sh` and ops' Herdr `install.sh` refuse anything else.
