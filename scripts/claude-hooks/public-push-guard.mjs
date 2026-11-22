@@ -35,6 +35,8 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const LIST = process.env.PUBLIC_PUSH_GUARD_LIST || join(HERE, 'private-repos.txt')
 const GUARD = process.env.PUBLIC_PUSH_GUARD_SCRIPT || join(HERE, 'privacy-guard.mjs')
+// The fleet's plan of record, copied in by install-git-hooks.sh: its public sites count as said in every repository.
+const FLEET = process.env.PUBLIC_PUSH_GUARD_FLEET || join(HERE, 'fleet.json')
 const REFRESH_AFTER_MS = 24 * 60 * 60 * 1000
 const ZERO = /^0+$/
 const NAME_RULES = ['private-ip', 'session-id', 'tailnet-name', 'internal-host', 'private-repo']
@@ -137,6 +139,14 @@ export async function loadGuard(list, allowText = '', head = '') {
   const mod = await import(pathToFileURL(GUARD).href)
   const names = [...list].map((s) => s.split('/').pop()).join(',')
   const allow = mod.parseAllowlist(allowText)
+  // No installed fleet.json (an older install) adds no sites; a broken one stops the push rather than reading as none.
+  if (existsSync(FLEET)) {
+    try {
+      allow.sites.push(...mod.fleetSites(readFileSync(FLEET, 'utf8')).filter((x) => !allow.sites.includes(x)))
+    } catch (error) {
+      refuse(`${FLEET} can't be read (${error.message}), so the fleet's public sites are unknown. Reinstall the hooks with install-git-hooks.sh.`)
+    }
+  }
   const open = mod.parsePrivateRepos(names).filter((n) => !allow.repos.includes(n))
   // As privacy-guard reads a bare name: watched while the remote's default branch has never said it, and on a line that says private once it has.
   // Without that commit here nothing counts as said, which watches every name.
@@ -224,6 +234,9 @@ export function nameReadings(mod, ctx, names, text) {
 async function scan({ sets, mod, ctx, names, where, updates, allowText, scratch }) {
   const allowFile = join(scratch, 'allow.txt')
   writeFileSync(allowFile, allowText)
+  // Always handed over: without --fleet the guard reads fleet.json from the pushed repository's own base. No installed copy is an empty file (no sites).
+  const fleetFile = existsSync(FLEET) ? FLEET : join(scratch, 'fleet.json')
+  if (fleetFile !== FLEET) writeFileSync(fleetFile, '')
   const fail = (what) => refuse(`${what} would publish private detail to ${where}, which is public (or not known to be private).\nNothing was sent.`)
   const nameHolds = (text) => nameReadings(mod, ctx, names, text).length > 0
   for (const u of updates) {
@@ -248,7 +261,7 @@ async function scan({ sets, mod, ctx, names, where, updates, allowText, scratch 
     }
   }
   for (const { tip, base, count } of sets) {
-    const r = run(process.execPath, [realpathSync(GUARD), '--base', base, '--head', tip, '--dir', '.', '--allow', allowFile], { timeout: 300_000, env: { ...process.env, PRIVATE_REPOS: names, GITHUB_ACTIONS: '' } })
+    const r = run(process.execPath, [realpathSync(GUARD), '--base', base, '--head', tip, '--dir', '.', '--allow', allowFile, '--fleet', fleetFile], { timeout: 300_000, env: { ...process.env, PRIVATE_REPOS: names, GITHUB_ACTIONS: '' } })
     const out = `${r.stdout}${r.stderr}`.trim()
     if (r.status === 0 && /^privacy-guard: OK/m.test(out)) continue
     refuse(`${count} outgoing commit${count === 1 ? '' : 's'} to ${where}, which is public (or not known to be private), would publish private detail (guard exit ${r.status}).\n${out}\nNothing was sent.`)

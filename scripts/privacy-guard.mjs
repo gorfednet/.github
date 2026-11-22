@@ -115,6 +115,7 @@ export const EXIT_NOTHING_TO_READ = 3
 export const bareScope = () => 'word'
 
 export const ALLOWLIST_PATH = '.github/privacy-guard-allow.txt'
+export const FLEET_PATH = 'fleet.json'
 
 const O = '(?:25[0-5]|2[0-4]\\d|1?\\d?\\d)'
 // Not after a digit or dot (a longer number). A letter before it is no excuse (a flag, a
@@ -222,6 +223,8 @@ function globToRegex(glob) {
  *                                   named it: read on a line that says private, and as
  *                                   `gorfednet/<name>`. The line itself is not read for that name,
  *                                   so a repository can add its first one: see `isSiteLine`.
+ *                                   Every public site `fleet.json` lists counts the same way with no
+ *                                   line (`fleetSites`), so only a site outside the fleet needs one.
  *   commit <sha>                    a commit (the full 40 hex) whose own diff and message are
  *                                   exempt: a pushed commit cannot be rewritten, so this is the
  *                                   way out. The net diff is still read.
@@ -233,6 +236,30 @@ function globToRegex(glob) {
 const SITE_TLDS = new Set(['com', 'net', 'org', 'io', 'ca', 'co', 'app', 'dev', 'fm', 'me', 'info', 'xyz', 'music', 'studio', 'art', 'it', 'ai', 'uk', 'tv', 'band', 'shop'])
 const SITE_VALUE = /^(?:[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?\.)+[A-Za-z]{2,}$/
 const siteValue = (v) => SITE_VALUE.test(v) && SITE_TLDS.has(v.slice(v.lastIndexOf('.') + 1).toLowerCase())
+
+/**
+ * The public sites the fleet lists: the repository name of each `fleet.json` project that is a web
+ * domain (`siteValue`), lowercased. Each counts as a `site` allowlist line does (said, not exempt):
+ * the fleet's plan of record is where a site is public, so no repository needs its own line. A
+ * project can opt out with `"publicSite": false`. The text is trusted only from where the caller
+ * got it: the base's copy in CI, the installed copy in the hook, never a pull request's own.
+ */
+export function fleetSites(text) {
+  let data
+  try {
+    data = JSON.parse(text)
+  } catch (error) {
+    throw new Error(`fleet.json is not valid JSON (${String(error.message).split('\n')[0]})`)
+  }
+  if (!Array.isArray(data?.projects)) throw new Error('fleet.json has no "projects" list')
+  const sites = []
+  for (const project of data.projects) {
+    if (typeof project?.slug !== 'string' || project.publicSite === false) continue
+    const name = project.slug.split('/').pop()
+    if (siteValue(name)) sites.push(name.toLowerCase())
+  }
+  return sites
+}
 export function parseAllowlist(text) {
   const emails = []
   const paths = []
@@ -624,11 +651,11 @@ function git(dir, args) {
 }
 
 function parseArgs(argv) {
-  const out = { dir: '.', base: null, head: null, allow: null }
+  const out = { dir: '.', base: null, head: null, allow: null, fleet: null }
   for (let i = 0; i < argv.length; i += 2) {
     const key = argv[i]
     const value = argv[i + 1]
-    if (!['--base', '--head', '--dir', '--allow'].includes(key) || value === undefined) {
+    if (!['--base', '--head', '--dir', '--allow', '--fleet'].includes(key) || value === undefined) {
       throw new Error(`unknown or incomplete argument: ${key}`)
     }
     out[key.slice(2)] = value
@@ -792,6 +819,7 @@ export function run(argv, env = process.env, out = console) {
   let commits
   let messages
   let allowText
+  let fleetText = ''
   try {
     baseSha = resolveRev(dir, args.base)
     headSha = resolveRev(dir, args.head)
@@ -816,6 +844,17 @@ export function run(argv, env = process.env, out = console) {
         allowText = '' // no allowlist at the base: no exemptions
       }
     }
+    // The fleet's plan of record names the public sites. From the base like the allowlist (a branch
+    // never supplies it), or the file the caller names (the hook's installed copy). No fleet.json
+    // at the base (any repository but this one in CI) is no fleet sites; an unreadable --fleet file stops the run.
+    if (args.fleet) fleetText = readFileSync(resolve(args.fleet), 'utf8')
+    else {
+      try {
+        fleetText = git(dir, ['show', `${baseSha}:${FLEET_PATH}`])
+      } catch {
+        fleetText = ''
+      }
+    }
   } catch (error) {
     out.error(`privacy-guard: could not read ${range}, so nothing was checked: ${String(error.message).split('\n')[0]}`)
     return 2
@@ -831,6 +870,8 @@ export function run(argv, env = process.env, out = console) {
   let allow
   try {
     allow = parseAllowlist(allowText)
+    // Before the new-site count below: a fleet site is already listed, so it is never "a new site line".
+    if (fleetText) allow.sites.push(...fleetSites(fleetText).filter((x) => !allow.sites.includes(x)))
   } catch (error) {
     out.error(`privacy-guard: ${error.message}`)
     return 2
@@ -1028,10 +1069,10 @@ export function run(argv, env = process.env, out = console) {
   // The allowlist, this script and the workflow decide what the guard lets through, so
   // say when a change touches them. They are control-plane files and need a human read.
   const touched = net.files.filter((f) =>
-    [ALLOWLIST_PATH, 'scripts/privacy-guard.mjs', '.github/workflows/privacy-guard.yml'].includes(f.path),
+    [ALLOWLIST_PATH, FLEET_PATH, 'scripts/privacy-guard.mjs', '.github/workflows/privacy-guard.yml'].includes(f.path),
   )
   if (actions && touched.length > 0) {
-    out.log('::warning title=privacy-guard::This change edits the guard, its workflow or its allowlist. Read every line it adds.')
+    out.log('::warning title=privacy-guard::This change edits the guard, its workflow, its allowlist or fleet.json (its public sites count as said). Read every line it adds.')
   }
 
   if (exempted.size > 0) {

@@ -573,6 +573,51 @@ describe('pre-push: a `site` line makes the name count as said', () => {
   })
 })
 
+describe('pre-push: the public sites in the installed fleet.json count as said in every repository', () => {
+  const SITE = 'example-site.org'
+  const world3 = (fleet = { projects: [{ slug: `gorfednet/${SITE}` }, { slug: 'gorfednet/plain-tool' }] }) => {
+    const w = world({ listOut: `gorfednet/ops\ngorfednet/${SITE}\ngorfednet/plain-tool\n` })
+    // null: no installed copy at all (an older install). The installer put the real one there, so take it away.
+    if (fleet === null) rmSync(join(w.hooks, 'fleet.json'))
+    else writeFileSync(join(w.hooks, 'fleet.json'), typeof fleet === 'string' ? fleet : JSON.stringify(fleet))
+    return w
+  }
+  const body = (text) => ({ 'README.md': text })
+  it('installs fleet.json beside the guard', () => {
+    assert.ok(existsSync(join(world().hooks, 'fleet.json')))
+  })
+  it('lets a README link to a fleet site with no site line in the repository, and refuses it once the fleet lacks it', () => {
+    const x = push(repo(world3(), { outgoing: body(`Visit https://${SITE}/\n`) }), '-u', 'origin', 'feature')
+    assert.equal(x.status, 0, x.stderr)
+    // The deliberate break: an installed fleet without the site, or none at all, and the same push is refused.
+    assert.ok(refused(push(repo(world3({ projects: [{ slug: 'gorfednet/other-site.org' }] }), { outgoing: body(`Visit https://${SITE}/\n`) }), '-u', 'origin', 'feature')))
+    assert.ok(refused(push(repo(world3(null), { outgoing: body(`Visit https://${SITE}/\n`) }), '-u', 'origin', 'feature')))
+  })
+  it('still refuses the repository form, a line that says private, and a near-miss name', () => {
+    for (const text of [`see gorfednet/${SITE}\n`, `Private project: https://${SITE}/\n`]) {
+      assert.ok(refused(push(repo(world3(), { outgoing: body(text) }), '-u', 'origin', 'feature')), text)
+    }
+    // A private repository whose name only resembles a fleet site, and a fleet tool with no domain, stay watched.
+    const near = () => {
+      const w = world({ listOut: 'gorfednet/ops\ngorfednet/example-sites.org\ngorfednet/plain-tool\n' })
+      writeFileSync(join(w.hooks, 'fleet.json'), JSON.stringify({ projects: [{ slug: `gorfednet/${SITE}` }, { slug: 'gorfednet/plain-tool' }] }))
+      return w
+    }
+    for (const text of ['Visit example-sites.org now\n', 'Visit plain-tool now\n']) {
+      assert.ok(refused(push(repo(near(), { outgoing: body(text) }), '-u', 'origin', 'feature')), text)
+    }
+  })
+  it('with no installed fleet.json, never reads the pushed repository\'s own fleet.json', () => {
+    // An older install. The pushed base holds a fleet.json of another shape: it must not be read (it would stop the push).
+    const odd = { 'fleet.json': '{"x":1}\n' }
+    const x = push(repo(world3(null), { baseFiles: odd, outgoing: body('clean\n') }), '-u', 'origin', 'feature')
+    assert.equal(x.status, 0, x.stderr)
+  })
+  it('refuses the push when the installed fleet.json is broken', () => {
+    assert.ok(refused(push(repo(world3('not json'), { outgoing: body('clean\n') }), '-u', 'origin', 'feature')))
+  })
+})
+
 describe('pre-push: bare private names in ref names and tag messages', () => {
   const BARE = SECRET.split('/')[1]
   const OPEN = PUBLIC.split('/')[1]
