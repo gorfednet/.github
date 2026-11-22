@@ -235,7 +235,8 @@ function checkoutOf(target) {
   if (!top) return null
   const real = realpathSync(top)
   const name = real.split(sep).at(-1)
-  const tool = (TOOL_WORKTREE_NAMES.includes(name) || name.endsWith('-main')) && real.split(sep).at(-2) === 'worktrees' && real.split(sep).at(-3) === '.claude'
+  const detached = tryGit(real, 'symbolic-ref', '-q', 'HEAD') === null // a row's own <x>-main tool worktree is detached; a session's branch checkout is a working checkout
+  const tool = (TOOL_WORKTREE_NAMES.includes(name) || (name.endsWith('-main') && detached)) && real.split(sep).at(-2) === 'worktrees' && real.split(sep).at(-3) === '.claude'
   return { top: real, tool }
 }
 

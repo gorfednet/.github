@@ -93,6 +93,15 @@ describe('installed tools behind main', () => {
     assert.ok(run(f).behind.some((b) => b.tool === '~/.local/bin/tool4' && b.source === 'gorfednet.github/.claude/worktrees/example-main' && b.behind === 1), JSON.stringify(run(f).behind))
   })
 
+  it('a link into a session worktree on a branch is a working checkout even when its folder ends in -main', () => {
+    const f = fixture()
+    const branch = join(f.clone, '.claude', 'worktrees', 'fix-main')
+    sh(f.clone, 'worktree', 'add', '-q', '-b', 'feat/x', branch, 'origin/main')
+    symlinkSync(join(branch, 'bin', 'tool'), join(f.home, '.local', 'bin', 'tool5'))
+    const r = run(f)
+    assert.ok(r.behind.some((b) => b.tool === '~/.local/bin/tool5' && /working checkout/.test(b.detail)), JSON.stringify(r.behind))
+  })
+
   it('a link into a working checkout is flagged even when that checkout is current', () => {
     const f = fixture()
     symlinkSync(join(f.clone, 'bin', 'tool'), join(f.home, '.local', 'bin', 'tool2'))
