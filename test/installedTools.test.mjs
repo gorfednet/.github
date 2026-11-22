@@ -503,3 +503,80 @@ describe('review fixes: code-only ship-bot copy, ahead is not behind, fail close
     }
   })
 })
+
+describe('the public-push guard install (plan row 1.30i): missing is drift, once main ships it', () => {
+  const ship = (f, v) => {
+    put(join(f.clone, 'scripts', 'claude-hooks', 'public-push-guard.mjs'), `// guard ${v}\n`)
+    put(join(f.clone, 'scripts', 'privacy-guard.mjs'), `// privacy ${v}\n`)
+    put(join(f.clone, 'scripts', 'claude-hooks', 'git-hooks', 'hook'), `#!/bin/sh\n# ${v}\n`)
+    sh(f.clone, 'add', '-A')
+    sh(f.clone, 'commit', '-q', '-m', `guard ${v}`)
+    sh(f.clone, 'push', '-q', 'origin', 'main')
+  }
+  const dir = (f) => join(f.home, '.claude', 'git-hooks')
+  const install = (f, v, { hooksPath = dir(f) } = {}) => {
+    put(join(dir(f), 'public-push-guard.mjs'), `// guard ${v}\n`)
+    put(join(dir(f), 'privacy-guard.mjs'), `// privacy ${v}\n`)
+    put(join(dir(f), 'hook'), `#!/bin/sh\n# ${v}\n`, 0o755)
+    rmSync(join(dir(f), 'pre-push'), { force: true })
+    symlinkSync('hook', join(dir(f), 'pre-push'))
+    writeFileSync(join(f.home, '.gitconfig'), `[core]\n\thooksPath = ${hooksPath}\n`)
+  }
+  const guard = (f) => run(f).behind.filter((b) => b.tool === 'public-push guard')
+
+  it('expects nothing before main ships the guard', () => {
+    const f = fixture()
+    assert.deepEqual(guard(f), [])
+    assert.equal(run(f).checked, 2)
+  })
+
+  it('a Mac with no install is flagged, naming every missing part', () => {
+    const f = fixture()
+    ship(f, 'g1')
+    const [b, ...rest] = guard(f)
+    assert.deepEqual(rest, [])
+    assert.equal(b.behind, null)
+    assert.ok(!b.ahead)
+    assert.deepEqual(b.items, ['core.hooksPath', 'pre-push', 'public-push-guard.mjs', 'privacy-guard.mjs', 'hook'])
+    assert.match(b.detail, /^not installed: /)
+  })
+
+  it('a current install is quiet, in either spelling of the path', () => {
+    const f = fixture()
+    ship(f, 'g1')
+    install(f, 'g1')
+    assert.deepEqual(guard(f), [])
+    install(f, 'g1', { hooksPath: '~/.claude/git-hooks' })
+    assert.deepEqual(guard(f), [])
+  })
+
+  it('a core.hooksPath that points elsewhere, or a pre-push that is not the dispatcher, is missing', () => {
+    const f = fixture()
+    ship(f, 'g1')
+    install(f, 'g1', { hooksPath: join(f.home, 'other-hooks') })
+    rmSync(join(dir(f), 'pre-push'))
+    writeFileSync(join(dir(f), 'pre-push'), '#!/bin/sh\n')
+    assert.deepEqual(guard(f).map((b) => b.items), [['core.hooksPath', 'pre-push']])
+  })
+
+  it('a dispatcher that is not executable is missing: git skips it', () => {
+    const f = fixture()
+    ship(f, 'g1')
+    install(f, 'g1')
+    chmodSync(join(dir(f), 'hook'), 0o644)
+    assert.deepEqual(guard(f).map((b) => b.items), [['hook (not executable)']])
+  })
+
+  it('a copy left behind by a merge has its count, and a hand-edited one is ahead, never both in one entry', () => {
+    const f = fixture()
+    ship(f, 'g1')
+    install(f, 'g1')
+    ship(f, 'g2')
+    const [b] = guard(f)
+    assert.equal(b.behind, 1)
+    assert.deepEqual(b.items, ['public-push-guard.mjs', 'privacy-guard.mjs', 'hook'])
+    put(join(dir(f), 'hook'), '#!/bin/sh\n# edited\n', 0o755)
+    const entries = guard(f)
+    assert.deepEqual(entries.map((e) => [e.items, e.ahead ?? false]), [[['public-push-guard.mjs', 'privacy-guard.mjs'], false], [['hook'], true]])
+  })
+})
