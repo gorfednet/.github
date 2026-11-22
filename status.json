@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-11-22T02:32:03.311Z",
-  "renderedAt": "2026-11-22T02:32:03.311Z",
+  "generatedAt": "2026-11-22T04:32:04.426Z",
+  "renderedAt": "2026-11-22T04:32:04.426Z",
   "repos": [
     {
       "slug": "gorfednet/bindercurve.com",
@@ -23,7 +23,7 @@
       "slug": "gorfednet/4thcltr.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 12,
+      "openPrCount": 11,
       "lapsedBacklogCount": 21,
       "noPrCount": 33,
       "idlePrCount": 5,
@@ -39,7 +39,7 @@
       "slug": "gorfednet/gorfed.net",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 1,
+      "openPrCount": 0,
       "lapsedBacklogCount": 4,
       "noPrCount": 6,
       "idlePrCount": 0,
@@ -772,7 +772,7 @@
         {
           "number": 3,
           "title": "Verification kit 0.48.0: the content guidelines and check-voice",
-          "ageDays": 26,
+          "ageDays": 27,
           "labels": [],
           "draft": false,
           "review": "not-run",
@@ -882,7 +882,7 @@
     "gorfednet/wychwood"
   ],
   "branchesReadAt": "2026-11-22T02:32:03.311Z",
-  "carried": false,
+  "carried": true,
   "localCounts": {
     "rows": {
       "dirtyClones": {
@@ -930,11 +930,11 @@
     }
   },
   "inventory": {
-    "measuredAt": "2026-11-22T02:32:03.311Z",
+    "measuredAt": "2026-11-22T04:32:04.426Z",
     "counts": {
       "pr": {
-        "total": 162,
-        "orphans": 85
+        "total": 160,
+        "orphans": 83
       },
       "session": null,
       "worktree": null,
@@ -1042,12 +1042,12 @@
         "lapsed": true
       }
     ],
-    "hiddenPrivate": 75,
+    "hiddenPrivate": 73,
     "privateReposNotItemised": 18,
     "planRead": true
   },
   "dotgithub": {
-    "measuredAt": "2026-11-22T02:33:16.456Z",
+    "measuredAt": "2026-11-22T04:33:20.186Z",
     "branches": 45,
     "merged": 3,
     "exposedFiles": 54,
