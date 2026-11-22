@@ -40,13 +40,13 @@ On heuristics.4thcltr.com the method and limits lines say "I", because Michael b
 11. **No internal notes or process detail (owner, 6 November 2026, widened 21 November 2026).** Visitor copy says only what a visitor needs to choose and act. That's what shipped, who it's for, what it does and what to do next. These 3 kinds of internal note stay off the page.
     - Process detail is how the engineering checks work. It covers gates, CI, test floors, merge or deploy rules, runner pools and review bots. "I own the product and the design system" stays. "Changes pass gates I wrote before they merge" goes. A page whose job is to explain the method is exempt. Examples are the assessment method and limits, a paper or a README.
     - Operational notes are deposit rules, travel holds, scheduling buffers, vendor setup and how a booking tool is configured. They belong in a contract, a confirmation email or a README. Send them to the person who needs them, when they need them.
-    - Privacy notes go in the site's privacy policy, as a rule decided on 21 November 2026. That covers any note about data handling, processors, cookies, recording or retention. None of it goes in page or form copy. Next to a button or form there's at most a plain link to the privacy policy. Legal terms go on the terms page.
+    - Privacy notes go in the site's privacy policy, as a rule decided on 21 November 2026. That covers any note about data handling, processors, cookies, recording or retention. Unless the law requires it where data is collected, none of it goes in page or form copy. Next to a button or form there's a plain link to the privacy policy, plus any notice the law requires, such as a recording or consent line. Legal terms go on the terms page.
 
     Test. If the visitor would act no differently without the sentence, it's a note to ourselves. Cut it or move it.
 
     Both examples come from the gorfmusic.com booking page on 21 November 2026. The owner's words that day were "pay attention to whats internal notes vs client facing messaging".
     - A paragraph on a deposit and a travel hold sat above the booking button. It's an operational note, so it came off the page.
-    - Beside the button, another paragraph explained how Calendly sets cookies and runs a notetaker. It's a privacy note, so it moved to the privacy policy at /privacy/.
+    - Beside the button, another paragraph explained how Calendly sets cookies and runs a notetaker. It's a privacy note, so it moved to the privacy policy at /privacy/. The one line saying the call is recorded, if the law requires it there, stays beside the button.
 
 ## Sound like a person
 
@@ -165,8 +165,8 @@ Lines 1 to 8 as they read on 30 October 2026, rewritten under the 6 November bas
    - Before: "I've produced as Gorf since 2003, with Denseware and SSATCY alongside. I've logged 47 performances since 2004."
    - After: "Producing as Gorf since 2003, with Denseware and SSATCY alongside. Logged 47 performances since 2004."
 10. Role entry under its job title (gorfed.net)
-    - Before: "I managed people in TD Invent's Human-Centered Design Practice. I led design teams across Wealth, on WebBroker, Web Business Banking, TD Asset Management and EasyWeb."
-    - After: "Managed people in TD Invent's Human-Centered Design Practice. Led design teams across Wealth, on WebBroker, Web Business Banking, TD Asset Management and EasyWeb."
+    - Before: "I managed 3 direct reports in TD Invent's Human-Centered Design Practice. I was the most senior hands-on craft leader on a Wealth design team of about 22."
+    - After: "Managed 3 direct reports in TD Invent's Human-Centered Design Practice. Most senior hands-on craft leader on a Wealth design team of about 22."
 11. heuristics.4thcltr.com, method page
     - Before: "I publish each analysis for criticism and review, and I write it for the company's own digital product team."
     - After: "I publish each analysis for criticism and review. It's written for the company's own digital product team."

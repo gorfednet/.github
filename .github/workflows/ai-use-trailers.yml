@@ -1,0 +1,85 @@
+# AI Use Levels trailer gate, shared by every repository (plan row 1.90, audit of 21 November 2026).
+#
+# A repository calls this from its own .github/workflows on `pull_request`. It fails a pull request
+# whose own commits carry a Claude `Co-Authored-By` without a well formed `AI-Use:` line and an
+# `AI-Use-Standing:` pointer, with tools out of order, or with a Co-Authored-By that disagrees with the
+# tag. In a repository the author's delegation exempts (docs/delegation.md in ai-use-levels), `exempt: true` fails
+# the opposite: any trailer at all. The rules and what the gate cannot see are in
+# scripts/gates/check-ai-use-trailers.mjs.
+#
+# The spec is a checkout of the public gorfednet/ai-use-levels at the pinned ref below, so a PR check
+# never reads a moving target (verification-floor rule 5). Moving the pin is a change to this file.
+# It reads no secret and runs nothing from the caller's checkout: the caller's history is only read
+# with `git log`.
+#
+# Runs on the caller's pool like the other shared workflows (the optional `runs-on` input as JSON, else
+# the caller's HEAVY_RUNS_ON variable). A public caller runs GitHub-hosted; a private one with neither
+# set, or with a hosted runner name, fails at once (REVIEW.md, owner 2026-11-20).
+name: ai-use-trailers
+
+on:
+  workflow_call:
+    inputs:
+      runs-on:
+        description: 'Where the job runs, as JSON: a label string or an array of labels. Optional; left empty, the caller''s HEAVY_RUNS_ON variable is used.'
+        required: false
+        type: string
+        default: ''
+      exempt:
+        description: 'True in a repository the delegation exempts: no commit may carry an AI-Use line.'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  trailers:
+    name: trailers
+    runs-on: ${{ fromJSON(github.event.repository.visibility == 'public' && '"ubuntu-latest"' || inputs.runs-on == '' && vars.HEAVY_RUNS_ON == '' && 'no pool for this repository - set HEAVY_RUNS_ON' || github.event.repository.visibility != '' && (contains(inputs.runs-on != '' && inputs.runs-on || vars.HEAVY_RUNS_ON, 'ubuntu-') || contains(inputs.runs-on != '' && inputs.runs-on || vars.HEAVY_RUNS_ON, 'macos-') || contains(inputs.runs-on != '' && inputs.runs-on || vars.HEAVY_RUNS_ON, 'windows-')) && 'hosted runner refused for a private repository - use the pool label' || inputs.runs-on != '' && inputs.runs-on || vars.HEAVY_RUNS_ON) }}
+    timeout-minutes: 10
+    # The job reads the pull request's commits with `git log` and runs no code from them. A fork's
+    # pull request reaches it as a pull_request event with no secrets.
+    steps:
+      - name: Check out the pull request's history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Check out the gate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: gorfednet/.github
+          # `main`: inside a called workflow `github.workflow_sha` is the caller's, so the ref this
+          # workflow was called at isn't available here. The script is gate code of ours, not data.
+          ref: main
+          path: .ai-use-gate
+          persist-credentials: false
+          sparse-checkout: scripts/gates
+
+      - name: Check out the AI Use Levels spec (pinned)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: gorfednet/ai-use-levels
+          # v1.3.0
+          ref: 5b16d551d5e2da5f937632f1294298942e5c1f81
+          path: .ai-use-spec
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: '22'
+
+      - name: Check the trailers on this pull request's own commits
+        if: ${{ !cancelled() }}
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          EXEMPT: ${{ inputs.exempt }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          args=(--spec-dir .ai-use-spec --base "origin/${BASE_REF}" --head "$HEAD_SHA")
+          if [ "$EXEMPT" = "true" ]; then args+=(--exempt); fi
+          node .ai-use-gate/scripts/gates/check-ai-use-trailers.mjs "${args[@]}"

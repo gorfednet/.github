@@ -1,0 +1,13 @@
+{
+  "updated": "2026-11-20",
+  "order": "Newest and biggest first. The most capable model leads, and where capability doesn't settle it, newer goes before older.",
+  "updateRule": "Add a model in the pull request that first needs it: when it's released, or when it first appears in a tag. Place it by its maker's own ranking where there is one, and above older models of the same tier. Never remove a model, so an old tag still sorts. A model may move, and tags already written aren't rewritten. Set the date above in the same change.",
+  "models": [
+    "Claude Fable 5.2",
+    "Claude Opus 5.5",
+    "Claude Fable 5.1",
+    "Claude Opus 5.0",
+    "Claude Sonnet 5.5",
+    "Claude Haiku 5.5"
+  ]
+}
