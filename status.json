@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-11-22T00:47:43.700Z",
-  "renderedAt": "2026-11-22T00:47:43.700Z",
+  "generatedAt": "2026-11-22T02:32:03.311Z",
+  "renderedAt": "2026-11-22T02:32:03.311Z",
   "repos": [
     {
       "slug": "gorfednet/bindercurve.com",
@@ -23,9 +23,9 @@
       "slug": "gorfednet/4thcltr.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 13,
+      "openPrCount": 12,
       "lapsedBacklogCount": 21,
-      "noPrCount": 31,
+      "noPrCount": 33,
       "idlePrCount": 5,
       "duplicatePrCount": 0,
       "dependabotRedCount": 0,
@@ -39,7 +39,7 @@
       "slug": "gorfednet/gorfed.net",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 5,
+      "openPrCount": 1,
       "lapsedBacklogCount": 4,
       "noPrCount": 6,
       "idlePrCount": 0,
@@ -185,30 +185,6 @@
       "mainRed": false,
       "openPrs": [
         {
-          "number": 304,
-          "title": "ship-bot: a row can name its own tool worktree and a refresh command",
-          "ageDays": 0,
-          "labels": [],
-          "draft": false,
-          "review": "clean",
-          "headSha": "51b5bc9ff2273ad8ce51283efd68d89fad714eab",
-          "ci": "green",
-          "next": "Kit fix pushed: the inventory test caught the janitor's `-main` rule protecting a session worktree on a branch (`same-as-main`); it now protects a `<x>-main` worktree only when detached. Waiting on `kit` and the re-review of the final head.",
-          "author": "gorfednet"
-        },
-        {
-          "number": 302,
-          "title": "privacy-guard: public sites in fleet.json count as said fleet-wide (row 1.91)",
-          "ageDays": 0,
-          "labels": [],
-          "draft": false,
-          "review": "clean",
-          "headSha": "397e6410260e1603b3c432b7159d37ed6f8a0ff9",
-          "ci": "green",
-          "next": "merge: the 4-round review cap is reached. Rounds 1 to 4 found only low test-strength issues, all fixed and answered in-thread. The last push (397e641) only removes a test assertion that could not fail; no guard or hook code changed after 5f1e212, which round 4 read. Desk: Fable read, then label (no new `claude review` needed unless you want one)",
-          "author": "gorfednet"
-        },
-        {
           "number": 297,
           "title": "Register gorfednet/gorfednet (profile) with the fleet and ship-bot (plan row 1.81)",
           "ageDays": 0,
@@ -321,6 +297,10 @@
           "ahead": 3
         },
         {
+          "branch": "docs/handoff-herdr-recovery",
+          "ahead": 4
+        },
+        {
           "branch": "docs/lost-job-hosted-rule",
           "ahead": 2
         },
@@ -370,6 +350,10 @@
         },
         {
           "branch": "scratch-prove-cca-276",
+          "ahead": 1
+        },
+        {
+          "branch": "scratch-review-limits",
           "ahead": 1
         },
         {
@@ -680,7 +664,12 @@
           "author": "gorfednet"
         }
       ],
-      "branchesAhead": [],
+      "branchesAhead": [
+        {
+          "branch": "throwaway/274-expression-proof",
+          "ahead": 1
+        }
+      ],
       "lapsedBacklog": [],
       "backlogOpen": [],
       "idlePrs": [
@@ -721,7 +710,7 @@
       "mainRed": false,
       "openPrCount": 11,
       "lapsedBacklogCount": 34,
-      "noPrCount": 7,
+      "noPrCount": 8,
       "idlePrCount": 7,
       "duplicatePrCount": 0,
       "dependabotRedCount": 2,
@@ -829,7 +818,7 @@
         {
           "number": 4,
           "title": "fix: --help exit code, drop arbitrary ratingKey length cap",
-          "ageDays": 0,
+          "ageDays": 1,
           "labels": [],
           "draft": false,
           "review": "not-run",
@@ -860,7 +849,7 @@
       "mainRed": false,
       "openPrCount": 6,
       "lapsedBacklogCount": 6,
-      "noPrCount": 3,
+      "noPrCount": 6,
       "idlePrCount": 3,
       "duplicatePrCount": 0,
       "dependabotRedCount": 2,
@@ -874,9 +863,9 @@
       "slug": "gorfednet/ops",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 28,
+      "openPrCount": 27,
       "lapsedBacklogCount": 0,
-      "noPrCount": 11,
+      "noPrCount": 12,
       "idlePrCount": 9,
       "duplicatePrCount": 0,
       "dependabotRedCount": 0,
@@ -892,8 +881,8 @@
     "gorfednet/TowIt",
     "gorfednet/wychwood"
   ],
-  "branchesReadAt": "2026-11-21T02:32:03.605Z",
-  "carried": true,
+  "branchesReadAt": "2026-11-22T02:32:03.311Z",
+  "carried": false,
   "localCounts": {
     "rows": {
       "dirtyClones": {
@@ -941,11 +930,11 @@
     }
   },
   "inventory": {
-    "measuredAt": "2026-11-22T00:47:43.700Z",
+    "measuredAt": "2026-11-22T02:32:03.311Z",
     "counts": {
       "pr": {
-        "total": 170,
-        "orphans": 89
+        "total": 162,
+        "orphans": 85
       },
       "session": null,
       "worktree": null,
@@ -956,22 +945,6 @@
       }
     },
     "orphans": [
-      {
-        "kind": "pr",
-        "repo": "gorfednet/.github",
-        "ref": "#304",
-        "label": "ship-bot: a row can name its own tool worktree and a refresh command",
-        "private": false,
-        "lapsed": false
-      },
-      {
-        "kind": "pr",
-        "repo": "gorfednet/.github",
-        "ref": "#302",
-        "label": "privacy-guard: public sites in fleet.json count as said fleet-wide (row 1.91)",
-        "private": false,
-        "lapsed": false
-      },
       {
         "kind": "pr",
         "repo": "gorfednet/.github",
@@ -1069,13 +1042,13 @@
         "lapsed": true
       }
     ],
-    "hiddenPrivate": 77,
+    "hiddenPrivate": 75,
     "privateReposNotItemised": 18,
     "planRead": true
   },
   "dotgithub": {
-    "measuredAt": "2026-11-22T00:48:42.498Z",
-    "branches": 47,
+    "measuredAt": "2026-11-22T02:33:16.456Z",
+    "branches": 45,
     "merged": 3,
     "exposedFiles": 54,
     "rulesNotChecked": [],
