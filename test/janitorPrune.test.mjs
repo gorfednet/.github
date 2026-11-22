@@ -84,6 +84,11 @@ describe('janitor-prune', () => {
     git(f.clone, 'worktree', 'add', '--quiet', '--detach', lookalike, 'main')
     const again = run({ root: f.root, keep: new Set([f.live]), idleMs: DAY, apply: false, now: Date.now() + 2 * DAY, fetch: false, log: quiet })
     assert.notEqual(again.find((r) => r.path === lookalike).reason, 'protected', 'only the -main suffix protects')
+    // A session's own worktree on a branch is not a tool worktree, whatever its folder is called.
+    const onBranch = join(f.clone, '.claude', 'worktrees', 'same-as-main')
+    git(f.clone, 'worktree', 'add', '--quiet', '-b', 'feat/same', onBranch, 'main')
+    const third = run({ root: f.root, keep: new Set([f.live]), idleMs: DAY, apply: false, now: Date.now() + 2 * DAY, fetch: false, log: quiet })
+    assert.notEqual(third.find((r) => r.path === onBranch).reason, 'protected', 'a branch checkout ending in -main is not protected')
   })
 
   it('without --apply names only the merged, clean, idle worktree and changes nothing', () => {

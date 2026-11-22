@@ -21,7 +21,7 @@
  *
  * A worktree is pruned only when all of these hold:
  *   - it is a linked worktree, never a clone's main checkout
- *   - its name is not protected (gates-main and ops' tools-main: installed tools link there, and any `<x>-main`, which a row's `toolWorktree` names; desk-log in any clone,
+ *   - its name is not protected (gates-main and ops' tools-main: installed tools link there, and any detached `<x>-main`, which a row's `toolWorktree` names; desk-log in any clone,
  *     which is Desk's ops worktree since plan row 1.30; janitor-main)
  *   - its path is not in the keep file (the working folders of live sessions)
  *   - `git status --porcelain` is empty and nothing is ahead of its upstream
@@ -133,8 +133,8 @@ export function ignoredLocal(path) {
  */
 export function judge(wt, { mainRef, keep, idleMs, now }) {
   const name = basename(wt.path)
-  // A row's own tool worktree (ship-bot `toolWorktree`) must be named `<x>-main`: ship-bot advances it and installed commands run from it.
-  if (PROTECTED_NAMES.has(name) || name.endsWith('-main')) return { verdict: 'keep', reason: 'protected' }
+  // A row's own tool worktree (ship-bot `toolWorktree`) is named `<x>-main` and detached: ship-bot advances it and installed commands run from it. A session worktree on a branch that happens to end in -main (same-as-main) is judged like any other.
+  if (PROTECTED_NAMES.has(name) || (name.endsWith('-main') && wt.detached)) return { verdict: 'keep', reason: 'protected' }
   if (keep.has(canonical(wt.path))) return { verdict: 'keep', reason: 'live session' }
   if (wt.prunable || !existsSync(wt.path)) return { verdict: 'keep', reason: 'missing folder (git worktree prune clears it)' }
   if (wt.branch && PROTECTED_BRANCHES.has(wt.branch)) return { verdict: 'keep', reason: 'protected branch' }
