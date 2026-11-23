@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-11-23T16:32:08.636Z",
-  "renderedAt": "2026-11-23T16:32:08.636Z",
+  "generatedAt": "2026-11-23T18:32:07.725Z",
+  "renderedAt": "2026-11-23T18:32:07.725Z",
   "repos": [
     {
       "slug": "gorfednet/bindercurve.com",
@@ -26,7 +26,7 @@
       "openPrCount": 11,
       "lapsedBacklogCount": 21,
       "noPrCount": 33,
-      "idlePrCount": 6,
+      "idlePrCount": 8,
       "duplicatePrCount": 0,
       "dependabotRedCount": 0,
       "kitVersion": "0.63.0",
@@ -58,7 +58,7 @@
       "openPrCount": 4,
       "lapsedBacklogCount": 0,
       "noPrCount": 1,
-      "idlePrCount": 2,
+      "idlePrCount": 3,
       "duplicatePrCount": 0,
       "dependabotRedCount": 0,
       "kitVersion": "0.65.0",
@@ -90,7 +90,7 @@
       "openPrCount": 3,
       "lapsedBacklogCount": 0,
       "noPrCount": 4,
-      "idlePrCount": 1,
+      "idlePrCount": 2,
       "duplicatePrCount": 0,
       "dependabotRedCount": 0,
       "kitVersion": "0.65.0",
@@ -122,7 +122,7 @@
       "openPrCount": 7,
       "lapsedBacklogCount": 2,
       "noPrCount": 4,
-      "idlePrCount": 3,
+      "idlePrCount": 4,
       "duplicatePrCount": 0,
       "dependabotRedCount": 2,
       "kitVersion": "0.65.0",
@@ -154,7 +154,7 @@
       "openPrCount": 2,
       "lapsedBacklogCount": 0,
       "noPrCount": 0,
-      "idlePrCount": 1,
+      "idlePrCount": 2,
       "duplicatePrCount": 0,
       "dependabotRedCount": 0,
       "kitVersion": "0.65.0",
@@ -170,7 +170,7 @@
       "openPrCount": 9,
       "lapsedBacklogCount": 1,
       "noPrCount": 1,
-      "idlePrCount": 6,
+      "idlePrCount": 8,
       "duplicatePrCount": 0,
       "dependabotRedCount": 1,
       "kitVersion": "0.65.0",
@@ -608,6 +608,10 @@
           "idleDays": 3
         },
         {
+          "number": 267,
+          "idleDays": 3
+        },
+        {
           "number": 266,
           "idleDays": 4
         }
@@ -629,7 +633,7 @@
       "openPrCount": 12,
       "lapsedBacklogCount": 3,
       "noPrCount": 47,
-      "idlePrCount": 8,
+      "idlePrCount": 9,
       "duplicatePrCount": 0,
       "dependabotRedCount": 5,
       "kitVersion": null,
@@ -764,7 +768,7 @@
         {
           "number": 23,
           "title": "Spec 1.2.1: a site footer mark, and ordering a long Tool list",
-          "ageDays": 10,
+          "ageDays": 11,
           "labels": [],
           "draft": true,
           "review": "not-run",
@@ -797,7 +801,7 @@
       "idlePrs": [
         {
           "number": 23,
-          "idleDays": 10
+          "idleDays": 11
         },
         {
           "number": 3,
@@ -867,10 +871,10 @@
       "slug": "gorfednet/ops",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 28,
+      "openPrCount": 30,
       "lapsedBacklogCount": 0,
       "noPrCount": 12,
-      "idlePrCount": 10,
+      "idlePrCount": 11,
       "duplicatePrCount": 0,
       "dependabotRedCount": 0,
       "kitVersion": null,
@@ -934,11 +938,11 @@
     }
   },
   "inventory": {
-    "measuredAt": "2026-11-23T16:32:08.636Z",
+    "measuredAt": "2026-11-23T18:32:07.725Z",
     "counts": {
       "pr": {
-        "total": 160,
-        "orphans": 84
+        "total": 162,
+        "orphans": 86
       },
       "session": null,
       "worktree": null,
@@ -1046,12 +1050,12 @@
         "lapsed": true
       }
     ],
-    "hiddenPrivate": 74,
+    "hiddenPrivate": 76,
     "privateReposNotItemised": 18,
     "planRead": true
   },
   "dotgithub": {
-    "measuredAt": "2026-11-23T16:33:19.692Z",
+    "measuredAt": "2026-11-23T18:33:20.010Z",
     "branches": 45,
     "merged": 3,
     "exposedFiles": 54,
