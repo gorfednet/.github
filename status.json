@@ -1,13 +1,13 @@
 {
-  "generatedAt": "2026-11-22T22:32:06.575Z",
-  "renderedAt": "2026-11-22T22:32:06.575Z",
+  "generatedAt": "2026-11-23T00:49:05.737Z",
+  "renderedAt": "2026-11-23T00:49:05.737Z",
   "repos": [
     {
       "slug": "gorfednet/bindercurve.com",
       "redacted": true,
       "mainRed": false,
       "openPrCount": 16,
-      "lapsedBacklogCount": 16,
+      "lapsedBacklogCount": 17,
       "noPrCount": 80,
       "idlePrCount": 9,
       "duplicatePrCount": 0,
@@ -199,7 +199,7 @@
         {
           "number": 281,
           "title": "Fleet status: public repository faces and release lag (plan 1.66)",
-          "ageDays": 1,
+          "ageDays": 2,
           "labels": [],
           "draft": true,
           "review": "findings",
@@ -235,7 +235,7 @@
         {
           "number": 267,
           "title": "Content guidelines: the AI statement lives in the AI use overlay",
-          "ageDays": 3,
+          "ageDays": 4,
           "labels": [
             "hold"
           ],
@@ -610,7 +610,7 @@
       ],
       "duplicatePrs": [],
       "lastDeploy": null,
-      "incidents7d": 4,
+      "incidents7d": 1,
       "dependabotRed": 0,
       "kitVersion": "0.70.0",
       "kitPin": {
@@ -642,7 +642,7 @@
         {
           "number": 9,
           "title": "README: replace the last em dash",
-          "ageDays": 1,
+          "ageDays": 2,
           "labels": [],
           "draft": true,
           "review": "not-run",
@@ -848,7 +848,7 @@
       "redacted": true,
       "mainRed": false,
       "openPrCount": 6,
-      "lapsedBacklogCount": 6,
+      "lapsedBacklogCount": 12,
       "noPrCount": 6,
       "idlePrCount": 3,
       "duplicatePrCount": 0,
@@ -930,7 +930,7 @@
     }
   },
   "inventory": {
-    "measuredAt": "2026-11-22T22:32:06.575Z",
+    "measuredAt": "2026-11-23T00:49:05.737Z",
     "counts": {
       "pr": {
         "total": 161,
@@ -1047,7 +1047,7 @@
     "planRead": true
   },
   "dotgithub": {
-    "measuredAt": "2026-11-22T22:32:58.324Z",
+    "measuredAt": "2026-11-23T00:50:00.572Z",
     "branches": 45,
     "merged": 3,
     "exposedFiles": 54,
