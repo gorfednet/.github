@@ -1,12 +1,12 @@
 {
-  "generatedAt": "2026-11-23T18:32:07.725Z",
-  "renderedAt": "2026-11-23T18:32:07.725Z",
+  "generatedAt": "2026-11-23T20:31:59.178Z",
+  "renderedAt": "2026-11-23T20:31:59.178Z",
   "repos": [
     {
       "slug": "gorfednet/bindercurve.com",
       "redacted": true,
       "mainRed": true,
-      "openPrCount": 16,
+      "openPrCount": 18,
       "lapsedBacklogCount": 17,
       "noPrCount": 80,
       "idlePrCount": 9,
@@ -187,7 +187,7 @@
         {
           "number": 297,
           "title": "Register gorfednet/gorfednet (profile) with the fleet and ship-bot (plan row 1.81)",
-          "ageDays": 1,
+          "ageDays": 2,
           "labels": [],
           "draft": false,
           "review": "not-run",
@@ -211,7 +211,7 @@
         {
           "number": 276,
           "title": "Template: LICENSE starts from the owner's standard copyright line",
-          "ageDays": 2,
+          "ageDays": 3,
           "labels": [],
           "draft": true,
           "review": "not-run",
@@ -249,7 +249,7 @@
         {
           "number": 266,
           "title": "AI credit ledger tool: scripts/ai-credits.mjs (plan row 1.40)",
-          "ageDays": 4,
+          "ageDays": 5,
           "labels": [],
           "draft": false,
           "review": "findings",
@@ -604,6 +604,10 @@
       ],
       "idlePrs": [
         {
+          "number": 276,
+          "idleDays": 3
+        },
+        {
           "number": 270,
           "idleDays": 3
         },
@@ -613,7 +617,7 @@
         },
         {
           "number": 266,
-          "idleDays": 4
+          "idleDays": 5
         }
       ],
       "duplicatePrs": [],
@@ -633,7 +637,7 @@
       "openPrCount": 12,
       "lapsedBacklogCount": 3,
       "noPrCount": 47,
-      "idlePrCount": 9,
+      "idlePrCount": 10,
       "duplicatePrCount": 0,
       "dependabotRedCount": 5,
       "kitVersion": null,
@@ -871,10 +875,10 @@
       "slug": "gorfednet/ops",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 30,
+      "openPrCount": 31,
       "lapsedBacklogCount": 0,
       "noPrCount": 12,
-      "idlePrCount": 11,
+      "idlePrCount": 12,
       "duplicatePrCount": 0,
       "dependabotRedCount": 0,
       "kitVersion": null,
@@ -938,11 +942,11 @@
     }
   },
   "inventory": {
-    "measuredAt": "2026-11-23T18:32:07.725Z",
+    "measuredAt": "2026-11-23T20:31:59.178Z",
     "counts": {
       "pr": {
-        "total": 162,
-        "orphans": 86
+        "total": 165,
+        "orphans": 89
       },
       "session": null,
       "worktree": null,
@@ -1050,12 +1054,12 @@
         "lapsed": true
       }
     ],
-    "hiddenPrivate": 76,
+    "hiddenPrivate": 79,
     "privateReposNotItemised": 18,
     "planRead": true
   },
   "dotgithub": {
-    "measuredAt": "2026-11-23T18:33:20.010Z",
+    "measuredAt": "2026-11-23T20:33:12.642Z",
     "branches": 45,
     "merged": 3,
     "exposedFiles": 54,
