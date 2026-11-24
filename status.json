@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-11-24T16:32:32.419Z",
-  "renderedAt": "2026-11-24T16:32:32.419Z",
+  "generatedAt": "2026-11-24T18:32:20.310Z",
+  "renderedAt": "2026-11-24T18:32:20.310Z",
   "repos": [
     {
       "slug": "gorfednet/bindercurve.com",
@@ -26,7 +26,7 @@
       "openPrCount": 11,
       "lapsedBacklogCount": 23,
       "noPrCount": 33,
-      "idlePrCount": 8,
+      "idlePrCount": 9,
       "duplicatePrCount": 0,
       "dependabotRedCount": 0,
       "kitVersion": "0.63.0",
@@ -617,7 +617,7 @@
         },
         {
           "number": 267,
-          "idleDays": 3
+          "idleDays": 4
         },
         {
           "number": 266,
@@ -641,7 +641,7 @@
       "openPrCount": 12,
       "lapsedBacklogCount": 3,
       "noPrCount": 47,
-      "idlePrCount": 11,
+      "idlePrCount": 12,
       "duplicatePrCount": 0,
       "dependabotRedCount": 5,
       "kitVersion": null,
@@ -715,7 +715,7 @@
       "openPrCount": 8,
       "lapsedBacklogCount": 1,
       "noPrCount": 1,
-      "idlePrCount": 6,
+      "idlePrCount": 7,
       "duplicatePrCount": 0,
       "dependabotRedCount": 1,
       "kitVersion": "0.65.0",
@@ -731,7 +731,7 @@
       "openPrCount": 11,
       "lapsedBacklogCount": 35,
       "noPrCount": 8,
-      "idlePrCount": 9,
+      "idlePrCount": 10,
       "duplicatePrCount": 0,
       "dependabotRedCount": 2,
       "kitVersion": "0.65.0",
@@ -780,7 +780,7 @@
         {
           "number": 23,
           "title": "Spec 1.2.1: a site footer mark, and ordering a long Tool list",
-          "ageDays": 11,
+          "ageDays": 12,
           "labels": [],
           "draft": true,
           "review": "not-run",
@@ -813,7 +813,7 @@
       "idlePrs": [
         {
           "number": 23,
-          "idleDays": 11
+          "idleDays": 12
         },
         {
           "number": 3,
@@ -870,7 +870,7 @@
       "openPrCount": 6,
       "lapsedBacklogCount": 12,
       "noPrCount": 6,
-      "idlePrCount": 3,
+      "idlePrCount": 4,
       "duplicatePrCount": 0,
       "dependabotRedCount": 2,
       "kitVersion": "0.65.0",
@@ -881,20 +881,7 @@
     },
     {
       "slug": "gorfednet/ops",
-      "redacted": true,
-      "mainRed": false,
-      "openPrCount": 29,
-      "lapsedBacklogCount": 0,
-      "noPrCount": 14,
-      "idlePrCount": 22,
-      "duplicatePrCount": 0,
-      "dependabotRedCount": 0,
-      "kitVersion": null,
-      "kitPin": {
-        "ref": "kit-v0.65.0",
-        "version": "0.65.0"
-      },
-      "alertsOverdue": 0
+      "unavailable": "unreadable"
     }
   ],
   "dormant": [
@@ -950,19 +937,16 @@
     }
   },
   "inventory": {
-    "measuredAt": "2026-11-24T16:32:32.419Z",
+    "measuredAt": "2026-11-24T18:32:20.310Z",
     "counts": {
       "pr": {
         "total": 162,
-        "orphans": 86
+        "orphans": 87
       },
       "session": null,
       "worktree": null,
       "job": null,
-      "backlog": {
-        "total": 31,
-        "orphans": 2
-      }
+      "backlog": null
     },
     "orphans": [
       {
@@ -1024,6 +1008,14 @@
       {
         "kind": "pr",
         "repo": "gorfednet/.github",
+        "ref": "#270",
+        "label": ".github: A4: hookify them into PreToolUse and Stop hooks, each shown failing once",
+        "private": false,
+        "lapsed": false
+      },
+      {
+        "kind": "pr",
+        "repo": "gorfednet/.github",
         "ref": "#267",
         "label": "Content guidelines: the AI statement lives in the AI use overlay",
         "private": false,
@@ -1044,30 +1036,14 @@
         "label": "Verification kit 0.48.0: the content guidelines and check-voice",
         "private": false,
         "lapsed": false
-      },
-      {
-        "kind": "backlog",
-        "repo": "gorfednet/.github",
-        "ref": "cards-at-overwritable-urls",
-        "label": "Most sites still declare a social card at a URL that cannot be replaced",
-        "private": false,
-        "lapsed": true
-      },
-      {
-        "kind": "backlog",
-        "repo": "gorfednet/.github",
-        "ref": "publish-the-server-never-saw",
-        "label": "Every deploy to the ten NAS sites reached the filesystem and not the visitor",
-        "private": false,
-        "lapsed": true
       }
     ],
     "hiddenPrivate": 76,
-    "privateReposNotItemised": 18,
+    "privateReposNotItemised": 17,
     "planRead": true
   },
   "dotgithub": {
-    "measuredAt": "2026-11-24T16:33:41.014Z",
+    "measuredAt": "2026-11-24T18:33:25.263Z",
     "branches": 45,
     "merged": 3,
     "exposedFiles": 54,
