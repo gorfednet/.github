@@ -1,11 +1,11 @@
 {
-  "generatedAt": "2026-11-24T08:32:55.696Z",
-  "renderedAt": "2026-11-24T08:32:55.696Z",
+  "generatedAt": "2026-11-24T10:32:14.637Z",
+  "renderedAt": "2026-11-24T10:32:14.637Z",
   "repos": [
     {
       "slug": "gorfednet/bindercurve.com",
       "redacted": true,
-      "mainRed": false,
+      "mainRed": true,
       "openPrCount": 17,
       "lapsedBacklogCount": 17,
       "noPrCount": 80,
@@ -950,7 +950,7 @@
     }
   },
   "inventory": {
-    "measuredAt": "2026-11-24T08:32:55.696Z",
+    "measuredAt": "2026-11-24T10:32:14.637Z",
     "counts": {
       "pr": {
         "total": 162,
@@ -1067,7 +1067,7 @@
     "planRead": true
   },
   "dotgithub": {
-    "measuredAt": "2026-11-24T08:34:08.093Z",
+    "measuredAt": "2026-11-24T10:33:24.370Z",
     "branches": 45,
     "merged": 3,
     "exposedFiles": 54,
