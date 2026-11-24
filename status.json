@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-11-24T18:32:20.310Z",
-  "renderedAt": "2026-11-24T18:32:20.310Z",
+  "generatedAt": "2026-11-24T20:32:16.424Z",
+  "renderedAt": "2026-11-24T20:32:16.424Z",
   "repos": [
     {
       "slug": "gorfednet/bindercurve.com",
@@ -26,7 +26,7 @@
       "openPrCount": 11,
       "lapsedBacklogCount": 23,
       "noPrCount": 33,
-      "idlePrCount": 9,
+      "idlePrCount": 10,
       "duplicatePrCount": 0,
       "dependabotRedCount": 0,
       "kitVersion": "0.63.0",
@@ -122,7 +122,7 @@
       "openPrCount": 7,
       "lapsedBacklogCount": 2,
       "noPrCount": 4,
-      "idlePrCount": 6,
+      "idlePrCount": 7,
       "duplicatePrCount": 0,
       "dependabotRedCount": 2,
       "kitVersion": "0.65.0",
@@ -187,7 +187,7 @@
         {
           "number": 297,
           "title": "Register gorfednet/gorfednet (profile) with the fleet and ship-bot (plan row 1.81)",
-          "ageDays": 2,
+          "ageDays": 3,
           "labels": [],
           "draft": false,
           "review": "not-run",
@@ -211,7 +211,7 @@
         {
           "number": 276,
           "title": "Template: LICENSE starts from the owner's standard copyright line",
-          "ageDays": 3,
+          "ageDays": 4,
           "labels": [],
           "draft": true,
           "review": "not-run",
@@ -249,7 +249,7 @@
         {
           "number": 266,
           "title": "AI credit ledger tool: scripts/ai-credits.mjs (plan row 1.40)",
-          "ageDays": 5,
+          "ageDays": 6,
           "labels": [],
           "draft": false,
           "review": "findings",
@@ -604,12 +604,16 @@
       ],
       "idlePrs": [
         {
+          "number": 297,
+          "idleDays": 3
+        },
+        {
           "number": 281,
           "idleDays": 3
         },
         {
           "number": 276,
-          "idleDays": 3
+          "idleDays": 4
         },
         {
           "number": 270,
@@ -621,7 +625,7 @@
         },
         {
           "number": 266,
-          "idleDays": 5
+          "idleDays": 6
         }
       ],
       "duplicatePrs": [],
@@ -715,7 +719,7 @@
       "openPrCount": 8,
       "lapsedBacklogCount": 1,
       "noPrCount": 1,
-      "idlePrCount": 7,
+      "idlePrCount": 8,
       "duplicatePrCount": 0,
       "dependabotRedCount": 1,
       "kitVersion": "0.65.0",
@@ -731,7 +735,7 @@
       "openPrCount": 11,
       "lapsedBacklogCount": 35,
       "noPrCount": 8,
-      "idlePrCount": 10,
+      "idlePrCount": 11,
       "duplicatePrCount": 0,
       "dependabotRedCount": 2,
       "kitVersion": "0.65.0",
@@ -747,7 +751,7 @@
       "openPrCount": 4,
       "lapsedBacklogCount": 1,
       "noPrCount": 5,
-      "idlePrCount": 3,
+      "idlePrCount": 4,
       "duplicatePrCount": 0,
       "dependabotRedCount": 1,
       "kitVersion": "0.65.0",
@@ -851,7 +855,12 @@
       "branchesAhead": [],
       "lapsedBacklog": [],
       "backlogOpen": [],
-      "idlePrs": [],
+      "idlePrs": [
+        {
+          "number": 4,
+          "idleDays": 3
+        }
+      ],
       "duplicatePrs": [],
       "lastDeploy": null,
       "incidents7d": 0,
@@ -870,7 +879,7 @@
       "openPrCount": 6,
       "lapsedBacklogCount": 12,
       "noPrCount": 6,
-      "idlePrCount": 4,
+      "idlePrCount": 5,
       "duplicatePrCount": 0,
       "dependabotRedCount": 2,
       "kitVersion": "0.65.0",
@@ -881,7 +890,20 @@
     },
     {
       "slug": "gorfednet/ops",
-      "unavailable": "unreadable"
+      "redacted": true,
+      "mainRed": false,
+      "openPrCount": 29,
+      "lapsedBacklogCount": 0,
+      "noPrCount": 14,
+      "idlePrCount": 24,
+      "duplicatePrCount": 0,
+      "dependabotRedCount": 0,
+      "kitVersion": null,
+      "kitPin": {
+        "ref": "kit-v0.65.0",
+        "version": "0.65.0"
+      },
+      "alertsOverdue": 0
     }
   ],
   "dormant": [
@@ -937,16 +959,19 @@
     }
   },
   "inventory": {
-    "measuredAt": "2026-11-24T18:32:20.310Z",
+    "measuredAt": "2026-11-24T20:32:16.424Z",
     "counts": {
       "pr": {
         "total": 162,
-        "orphans": 87
+        "orphans": 86
       },
       "session": null,
       "worktree": null,
       "job": null,
-      "backlog": null
+      "backlog": {
+        "total": 31,
+        "orphans": 2
+      }
     },
     "orphans": [
       {
@@ -1008,14 +1033,6 @@
       {
         "kind": "pr",
         "repo": "gorfednet/.github",
-        "ref": "#270",
-        "label": ".github: A4: hookify them into PreToolUse and Stop hooks, each shown failing once",
-        "private": false,
-        "lapsed": false
-      },
-      {
-        "kind": "pr",
-        "repo": "gorfednet/.github",
         "ref": "#267",
         "label": "Content guidelines: the AI statement lives in the AI use overlay",
         "private": false,
@@ -1036,14 +1053,30 @@
         "label": "Verification kit 0.48.0: the content guidelines and check-voice",
         "private": false,
         "lapsed": false
+      },
+      {
+        "kind": "backlog",
+        "repo": "gorfednet/.github",
+        "ref": "cards-at-overwritable-urls",
+        "label": "Most sites still declare a social card at a URL that cannot be replaced",
+        "private": false,
+        "lapsed": true
+      },
+      {
+        "kind": "backlog",
+        "repo": "gorfednet/.github",
+        "ref": "publish-the-server-never-saw",
+        "label": "Every deploy to the ten NAS sites reached the filesystem and not the visitor",
+        "private": false,
+        "lapsed": true
       }
     ],
     "hiddenPrivate": 76,
-    "privateReposNotItemised": 17,
+    "privateReposNotItemised": 18,
     "planRead": true
   },
   "dotgithub": {
-    "measuredAt": "2026-11-24T18:33:25.263Z",
+    "measuredAt": "2026-11-24T20:33:35.640Z",
     "branches": 45,
     "merged": 3,
     "exposedFiles": 54,
