@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-11-25T14:32:30.871Z",
-  "renderedAt": "2026-11-25T14:32:30.871Z",
+  "generatedAt": "2026-11-25T16:32:40.380Z",
+  "renderedAt": "2026-11-25T16:32:40.380Z",
   "repos": [
     {
       "slug": "gorfednet/bindercurve.com",
@@ -674,7 +674,7 @@
         {
           "number": 8,
           "title": "Drain: Acid3 sample fixtures",
-          "ageDays": 11,
+          "ageDays": 12,
           "labels": [],
           "draft": true,
           "review": "not-run",
@@ -699,7 +699,7 @@
         },
         {
           "number": 8,
-          "idleDays": 11
+          "idleDays": 12
         }
       ],
       "duplicatePrs": [],
@@ -959,7 +959,7 @@
     }
   },
   "inventory": {
-    "measuredAt": "2026-11-25T14:32:30.871Z",
+    "measuredAt": "2026-11-25T16:32:40.380Z",
     "counts": {
       "pr": {
         "total": 163,
@@ -1076,7 +1076,7 @@
     "planRead": true
   },
   "dotgithub": {
-    "measuredAt": "2026-11-25T14:34:17.461Z",
+    "measuredAt": "2026-11-25T16:33:50.722Z",
     "branches": 45,
     "merged": 3,
     "exposedFiles": 54,
