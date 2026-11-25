@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-11-24T22:32:02.260Z",
-  "renderedAt": "2026-11-24T22:32:02.260Z",
+  "generatedAt": "2026-11-25T00:46:53.156Z",
+  "renderedAt": "2026-11-25T00:46:53.156Z",
   "repos": [
     {
       "slug": "gorfednet/bindercurve.com",
@@ -26,7 +26,7 @@
       "openPrCount": 11,
       "lapsedBacklogCount": 23,
       "noPrCount": 33,
-      "idlePrCount": 10,
+      "idlePrCount": 11,
       "duplicatePrCount": 0,
       "dependabotRedCount": 0,
       "kitVersion": "0.63.0",
@@ -199,7 +199,7 @@
         {
           "number": 281,
           "title": "Fleet status: public repository faces and release lag (plan 1.66)",
-          "ageDays": 3,
+          "ageDays": 4,
           "labels": [],
           "draft": true,
           "review": "findings",
@@ -235,7 +235,7 @@
         {
           "number": 267,
           "title": "Content guidelines: the AI statement lives in the AI use overlay",
-          "ageDays": 5,
+          "ageDays": 6,
           "labels": [
             "hold"
           ],
@@ -609,7 +609,7 @@
         },
         {
           "number": 281,
-          "idleDays": 3
+          "idleDays": 4
         },
         {
           "number": 276,
@@ -630,7 +630,7 @@
       ],
       "duplicatePrs": [],
       "lastDeploy": null,
-      "incidents7d": 1,
+      "incidents7d": 0,
       "dependabotRed": 0,
       "kitVersion": "0.70.0",
       "kitPin": {
@@ -662,7 +662,7 @@
         {
           "number": 9,
           "title": "README: replace the last em dash",
-          "ageDays": 3,
+          "ageDays": 4,
           "labels": [],
           "draft": true,
           "review": "not-run",
@@ -695,7 +695,7 @@
       "idlePrs": [
         {
           "number": 9,
-          "idleDays": 3
+          "idleDays": 4
         },
         {
           "number": 8,
@@ -879,7 +879,7 @@
       "openPrCount": 6,
       "lapsedBacklogCount": 12,
       "noPrCount": 6,
-      "idlePrCount": 5,
+      "idlePrCount": 6,
       "duplicatePrCount": 0,
       "dependabotRedCount": 2,
       "kitVersion": "0.65.0",
@@ -959,7 +959,7 @@
     }
   },
   "inventory": {
-    "measuredAt": "2026-11-24T22:32:02.260Z",
+    "measuredAt": "2026-11-25T00:46:53.156Z",
     "counts": {
       "pr": {
         "total": 162,
@@ -1076,7 +1076,7 @@
     "planRead": true
   },
   "dotgithub": {
-    "measuredAt": "2026-11-24T22:33:23.613Z",
+    "measuredAt": "2026-11-25T00:48:00.511Z",
     "branches": 45,
     "merged": 3,
     "exposedFiles": 54,
