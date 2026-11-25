@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-11-25T18:32:08.409Z",
-  "renderedAt": "2026-11-25T18:32:08.409Z",
+  "generatedAt": "2026-11-25T20:32:24.351Z",
+  "renderedAt": "2026-11-25T20:32:24.351Z",
   "repos": [
     {
       "slug": "gorfednet/bindercurve.com",
@@ -187,7 +187,7 @@
         {
           "number": 297,
           "title": "Register gorfednet/gorfednet (profile) with the fleet and ship-bot (plan row 1.81)",
-          "ageDays": 3,
+          "ageDays": 4,
           "labels": [],
           "draft": false,
           "review": "not-run",
@@ -211,7 +211,7 @@
         {
           "number": 276,
           "title": "Template: LICENSE starts from the owner's standard copyright line",
-          "ageDays": 4,
+          "ageDays": 5,
           "labels": [],
           "draft": true,
           "review": "not-run",
@@ -249,7 +249,7 @@
         {
           "number": 266,
           "title": "AI credit ledger tool: scripts/ai-credits.mjs (plan row 1.40)",
-          "ageDays": 6,
+          "ageDays": 7,
           "labels": [],
           "draft": false,
           "review": "findings",
@@ -605,7 +605,7 @@
       "idlePrs": [
         {
           "number": 297,
-          "idleDays": 3
+          "idleDays": 4
         },
         {
           "number": 281,
@@ -613,7 +613,7 @@
         },
         {
           "number": 276,
-          "idleDays": 4
+          "idleDays": 5
         },
         {
           "number": 270,
@@ -625,7 +625,7 @@
         },
         {
           "number": 266,
-          "idleDays": 6
+          "idleDays": 7
         }
       ],
       "duplicatePrs": [],
@@ -858,7 +858,7 @@
       "idlePrs": [
         {
           "number": 4,
-          "idleDays": 3
+          "idleDays": 4
         }
       ],
       "duplicatePrs": [],
@@ -959,7 +959,7 @@
     }
   },
   "inventory": {
-    "measuredAt": "2026-11-25T18:32:08.409Z",
+    "measuredAt": "2026-11-25T20:32:24.351Z",
     "counts": {
       "pr": {
         "total": 163,
@@ -1076,7 +1076,7 @@
     "planRead": true
   },
   "dotgithub": {
-    "measuredAt": "2026-11-25T18:33:12.782Z",
+    "measuredAt": "2026-11-25T20:33:29.562Z",
     "branches": 45,
     "merged": 3,
     "exposedFiles": 54,
