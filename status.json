@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-11-25T12:36:08.052Z",
-  "renderedAt": "2026-11-25T12:36:08.052Z",
+  "generatedAt": "2026-11-25T14:32:30.871Z",
+  "renderedAt": "2026-11-25T14:32:30.871Z",
   "repos": [
     {
       "slug": "gorfednet/bindercurve.com",
@@ -39,7 +39,7 @@
       "slug": "gorfednet/gorfed.net",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 0,
+      "openPrCount": 1,
       "lapsedBacklogCount": 5,
       "noPrCount": 6,
       "idlePrCount": 0,
@@ -223,7 +223,7 @@
         {
           "number": 270,
           "title": ".github: A4: hookify them into PreToolUse and Stop hooks, each shown failing once",
-          "ageDays": 4,
+          "ageDays": 5,
           "labels": [],
           "draft": true,
           "review": "not-run",
@@ -617,7 +617,7 @@
         },
         {
           "number": 270,
-          "idleDays": 4
+          "idleDays": 5
         },
         {
           "number": 267,
@@ -895,7 +895,7 @@
       "openPrCount": 29,
       "lapsedBacklogCount": 0,
       "noPrCount": 14,
-      "idlePrCount": 25,
+      "idlePrCount": 26,
       "duplicatePrCount": 0,
       "dependabotRedCount": 0,
       "kitVersion": null,
@@ -959,11 +959,11 @@
     }
   },
   "inventory": {
-    "measuredAt": "2026-11-25T12:36:08.052Z",
+    "measuredAt": "2026-11-25T14:32:30.871Z",
     "counts": {
       "pr": {
-        "total": 162,
-        "orphans": 86
+        "total": 163,
+        "orphans": 87
       },
       "session": null,
       "worktree": null,
@@ -1071,12 +1071,12 @@
         "lapsed": true
       }
     ],
-    "hiddenPrivate": 76,
+    "hiddenPrivate": 77,
     "privateReposNotItemised": 18,
     "planRead": true
   },
   "dotgithub": {
-    "measuredAt": "2026-11-25T12:37:18.235Z",
+    "measuredAt": "2026-11-25T14:34:17.461Z",
     "branches": 45,
     "merged": 3,
     "exposedFiles": 54,
