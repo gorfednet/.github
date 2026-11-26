@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-11-26T12:36:46.259Z",
-  "renderedAt": "2026-11-26T12:36:46.259Z",
+  "generatedAt": "2026-11-26T14:32:11.944Z",
+  "renderedAt": "2026-11-26T14:32:11.944Z",
   "repos": [
     {
       "slug": "gorfednet/bindercurve.com",
@@ -223,7 +223,7 @@
         {
           "number": 270,
           "title": ".github: A4: hookify them into PreToolUse and Stop hooks, each shown failing once",
-          "ageDays": 5,
+          "ageDays": 6,
           "labels": [],
           "draft": true,
           "review": "not-run",
@@ -622,7 +622,7 @@
         },
         {
           "number": 270,
-          "idleDays": 5
+          "idleDays": 6
         },
         {
           "number": 267,
@@ -964,7 +964,7 @@
     }
   },
   "inventory": {
-    "measuredAt": "2026-11-26T12:36:46.259Z",
+    "measuredAt": "2026-11-26T14:32:11.944Z",
     "counts": {
       "pr": {
         "total": 163,
@@ -1081,7 +1081,7 @@
     "planRead": true
   },
   "dotgithub": {
-    "measuredAt": "2026-11-26T12:38:11.749Z",
+    "measuredAt": "2026-11-26T14:33:24.492Z",
     "branches": 45,
     "merged": 3,
     "exposedFiles": 54,
