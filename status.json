@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-11-25T22:32:06.730Z",
-  "renderedAt": "2026-11-25T22:32:06.730Z",
+  "generatedAt": "2026-11-26T00:45:33.823Z",
+  "renderedAt": "2026-11-26T00:45:33.823Z",
   "repos": [
     {
       "slug": "gorfednet/bindercurve.com",
@@ -199,7 +199,7 @@
         {
           "number": 281,
           "title": "Fleet status: public repository faces and release lag (plan 1.66)",
-          "ageDays": 4,
+          "ageDays": 5,
           "labels": [],
           "draft": true,
           "review": "findings",
@@ -235,7 +235,7 @@
         {
           "number": 267,
           "title": "Content guidelines: the AI statement lives in the AI use overlay",
-          "ageDays": 6,
+          "ageDays": 7,
           "labels": [
             "hold"
           ],
@@ -412,6 +412,11 @@
           "id": "vhost-capture-drift-gorfed-work-and-assist",
           "status": "landed",
           "reviewBy": "2026-11-15"
+        },
+        {
+          "id": "n7-test-push-real-ops",
+          "status": "landed",
+          "reviewBy": "2026-11-25"
         }
       ],
       "backlogOpen": [
@@ -609,7 +614,7 @@
         },
         {
           "number": 281,
-          "idleDays": 4
+          "idleDays": 5
         },
         {
           "number": 276,
@@ -662,7 +667,7 @@
         {
           "number": 9,
           "title": "README: replace the last em dash",
-          "ageDays": 4,
+          "ageDays": 5,
           "labels": [],
           "draft": true,
           "review": "not-run",
@@ -695,7 +700,7 @@
       "idlePrs": [
         {
           "number": 9,
-          "idleDays": 4
+          "idleDays": 5
         },
         {
           "number": 8,
@@ -877,7 +882,7 @@
       "redacted": true,
       "mainRed": false,
       "openPrCount": 6,
-      "lapsedBacklogCount": 12,
+      "lapsedBacklogCount": 25,
       "noPrCount": 6,
       "idlePrCount": 6,
       "duplicatePrCount": 0,
@@ -959,7 +964,7 @@
     }
   },
   "inventory": {
-    "measuredAt": "2026-11-25T22:32:06.730Z",
+    "measuredAt": "2026-11-26T00:45:33.823Z",
     "counts": {
       "pr": {
         "total": 163,
@@ -1076,7 +1081,7 @@
     "planRead": true
   },
   "dotgithub": {
-    "measuredAt": "2026-11-25T22:33:03.639Z",
+    "measuredAt": "2026-11-26T00:46:50.083Z",
     "branches": 45,
     "merged": 3,
     "exposedFiles": 54,
