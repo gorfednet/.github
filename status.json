@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-11-26T02:33:24.234Z",
-  "renderedAt": "2026-11-26T02:33:24.234Z",
+  "generatedAt": "2026-11-26T04:31:21.175Z",
+  "renderedAt": "2026-11-26T04:31:21.175Z",
   "repos": [
     {
       "slug": "gorfednet/bindercurve.com",
@@ -801,7 +801,7 @@
         {
           "number": 3,
           "title": "Verification kit 0.48.0: the content guidelines and check-voice",
-          "ageDays": 30,
+          "ageDays": 31,
           "labels": [],
           "draft": false,
           "review": "not-run",
@@ -916,7 +916,7 @@
     "gorfednet/wychwood"
   ],
   "branchesReadAt": "2026-11-26T02:33:24.234Z",
-  "carried": false,
+  "carried": true,
   "localCounts": {
     "rows": {
       "dirtyClones": {
@@ -964,7 +964,7 @@
     }
   },
   "inventory": {
-    "measuredAt": "2026-11-26T02:33:24.234Z",
+    "measuredAt": "2026-11-26T04:31:21.175Z",
     "counts": {
       "pr": {
         "total": 163,
@@ -1081,7 +1081,7 @@
     "planRead": true
   },
   "dotgithub": {
-    "measuredAt": "2026-11-26T02:34:48.654Z",
+    "measuredAt": "2026-11-26T04:32:24.049Z",
     "branches": 45,
     "merged": 3,
     "exposedFiles": 54,
