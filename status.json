@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-11-26T18:32:06.656Z",
-  "renderedAt": "2026-11-26T18:32:06.656Z",
+  "generatedAt": "2026-11-26T20:31:59.876Z",
+  "renderedAt": "2026-11-26T20:31:59.876Z",
   "repos": [
     {
       "slug": "gorfednet/bindercurve.com",
@@ -9,7 +9,7 @@
       "openPrCount": 17,
       "lapsedBacklogCount": 17,
       "noPrCount": 80,
-      "idlePrCount": 16,
+      "idlePrCount": 17,
       "duplicatePrCount": 0,
       "dependabotRedCount": 3,
       "kitVersion": "0.70.0",
@@ -187,7 +187,7 @@
         {
           "number": 297,
           "title": "Register gorfednet/gorfednet (profile) with the fleet and ship-bot (plan row 1.81)",
-          "ageDays": 4,
+          "ageDays": 5,
           "labels": [],
           "draft": false,
           "review": "not-run",
@@ -211,7 +211,7 @@
         {
           "number": 276,
           "title": "Template: LICENSE starts from the owner's standard copyright line",
-          "ageDays": 5,
+          "ageDays": 6,
           "labels": [],
           "draft": true,
           "review": "not-run",
@@ -249,7 +249,7 @@
         {
           "number": 266,
           "title": "AI credit ledger tool: scripts/ai-credits.mjs (plan row 1.40)",
-          "ageDays": 7,
+          "ageDays": 8,
           "labels": [],
           "draft": false,
           "review": "findings",
@@ -610,7 +610,7 @@
       "idlePrs": [
         {
           "number": 297,
-          "idleDays": 4
+          "idleDays": 5
         },
         {
           "number": 281,
@@ -618,7 +618,7 @@
         },
         {
           "number": 276,
-          "idleDays": 5
+          "idleDays": 6
         },
         {
           "number": 270,
@@ -630,7 +630,7 @@
         },
         {
           "number": 266,
-          "idleDays": 7
+          "idleDays": 8
         }
       ],
       "duplicatePrs": [],
@@ -863,7 +863,7 @@
       "idlePrs": [
         {
           "number": 4,
-          "idleDays": 4
+          "idleDays": 5
         }
       ],
       "duplicatePrs": [],
@@ -964,7 +964,7 @@
     }
   },
   "inventory": {
-    "measuredAt": "2026-11-26T18:32:06.656Z",
+    "measuredAt": "2026-11-26T20:31:59.876Z",
     "counts": {
       "pr": {
         "total": 163,
@@ -1081,7 +1081,7 @@
     "planRead": true
   },
   "dotgithub": {
-    "measuredAt": "2026-11-26T18:33:27.806Z",
+    "measuredAt": "2026-11-26T20:32:56.669Z",
     "branches": 45,
     "merged": 3,
     "exposedFiles": 54,
