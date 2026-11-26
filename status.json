@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-11-26T16:32:09.460Z",
-  "renderedAt": "2026-11-26T16:32:09.460Z",
+  "generatedAt": "2026-11-26T18:32:06.656Z",
+  "renderedAt": "2026-11-26T18:32:06.656Z",
   "repos": [
     {
       "slug": "gorfednet/bindercurve.com",
@@ -626,7 +626,7 @@
         },
         {
           "number": 267,
-          "idleDays": 5
+          "idleDays": 6
         },
         {
           "number": 266,
@@ -789,7 +789,7 @@
         {
           "number": 23,
           "title": "Spec 1.2.1: a site footer mark, and ordering a long Tool list",
-          "ageDays": 13,
+          "ageDays": 14,
           "labels": [],
           "draft": true,
           "review": "not-run",
@@ -822,7 +822,7 @@
       "idlePrs": [
         {
           "number": 23,
-          "idleDays": 13
+          "idleDays": 14
         },
         {
           "number": 3,
@@ -900,7 +900,7 @@
       "openPrCount": 29,
       "lapsedBacklogCount": 0,
       "noPrCount": 14,
-      "idlePrCount": 27,
+      "idlePrCount": 28,
       "duplicatePrCount": 0,
       "dependabotRedCount": 0,
       "kitVersion": null,
@@ -964,7 +964,7 @@
     }
   },
   "inventory": {
-    "measuredAt": "2026-11-26T16:32:09.460Z",
+    "measuredAt": "2026-11-26T18:32:06.656Z",
     "counts": {
       "pr": {
         "total": 163,
@@ -1081,7 +1081,7 @@
     "planRead": true
   },
   "dotgithub": {
-    "measuredAt": "2026-11-26T16:33:34.875Z",
+    "measuredAt": "2026-11-26T18:33:27.806Z",
     "branches": 45,
     "merged": 3,
     "exposedFiles": 54,
