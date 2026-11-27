@@ -1,17 +1,17 @@
 {
-  "generatedAt": "2026-11-27T18:31:59.634Z",
-  "renderedAt": "2026-11-27T18:31:59.634Z",
+  "generatedAt": "2026-11-27T20:31:50.334Z",
+  "renderedAt": "2026-11-27T20:31:50.334Z",
   "repos": [
     {
       "slug": "gorfednet/bindercurve.com",
       "redacted": true,
-      "mainRed": true,
-      "openPrCount": 18,
+      "mainRed": false,
+      "openPrCount": 23,
       "lapsedBacklogCount": 17,
       "noPrCount": 80,
       "idlePrCount": 16,
       "duplicatePrCount": 0,
-      "dependabotRedCount": 3,
+      "dependabotRedCount": 9,
       "kitVersion": "0.70.0",
       "kitPin": {
         "version": "0.70.0",
@@ -71,7 +71,7 @@
       "slug": "gorfednet/anal0g.org",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 2,
+      "openPrCount": 3,
       "lapsedBacklogCount": 1,
       "noPrCount": 2,
       "idlePrCount": 2,
@@ -87,7 +87,7 @@
       "slug": "gorfednet/blackpixelrecords.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 4,
+      "openPrCount": 3,
       "lapsedBacklogCount": 0,
       "noPrCount": 4,
       "idlePrCount": 3,
@@ -138,7 +138,7 @@
       "openPrCount": 7,
       "lapsedBacklogCount": 3,
       "noPrCount": 20,
-      "idlePrCount": 7,
+      "idlePrCount": 6,
       "duplicatePrCount": 0,
       "dependabotRedCount": 1,
       "kitVersion": "0.65.0",
@@ -167,7 +167,7 @@
       "slug": "gorfednet/ssatcy.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 10,
+      "openPrCount": 9,
       "lapsedBacklogCount": 1,
       "noPrCount": 1,
       "idlePrCount": 9,
@@ -199,7 +199,7 @@
         {
           "number": 297,
           "title": "Register gorfednet/gorfednet (profile) with the fleet and ship-bot (plan row 1.81)",
-          "ageDays": 5,
+          "ageDays": 6,
           "labels": [],
           "draft": false,
           "review": "findings",
@@ -249,7 +249,7 @@
         {
           "number": 266,
           "title": "AI credit ledger tool: scripts/ai-credits.mjs (plan row 1.40)",
-          "ageDays": 8,
+          "ageDays": 9,
           "labels": [],
           "draft": false,
           "review": "findings",
@@ -622,7 +622,7 @@
         },
         {
           "number": 266,
-          "idleDays": 8
+          "idleDays": 9
         }
       ],
       "duplicatePrs": [],
@@ -639,7 +639,7 @@
       "slug": "gorfednet/MoonMan",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 12,
+      "openPrCount": 13,
       "lapsedBacklogCount": 3,
       "noPrCount": 47,
       "idlePrCount": 12,
@@ -855,7 +855,7 @@
       "idlePrs": [
         {
           "number": 4,
-          "idleDays": 5
+          "idleDays": 6
         }
       ],
       "duplicatePrs": [],
@@ -956,11 +956,11 @@
     }
   },
   "inventory": {
-    "measuredAt": "2026-11-27T18:31:59.634Z",
+    "measuredAt": "2026-11-27T20:31:50.334Z",
     "counts": {
       "pr": {
-        "total": 168,
-        "orphans": 90
+        "total": 173,
+        "orphans": 91
       },
       "session": null,
       "worktree": null,
@@ -1068,12 +1068,12 @@
         "lapsed": true
       }
     ],
-    "hiddenPrivate": 80,
+    "hiddenPrivate": 81,
     "privateReposNotItemised": 18,
     "planRead": true
   },
   "dotgithub": {
-    "measuredAt": "2026-11-27T18:33:06.518Z",
+    "measuredAt": "2026-11-27T20:32:59.515Z",
     "branches": 45,
     "merged": 3,
     "exposedFiles": 54,
