@@ -57,6 +57,7 @@ cp verification-kit/templates/backlog.json docs/backlog.json
 cp verification-kit/templates/canaries.json ./canaries.json   # tier 3 only
 cp docs/verification-rules.md docs/verification-rules.md      # from gorfednet/.github
 cp docs/content-guidelines.md docs/content-guidelines.md      # from gorfednet/.github
+cp design/tokens.css design/tokens.css                        # from gorfednet/.github; refresh-kit keeps it current
 ```
 
 ## Adoption tiers
