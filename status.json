@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-11-27T00:46:12.218Z",
-  "renderedAt": "2026-11-27T00:46:12.218Z",
+  "generatedAt": "2026-11-27T02:33:29.961Z",
+  "renderedAt": "2026-11-27T02:33:29.961Z",
   "repos": [
     {
       "slug": "gorfednet/bindercurve.com",
@@ -847,7 +847,7 @@
         {
           "number": 4,
           "title": "fix: --help exit code, drop arbitrary ratingKey length cap",
-          "ageDays": 5,
+          "ageDays": 6,
           "labels": [],
           "draft": false,
           "review": "not-run",
@@ -915,8 +915,8 @@
     "gorfednet/TowIt",
     "gorfednet/wychwood"
   ],
-  "branchesReadAt": "2026-11-26T02:33:24.234Z",
-  "carried": true,
+  "branchesReadAt": "2026-11-27T02:33:29.961Z",
+  "carried": false,
   "localCounts": {
     "rows": {
       "dirtyClones": {
@@ -964,7 +964,7 @@
     }
   },
   "inventory": {
-    "measuredAt": "2026-11-27T00:46:12.218Z",
+    "measuredAt": "2026-11-27T02:33:29.961Z",
     "counts": {
       "pr": {
         "total": 163,
@@ -1081,7 +1081,7 @@
     "planRead": true
   },
   "dotgithub": {
-    "measuredAt": "2026-11-27T00:47:26.641Z",
+    "measuredAt": "2026-11-27T02:34:41.843Z",
     "branches": 45,
     "merged": 3,
     "exposedFiles": 54,
