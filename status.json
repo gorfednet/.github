@@ -1,15 +1,15 @@
 {
-  "generatedAt": "2026-11-27T14:32:00.447Z",
-  "renderedAt": "2026-11-27T14:32:00.447Z",
+  "generatedAt": "2026-11-27T16:32:06.103Z",
+  "renderedAt": "2026-11-27T16:32:06.103Z",
   "repos": [
     {
       "slug": "gorfednet/bindercurve.com",
       "redacted": true,
       "mainRed": true,
-      "openPrCount": 17,
+      "openPrCount": 18,
       "lapsedBacklogCount": 17,
       "noPrCount": 80,
-      "idlePrCount": 17,
+      "idlePrCount": 16,
       "duplicatePrCount": 0,
       "dependabotRedCount": 3,
       "kitVersion": "0.70.0",
@@ -185,15 +185,15 @@
       "mainRed": false,
       "openPrs": [
         {
-          "number": 305,
-          "title": "Weekly lessons 27 Nov 2026",
+          "number": 306,
+          "title": ".github: B1: Design package distributed by the kit refresh, seeded from BinderCurve tokens.css",
           "ageDays": 0,
           "labels": [],
-          "draft": false,
-          "review": "clean",
-          "headSha": "abba4e4c14a801bcbab96b551049856a41c481a3",
-          "ci": "pending",
-          "next": "Merge once the gates are clean.",
+          "draft": true,
+          "review": "not-run",
+          "headSha": "628dd8def31c01317e89593011b5437261b83347",
+          "ci": "green",
+          "next": "Push and open the PR, then set the entry to `in-review` with its `pr`.",
           "author": "gorfednet"
         },
         {
@@ -202,7 +202,7 @@
           "ageDays": 5,
           "labels": [],
           "draft": false,
-          "review": "not-run",
+          "review": "findings",
           "headSha": "8da1e243a19ee9207801f69fada0fe1031d2a0df",
           "ci": "green",
           "next": "Desk labels after a clean review of the head (ship-bot, fleet.json and config paths are control-plane). Comment `claude review` once the head is non-draft",
@@ -218,18 +218,6 @@
           "headSha": "79c3573425ea357ab6baa1b626b364340e05d7b7",
           "ci": "green",
           "next": "merge once review reads clean (Desk labels)",
-          "author": "gorfednet"
-        },
-        {
-          "number": 276,
-          "title": "Template: LICENSE starts from the owner's standard copyright line",
-          "ageDays": 6,
-          "labels": [],
-          "draft": true,
-          "review": "not-run",
-          "headSha": "9b052230284c74864c051f14395e1144b5cffdbd",
-          "ci": "green",
-          "next": "Review (control-plane path), then ship-bot merges.",
           "author": "gorfednet"
         },
         {
@@ -621,15 +609,7 @@
       ],
       "idlePrs": [
         {
-          "number": 297,
-          "idleDays": 5
-        },
-        {
           "number": 281,
-          "idleDays": 6
-        },
-        {
-          "number": 276,
           "idleDays": 6
         },
         {
@@ -691,7 +671,7 @@
         {
           "number": 8,
           "title": "Drain: Acid3 sample fixtures",
-          "ageDays": 13,
+          "ageDays": 14,
           "labels": [],
           "draft": true,
           "review": "not-run",
@@ -716,7 +696,7 @@
         },
         {
           "number": 8,
-          "idleDays": 13
+          "idleDays": 14
         }
       ],
       "duplicatePrs": [],
@@ -909,10 +889,10 @@
       "slug": "gorfednet/ops",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 30,
+      "openPrCount": 36,
       "lapsedBacklogCount": 0,
       "noPrCount": 14,
-      "idlePrCount": 28,
+      "idlePrCount": 24,
       "duplicatePrCount": 0,
       "dependabotRedCount": 0,
       "kitVersion": null,
@@ -976,11 +956,11 @@
     }
   },
   "inventory": {
-    "measuredAt": "2026-11-27T14:32:00.447Z",
+    "measuredAt": "2026-11-27T16:32:06.103Z",
     "counts": {
       "pr": {
-        "total": 164,
-        "orphans": 86
+        "total": 170,
+        "orphans": 89
       },
       "session": null,
       "worktree": null,
@@ -991,6 +971,14 @@
       }
     },
     "orphans": [
+      {
+        "kind": "pr",
+        "repo": "gorfednet/.github",
+        "ref": "#306",
+        "label": ".github: B1: Design package distributed by the kit refresh, seeded from BinderCurve tokens.css",
+        "private": false,
+        "lapsed": false
+      },
       {
         "kind": "pr",
         "repo": "gorfednet/.github",
@@ -1042,14 +1030,6 @@
       {
         "kind": "pr",
         "repo": "gorfednet/.github",
-        "ref": "#276",
-        "label": "Template: LICENSE starts from the owner's standard copyright line",
-        "private": false,
-        "lapsed": false
-      },
-      {
-        "kind": "pr",
-        "repo": "gorfednet/.github",
         "ref": "#267",
         "label": "Content guidelines: the AI statement lives in the AI use overlay",
         "private": false,
@@ -1088,13 +1068,13 @@
         "lapsed": true
       }
     ],
-    "hiddenPrivate": 76,
+    "hiddenPrivate": 79,
     "privateReposNotItemised": 18,
     "planRead": true
   },
   "dotgithub": {
-    "measuredAt": "2026-11-27T14:33:00.481Z",
-    "branches": 46,
+    "measuredAt": "2026-11-27T16:33:41.410Z",
+    "branches": 45,
     "merged": 3,
     "exposedFiles": 54,
     "rulesNotChecked": [],
