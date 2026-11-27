@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-11-27T12:36:22.578Z",
-  "renderedAt": "2026-11-27T12:36:22.578Z",
+  "generatedAt": "2026-11-27T14:32:00.447Z",
+  "renderedAt": "2026-11-27T14:32:00.447Z",
   "repos": [
     {
       "slug": "gorfednet/bindercurve.com",
@@ -39,7 +39,7 @@
       "slug": "gorfednet/gorfed.net",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 1,
+      "openPrCount": 0,
       "lapsedBacklogCount": 5,
       "noPrCount": 6,
       "idlePrCount": 0,
@@ -185,6 +185,18 @@
       "mainRed": false,
       "openPrs": [
         {
+          "number": 305,
+          "title": "Weekly lessons 27 Nov 2026",
+          "ageDays": 0,
+          "labels": [],
+          "draft": false,
+          "review": "clean",
+          "headSha": "abba4e4c14a801bcbab96b551049856a41c481a3",
+          "ci": "pending",
+          "next": "Merge once the gates are clean.",
+          "author": "gorfednet"
+        },
+        {
           "number": 297,
           "title": "Register gorfednet/gorfednet (profile) with the fleet and ship-bot (plan row 1.81)",
           "ageDays": 5,
@@ -223,7 +235,7 @@
         {
           "number": 270,
           "title": ".github: A4: hookify them into PreToolUse and Stop hooks, each shown failing once",
-          "ageDays": 6,
+          "ageDays": 7,
           "labels": [],
           "draft": true,
           "review": "not-run",
@@ -622,7 +634,7 @@
         },
         {
           "number": 270,
-          "idleDays": 6
+          "idleDays": 7
         },
         {
           "number": 267,
@@ -897,7 +909,7 @@
       "slug": "gorfednet/ops",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 29,
+      "openPrCount": 30,
       "lapsedBacklogCount": 0,
       "noPrCount": 14,
       "idlePrCount": 28,
@@ -964,11 +976,11 @@
     }
   },
   "inventory": {
-    "measuredAt": "2026-11-27T12:36:22.578Z",
+    "measuredAt": "2026-11-27T14:32:00.447Z",
     "counts": {
       "pr": {
-        "total": 163,
-        "orphans": 87
+        "total": 164,
+        "orphans": 86
       },
       "session": null,
       "worktree": null,
@@ -1076,13 +1088,13 @@
         "lapsed": true
       }
     ],
-    "hiddenPrivate": 77,
+    "hiddenPrivate": 76,
     "privateReposNotItemised": 18,
     "planRead": true
   },
   "dotgithub": {
-    "measuredAt": "2026-11-27T12:37:25.301Z",
-    "branches": 45,
+    "measuredAt": "2026-11-27T14:33:00.481Z",
+    "branches": 46,
     "merged": 3,
     "exposedFiles": 54,
     "rulesNotChecked": [],
