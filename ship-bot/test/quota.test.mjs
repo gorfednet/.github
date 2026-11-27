@@ -429,3 +429,21 @@ describe('github-app/create.mjs', () => {
     await assert.rejects(() => convertCode('c2', async () => reply(422, { message: 'expired' })), /422: expired/)
   })
 })
+
+describe('compareFiles (plan row 1.113)', () => {
+  const files = (n) => Array.from({ length: n }, (_, i) => ({ filename: `f${i}.txt` }))
+  const seen = []
+  const client = (list) => createGitHubClient({ token: TOKEN, fetchImpl: async (url) => (seen.push(url), reply(200, { files: list }, rate(4000))) })
+
+  it('lists every changed path from the one first page, a rename as both names', async () => {
+    const got = await client([{ filename: 'a.txt' }, { filename: 'new.txt', previous_filename: 'server/old.txt' }]).compareFiles(SLUG, 'a', 'b')
+    assert.deepEqual(got.sort(), ['a.txt', 'new.txt', 'server/old.txt'])
+    assert.equal((await client(files(150)).compareFiles(SLUG, 'a', 'b')).length, 150, 'no second page is asked for')
+    assert.equal(seen.length, 2)
+  })
+
+  it('returns null at GitHub\'s 300-file cap or with no list', async () => {
+    assert.equal(await client(files(300)).compareFiles(SLUG, 'a', 'b'), null)
+    assert.equal(await client(undefined).compareFiles(SLUG, 'a', 'b'), null)
+  })
+})

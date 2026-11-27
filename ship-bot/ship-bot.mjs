@@ -22,7 +22,8 @@
  *                                          when the full sha is on the default branch and not behind the recorded one.
  *                                          --live-id is the current release's id from `site-deploy.sh list`; it must
  *                                          end in that sha or nothing is recorded. A blocked repo stays --unblock;
- *                                          a repo with pausedIfChanged or onlyIfChanged steps is refused.
+ *                                          a repo with onlyIfChanged steps is refused, and one with pausedIfChanged
+ *                                          paths only when none of them changed since its recorded deploy.
  *   node ship-bot.mjs --config <path>      default ~/.ship-bot/config.json
  *   node ship-bot.mjs --verbose            also print why each PR was ignored
  *   node ship-bot.mjs --rotate-log <path>  first move <path> to <path>.1 if it is over 5 MB
@@ -44,6 +45,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { BOARD_FILE, formatBoard, readBoard, writeBoard } from './lib/board.mjs'
 import { runOnce, selectRepos } from './lib/bot.mjs'
+import { matchingFiles } from './lib/deploy.mjs'
 import { ping as heartbeat } from './lib/heartbeat.mjs'
 import { ConfigError, expandHome, loadConfig, validateConfig } from './lib/config.mjs'
 import { mintInstallationToken } from './lib/app-auth.mjs'
@@ -845,8 +847,10 @@ async function recordDeployed(config, { name, sha: given }, liveId, deps, print)
   }
   // A site release id cannot vouch for a step that deploys something else. With no record every path counts as
   // changed, so nothing is skipped and a paused path pauses; a record narrows that to the diff since it.
-  if (repo.pausedIfChanged?.length || repo.deploy?.some((step) => step?.onlyIfChanged)) {
-    return refuse('this repo has pausedIfChanged paths or onlyIfChanged deploy steps, and a hand record cannot prove those parts were deployed.')
+  // A pausedIfChanged row may be recorded only when none of its paused paths changed since the recorded deploy
+  // (checked below, inside the lock): then the record skips nothing a pause was waiting for.
+  if (repo.deploy?.some((step) => step?.onlyIfChanged)) {
+    return refuse('this repo has onlyIfChanged deploy steps, and a hand record cannot prove those parts were deployed.')
   }
   const sha = fullSha(String(given).toLowerCase())
   if (!sha) return refuse(`--record-deployed ${String(given).slice(0, 40)} is not a full 40-character commit sha.`)
@@ -876,6 +880,19 @@ async function recordDeployed(config, { name, sha: given }, liveId, deps, print)
       return refuse(`GitHub could not compare ${sha.slice(0, 7)} (${redact.apply(String(cause.message)).slice(0, 300)}).`, 1)
     }
     if (refused) return refuse(`${refused}.`)
+    if (repo.pausedIfChanged?.length) {
+      // With no full-sha record every path counts as changed, and so does a record GitHub cannot compare (recordRefusal passed it).
+      if (!fullSha(rs.lastDeployedSha)) return refuse('this repo has pausedIfChanged paths and no deploy on record, so every path counts as changed and a hand record cannot prove those parts were deployed.')
+      let files
+      try {
+        files = await guardWrites(deps.makeGithub(auth.token)).compareFiles(repo.slug, rs.lastDeployedSha, sha)
+      } catch (cause) {
+        return refuse(`GitHub could not list the files changed since ${rs.lastDeployedSha.slice(0, 7)} (${redact.apply(String(cause.message)).slice(0, 300)}).`, 1)
+      }
+      if (!files) return refuse(`GitHub's list of files changed since ${rs.lastDeployedSha.slice(0, 7)} may be partial, so the pausedIfChanged paths cannot be checked.`)
+      const hit = matchingFiles(files, repo.pausedIfChanged)
+      if (hit.length) return refuse(`${hit.slice(0, 5).join(', ')}${hit.length > 5 ? ` and ${hit.length - 5} more` : ''} (pausedIfChanged) changed since the recorded deploy ${rs.lastDeployedSha.slice(0, 7)}, and a hand record cannot prove those parts were deployed. Deploy them by hand and use --unblock --deployed on the paused merge instead.`)
+    }
     const was = rs.lastDeployedSha
     rs.lastDeployedSha = sha
     state.save()

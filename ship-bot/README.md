@@ -747,9 +747,13 @@ changing nothing, when:
 - the repository is not in the config, or the sha is not 40 characters;
 - the repository is blocked (that case is `--unblock <repo> --deployed <sha>`),
   or a deploy is on record as in progress;
-- its row has `pausedIfChanged` paths or `onlyIfChanged` deploy steps: a site
-  release id cannot vouch for an API or worker, and with no record the bot
-  treats every path as changed, which is the safe reading;
+- its row has `onlyIfChanged` deploy steps: a site release id cannot vouch for
+  an API or worker;
+- its row has `pausedIfChanged` paths and either no full-sha deploy is on record
+  (the bot treats every path as changed, the safe reading) or one of those
+  paths changed between the recorded deploy and the sha (GitHub's compare, a
+  rename counts as both names; a list that may be partial is refused too).
+  When none changed, the record skips nothing a pause was waiting for;
 - GitHub does not compare the sha as on the default branch;
 - a deploy is on record and the sha is behind it or does not follow it;
 - `--live-id` is missing, or is not `<stamp>-<sha prefix>` ending in the sha.
