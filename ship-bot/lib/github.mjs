@@ -151,6 +151,28 @@ export function createGitHubClient({ token, fetchImpl = globalThis.fetch, api = 
     /** GitHub's compare of base...head: 'ahead', 'identical', 'behind' or 'diverged'. A release head must contain main (lib/deploy-plan.mjs). */
     compareStatus: (slug, base, head) => request('GET', `/repos/${slug}/compare/${encodeURIComponent(base)}...${encodeURIComponent(head)}?per_page=1`).then((r) => r?.status ?? null),
     /** The `limit` most recently merged pull requests (closed-but-unmerged ones are skipped), only those carrying `label` when given. Used by --validate only. */
+    /**
+     * Every path that changed between base and head (a rename counts as both names), for the --record-deployed
+     * paused-path proof. Returns null when the list may be partial: GitHub caps a compare at 300 files, so a list
+     * that reaches the cap, or pages that stop adding names, are unusable and the caller refuses.
+     */
+    async compareFiles(slug, base, head) {
+      const names = new Set()
+      for (let page = 1; page <= 4; page += 1) {
+        const data = await request('GET', `/repos/${slug}/compare/${encodeURIComponent(base)}...${encodeURIComponent(head)}?per_page=100&page=${page}`)
+        const files = data?.files
+        if (!Array.isArray(files)) return null
+        const before = names.size
+        for (const f of files) {
+          if (f?.filename) names.add(f.filename)
+          if (f?.previous_filename) names.add(f.previous_filename)
+        }
+        if (names.size >= 300) return null
+        if (files.length < 100 || names.size === before) return [...names]
+      }
+      return null
+    },
+
     async listMergedPulls(slug, limit = 3, label) {
       const out = []
       for (let page = 1; page <= 5 && out.length < limit; page += 1) {

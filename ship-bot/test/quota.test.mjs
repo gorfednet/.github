@@ -429,3 +429,19 @@ describe('github-app/create.mjs', () => {
     await assert.rejects(() => convertCode('c2', async () => reply(422, { message: 'expired' })), /422: expired/)
   })
 })
+
+describe('compareFiles (plan row 1.113)', () => {
+  const files = (n, from = 0) => Array.from({ length: n }, (_, i) => ({ filename: `f${from + i}.txt` }))
+  const client = (pages) => createGitHubClient({ token: TOKEN, fetchImpl: async (url) => reply(200, { files: pages[Number(new URL(url).searchParams.get('page')) - 1] ?? [] }, rate(4000)) })
+
+  it('lists every changed path, a rename as both names', async () => {
+    const got = await client([[{ filename: 'a.txt' }, { filename: 'new.txt', previous_filename: 'server/old.txt' }]]).compareFiles(SLUG, 'a', 'b')
+    assert.deepEqual(got.sort(), ['a.txt', 'new.txt', 'server/old.txt'])
+  })
+
+  it('follows pages, and returns null at GitHub\'s 300-file cap', async () => {
+    assert.equal((await client([files(100), files(50, 100)]).compareFiles(SLUG, 'a', 'b')).length, 150)
+    assert.equal(await client([files(100), files(100, 100), files(100, 200), []]).compareFiles(SLUG, 'a', 'b'), null)
+    assert.equal((await client([files(100), files(100)]).compareFiles(SLUG, 'a', 'b')).length, 100, 'a repeated page means paging is ignored and the first page was the whole list')
+  })
+})

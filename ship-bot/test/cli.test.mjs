@@ -307,18 +307,55 @@ describe('command line', () => {
       assert.equal(h.constructed(), 0)
     })
 
-    it('refuses a repo whose row has pausedIfChanged paths or onlyIfChanged steps: a site release id cannot vouch for them', async () => {
-      const rows = [
-        repoEntry({ envFiles: [], pausedIfChanged: ['server/'] }),
-        repoEntry({ envFiles: [], deploy: [{ name: 'site', command: ['make', 'deploy'] }, { name: 'api', command: ['make', 'api'], onlyIfChanged: ['api/'] }] }),
-      ]
-      for (const row of rows) {
-        const h = recordHarness({ configOverrides: { repos: [row] } })
-        assert.equal(await main(['--record-deployed', 'site', NEW, '--live-id', '20261121T150000Z-eeeeeee'], h.deps), 2, h.text())
-        assert.match(h.text(), /pausedIfChanged paths or onlyIfChanged deploy steps.*Nothing was changed/)
-        assert.equal(h.read(), undefined)
-        assert.equal(h.constructed(), 0)
-      }
+    it('refuses a repo whose row has onlyIfChanged steps: a site release id cannot vouch for them', async () => {
+      const row = repoEntry({ envFiles: [], deploy: [{ name: 'site', command: ['make', 'deploy'] }, { name: 'api', command: ['make', 'api'], onlyIfChanged: ['api/'] }] })
+      const h = recordHarness({ configOverrides: { repos: [row] } })
+      assert.equal(await main(['--record-deployed', 'site', NEW, ...LIVE], h.deps), 2, h.text())
+      assert.match(h.text(), /onlyIfChanged deploy steps.*Nothing was changed/)
+      assert.equal(h.read(), undefined)
+      assert.equal(h.constructed(), 0)
+    })
+
+    describe('a row with pausedIfChanged paths (plan row 1.113)', () => {
+      const paused = { configOverrides: { repos: [repoEntry({ envFiles: [], pausedIfChanged: ['server/', 'deploy/'] })] } }
+      const pausedHarness = (extra = {}) => recordHarness({ ...paused, repoState: { lastDeployedSha: OLD }, compares: { [`${OLD}...${NEW}`]: 'ahead' }, ...extra })
+
+      it('records when no paused path changed since the recorded deploy (a rename out of one counts)', async () => {
+        const h = pausedHarness()
+        h.github.compareFileLists[`${OLD}...${NEW}`] = ['src/app.js', 'README.md']
+        assert.equal(await main(['--record-deployed', 'site', NEW, ...LIVE], h.deps), 0, h.text())
+        assert.equal(h.read().lastDeployedSha, NEW)
+        assert.deepEqual(h.github.calls.filter((c) => c.name === 'compareFiles').map((c) => c.args), [[SLUG, OLD, NEW]])
+        assert.equal(h.github.writes.length, 0)
+      })
+
+      it('refuses, changing nothing, when a paused path changed since the recorded deploy', async () => {
+        const h = pausedHarness()
+        h.github.compareFileLists[`${OLD}...${NEW}`] = ['src/app.js', 'server/test/x.test.mjs']
+        assert.equal(await main(['--record-deployed', 'site', NEW, ...LIVE], h.deps), 2, h.text())
+        assert.match(h.text(), /server\/test\/x\.test\.mjs \(pausedIfChanged\) changed since the recorded deploy ddddddd.*--unblock --deployed.*Nothing was changed/)
+        assert.equal(h.read().lastDeployedSha, OLD)
+      })
+
+      it('refuses when the file list may be partial, and exits 1 when GitHub cannot give it', async () => {
+        const partial = pausedHarness()
+        partial.github.compareFileLists[`${OLD}...${NEW}`] = null
+        assert.equal(await main(['--record-deployed', 'site', NEW, ...LIVE], partial.deps), 2, partial.text())
+        assert.match(partial.text(), /may be partial.*Nothing was changed/)
+        assert.equal(partial.read().lastDeployedSha, OLD)
+        const failing = pausedHarness()
+        failing.github.compareFileLists[`${OLD}...${NEW}`] = new Error('boom')
+        assert.equal(await main(['--record-deployed', 'site', NEW, ...LIVE], failing.deps), 1, failing.text())
+        assert.equal(failing.read().lastDeployedSha, OLD)
+      })
+
+      it('refuses when no full-sha deploy is on record: every path counts as changed', async () => {
+        for (const repoState of [undefined, { lastDeployedSha: 'not-a-sha' }]) {
+          const h = recordHarness({ ...paused, repoState })
+          assert.equal(await main(['--record-deployed', 'site', NEW, ...LIVE], h.deps), 2, h.text())
+          assert.equal(h.github.calls.filter((c) => c.name === 'compareFiles').length, 0)
+        }
+      })
     })
 
     it('fails closed, exit 1 or 2, with the record intact: no token, no default branch, a GitHub error, a recorded value that is no sha', async () => {

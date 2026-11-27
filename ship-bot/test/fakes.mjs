@@ -72,6 +72,8 @@ export class FakeGitHub {
     this.compare = 'ahead'
     /** Compare statuses by `base...head`, for --record-deployed; a pair not listed falls back to `compare` against main. */
     this.compares = {}
+    /** Changed paths by `base...head`, for compareFiles (--record-deployed on a pausedIfChanged row); null means GitHub's list is partial, an Error is thrown. */
+    this.compareFileLists = {}
     /** Called on each getPull; lets a test move the head between reads. */
     this.onGetPull = null
   }
@@ -130,6 +132,14 @@ export class FakeGitHub {
     if (pair !== undefined) return pair
     if (base !== 'main') throw new Error(`the fake compares only against main, not ${base}`)
     return this.compare
+  }
+
+  async compareFiles(slug, base, head) {
+    this.log('compareFiles', slug, base, head)
+    const list = this.compareFileLists[`${base}...${head}`]
+    if (list instanceof Error) throw list
+    if (list === undefined) throw new Error(`the fake has no file list for ${base}...${head}`)
+    return list
   }
 
   async listMergedPulls(slug, limit, label) {
