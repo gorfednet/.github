@@ -32,7 +32,7 @@ import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { isMain } from './lib/isMain.mjs'
-import { validateConfig } from '../ship-bot/lib/config.mjs'
+import { HOLD_LABEL, READY_LABEL, validateConfig } from '../ship-bot/lib/config.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 export const GITHUB_DIR = join(HERE, '..')
@@ -121,6 +121,20 @@ export function ownerLines(o, patchFile) {
     `Fleet-status read for ${o.slug}: if FLEET_READ_TOKEN is limited to selected repositories, add this one, or STATUS.md lists it as unavailable.`,
     ...(o.opsDir ? [`Herdr job ${o.jobId}: open ${join(o.sourceRoot, o.dir)} once in Claude Code so the folder is trusted, or the job parks at the trust dialog.`] : []),
   ]
+}
+
+/**
+ * The two labels ship-bot reads on a pull request. A new repository has neither,
+ * so sessions couldn't label its first merge (21 November 2026). `--force`
+ * makes each command safe to run again.
+ */
+export const SHIP_BOT_LABELS = [
+  { name: READY_LABEL, color: '0e8a16', description: 'Gates passed: ship-bot merges this pull request' },
+  { name: HOLD_LABEL, color: 'b60205', description: 'Ship-bot must not merge this pull request' },
+]
+
+export function labelCommands(o) {
+  return SHIP_BOT_LABELS.map((l) => `gh label create ${l.name} --repo ${o.slug} --color ${l.color} --description "${l.description}" --force`)
 }
 
 /** Plan every write. Returns { writes: [{path, content, kind}], kept: [path], problems }. */
@@ -241,6 +255,8 @@ export function main(argv) {
   if (!opts.opsDir) console.log('register-repo: no --ops-dir, so no Herdr job or space tab was written')
   console.log(`register-repo: docs/plan-ranking.json must place ${opts.slug} in a tier too (test/planOfRecord.test.mjs fails without it)`)
   console.log(`register-repo: ship-bot's tests pin the repository list on purpose. Add ${opts.name} to the modes in ship-bot/test/config.test.mjs and raise the count in ship-bot/test/support.test.mjs`)
+  console.log(`\nFor the session, once ${opts.slug} exists on GitHub (ship-bot needs both labels):`)
+  for (const c of labelCommands(opts)) console.log(`- ${c}`)
   console.log('\nFor the owner, when each is his next step:')
   for (const line of ownerLines(opts, patchFile)) console.log(`- ${line}`)
   return 0

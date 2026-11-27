@@ -12,7 +12,8 @@ import { describe, it } from 'node:test'
 import { fileURLToPath } from 'node:url'
 import { validateConfig } from '../ship-bot/lib/config.mjs'
 import { applyPatch } from '../ship-bot/patch-config.mjs'
-import { GITHUB_DIR, herdrJob, plan, resolveOptions } from '../scripts/register-repo.mjs'
+import { HOLD_LABEL, READY_LABEL } from '../ship-bot/lib/config.mjs'
+import { GITHUB_DIR, herdrJob, labelCommands, plan, resolveOptions } from '../scripts/register-repo.mjs'
 
 const SCRIPT = fileURLToPath(new URL('../scripts/register-repo.mjs', import.meta.url))
 const readJson = (p) => JSON.parse(readFileSync(p, 'utf8'))
@@ -82,6 +83,16 @@ describe('register-repo', () => {
 
   // Each register's own duplicate check, with the slug taken out of the other
   // register first, so neither test passes on the other check's message.
+  it('prints the two ship-bot labels as session steps, not owner steps', () => {
+    const out = run(sandbox())
+    const [sessionPart, ownerPart] = out.split('For the owner')
+    for (const name of [READY_LABEL, HOLD_LABEL]) {
+      assert.match(sessionPart, new RegExp(`gh label create ${name} --repo gorfednet/new-thing --color [0-9a-f]{6} --description ".+" --force`))
+      assert.doesNotMatch(ownerPart, /gh label create/)
+    }
+    assert.equal(labelCommands({ slug: 'gorfednet/new-thing' }).length, 2)
+  })
+
   it('refuses a slug fleet.json already has, and writes nothing', () => {
     const s = sandbox()
     const cfg = join(s.gh, 'ship-bot/config.example.json')
