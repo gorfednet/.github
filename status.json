@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-11-27T16:32:06.103Z",
-  "renderedAt": "2026-11-27T16:32:06.103Z",
+  "generatedAt": "2026-11-27T18:31:59.634Z",
+  "renderedAt": "2026-11-27T18:31:59.634Z",
   "repos": [
     {
       "slug": "gorfednet/bindercurve.com",
@@ -87,7 +87,7 @@
       "slug": "gorfednet/blackpixelrecords.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 3,
+      "openPrCount": 4,
       "lapsedBacklogCount": 0,
       "noPrCount": 4,
       "idlePrCount": 3,
@@ -106,7 +106,7 @@
       "openPrCount": 5,
       "lapsedBacklogCount": 0,
       "noPrCount": 2,
-      "idlePrCount": 5,
+      "idlePrCount": 4,
       "duplicatePrCount": 0,
       "dependabotRedCount": 2,
       "kitVersion": "0.65.0",
@@ -167,7 +167,7 @@
       "slug": "gorfednet/ssatcy.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 9,
+      "openPrCount": 10,
       "lapsedBacklogCount": 1,
       "noPrCount": 1,
       "idlePrCount": 9,
@@ -618,7 +618,7 @@
         },
         {
           "number": 267,
-          "idleDays": 6
+          "idleDays": 7
         },
         {
           "number": 266,
@@ -781,7 +781,7 @@
         {
           "number": 23,
           "title": "Spec 1.2.1: a site footer mark, and ordering a long Tool list",
-          "ageDays": 14,
+          "ageDays": 15,
           "labels": [],
           "draft": true,
           "review": "not-run",
@@ -814,7 +814,7 @@
       "idlePrs": [
         {
           "number": 23,
-          "idleDays": 14
+          "idleDays": 15
         },
         {
           "number": 3,
@@ -889,10 +889,10 @@
       "slug": "gorfednet/ops",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 36,
+      "openPrCount": 32,
       "lapsedBacklogCount": 0,
       "noPrCount": 14,
-      "idlePrCount": 24,
+      "idlePrCount": 23,
       "duplicatePrCount": 0,
       "dependabotRedCount": 0,
       "kitVersion": null,
@@ -956,11 +956,11 @@
     }
   },
   "inventory": {
-    "measuredAt": "2026-11-27T16:32:06.103Z",
+    "measuredAt": "2026-11-27T18:31:59.634Z",
     "counts": {
       "pr": {
-        "total": 170,
-        "orphans": 89
+        "total": 168,
+        "orphans": 90
       },
       "session": null,
       "worktree": null,
@@ -1068,12 +1068,12 @@
         "lapsed": true
       }
     ],
-    "hiddenPrivate": 79,
+    "hiddenPrivate": 80,
     "privateReposNotItemised": 18,
     "planRead": true
   },
   "dotgithub": {
-    "measuredAt": "2026-11-27T16:33:41.410Z",
+    "measuredAt": "2026-11-27T18:33:06.518Z",
     "branches": 45,
     "merged": 3,
     "exposedFiles": 54,
