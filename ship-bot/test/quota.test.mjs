@@ -431,17 +431,19 @@ describe('github-app/create.mjs', () => {
 })
 
 describe('compareFiles (plan row 1.113)', () => {
-  const files = (n, from = 0) => Array.from({ length: n }, (_, i) => ({ filename: `f${from + i}.txt` }))
-  const client = (pages) => createGitHubClient({ token: TOKEN, fetchImpl: async (url) => reply(200, { files: pages[Number(new URL(url).searchParams.get('page')) - 1] ?? [] }, rate(4000)) })
+  const files = (n) => Array.from({ length: n }, (_, i) => ({ filename: `f${i}.txt` }))
+  const seen = []
+  const client = (list) => createGitHubClient({ token: TOKEN, fetchImpl: async (url) => (seen.push(url), reply(200, { files: list }, rate(4000))) })
 
-  it('lists every changed path, a rename as both names', async () => {
-    const got = await client([[{ filename: 'a.txt' }, { filename: 'new.txt', previous_filename: 'server/old.txt' }]]).compareFiles(SLUG, 'a', 'b')
+  it('lists every changed path from the one first page, a rename as both names', async () => {
+    const got = await client([{ filename: 'a.txt' }, { filename: 'new.txt', previous_filename: 'server/old.txt' }]).compareFiles(SLUG, 'a', 'b')
     assert.deepEqual(got.sort(), ['a.txt', 'new.txt', 'server/old.txt'])
+    assert.equal((await client(files(150)).compareFiles(SLUG, 'a', 'b')).length, 150, 'no second page is asked for')
+    assert.equal(seen.length, 2)
   })
 
-  it('follows pages, and returns null at GitHub\'s 300-file cap', async () => {
-    assert.equal((await client([files(100), files(50, 100)]).compareFiles(SLUG, 'a', 'b')).length, 150)
-    assert.equal(await client([files(100), files(100, 100), files(100, 200), []]).compareFiles(SLUG, 'a', 'b'), null)
-    assert.equal((await client([files(100), files(100)]).compareFiles(SLUG, 'a', 'b')).length, 100, 'a repeated page means paging is ignored and the first page was the whole list')
+  it('returns null at GitHub\'s 300-file cap or with no list', async () => {
+    assert.equal(await client(files(300)).compareFiles(SLUG, 'a', 'b'), null)
+    assert.equal(await client(undefined).compareFiles(SLUG, 'a', 'b'), null)
   })
 })
