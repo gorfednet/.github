@@ -9,7 +9,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { describe, it } from 'node:test'
 
-import { buildLedger, checkRecord, classifyCoAuthor, commitTools, filesOf, parseGitLog, parseTrailers, tagProblems, toolFromModelId, toolsOfTag } from '../scripts/lib/aiCredits.mjs'
+import { buildLedger, capabilityOrder, checkRecord, classifyCoAuthor, commitTools, filesOf, parseGitLog, parseTrailers, tagProblems, toolFromModelId, toolsOfTag } from '../scripts/lib/aiCredits.mjs'
 import { indexTranscripts, rowsFor } from '../scripts/ai-credits.mjs'
 
 const CLI = new URL('../scripts/ai-credits.mjs', import.meta.url).pathname
@@ -46,6 +46,16 @@ const COMMITS = [
   ['2026-10-09T10:00:00Z', `Reviewed by a person${co('Test Author')}`, ['docs/notes.txt']],
   ['2026-10-10T10:00:00Z', `Haiku ran the gate${CLAUDE('Haiku 5.5')}\nAI-Use: L2 made undo (Claude Haiku)`, ['docs/gate.txt']],
 ]
+
+describe('capability order', () => {
+  const models = ['Claude Fable 5.2', 'Claude Opus 5.5', 'Claude Fable 5.1', 'Claude Sonnet 5.5', 'Claude Haiku 5.5']
+  it('puts listed models in list order, then unversioned names of listed models, then the rest by name', () => {
+    assert.deepEqual(capabilityOrder(['Claude Haiku 5.5', 'Cursor', 'Claude Sonnet 5.5', 'Claude Opus', 'Claude Fable 5.2', 'Claude Opus 5.5', 'Claude Fable 5.1'], models), ['Claude Fable 5.2', 'Claude Opus 5.5', 'Claude Fable 5.1', 'Claude Sonnet 5.5', 'Claude Haiku 5.5', 'Claude Opus', 'Cursor'])
+  })
+  it('leaves the order alone without a list', () => {
+    assert.deepEqual(capabilityOrder(['b', 'a'], null), ['b', 'a'])
+  })
+})
 
 describe('model ids', () => {
   it('turns a transcript model id into the name a tag uses', () => {
@@ -440,6 +450,46 @@ describe('the command line', () => {
     const bot = buildLedger({ commits: [c('claude[bot]'), c('Test Author', `x${co('claude[bot]')}`)], meta: { repo: 'example-site', ref: 'origin/main', head: 'abc' }, config: {} })
     assert.ok(!('claude[bot]' in bot.people.humans), 'an AI bot author is never a person')
     assert.equal(bot.open.unclassifiedCoAuthors['claude[bot]'], 2, 'the bot stays an open item, as author and as co-author')
+  })
+
+  it('writes tagTools in the capability order and the pinned spec, and verify agrees', () => {
+    const r = repoWith(COMMITS)
+    mkdirSync(join(r, 'docs', 'ai-use'), { recursive: true })
+    mkdirSync(join(r, 'site', 'lib'), { recursive: true })
+    writeFileSync(join(r, 'site', 'lib', 'ai-models.json'), JSON.stringify({ models: ['Claude Sonnet 5.5', 'Claude Opus 5.5', 'Claude Haiku 5.5'] }))
+    writeFileSync(join(r, 'docs', 'ai-use', 'credits.config.json'), JSON.stringify({ ...config, spec: '1.3', modelsFile: 'site/lib/ai-models.json' }))
+    const out = join(tmp(), 'credits.json')
+    assert.equal(run('build', '--repo', r, '--name', 'example-site', '--out', out).status, 0)
+    const l = JSON.parse(readFileSync(out, 'utf8'))
+    assert.equal(l.standard, 'AI Use Levels 1.3')
+    assert.deepEqual(l.pages['index.html'].tagTools, ['Claude Sonnet 5.5', 'Claude Opus 5.5', 'Cursor'], 'a page tag follows the list too')
+    assert.deepEqual(l.tagTools, ['Claude Sonnet 5.5', 'Claude Opus 5.5', 'Claude Haiku 5.5', 'Cursor'], 'listed models in list order, then the rest by name')
+    assert.equal(run('verify', '--repo', r, '--ledger', out).status, 0)
+    l.pages['index.html'].tagTools = [...l.pages['index.html'].tagTools].reverse()
+    writeFileSync(out, JSON.stringify(l))
+    assert.equal(run('verify', '--repo', r, '--ledger', out).status, 1, 'a page tag order that differs from the rebuild fails verify')
+    l.pages['index.html'].tagTools = [...l.pages['index.html'].tagTools].reverse()
+    writeFileSync(out, JSON.stringify(l))
+    assert.equal(run('verify', '--repo', r, '--ledger', out).status, 0)
+    // A tool credited only from transcripts, by a recorded decision, is in the ordered tag and verify still passes.
+    writeFileSync(join(r, 'docs', 'ai-use', 'credits.config.json'), JSON.stringify({ ...config, spec: '1.3', modelsFile: 'site/lib/ai-models.json', transcriptCredit: { 'Claude Fable 5.1': { by: 'Test Owner', date: '2026-11-28', why: 'ran as a reviewer' } } }))
+    writeFileSync(join(r, 'site', 'lib', 'ai-models.json'), JSON.stringify({ models: ['Claude Fable 5.1', 'Claude Sonnet 5.5', 'Claude Opus 5.5', 'Claude Haiku 5.5'] }))
+    const idx = join(tmp(), 'index.json')
+    writeFileSync(idx, JSON.stringify({ indexedAt: 'x', files: 1, earliest: '2026-10-02T00:00:00Z', rows: [{ cwd: r, root: r, model: 'claude-fable-5-1', month: '2026-10', subagent: true, turns: 4, sessions: 1, first: '2026-10-02T00:00:00Z', last: '2026-10-02T00:00:00Z' }] }))
+    const credited = join(tmp(), 'credited.json')
+    assert.equal(run('build', '--repo', r, '--name', 'example-site', '--transcripts', idx, '--out', credited).status, 0)
+    assert.equal(JSON.parse(readFileSync(credited, 'utf8')).tagTools[0], 'Claude Fable 5.1')
+    assert.equal(run('verify', '--repo', r, '--ledger', credited).status, 0, 'a transcript credit decided in the config verifies')
+    writeFileSync(join(r, 'docs', 'ai-use', 'credits.config.json'), JSON.stringify({ ...config, spec: '1.3', modelsFile: 'site/lib/ai-models.json' }))
+    writeFileSync(join(r, 'site', 'lib', 'ai-models.json'), JSON.stringify({ models: ['Claude Sonnet 5.5', 'Claude Opus 5.5', 'Claude Haiku 5.5'] }))
+    writeFileSync(out, JSON.stringify({ ...l, tagTools: [...l.tagTools].reverse() }))
+    assert.equal(run('verify', '--repo', r, '--ledger', out).status, 1, 'a reversed site tag order fails verify')
+    writeFileSync(out, JSON.stringify({ ...l, standard: 'AI Use Levels 1.2' }))
+    assert.equal(run('verify', '--repo', r, '--ledger', out).status, 1, 'a ledger with the old stamp fails verify')
+    writeFileSync(join(r, 'site', 'lib', 'ai-models.json'), JSON.stringify(['Claude Sonnet 5.5']))
+    assert.equal(run('build', '--repo', r, '--name', 'example-site', '--out', out).status, 2, 'a ranked list without a models array is refused')
+    writeFileSync(join(r, 'docs', 'ai-use', 'credits.config.json'), JSON.stringify({ ...config, spec: '1.3' }))
+    assert.equal(run('build', '--repo', r, '--name', 'example-site', '--out', out).status, 2, 'spec without modelsFile is refused')
   })
 
   it('verify catches a hand-edited tagTools, such as an inferred model added to it', () => {
