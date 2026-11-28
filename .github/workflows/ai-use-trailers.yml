@@ -34,10 +34,10 @@ on:
         type: string
         default: 'main'
       since:
-        description: 'Commits committed before this date (YYYY-MM-DD) are skipped: the trailer rule began on 18 November 2026. Empty reads every commit.'
+        description: 'Commits committed before this date (YYYY-MM-DD) are skipped: the AI-Use-Standing pointer the gate requires was not in use before then. Empty reads every commit.'
         required: false
         type: string
-        default: '2026-11-18'
+        default: '2026-11-22'
       exempt:
         description: 'True in a repository the delegation exempts: no commit may carry an AI-Use line.'
         required: false

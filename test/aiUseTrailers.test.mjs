@@ -279,10 +279,21 @@ describe('row 1.90a preconditions', () => {
   it('near miss: an unlisted Claude model does not hide a wrong order among the other tools', () => {
     const mixed = gate(repo([good('Gemini 3 + Claude Opus 9.9 + Claude Fable 5.2', ['Opus 9.9', 'Fable 5.2'])]))
     assert.equal(mixed.code, 1)
-    assert.match(mixed.err, /out of order, expected Claude Fable 5\.2 \+ Gemini 3/)
+    assert.match(mixed.err, /out of order, expected Claude Fable 5\.2 \+ Claude Opus 9\.9 \+ Gemini 3/)
     const listed = gate(repo([good('Claude Sonnet 5.5 + Claude Fable 5.2 + Claude Opus 9.9', ['Sonnet 5.5', 'Fable 5.2', 'Opus 9.9'])]))
     assert.equal(listed.code, 1)
     assert.match(listed.err, /out of order/)
+  })
+
+  it('near miss: an unlisted Claude model after a non-model tool is out of order under any pin', () => {
+    const run = gate(repo([good('Cursor + Claude Opus 9.9', ['Opus 9.9'])]))
+    assert.equal(run.code, 1)
+    assert.match(run.err, /out of order, expected Claude Opus 9\.9 \+ Cursor/)
+  })
+
+  it('an unlisted Claude model before a non-model tool passes', () => {
+    const run = gate(repo([good('Claude Opus 9.9 + Cursor', ['Opus 9.9'])]))
+    assert.equal(run.code, 0, run.err)
   })
 
   it('near miss: an unlisted Claude model still has to be named in Co-Authored-By', () => {
@@ -299,15 +310,15 @@ describe('row 1.90a preconditions', () => {
     spawnSync('git', ['commit', '-q', '-m', `Old work\n\n${CO('Sonnet 5.5')}`], { cwd: dir, encoding: 'utf8', env: { ...process.env, GIT_AUTHOR_DATE: '2026-11-01T12:00:00Z', GIT_COMMITTER_DATE: '2026-11-01T12:00:00Z' } })
     const noCutoff = gate(dir)
     assert.equal(noCutoff.code, 1)
-    const run = gate(dir, '--since', '2026-11-18')
+    const run = gate(dir, '--since', '2026-11-22')
     assert.equal(run.code, 1, 'every commit skipped means nothing was checked')
     assert.match(run.err, /nothing was checked/)
     writeFileSync(path.join(dir, 'new.txt'), 'x\n')
     git(dir, 'add', '.')
     git(dir, 'commit', '-q', '-m', good())
-    const both = gate(dir, '--since', '2026-11-18')
+    const both = gate(dir, '--since', '2026-11-22')
     assert.equal(both.code, 0, both.err)
-    assert.match(both.out, /1 skipped before 2026-11-18/)
+    assert.match(both.out, /1 skipped before 2026-11-22/)
   })
 
   it('runs with only scripts/gates present, as an older tag\'s sparse checkout leaves it', () => {
@@ -325,7 +336,7 @@ describe('row 1.90a preconditions', () => {
     git(dir, 'add', '.')
     git(dir, 'commit', '-q', '--date', '2026-11-01T12:00:00Z', '-m', `Forged\n\n${CO('Sonnet 5.5')}`)
     git(dir, 'commit', '-q', '--allow-empty', '-m', good())
-    const run = gate(dir, '--since', '2026-11-18')
+    const run = gate(dir, '--since', '2026-11-22')
     assert.equal(run.code, 1)
     assert.match(run.err, /no AI-Use trailer/)
   })

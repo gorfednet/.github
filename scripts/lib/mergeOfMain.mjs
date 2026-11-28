@@ -1,5 +1,3 @@
-import { mergeIsClean } from '../gates/mergeIsClean.mjs'
-
 /**
  * Is every commit between a clean-reviewed head and the current head a clean merge of main?
  *
@@ -28,7 +26,9 @@ export function onlyCleanMergesOfMain({ git, base, head, main }) {
       const [sha, ...parents] = line.split(/\s+/)
       if (parents.length !== 2) return no(`${sha.slice(0, 9)} is not a merge commit`)
       git(['merge-base', '--is-ancestor', parents[1], main])
-      if (!mergeIsClean(git, sha, parents[0], parents[1])) return no(`${sha.slice(0, 9)} differs from a fresh merge of its parents`)
+      // Exits non-zero on any conflict, so a merge that needed a resolution is never clean here.
+      const redone = git(['merge-tree', '--write-tree', parents[0], parents[1]]).split('\n')[0].trim()
+      if (redone !== git(['rev-parse', `${sha}^{tree}`]).trim()) return no(`${sha.slice(0, 9)} differs from a fresh merge of its parents`)
     }
     return { ok: true, merges: commits.length, why: '' }
   } catch (error) {

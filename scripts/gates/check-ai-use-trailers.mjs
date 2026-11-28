@@ -23,11 +23,12 @@
  * commit, so the cutoff only spares real old history and cannot stop a person who sets out to evade it.
  * `AI-Use-Corrects` also works with `--exempt`: a later commit with no trailer excuses a pushed one that has one.
  *
- * What it cannot see: an agent commit with no Claude `Co-Authored-By` and no tag, and whether a tag is
- * true. A merge commit with no tag passes only when redoing it (`git merge-tree --write-tree`, as
+ * What it cannot see: an agent commit with no Claude `Co-Authored-By` and no tag (a hand-resolved merge
+ * with no Claude co-author included), and whether a tag is true. A merge commit with a Claude
+ * `Co-Authored-By` and no tag passes only when redoing it (`git merge-tree --write-tree`, as
  * review-status.mjs does) gives its own tree, because only a conflict-free merge takes no line
  * (shipping.md). One that resolved a conflict or took a side needs a tag; one that carries a tag is
- * checked like any other.
+ * checked like any other. The merge-tree check needs git 2.38 or newer.
  * It reads no network: the spec comes from --spec-dir, a checkout of ai-use-levels at a pinned ref.
  *
  *   node scripts/gates/check-ai-use-trailers.mjs --spec-dir <ai-use-levels checkout> \
@@ -101,9 +102,14 @@ export function commitProblems({ message, parents, cleanMerge }, lib, { exempt =
       // the list can't be known until the pin moves. Leave those entries out of the comparison; every
       // other tool, listed models and non-Claude tools alike, is still checked against its order.
       const unrankedClaude = (tool) => /^Claude .*\d/.test(bareTool(tool)) && order.classify(tool, models).group !== 0
+      // The tag passes when it matches the pinned order, or when it is in order for every tool whose rank
+      // is known and each unranked Claude model sits where a model of any rank would: before every tool
+      // that is not a listed model (such a model sorts into group 0 once the pin lists it).
+      const pinOrder = order.orderTools(tools, models).join(' + ')
       const ranked = tools.filter((tool) => !unrankedClaude(tool))
-      const ordered = order.orderTools(ranked, models)
-      if (ordered.join(' + ') !== ranked.join(' + ')) problems.push(`tools out of order, expected ${ordered.join(' + ')}`)
+      const firstOther = tools.findIndex((tool) => !unrankedClaude(tool) && order.classify(tool, models).group !== 0)
+      const asModels = order.orderTools(ranked, models).join(' + ') === ranked.join(' + ') && (firstOther === -1 || !tools.slice(firstOther).some(unrankedClaude))
+      if (pinOrder !== tools.join(' + ') && !asModels) problems.push(`tools out of order, expected ${pinOrder}`)
       // Co-Authored-By only names models. Compare the tag's listed models (group 0 of the order) and
       // ignore other tools and any reach parenthetical, such as "Cursor" or "Claude Opus 5.5 (agent)".
       if (agent) {
