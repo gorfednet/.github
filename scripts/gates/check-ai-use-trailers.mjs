@@ -36,7 +36,7 @@ import { execFileSync } from 'node:child_process'
 import { readFileSync, realpathSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import { mergeIsClean } from '../lib/mergeOfMain.mjs'
+import { mergeIsClean } from './mergeIsClean.mjs'
 
 const CLAUDE_CO_AUTHOR = /^Co-Authored-By:\s*Claude /im
 const CORRECTS = /^AI-Use-Corrects:[ \t]*([0-9a-f]{7,40})[ \t]*$/gim

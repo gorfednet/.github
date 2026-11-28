@@ -70,9 +70,7 @@ jobs:
           ref: ${{ inputs.gate-ref }}
           path: .ai-use-gate
           persist-credentials: false
-          sparse-checkout: |
-            scripts/gates
-            scripts/lib
+          sparse-checkout: scripts/gates
 
       - name: Check out the AI Use Levels spec (pinned)
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7

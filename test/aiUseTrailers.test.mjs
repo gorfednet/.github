@@ -9,7 +9,7 @@
  */
 import { strict as assert } from 'node:assert'
 import { spawnSync } from 'node:child_process'
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { cpSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { after, describe, it } from 'node:test'
@@ -299,6 +299,15 @@ describe('row 1.90a preconditions', () => {
     const both = gate(dir, '--since', '2026-11-18')
     assert.equal(both.code, 0, both.err)
     assert.match(both.out, /1 skipped before 2026-11-18/)
+  })
+
+  it('runs with only scripts/gates present, as an older tag\'s sparse checkout leaves it', () => {
+    const dir = repo([good()])
+    const only = mkdtempSync(path.join(tmpdir(), 'ai-use-gates-only-'))
+    dirs.push(only)
+    cpSync('scripts/gates', path.join(only, 'scripts/gates'), { recursive: true })
+    const run = spawnSync('node', [path.join(only, 'scripts/gates/check-ai-use-trailers.mjs'), '--spec-dir', SPEC_DIR, '--base', 'main', '--head', 'topic'], { cwd: dir, encoding: 'utf8' })
+    assert.equal(run.status, 0, run.stderr)
   })
 
   it('--since needs a date', () => {
