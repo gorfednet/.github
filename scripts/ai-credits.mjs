@@ -28,7 +28,7 @@ import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from
 import { homedir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
 
-import { SCHEMA, buildLedger, checkRecord, dayOf, monthOf, openProblems, parseGitLog, underSource } from './lib/aiCredits.mjs'
+import { SCHEMA, buildLedger, capabilityOrder, checkRecord, dayOf, monthOf, openProblems, parseGitLog, underSource } from './lib/aiCredits.mjs'
 import { isMain } from './lib/isMain.mjs'
 import { DEFAULT_PROJECTS, listTranscripts, scanFile } from './lib/prCost.mjs'
 
@@ -198,8 +198,10 @@ async function main(argv) {
       }
       // The site tag is the one a site ships. When the config pins a spec and a ranked list, the stamp and the order are compared as
       // written; without them the stamp and count order are indications that a prose or spec change must not redden.
-      if (config.rankedModels && (again.standard !== ledger.standard || JSON.stringify(again.tagTools) !== JSON.stringify(ledger.tagTools))) {
-        console.error(`ledger states ${ledger.standard} with tagTools ${ledger.tagTools.join(' + ')}; the config gives ${again.standard} with ${again.tagTools.join(' + ')}`)
+      // The rebuild has no transcripts, so the order is applied to the expected set, which includes the credits the config decided.
+      const expectedOrder = capabilityOrder(expected, config.rankedModels)
+      if (config.rankedModels && (again.standard !== ledger.standard || JSON.stringify(expectedOrder) !== JSON.stringify(ledger.tagTools))) {
+        console.error(`ledger states ${ledger.standard} with tagTools ${ledger.tagTools.join(' + ')}; the config gives ${again.standard} with ${expectedOrder.join(' + ')}`)
         return 1
       }
       if (a === b) {
