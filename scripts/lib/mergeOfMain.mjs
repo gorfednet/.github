@@ -1,4 +1,16 @@
 /**
+ * Is this 2-parent merge commit what a fresh merge of its parents gives? `git merge-tree --write-tree`
+ * exits non-zero on any conflict, so a merge that needed a resolution is never clean, and one that took
+ * a side (`-s ours`) has another tree. Throws when git can't say; callers read that as "not clean".
+ *
+ * @param {(args: string[]) => string} git
+ */
+export function mergeIsClean(git, sha, parent1, parent2) {
+  const redone = git(['merge-tree', '--write-tree', parent1, parent2]).split('\n')[0].trim()
+  return redone === git(['rev-parse', `${sha}^{tree}`]).trim()
+}
+
+/**
  * Is every commit between a clean-reviewed head and the current head a clean merge of main?
  *
  * Main's code was reviewed on its own pull requests, so a head that only adds merges of main (no
@@ -26,9 +38,7 @@ export function onlyCleanMergesOfMain({ git, base, head, main }) {
       const [sha, ...parents] = line.split(/\s+/)
       if (parents.length !== 2) return no(`${sha.slice(0, 9)} is not a merge commit`)
       git(['merge-base', '--is-ancestor', parents[1], main])
-      // Exits non-zero on any conflict, so a merge that needed a resolution is never clean here.
-      const redone = git(['merge-tree', '--write-tree', parents[0], parents[1]]).split('\n')[0].trim()
-      if (redone !== git(['rev-parse', `${sha}^{tree}`]).trim()) return no(`${sha.slice(0, 9)} differs from a fresh merge of its parents`)
+      if (!mergeIsClean(git, sha, parents[0], parents[1])) return no(`${sha.slice(0, 9)} differs from a fresh merge of its parents`)
     }
     return { ok: true, merges: commits.length, why: '' }
   } catch (error) {

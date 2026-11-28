@@ -7,8 +7,11 @@
 # the opposite: any trailer at all. The rules and what the gate cannot see are in
 # scripts/gates/check-ai-use-trailers.mjs.
 #
-# The spec is a checkout of the public gorfednet/ai-use-levels at the pinned ref below, so a PR check
-# never reads a moving target (verification-floor rule 5). Moving the pin is a change to this file.
+# The spec is a checkout of the public gorfednet/ai-use-levels at the pinned ref below, so the spec a
+# PR is judged by only moves with a change to this file. The gate script comes from this repository at
+# `gate-ref` (default `main`), which a caller pinned to a tag can set to the same tag. The rules can
+# change on `main`, so a caller on the default reads a moving gate (a decision of the fleet, not a data
+# read: the script runs nothing from the PR).
 # It reads no secret and runs nothing from the caller's checkout: the caller's history is only read
 # with `git log`.
 #
@@ -25,6 +28,16 @@ on:
         required: false
         type: string
         default: ''
+      gate-ref:
+        description: 'The ref of gorfednet/.github the gate script is read from. A caller pinned to a tag passes that tag. Left at main, the gate moves with main.'
+        required: false
+        type: string
+        default: 'main'
+      since:
+        description: 'Commits authored before this date (YYYY-MM-DD) are skipped: the trailer rule began on 18 November 2026. Empty reads every commit.'
+        required: false
+        type: string
+        default: '2026-11-18'
       exempt:
         description: 'True in a repository the delegation exempts: no commit may carry an AI-Use line.'
         required: false
@@ -52,12 +65,14 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           repository: gorfednet/.github
-          # `main`: inside a called workflow `github.workflow_sha` is the caller's, so the ref this
-          # workflow was called at isn't available here. The script is gate code of ours, not data.
-          ref: main
+          # Inside a called workflow `github.workflow_sha` is the caller's, so the ref this workflow
+          # was called at isn't available here: the caller passes it as `gate-ref`.
+          ref: ${{ inputs.gate-ref }}
           path: .ai-use-gate
           persist-credentials: false
-          sparse-checkout: scripts/gates
+          sparse-checkout: |
+            scripts/gates
+            scripts/lib
 
       - name: Check out the AI Use Levels spec (pinned)
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -78,8 +93,10 @@ jobs:
           BASE_REF: ${{ github.base_ref }}
           EXEMPT: ${{ inputs.exempt }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          SINCE: ${{ inputs.since }}
         run: |
           set -euo pipefail
           args=(--spec-dir .ai-use-spec --base "origin/${BASE_REF}" --head "$HEAD_SHA")
           if [ "$EXEMPT" = "true" ]; then args+=(--exempt); fi
+          if [ -n "$SINCE" ]; then args+=(--since "$SINCE"); fi
           node .ai-use-gate/scripts/gates/check-ai-use-trailers.mjs "${args[@]}"

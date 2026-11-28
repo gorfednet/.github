@@ -228,6 +228,113 @@ describe('an exempt repository (--exempt)', () => {
   })
 })
 
+/** A topic that edits a.txt against a main that edits it too, merged with the given strategy. */
+function conflictRepo(strategy, message) {
+  const dir = repo([good()])
+  git(dir, 'checkout', '-q', 'main')
+  writeFileSync(path.join(dir, 'a.txt'), 'main side\n')
+  git(dir, 'commit', '-q', '-am', 'main edits a')
+  git(dir, 'checkout', '-q', 'topic')
+  writeFileSync(path.join(dir, 'a.txt'), 'topic side\n')
+  git(dir, 'commit', '-q', '-am', `Edit a\n\n${good()}`)
+  spawnSync('git', ['merge', '--no-ff', ...(strategy === 'ours' ? ['-s', 'ours'] : []), 'main', '-m', message], { cwd: dir, encoding: 'utf8' })
+  if (strategy === 'resolve') {
+    writeFileSync(path.join(dir, 'a.txt'), 'resolved by hand\n')
+    git(dir, 'commit', '-q', '-a', '-m', message)
+  }
+  return dir
+}
+
+describe('row 1.90a preconditions', () => {
+  const untaggedMerge = `Merge main\n\n${CO('Sonnet 5.5')}`
+
+  it('an untagged agent merge that resolved a conflict by hand fails', () => {
+    const run = gate(conflictRepo('resolve', untaggedMerge))
+    assert.equal(run.code, 1)
+    assert.match(run.err, /merge commit .* conflict|differs from a fresh merge/)
+  })
+
+  it('an untagged agent merge made with -s ours fails (it hides a dropped side)', () => {
+    const run = gate(conflictRepo('ours', untaggedMerge))
+    assert.equal(run.code, 1)
+    assert.match(run.err, /differs from a fresh merge|conflict/)
+  })
+
+  it('the same conflicted merge passes once it carries a good tag', () => {
+    const run = gate(conflictRepo('resolve', `Merge main\n\n${good()}`))
+    assert.equal(run.code, 0, run.err)
+  })
+
+  it('an unlisted versioned Claude model skips the tool order check', () => {
+    const run = gate(repo([good('Claude Opus 9.9 + Claude Fable 5.2', ['Opus 9.9', 'Fable 5.2'])]))
+    assert.equal(run.code, 0, run.err)
+  })
+
+  it('near miss: an unlisted tool that is not a Claude model still fails the order check', () => {
+    const run = gate(repo([good('Gemini 3 + Claude Fable 5.2', ['Fable 5.2'])]))
+    assert.equal(run.code, 1)
+    assert.match(run.err, /out of order/)
+  })
+
+  it('near miss: an unlisted Claude model still has to be named in Co-Authored-By', () => {
+    const run = gate(repo([good('Claude Opus 9.9 + Claude Fable 5.2', ['Fable 5.2'])]))
+    assert.equal(run.code, 1)
+    assert.match(run.err, /Co-Authored-By names/)
+  })
+
+  it('--since skips a commit authored before the cutoff and says so', () => {
+    const dir = repo([])
+    git(dir, 'checkout', '-q', 'topic')
+    writeFileSync(path.join(dir, 'old.txt'), 'x\n')
+    git(dir, 'add', '.')
+    spawnSync('git', ['commit', '-q', '-m', `Old work\n\n${CO('Sonnet 5.5')}`], { cwd: dir, encoding: 'utf8', env: { ...process.env, GIT_AUTHOR_DATE: '2026-11-01T12:00:00Z' } })
+    const noCutoff = gate(dir)
+    assert.equal(noCutoff.code, 1)
+    const run = gate(dir, '--since', '2026-11-18')
+    assert.equal(run.code, 1, 'every commit skipped means nothing was checked')
+    assert.match(run.err, /nothing was checked/)
+    writeFileSync(path.join(dir, 'new.txt'), 'x\n')
+    git(dir, 'add', '.')
+    git(dir, 'commit', '-q', '-m', good())
+    const both = gate(dir, '--since', '2026-11-18')
+    assert.equal(both.code, 0, both.err)
+    assert.match(both.out, /1 skipped before 2026-11-18/)
+  })
+
+  it('--since needs a date', () => {
+    const run = gate(repo([good()]), '--since', 'yesterday')
+    assert.equal(run.code, 2)
+  })
+
+  it('exempt: a later commit with no tag corrects a pushed commit that carries one', () => {
+    const dir = repo([good()])
+    const bad = git(dir, 'rev-parse', 'topic').slice(0, 9)
+    writeFileSync(path.join(dir, 'fix.txt'), 'x\n')
+    git(dir, 'add', '.')
+    git(dir, 'commit', '-q', '-m', `Fix\n\nAI-Use-Corrects: ${bad}`)
+    const run = gate(dir, '--exempt')
+    assert.equal(run.code, 0, run.err)
+    assert.match(run.out, /1 corrected by a later commit/)
+  })
+
+  it('exempt: a correcting commit that carries a tag itself does not correct', () => {
+    const dir = repo([good()])
+    const bad = git(dir, 'rev-parse', 'topic').slice(0, 9)
+    writeFileSync(path.join(dir, 'fix.txt'), 'x\n')
+    git(dir, 'add', '.')
+    git(dir, 'commit', '-q', '-m', `${good()}\nAI-Use-Corrects: ${bad}`)
+    assert.equal(gate(dir, '--exempt').code, 1)
+  })
+
+  it('exempt: a corrector naming no commit in the range corrects nothing', () => {
+    const dir = repo([good()])
+    writeFileSync(path.join(dir, 'fix.txt'), 'x\n')
+    git(dir, 'add', '.')
+    git(dir, 'commit', '-q', '-m', 'Fix\n\nAI-Use-Corrects: 0000000')
+    assert.equal(gate(dir, '--exempt').code, 1)
+  })
+})
+
 describe('arguments and an empty range fail closed', () => {
   it('exits 2 without --spec-dir', () => {
     const dir = repo([good()])
@@ -265,6 +372,13 @@ describe('the reusable workflow', async () => {
     const run = workflow.slice(workflow.indexOf('- name: Check the trailers'))
     assert.match(run, /if: \$\{\{ !cancelled\(\) \}\}/)
     assert.match(run, /set -euo pipefail/)
+  })
+
+  it('checks the gate out at a gate-ref input that defaults to main, and passes the cutoff', () => {
+    assert.match(workflow, /gate-ref:\n(?:.*\n)*?\s+default: 'main'/)
+    assert.match(workflow, /ref: \$\{\{ inputs\.gate-ref \}\}/)
+    assert.match(workflow, /--since "\$SINCE"/)
+    assert.doesNotMatch(workflow, /never reads a moving target/)
   })
 
   it('reads the head from the event, not from a moving ref', () => {
