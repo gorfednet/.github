@@ -1,12 +1,12 @@
 {
-  "generatedAt": "2026-11-28T02:32:22.689Z",
-  "renderedAt": "2026-11-28T02:32:22.689Z",
+  "generatedAt": "2026-11-28T04:32:17.671Z",
+  "renderedAt": "2026-11-28T04:32:17.671Z",
   "repos": [
     {
       "slug": "gorfednet/bindercurve.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 24,
+      "openPrCount": 23,
       "lapsedBacklogCount": 17,
       "noPrCount": 80,
       "idlePrCount": 16,
@@ -26,7 +26,7 @@
       "openPrCount": 11,
       "lapsedBacklogCount": 24,
       "noPrCount": 33,
-      "idlePrCount": 11,
+      "idlePrCount": 8,
       "duplicatePrCount": 0,
       "dependabotRedCount": 0,
       "kitVersion": "0.63.0",
@@ -185,14 +185,14 @@
       "mainRed": false,
       "openPrs": [
         {
-          "number": 308,
-          "title": "AI Use trailer gate: make it safe to adopt (row 1.90a part 1)",
+          "number": 310,
+          "title": "ship-bot: read git path lists with -z",
           "ageDays": 0,
           "labels": [],
           "draft": true,
-          "review": "findings",
-          "headSha": "30fccdbd81cabf7e55fcc4af89c855b45664f267",
-          "ci": "pending",
+          "review": "clean",
+          "headSha": "997927283d3faf43099d88f4f09379845777b5a9",
+          "ci": "green",
           "next": "Desk: R2, Fable read of the whole diff, then label",
           "author": "gorfednet"
         },
@@ -661,7 +661,7 @@
       "slug": "gorfednet/MoonMan",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 14,
+      "openPrCount": 16,
       "lapsedBacklogCount": 3,
       "noPrCount": 47,
       "idlePrCount": 7,
@@ -754,7 +754,7 @@
       "openPrCount": 9,
       "lapsedBacklogCount": 36,
       "noPrCount": 8,
-      "idlePrCount": 9,
+      "idlePrCount": 6,
       "duplicatePrCount": 0,
       "dependabotRedCount": 0,
       "kitVersion": "0.65.0",
@@ -815,7 +815,7 @@
         {
           "number": 3,
           "title": "Verification kit 0.48.0: the content guidelines and check-voice",
-          "ageDays": 32,
+          "ageDays": 33,
           "labels": [],
           "draft": false,
           "review": "not-run",
@@ -895,23 +895,23 @@
       "slug": "gorfednet/assess",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 7,
+      "openPrCount": 3,
       "lapsedBacklogCount": 28,
       "noPrCount": 6,
       "idlePrCount": 3,
       "duplicatePrCount": 0,
-      "dependabotRedCount": 2,
+      "dependabotRedCount": 0,
       "kitVersion": "0.65.0",
       "kitPin": {
         "ref": "main"
       },
-      "alertsOverdue": 4
+      "alertsOverdue": 0
     },
     {
       "slug": "gorfednet/ops",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 30,
+      "openPrCount": 29,
       "lapsedBacklogCount": 0,
       "noPrCount": 15,
       "idlePrCount": 22,
@@ -930,7 +930,7 @@
     "gorfednet/wychwood"
   ],
   "branchesReadAt": "2026-11-28T02:32:22.689Z",
-  "carried": false,
+  "carried": true,
   "localCounts": {
     "rows": {
       "dirtyClones": {
@@ -978,10 +978,10 @@
     }
   },
   "inventory": {
-    "measuredAt": "2026-11-28T02:32:22.689Z",
+    "measuredAt": "2026-11-28T04:32:17.671Z",
     "counts": {
       "pr": {
-        "total": 169,
+        "total": 165,
         "orphans": 94
       },
       "session": null,
@@ -996,8 +996,8 @@
       {
         "kind": "pr",
         "repo": "gorfednet/.github",
-        "ref": "#308",
-        "label": "AI Use trailer gate: make it safe to adopt (row 1.90a part 1)",
+        "ref": "#310",
+        "label": "ship-bot: read git path lists with -z",
         "private": false,
         "lapsed": false
       },
@@ -1119,7 +1119,7 @@
     "planRead": true
   },
   "dotgithub": {
-    "measuredAt": "2026-11-28T02:33:32.502Z",
+    "measuredAt": "2026-11-28T04:33:20.051Z",
     "branches": 46,
     "merged": 3,
     "exposedFiles": 54,
