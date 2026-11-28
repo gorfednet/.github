@@ -34,7 +34,7 @@ on:
         type: string
         default: 'main'
       since:
-        description: 'Commits authored before this date (YYYY-MM-DD) are skipped: the trailer rule began on 18 November 2026. Empty reads every commit.'
+        description: 'Commits committed before this date (YYYY-MM-DD) are skipped: the trailer rule began on 18 November 2026. Empty reads every commit.'
         required: false
         type: string
         default: '2026-11-18'

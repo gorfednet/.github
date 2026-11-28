@@ -276,6 +276,15 @@ describe('row 1.90a preconditions', () => {
     assert.match(run.err, /out of order/)
   })
 
+  it('near miss: an unlisted Claude model does not hide a wrong order among the other tools', () => {
+    const mixed = gate(repo([good('Gemini 3 + Claude Opus 9.9 + Claude Fable 5.2', ['Opus 9.9', 'Fable 5.2'])]))
+    assert.equal(mixed.code, 1)
+    assert.match(mixed.err, /out of order, expected Claude Fable 5\.2 \+ Gemini 3/)
+    const listed = gate(repo([good('Claude Sonnet 5.5 + Claude Fable 5.2 + Claude Opus 9.9', ['Sonnet 5.5', 'Fable 5.2', 'Opus 9.9'])]))
+    assert.equal(listed.code, 1)
+    assert.match(listed.err, /out of order/)
+  })
+
   it('near miss: an unlisted Claude model still has to be named in Co-Authored-By', () => {
     const run = gate(repo([good('Claude Opus 9.9 + Claude Fable 5.2', ['Fable 5.2'])]))
     assert.equal(run.code, 1)

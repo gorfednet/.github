@@ -96,12 +96,14 @@ export function commitProblems({ message, parents, cleanMerge }, lib, { exempt =
       problems.push(`${tag}: ${error.message}`)
     }
     if (tools.length > 0) {
-      const ordered = order.orderTools(tools, models)
       const bareTool = (tool) => tool.replace(/\s*\([^()]*\)\s*$/, '')
-      // A Claude model newer than the pinned models.json can't be ranked (group 2), so the order of the
-      // list can't be known until the pin moves. Skip only the order; a non-Claude unlisted tool still counts.
-      const unrankedClaude = tools.some((tool) => /^Claude .*\d/.test(bareTool(tool)) && order.classify(tool, models).group !== 0)
-      if (!unrankedClaude && ordered.join(' + ') !== tools.join(' + ')) problems.push(`tools out of order, expected ${ordered.join(' + ')}`)
+      // A Claude model newer than the pinned models.json can't be ranked (group 2), so where it sits in
+      // the list can't be known until the pin moves. Leave those entries out of the comparison; every
+      // other tool, listed models and non-Claude tools alike, is still checked against its order.
+      const unrankedClaude = (tool) => /^Claude .*\d/.test(bareTool(tool)) && order.classify(tool, models).group !== 0
+      const ranked = tools.filter((tool) => !unrankedClaude(tool))
+      const ordered = order.orderTools(ranked, models)
+      if (ordered.join(' + ') !== ranked.join(' + ')) problems.push(`tools out of order, expected ${ordered.join(' + ')}`)
       // Co-Authored-By only names models. Compare the tag's listed models (group 0 of the order) and
       // ignore other tools and any reach parenthetical, such as "Cursor" or "Claude Opus 5.5 (agent)".
       if (agent) {
