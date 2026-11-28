@@ -1,0 +1,17 @@
+# AI Use Levels trailer gate (plan row 1.90a): fails a pull request whose own commits carry a Claude
+# Co-Authored-By without a well formed AI-Use line and its AI-Use-Standing pointer.
+# The gate is gorfednet/.github's shared ai-use-trailers.yml; its rules are in
+# scripts/gates/check-ai-use-trailers.mjs there. Commits before 2026-11-22 are skipped.
+name: ai-use-trailers (this repository)
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+
+jobs:
+  trailers:
+    uses: ./.github/workflows/ai-use-trailers.yml
+    # No runs-on input: this repository is public, so the reusable always runs it GitHub-hosted, free.
