@@ -479,6 +479,19 @@ describe('the command line', () => {
     assert.throws(() => readFileSync(target), /ENOENT/)
   })
 
+  it('build puts --end-of-options before the ref it hands to git rev-parse', () => {
+    const bin = tmp()
+    const log = join(bin, 'argv.log')
+    const real = execFileSync('which', ['git'], { encoding: 'utf8' }).trim()
+    writeFileSync(join(bin, 'git'), `#!/bin/sh\necho "$*" >> '${log}'\nexec '${real}' "$@"\n`, { mode: 0o755 })
+    const target = join(tmp(), 'written-by-git')
+    const env = { ...process.env, PATH: `${bin}:${process.env.PATH}` }
+    const b = spawnSync('node', [CLI, 'build', '--repo', repo, '--name', 'example-site', '--ref', `--output=${target}`, '--out', join(tmp(), 'credits.json')], { encoding: 'utf8', env })
+    assert.notEqual(b.status, 0)
+    assert.throws(() => readFileSync(target), /ENOENT/)
+    assert.match(readFileSync(log, 'utf8'), /rev-parse --verify --end-of-options --output=.*\^\{commit\}/)
+  })
+
   it('verify ignores prose and the spec version: a different standard still verifies', () => {
     const out = join(tmp(), 'credits.json')
     run('build', '--repo', repo, '--name', 'example-site', '--out', out)
@@ -498,12 +511,15 @@ describe('the command line', () => {
     const r = run('build', '--repo', repo, '--name', 'example-site', '--out', out)
     assert.equal(r.status, 2)
     assert.match(r.stderr, /ledger of other-site/)
+    assert.match(r.stderr, /pass --name other-site/)
     const again = run('build', '--repo', repo, '--name', 'other-site', '--out', out)
     assert.equal(again.status, 0, 'the same repository rebuilds in place')
     const ledger = JSON.parse(readFileSync(out, 'utf8'))
     ledger.schema = 'ai-credits/0'
     writeFileSync(out, JSON.stringify(ledger))
-    assert.equal(run('build', '--repo', repo, '--name', 'other-site', '--out', out).status, 2)
+    const sch = run('build', '--repo', repo, '--name', 'other-site', '--out', out)
+    assert.equal(sch.status, 2)
+    assert.match(sch.stderr, /written under schema ai-credits\/0/)
   })
 
   it('refuses a missing argument and an unknown command', () => {

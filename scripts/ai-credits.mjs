@@ -119,8 +119,7 @@ function loadJson(path, what) {
 export function ledgerFor({ repo, ref = 'origin/main', name, config = {}, index = null, prior = null, cursorModels = null, command = '', script = '', now = new Date() }) {
   const given = realpathSync(resolve(repo))
   const repoDir = rootOf(given) ?? given // a worktree of a clone is that clone, so its transcripts are too
-  // The ledger's own head is read back on `verify`, so an option-shaped value must never reach git.
-  if (/^-/.test(ref) || /\s/.test(ref)) throw new Error(`refusing ref ${JSON.stringify(ref)}: it looks like an option`)
+  // `--end-of-options` keeps an option-shaped ref from being read as a git option; `verify` also refuses a head that is no commit id.
   const head = git(given, ['rev-parse', '--verify', '--end-of-options', `${ref}^{commit}`]).trim()
   const commits = parseGitLog(git(given, ['log', head, '--reverse', '--name-status', '-M', `--format=${FORMAT}`]))
   const transcripts = index ? rowsFor(index, repoDir, config.cwdRoots ?? []) : null
@@ -199,8 +198,12 @@ async function main(argv) {
     const out = o.out ?? join(o.repo, 'docs', 'ai-use', 'credits.json')
     const prior = existsSync(out) ? loadJson(out, 'ledger') : null
     const wanted = o.name ?? basename(rootOf(realpathSync(resolve(o.repo))) ?? realpathSync(resolve(o.repo)))
-    if (prior && (prior.repo !== wanted || prior.schema !== SCHEMA)) {
-      console.error(`ai-credits: ${out} is the ledger of ${prior.repo} (schema ${prior.schema}), not ${wanted} (schema ${SCHEMA}); use another --out`)
+    if (prior && prior.repo !== wanted) {
+      console.error(`ai-credits: ${out} is the ledger of ${prior.repo}, not ${wanted}; pass --name ${prior.repo} if it is this site, or use another --out`)
+      return 2
+    }
+    if (prior && prior.schema !== SCHEMA) {
+      console.error(`ai-credits: ${out} was written under schema ${prior.schema}; this script reads ${SCHEMA}; a build elsewhere starts without its transcript counts; migrate it or rebuild with the script that wrote it`)
       return 2
     }
     const ledger = ledgerFor({ repo: o.repo, ref: o.ref, name: o.name, config, index, prior, cursorModels, command, script })
