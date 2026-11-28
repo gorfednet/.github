@@ -7,6 +7,7 @@
  * (see `guardCommands`).
  */
 import { spawn } from 'node:child_process'
+import { StringDecoder } from 'node:string_decoder'
 
 /** Kinds that only read. Everything else changes something somewhere. */
 // git-read: git commands that only read refs (the installed bot's freshness check), allowed in dry and observe runs.
@@ -52,11 +53,14 @@ export function run({ cmd, args = [], cwd, env, timeoutMs = 10 * 60 * 1000 }) {
       killGroup('SIGTERM')
       setTimeout(() => killGroup('SIGKILL'), 10_000).unref()
     }, timeoutMs)
+    // One decoder per stream: a multibyte character split across two chunks stays whole (c.toString() would give U+FFFD twice).
+    const outDecoder = new StringDecoder('utf8')
+    const errDecoder = new StringDecoder('utf8')
     child.stdout.on('data', (c) => {
-      stdout = keep(stdout, c.toString())
+      stdout = keep(stdout, outDecoder.write(c))
     })
     child.stderr.on('data', (c) => {
-      stderr = keep(stderr, c.toString())
+      stderr = keep(stderr, errDecoder.write(c))
     })
     child.on('error', (cause) => {
       if (settled) return
@@ -68,6 +72,8 @@ export function run({ cmd, args = [], cwd, env, timeoutMs = 10 * 60 * 1000 }) {
       if (settled) return
       settled = true
       clearTimeout(timer)
+      stdout = keep(stdout, outDecoder.end())
+      stderr = keep(stderr, errDecoder.end())
       resolvePromise({ code: timedOut ? null : code, signal: signal ?? undefined, stdout, stderr, timedOut })
     })
   })

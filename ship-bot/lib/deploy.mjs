@@ -346,6 +346,12 @@ export async function changedSince(ctx, log, workDir, base, head) {
   return splitNul(diff.stdout)
 }
 
+/** Every tracked path at `sha`, NUL-split so a non-ASCII, quoted or newline-bearing name stays whole. */
+export async function trackedPaths(ctx, log, workDir, sha) {
+  const all = await git(ctx, log, workDir, 'list every tracked path', ['ls-tree', '-r', '--name-only', '-z', sha])
+  return splitNul(all.stdout)
+}
+
 /**
  * Deploy one merge commit. Never retries.
  * With `release` ({tag, message}) the merge commit is tagged and the tag pushed
@@ -373,8 +379,7 @@ export async function deployMerged(ctx, repo, { mergeSha, log, release = null, s
       changed = await changedSince(ctx, log, repo.workDir, base, mergeSha)
     } else {
       // No known deployed commit: every tracked path counts as changed, so no pause and no conditional step is skipped by not knowing.
-      const all = await git(ctx, log, repo.workDir, 'list every tracked path', ['ls-tree', '-r', '--name-only', '-z', mergeSha])
-      changed = splitNul(all.stdout)
+      changed = await trackedPaths(ctx, log, repo.workDir, mergeSha)
     }
   } catch (cause) {
     return { status: 'not-started', error: `preparing the workspace failed: ${cause.message}` }

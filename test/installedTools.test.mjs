@@ -468,6 +468,16 @@ describe('review fixes: code-only ship-bot copy, ahead is not behind, fail close
     assert.ok(!sent[0].includes('~/.claude mirror'))
   })
 
+  it('a mirrored file with a non-ASCII, spaced or newline name is listed whole and reported by its real name (ls-tree -z)', () => {
+    const f = fixture()
+    const names = ['rules/\u00e9 sp ace.md', 'rules/line\nbreak.md']
+    for (const n of names) commitFile(f, `control/claude-home/${n}`, 'x\n')
+    put(join(f.home, '.claude', 'rules', names[0].slice(6)), 'x\n') // installed; the newline one is not
+    const b = run(f).behind.filter((x) => x.tool === '~/.claude mirror')[0]
+    assert.match(b.detail, /1 files not installed/)
+    assert.deepEqual(b.items, [names[1]])
+  })
+
   it('an empty listing compares nothing and is unread, not a clean mirror', () => {
     const f = fixture()
     put(join(f.home, '.claude', 'rules', 'shipping.md'), 'x\n') // ~/.claude exists but ops main holds no control/claude-home

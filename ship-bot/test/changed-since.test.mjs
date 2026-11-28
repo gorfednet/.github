@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, renameSync, rmSync, writeFileSync } from 'node:
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { after, describe, it } from 'node:test'
-import { changedSince, matchingFiles, splitNul } from '../lib/deploy.mjs'
+import { changedSince, matchingFiles, splitNul, trackedPaths } from '../lib/deploy.mjs'
 import { realRunner } from '../lib/runner.mjs'
 
 // Real git: a fake runner cannot tell whether git lists a rename's old path.
@@ -47,6 +47,19 @@ describe('changedSince lists both sides of a rename', () => {
     const changed = await changedSince(ctx, log, dir, base, head)
     assert.deepEqual(changed.sort(), [...names].sort())
     assert.equal(matchingFiles(changed, ['server/']).length, names.length)
+  })
+
+  it('trackedPaths lists a non-ASCII, spaced and newline-bearing name whole (the no-known-deploy path)', async () => {
+    const names = ['server/\u00e9 sp ace.sql', 'server/line\nbreak.sql']
+    for (const n of names) writeFileSync(join(dir, n), 'x\n')
+    g('add', '-A')
+    g('commit', '-q', '-m', 'ls-tree names')
+    const head = g('rev-parse', 'HEAD')
+    const all = await trackedPaths(ctx, log, dir, head)
+    for (const n of names) assert.ok(all.includes(n), `lists ${JSON.stringify(n)}`)
+    assert.ok(all.includes('src/app.js'))
+    assert.ok(all.every((p) => !p.startsWith('"')), 'no C-quoted name')
+    assert.equal(matchingFiles(all, ['server/']).length, all.filter((p) => p.startsWith('server/')).length)
   })
 
   it('splitNul keeps whitespace in a path and drops the empty tail', () => {
