@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-11-28T06:37:12.965Z",
-  "renderedAt": "2026-11-28T06:37:12.965Z",
+  "generatedAt": "2026-11-28T08:31:56.554Z",
+  "renderedAt": "2026-11-28T08:31:56.554Z",
   "repos": [
     {
       "slug": "gorfednet/bindercurve.com",
@@ -252,10 +252,10 @@
           "ageDays": 9,
           "labels": [],
           "draft": false,
-          "review": "findings",
-          "headSha": "5889619cd4757d933ee92c426d98cf8fe548aa4d",
+          "review": "clean",
+          "headSha": "6ce5921a1884ece4d407b33c5306f71a59fb9f39",
           "ci": "green",
-          "next": "Desk: ship, cut or stop at round 4 (cap). CI green on `5889619`. One Medium left, valid: a commit authored by `claude[bot]` with no trailer isn't added to `open.unclassifiedCoAuthors` (`scripts/lib/aiCredits.mjs:98`; fix is one line, `unclassified.push(authorKind.name)` when `authorKind.kind === 'unclassified'`, plus the test at `test/aiCredits.test.mjs` counting 2). Recommend: one more push and a round 5 review, since site ledgers depend on this tool and the gap can print an L0 tag",
+          "next": "Merge when the round-5 review is clean and CI is green (tool and docs only; no deploy). Desk decided ship after the one-line fix",
           "author": "gorfednet"
         }
       ],
@@ -962,7 +962,7 @@
     }
   },
   "inventory": {
-    "measuredAt": "2026-11-28T06:37:12.965Z",
+    "measuredAt": "2026-11-28T08:31:56.554Z",
     "counts": {
       "pr": {
         "total": 159,
@@ -1095,7 +1095,7 @@
     "planRead": true
   },
   "dotgithub": {
-    "measuredAt": "2026-11-28T06:38:10.888Z",
+    "measuredAt": "2026-11-28T08:32:56.503Z",
     "branches": 45,
     "merged": 3,
     "exposedFiles": 54,
