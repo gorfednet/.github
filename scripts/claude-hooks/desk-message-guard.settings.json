@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "SendMessage|send_message|mcp__.*__send_message",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -r ~/.claude/hooks/desk-message-guard.py ] || exit 0; python3 -I ~/.claude/hooks/desk-message-guard.py",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}
