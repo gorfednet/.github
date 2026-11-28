@@ -1,0 +1,79 @@
+{
+  "$comment": "Inferred evidence only. What Cursor offered each month, from the cited pages. Never used in a tag. A model is listed from the month a fetched page shows it launched, and stays listed while the current docs/models page still lists it (no retirement notice found). Models Cursor's docs list without a launch date in any fetched page are in undated_models_on_docs_page and are not placed in any month.",
+  "checked": "2026-11-18",
+  "source": "https://cursor.com/changelog",
+  "undated_models_on_docs_page": {
+    "source": "https://cursor.com/docs/models",
+    "models": ["Claude 4 Sonnet", "Claude 4 Sonnet 1M", "Claude 4.5 Haiku", "Claude 4.5 Opus", "Claude 4.5 Sonnet", "Claude 4.6 Opus", "Claude 4.6 Sonnet", "Claude Haiku 5.5", "Claude Sonnet 5.5", "DeepSeek V4.1 Flash 1017", "Gemini 2.5 Flash", "Gemini 3 Flash", "Gemini 3 Pro", "Gemini 3 Pro Image Preview", "Gemini 3.1 Pro", "Gemini 3.5 Flash Lite", "Gemini 3.6 Flash", "Gemini 3.7 Flash", "Gemini 3.8 Flash", "Gemini 4 Argon", "Gemini 4 Carbon", "Gemini 4 Hydrogen", "GLM 5.2", "GLM 5.3", "GLM 5.3 Flash", "GPT-5", "GPT-5 Fast", "GPT-5 Mini", "GPT-5-Codex", "GPT-5.1 Codex", "GPT-5.1 Codex Max", "GPT-5.1 Codex Mini", "GPT-5.2", "GPT-5.2 Codex", "GPT-5.3 Codex", "GPT-5.4", "GPT-5.4 Mini", "GPT-5.4 Nano", "Kimi K2.7 Code", "Kimi K3", "Muse Spark 1.3", "Muse Wonder", "Claude Fable 5.2", "Claude Opus 4.7 (fast mode)", "Grok 4.7 500k", "Grok 4.7 (Fast)", "Grok 4.7 500k (Fast)", "Grok 4.6 (Fast)", "Grok 4.5 (Fast)", "Composer 2.5 (Fast)"],
+    "note": "Names as the docs page writes them on 2026-11-18. No launch dates found for these in fetched pages. Gemini 3.5 Flash is listed in 2026-05 only because a forum post dated 2026-05-27 says the poster had been using it for a while."
+  },
+  "months": {
+    "2026-05": {
+      "models": ["Composer 2", "Composer 2.5", "Claude Opus 4.7", "GPT-5.5", "Claude Opus 4.8", "Gemini 3.5 Flash"],
+      "default": "Composer 2.5 Fast (default variant of Composer from 2026-05-18)",
+      "source": "https://cursor.com/changelog/composer-2-5",
+      "other_sources": [
+        "https://forum.cursor.com/t/opus-4-7-out-now/158192",
+        "https://forum.cursor.com/t/gpt-5-5-out-now/158953",
+        "https://forum.cursor.com/t/claude-opus-4-8-out-now/161824",
+        "https://forum.cursor.com/t/my-opinion-about-gemini-3-5-flash/161719",
+        "https://cursor.com/changelog/page/7"
+      ],
+      "note": "Opus 4.7 launched 2026-04-16, GPT-5.5 2026-04-24, Composer 2.5 2026-05-18 (Composer 2 is its predecessor), Opus 4.8 2026-05-28. Gemini 3.5 Flash availability date not stated; forum post of 2026-05-27 shows it in use. 2026-05-11 changelog says Cursor picks the model automatically for Microsoft Teams requests."
+    },
+    "2026-06": {
+      "models": ["Composer 2.5", "Claude Opus 4.7", "GPT-5.5", "Claude Opus 4.8", "Gemini 3.5 Flash", "Claude Fable 5", "Claude Sonnet 5"],
+      "default": null,
+      "source": "https://cursor.com/changelog/page/6",
+      "other_sources": [
+        "https://forum.cursor.com/t/claude-fable-5-out-now/162816",
+        "https://forum.cursor.com/t/claude-sonnet-5-now-available/164463",
+        "https://cursor.com/changelog/page/5"
+      ],
+      "note": "2026-06-04 changelog: Composer 2 retired, composer-2 slugs route to Composer 2.5. Claude Fable 5 announced 2026-06-09; forum users reported it missing from 2026-06-13 (availability intermittent). Claude Sonnet 5 announced 2026-06-30. 2026-06-29 changelog says users can pick any frontier model. No default model named."
+    },
+    "2026-07": {
+      "models": ["Composer 2.5", "Claude Opus 4.7", "GPT-5.5", "Claude Opus 4.8", "Gemini 3.5 Flash", "Claude Fable 5", "Claude Sonnet 5", "Grok 4.5", "GPT-5.6 Sol", "GPT-5.6 Terra", "GPT-5.6 Luna", "Claude Opus 5"],
+      "default": "Auto (powered by Cursor Router from 2026-07-22; Teams plans on by default)",
+      "source": "https://cursor.com/changelog/page/4",
+      "other_sources": [
+        "https://cursor.com/blog/grok-4-5",
+        "https://forum.cursor.com/t/gpt-5-6-now-available-in-cursor/165312",
+        "https://forum.cursor.com/t/claude-opus-5-now-available/166583"
+      ],
+      "note": "Grok 4.5 launched 2026-07-08, GPT-5.6 family 2026-07-09, Claude Opus 5 2026-07-24. Grok 4.5 post says Composer 2.5 remains offered. Claude Fable 5 had reported availability problems in June and early July; its status in July is uncertain."
+    },
+    "2026-08": {
+      "models": ["Composer 2.5", "Claude Opus 4.7", "GPT-5.5", "Claude Opus 4.8", "Gemini 3.5 Flash", "Claude Fable 5", "Claude Sonnet 5", "Grok 4.5", "Grok 4.6", "GPT-5.6 Sol", "GPT-5.6 Terra", "GPT-5.6 Luna", "Claude Opus 5"],
+      "default": "Auto (Cursor Router; no specific model named)",
+      "source": "https://cursor.com/blog/grok-4-6",
+      "other_sources": ["https://cursor.com/changelog/page/3", "https://cursor.com/changelog/page/4"],
+      "note": "Grok 4.6 launched 2026-08-12. The August changelog entries name no models. The default carries over from the 2026-07-22 Cursor Router entry; no August page restates it."
+    },
+    "2026-09": {
+      "models": ["Composer 2.5", "Claude Opus 4.7", "GPT-5.5", "Claude Opus 4.8", "Gemini 3.5 Flash", "Claude Fable 5", "Claude Sonnet 5", "Grok 4.5", "Grok 4.6", "GPT-5.6 Sol", "GPT-5.6 Terra", "GPT-5.6 Luna", "Claude Opus 5", "Claude Fable 5.1", "Grok 4.7", "Claude Opus 5.5"],
+      "default": "Auto (Cursor Router; no specific model named)",
+      "source": "https://cursor.com/blog/grok-4-7",
+      "other_sources": [
+        "https://forum.cursor.com/t/claude-fable-5-1-out-now/170246",
+        "https://forum.cursor.com/t/opus-5-5-available-great-pricing/172703.md",
+        "https://cursor.com/changelog/page/2"
+      ],
+      "note": "Claude Fable 5.1 announced 2026-09-01, Grok 4.7 blog 2026-09-21, Claude Opus 5.5 available 2026-09-22 per forum reply. The Grok 4.7 blog does not itself say where it is available; the Cursor models docs list it."
+    },
+    "2026-10": {
+      "models": ["Composer 2.5", "Claude Opus 4.7", "GPT-5.5", "Claude Opus 4.8", "Gemini 3.5 Flash", "Claude Fable 5", "Claude Sonnet 5", "Grok 4.5", "Grok 4.6", "GPT-5.6 Sol", "GPT-5.6 Terra", "GPT-5.6 Luna", "Claude Opus 5", "Claude Fable 5.1", "Grok 4.7", "Claude Opus 5.5"],
+      "default": null,
+      "source": "https://cursor.com/changelog",
+      "other_sources": ["https://cursor.com/docs/models"],
+      "note": "October changelog entries name no model launches. List is carried forward from September because the current docs/models page still lists each of these models. Claude Sonnet 5.5 and Gemini 4 models may have launched in September or October but no fetched page dates them."
+    },
+    "2026-11": {
+      "models": ["Grok 4.7", "Grok 4.7 (Fast)", "Grok 4.7 500k", "Grok 4.7 500k (Fast)", "Grok 4.6", "Grok 4.6 (Fast)", "Grok 4.5", "Grok 4.5 (Fast)", "Composer 2.5", "Composer 2.5 (Fast)", "Claude 4 Sonnet", "Claude 4 Sonnet 1M", "Claude 4.5 Haiku", "Claude 4.5 Opus", "Claude 4.5 Sonnet", "Claude 4.6 Opus", "Claude 4.6 Sonnet", "Claude 4.7 Opus", "Claude Fable 5", "Claude Fable 5.1", "Claude Fable 5.2", "Claude Haiku 5.5", "Claude Opus 4.7 (fast mode)", "Claude Opus 4.8", "Claude Opus 5", "Claude Opus 5.5", "Claude Sonnet 5", "Claude Sonnet 5.5", "DeepSeek V4.1 Flash 1017", "Gemini 2.5 Flash", "Gemini 3 Flash", "Gemini 3 Pro", "Gemini 3 Pro Image Preview", "Gemini 3.1 Pro", "Gemini 3.5 Flash", "Gemini 3.5 Flash Lite", "Gemini 3.6 Flash", "Gemini 3.7 Flash", "Gemini 3.8 Flash", "Gemini 4 Argon", "Gemini 4 Carbon", "Gemini 4 Hydrogen", "GLM 5.2", "GLM 5.3", "GLM 5.3 Flash", "GPT-5", "GPT-5 Fast", "GPT-5 Mini", "GPT-5-Codex", "GPT-5.1 Codex", "GPT-5.1 Codex Max", "GPT-5.1 Codex Mini", "GPT-5.2", "GPT-5.2 Codex", "GPT-5.3 Codex", "GPT-5.4", "GPT-5.4 Mini", "GPT-5.4 Nano", "GPT-5.5", "GPT-5.6 Luna", "GPT-5.6 Sol", "GPT-5.6 Terra", "Kimi K2.7 Code", "Kimi K3", "Muse Spark 1.3", "Muse Wonder"],
+      "default": "Auto (modes Cost, Balance, Intelligence; no default model named)",
+      "source": "https://cursor.com/docs/models",
+      "other_sources": ["https://cursor.com/docs/cursor-router", "https://cursor.com/help/models-and-usage/available-models"],
+      "note": "Full list on the docs page fetched 2026-11-18. Many third-party models are marked hidden by default. Not a statement about all of November, only about its first 18 days. Claude Opus 4.8 and Claude Opus 5 are described in the docs as superseded but still listed."
+    }
+  }
+}
