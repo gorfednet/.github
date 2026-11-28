@@ -56,7 +56,7 @@ export function classifyCoAuthor({ name, email = '' }, humans = new Set()) {
   for (const [re, tool] of PRODUCTS) if (re.test(clean)) return { kind: 'tool', tool }
   if (/\[bot\]$/i.test(clean) && /claude|copilot|codex|cursor|gemini|openai|anthropic/i.test(clean)) return { kind: 'unclassified', name: clean }
   if (/\[bot\]$/i.test(clean) || /^github-actions/i.test(clean) || /^dependabot/i.test(clean) || /bot@/i.test(email) || /^github$/i.test(clean)) return { kind: 'bot', name: clean }
-  if (/^claude\b/i.test(clean)) return { kind: 'tool', tool: clean.replace(/^claude/i, 'Claude') }
+  if (/^claude (?:opus|sonnet|haiku|fable|code)\b/i.test(clean) || /^claude$/i.test(clean)) return { kind: 'tool', tool: clean.replace(/^claude/i, 'Claude') }
   return { kind: 'unclassified', name: clean }
 }
 
@@ -94,7 +94,7 @@ export function commitTools(body, humans, author = '') {
   const humansSeen = []
   const bots = []
   const unclassified = []
-  const authorKind = author ? classifyCoAuthor({ name: author }, new Set()) : null
+  const authorKind = author ? classifyCoAuthor({ name: author }, humans) : null
   if (authorKind?.kind === 'tool' && authorKind.tool !== 'Claude Code') tools.push(authorKind.tool)
   for (const c of coAuthors) {
     const k = classifyCoAuthor(c, humans)
@@ -208,9 +208,12 @@ export function buildLedger({ commits: all, meta, config = {}, transcripts = nul
   for (const [page, gs] of Object.entries(pagesCfg)) for (const g of gs) if (!groups[g]) throw new Error(`page ${page} names group ${g}, which the config doesn't define`)
 
   // People: authors who aren't tools, plus the config's names. A tool that authors a commit is a credit, not a person.
+  const configHumans = new Set((config.humans ?? []).map((n) => n.toLowerCase()))
+  const aiBotName = /claude|copilot|codex|cursor|gemini|openai|anthropic/i
   const authorKinds = new Map()
-  for (const c of all) if (!authorKinds.has(c.author)) authorKinds.set(c.author, classifyCoAuthor({ name: c.author }, new Set()).kind)
-  const humans = new Set([...(config.humans ?? []), ...[...authorKinds].filter(([, k]) => k !== 'tool').map(([n]) => n)].map((n) => n.toLowerCase()))
+  for (const c of all) if (!authorKinds.has(c.author)) authorKinds.set(c.author, classifyCoAuthor({ name: c.author }, configHumans).kind)
+  // An unclassified AI bot (`claude[bot]`) stays visible as an open item; it never becomes a person.
+  const humans = new Set([...configHumans, ...[...authorKinds].filter(([n, k]) => k !== 'tool' && !(k === 'unclassified' && aiBotName.test(n))).map(([n]) => n.toLowerCase())])
 
   const toolsOf = (c) => commitTools(c.body, humans, c.author)
   const openTrailers = (t) => t.unclassified.length > 0 || t.unversioned.length > 0 || t.conflicting.length > 0
@@ -255,7 +258,7 @@ export function buildLedger({ commits: all, meta, config = {}, transcripts = nul
       mo.tools[tool] = (mo.tools[tool] ?? 0) + 1
       const s = siteTools.get(tool) ?? { shas: [], merges: 0, authored: 0, first: c.authored, last: c.authored }
       s.shas.push(c.sha.slice(0, 10))
-      if (authorKinds.get(c.author) === 'tool' && classifyCoAuthor({ name: c.author }, new Set()).tool === tool) s.authored++
+      if (authorKinds.get(c.author) === 'tool' && classifyCoAuthor({ name: c.author }, configHumans).tool === tool) s.authored++
       if (c.merge) s.merges++
       if (c.authored < s.first) s.first = c.authored
       if (c.authored > s.last) s.last = c.authored

@@ -402,6 +402,28 @@ describe('the command line', () => {
     assert.equal(run('verify', '--repo', tied, '--ledger', out).status, 0)
   })
 
+  it('verify passes a correct ledger when transcripts cover a month with no commit', () => {
+    const r = repoWith([['2026-10-02T10:00:00Z', `a${CLAUDE('Sonnet 5')}`, ['a.txt']]])
+    const index = join(tmp(), 'index.json')
+    writeFileSync(index, JSON.stringify({ indexedAt: 'x', files: 1, earliest: '2026-10-02T00:00:00Z', rows: [{ cwd: r, root: r, model: 'claude-sonnet-5', month: '2026-11', subagent: false, turns: 3, sessions: 1, first: '2026-11-02T00:00:00Z', last: '2026-11-02T00:00:00Z' }] }))
+    const out = join(tmp(), 'credits.json')
+    assert.equal(run('build', '--repo', r, '--name', 'example-site', '--transcripts', index, '--out', out).status, 0)
+    assert.ok(JSON.parse(readFileSync(out, 'utf8')).months['2026-11'], 'the transcript-only month is in the ledger')
+    assert.equal(run('verify', '--repo', r, '--ledger', out).status, 0)
+  })
+
+  it('a person named Claude is not a tool when the config lists them, and a claude[bot] author is not a person', () => {
+    assert.equal(classifyCoAuthor({ name: 'Claude Dupont' }).kind, 'unclassified')
+    assert.equal(classifyCoAuthor({ name: 'Claude Dupont' }, new Set(['claude dupont'])).kind, 'human')
+    assert.equal(classifyCoAuthor({ name: 'Claude Sonnet 5.5' }).kind, 'tool')
+    const c = (author, body = 'x') => ({ sha: `s${author}${body.length}`, merge: false, authored: '2026-10-02T10:00:00.000Z', author, committed: '2026-10-02T10:00:00.000Z', body, files: filesOf('M\ta.txt\n') })
+    const person = buildLedger({ commits: [c('Claude Dupont')], meta: { repo: 'example-site', ref: 'origin/main', head: 'abc' }, config: { humans: ['Claude Dupont'] } })
+    assert.deepEqual(person.tagTools, [])
+    const bot = buildLedger({ commits: [c('claude[bot]'), c('Test Author', `x${co('claude[bot]')}`)], meta: { repo: 'example-site', ref: 'origin/main', head: 'abc' }, config: {} })
+    assert.ok(!('claude[bot]' in bot.people.humans), 'an AI bot author is never a person')
+    assert.equal(bot.open.unclassifiedCoAuthors['claude[bot]'], 1, 'the bot stays an open item')
+  })
+
   it('verify catches a hand-edited tagTools, such as an inferred model added to it', () => {
     const out = join(tmp(), 'credits.json')
     run('build', '--repo', repo, '--name', 'example-site', '--out', out)

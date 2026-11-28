@@ -131,7 +131,7 @@ const stable = (ledger) => {
     stated: stated.map(({ grade, ...e }) => e),
     open: { unclassifiedCoAuthors: open.unclassifiedCoAuthors, unversionedTrailers: open.unversionedTrailers, conflictingTrailers: open.conflictingTrailers, emptyGroups: open.emptyGroups },
     tools: tools.map((t) => ({ tool: t.tool, commits: t.commits, trailer: t.evidence.find((e) => e.kind === 'trailer') })).filter((t) => t.trailer).sort((a, b) => a.tool.localeCompare(b.tool)),
-    months: Object.fromEntries(Object.entries(months).map(([m, v]) => [m, { commits: v.commits, commitsWithNoTool: v.commitsWithNoTool, tools: v.tools }])),
+    months: Object.fromEntries(Object.entries(months).filter(([, v]) => v.commits > 0).map(([m, v]) => [m, { commits: v.commits, commitsWithNoTool: v.commitsWithNoTool, tools: v.tools }])),
   })
 }
 
