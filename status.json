@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-11-28T04:32:17.671Z",
-  "renderedAt": "2026-11-28T04:32:17.671Z",
+  "generatedAt": "2026-11-28T06:37:12.965Z",
+  "renderedAt": "2026-11-28T06:37:12.965Z",
   "repos": [
     {
       "slug": "gorfednet/bindercurve.com",
@@ -23,13 +23,13 @@
       "slug": "gorfednet/4thcltr.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 11,
+      "openPrCount": 10,
       "lapsedBacklogCount": 24,
       "noPrCount": 33,
-      "idlePrCount": 8,
+      "idlePrCount": 7,
       "duplicatePrCount": 0,
       "dependabotRedCount": 0,
-      "kitVersion": "0.63.0",
+      "kitVersion": "0.65.0",
       "kitPin": {
         "ref": "main"
       },
@@ -185,18 +185,6 @@
       "mainRed": false,
       "openPrs": [
         {
-          "number": 310,
-          "title": "ship-bot: read git path lists with -z",
-          "ageDays": 0,
-          "labels": [],
-          "draft": true,
-          "review": "clean",
-          "headSha": "997927283d3faf43099d88f4f09379845777b5a9",
-          "ci": "green",
-          "next": "Desk: R2, Fable read of the whole diff, then label",
-          "author": "gorfednet"
-        },
-        {
           "number": 306,
           "title": ".github: B1: Design package distributed by the kit refresh, seeded from BinderCurve tokens.css",
           "ageDays": 0,
@@ -265,9 +253,9 @@
           "labels": [],
           "draft": false,
           "review": "findings",
-          "headSha": "ecf9825109dfec5de0f4da06e63dfeaaf967549e",
+          "headSha": "5889619cd4757d933ee92c426d98cf8fe548aa4d",
           "ci": "green",
-          "next": "Claude reviewer on this head; triage findings",
+          "next": "Desk: ship, cut or stop at round 4 (cap). CI green on `5889619`. One Medium left, valid: a commit authored by `claude[bot]` with no trailer isn't added to `open.unclassifiedCoAuthors` (`scripts/lib/aiCredits.mjs:98`; fix is one line, `unclassified.push(authorKind.name)` when `authorKind.kind === 'unclassified'`, plus the test at `test/aiCredits.test.mjs` counting 2). Recommend: one more push and a round 5 review, since site ledgers depend on this tool and the gap can print an L0 tag",
           "author": "gorfednet"
         }
       ],
@@ -641,10 +629,6 @@
         {
           "number": 267,
           "idleDays": 7
-        },
-        {
-          "number": 266,
-          "idleDays": 9
         }
       ],
       "duplicatePrs": [],
@@ -661,7 +645,7 @@
       "slug": "gorfednet/MoonMan",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 16,
+      "openPrCount": 14,
       "lapsedBacklogCount": 3,
       "noPrCount": 47,
       "idlePrCount": 7,
@@ -751,10 +735,10 @@
       "slug": "gorfednet/heuristics.4thcltr.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 9,
+      "openPrCount": 8,
       "lapsedBacklogCount": 36,
       "noPrCount": 8,
-      "idlePrCount": 6,
+      "idlePrCount": 5,
       "duplicatePrCount": 0,
       "dependabotRedCount": 0,
       "kitVersion": "0.65.0",
@@ -770,7 +754,7 @@
       "openPrCount": 3,
       "lapsedBacklogCount": 1,
       "noPrCount": 5,
-      "idlePrCount": 3,
+      "idlePrCount": 2,
       "duplicatePrCount": 0,
       "dependabotRedCount": 0,
       "kitVersion": "0.65.0",
@@ -840,7 +824,7 @@
         },
         {
           "number": 3,
-          "idleDays": 32
+          "idleDays": 33
         }
       ],
       "duplicatePrs": [],
@@ -911,7 +895,7 @@
       "slug": "gorfednet/ops",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 29,
+      "openPrCount": 28,
       "lapsedBacklogCount": 0,
       "noPrCount": 15,
       "idlePrCount": 22,
@@ -978,11 +962,11 @@
     }
   },
   "inventory": {
-    "measuredAt": "2026-11-28T04:32:17.671Z",
+    "measuredAt": "2026-11-28T06:37:12.965Z",
     "counts": {
       "pr": {
-        "total": 165,
-        "orphans": 94
+        "total": 159,
+        "orphans": 89
       },
       "session": null,
       "worktree": null,
@@ -993,14 +977,6 @@
       }
     },
     "orphans": [
-      {
-        "kind": "pr",
-        "repo": "gorfednet/.github",
-        "ref": "#310",
-        "label": "ship-bot: read git path lists with -z",
-        "private": false,
-        "lapsed": false
-      },
       {
         "kind": "pr",
         "repo": "gorfednet/.github",
@@ -1114,13 +1090,13 @@
         "lapsed": true
       }
     ],
-    "hiddenPrivate": 83,
+    "hiddenPrivate": 79,
     "privateReposNotItemised": 18,
     "planRead": true
   },
   "dotgithub": {
-    "measuredAt": "2026-11-28T04:33:20.051Z",
-    "branches": 46,
+    "measuredAt": "2026-11-28T06:38:10.888Z",
+    "branches": 45,
     "merged": 3,
     "exposedFiles": 54,
     "rulesNotChecked": [],
