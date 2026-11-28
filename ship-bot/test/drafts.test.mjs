@@ -31,6 +31,80 @@ describe("which drafts are the bot's", () => {
     }
     for (const line of ['merge', 'Merge this', 'open the PR', 'Open the PR and merge it', '**merge**', 'Merge the PR']) assert.equal(isMergeInstruction(line), true, line)
   })
+  it('"merge once gates are clean" names only this pull request\'s own gates, so it is a merge instruction (row 1.134)', () => {
+    const accepted = [
+      'merge once gates are clean',
+      'Merge once gates are clean.',
+      '**merge** once all gates pass',
+      'merge once all gates are green',
+      'merge once the gates are clean',
+      'merge once checks and review are clean',
+      'merge once checks and the review are both clean',
+      'merge once checks pass',
+      'merge once CI is green',
+      'merge once CI and review are clean',
+      'merge once gates have passed',
+      'Merge the PR once gates are clean',
+      '**Merge once gates are clean**',
+      '`merge once gates are clean`',
+    ]
+    for (const line of accepted) assert.equal(isMergeInstruction(line), true, line)
+    assert.match(draftClaim({ body: '## Next\n- [ ] merge once gates are clean\n- [ ] ship-bot installs itself from main\n' }).claim, /## Next says "merge once gates are clean"/)
+    // Near misses: `once` still means later unless what follows is exactly this pull request's gates, and nothing else is waited on.
+    const refused = [
+      'merge once the owner answers',
+      'merge once the owner says gates are clean',
+      'merge once the pool is back',
+      'merge once 4thcltr.com merges',
+      'merge once PR 118 lands',
+      'merge once main is fixed',
+      'merge once main is green',
+      'merge once checks pass on main',
+      'merge once checks are green on 4thcltr.com',
+      'merge once the gates on PR 118 are clean',
+      'merge once PR 118 gates are clean',
+      "merge once main's checks pass",
+      'merge once gates are clean and the owner answers',
+      'merge once gates are clean and PR 118 lands',
+      'merge once gates are clean, after the owner answers',
+      'merge once gates are clean, but not before Friday',
+      'merge once gates are clean, once PR 118 lands',
+      // Nothing may follow the clause but a full stop or closing markdown: punctuation can open a second condition under the same `once`.
+      'merge once gates are clean, and PR 118 has merged',
+      'merge once checks pass, the review is clean, and PR 118 has merged',
+      'merge once gates are clean (and PR 118 has merged)',
+      'merge once gates are clean: 118 must land first',
+      'merge once gates are clean (118 first)',
+      'merge once gates are clean, and the pool is back',
+      'merge once gates are clean, and the store review is approved',
+      'merge once gates are clean, on Friday',
+      'merge once gates are clean, Desk decides',
+      'merge once gates are clean,and 118 lands',
+      'merge once gates are clean .and 118 lands',
+      'merge once gates are clean, then close the row',
+      'merge once gates are clean (row 1.134)',
+      'merge once checks pass on PR 118',
+      'merge once gates are clean today',
+      // The subject is the gates, never the review alone or anything else.
+      'merge once review is clean',
+      'merge once the review is clean',
+      'merge once deploys are green',
+      'merge once gates are cleaner',
+      'merge once gates are clean-ish',
+      'merge once checks are rerun',
+      'merge once the review is in',
+      'merge once review reads clean',
+      'merge once',
+      'merge later',
+      'merge later, once gates are clean',
+      'do not merge once gates are clean',
+      'fix the lint, then merge once gates are clean',
+    ]
+    for (const line of refused) assert.equal(isMergeInstruction(line), false, line)
+    assert.deepEqual(draftClaim({ body: '## Next\n- [ ] merge once the pool is back\n' }), {})
+    assert.deepEqual(draftClaim({ body: '## Next\n- [ ] merge once gates are clean, and PR 118 has merged\n' }), {})
+    assert.match(draftClaim({ body: '## Next\n- [ ] merge once gates are clean\n- [ ] wait for PR 118\n' }).refused, /wait for PR 118/)
+  })
   it('claims only when the first unchecked line is a merge instruction, and refuses when any unchecked line hands the decision to a person', () => {
     assert.match(draftClaim({ body: NEXT_MERGE }).claim, /## Next says "merge"/)
     assert.match(draftClaim({ body: '## Next\n- [ ] Open the PR and merge it\n' }).claim, /## Next says/)

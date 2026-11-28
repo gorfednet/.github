@@ -13,11 +13,32 @@ import { HOLD_LABEL } from './config.mjs'
 
 /** The line starts with the instruction: "fix the merge conflict" and "owner picks the merge strategy" name merge and are not one. */
 const MERGE_INSTRUCTION = /^\W*(merge|open the pr)\b/i
-/** "Merge later" or "merge once the owner answers" starts with merge and is not an instruction to. */
+/** "Merge later" or "merge once the owner answers" starts with merge and is not an instruction to. One `once` clause is set aside first: ONCE_OWN_GATES_CLEAN below. */
 const NOT_YET = /\b(not|no|don[’']?t|dont|never|wait|until|unless|after|before|hold|once|when|as soon as|if|yet|later)\b/i
 /** "Merge main into the branch" merges something into the branch, not the pull request. */
 const MERGE_OF_SOMETHING = /\b(main|master|origin|upstream|into|from|branch|rebase|conflicts?)\b/i
-export const isMergeInstruction = (line) => MERGE_INSTRUCTION.test(line) && !NOT_YET.test(line) && !MERGE_OF_SOMETHING.test(line)
+/**
+ * "Merge once gates are clean" waits on nothing but this pull request's own
+ * gates, which the bot reads before it marks a draft ready anyway, so that one
+ * clause is no "later" (plan row 1.134: 24 drafts with this wording sat for 90
+ * minutes on 28 November 2026). The clause is narrow on purpose. `once` must
+ * be followed at once by the gates themselves (gates, checks or CI, with
+ * "and review" if wanted), then by clean, green or pass, and the clause must
+ * end the line: only a full stop or closing markdown may follow. A comma, a
+ * colon or a bracket after it can open a second condition under the same
+ * `once` ("once gates are clean, and PR 118 has merged"), so none of them
+ * ends the clause. "Once the owner says gates are clean", "once PR 118 gates
+ * are clean" and "once checks pass on PR 118" don't match either, so their
+ * `once` still means later. Only the clause is set aside; what comes before
+ * it is read by NOT_YET and MERGE_OF_SOMETHING as before.
+ */
+const ONCE_OWN_GATES_CLEAN =
+  /\bonce\s+(?:all\s+)?(?:the\s+)?(?:gates|checks|ci)(?:\s+and\s+(?:the\s+)?review)?\s+(?:(?:are|is)\s+(?:all\s+|both\s+)?(?:clean|green)|pass(?:es)?|ha(?:ve|s)\s+passed)(?=[\s.*_`]*$)/i
+export const isMergeInstruction = (line) => {
+  if (!MERGE_INSTRUCTION.test(line)) return false
+  const rest = line.replace(ONCE_OWN_GATES_CLEAN, ' ')
+  return !NOT_YET.test(rest) && !MERGE_OF_SOMETHING.test(rest)
+}
 
 /**
  * Cheap filters on a draft, mirroring gates.mjs ineligibleReason without the
