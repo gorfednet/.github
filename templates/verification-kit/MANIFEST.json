@@ -1,14 +1,14 @@
 {
-  "version": "0.70.0",
+  "version": "0.71.0",
   "files": {
-    "README.md": "034a31841abc2f926d77dc43ae4b59588169e7ddf82e2a0a70b2645d1a09a81d",
+    "README.md": "a545acb7af3b0d975180a5a59fc418932503733244f76897a9d71c8243b8c7e1",
     "bin/assert-checks-started.mjs": "9b32370e3b8ab4dae94c9b54abd46c6d364f81fb00b6f81ccbaf0e4d21b077f0",
     "bin/assert-tests-executed.mjs": "0c51a19cb8fa467bd8bf98fbbabb1e349cbe28ce125095fe302039e47f8db6fd",
     "bin/check-backlog.mjs": "573acfa446504f8b086451dec165b71f1a53fe5df0c936f5dc820f4eba436fab",
     "bin/check-ci-headroom.mjs": "3897b4e27aad99ba537aeafaaef3dec2021eda0fb80b367c49612c39df7a5833",
     "bin/check-error-pages.mjs": "0d0a169f775b4c9cdec1895e115134fb4fce388ca4dcb01a7ebd86ab3e41b6d5",
     "bin/check-html.mjs": "fae4d89de186f9171a699e476cad89cd58c2737ac410d268b56d820242a3ba0d",
-    "bin/check-kit-drift.mjs": "1eca9c329d796bea247b37c5577e69ea2e3c089451700e2ce5ba3345b0f96c3e",
+    "bin/check-kit-drift.mjs": "7985c1c665578afd5de501893cfe1f88b14f9644776fa62bfb9be3b5a4e853ff",
     "bin/check-links.mjs": "1ee7dd82bcc13724743ccf0aebfeabf04470e146af8590464e548908ac556e45",
     "bin/check-live-og-image.mjs": "779a4068957968a9a1b844ee9ec36216eda7af5fba967a7a188d16e32d7d49ff",
     "bin/check-machine-paths.mjs": "bf644aa8a33d16542388cfdea425d2cbcce295a4f54bdd5f1e3ce4e7cecdbc35",
@@ -23,7 +23,7 @@
     "bin/refresh-kit.mjs": "9c453700f81c2663cd88ec3cfb614c99a3749b1bd0186dcc8ad84fdcb48b6c91",
     "bin/report-outbound-links.mjs": "bb8aa516f0b66674bec18b2c9cbf8f989ef4d4d7be2bab0987d0404dd48cea26",
     "bin/sync-report-issues.mjs": "7ff83651ee590035d777e752eeaa74179bfc6fa2e10c2a75ccddc5b690f6b96c",
-    "bin/write-manifest.mjs": "69d22a6aeae0edf098c9c353b90f1514c809081ac69a9147a96f0d45e2c43f02",
+    "bin/write-manifest.mjs": "b4a903f61715f7d49f6afb94a0e49f2b5e9df23c0029d4d7f748f8f3bd16e839",
     "lib/backlogSchema.mjs": "425e58c9d3f78852f86e8f110135b4db6d8bd93deeb1fb18cfb2567f31b626ec",
     "lib/cliArgs.mjs": "e0cac2ec05d80a3a914d6014a20bf8f9afc2cd8811dc317b86d809d160b81ecc",
     "lib/githubSlug.mjs": "5d4edfcae40b84e904601e099c246c2afd02a22c672891f08e53e0bc7fcfa5f6",
@@ -39,7 +39,7 @@
     "test/html.test.mjs": "3224411ed14581c9c5a8d3bfc69086393f48d5ba847046cdad26d9a6a0e55375",
     "test/imageMeta.test.mjs": "0969d4b5aff5efa6e7ea5ab918d5a58328d0ed13166fb1d488144b87939de40c",
     "test/isMain.test.mjs": "b5d00295d10a6cd30c4401ace15a13bf118f9f7a65623354c13c4ce3ed5f7989",
-    "test/kitDrift.test.mjs": "e04e325c2363e341a53c5c3f91b11f73dcc0a9025c24e02103d28cc46f61f8ee",
+    "test/kitDrift.test.mjs": "0a73cfbed567dd780b9783eda95536f4ed211da2e7166145b2999ac7d8df93f4",
     "test/links.test.mjs": "f625af0c34c3710625cd9d989a270e4e73e34d500bcdd9c8cb37d6ff5f5b85d7",
     "test/liveOgImage.test.mjs": "995cd5d86a8fd1cc1d857ad925d3d3ab4073fa9fddff675733f4f06d6ecb9ed6",
     "test/machinePaths.test.mjs": "6c5b1ca73f9eef17064f569bf36dc9dd4c595ce0a15254cf18d560e4b3fe93cf",
@@ -56,6 +56,7 @@
   },
   "companions": {
     "docs/verification-rules.md": "71ad08bebe3f45094c18864b2e4b49314aafe754d8c17fc5cb481d0c0e3e1cca",
-    "docs/content-guidelines.md": "3e3ee61cb6b72a4ab176d64897908f91a5f6700d849a9ea26f5f710474ee2c70"
+    "docs/content-guidelines.md": "3e3ee61cb6b72a4ab176d64897908f91a5f6700d849a9ea26f5f710474ee2c70",
+    "design/tokens.css": "66f216a3e0d1cc32e5dd1b62a852b16844ec10de0768b5a1c0e9df1c54ae1ba3"
   }
 }

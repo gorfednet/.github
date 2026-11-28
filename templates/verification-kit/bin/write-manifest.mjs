@@ -47,7 +47,8 @@ const NOT_TRACKED_DIRS = new Set(['templates'])
  * collided with — while its drift check printed a tick.
  */
 // docs/content-guidelines.md (v0.48.0): the house voice, enforced by check-voice.
-const COMPANIONS = ['docs/verification-rules.md', 'docs/content-guidelines.md']
+// design/tokens.css (v0.71.0): shared design tokens, seeded from BinderCurve (backlog assess-1112-b1).
+const COMPANIONS = ['docs/verification-rules.md', 'docs/content-guidelines.md', 'design/tokens.css']
 
 /**
  * The repository root, for the two layouts this file ever runs in.

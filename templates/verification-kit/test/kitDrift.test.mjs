@@ -598,6 +598,8 @@ describe('write-manifest --check', () => {
     mkdirSync(join(root, 'docs'), { recursive: true })
     writeFileSync(join(root, 'docs', 'verification-rules.md'), '# rules\n', 'utf8')
     writeFileSync(join(root, 'docs', 'content-guidelines.md'), '# guidelines\n', 'utf8')
+    mkdirSync(join(root, 'design'), { recursive: true })
+    writeFileSync(join(root, 'design', 'tokens.css'), ':root {}\n', 'utf8')
 
     const result = spawnSync('node', [join(kit, 'bin', 'write-manifest.mjs'), '--check'], {
       encoding: 'utf8',
@@ -638,6 +640,8 @@ describe('write-manifest --check', () => {
       mkdirSync(join(dir, 'docs'), { recursive: true })
       writeFileSync(join(dir, 'docs/verification-rules.md'), companion, 'utf8')
       writeFileSync(join(dir, 'docs/content-guidelines.md'), '# Content guidelines\n', 'utf8')
+      mkdirSync(join(dir, 'design'), { recursive: true })
+      writeFileSync(join(dir, 'design/tokens.css'), ':root { --x: 1; }\n', 'utf8')
     }
     return join(kit, 'bin', 'write-manifest.mjs')
   }
@@ -656,6 +660,7 @@ describe('write-manifest --check', () => {
     assert.deepEqual(Object.keys(manifest.companions ?? {}), [
       'docs/verification-rules.md',
       'docs/content-guidelines.md',
+      'design/tokens.css',
     ])
   })
 

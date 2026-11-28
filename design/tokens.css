@@ -1,0 +1,582 @@
+/*
+ * Shared design tokens for every gorfednet site (a verification-kit companion: refresh-kit.mjs writes this file).
+ * Seeded 2026-11-27 from BinderCurve src/styles/tokens.css. Edit it upstream in gorfednet/.github,
+ * never in a consuming repository: check-kit-drift fails a local edit.
+ */
+/**
+ * Material Design 3-inspired dark theme (adapted; not Google's official implementation).
+ * "Obsidian Arcana" — ink-violet surfaces framing logo violet/cyan; teal primary bridges OG art.
+ * See: https://m3.material.io/
+ *
+ * Theme strategy (see src/lib/ui/themeContract.ts):
+ *   - Default `:root` ships the dark scheme (only scheme exposed in UI today).
+ *   - `:root[data-theme="light"]` re-binds the palette for future light mode.
+ *   - Component CSS reads from var(--…) only; raw hex/rgba is forbidden outside this file.
+ *
+ * Sweep recipes (used by component CSS):
+ *   rgb(var(--bc-shadow-rgb) / X)        → drop-shadows that stay dark on any scheme
+ *   rgb(var(--bc-on-surface-rgb) / X)    → hairlines/borders that flip per scheme
+ *   var(--bc-mask-fill)                  → opaque stops in gradient mask-image
+ *   var(--bc-mtg-color-…)                → MTG color-identity (theme-invariant brand)
+ *   var(--bc-color-danger|warning-fill|error-fill|price-gain|flash-red) → status fills
+ */
+:root {
+  color-scheme: dark;
+  /* Brand mark anchors (from favicon.svg / logo.png — do not drift) */
+  --bc-color-accent: #863bff;
+  --bc-color-accent-glow: #7e14ff;
+  --bc-color-accent-cyan: #47bfff;
+  --bc-color-accent-frost: #ede6ff;
+  --bc-color-accent-muted: #c8b5ff;
+  --bc-color-warning: #f5d08a;
+  --bc-accent-violet: var(--bc-color-accent);
+  /* Ink-violet neutrals — gallery wall for the mark */
+  --bc-color-on-surface-subtle: #8b8799;
+  /*
+   * Brand plate: the dark ground the partner logos in public/partners/ are drawn for (white and
+   * cream wordmarks, a black Mana Pool cube). Theme-invariant on purpose and never re-bound in
+   * the light block, so the artwork keeps its contrast in both themes; a light chip behind them
+   * measured 1.0:1 to 1.4:1. Pinned by AffiliatePartnersStrip.contrast.test.tsx.
+   */
+  --bc-brand-plate: #15141b;
+  --bc-brand-plate-hover: #1f1d28;
+  --bc-brand-plate-border: rgb(255 255 255 / 0.16);
+  --bc-brand-plate-border-hover: rgb(64 230 210 / 0.55);
+  /* Disabled UI — foreground/background pairs ≥ 4.5:1 (WCAG AA) on dark theme */
+  --bc-color-on-disabled: var(--md-sys-color-on-surface-variant);
+  --bc-color-disabled-surface: var(--md-sys-color-surface-container);
+  --bc-color-disabled-border: color-mix(in oklab, var(--md-sys-color-outline), transparent 20%);
+  --bc-color-disabled-primary-surface: color-mix(
+    in oklab,
+    var(--md-sys-color-primary) 18%,
+    var(--md-sys-color-surface-container)
+  );
+  --bc-color-disabled-accent-surface: color-mix(
+    in oklab,
+    var(--bc-color-accent) 35%,
+    var(--md-sys-color-surface-container)
+  );
+  --bc-stack-gap: 1.25rem;
+  --bc-results-module-gap: 1rem;
+  --bc-sidebar-stack-gap: 0.5rem;
+
+  /* Results-area shared scale — used by deck table/gallery, buy table, shopping list, insights, swap modal. */
+  --bc-thumb-sm: 3.5rem;
+  --bc-thumb-md: 4.25rem;
+  --bc-thumb-lg: 11rem;
+  --bc-row-pad-y: 0.375rem;
+  --bc-row-pad-x: 0.5rem;
+  --bc-row-pad-y-compact: 0.25rem;
+  --bc-row-pad-x-compact: 0.4375rem;
+  --bc-tile-pad: 0.625rem;
+  --bc-tile-radius: 0.75rem;
+  --bc-tile-radius-lg: 1rem;
+
+  /*
+   * Radius scale (v73 tokens pass, architecture audit "Tokens and magic
+   * numbers"): 216 border-radius declarations measured, 26 distinct
+   * literals, only 4 using a token (--bc-tile-radius). These five cover the
+   * literal clusters that recur across unrelated components (0.25rem x14,
+   * 0.5rem x25, 0.875rem x15, 999px/9999px x57 combined — two spellings of
+   * the same "fully round" value). --bc-tile-radius (0.75rem) and
+   * --bc-tile-radius-lg (1rem) already covered their own clusters and are
+   * unchanged. Literal 0 is intentionally not replaced: several sites use it
+   * inside a multi-value shorthand (`0 0 4px 4px`) where a var() would not
+   * compose the same way; --bc-radius-none documents the value for callers
+   * that do want it standalone.
+   */
+  --bc-radius-none: 0;
+  --bc-radius-sm: 0.25rem;
+  --bc-radius-md: 0.5rem;
+  --bc-radius-lg: 0.875rem;
+  /* Bottom sheets and other large surfaces that meet the viewport edge. */
+  --bc-radius-xl: 1rem;
+  --bc-radius-pill: 9999px;
+  --bc-results-gap: 0.5rem;
+  --bc-results-gap-md: 0.625rem;
+  --bc-results-gap-lg: 1rem;
+  /* Recommended cards / commerce tile grids (all TCGs). */
+  --bc-edhrec-card-tiles-track-min: 10rem;
+  --bc-edhrec-card-tiles-column-gap: 1.25rem;
+  --bc-edhrec-card-tiles-row-gap: 1.25rem;
+  --bc-edhrec-card-tiles-lead-gap: 1.25rem;
+  --bc-card-commerce-tile-gap: 0.375rem;
+  --bc-results-tint-row-soft:
+    color-mix(in oklab, var(--md-sys-color-primary) 4%, transparent);
+  --bc-results-tint-section:
+    color-mix(in oklab, var(--md-sys-color-primary) 8%, transparent);
+  --bc-results-tint-leader-cmdr:
+    color-mix(in oklab, var(--md-sys-color-primary) 12%, transparent);
+  --bc-results-tint-leader-partner:
+    color-mix(in oklab, var(--bc-color-accent) 9%, transparent);
+  --bc-results-tint-row-hover:
+    color-mix(in oklab, white 4%, transparent);
+  --bc-results-divider: color-mix(in oklab, white 6%, transparent);
+  --bc-results-divider-strong: color-mix(in oklab, white 10%, transparent);
+
+  /* Help panel width on md+ (mobile uses full width). */
+  --bc-help-rail-width: min(42rem, 92vw);
+  --bc-help-rail-collapsed-width: 3.25rem;
+  --bc-edge-tab-width: 2.75rem;
+  --bc-edge-tab-notch-width: 1.125rem;
+  --bc-activity-rail-width: 3.5rem;
+  /*
+   * Shared L/R spine geometry. The hit box is a square that spans the full rail
+   * column, so its side is the column width — never a smaller fixed size, which
+   * left a visible margin on each flank. `--bc-edge-rail-row-block` is the row
+   * pitch and MUST stay larger than the box, or consecutive hover/selected boxes
+   * overlap instead of reading as one square each.
+   */
+  --bc-edge-rail-glyph: 1.5rem;
+  --bc-edge-rail-hover-size: var(--bc-activity-rail-width);
+  --bc-edge-rail-hover-gap: 0.5rem;
+  --bc-edge-rail-row-block: calc(var(--bc-edge-rail-hover-size) + var(--bc-edge-rail-hover-gap));
+  --bc-site-edge-chrome-block: var(--bc-activity-rail-width);
+  --bc-site-legal-footer-block: var(--bc-site-edge-chrome-block);
+  --bc-edge-tab-chrome-width: var(--bc-edge-tab-width);
+  --bc-edge-recall-bar-width: var(--bc-activity-rail-width);
+  --bc-edge-pane-content-width: calc(var(--bc-sidebar-column-width) - var(--bc-edge-tab-chrome-width));
+  --bc-edge-pane-left-width: calc(var(--bc-activity-rail-width) + var(--bc-edge-pane-content-width));
+  --bc-edge-pane-right-width: var(--bc-help-rail-width);
+  --bc-edge-inset-left: var(--bc-edge-recall-bar-width);
+  --bc-edge-inset-right: var(--bc-edge-recall-bar-width);
+  /* App legal footer: © shares the content column's left edge (activity-rail seam). */
+  --bc-footer-copyright-inset-left: var(--bc-activity-rail-width);
+  --bc-edge-pane-left-height: calc(100dvh - env(safe-area-inset-bottom, 0px));
+  --bc-edge-pane-right-height: calc(
+    100dvh - var(--bc-site-header-offset) - env(safe-area-inset-bottom, 0px)
+  );
+  /* Square brand mark in site header; bar height fixed on narrow viewports, mark inset. */
+  --bc-site-header-brand-row-block: clamp(2.25rem, 8vw, 2.625rem);
+  /*
+   * Clear space between a header control's painted edge and the bar around it.
+   * Wide viewports get it for free: the bar is --bc-site-edge-chrome-block (3.5rem)
+   * while its tallest control is --bc-touch-target-min (2.75rem). Narrow viewports
+   * have no such slack, so the outlined TCG trigger paints one inset shorter than
+   * the touch target it keeps.
+   */
+  --bc-site-header-control-inset: 0.25rem;
+  --bc-site-header-block: var(--bc-site-header-brand-row-block);
+  --bc-site-header-wordmark-height: var(--bc-site-header-brand-row-block);
+  --bc-site-header-offset: calc(env(safe-area-inset-top, 0px) + var(--bc-site-header-block));
+  --bc-site-edge-top-inset: var(--bc-site-header-offset);
+  --bc-site-edge-bottom-inset: 0px;
+  --bc-site-legal-footer-reserve: 0px;
+  --bc-analytics-consent-reserve: 0px;
+  --bc-workbench-tab-chrome: 4.5rem;
+  --bc-workbench-builder-scroll-inset: 2rem;
+
+  /* Builder rail max width on wide viewports (tabbed + edge). Step 3 commander row needs card + meta + gutters. */
+  --bc-sidebar-column-width: 26rem;
+  /* Edge builder pane + matching site header brand inset (see .bc-site-header padding-inline-start). */
+  --bc-builder-edge-gutter-inline: 1rem;
+  /*
+   * Phone Brew | Results tab switch: a 44px tab inside the pill's 4px inset and
+   * 1px border, with breathing room. Also the offset Results sticky chrome and
+   * the Brew frame height subtract (layout.css, workbench-adaptive-compact).
+   */
+  --bc-brew-results-tabs-block: 4rem;
+  --bc-panel-stack-gap: 0.75rem;
+  --bc-inset-stack-gap: 0.625rem;
+  --bc-helper-size: 0.6875rem;
+  --bc-helper-leading: 1.35;
+  /* Minimum interactive target (44px): mobile HIG + WCAG 2.5.5 Level AAA. */
+  --bc-touch-target-min: 2.75rem;
+  --md-sys-color-primary: #40e6d2;
+  --bc-color-primary-glow: #5efce8;
+  --md-sys-color-on-primary: #002b24;
+  --md-sys-color-primary-container: #0f2a30;
+  --md-sys-color-surface: #0c0b10;
+  --md-sys-color-surface-container-low: #13121a;
+  --md-sys-color-surface-container: #191820;
+  --md-sys-color-surface-container-high: #201f2a;
+  --md-sys-color-surface-container-highest: #282734;
+  --md-sys-color-on-surface: #ede8f8;
+  --md-sys-color-on-surface-variant: #b8b3c8;
+  --md-sys-color-outline: #3a3848;
+  --md-sys-color-outline-variant: #272530;
+  /*
+   * Interactive-control boundary (WCAG 1.4.11 Non-text Contrast, 3:1 min).
+   * --md-sys-color-outline (1.72:1) and -variant (1.30:1) stay decorative-only:
+   * bc-result-module seams, table dividers, panel keylines — the dark
+   * aesthetic there is intentional and exempt (not a UI-component boundary).
+   * This token is for the boundary of an operable control: text inputs,
+   * selects, outlined buttons, switch/checkbox/radio outlines, the price-range
+   * slider track, search fields. #75718a = 4.19:1 on #0c0b10.
+   */
+  --md-sys-color-outline-interactive: #75718a;
+  --md-sys-color-error: #ffb4ab;
+  --md-sys-color-error-container: #3f1d22;
+  --md-sys-color-on-error-container: #ffdad6;
+  --md-sys-color-warning: #f5a623;
+  --md-sys-shadow: rgba(0, 0, 0, 0.38);
+  --md-sys-elevation-1:
+    0 1px 2px rgb(0 0 0 / 0.32), 0 1px 3px 1px rgb(0 0 0 / 0.22);
+  --md-sys-elevation-2:
+    0 1px 2px rgb(0 0 0 / 0.42), 0 2px 6px 2px rgb(0 0 0 / 0.26);
+  /*
+   * Shadow scale (v73 tokens pass, architecture audit "Tokens and magic
+   * numbers"): 95 box-shadow declarations measured, 54 distinct literals, 25
+   * already using --md-sys-elevation-1/2. Those two cover button/card-level
+   * lift; --md-sys-elevation-3 names the large floating-panel shadow used by
+   * popovers, price panels, and the card preview panel (8 identical sites).
+   * --bc-shadow-raised and --bc-shadow-hairline name the next two literal
+   * clusters (2 sites each) rather than leaving them as unnamed duplicates.
+   */
+  --md-sys-elevation-3: 0 20px 48px color-mix(in oklab, black 55%, transparent);
+  --bc-shadow-raised: 0 8px 24px color-mix(in oklab, black 45%, transparent);
+  /* A sheet rising from the bottom casts upward. */
+  --bc-shadow-sheet: 0 -8px 32px color-mix(in oklab, black 45%, transparent);
+  --bc-shadow-hairline: 0 0 0 1px color-mix(in oklab, black 35%, transparent);
+  /* The next step's ring (a segment the player should go to next): primary, so it follows the theme. */
+  --bc-shadow-next-step:
+    0 0 0 1px color-mix(in oklab, var(--md-sys-color-primary), transparent 55%),
+    0 0 10px color-mix(in oklab, var(--md-sys-color-primary), transparent 85%);
+
+  /*
+   * z-index scale (v73 tokens pass, architecture audit "Tokens and magic
+   * numbers"): 116 z-index declarations measured across src/styles/*.css and
+   * src/index.css, 41 distinct literals, only 1 using a token — "an
+   * unmanaged stacking ledger". These ten name the values already reused
+   * across two or more unrelated selectors (the real duplication); a single
+   * component's own local `z-index: 1/2/3` to lift a child above its sibling
+   * is not part of this shared scale and stays a literal. Values are named
+   * for the role at that layer, unchanged from what shipped, so tokenizing
+   * them cannot reorder the stack.
+   */
+  --bc-z-raised: 30;
+  --bc-z-sticky-band: 32;
+  --bc-z-nav: 35;
+  --bc-z-footer: 38;
+  --bc-z-table-sticky: 40;
+  --bc-z-backdrop: 43;
+  --bc-z-edge-stack: 44;
+  --bc-z-rail: 45;
+  --bc-z-toast: 55;
+  --bc-z-popover: 200;
+
+  /*
+   * Action hierarchy — teal primary is the only filled brand CTA.
+   * Violet (--bc-color-accent*) tints secondary buttons, fields, and icons (mana-curve spells).
+   */
+  --bc-action-primary: var(--md-sys-color-primary);
+  --bc-action-on-primary: var(--md-sys-color-on-primary);
+  --bc-action-primary-glow: color-mix(in oklab, var(--bc-color-primary-glow) 48%, transparent);
+  --bc-action-primary-glow-hover: color-mix(in oklab, var(--bc-color-primary-glow) 68%, transparent);
+  --bc-action-tonal-surface: color-mix(
+    in oklab,
+    var(--bc-color-accent) 32%,
+    var(--md-sys-color-surface-container-high)
+  );
+  --bc-action-tonal-on: color-mix(
+    in oklab,
+    var(--bc-color-accent-frost),
+    var(--bc-color-accent-muted) 22%
+  );
+  --bc-action-tonal-border: color-mix(in oklab, var(--bc-color-accent) 62%, transparent);
+  --bc-action-tonal-glow: color-mix(in oklab, var(--bc-color-accent-glow) 40%, transparent);
+  --bc-action-tonal-glow-hover: color-mix(in oklab, var(--bc-color-accent-glow) 58%, transparent);
+  /*
+   * Tonal hover, shared by .md-tonal-button and any tonal-tinted control that is not a button
+   * (the "Partner with us" chip). Violet only: a hover that blends teal into these is a colour
+   * in neither family (guard: scanOffPaletteStateMixes in designSystemContract.ts).
+   */
+  --bc-action-tonal-border-hover: color-mix(in oklab, var(--bc-color-accent) 78%, transparent);
+  --bc-action-tonal-surface-hover: color-mix(
+    in oklab,
+    var(--bc-color-accent) 40%,
+    var(--md-sys-color-surface-container-high)
+  );
+  --bc-action-tonal-shadow-hover:
+    0 0 0 1px color-mix(in oklab, var(--bc-color-accent) 32%, transparent),
+    0 0 22px -3px var(--bc-action-tonal-glow-hover);
+  --bc-action-outlined-border: color-mix(
+    in oklab,
+    var(--bc-color-accent) 30%,
+    var(--md-sys-color-outline-interactive)
+  );
+  --bc-action-outlined-hover: color-mix(
+    in oklab,
+    var(--bc-color-accent) 14%,
+    var(--md-sys-color-surface-container)
+  );
+  --bc-field-focus-ring: color-mix(in oklab, var(--bc-color-accent), white 22%);
+  --bc-icon-interactive: color-mix(in oklab, var(--bc-color-accent-muted), white 6%);
+  --bc-icon-interactive-hover: color-mix(in oklab, var(--bc-color-accent), white 20%);
+  --bc-icon-utility: var(--bc-color-on-surface-subtle);
+  --bc-icon-utility-hover: color-mix(
+    in oklab,
+    var(--bc-color-accent-muted),
+    var(--md-sys-color-on-surface-variant) 35%
+  );
+
+  /* Motion tokens — Phase 2 animation pass. Use these for any transition or keyframe
+   * timing so a single reduced-motion override collapses everything to instant.
+   * --bc-motion-snappy and --bc-motion-moderate (v73 tokens pass, architecture
+   * audit "Tokens and magic numbers": 73 transition declarations measured, 34
+   * distinct literals, 18 already tokenized) name the two literal durations
+   * used by hand most often — 0.15s (49 sites) and 0.2s (14 sites) — neither of
+   * which matched an existing token, so they were not folded into a nearby one
+   * (that would have changed the actual timing, however slightly). */
+  --bc-motion-fast: 120ms;
+  --bc-motion-snappy: 150ms;
+  --bc-motion-quick: 180ms;
+  --bc-motion-moderate: 200ms;
+  --bc-motion-base: 240ms;
+  --bc-motion-slow: 360ms;
+  /* Loading-state loops (v83): one cycle of the skeleton shimmer, of the route-change
+   * progress sweep, and of the indeterminate-action spinner. Keyframe durations read these
+   * so the reduced-motion rules sit beside one name each. */
+  --bc-motion-shimmer: 1350ms;
+  --bc-motion-sweep: 900ms;
+  --bc-motion-spin: 800ms;
+  --bc-ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --bc-ease-emphasized: cubic-bezier(0.2, 0, 0, 1.15);
+  --bc-ease-exit: cubic-bezier(0.4, 0, 1, 1);
+
+  /* RGB triples for alpha-tinted recipes — let component CSS apply alpha via
+   * `rgb(var(--bc-…-rgb) / X)`. Light mode flips the on-surface tint to dark. */
+  --bc-shadow-rgb: 0 0 0;
+  --bc-on-surface-rgb: 255 255 255;
+  --bc-mask-fill: black;
+
+  /* Status fills (theme-aware via override block below) */
+  --bc-color-danger: #ef4444;
+  --bc-color-warning-fill: #fbbf24;
+  --bc-color-error-fill: #f87171;
+  --bc-color-price-gain: #4ade80;
+  --bc-color-flash-red: #d3202a;
+
+  /* Card price panel — per-source axis marker dots (theme-invariant chart accents). */
+  --bc-price-source-tcg-market: #f59e0b;
+  --bc-price-source-tcg-low: #34d399;
+  --bc-price-source-tcg-median: #a78bfa;
+  --bc-price-source-card-kingdom: #38bdf8;
+
+  /* Notification / count-badge red — vivid pop on either surface, white-on-red
+   * mirrors the iOS / Material count-badge pattern. Distinct from M3 error so
+   * destructive-action tinting (which uses --md-sys-color-error) stays calm. */
+  --bc-color-notice: #ff3b30;
+  --bc-color-on-notice: #ffffff;
+
+  /* MTG color-identity badges — brand pigments, theme-invariant.
+   * Lorcana / Pokemon / etc. add their own scoped tokens in future. */
+  --bc-mtg-color-white: #f3e7c9;
+  --bc-mtg-color-blue: #0e68ab;
+  --bc-mtg-color-black: #1a1410;
+  --bc-mtg-color-red: #d3202a;
+  --bc-mtg-color-green: #00733e;
+  --bc-mtg-color-on-light: #1e293b;
+  --bc-mtg-color-on-dark: #f8fafc;
+  --bc-mtg-color-on-green: #f0fdf4;
+  --bc-mtg-color-mix-aside: #6a5b46;
+  /* Per-TCG landing/nav accent marks (theme-invariant brand tints). */
+  --bc-tcg-accent-mtg: #e0622a;
+  --bc-tcg-accent-pokemon: #e8b800;
+  --bc-tcg-accent-yugioh: #9b5de5;
+  --bc-tcg-accent-onepiece: #e03a2e;
+  --bc-tcg-accent-gundam: #3a88e8;
+  --bc-tcg-accent-lorcana: #b957e8;
+  --bc-tcg-accent-pokemon-jp: var(--bc-tcg-accent-pokemon);
+  --bc-tcg-accent-digimon: #29bfbf;
+  --bc-tcg-accent-starwars: #4aa8ff;
+  --bc-tcg-accent-fab: #c0392b;
+
+  /* Muted on-surface text: 72% of the scheme's text colour (white on dark, ink on light).
+   * This was wrapped in `color-mix(in oklab, ..., transparent)`, which mixes 50/50 and so
+   * painted at 36%: 3.2:1 on dark and 2.2:1 on light. See themeContrast.test.ts. */
+  --bc-color-on-surface-muted: rgb(var(--bc-on-surface-rgb) / 0.72);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --bc-motion-fast: 0ms;
+    --bc-motion-snappy: 0ms;
+    --bc-motion-quick: 0ms;
+    --bc-motion-moderate: 0ms;
+    --bc-motion-base: 0ms;
+    --bc-motion-slow: 0ms;
+  }
+}
+
+/*
+ * prefers-contrast: more — raise the interactive-control boundary and the
+ * most-muted text token one step further above their already-passing
+ * baselines. Token-only; no component selectors change shape or layout.
+ */
+@media (prefers-contrast: more) {
+  :root {
+    --md-sys-color-outline-interactive: #9a96aa; /* 6.83:1 on #0c0b10 (was 4.19:1) */
+    --bc-color-on-surface-subtle: #a29eb2; /* 7.54:1 on #0c0b10 (was 5.62:1) */
+  }
+
+  :root[data-theme='light'] {
+    --md-sys-color-outline-interactive: #4a4758; /* 8.56:1 on #fbf8ff (was 4.31:1) */
+    --bc-color-on-surface-subtle: #4a4758; /* 8.56:1 on #fbf8ff (was 5.15:1) */
+  }
+}
+
+/*
+ * forced-colors: active (Windows High Contrast) — the UA already remaps
+ * background/text/border colors to the system palette; the gap is controls
+ * whose shape depends on a `color-mix()` border the UA may flatten to
+ * nothing, and focus rings drawn with `box-shadow` (a visual effect the
+ * forced-colors engine strips outright, not a color it can remap). Adding an
+ * explicit `border: 1px solid transparent` gives the UA a boundary to color
+ * in; switching focus rings to `outline` keeps them visible. None of this
+ * fires outside forced-colors, so default rendering is untouched.
+ */
+@media (forced-colors: active) {
+  .md-filled-button,
+  .md-tonal-button,
+  .md-outlined-button,
+  .md-text-button,
+  .md-switch__track,
+  .md-text-field,
+  select.md-text-field,
+  .bc-usd-price-range__axis,
+  .bc-swap-buy-price-range__axis {
+    border: 1px solid transparent;
+  }
+
+  .md-filled-button:focus-visible,
+  .md-tonal-button:focus-visible,
+  .md-outlined-button:focus-visible,
+  .md-text-button:focus-visible,
+  .md-text-field:focus-visible,
+  select.md-text-field:focus-visible,
+  .md-switch__input:focus-visible + .md-switch__track {
+    outline: 2px solid Highlight;
+    outline-offset: 2px;
+    box-shadow: none;
+  }
+
+  /* Selected switch state — use system colors instead of the teal token. */
+  .md-switch__input:checked + .md-switch__track {
+    background: Highlight;
+  }
+
+  .md-switch__input:checked + .md-switch__track::after {
+    background: HighlightText;
+  }
+}
+
+@theme {
+  --font-display: "Switzer", "Switzer Variable", system-ui, sans-serif;
+  --font-sans: "Geist", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --breakpoint-md: 37.5rem; /* 600px; Material compact */
+  --color-surface: var(--md-sys-color-surface);
+  --color-surface-raised: var(--md-sys-color-surface-container-low);
+  --color-surface-overlay: var(--md-sys-color-surface-container);
+  --color-surface-elevated: var(--md-sys-color-surface-container-high);
+  --color-surface-highlight: var(--md-sys-color-surface-container-highest);
+  --color-on-surface: var(--md-sys-color-on-surface);
+  --color-on-surface-muted: var(--md-sys-color-on-surface-variant);
+  --color-on-surface-subtle: var(--bc-color-on-surface-subtle);
+  --color-on-disabled: var(--bc-color-on-disabled);
+  --color-disabled-surface: var(--bc-color-disabled-surface);
+  --color-primary: var(--md-sys-color-primary);
+  --color-on-primary: var(--md-sys-color-on-primary);
+  --color-primary-container: var(--md-sys-color-primary-container);
+  --color-accent: var(--bc-color-accent);
+  --color-accent-muted: var(--bc-color-accent-muted);
+  --color-accent-glow: var(--bc-color-accent-glow);
+  --color-accent-cyan: var(--bc-color-accent-cyan);
+  --color-accent-frost: var(--bc-color-accent-frost);
+  --color-outline: var(--md-sys-color-outline);
+  --color-outline-muted: var(--md-sys-color-outline-variant);
+  --color-danger: var(--md-sys-color-error);
+  --color-warning: var(--bc-color-warning);
+}
+
+/*
+ * Light-theme stub. Phase 2 readiness: applying `data-theme="light"` to <html>
+ * re-binds the palette so component CSS that reads var(--…) flips correctly.
+ * NOT a final designed palette — values use M3 light defaults adapted to brand
+ * teal, intended only for QA validation. UI does NOT yet expose a toggle; see
+ * src/lib/ui/theme.ts for the runtime helper.
+ */
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  /* Flip alpha-tinted hairlines and dividers from white-on-dark to dark-on-light. */
+  --bc-on-surface-rgb: 28 27 34;
+  /* Shadows stay dark; alpha lighter than dark theme since light surfaces show contrast. */
+  --bc-shadow-rgb: 0 0 0;
+
+  /* M3 light surfaces */
+  --md-sys-color-surface: #fbf8ff;
+  --md-sys-color-surface-container-low: #f3eff8;
+  --md-sys-color-surface-container: #ede8f3;
+  --md-sys-color-surface-container-high: #e6e1ec;
+  --md-sys-color-surface-container-highest: #dfdae6;
+  --md-sys-color-on-surface: #1c1b22;
+  --md-sys-color-on-surface-variant: #4a4856;
+  --md-sys-color-outline: #76748a;
+  --md-sys-color-outline-variant: #c8c5d4;
+  /* Already ≥3:1 on #fbf8ff (4.31:1) — no separate light-mode gray needed. */
+  --md-sys-color-outline-interactive: var(--md-sys-color-outline);
+
+  /* Brand teal darkened for AA contrast against light surfaces. */
+  --md-sys-color-primary: #006a5b;
+  --bc-color-primary-glow: #146c5e; /* was #1a8c7a: 3.93:1 on surface, 3.02:1 on container-highest */
+  --md-sys-color-on-primary: #ffffff;
+  --md-sys-color-primary-container: #b6f1e3;
+
+  --md-sys-color-error: #b3261e;
+  --md-sys-color-error-container: #f9dedc;
+  --md-sys-color-on-error-container: #410e0b;
+  /* #f5a623 (dark's value, reused verbatim) is 1.93:1 on #fbf8ff; fails AA as
+   * text (it renders via `color: var(--md-sys-color-warning, ...)` on some
+   * badges). Darkened to clear 4.5:1; see themeContrast.test.ts. */
+  --md-sys-color-warning: #8f5200;
+  --md-sys-shadow: rgba(0, 0, 0, 0.18);
+  --md-sys-elevation-1:
+    0 1px 2px rgb(var(--bc-shadow-rgb) / 0.12), 0 1px 3px 1px rgb(var(--bc-shadow-rgb) / 0.08);
+  --md-sys-elevation-2:
+    0 1px 2px rgb(var(--bc-shadow-rgb) / 0.16), 0 2px 6px 2px rgb(var(--bc-shadow-rgb) / 0.10);
+  --md-sys-elevation-3: 0 20px 48px rgb(var(--bc-shadow-rgb) / 0.21);
+  --bc-shadow-raised: 0 8px 24px rgb(var(--bc-shadow-rgb) / 0.17);
+  --bc-shadow-sheet: 0 -8px 32px rgb(var(--bc-shadow-rgb) / 0.2);
+  --bc-shadow-hairline: 0 0 0 1px rgb(var(--bc-shadow-rgb) / 0.13);
+
+  /* Brand accents — violet stays violet, slightly darker for light contrast. */
+  --bc-color-accent: #6b1fff;
+  --bc-color-accent-glow: #5a0fff;
+  --bc-color-accent-cyan: #03649e; /* was #047ec7: 4.15:1 on surface, 3.18:1 on container-highest */
+  --bc-color-accent-frost: #1a1530;
+  --bc-color-accent-muted: #4a3fad;
+  /* Kept equal to --md-sys-color-warning, mirroring the dark theme (both #f5a623 there). */
+  --bc-color-warning: #8f5200;
+  --bc-color-on-surface-subtle: #615e6d; /* was #6b6878: 3.95:1 on container-highest */
+
+  /* Status fills — desaturated for light surfaces. */
+  --bc-color-danger: #c12a1f;
+  /* #b07a00 (previous stub value) was 3.55:1 on #fbf8ff; fails AA as text
+   * (`color: var(--bc-color-warning-fill)` on shopping-list rows). */
+  --bc-color-warning-fill: #8a5f00;
+  --bc-color-error-fill: #c12a1f;
+  --bc-color-price-gain: #137333;
+  --bc-color-flash-red: #b1181f;
+
+  /* #ff3b30 (dark's value) is 3.37:1 on #fbf8ff and 3.55:1 under a white label.
+   * Darkened to clear 4.5:1 on every surface and under the label; still a red. */
+  --bc-color-notice: #c30a00;
+  --bc-color-on-notice: #ffffff;
+}
+
+/*
+ * NOTE: The `system` scheme is resolved at runtime by src/lib/ui/theme.ts
+ * (reads `prefers-color-scheme` and writes `data-theme="light|dark"` on <html>).
+ * That avoids duplicating the light-override block here as a media query.
+ */
+
+@media (min-width: 52.5rem) {
+  :root {
+    --bc-site-header-brand-row-block: var(--bc-site-edge-chrome-block);
+    --bc-site-header-block: var(--bc-site-header-brand-row-block);
+    --bc-site-header-wordmark-height: var(--bc-site-header-brand-row-block);
+    --bc-site-header-offset: calc(env(safe-area-inset-top, 0px) + var(--bc-site-header-block));
+  }
+}

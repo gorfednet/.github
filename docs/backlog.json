@@ -577,7 +577,8 @@
       "evidence": "Design audit 12 Nov 2026: kit holds no styles; 4thcltr trio vendored by hand. Plan: gorfednet/ops control/assessments/2026-11-12-output-quality.md. Who: main session designs; Sonnet builder builds; reviewer reads.",
       "reviewBy": "2026-12-01",
       "created": "2026-11-12",
-      "updated": "2026-11-12"
+      "updated": "2026-11-27",
+      "note": "Fix committed on branch worktree-toasty-yawning-marshmallow, no PR yet (the schema needs a pr number for in-review, so the status stays confirmed-bug until the main session opens one): design/tokens.css, seeded from BinderCurve src/styles/tokens.css, is a kit companion (kit 0.71.0), so refresh-kit writes it and check-kit-drift fails a local edit. Watched kitDrift.test.mjs fail 2 tests with the companion removed. Not done: fonts and footer are not in the package, and no site imports the file yet; each consuming repository adopts it in its own PR after the kit moves."
     },
     {
       "id": "assess-1112-b2-no-design-direction-per-property",
