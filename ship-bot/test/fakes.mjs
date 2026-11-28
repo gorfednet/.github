@@ -268,7 +268,7 @@ export function makeRunner({ handle, changed = ['index.html'] } = {}) {
         if (sub === 'checkout') runner.head = cmd.args.at(-1)
         if (sub === 'rev-parse' && cmd.args[3] === 'HEAD') return ok(`${runner.head}\n`)
         if (sub === 'rev-parse' && cmd.args[3].endsWith('^1')) return ok(`${PARENT}\n`)
-        if (sub === 'diff' || sub === 'ls-tree') return ok(`${changed.join('\n')}\n`)
+        if (sub === 'diff' || sub === 'ls-tree') return ok(changed.map((f) => `${f}\0`).join(''))
       }
       return ok()
     },

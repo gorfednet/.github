@@ -17,6 +17,9 @@ export function pathMatches(file, pattern) {
   return file === pattern || file.startsWith(`${pattern}/`)
 }
 
+/** Git's `-z` output: NUL-terminated paths, never C-quoted, so a non-ASCII, quote or backslash path matches as written. */
+export const splitNul = (out) => out.split('\0').filter(Boolean)
+
 export const matchingFiles = (changed, patterns) => changed.filter((f) => patterns.some((p) => pathMatches(f, p)))
 
 export function selectSteps(steps, changed) {
@@ -337,8 +340,8 @@ async function tagRelease(ctx, log, repo, mergeSha, release, onPushing = () => {
  * would look unchanged.
  */
 export async function changedSince(ctx, log, workDir, base, head) {
-  const diff = await git(ctx, log, workDir, 'list changed paths', ['diff', '--name-only', '--no-renames', base, head])
-  return diff.stdout.split('\n').map((l) => l.trim()).filter(Boolean)
+  const diff = await git(ctx, log, workDir, 'list changed paths', ['diff', '--name-only', '-z', '--no-renames', base, head])
+  return splitNul(diff.stdout)
 }
 
 /**
@@ -368,8 +371,8 @@ export async function deployMerged(ctx, repo, { mergeSha, log, release = null, s
       changed = await changedSince(ctx, log, repo.workDir, base, mergeSha)
     } else {
       // No known deployed commit: every tracked path counts as changed, so no pause and no conditional step is skipped by not knowing.
-      const all = await git(ctx, log, repo.workDir, 'list every tracked path', ['ls-tree', '-r', '--name-only', mergeSha])
-      changed = all.stdout.split('\n').map((l) => l.trim()).filter(Boolean)
+      const all = await git(ctx, log, repo.workDir, 'list every tracked path', ['ls-tree', '-r', '--name-only', '-z', mergeSha])
+      changed = splitNul(all.stdout)
     }
   } catch (cause) {
     return { status: 'not-started', error: `preparing the workspace failed: ${cause.message}` }

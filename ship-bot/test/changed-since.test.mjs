@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, renameSync, rmSync, writeFileSync } from 'node:
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { after, describe, it } from 'node:test'
-import { changedSince, matchingFiles } from '../lib/deploy.mjs'
+import { changedSince, matchingFiles, splitNul } from '../lib/deploy.mjs'
 import { realRunner } from '../lib/runner.mjs'
 
 // Real git: a fake runner cannot tell whether git lists a rename's old path.
@@ -34,5 +34,23 @@ describe('changedSince lists both sides of a rename', () => {
     const changed = await changedSince(ctx, log, dir, base, head)
     assert.deepEqual(changed.sort(), ['server/db.sql', 'src/db.sql'])
     assert.deepEqual(matchingFiles(changed, ['server/']), ['server/db.sql'])
+  })
+
+  it('a paused path with non-ASCII, quote and backslash names still matches (git would C-quote them without -z)', async () => {
+    const base = g('rev-parse', 'HEAD')
+    const names = ['server/\u00e9.sql', 'server/a"b.sql', 'server/c\\d.sql', 'server/sp ace.sql']
+    for (const n of names) writeFileSync(join(dir, n), 'x\n')
+    g('add', '-A')
+    g('commit', '-q', '-m', 'odd names')
+    const head = g('rev-parse', 'HEAD')
+    assert.match(g('-c', 'core.quotePath=true', 'diff', '--name-only', base, head), /"server\/\\303\\251\.sql"/, 'plain git C-quotes the name')
+    const changed = await changedSince(ctx, log, dir, base, head)
+    assert.deepEqual(changed.sort(), [...names].sort())
+    assert.equal(matchingFiles(changed, ['server/']).length, names.length)
+  })
+
+  it('splitNul keeps whitespace in a path and drops the empty tail', () => {
+    assert.deepEqual(splitNul(' a b\0c\0'), [' a b', 'c'])
+    assert.deepEqual(splitNul(''), [])
   })
 })

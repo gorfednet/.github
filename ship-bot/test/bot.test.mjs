@@ -1588,8 +1588,10 @@ describe('releases, not every merge (plan row 1.25)', () => {
     assert.deepEqual(s.runner.commandLines('deploy'), ['make deploy'])
     const ws = s.runner.commandLines('workspace')
     assert.ok(ws.some((l) => l.endsWith(`merge-base --is-ancestor ${LAST} ${MERGE}`)), ws.join('\n'))
-    assert.ok(ws.some((l) => l.endsWith(`diff --name-only --no-renames ${LAST} ${MERGE}`)), 'the diff counts from the last deploy, not the first parent')
-    assert.ok(!ws.some((l) => l.endsWith(`diff --name-only --no-renames ${PARENT} ${MERGE}`)))
+    const diffs = ws.filter((l) => / diff /.test(l))
+    assert.equal(diffs.length, 1, ws.join('\n'))
+    assert.deepEqual(diffs[0].split(' ').slice(-2), [LAST, MERGE], 'the diff counts from the last deploy, not the first parent')
+    assert.ok(diffs[0].split(' ').includes('-z') && diffs[0].split(' ').includes('--no-renames'), diffs[0])
     const st = s.state().repo(SLUG)
     assert.equal(st.lastDeployedSha, MERGE)
     assert.equal(st.lastReleasedAt, '2026-10-09T12:00:00.000Z')
@@ -1668,14 +1670,14 @@ describe('releases, not every merge (plan row 1.25)', () => {
     const runner = makeRunner({ changed: ['deploy/nginx.conf', 'index.html'] })
     const s = rel({ runner, row: { pausedIfChanged: ['deploy/'] } })
     await s.run()
-    assert.ok(runner.commandLines('workspace').some((l) => l.endsWith(`ls-tree -r --name-only ${MERGE}`)))
+    assert.ok(runner.commandLines('workspace').some((l) => / ls-tree /.test(l) && l.split(' ').includes('-z') && l.endsWith(` ${MERGE}`)))
     assert.equal(runner.ofKind('deploy').length, 0)
     assert.match(bodies(s.github)[0], /not deployed\*\*: the changes since the last deploy include `deploy\/nginx\.conf`/)
   })
 
   it('a path changed by an earlier, undeployed merge still pauses the release (the diff starts at the last deploy)', async () => {
     // The release's own merge touches only index.html; deploy/ changed in a merge since the last deploy.
-    const runner = makeRunner({ handle: (cmd) => (cmd.args?.[2] === 'diff' ? { stdout: cmd.args[5] === LAST ? 'deploy/nginx.conf\nindex.html\n' : 'index.html\n' } : undefined) })
+    const runner = makeRunner({ handle: (cmd) => (cmd.args?.[2] === 'diff' ? { stdout: cmd.args.at(-2) === LAST ? 'deploy/nginx.conf\0index.html\0' : 'index.html\0' } : undefined) })
     const s = rel({ runner, row: { pausedIfChanged: ['deploy/'] }, state: { lastDeployedSha: LAST } })
     await s.run()
     assert.equal(runner.ofKind('deploy').length, 0)
@@ -1756,7 +1758,7 @@ describe('releases: what the first review found (plan row 1.25)', () => {
 
   it('a paused release, deployed by hand and unblocked, records that commit, so the next release does not pause again', async () => {
     const { clearBlock } = await import('../ship-bot.mjs')
-    const runner = makeRunner({ handle: (cmd) => (cmd.args?.[2] === 'diff' ? { stdout: cmd.args[5] === LAST ? 'server/x.sql\nindex.html\n' : 'index.html\n' } : undefined) })
+    const runner = makeRunner({ handle: (cmd) => (cmd.args?.[2] === 'diff' ? { stdout: cmd.args.at(-2) === LAST ? 'server/x.sql\0index.html\0' : 'index.html\0' } : undefined) })
     const s = rel({ runner, row: { pausedIfChanged: ['server/'] }, state: { lastDeployedSha: LAST } })
     await s.run()
     assert.equal(runner.ofKind('deploy').length, 0)
@@ -1800,8 +1802,8 @@ describe('releases: what the first review found (plan row 1.25)', () => {
     const s = rel({ runner, state: { lastDeployedSha: LAST } })
     await s.run()
     const ws = runner.commandLines('workspace')
-    assert.ok(ws.some((l) => l.endsWith(`ls-tree -r --name-only ${MERGE}`)), ws.join('\n'))
-    assert.ok(!ws.some((l) => l.includes(`diff --name-only --no-renames ${LAST}`)))
+    assert.ok(ws.some((l) => / ls-tree /.test(l) && l.split(' ').includes('-z') && l.endsWith(` ${MERGE}`)), ws.join('\n'))
+    assert.ok(!ws.some((l) => / diff /.test(l)), 'no diff from the last deploy when it is not an ancestor')
   })
 
   it('with no deploy on record the default rollback redeploys nothing (the first parent was never known to be live) and says so', async () => {
