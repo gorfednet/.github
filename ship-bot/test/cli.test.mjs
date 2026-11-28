@@ -6,6 +6,7 @@ import { describe, it } from 'node:test'
 import { childEnv, main, parseArgs } from '../ship-bot.mjs'
 import { ConfigError, normalizeConfig } from '../lib/config.mjs'
 import { StateStore } from '../lib/state.mjs'
+import { createGitHubClient } from '../lib/github.mjs'
 import { FakeGitHub, TOKEN, greenRuns, makePr, makeRunner, repoEntry } from './fakes.mjs'
 
 function harness({ live = true, lock, pulls = [], github = new FakeGitHub({ pulls }), configOverrides = {}, handle } = {}) {
@@ -355,6 +356,40 @@ describe('command line', () => {
           assert.equal(await main(['--record-deployed', 'site', NEW, ...LIVE], h.deps), 2, h.text())
           assert.equal(h.github.calls.filter((c) => c.name === 'compareFiles').length, 0)
         }
+      })
+    })
+
+    describe('a pausedIfChanged row through the real GitHub client (a stub answers the compare endpoints)', () => {
+      const paused = { configOverrides: { repos: [repoEntry({ envFiles: [], pausedIfChanged: ['server/'] })] } }
+      /** The real client over a stub fetch: `files` is what GitHub's compare returns for OLD...NEW. */
+      const viaClient = (files) => {
+        const h = recordHarness({ ...paused, repoState: { lastDeployedSha: OLD } })
+        const fetchImpl = async (url) => {
+          const body = url.includes(`${OLD}...${NEW}`) ? { status: 'ahead', files } : url.includes(`main...${NEW}`) ? { status: 'behind' } : { default_branch: 'main' }
+          return { ok: true, status: 200, headers: new Map(), text: async () => JSON.stringify(body) }
+        }
+        h.deps.makeGithub = (token) => createGitHubClient({ token, fetchImpl })
+        return h
+      }
+
+      it('refuses a file renamed out of a paused path: GitHub gives the old name as previous_filename', async () => {
+        const h = viaClient([{ filename: 'src/db.sql', previous_filename: 'server/db.sql', status: 'renamed' }])
+        assert.equal(await main(['--record-deployed', 'site', NEW, ...LIVE], h.deps), 2, h.text())
+        assert.match(h.text(), /server\/db\.sql \(pausedIfChanged\) changed since the recorded deploy ddddddd.*Nothing was changed/)
+        assert.equal(h.read().lastDeployedSha, OLD)
+      })
+
+      it('records when no paused path changed, including a rename that stays outside them', async () => {
+        const h = viaClient([{ filename: 'src/b.js', previous_filename: 'src/a.js', status: 'renamed' }, { filename: 'README.md', status: 'modified' }])
+        assert.equal(await main(['--record-deployed', 'site', NEW, ...LIVE], h.deps), 0, h.text())
+        assert.equal(h.read().lastDeployedSha, NEW)
+      })
+
+      it('refuses a plain edit inside a paused path', async () => {
+        const h = viaClient([{ filename: 'server/x.js', status: 'modified' }])
+        assert.equal(await main(['--record-deployed', 'site', NEW, ...LIVE], h.deps), 2, h.text())
+        assert.match(h.text(), /server\/x\.js \(pausedIfChanged\)/)
+        assert.equal(h.read().lastDeployedSha, OLD)
       })
     })
 

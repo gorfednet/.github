@@ -1588,8 +1588,8 @@ describe('releases, not every merge (plan row 1.25)', () => {
     assert.deepEqual(s.runner.commandLines('deploy'), ['make deploy'])
     const ws = s.runner.commandLines('workspace')
     assert.ok(ws.some((l) => l.endsWith(`merge-base --is-ancestor ${LAST} ${MERGE}`)), ws.join('\n'))
-    assert.ok(ws.some((l) => l.endsWith(`diff --name-only ${LAST} ${MERGE}`)), 'the diff counts from the last deploy, not the first parent')
-    assert.ok(!ws.some((l) => l.endsWith(`diff --name-only ${PARENT} ${MERGE}`)))
+    assert.ok(ws.some((l) => l.endsWith(`diff --name-only --no-renames ${LAST} ${MERGE}`)), 'the diff counts from the last deploy, not the first parent')
+    assert.ok(!ws.some((l) => l.endsWith(`diff --name-only --no-renames ${PARENT} ${MERGE}`)))
     const st = s.state().repo(SLUG)
     assert.equal(st.lastDeployedSha, MERGE)
     assert.equal(st.lastReleasedAt, '2026-10-09T12:00:00.000Z')
@@ -1675,7 +1675,7 @@ describe('releases, not every merge (plan row 1.25)', () => {
 
   it('a path changed by an earlier, undeployed merge still pauses the release (the diff starts at the last deploy)', async () => {
     // The release's own merge touches only index.html; deploy/ changed in a merge since the last deploy.
-    const runner = makeRunner({ handle: (cmd) => (cmd.args?.[2] === 'diff' ? { stdout: cmd.args[4] === LAST ? 'deploy/nginx.conf\nindex.html\n' : 'index.html\n' } : undefined) })
+    const runner = makeRunner({ handle: (cmd) => (cmd.args?.[2] === 'diff' ? { stdout: cmd.args[5] === LAST ? 'deploy/nginx.conf\nindex.html\n' : 'index.html\n' } : undefined) })
     const s = rel({ runner, row: { pausedIfChanged: ['deploy/'] }, state: { lastDeployedSha: LAST } })
     await s.run()
     assert.equal(runner.ofKind('deploy').length, 0)
@@ -1756,7 +1756,7 @@ describe('releases: what the first review found (plan row 1.25)', () => {
 
   it('a paused release, deployed by hand and unblocked, records that commit, so the next release does not pause again', async () => {
     const { clearBlock } = await import('../ship-bot.mjs')
-    const runner = makeRunner({ handle: (cmd) => (cmd.args?.[2] === 'diff' ? { stdout: cmd.args[4] === LAST ? 'server/x.sql\nindex.html\n' : 'index.html\n' } : undefined) })
+    const runner = makeRunner({ handle: (cmd) => (cmd.args?.[2] === 'diff' ? { stdout: cmd.args[5] === LAST ? 'server/x.sql\nindex.html\n' : 'index.html\n' } : undefined) })
     const s = rel({ runner, row: { pausedIfChanged: ['server/'] }, state: { lastDeployedSha: LAST } })
     await s.run()
     assert.equal(runner.ofKind('deploy').length, 0)
@@ -1801,7 +1801,7 @@ describe('releases: what the first review found (plan row 1.25)', () => {
     await s.run()
     const ws = runner.commandLines('workspace')
     assert.ok(ws.some((l) => l.endsWith(`ls-tree -r --name-only ${MERGE}`)), ws.join('\n'))
-    assert.ok(!ws.some((l) => l.includes(`diff --name-only ${LAST}`)))
+    assert.ok(!ws.some((l) => l.includes(`diff --name-only --no-renames ${LAST}`)))
   })
 
   it('with no deploy on record the default rollback redeploys nothing (the first parent was never known to be live) and says so', async () => {

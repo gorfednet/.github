@@ -332,6 +332,16 @@ async function tagRelease(ctx, log, repo, mergeSha, release, onPushing = () => {
 }
 
 /**
+ * Paths changed between two commits. `--no-renames` lists a rename as a delete of the old path and an add of the
+ * new one: by default only the new name shows, so a file moved out of a pausedIfChanged or onlyIfChanged path
+ * would look unchanged.
+ */
+export async function changedSince(ctx, log, workDir, base, head) {
+  const diff = await git(ctx, log, workDir, 'list changed paths', ['diff', '--name-only', '--no-renames', base, head])
+  return diff.stdout.split('\n').map((l) => l.trim()).filter(Boolean)
+}
+
+/**
  * Deploy one merge commit. Never retries.
  * With `release` ({tag, message}) the merge commit is tagged and the tag pushed
  * first, after the pause check and before setup (the build stamps the version
@@ -355,8 +365,7 @@ export async function deployMerged(ctx, repo, { mergeSha, log, release = null, s
     // changed paths, pausedIfChanged and onlyIfChanged count from there.
     base = since && /^[0-9a-f]{40}$/.test(since) && (await isAncestor(ctx, log, repo.workDir, since, mergeSha)) ? since : null
     if (base) {
-      const diff = await git(ctx, log, repo.workDir, 'list changed paths', ['diff', '--name-only', base, mergeSha])
-      changed = diff.stdout.split('\n').map((l) => l.trim()).filter(Boolean)
+      changed = await changedSince(ctx, log, repo.workDir, base, mergeSha)
     } else {
       // No known deployed commit: every tracked path counts as changed, so no pause and no conditional step is skipped by not knowing.
       const all = await git(ctx, log, repo.workDir, 'list every tracked path', ['ls-tree', '-r', '--name-only', mergeSha])
