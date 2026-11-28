@@ -1,12 +1,12 @@
 {
-  "generatedAt": "2026-11-28T00:44:40.941Z",
-  "renderedAt": "2026-11-28T00:44:40.941Z",
+  "generatedAt": "2026-11-28T02:32:22.689Z",
+  "renderedAt": "2026-11-28T02:32:22.689Z",
   "repos": [
     {
       "slug": "gorfednet/bindercurve.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 23,
+      "openPrCount": 24,
       "lapsedBacklogCount": 17,
       "noPrCount": 80,
       "idlePrCount": 16,
@@ -57,7 +57,7 @@
       "mainRed": false,
       "openPrCount": 4,
       "lapsedBacklogCount": 0,
-      "noPrCount": 1,
+      "noPrCount": 2,
       "idlePrCount": 4,
       "duplicatePrCount": 0,
       "dependabotRedCount": 0,
@@ -89,7 +89,7 @@
       "mainRed": false,
       "openPrCount": 3,
       "lapsedBacklogCount": 0,
-      "noPrCount": 4,
+      "noPrCount": 5,
       "idlePrCount": 3,
       "duplicatePrCount": 0,
       "dependabotRedCount": 0,
@@ -105,7 +105,7 @@
       "mainRed": false,
       "openPrCount": 5,
       "lapsedBacklogCount": 0,
-      "noPrCount": 2,
+      "noPrCount": 3,
       "idlePrCount": 4,
       "duplicatePrCount": 0,
       "dependabotRedCount": 2,
@@ -137,7 +137,7 @@
       "mainRed": false,
       "openPrCount": 7,
       "lapsedBacklogCount": 3,
-      "noPrCount": 20,
+      "noPrCount": 21,
       "idlePrCount": 6,
       "duplicatePrCount": 0,
       "dependabotRedCount": 1,
@@ -153,7 +153,7 @@
       "mainRed": false,
       "openPrCount": 2,
       "lapsedBacklogCount": 0,
-      "noPrCount": 0,
+      "noPrCount": 1,
       "idlePrCount": 2,
       "duplicatePrCount": 0,
       "dependabotRedCount": 0,
@@ -169,7 +169,7 @@
       "mainRed": false,
       "openPrCount": 9,
       "lapsedBacklogCount": 1,
-      "noPrCount": 1,
+      "noPrCount": 2,
       "idlePrCount": 9,
       "duplicatePrCount": 0,
       "dependabotRedCount": 1,
@@ -184,6 +184,18 @@
       "defaultBranch": "main",
       "mainRed": false,
       "openPrs": [
+        {
+          "number": 308,
+          "title": "AI Use trailer gate: make it safe to adopt (row 1.90a part 1)",
+          "ageDays": 0,
+          "labels": [],
+          "draft": true,
+          "review": "findings",
+          "headSha": "30fccdbd81cabf7e55fcc4af89c855b45664f267",
+          "ci": "pending",
+          "next": "Desk: R2, Fable read of the whole diff, then label",
+          "author": "gorfednet"
+        },
         {
           "number": 306,
           "title": ".github: B1: Design package distributed by the kit refresh, seeded from BinderCurve tokens.css",
@@ -723,28 +735,28 @@
       "slug": "gorfednet/career-portfolio",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 9,
+      "openPrCount": 5,
       "lapsedBacklogCount": 1,
       "noPrCount": 1,
       "idlePrCount": 5,
       "duplicatePrCount": 0,
-      "dependabotRedCount": 1,
+      "dependabotRedCount": 0,
       "kitVersion": "0.65.0",
       "kitPin": {
         "ref": "main"
       },
-      "alertsOverdue": 3
+      "alertsOverdue": 0
     },
     {
       "slug": "gorfednet/heuristics.4thcltr.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 12,
+      "openPrCount": 9,
       "lapsedBacklogCount": 36,
       "noPrCount": 8,
       "idlePrCount": 9,
       "duplicatePrCount": 0,
-      "dependabotRedCount": 2,
+      "dependabotRedCount": 0,
       "kitVersion": "0.65.0",
       "kitPin": {
         "ref": "main"
@@ -755,12 +767,12 @@
       "slug": "gorfednet/papers.4thcltr.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 5,
+      "openPrCount": 3,
       "lapsedBacklogCount": 1,
       "noPrCount": 5,
       "idlePrCount": 3,
       "duplicatePrCount": 0,
-      "dependabotRedCount": 1,
+      "dependabotRedCount": 0,
       "kitVersion": "0.65.0",
       "kitPin": {
         "ref": "main"
@@ -849,7 +861,7 @@
         {
           "number": 4,
           "title": "fix: --help exit code, drop arbitrary ratingKey length cap",
-          "ageDays": 6,
+          "ageDays": 7,
           "labels": [],
           "draft": false,
           "review": "not-run",
@@ -899,9 +911,9 @@
       "slug": "gorfednet/ops",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 31,
+      "openPrCount": 30,
       "lapsedBacklogCount": 0,
-      "noPrCount": 14,
+      "noPrCount": 15,
       "idlePrCount": 22,
       "duplicatePrCount": 0,
       "dependabotRedCount": 0,
@@ -917,8 +929,8 @@
     "gorfednet/TowIt",
     "gorfednet/wychwood"
   ],
-  "branchesReadAt": "2026-11-27T02:33:29.961Z",
-  "carried": true,
+  "branchesReadAt": "2026-11-28T02:32:22.689Z",
+  "carried": false,
   "localCounts": {
     "rows": {
       "dirtyClones": {
@@ -966,11 +978,11 @@
     }
   },
   "inventory": {
-    "measuredAt": "2026-11-28T00:44:40.941Z",
+    "measuredAt": "2026-11-28T02:32:22.689Z",
     "counts": {
       "pr": {
-        "total": 177,
-        "orphans": 96
+        "total": 169,
+        "orphans": 94
       },
       "session": null,
       "worktree": null,
@@ -981,6 +993,14 @@
       }
     },
     "orphans": [
+      {
+        "kind": "pr",
+        "repo": "gorfednet/.github",
+        "ref": "#308",
+        "label": "AI Use trailer gate: make it safe to adopt (row 1.90a part 1)",
+        "private": false,
+        "lapsed": false
+      },
       {
         "kind": "pr",
         "repo": "gorfednet/.github",
@@ -1094,13 +1114,13 @@
         "lapsed": true
       }
     ],
-    "hiddenPrivate": 86,
+    "hiddenPrivate": 83,
     "privateReposNotItemised": 18,
     "planRead": true
   },
   "dotgithub": {
-    "measuredAt": "2026-11-28T00:45:33.847Z",
-    "branches": 45,
+    "measuredAt": "2026-11-28T02:33:32.502Z",
+    "branches": 46,
     "merged": 3,
     "exposedFiles": 54,
     "rulesNotChecked": [],
