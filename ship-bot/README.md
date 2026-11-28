@@ -80,9 +80,11 @@ row merging and deploying are split (`deployOn`, default `"release"`;
 - **A forgotten label stops the merge.** Release notes, an `Exemption:` line or
   a `Release:` line with neither label is refused, so it never becomes a quiet
   merge that is not live. Labels match whatever their case.
-- **`deployOn: "merge"`** keeps the old deploy on every merge, for a row whose
-  deploy no visitor sees. It needs `deployOnMergeReason`. No row uses it today:
-  the infra repositories (`.github`, `ops`) are `merge-only`.
+- **`deployOn: "merge"`** deploys on every merge. It needs
+  `deployOnMergeReason`. A row with `release` (a tag repo) then tags every
+  merge: from its `Release:` line, or with no line one patch above the newest
+  tag with the pull request's title as the sentence (plan row 1.101, below).
+  The infra repositories (`.github`, `ops`) are `merge-only`.
 
 A release deploys everything merged since the commit last deployed
 (`lastDeployedSha` in `~/.ship-bot/state.json`): changed paths,
@@ -222,7 +224,7 @@ Every site deploys through the bot, in observation first (`live` false: the log 
 | MoonMan | in the example | Sun 15 Nov (stage 4) | unchanged |
 | papers.4thcltr.com | `deploy`, observation | **Fri 13 Nov** | no private tests, static, the lowest-risk site on the shared engine; it is the one that proves the engine's rollback |
 | heuristics.4thcltr.com | `deploy`, observation | **Mon 16 Nov** | needs papers live first (one real deploy, no rollback), and its gate reads the owner's assess jobs folder |
-| 4thcltr.com | `deploy`, observation, release tags | **Mon 23 Nov**, if the release-tag change (below) lands by Thu 19 Nov | `make deploy` refuses any HEAD that is not on an exact release tag; the bot tags the merge commit of a pull request that declares a release |
+| 4thcltr.com | `deploy`, observation, release tags | **Mon 23 Nov**, if the release-tag change (below) lands by Thu 19 Nov | `make deploy` refuses any HEAD that is not on an exact release tag; the bot tags the merge commit it deploys |
 | bindercurve.com | `merge-only`, no deploy | not before the 1.0 plan (week of 2 Feb 2027) | release hold; it deploys through its own release workflow |
 | assess, career-portfolio, .github | `merge-only` | stay merge-only | not websites: assess is a command-line engine with no published site, career-portfolio a tool, .github the fleet's shared CI |
 | intake, propose | no row yet | when each has a pull-request CI and a deploy command | services with no site-deploy path and no DNS yet; a row needs `expectedChecks`, and these two have no CI posted to sample |

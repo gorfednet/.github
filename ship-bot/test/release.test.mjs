@@ -10,6 +10,9 @@ describe('planRelease: the automatic patch tag for a description with no Release
   it('no line: one patch above the newest tag by version order, with the title as the sentence', () => {
     assert.deepEqual(planRelease(REL, 'Just a fix.', TAGS, { title: 'Fix the rates table' }), { kind: 'release', version: '3.10.3', tag: 'v3.10.3', message: 'Fix the rates table', auto: true })
     assert.equal(planRelease(REL, '', ['v3.9.9', 'v3.9.10'], { title: 'x' }).tag, 'v3.9.11')
+    // The tag list comes in no order: the newest is found by version, wherever it sits.
+    assert.equal(planRelease(REL, '', ['v3.10.2', 'v3.9.6', 'v3.2.40'], { title: 'x' }).tag, 'v3.10.3')
+    assert.equal(planRelease(REL, '', ['v3.10.2', 'v3.9.6'], { title: '#412 follow-up' }).message, '#412 follow-up')
     assert.equal(planRelease({ tagPrefix: 'site-' }, null, ['site-1.2.3', 'v9.9.9'], { title: 'x' }).tag, 'site-1.2.4')
   })
 

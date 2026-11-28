@@ -27,8 +27,8 @@
  * The bot reads labels and lines; it cannot prove the gate or the smoke ran.
  * The session that labels the release does them and says where the output is.
  *
- * `deployOn: "merge"` keeps the old behaviour (every merge deploys) for a row
- * whose deploy no visitor sees; the row says why in `deployOnMergeReason`. A tag
+ * `deployOn: "merge"` deploys on every merge; the row says why in
+ * `deployOnMergeReason`. A tag
  * repo on such a row tags every merge: from its `Release:` line, or with no
  * line one patch above the newest tag with the title as the sentence (row 1.101).
  */
