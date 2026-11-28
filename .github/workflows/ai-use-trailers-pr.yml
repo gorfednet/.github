@@ -13,5 +13,6 @@ permissions:
 
 jobs:
   trailers:
+    # Deliberately the local copy: a change to the reusable is judged by its own edit (the gate script still comes from main).
     uses: ./.github/workflows/ai-use-trailers.yml
     # No runs-on input: this repository is public, so the reusable always runs it GitHub-hosted, free.
