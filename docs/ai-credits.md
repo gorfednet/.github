@@ -23,7 +23,7 @@ Spec 1.2 accepts a product name as the tool and has no way to say "likely". A Cu
 - When a site's page record hashes the built page and not its sources, set `pagesApproximate` and a `pageBasis` line in the config. Page entries then say they only approximate, and `check-tags` requires no tool of a page and fails only on a tool the site never recorded.
 - A commit the tool authored itself (`Cursor Agent`) is counted in the tool's commits and again in `ofWhichAuthoredByTheTool`.
 - An open item can be settled in the config's `acknowledged`, naming who decided, when and why. It moves to `settled`, and the ledger keeps the decision.
-- Order is by commits that name the tool, then transcript responses, then name. It indicates the biggest hand and doesn't measure it, so `check-tags` fails it only with `--order`.
+- Order is by commits that name the tool, then transcript responses, then name. It indicates the biggest hand and doesn't measure it, so `check-tags` fails it only with `--order`. Never wire `--order` into CI: it enforces this 1.2 biggest-hand order, which contradicts the 1.3 capability order (`models.json`). Change it to read that order first. A transcript-only tool (a Haiku subagent) is recorded, neither credited nor open, and crediting one needs the owner's knowing yes.
 
 ## Reproduce and check
 
