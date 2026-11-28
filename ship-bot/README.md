@@ -276,7 +276,15 @@ bot now takes a draft itself when **all** of these hold:
 
 - its description has a `## Next` section whose first unchecked `- [ ]` line
   is an instruction to merge: it starts with "merge" or "open the PR" (any
-  case) and does not say later ("merge once PR 118 lands" is not one), and no
+  case) and does not say later ("merge once PR 118 lands" is not one).
+  "Merge once gates are clean" is one, because it waits only on this pull
+  request's own gates, which the bot reads anyway. The accepted clause is
+  `once`, then gates, checks or CI (with "and review" if wanted), then "are
+  clean", "are green", "pass" or "have passed", ending the line or followed by
+  punctuation: "merge once checks and review are clean", "merge once all gates
+  pass". Anything else after `once` still means later ("merge once the owner
+  answers", "merge once checks pass on main", "merge once gates are clean and
+  PR 118 lands"). And no
   unchecked line under `## Next` hands the decision to a person (do not,
   don't, wait, hold, owner, needs a decision, decide). A diff that touches only
   documentation is **not** enough on its own: that branch was cut after five
