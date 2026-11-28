@@ -4,7 +4,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync, mkdirSync, readFileSync, realpathSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, mkdirSync, readFileSync, realpathSync, copyFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -14,7 +14,7 @@ const HOOKS = join(here, '..', 'scripts', 'claude-hooks');
 const HOOK = join(HOOKS, 'desk-message-guard.py');
 const top = realpathSync(mkdtempSync(join(tmpdir(), 'deskguard-')));
 const STORE = join(top, 'store');
-const BASE_ENV = { PATH: process.env.PATH, HOME: join(top, 'home'), DESK_MESSAGE_GUARD_SESSIONS_DIR: STORE, DESK_MESSAGE_GUARD_DESK_FILE: join(top, 'no-desk-file') };
+const BASE_ENV = { PATH: process.env.PATH, HOME: join(top, 'home'), DESK_MESSAGE_GUARD_SESSIONS_DIR: STORE, DESK_MESSAGE_GUARD_DESK_FILE: join(top, 'no-desk-file'), DESK_MESSAGE_GUARD_LOG: join(top, 'refusals.jsonl') };
 const SEND = 'mcp__ccd_session_mgmt__send_message';
 const DESK_TITLE = 'Active Remote Control [Desk (28 Nov)]';
 let seq = 0;
@@ -40,6 +40,7 @@ const notice = () => prompt({ kind: 'task-notification', producer: 'session-task
 const peer = () => prompt({ kind: 'peer', from: 'local_x', name: 'n', body: 'b' }, { isMeta: true, turnOrigin: 'peer' });
 const scheduled = () => prompt({ kind: 'task-notification', subkind: 'scheduled-trigger', fireReason: 'scheduled' }, { turnOrigin: 'scheduled' });
 const started = () => JSON.stringify({ type: 'user', isSidechain: false, uuid: `u-${++seq}`, promptSource: 'sdk', turnOrigin: 'host_synthetic', message: { role: 'user', content: 'brief' } });
+const wake = () => JSON.stringify({ type: 'user', isSidechain: false, uuid: `u-${++seq}`, promptSource: 'system', turnOrigin: 'scheduled', message: { role: 'user', content: 'wake' } });
 const toolResult = () => JSON.stringify({ type: 'user', isSidechain: false, uuid: `u-${++seq}`, message: { role: 'user', content: [{ type: 'tool_result', content: '"origin":{"kind":"human"} "promptSource"' }] } });
 const assistant = () => JSON.stringify({ type: 'assistant', isSidechain: false, uuid: `u-${++seq}`, message: { content: [] } });
 
@@ -92,12 +93,13 @@ test('the refusal tells the session what to do instead and names no session', ()
 test('what started the turn decides: the newest prompt in the transcript wins', () => {
   refused(call(SEND, { session_id: DESK }, { transcriptPath: transcript([human(), assistant(), human(), peer(), assistant()]) }), /message from another session/, 'peer');
   refused(call(SEND, { session_id: DESK }, { transcriptPath: transcript([started(), assistant(), human(), assistant(), notice()]) }), /background-task notice/);
-  refused(call(SEND, { session_id: DESK }, { transcriptPath: transcript([started(), assistant()]) }), /prompt that wasn't the owner's/, 'a brief another session sent');
+  refused(call(SEND, { session_id: DESK }, { transcriptPath: transcript([started(), assistant()]) }), /prompt another session sent/, 'a brief another session sent');
+  refused(call(SEND, { session_id: DESK }, { transcriptPath: transcript([human(), assistant(), wake()]) }), /own scheduled wake/, 'a wake the session set itself');
   passes(call(SEND, { session_id: DESK }, { transcriptPath: transcript([started(), assistant(), notice(), human(), assistant()]) }), 'owner after a notice');
   // A subagent's human-looking line is not the session's turn.
   refused(call(SEND, { session_id: DESK }, { transcriptPath: transcript([human(), notice(), human({ isSidechain: true })]) }), /background-task notice/, 'sidechain');
   // Text inside a tool result that looks like a prompt's fields is not a prompt.
-  refused(call(SEND, { session_id: DESK }, { transcriptPath: transcript([human(), notice(), toolResult()]) }), null, 'tool result');
+  refused(call(SEND, { session_id: DESK }, { transcriptPath: transcript([human(), notice(), toolResult()]) }), /background-task notice/, 'tool result');
 });
 
 test("the owner's own turn passes, typed at the Mac or sent from another device", () => {
@@ -118,7 +120,7 @@ test('a scheduled task that messages Desk passes: the timer and the owner remind
 test('other targets pass: a work session, a subagent, the parent, an unknown id, an email', () => {
   passes(call(SEND, { session_id: WORKER, message: 'm' }), 'another session by id');
   passes(call('SendMessage', { to: 'Row 1.62 guard build', message: 'm' }), 'another session by title');
-  passes(call('SendMessage', { to: 'a24bdbfccd94c4d47', summary: 's', message: 'm' }), 'a subagent');
+  passes(call('SendMessage', { to: 'a0000000000000001', summary: 's', message: 'm' }), 'a subagent');
   passes(call('SendMessage', { to: 'main', message: 'm' }), 'the parent');
   passes(call(SEND, { session_id: 'local_none-0009', message: 'm' }), 'an id with no record');
   passes(call('mcp__mail__send_message', { to: 'someone@example.com', subject: DESK_TITLE, body: DESK_TITLE }), 'a mail tool');
@@ -142,8 +144,44 @@ test("Desk's own sends pass: to itself, to its successor, and when its id is in 
   passes(call(SEND, { session_id: DESK }, { transcriptPath: transcript([human(), notice()], 'cli-listed-0001'), env: { DESK_MESSAGE_GUARD_DESK_FILE: file } }), 'listed in the file');
   // The file also names Desk as a target, when a sender uses that id.
   refused(call(SEND, { session_id: 'cli-listed-0001' }, { env: { DESK_MESSAGE_GUARD_DESK_FILE: file } }), null, 'target by listed id');
-  // A work session whose record merely mentions Desk's title is not Desk.
+  // A work session is not Desk, even when its record holds Desk's title outside `title`.
   refused(call(SEND, { session_id: DESK }, { transcriptPath: transcript([human(), notice()], 'cli-work-0001') }), null, 'a worker is not Desk');
+  mkdirSync(join(STORE, 'a', 'c'), { recursive: true });
+  writeFileSync(join(STORE, 'a', 'c', 'local_work-0002.json'), JSON.stringify({ sessionId: 'local_work-0002', cliSessionId: 'cli-work-0002', title: 'Notes', postTurnSummary: DESK_TITLE, startedFrom: DESK_CLI }));
+  refused(call(SEND, { session_id: DESK }, { transcriptPath: transcript([human(), notice()], 'cli-work-0002') }), null, 'the title in another field');
+  passes(call(SEND, { session_id: 'local_work-0002' }), 'and such a record is not a Desk target');
+});
+
+test('an outgoing Desk renamed "Retiring Desk" can still reach its successor, and a "Retired" one cannot', () => {
+  record('local_desk-0000', 'Retiring Desk (28 Nov)', 'cli-desk-0000');
+  record('local_desk-00aa', 'Retired Desk (28 Nov, 1)', 'cli-desk-00aa');
+  record('local_desk-00ab', 'Retiring Desktop notes', 'cli-desk-00ab');
+  passes(call(SEND, { session_id: NEXT_DESK, message: 'Remote Control is on' }, { transcriptPath: transcript([human(), notice()], 'cli-desk-0000') }));
+  refused(call(SEND, { session_id: NEXT_DESK }, { transcriptPath: transcript([human(), notice()], 'cli-desk-00aa') }), null, 'retired');
+  refused(call(SEND, { session_id: NEXT_DESK }, { transcriptPath: transcript([human(), notice()], 'cli-desk-00ab') }), null, 'near-miss');
+  // A message to a retiring Desk is not a message to Desk.
+  passes(call(SEND, { session_id: 'local_desk-0000', message: 'm' }));
+});
+
+test('a turn start of a shape nobody has measured passes: a renamed field must not stop the timer or the owner', () => {
+  passes(call(SEND, { session_id: DESK }, { transcriptPath: transcript([human(), assistant(), prompt({ kind: 'person' })]) }), 'a renamed human');
+  passes(call(SEND, { session_id: DESK }, { transcriptPath: transcript([prompt({ kind: 'schedule', subkind: 'cron' })]) }), 'a renamed scheduled task');
+  passes(call(SEND, { session_id: DESK }, { transcriptPath: transcript([human(), JSON.stringify({ type: 'user', uuid: 'u-x', promptSource: 'sdk', turnOrigin: 'sdk', message: {} })]) }), 'no origin, another turnOrigin');
+});
+
+test('each refusal leaves one line with no id and no message text, and a pass leaves none', () => {
+  const log = join(top, 'own-log.jsonl');
+  const env = { DESK_MESSAGE_GUARD_LOG: log };
+  passes(call(SEND, { session_id: WORKER, message: 'm' }, { env }));
+  passes(call(SEND, { session_id: DESK, message: 'm' }, { transcriptPath: ownerTurn(), env }));
+  assert.ok(!existsSync(log));
+  refused(call(SEND, { session_id: DESK, message: 'secret words' }, { env }));
+  refused(call('SendMessage', { to: DESK_TITLE, message: 'm' }, { transcriptPath: transcript([human()]), env }));
+  const lines = readFileSync(log, 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+  assert.deepEqual(lines.map((l) => [l.tool, l.start]), [[SEND, 'task-notification'], ['SendMessage', 'brief']]);
+  assert.deepEqual(Object.keys(lines[0]).sort(), ['start', 'tool', 'ts']);
+  // Nowhere to write the line: the refusal stands.
+  refused(call(SEND, { session_id: DESK }, { env: { DESK_MESSAGE_GUARD_LOG: join(top, 'no-dir', 'x.jsonl') } }));
 });
 
 test("a subagent's send to Desk is held like its session's", () => {
@@ -166,7 +204,8 @@ test('it fails open on anything it cannot read', () => {
   mkdirSync(join(bad, 'a', 'b'), { recursive: true });
   writeFileSync(join(bad, 'a', 'b', `${DESK}.json`), '{"title": "Active Remote Control [Desk');
   passes(call(SEND, { session_id: DESK }, { env: { DESK_MESSAGE_GUARD_SESSIONS_DIR: bad } }), 'a corrupt record');
-  passes(call(SEND, { session_id: 'local_../../x' }), 'an id that is not an id');
+  passes(call(SEND, { session_id: 'local_desk-000?' }), 'a glob that would find Desk is not an id');
+  passes(call(SEND, { session_id: 'local_*' }), 'nor is a star');
 });
 
 test('a title needs no records: with none on disk a send by title is still refused', () => {
@@ -182,10 +221,18 @@ test('tools that are not session messages are never read', () => {
 test('the settings fragment runs the hook on the message tools only, and lets calls through when the file is missing', () => {
   const settings = JSON.parse(readFileSync(join(HOOKS, 'desk-message-guard.settings.json'), 'utf8'));
   const [entry] = settings.hooks.PreToolUse;
-  const matcher = new RegExp(`^(?:${entry.matcher})$`);
+  const matcher = new RegExp(entry.matcher); // unanchored, the loosest way a client could read it
   for (const name of ['SendMessage', 'send_message', SEND]) assert.ok(matcher.test(name), name);
-  for (const name of ['Bash', 'Edit', 'mcp__ccd_session_mgmt__list_sessions', 'SendMessages']) assert.ok(!matcher.test(name), name);
+  for (const name of ['Bash', 'Edit', 'mcp__ccd_session_mgmt__list_sessions', 'Agent']) assert.ok(!matcher.test(name), name);
   const [hook] = entry.hooks;
   assert.equal(hook.command, '[ -r ~/.claude/hooks/desk-message-guard.py ] || exit 0; python3 -I ~/.claude/hooks/desk-message-guard.py');
   assert.ok(hook.timeout >= 5);
+  // Run the command as the app would: with no hook file it exits 0, and with one it refuses.
+  const home = join(top, 'home-settings');
+  mkdirSync(join(home, '.claude', 'hooks'), { recursive: true });
+  const input = JSON.stringify({ hook_event_name: 'PreToolUse', session_id: 's', transcript_path: woken(), tool_name: SEND, tool_input: { session_id: DESK } });
+  const run = () => spawnSync('sh', ['-c', hook.command], { input, encoding: 'utf8', env: { ...BASE_ENV, HOME: home } });
+  assert.equal(run().status, 0, 'no hook file');
+  copyFileSync(HOOK, join(home, '.claude', 'hooks', 'desk-message-guard.py'));
+  assert.equal(run().status, 2, 'hook file in place');
 });

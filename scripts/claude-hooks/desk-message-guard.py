@@ -25,20 +25,30 @@ list of strings, other than the message's own text) is one of:
 
 Then the call passes when one of these holds, and is refused otherwise:
   - the sender is Desk: its id is in the id file, or its own record in the
-    session store carries the Desk title (a handover to the successor);
+    session store carries the Desk title, or "Retiring Desk", the name an
+    outgoing Desk takes while it hands over to its successor;
   - the owner started this turn: the newest prompt in the transcript is his
     (`origin.kind` is `human`) and it isn't the session's first prompt, which
     is the session's brief whoever pasted it;
   - a scheduled task started this turn (`origin.subkind` is
     `scheduled-trigger`): the Desk timer and the owner's reminders are such
-    sessions, and each exists to send Desk one message.
+    sessions, and each exists to send Desk one message;
+  - the turn's start has a shape this hook doesn't know. Only the shapes
+    measured on 28 November 2026 are refused: a session's first prompt, a
+    background-task notice, another session's message, a starter session's
+    brief (`turnOrigin` `host_synthetic`) and the session's own scheduled
+    wake (`turnOrigin` `scheduled`). A renamed field lets calls through.
+
+Each refusal appends one line (time, tool, reason, no ids and no message
+text) to ~/.desk/desk-message-guard.jsonl, so the count can be read.
 
 Fails open: bad input, another event, no string target, a missing or
 unreadable transcript, a transcript with no prompt in it, a missing or corrupt
 session record, an internal error and a 4-second alarm all let the call run. A
 refusal is exit 2 with the reason on stderr, and the only non-zero exit.
 
-Test overrides: DESK_MESSAGE_GUARD_SESSIONS_DIR, DESK_MESSAGE_GUARD_DESK_FILE.
+Test overrides: DESK_MESSAGE_GUARD_SESSIONS_DIR, DESK_MESSAGE_GUARD_DESK_FILE,
+DESK_MESSAGE_GUARD_LOG.
 """
 from __future__ import annotations
 
@@ -48,9 +58,11 @@ import os
 import re
 import signal
 import sys
+import time
 
 # The lookahead keeps "[Desktop", "[Desk-top" and "[Desk2" out. A date, a bracket, a space or the end may follow.
 DESK_TITLE = re.compile(r"Active Remote Control \[Desk(?![A-Za-z0-9_-])")
+RETIRING_TITLE = re.compile(r"Retiring Desk(?![A-Za-z0-9_-])")
 _APP_ID = re.compile(r"local_[A-Za-z0-9-]{1,80}$")
 # The message's own words are never a target, whatever they quote.
 TEXT_KEYS = {"message", "summary", "content", "body", "text", "subject", "description", "prompt"}
@@ -71,7 +83,8 @@ WHY = {
     "brief": "it began with this session's first prompt, which is its brief",
     "task-notification": "it began with a background-task notice",
     "peer": "it began with a message from another session",
-    "other": "it began with a prompt that wasn't the owner's",
+    "starter": "it began with a prompt another session sent",
+    "wake": "it began with this session's own scheduled wake",
 }
 
 
@@ -116,7 +129,7 @@ def _titled_desk(record: dict | None) -> bool:
 
 
 def desk_ids() -> list[str]:
-    """Desk's transcript ids, one a line: the file context-cap.py reads, kept by /desk-rotate."""
+    """Desk's transcript ids, one a line: the file context-cap.py reads. No ids when it's missing."""
     path = os.environ.get("DESK_MESSAGE_GUARD_DESK_FILE") or os.path.expanduser("~/.desk/context-cap-exempt")
     try:
         with open(path, encoding="utf-8") as f:
@@ -171,7 +184,8 @@ def sender_is_desk(ids: list[str], listed: list[str]) -> bool:
         except ValueError:
             continue
         if isinstance(record, dict) and record.get("cliSessionId") in ids:
-            return _titled_desk(record)
+            title = record.get("title")
+            return _titled_desk(record) or (isinstance(title, str) and bool(RETIRING_TITLE.match(title.strip())))
     return False
 
 
@@ -226,7 +240,7 @@ def first_prompt(path: str) -> dict | None:
 
 
 def turn_start(path: str) -> str | None:
-    """What started the turn in hand: owner, scheduled-task, brief, task-notification, peer or other. None when unknown."""
+    """What started the turn in hand. None when there's no prompt, "unknown" for a shape this hook hasn't measured."""
     newest = newest_prompt(path)
     if newest is None:
         return None
@@ -239,7 +253,23 @@ def turn_start(path: str) -> str | None:
         return "owner"
     if kind == "task-notification":
         return "scheduled-task" if origin.get("subkind") == "scheduled-trigger" else "task-notification"
-    return "peer" if kind == "peer" else "other"
+    if kind == "peer":
+        return "peer"
+    if kind is None and newest.get("turnOrigin") == "host_synthetic":
+        return "starter"
+    if kind is None and newest.get("turnOrigin") == "scheduled":
+        return "wake"
+    return "unknown"
+
+
+def record_refusal(tool: str, start: str) -> None:
+    """One line a refusal, so the count is readable. No ids, no message text. A failed write changes nothing."""
+    path = os.environ.get("DESK_MESSAGE_GUARD_LOG") or os.path.expanduser("~/.desk/desk-message-guard.jsonl")
+    try:
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(json.dumps({"ts": int(time.time()), "tool": tool, "start": start}) + "\n")
+    except OSError:
+        pass
 
 
 def decide(payload: object) -> str | None:
@@ -264,9 +294,10 @@ def decide(payload: object) -> str | None:
     if not os.path.isfile(transcript):
         return None
     start = turn_start(transcript)
-    if start in (None, "owner", "scheduled-task"):
+    if start not in WHY:  # no prompt, the owner, a scheduled task, or a shape not measured: let it run
         return None
-    return MESSAGE.format(tool=tool, why=WHY.get(start, WHY["other"]))
+    record_refusal(tool, start)
+    return MESSAGE.format(tool=tool, why=WHY[start])
 
 
 def main() -> int:
