@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-11-27T22:32:10.108Z",
-  "renderedAt": "2026-11-27T22:32:10.108Z",
+  "generatedAt": "2026-11-28T00:44:40.941Z",
+  "renderedAt": "2026-11-28T00:44:40.941Z",
   "repos": [
     {
       "slug": "gorfednet/bindercurve.com",
@@ -24,7 +24,7 @@
       "redacted": true,
       "mainRed": false,
       "openPrCount": 11,
-      "lapsedBacklogCount": 23,
+      "lapsedBacklogCount": 24,
       "noPrCount": 33,
       "idlePrCount": 11,
       "duplicatePrCount": 0,
@@ -211,7 +211,7 @@
         {
           "number": 281,
           "title": "Fleet status: public repository faces and release lag (plan 1.66)",
-          "ageDays": 6,
+          "ageDays": 7,
           "labels": [],
           "draft": true,
           "review": "findings",
@@ -235,7 +235,7 @@
         {
           "number": 267,
           "title": "Content guidelines: the AI statement lives in the AI use overlay",
-          "ageDays": 8,
+          "ageDays": 9,
           "labels": [
             "hold"
           ],
@@ -412,6 +412,16 @@
           "id": "vhost-capture-drift-gorfed-work-and-assist",
           "status": "landed",
           "reviewBy": "2026-11-15"
+        },
+        {
+          "id": "fleet-registry-missing-repos",
+          "status": "confirmed-bug",
+          "reviewBy": "2026-11-27"
+        },
+        {
+          "id": "ci-parallelism-host-cpus",
+          "status": "confirmed-bug",
+          "reviewBy": "2026-11-27"
         },
         {
           "id": "n7-test-push-real-ops",
@@ -610,7 +620,7 @@
       "idlePrs": [
         {
           "number": 281,
-          "idleDays": 6
+          "idleDays": 7
         },
         {
           "number": 270,
@@ -639,10 +649,10 @@
       "slug": "gorfednet/MoonMan",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 13,
+      "openPrCount": 14,
       "lapsedBacklogCount": 3,
       "noPrCount": 47,
-      "idlePrCount": 12,
+      "idlePrCount": 7,
       "duplicatePrCount": 0,
       "dependabotRedCount": 5,
       "kitVersion": null,
@@ -659,7 +669,7 @@
         {
           "number": 9,
           "title": "README: replace the last em dash",
-          "ageDays": 6,
+          "ageDays": 7,
           "labels": [],
           "draft": true,
           "review": "not-run",
@@ -692,7 +702,7 @@
       "idlePrs": [
         {
           "number": 9,
-          "idleDays": 6
+          "idleDays": 7
         },
         {
           "number": 8,
@@ -713,10 +723,10 @@
       "slug": "gorfednet/career-portfolio",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 8,
+      "openPrCount": 9,
       "lapsedBacklogCount": 1,
       "noPrCount": 1,
-      "idlePrCount": 8,
+      "idlePrCount": 5,
       "duplicatePrCount": 0,
       "dependabotRedCount": 1,
       "kitVersion": "0.65.0",
@@ -729,10 +739,10 @@
       "slug": "gorfednet/heuristics.4thcltr.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 11,
-      "lapsedBacklogCount": 35,
+      "openPrCount": 12,
+      "lapsedBacklogCount": 36,
       "noPrCount": 8,
-      "idlePrCount": 11,
+      "idlePrCount": 9,
       "duplicatePrCount": 0,
       "dependabotRedCount": 2,
       "kitVersion": "0.65.0",
@@ -745,10 +755,10 @@
       "slug": "gorfednet/papers.4thcltr.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 4,
+      "openPrCount": 5,
       "lapsedBacklogCount": 1,
       "noPrCount": 5,
-      "idlePrCount": 4,
+      "idlePrCount": 3,
       "duplicatePrCount": 0,
       "dependabotRedCount": 1,
       "kitVersion": "0.65.0",
@@ -873,10 +883,10 @@
       "slug": "gorfednet/assess",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 6,
-      "lapsedBacklogCount": 25,
+      "openPrCount": 7,
+      "lapsedBacklogCount": 28,
       "noPrCount": 6,
-      "idlePrCount": 6,
+      "idlePrCount": 3,
       "duplicatePrCount": 0,
       "dependabotRedCount": 2,
       "kitVersion": "0.65.0",
@@ -889,10 +899,10 @@
       "slug": "gorfednet/ops",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 29,
+      "openPrCount": 31,
       "lapsedBacklogCount": 0,
       "noPrCount": 14,
-      "idlePrCount": 23,
+      "idlePrCount": 22,
       "duplicatePrCount": 0,
       "dependabotRedCount": 0,
       "kitVersion": null,
@@ -956,18 +966,18 @@
     }
   },
   "inventory": {
-    "measuredAt": "2026-11-27T22:32:10.108Z",
+    "measuredAt": "2026-11-28T00:44:40.941Z",
     "counts": {
       "pr": {
-        "total": 170,
-        "orphans": 90
+        "total": 177,
+        "orphans": 96
       },
       "session": null,
       "worktree": null,
       "job": null,
       "backlog": {
         "total": 31,
-        "orphans": 2
+        "orphans": 4
       }
     },
     "orphans": [
@@ -1066,14 +1076,30 @@
         "label": "Every deploy to the ten NAS sites reached the filesystem and not the visitor",
         "private": false,
         "lapsed": true
+      },
+      {
+        "kind": "backlog",
+        "repo": "gorfednet/.github",
+        "ref": "fleet-registry-missing-repos",
+        "label": "Six active repositories are missing from fleet.json",
+        "private": false,
+        "lapsed": true
+      },
+      {
+        "kind": "backlog",
+        "repo": "gorfednet/.github",
+        "ref": "ci-parallelism-host-cpus",
+        "label": "CI tools size their parallelism from the host's 12 cpus inside the pool's 2-cpu containers",
+        "private": false,
+        "lapsed": true
       }
     ],
-    "hiddenPrivate": 80,
+    "hiddenPrivate": 86,
     "privateReposNotItemised": 18,
     "planRead": true
   },
   "dotgithub": {
-    "measuredAt": "2026-11-27T22:33:12.956Z",
+    "measuredAt": "2026-11-28T00:45:33.847Z",
     "branches": 45,
     "merged": 3,
     "exposedFiles": 54,
