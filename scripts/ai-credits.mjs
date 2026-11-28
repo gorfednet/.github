@@ -16,6 +16,9 @@
  * rechecked), and checks that `tagTools` is what the ledger's own evidence and statements derive. `check-tags` fails when a
  * tag drops a tool the ledger records or states, names one it doesn't, or while the ledger has open items (a co-author nothing
  * classifies, a conflicting AI-Use line, an empty page group). `--order` also fails an order the ledger doesn't give.
+ * Never wire `--order` into a site's CI: it enforces the 1.2 biggest-hand order, which contradicts shipping.md 1.3 (capability
+ * order from `models.json`). Change it to read that order first. Transcript-only tools (Haiku subagents) are graded recorded,
+ * neither credited nor open; crediting one needs the owner's knowing yes (`transcriptCredit` in the config).
  * A rebuild keeps the larger transcript count from the ledger it replaces, since transcripts get cleaned up.
  *
  * Reads git and local files. Makes no network call. Exit 0 ok, 1 problems found, 2 bad argument, 3 `--strict` and the ledger has open items.
@@ -25,7 +28,7 @@ import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from
 import { homedir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
 
-import { buildLedger, checkRecord, dayOf, monthOf, openProblems, parseGitLog, underSource } from './lib/aiCredits.mjs'
+import { SCHEMA, buildLedger, checkRecord, dayOf, monthOf, openProblems, parseGitLog, underSource } from './lib/aiCredits.mjs'
 import { isMain } from './lib/isMain.mjs'
 import { DEFAULT_PROJECTS, listTranscripts, scanFile } from './lib/prCost.mjs'
 
@@ -116,7 +119,9 @@ function loadJson(path, what) {
 export function ledgerFor({ repo, ref = 'origin/main', name, config = {}, index = null, prior = null, cursorModels = null, command = '', script = '', now = new Date() }) {
   const given = realpathSync(resolve(repo))
   const repoDir = rootOf(given) ?? given // a worktree of a clone is that clone, so its transcripts are too
-  const head = git(given, ['rev-parse', ref]).trim()
+  // The ledger's own head is read back on `verify`, so an option-shaped value must never reach git.
+  if (/^-/.test(ref) || /\s/.test(ref)) throw new Error(`refusing ref ${JSON.stringify(ref)}: it looks like an option`)
+  const head = git(given, ['rev-parse', '--verify', '--end-of-options', `${ref}^{commit}`]).trim()
   const commits = parseGitLog(git(given, ['log', head, '--reverse', '--name-status', '-M', `--format=${FORMAT}`]))
   const transcripts = index ? rowsFor(index, repoDir, config.cwdRoots ?? []) : null
   const readInfo = index ? { indexedAt: index.indexedAt, files: index.files, earliest: index.earliest ? dayOf(index.earliest) : null, scope: 'Claude Code transcripts on one Mac, matched by working folder' } : null
@@ -125,7 +130,7 @@ export function ledgerFor({ repo, ref = 'origin/main', name, config = {}, index 
 
 /** The part of a ledger that git and the config alone decide. Transcripts and Cursor's model list are local or external. */
 const stable = (ledger) => {
-  const { generated, transcripts, tools, transcriptOnlyTools, tagTools, inferred, months, open, stated, ...rest } = ledger
+  const { generated, transcripts, tools, transcriptOnlyTools, tagTools, inferred, months, open, stated, grades, limits, order, standard, ...rest } = ledger
   return JSON.stringify({
     ...rest,
     stated: stated.map(({ grade, ...e }) => e),
@@ -161,6 +166,10 @@ async function main(argv) {
     const script = 'scripts/ai-credits.mjs'
     if (o.cmd === 'verify') {
       const ledger = loadJson(o.ledger, 'ledger')
+      if (!/^[0-9a-f]{40}([0-9a-f]{24})?$/.test(String(ledger.head))) {
+        console.error(`ledger head ${JSON.stringify(ledger.head)} is not a commit id`)
+        return 1
+      }
       const again = ledgerFor({ repo: o.repo, ref: ledger.head, name: ledger.repo, config, cursorModels: null, command: ledger.command, script: ledger.script })
       again.ref = ledger.ref
       const a = stable(again)
@@ -189,6 +198,11 @@ async function main(argv) {
     const command = `node ${script} build --repo <clone> --ref ${o.ref ?? 'origin/main'}${o.transcripts ? ' --transcripts <index>' : ''}${o.cursorModels ? ' --cursor-models scripts/data/cursor-models.json' : ''}`
     const out = o.out ?? join(o.repo, 'docs', 'ai-use', 'credits.json')
     const prior = existsSync(out) ? loadJson(out, 'ledger') : null
+    const wanted = o.name ?? basename(rootOf(realpathSync(resolve(o.repo))) ?? realpathSync(resolve(o.repo)))
+    if (prior && (prior.repo !== wanted || prior.schema !== SCHEMA)) {
+      console.error(`ai-credits: ${out} is the ledger of ${prior.repo} (schema ${prior.schema}), not ${wanted} (schema ${SCHEMA}); use another --out`)
+      return 2
+    }
     const ledger = ledgerFor({ repo: o.repo, ref: o.ref, name: o.name, config, index, prior, cursorModels, command, script })
     mkdirSync(dirname(out), { recursive: true })
     writeFileSync(out, `${JSON.stringify(ledger, null, 2)}\n`)
