@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-11-28T16:31:52.647Z",
-  "renderedAt": "2026-11-28T16:31:52.647Z",
+  "generatedAt": "2026-11-28T18:31:34.140Z",
+  "renderedAt": "2026-11-28T18:31:34.140Z",
   "repos": [
     {
       "slug": "gorfednet/bindercurve.com",
@@ -39,7 +39,7 @@
       "slug": "gorfednet/gorfed.net",
       "redacted": true,
       "mainRed": true,
-      "openPrCount": 0,
+      "openPrCount": 1,
       "lapsedBacklogCount": 5,
       "noPrCount": 6,
       "idlePrCount": 0,
@@ -87,10 +87,10 @@
       "slug": "gorfednet/blackpixelrecords.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 4,
+      "openPrCount": 3,
       "lapsedBacklogCount": 0,
       "noPrCount": 5,
-      "idlePrCount": 3,
+      "idlePrCount": 2,
       "duplicatePrCount": 0,
       "dependabotRedCount": 0,
       "kitVersion": "0.65.0",
@@ -103,7 +103,7 @@
       "slug": "gorfednet/denseware.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 5,
+      "openPrCount": 6,
       "lapsedBacklogCount": 0,
       "noPrCount": 3,
       "idlePrCount": 4,
@@ -119,10 +119,10 @@
       "slug": "gorfednet/gorfmusic.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 6,
+      "openPrCount": 5,
       "lapsedBacklogCount": 2,
       "noPrCount": 4,
-      "idlePrCount": 6,
+      "idlePrCount": 5,
       "duplicatePrCount": 0,
       "dependabotRedCount": 2,
       "kitVersion": "0.65.0",
@@ -167,10 +167,10 @@
       "slug": "gorfednet/ssatcy.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 7,
+      "openPrCount": 6,
       "lapsedBacklogCount": 1,
       "noPrCount": 2,
-      "idlePrCount": 7,
+      "idlePrCount": 6,
       "duplicatePrCount": 0,
       "dependabotRedCount": 1,
       "kitVersion": "0.65.0",
@@ -184,18 +184,6 @@
       "defaultBranch": "main",
       "mainRed": false,
       "openPrs": [
-        {
-          "number": 315,
-          "title": "AI Use trailer gate: caller in this repository (row 1.90a pilot)",
-          "ageDays": 0,
-          "labels": [],
-          "draft": false,
-          "review": "clean",
-          "headSha": "20b59fce17a2af07e90b5c6e1ee9c3989afdf5f5",
-          "ci": "green",
-          "next": "merge (checks and review clean)",
-          "author": "gorfednet"
-        },
         {
           "number": 306,
           "title": ".github: B1: Design package distributed by the kit refresh, seeded from BinderCurve tokens.css",
@@ -628,7 +616,7 @@
         },
         {
           "number": 267,
-          "idleDays": 7
+          "idleDays": 8
         }
       ],
       "duplicatePrs": [],
@@ -645,7 +633,7 @@
       "slug": "gorfednet/MoonMan",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 8,
+      "openPrCount": 9,
       "lapsedBacklogCount": 3,
       "noPrCount": 47,
       "idlePrCount": 5,
@@ -789,9 +777,9 @@
           "title": "AI Use trailer gate: add the caller (row 1.90a)",
           "ageDays": 0,
           "labels": [],
-          "draft": true,
+          "draft": false,
           "review": "findings",
-          "headSha": "67de031bd1c19d98c26460de1d55034abd1fb5d8",
+          "headSha": "0c23d31d94651348ff32ffe385be50f359db020a",
           "ci": "green",
           "next": "Merge once gates are clean.",
           "author": "gorfednet"
@@ -799,7 +787,7 @@
         {
           "number": 23,
           "title": "Spec 1.2.1: a site footer mark, and ordering a long Tool list",
-          "ageDays": 15,
+          "ageDays": 16,
           "labels": [],
           "draft": true,
           "review": "not-run",
@@ -832,7 +820,7 @@
       "idlePrs": [
         {
           "number": 23,
-          "idleDays": 15
+          "idleDays": 16
         },
         {
           "number": 3,
@@ -854,20 +842,6 @@
       "defaultBranch": "main",
       "mainRed": false,
       "openPrs": [
-        {
-          "number": 5,
-          "title": "AI Use trailer gate: add the caller (row 1.90a)",
-          "ageDays": 0,
-          "labels": [
-            "ready-to-merge"
-          ],
-          "draft": false,
-          "review": "clean",
-          "headSha": "9ffd783a18102eea58efb6c2a5361f2ba193b5f6",
-          "ci": "green",
-          "next": "merge (checks and review clean)",
-          "author": "gorfednet"
-        },
         {
           "number": 4,
           "title": "fix: --help exit code, drop arbitrary ratingKey length cap",
@@ -921,7 +895,7 @@
       "slug": "gorfednet/ops",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 29,
+      "openPrCount": 28,
       "lapsedBacklogCount": 0,
       "noPrCount": 15,
       "idlePrCount": 14,
@@ -988,11 +962,11 @@
     }
   },
   "inventory": {
-    "measuredAt": "2026-11-28T16:31:52.647Z",
+    "measuredAt": "2026-11-28T18:31:34.140Z",
     "counts": {
       "pr": {
-        "total": 149,
-        "orphans": 87
+        "total": 147,
+        "orphans": 88
       },
       "session": null,
       "worktree": null,
@@ -1008,22 +982,6 @@
         "repo": "gorfednet/ai-use-levels",
         "ref": "#31",
         "label": "AI Use trailer gate: add the caller (row 1.90a)",
-        "private": false,
-        "lapsed": false
-      },
-      {
-        "kind": "pr",
-        "repo": "gorfednet/plex-lastfm-sync",
-        "ref": "#5",
-        "label": "AI Use trailer gate: add the caller (row 1.90a)",
-        "private": false,
-        "lapsed": false
-      },
-      {
-        "kind": "pr",
-        "repo": "gorfednet/.github",
-        "ref": "#315",
-        "label": "AI Use trailer gate: caller in this repository (row 1.90a pilot)",
         "private": false,
         "lapsed": false
       },
@@ -1132,13 +1090,13 @@
         "lapsed": true
       }
     ],
-    "hiddenPrivate": 75,
+    "hiddenPrivate": 78,
     "privateReposNotItemised": 18,
     "planRead": true
   },
   "dotgithub": {
-    "measuredAt": "2026-11-28T16:32:46.156Z",
-    "branches": 46,
+    "measuredAt": "2026-11-28T18:32:33.381Z",
+    "branches": 45,
     "merged": 3,
     "exposedFiles": 54,
     "rulesNotChecked": [],
