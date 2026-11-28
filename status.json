@@ -1,15 +1,15 @@
 {
-  "generatedAt": "2026-11-28T12:33:29.757Z",
-  "renderedAt": "2026-11-28T12:33:29.757Z",
+  "generatedAt": "2026-11-28T14:31:51.854Z",
+  "renderedAt": "2026-11-28T14:31:51.854Z",
   "repos": [
     {
       "slug": "gorfednet/bindercurve.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 22,
+      "openPrCount": 23,
       "lapsedBacklogCount": 17,
       "noPrCount": 80,
-      "idlePrCount": 15,
+      "idlePrCount": 13,
       "duplicatePrCount": 0,
       "dependabotRedCount": 9,
       "kitVersion": "0.70.0",
@@ -23,7 +23,7 @@
       "slug": "gorfednet/4thcltr.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 8,
+      "openPrCount": 9,
       "lapsedBacklogCount": 24,
       "noPrCount": 33,
       "idlePrCount": 7,
@@ -39,7 +39,7 @@
       "slug": "gorfednet/gorfed.net",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 0,
+      "openPrCount": 1,
       "lapsedBacklogCount": 5,
       "noPrCount": 6,
       "idlePrCount": 0,
@@ -55,7 +55,7 @@
       "slug": "gorfednet/subrythm.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 4,
+      "openPrCount": 5,
       "lapsedBacklogCount": 0,
       "noPrCount": 2,
       "idlePrCount": 4,
@@ -74,7 +74,7 @@
       "openPrCount": 3,
       "lapsedBacklogCount": 1,
       "noPrCount": 2,
-      "idlePrCount": 2,
+      "idlePrCount": 1,
       "duplicatePrCount": 0,
       "dependabotRedCount": 0,
       "kitVersion": "0.65.0",
@@ -87,7 +87,7 @@
       "slug": "gorfednet/blackpixelrecords.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 3,
+      "openPrCount": 4,
       "lapsedBacklogCount": 0,
       "noPrCount": 5,
       "idlePrCount": 3,
@@ -103,7 +103,7 @@
       "slug": "gorfednet/denseware.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 5,
+      "openPrCount": 6,
       "lapsedBacklogCount": 0,
       "noPrCount": 3,
       "idlePrCount": 4,
@@ -119,7 +119,7 @@
       "slug": "gorfednet/gorfmusic.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 6,
+      "openPrCount": 7,
       "lapsedBacklogCount": 2,
       "noPrCount": 4,
       "idlePrCount": 6,
@@ -135,7 +135,7 @@
       "slug": "gorfednet/promptboi.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 7,
+      "openPrCount": 8,
       "lapsedBacklogCount": 3,
       "noPrCount": 21,
       "idlePrCount": 5,
@@ -151,7 +151,7 @@
       "slug": "gorfednet/rowanmcarthur.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 2,
+      "openPrCount": 3,
       "lapsedBacklogCount": 0,
       "noPrCount": 1,
       "idlePrCount": 2,
@@ -167,7 +167,7 @@
       "slug": "gorfednet/ssatcy.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 7,
+      "openPrCount": 8,
       "lapsedBacklogCount": 1,
       "noPrCount": 2,
       "idlePrCount": 7,
@@ -184,6 +184,42 @@
       "defaultBranch": "main",
       "mainRed": false,
       "openPrs": [
+        {
+          "number": 318,
+          "title": "desk-message-guard: refuse session messages to Desk from turns the owner didn't start (row 1.62)",
+          "ageDays": 0,
+          "labels": [],
+          "draft": true,
+          "review": "not-run",
+          "headSha": "2c83a51a32349f3ef4801e428672b5c4bf2812ac",
+          "ci": "pending",
+          "next": "merge once gates are clean",
+          "author": "gorfednet"
+        },
+        {
+          "number": 317,
+          "title": "ship-bot: tag a 4thcltr.com merge that has no Release line (row 1.101)",
+          "ageDays": 0,
+          "labels": [],
+          "draft": false,
+          "review": "clean",
+          "headSha": "abf1b43c7fb3e08411bb5b61748bd863f9b0082e",
+          "ci": "pending",
+          "next": "merge once gates are clean",
+          "author": "gorfednet"
+        },
+        {
+          "number": 315,
+          "title": "AI Use trailer gate: caller in this repository (row 1.90a pilot)",
+          "ageDays": 0,
+          "labels": [],
+          "draft": true,
+          "review": "clean",
+          "headSha": "1c6cac90b255423190ff9b6f423f02fc2d221710",
+          "ci": "pending",
+          "next": "Merge once gates are clean.",
+          "author": "gorfednet"
+        },
         {
           "number": 306,
           "title": ".github: B1: Design package distributed by the kit refresh, seeded from BinderCurve tokens.css",
@@ -223,7 +259,7 @@
         {
           "number": 270,
           "title": ".github: A4: hookify them into PreToolUse and Stop hooks, each shown failing once",
-          "ageDays": 7,
+          "ageDays": 8,
           "labels": [],
           "draft": true,
           "review": "not-run",
@@ -612,7 +648,7 @@
         },
         {
           "number": 270,
-          "idleDays": 7
+          "idleDays": 8
         },
         {
           "number": 267,
@@ -633,10 +669,10 @@
       "slug": "gorfednet/MoonMan",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 9,
+      "openPrCount": 8,
       "lapsedBacklogCount": 3,
       "noPrCount": 47,
-      "idlePrCount": 6,
+      "idlePrCount": 5,
       "duplicatePrCount": 0,
       "dependabotRedCount": 1,
       "kitVersion": null,
@@ -650,6 +686,18 @@
       "defaultBranch": "main",
       "mainRed": false,
       "openPrs": [
+        {
+          "number": 12,
+          "title": "AI Use trailer gate: add the caller (row 1.90a)",
+          "ageDays": 0,
+          "labels": [],
+          "draft": true,
+          "review": "clean",
+          "headSha": "b348d0c27fb573b26032fb1861cc7dd38de3c429",
+          "ci": "green",
+          "next": "Merge once gates are clean.",
+          "author": "gorfednet"
+        },
         {
           "number": 9,
           "title": "README: replace the last em dash",
@@ -707,7 +755,7 @@
       "slug": "gorfednet/career-portfolio",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 4,
+      "openPrCount": 5,
       "lapsedBacklogCount": 1,
       "noPrCount": 1,
       "idlePrCount": 4,
@@ -723,7 +771,7 @@
       "slug": "gorfednet/heuristics.4thcltr.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 6,
+      "openPrCount": 7,
       "lapsedBacklogCount": 36,
       "noPrCount": 8,
       "idlePrCount": 4,
@@ -772,6 +820,18 @@
       "defaultBranch": "main",
       "mainRed": false,
       "openPrs": [
+        {
+          "number": 31,
+          "title": "AI Use trailer gate: add the caller (row 1.90a)",
+          "ageDays": 0,
+          "labels": [],
+          "draft": true,
+          "review": "findings",
+          "headSha": "4501df3d93a51e2654690adc1c4596f5054dfd11",
+          "ci": "green",
+          "next": "Merge once gates are clean.",
+          "author": "gorfednet"
+        },
         {
           "number": 23,
           "title": "Spec 1.2.1: a site footer mark, and ordering a long Tool list",
@@ -831,6 +891,18 @@
       "mainRed": false,
       "openPrs": [
         {
+          "number": 5,
+          "title": "AI Use trailer gate: add the caller (row 1.90a)",
+          "ageDays": 0,
+          "labels": [],
+          "draft": true,
+          "review": "clean",
+          "headSha": "9ffd783a18102eea58efb6c2a5361f2ba193b5f6",
+          "ci": "green",
+          "next": "Merge once gates are clean.",
+          "author": "gorfednet"
+        },
+        {
           "number": 4,
           "title": "fix: --help exit code, drop arbitrary ratingKey length cap",
           "ageDays": 7,
@@ -867,10 +939,10 @@
       "slug": "gorfednet/assess",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 3,
+      "openPrCount": 4,
       "lapsedBacklogCount": 28,
       "noPrCount": 6,
-      "idlePrCount": 3,
+      "idlePrCount": 2,
       "duplicatePrCount": 0,
       "dependabotRedCount": 0,
       "kitVersion": "0.65.0",
@@ -883,7 +955,7 @@
       "slug": "gorfednet/ops",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 26,
+      "openPrCount": 29,
       "lapsedBacklogCount": 0,
       "noPrCount": 15,
       "idlePrCount": 14,
@@ -950,11 +1022,11 @@
     }
   },
   "inventory": {
-    "measuredAt": "2026-11-28T12:33:29.757Z",
+    "measuredAt": "2026-11-28T14:31:51.854Z",
     "counts": {
       "pr": {
-        "total": 142,
-        "orphans": 80
+        "total": 165,
+        "orphans": 102
       },
       "session": null,
       "worktree": null,
@@ -965,6 +1037,38 @@
       }
     },
     "orphans": [
+      {
+        "kind": "pr",
+        "repo": "gorfednet/ai-use-levels",
+        "ref": "#31",
+        "label": "AI Use trailer gate: add the caller (row 1.90a)",
+        "private": false,
+        "lapsed": false
+      },
+      {
+        "kind": "pr",
+        "repo": "gorfednet/plex-lastfm-sync",
+        "ref": "#5",
+        "label": "AI Use trailer gate: add the caller (row 1.90a)",
+        "private": false,
+        "lapsed": false
+      },
+      {
+        "kind": "pr",
+        "repo": "gorfednet/ACID2REAPER",
+        "ref": "#12",
+        "label": "AI Use trailer gate: add the caller (row 1.90a)",
+        "private": false,
+        "lapsed": false
+      },
+      {
+        "kind": "pr",
+        "repo": "gorfednet/.github",
+        "ref": "#315",
+        "label": "AI Use trailer gate: caller in this repository (row 1.90a pilot)",
+        "private": false,
+        "lapsed": false
+      },
       {
         "kind": "pr",
         "repo": "gorfednet/.github",
@@ -1010,14 +1114,6 @@
         "repo": "gorfednet/ACID2REAPER",
         "ref": "#9",
         "label": "README: replace the last em dash",
-        "private": false,
-        "lapsed": false
-      },
-      {
-        "kind": "pr",
-        "repo": "gorfednet/gorfednet",
-        "ref": "#6",
-        "label": "Profile: drop links to public repositories outside 4th Culture",
         "private": false,
         "lapsed": false
       },
@@ -1078,13 +1174,13 @@
         "lapsed": true
       }
     ],
-    "hiddenPrivate": 70,
+    "hiddenPrivate": 89,
     "privateReposNotItemised": 18,
     "planRead": true
   },
   "dotgithub": {
-    "measuredAt": "2026-11-28T12:34:20.947Z",
-    "branches": 44,
+    "measuredAt": "2026-11-28T14:32:58.826Z",
+    "branches": 48,
     "merged": 3,
     "exposedFiles": 54,
     "rulesNotChecked": [],
