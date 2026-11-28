@@ -1592,6 +1592,7 @@ describe('releases, not every merge (plan row 1.25)', () => {
     assert.equal(diffs.length, 1, ws.join('\n'))
     assert.deepEqual(diffs[0].split(' ').slice(-2), [LAST, MERGE], 'the diff counts from the last deploy, not the first parent')
     assert.ok(diffs[0].split(' ').includes('-z') && diffs[0].split(' ').includes('--no-renames'), diffs[0])
+    assert.ok(s.github.calls.length > 0 && bodies(s.github).every((b) => !b.includes('\0')), 'no NUL byte reaches a comment body')
     const st = s.state().repo(SLUG)
     assert.equal(st.lastDeployedSha, MERGE)
     assert.equal(st.lastReleasedAt, '2026-10-09T12:00:00.000Z')

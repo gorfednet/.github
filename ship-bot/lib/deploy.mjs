@@ -79,7 +79,9 @@ function gitEnv(ctx) {
 async function exec(ctx, log, { label, kind, cmd, args = [], cwd, env, timeoutMs }) {
   log.write(`\n$ ${[cmd, ...args].join(' ')}${cwd ? `   (in ${cwd})` : ''}\n`)
   const result = await ctx.runner.run({ kind, cmd, args, cwd, env: env ?? ctx.baseEnv, timeoutMs: timeoutMs ?? 10 * 60 * 1000 })
-  if (result.stdout) log.write(result.stdout.endsWith('\n') ? result.stdout : `${result.stdout}\n`)
+  // `-z` git output is NUL-separated: a NUL in the log would reach comment bodies. The returned stdout stays raw.
+  const out = result.stdout?.replaceAll('\0', '\n')
+  if (out) log.write(out.endsWith('\n') ? out : `${out}\n`)
   if (result.stderr) log.write(result.stderr.endsWith('\n') ? result.stderr : `${result.stderr}\n`)
   if (result.timedOut) log.write(`[ship-bot] ${label}: timed out after ${Math.round((timeoutMs ?? 0) / 60000)} min\n`)
   else if (!succeeded(result)) log.write(`[ship-bot] ${label}: exit ${result.code}${result.error ? ` (${result.error})` : ''}\n`)
