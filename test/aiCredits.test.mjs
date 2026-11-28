@@ -468,6 +468,17 @@ describe('the command line', () => {
     l.pages['index.html'].tagTools = [...l.pages['index.html'].tagTools].reverse()
     writeFileSync(out, JSON.stringify(l))
     assert.equal(run('verify', '--repo', r, '--ledger', out).status, 1, 'a page tag order that differs from the rebuild fails verify')
+    l.pages['index.html'].tagTools = [...l.pages['index.html'].tagTools].reverse()
+    writeFileSync(out, JSON.stringify(l))
+    assert.equal(run('verify', '--repo', r, '--ledger', out).status, 0)
+    writeFileSync(out, JSON.stringify({ ...l, tagTools: [...l.tagTools].reverse() }))
+    assert.equal(run('verify', '--repo', r, '--ledger', out).status, 1, 'a reversed site tag order fails verify')
+    writeFileSync(out, JSON.stringify({ ...l, standard: 'AI Use Levels 1.2' }))
+    assert.equal(run('verify', '--repo', r, '--ledger', out).status, 1, 'a ledger with the old stamp fails verify')
+    writeFileSync(join(r, 'site', 'lib', 'ai-models.json'), JSON.stringify(['Claude Sonnet 5.5']))
+    assert.equal(run('build', '--repo', r, '--name', 'example-site', '--out', out).status, 2, 'a ranked list without a models array is refused')
+    writeFileSync(join(r, 'docs', 'ai-use', 'credits.config.json'), JSON.stringify({ ...config, spec: '1.3' }))
+    assert.equal(run('build', '--repo', r, '--name', 'example-site', '--out', out).status, 2, 'spec without modelsFile is refused')
   })
 
   it('verify catches a hand-edited tagTools, such as an inferred model added to it', () => {

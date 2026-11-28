@@ -514,7 +514,7 @@ export function toolsOfTag(tag) {
 /**
  * What is wrong with a tag against its ledger entry: a credited tool it drops, and a tool it names that the ledger doesn't
  * record or state (an inferred model, a guess). `credited` is the entry's `tagTools`. With `order`, a tag that lists the
- * credited tools in another order than the ledger's is a problem too; the ledger's order only indicates the biggest hand.
+ * credited tools in another order than the ledger's is a problem too; the ledger's order is the 1.2 biggest-hand indication, or the 1.3 capability order when the config sets `modelsFile`.
  */
 export function tagProblems(label, tag, credited, { order = false, drops = true } = {}) {
   const named = toolsOfTag(tag)
