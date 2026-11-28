@@ -26,6 +26,7 @@ export function makePr(overrides = {}) {
   const number = overrides.number ?? 7
   return {
     number,
+    title: 'Fix the thing',
     state: 'open',
     draft: false,
     labels: [{ name: 'ready-to-merge' }],

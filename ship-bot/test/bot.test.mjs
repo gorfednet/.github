@@ -1420,14 +1420,55 @@ describe('release tags (a repository that ships only from a tag)', () => {
     assert.ok(!s.runner.calls.some((c) => c.args?.some((a) => a === '--force' || a === '-f') && c.args.includes('push')), 'the push never forces')
   })
 
-  it('a pull request with no Release line is merged and nothing else: no tag, no deploy, no ssh preflight', async () => {
+  it('a pull request with no Release line is tagged one patch above the newest tag, with its title as the sentence, and deployed (plan row 1.101)', async () => {
     const s = relScenario('Just a fix.\n')
+    s.github.pulls[0].title = 'Fix the rates table on small screens'
+    await s.run()
+    assert.equal(merges(s.github).length, 1)
+    const ws = s.runner.commandLines('workspace')
+    const tagAt = ws.findIndex((l) => l.includes('tag -f -a v3.9.7 -m Fix the rates table on small screens ' + MERGE))
+    const pushAt = ws.findIndex((l) => l.endsWith('push origin refs/tags/v3.9.7'))
+    assert.ok(tagAt > 0 && pushAt > tagAt, ws.join('\n'))
+    assert.deepEqual(s.runner.commandLines('deploy'), ['make deploy'])
+    assert.match(bodies(s.github)[0], /deployed: site\. Tagged v3\.9\.7\./)
+    assert.deepEqual(s.github.writes.filter((w) => w.name === 'createRelease'), [{ name: 'createRelease', slug: SLUG, release: { tag: 'v3.9.7', name: 'v3.9.7', body: 'Fix the rates table on small screens' } }])
+  })
+
+  it('a Release line wins over the automatic patch bump: a patch line keeps its sentence, a minor or major line its version', async () => {
+    for (const [line, tag] of [['Release: 3.9.7 The site reads the new figures.', 'v3.9.7'], ['Release: 3.10.0 A new figures page.', 'v3.10.0'], ['Release: 4.0.0 The new site.', 'v4.0.0']]) {
+      const s = relScenario(`Adds the thing.\n\n${line}\n`)
+      s.github.pulls[0].title = 'A title that is not the sentence'
+      await s.run()
+      assert.equal(merges(s.github).length, 1, line)
+      const sentence = line.replace(/^Release: \S+ /, '')
+      assert.ok(s.runner.commandLines('workspace').some((l) => l.includes(`tag -f -a ${tag} -m ${sentence} ${MERGE}`)), line)
+      assert.ok(!s.runner.commandLines('workspace').some((l) => l.includes('A title that is not the sentence')), line)
+      assert.deepEqual(s.github.writes.filter((w) => w.name === 'createRelease').map((w) => w.release), [{ tag, name: tag, body: sentence }], line)
+    }
+  })
+
+  it('no Release line and nothing to bump or no usable title: not merged, and the comment says to write the line', async () => {
+    const noTags = relScenario('Just a fix.\n', { tags: ['nightly', 'v3.9'] })
+    await noTags.run()
+    assert.equal(merges(noTags.github).length, 0)
+    assert.equal(noTags.runner.ofKind('deploy').length, 0)
+    assert.match(bodies(noTags.github)[0], /no `Release:` line and no automatic tag could be planned: there is no vX\.Y\.Z tag to bump/)
+    assert.match(bodies(noTags.github)[0], /Add `Release: X\.Y\.Z One sentence\.`/)
+    const noTitle = relScenario('Just a fix.\n')
+    noTitle.github.pulls[0].title = '  '
+    await noTitle.run()
+    assert.equal(merges(noTitle.github).length, 0)
+    assert.match(bodies(noTitle.github)[0], /the pull request title is empty/)
+  })
+
+  it('a release-mode row never tags automatically: an unlabelled pull request with no line merges and nothing else', async () => {
+    const s = relScenario('Just a fix.\n', { deployOn: 'release' })
     await s.run()
     assert.equal(merges(s.github).length, 1)
     assert.equal(s.runner.ofKind('workspace').length, 0)
     assert.equal(s.runner.ofKind('deploy').length, 0)
     assert.equal(s.runner.ofKind('preflight').length, 0)
-    assert.match(bodies(s.github)[0], /not tagged and not deployed/)
+    assert.match(bodies(s.github)[0], /not deployed: this repo deploys only from a release/)
     assert.equal(s.state().repo(SLUG).blocked, undefined)
   })
 
@@ -1534,7 +1575,8 @@ describe('release tags (a repository that ships only from a tag)', () => {
     assert.ok(s.logs.some((l) => /would tag the merge commit v3\.9\.7 \("The site reads the new figures\."\), push the tag, then deploy it/.test(l)), s.logs.join('\n'))
     const none = relScenario('plain')
     await none.run('dry-run')
-    assert.ok(none.logs.some((l) => /would merge only: no Release line/.test(l)))
+    assert.equal(none.github.writes.length, 0)
+    assert.ok(none.logs.some((l) => /would tag the merge commit v3\.9\.7 \("Fix the thing"\), push the tag, then deploy it/.test(l)), none.logs.join('\n'))
   })
 
   it('a row with no release key still deploys every merge (nothing changes for other repositories)', async () => {

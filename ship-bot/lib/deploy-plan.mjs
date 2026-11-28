@@ -28,7 +28,9 @@
  * The session that labels the release does them and says where the output is.
  *
  * `deployOn: "merge"` keeps the old behaviour (every merge deploys) for a row
- * whose deploy no visitor sees; the row says why in `deployOnMergeReason`.
+ * whose deploy no visitor sees; the row says why in `deployOnMergeReason`. A tag
+ * repo on such a row tags every merge: from its `Release:` line, or with no
+ * line one patch above the newest tag with the title as the sentence (row 1.101).
  */
 import { planRelease } from './release.mjs'
 
@@ -121,16 +123,23 @@ export async function planDeploy(repo, pr, { tags, mainSha, headCovers, repoStat
   const labels = (pr.labels ?? []).map((l) => String(l.name).toLowerCase())
 
   // A tag repo's `Release:` line is its version. Read it in every mode so a bad one never merges quietly.
+  // Where every merge deploys, a description with no line is tagged from the title (plan row 1.101), so the
+  // title is handed over on that row only; a row that deploys from a labelled release still needs its line.
   let tag = null
   if (repo.release) {
-    tag = planRelease(repo.release, body, await tags())
-    if (tag.kind === 'invalid') return { deploy: false, kind: 'invalid', reason: `the \`Release:\` line is wrong: ${tag.reason}`, key: 'release-line' }
+    tag = planRelease(repo.release, body, await tags(), repo.deployOn === 'merge' ? { title: pr.title ?? '' } : {})
+    if (tag.kind === 'invalid') {
+      return tag.auto
+        ? { deploy: false, kind: 'invalid', reason: `it has no \`Release:\` line and no automatic tag could be planned: ${tag.reason}`, key: 'release-auto' }
+        : { deploy: false, kind: 'invalid', reason: `the \`Release:\` line is wrong: ${tag.reason}`, key: 'release-line' }
+    }
   }
 
   if (repo.deployOn === 'merge') {
-    // The old behaviour: every merge deploys, except that a tag repo deploys only a pull request with a Release line.
-    if (tag && tag.kind === 'none') return { deploy: false, kind: 'none' }
-    return { deploy: true, kind: 'merge', tag: tag?.kind === 'release' ? tag : null }
+    // Every merge deploys. A tag repo deploys only from a tag, and with the title given planRelease always
+    // answers with one or refuses, so this stays closed if that ever changes: no tag, no deploy.
+    if (tag && tag.kind !== 'release') return { deploy: false, kind: 'none' }
+    return { deploy: true, kind: 'merge', tag }
   }
 
   const release = labels.includes(RELEASE_LABEL)
