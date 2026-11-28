@@ -84,9 +84,11 @@ export function parseTrailers(body) {
 /**
  * The tools a commit credits: its co-author trailers, an `AI-Use` trailer, and its author when the author is a tool
  * (`Cursor Agent` committing as itself). An `AI-Use` tool counts unless a co-author already names it (`Claude Sonnet` is the
- * family `Claude Sonnet 5.5` was written under). An `AI-Use` model that disagrees with every co-author's family is
- * `conflicting` and credits nothing: the line was a template, or the commit was edited. `Claude Code` is the harness,
- * not a model. `AI-Use: L3 made (A + B)` names two tools.
+ * family `Claude Sonnet 5.5` was written under). A list that names every co-author's tool and more is the stated record
+ * of a wider hand, so its extras are credited. Otherwise an `AI-Use` model that disagrees with the co-authors (another
+ * version of a co-author's family, or a list that leaves a co-author out) is `conflicting` and credits nothing: the
+ * line was a template, or the commit was edited. `Claude Code` is the harness, not a model.
+ * `AI-Use: L3 made (A + B)` and `(A, B)` name two tools.
  */
 export function commitTools(body, humans, author = '') {
   const { coAuthors, aiUse } = parseTrailers(body)
