@@ -20,7 +20,7 @@ export const STANDARD = 'AI Use Levels 1.2'
 export const GRADES = {
   recorded: 'A Co-Authored-By or AI-Use trailer on a commit, a commit the tool authored itself, or a Claude Code transcript whose model id and working folder match this repository.',
   stated: "The owner's own words, quoted and dated.",
-  inferred: 'A Cursor commit with no model, dated against the models Cursor offered around then. Ledger only. It never goes in a tag, because 1.2 has no way to say "likely".',
+  inferred: 'A Cursor commit with no model, dated against the models Cursor offered around then. Ledger only. It never goes in a tag, because a tag has no way to say "likely".',
 }
 
 /** `claude-opus-5-5` to `Claude Opus 5.5`; a dated id (`claude-haiku-4-5-20251001`) drops the date. Anything else is null. */
@@ -470,7 +470,9 @@ export function buildLedger({ commits: all, meta, config = {}, transcripts = nul
       "An AI-Use trailer whose model disagrees with the commit's co-author credits nothing. It is listed under open.conflictingTrailers.",
       "Transcripts are one Mac's Claude Code sessions in a folder of this repository or a worktree of it. The ledger keeps the largest count seen. They show a model worked in the repository. They don't show which page it touched or whether it wrote anything.",
       'A model with transcripts and no trailer is credited only on a recorded decision (transcriptCredit). Sessions on another machine and in Cursor are missing. So is any worktree pruned before the first index run.',
-      'Order is by commits that name the tool. It indicates the biggest hand without measuring it. A squashed pull request counts once however large.',
+      rankedModels
+        ? 'tagTools is in the capability order of the ranked model list, which says nothing about which tool had the biggest hand. tools is ordered by commits that name the tool, which indicates the biggest hand without measuring it. A squashed pull request counts once however large.'
+        : 'Order is by commits that name the tool. It indicates the biggest hand without measuring it. A squashed pull request counts once however large.',
       'Tool use that leaves no trace (a chat window, a pasted answer, a design tool) is missing. It becomes a credit only when the owner states it.',
     ],
   }
