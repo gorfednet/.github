@@ -191,6 +191,33 @@ const byCountThenName = (a, b) => b[1] - a[1] || a[0].localeCompare(b[0])
 /** Per-tool commit counts, biggest hand first. */
 export const ranked = (counts) => [...Object.entries(counts)].sort(byCountThenName).map(([tool]) => tool)
 
+// Capability order for a tag (AI Use Levels 1.3 section 6): models on the ranked list in list order, then an unversioned
+// name of a listed model, then every other tool by name. The same rule as `order-tools.mjs` in gorfednet/ai-use-levels,
+// which this repository can't import. The order says nothing about which tool had the biggest hand.
+const wordsOf = (tool) => {
+  const bare = tool.replace(/\s*\([^()]*\)\s*$/, '')
+  return (bare.trim().length > 0 ? bare : tool).toLowerCase().split(/\s+/).filter(Boolean)
+}
+const endsWith = (long, short) => short.length <= long.length && short.every((w, i) => w === long[long.length - short.length + i])
+const runsInside = (long, short) => long.some((_, at) => short.every((w, i) => w === long[at + i]))
+function capabilityClass(tool, models) {
+  const words = wordsOf(tool)
+  if (words.some((w) => /\d/.test(w))) {
+    const rank = models.findIndex((m) => {
+      const full = wordsOf(m)
+      return endsWith(full, words) && (words.length > 1 || full.length === 1)
+    })
+    return rank === -1 ? { group: 2, rank: 0 } : { group: 0, rank }
+  }
+  return { group: words.length > 0 && models.some((m) => runsInside(wordsOf(m).slice(0, -1), words)) ? 1 : 2, rank: 0 }
+}
+const byLowerName = (a, b) => (a.toLowerCase() < b.toLowerCase() ? -1 : a.toLowerCase() > b.toLowerCase() ? 1 : a < b ? -1 : a > b ? 1 : 0)
+/** `tools` in capability order by the ranked `models` list. Without a list the order stays as given. */
+export function capabilityOrder(tools, models) {
+  if (!Array.isArray(models) || models.length === 0) return tools
+  return tools.map((tool) => ({ tool, ...capabilityClass(tool, models) })).sort((a, b) => a.group - b.group || a.rank - b.rank || byLowerName(a.tool, b.tool)).map((e) => e.tool)
+}
+
 /**
  * Build the ledger. Inputs:
  *   commits      from `parseGitLog`, oldest first.
@@ -340,7 +367,8 @@ export function buildLedger({ commits: all, meta, config = {}, transcripts = nul
   }
   const transcriptOnly = order.filter((t) => !siteTools.has(t))
   const stated = (config.stated ?? []).map((e) => ({ grade: 'stated', ...e }))
-  const tagTools = deriveTagTools({ tools, stated })
+  const rankedModels = config.rankedModels ?? null
+  const tagTools = capabilityOrder(deriveTagTools({ tools, stated }), rankedModels)
 
   // Inferred: Cursor commits by month against Cursor's model list. Never in tagTools.
   const inferred = []
@@ -385,7 +413,7 @@ export function buildLedger({ commits: all, meta, config = {}, transcripts = nul
         if (first === null || c.authored < first) first = c.authored
         if (last === null || c.authored > last) last = c.authored
       })
-      pages[page] = { groups: gs, commits: n, commitsWithNoTool: n - withTool, first: first && dayOf(first), last: last && dayOf(last), tools: Object.fromEntries(Object.entries(counts).sort(byCountThenName)), tagTools: ranked(counts) }
+      pages[page] = { groups: gs, commits: n, commitsWithNoTool: n - withTool, first: first && dayOf(first), last: last && dayOf(last), tools: Object.fromEntries(Object.entries(counts).sort(byCountThenName)), tagTools: capabilityOrder(ranked(counts), rankedModels) }
     }
   }
 
@@ -408,7 +436,7 @@ export function buildLedger({ commits: all, meta, config = {}, transcripts = nul
   const first = commits[0]
   return {
     schema: SCHEMA,
-    standard: STANDARD,
+    standard: config.spec ? `AI Use Levels ${config.spec}` : STANDARD,
     repo: meta.repo,
     ref: meta.ref,
     head: meta.head,
@@ -419,7 +447,7 @@ export function buildLedger({ commits: all, meta, config = {}, transcripts = nul
     grades: GRADES,
     counts: { commits: commits.length, toolMergeCommits: toolMerges, plainMergeCommitsIgnored: plainMerges, withToolTrailer: withTrailer, withNoToolTrailer: noTrailer },
     tagTools,
-    order: 'Commits that name the tool, then transcript responses, then name. It indicates the biggest hand without measuring it.',
+    order: rankedModels ? 'tagTools is in the capability order of the ranked model list (AI Use Levels 1.3 section 6). It says nothing about which tool had the biggest hand. tools stays in commits, then transcript responses, then name order.' : 'Commits that name the tool, then transcript responses, then name. It indicates the biggest hand without measuring it.',
     transcriptOnlyTools: transcriptOnly,
     tools,
     stated,

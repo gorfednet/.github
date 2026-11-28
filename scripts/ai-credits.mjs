@@ -162,6 +162,9 @@ async function main(argv) {
     }
     const configPath = o.config ?? join(o.repo, 'docs', 'ai-use', 'credits.config.json')
     const config = existsSync(configPath) ? loadJson(configPath, 'config') : {}
+    // `modelsFile` (a path inside the repository) names the site's ranked model list; `spec` is the pinned spec version.
+    // Both are in the config, so `verify` rebuilds with the same order and stamp.
+    if (config.modelsFile) config.rankedModels = loadJson(resolve(o.repo, config.modelsFile), 'ranked model list').models
     const script = 'scripts/ai-credits.mjs'
     if (o.cmd === 'verify') {
       const ledger = loadJson(o.ledger, 'ledger')
