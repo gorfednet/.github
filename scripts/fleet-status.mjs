@@ -457,6 +457,40 @@ export async function collectRepo(slug, now = new Date(), { includePrivate = fal
   }
 }
 
+/**
+ * A public repository's face: whether it has a description, homepage and topics, its latest release, and how long
+ * its oldest commit past that release has waited (first-release rule, plan row 1.66). Booleans and counts only.
+ * `unread` is a read that failed, never a pass. A rate limit still throws, so it is never shown as a gap.
+ */
+export function readFace(slug, repo, now, json = ghJson) {
+  const face = {
+    description: typeof repo.description === 'string' && repo.description.trim() !== '',
+    homepage: typeof repo.homepage === 'string' && repo.homepage.trim() !== '',
+    topics: Array.isArray(repo.topics) ? repo.topics.length : 0,
+    release: null,
+    unreleasedDays: null,
+  }
+  try {
+    let latest = null
+    try {
+      latest = json(['api', `repos/${slug}/releases/latest`])
+    } catch (cause) {
+      if (!/HTTP 404/.test(String(cause.stderr || cause.message))) throw cause
+    }
+    if (latest === null || typeof latest.tag_name !== 'string') return face
+    face.release = latest.tag_name
+    const cmp = json(['api', `repos/${slug}/compare/${encodeURIComponent(latest.tag_name)}...${encodeURIComponent(repo.default_branch)}`])
+    const oldest = cmp.commits?.[0]?.commit?.committer?.date
+    if (cmp.ahead_by === 0) face.unreleasedDays = 0
+    else if (Number.isInteger(cmp.ahead_by) && oldest) face.unreleasedDays = Math.max(0, Math.floor((now - Date.parse(oldest)) / DAY))
+    else face.unread = true
+  } catch (cause) {
+    if (/rate limit/i.test(String(cause.stderr || cause.message))) throw cause
+    face.unread = true
+  }
+  return face
+}
+
 /** CI state of a commit from the Actions and commit-status REST endpoints (no Checks permission needed). */
 function ciForCommit(slug, sha, json) {
   // Paginated: comment-triggered runs (claude-review) record the default branch head as head_sha and can bury main's push run past page 1.
@@ -550,6 +584,8 @@ export async function gatherRepo(slug, now = new Date(), { includePrivate = fals
     kitVersion,
     kitPin,
     alertsOverdue: alerts.count,
+    // Public, unarchived rows only: the report lists what is missing from each repository's face.
+    ...(!isPrivate && repo.archived !== true ? { face: readFace(slug, repo, now, json) } : {}),
     // Public rows only: which private repositories have alerts switched off is not published.
     ...(alerts.why ? { alertsUnread: alerts.why } : {}),
   }
