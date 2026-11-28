@@ -566,7 +566,8 @@
       "evidence": "11 Nov assessment (git show 6b8a1b3:docs/assessment-2026-11-11.md, .github PR 117) Phase A item 2 not landed; incident pattern 8 (7 entries). Plan: gorfednet/ops control/assessments/2026-11-12-output-quality.md. Who: main session; runner for tests.",
       "reviewBy": "2026-12-01",
       "created": "2026-11-12",
-      "updated": "2026-11-12"
+      "updated": "2026-11-20",
+      "note": "2026-11-20: scripts/claude-hooks/must-rules-guard.py holds 3 of 5 rules (claude review on its own line, builder brief has git checkout -B and builder-ok, no new .skip without backlog:<id>), tested in test/mustRulesGuard.test.mjs. Still open: the ready-to-merge label gate (needs review-status and assert-checks-started calls) and no wall clock in a test file (C2). Hook not yet installed in ~/.claude (ops control/claude-home settings PR)."
     },
     {
       "id": "assess-1112-b1-no-shared-design-system",
