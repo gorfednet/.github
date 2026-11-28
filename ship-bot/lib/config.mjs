@@ -502,7 +502,7 @@ export function normalizeConfig(raw, { home = homedir() } = {}) {
         // null: no list given, so a failure redeploys the previous commit. An explicit [] (or a list no step of which applies) rolls nothing back.
         rollback: repo.rollback ?? null,
         pausedIfChanged: repo.pausedIfChanged ?? [],
-        // null: no tag. An object: a deploy tags the merge commit from the description's `Release: X.Y.Z sentence` (lib/release.mjs), and a deploy needs that line.
+        // null: no tag. An object: a deploy tags the merge commit from the description's `Release: X.Y.Z sentence` (lib/release.mjs). With no line, a `deployOn: "merge"` row tags one patch above the newest tag with the title as the sentence; a `release` row needs the line.
         release: repo.release ? { tagPrefix: repo.release.tagPrefix ?? 'v' } : null,
         // true: a merge waits while this Mac's 1-minute load is above its core count (the row's setup or deploy is timing-sensitive).
         needsHeadroom: repo.needsHeadroom ?? false,

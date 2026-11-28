@@ -547,7 +547,9 @@ async function processPull(ctx, repo, pr, defaultBranch) {
       const help =
         plan.key === 'release-line'
           ? 'The line is `Release: X.Y.Z One sentence.` on its own line. Fix the description; it checks again every couple of minutes.'
-          : `Fix the description or the labels; it checks again every couple of minutes. A pull request with neither \`${RELEASE_LABEL}\` nor \`${HOTFIX_LABEL}\` is merged and deployed with the next release.`
+          : plan.key === 'release-auto'
+            ? 'Add `Release: X.Y.Z One sentence.` on its own line in the description, or fix what is named above; it checks again every couple of minutes.'
+            : `Fix the description or the labels; it checks again every couple of minutes. A pull request with neither \`${RELEASE_LABEL}\` nor \`${HOTFIX_LABEL}\` is merged and deployed with the next release.`
       await postOnce(ctx, repo, pr.number, sha, `${plan.key}-${createHash('sha1').update(plan.reason).digest('hex').slice(0, 8)}`, `Ship bot is not merging this: ${plan.reason}.\n\n${help}`)
       return false
     }
@@ -1564,7 +1566,7 @@ async function holdForStaleInstall(ctx, repo, pr, tag) {
 
 /** Why a merge in a deploy-mode row was not deployed, for its comment and the log. */
 function notDeployedWhy(repo) {
-  if (repo.deployOn === 'merge') return 'no Release line in the description, so it was not tagged and not deployed. A release pull request carries `Release: X.Y.Z One sentence.` on its own line'
+  if (repo.deployOn === 'merge') return 'no release tag could be planned for it, so it was not tagged and not deployed. Add `Release: X.Y.Z One sentence.` on its own line to the next pull request'
   return `not deployed: this repo deploys only from a release. It goes live with the next pull request labelled \`${RELEASE_LABEL}\` (or \`${HOTFIX_LABEL}\` for a security or outage fix)`
 }
 

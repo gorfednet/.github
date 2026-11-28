@@ -330,7 +330,9 @@ async function isAncestor(ctx, log, path, a, b) {
 async function tagRelease(ctx, log, repo, mergeSha, release, onPushing = () => {}) {
   const path = repo.workDir
   log.write(`\n[ship-bot] tagging ${mergeSha.slice(0, 7)} as ${release.tag}\n`)
-  await git(ctx, log, path, `tag ${release.tag}`, ['-c', 'user.name=ship-bot', '-c', 'user.email=ship-bot@gorfed.net', 'tag', '-f', '-a', release.tag, '-m', release.message, mergeSha])
+  // --cleanup=whitespace: git's default strips a message line that starts with "#", even with -m, so a sentence or a
+  // pull request title such as "#412 follow-up" would make a tag with an empty message.
+  await git(ctx, log, path, `tag ${release.tag}`, ['-c', 'user.name=ship-bot', '-c', 'user.email=ship-bot@gorfed.net', 'tag', '--cleanup=whitespace', '-f', '-a', release.tag, '-m', release.message, mergeSha])
   onPushing()
   await git(ctx, log, path, `push ${release.tag}`, ['push', 'origin', `refs/tags/${release.tag}`])
   await git(ctx, log, path, `${release.tag} is on HEAD`, ['describe', '--tags', '--exact-match', 'HEAD'])

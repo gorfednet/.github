@@ -80,9 +80,11 @@ row merging and deploying are split (`deployOn`, default `"release"`;
 - **A forgotten label stops the merge.** Release notes, an `Exemption:` line or
   a `Release:` line with neither label is refused, so it never becomes a quiet
   merge that is not live. Labels match whatever their case.
-- **`deployOn: "merge"`** keeps the old deploy on every merge, for a row whose
-  deploy no visitor sees. It needs `deployOnMergeReason`. No row uses it today:
-  the infra repositories (`.github`, `ops`) are `merge-only`.
+- **`deployOn: "merge"`** deploys on every merge. It needs
+  `deployOnMergeReason`. A row with `release` (a tag repo) then tags every
+  merge: from its `Release:` line, or with no line one patch above the newest
+  tag with the pull request's title as the sentence (plan row 1.101, below).
+  The infra repositories (`.github`, `ops`) are `merge-only`.
 
 A release deploys everything merged since the commit last deployed
 (`lastDeployedSha` in `~/.ship-bot/state.json`): changed paths,
@@ -222,7 +224,7 @@ Every site deploys through the bot, in observation first (`live` false: the log 
 | MoonMan | in the example | Sun 15 Nov (stage 4) | unchanged |
 | papers.4thcltr.com | `deploy`, observation | **Fri 13 Nov** | no private tests, static, the lowest-risk site on the shared engine; it is the one that proves the engine's rollback |
 | heuristics.4thcltr.com | `deploy`, observation | **Mon 16 Nov** | needs papers live first (one real deploy, no rollback), and its gate reads the owner's assess jobs folder |
-| 4thcltr.com | `deploy`, observation, release tags | **Mon 23 Nov**, if the release-tag change (below) lands by Thu 19 Nov | `make deploy` refuses any HEAD that is not on an exact release tag; the bot tags the merge commit of a pull request that declares a release |
+| 4thcltr.com | `deploy`, observation, release tags | **Mon 23 Nov**, if the release-tag change (below) lands by Thu 19 Nov | `make deploy` refuses any HEAD that is not on an exact release tag; the bot tags the merge commit it deploys |
 | bindercurve.com | `merge-only`, no deploy | not before the 1.0 plan (week of 2 Feb 2027) | release hold; it deploys through its own release workflow |
 | assess, career-portfolio, .github | `merge-only` | stay merge-only | not websites: assess is a command-line engine with no published site, career-portfolio a tool, .github the fleet's shared CI |
 | intake, propose | no row yet | when each has a pull-request CI and a deploy command | services with no site-deploy path and no DNS yet; a row needs `expectedChecks`, and these two have no CI posted to sample |
@@ -259,12 +261,12 @@ No check is skipped. `make verify` runs the job-folder tests (`tests/*.local.tes
 
 **4thcltr.com ships only from a release tag, so its row carries `release`.** `scripts/require-release-tag.sh` refuses any HEAD that is not on an exact tag, and a merge commit never is. By hand, a release is three things in order (DEPLOY.md): `npm run rates` committed, `npm run release -- X.Y.Z "One sentence."` (annotated tag, push, GitHub release), then `make deploy`. What the bot does alone and what it does not:
 
-- **The bot tags and deploys only a pull request that declares a release**, with a line of its own in the description: `Release: 3.9.7 One sentence in the site's voice.` The sentence is editorial copy; the labelling session writes it (an editor pass for anything a visitor reads) and it is read in the pull request. The bot reads the description at merge time, so editing it after labelling changes what is tagged; only the owner's own pull requests are eligible (`allowedAuthors`), so the people who can edit it are the people who could label it. Do not edit the `Release:` line after labelling. A pull request with no `Release:` line is merged and nothing else, and says so in its comment. A `Release:` line that is wrong (a second one, no sentence, a version that is not a bare X.Y.Z, a tag that exists, or a version not higher than the newest tag) stops the merge with a comment saying why: a typo never becomes a quiet non-release.
+- **The bot tags every merge it deploys.** A pull request states its release with a line of its own in the description: `Release: 3.9.7 One sentence in the site's voice.` On a `deployOn: "merge"` row a pull request with no line is tagged too (plan row 1.101): one patch above the newest tag, with the pull request's title as the sentence. A line is needed there only for a minor or major bump, or for a sentence that is not the title, and a line that is there always wins. The automatic tag is refused, and the merge with it, when there is no X.Y.Z tag to bump or the title is empty, over 300 characters or has a control character. The sentence is editorial copy; the labelling session writes it (an editor pass for anything a visitor reads) and it is read in the pull request. The bot reads the description at merge time, so editing it after labelling changes what is tagged; only the owner's own pull requests are eligible (`allowedAuthors`), so the people who can edit it are the people who could label it. Do not edit the `Release:` line, or the title of a pull request with no line, after labelling. On a `deployOn: "release"` row a pull request with no `Release:` line and no label is merged and nothing else, and says so in its comment. A `Release:` line that is wrong (a second one, no sentence, a version that is not a bare X.Y.Z, a tag that exists, or a version not higher than the newest tag) stops the merge with a comment saying why: a typo never becomes a quiet non-release.
 - **After the merge** the bot checks the merge commit out in its workspace, creates the annotated tag on it with that sentence, pushes that one tag (never forced), confirms `git describe --exact-match HEAD`, then runs the row's setup and deploy steps (build, `deploy.sh`, `headers:live`) with the same rollback and block-on-failure rules as the other rows, and on success creates the GitHub release. A tag that cannot be pushed deploys nothing and blocks the repository. A tag the bot has pushed is never deleted, even if the deploy that follows rolls back; the next release then needs a higher version.
 - **The bot does not run `npm run rates`** (a network fetch that rewrites a tracked file). The labelling session runs it and commits it in the pull request before labelling, as DEPLOY.md step 1 says. There is no version bump commit: the tag is the version.
 - **Rollback.** The engine's `make rollback` is the same one papers rehearses on Fri 13 November (above); before 4thcltr.com goes live, run the same two commands from its clone once, because it is the main site: `make rollback`, then `make rollback ID=<the id that was current>` (`make releases` lists the ids), and read the live site after each. The bot-side wiring (tag pushed, deploy fails, `make rollback` runs after a `live check` failure only, the tag is kept, the repository blocks) is held by `test/bot.test.mjs` and was run once with real git against a local bare remote. A tag the remote refuses deploys nothing.
 - **A `release` row cannot also use `pausedIfChanged` or `onlyIfChanged`** (config validation refuses it): a release deploys everything merged since the last one, but those keys look only at the release's own merge commit, so an earlier merge with no `Release:` line would slip past them.
-- **The unavoidable human step** is writing the `Release:` line. Nothing else in the release needs the owner.
+- **No step is the owner's.** The session writes the `Release:` line for a minor or major bump; a patch needs none on a `deployOn: "merge"` row.
 
 ## Drafts the bot marks ready itself
 
