@@ -17,7 +17,10 @@
  * `AI-Use-Corrects: <7 to 40 characters of the sha>` and pass the rules itself; that excuses the named
  * commit. (A convention of this gate, not of the spec.)
  *
- * `--since YYYY-MM-DD` skips commits authored before that date: the trailer rule did not exist yet.
+ * `--since YYYY-MM-DD` skips commits committed before that date: the trailer rule did not exist yet.
+ * It reads the committer date, which `git commit --date` does not set. It is still no security
+ * boundary: `GIT_COMMITTER_DATE`, a rebase onto old history or a history rewrite can put any date on a
+ * commit, so the cutoff only spares real old history and cannot stop a person who sets out to evade it.
  * `AI-Use-Corrects` also works with `--exempt`: a later commit with no trailer excuses a pushed one that has one.
  *
  * What it cannot see: an agent commit with no Claude `Co-Authored-By` and no tag, and whether a tag is
@@ -118,15 +121,15 @@ export function commitProblems({ message, parents, cleanMerge }, lib, { exempt =
 
 /** The PR's own commits: reachable from head, not from base. */
 export function commitsOwn(base, head) {
-  const raw = execFileSync('git', ['log', '--format=%H%x00%P%x00%aI%x00%B%x1e', head, `^${base}`], { encoding: 'utf8', maxBuffer: 1 << 28 })
+  const raw = execFileSync('git', ['log', '--format=%H%x00%P%x00%cI%x00%B%x1e', head, `^${base}`], { encoding: 'utf8', maxBuffer: 1 << 28 })
   return raw
     .split('\x1e')
     .map((record) => record.trim())
     .filter(Boolean)
     .map((record) => {
-      const [sha, parents, authored, message] = record.split('\0')
+      const [sha, parents, committed, message] = record.split('\0')
       const parentShas = parents.split(' ').filter(Boolean)
-      return { sha, parentShas, parents: parentShas.length, authored, message }
+      return { sha, parentShas, parents: parentShas.length, committed, message }
     })
 }
 
@@ -160,7 +163,7 @@ export async function main(argv) {
   const own = commits.length
   if (since) {
     const cutoff = Date.parse(`${since}T00:00:00Z`)
-    commits = commits.filter((commit) => !(Date.parse(commit.authored) < cutoff))
+    commits = commits.filter((commit) => !(Date.parse(commit.committed) < cutoff))
   }
   const skipped = own - commits.length
   if (commits.length === 0) {

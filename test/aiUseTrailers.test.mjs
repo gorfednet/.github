@@ -282,12 +282,12 @@ describe('row 1.90a preconditions', () => {
     assert.match(run.err, /Co-Authored-By names/)
   })
 
-  it('--since skips a commit authored before the cutoff and says so', () => {
+  it('--since skips a commit committed before the cutoff and says so', () => {
     const dir = repo([])
     git(dir, 'checkout', '-q', 'topic')
     writeFileSync(path.join(dir, 'old.txt'), 'x\n')
     git(dir, 'add', '.')
-    spawnSync('git', ['commit', '-q', '-m', `Old work\n\n${CO('Sonnet 5.5')}`], { cwd: dir, encoding: 'utf8', env: { ...process.env, GIT_AUTHOR_DATE: '2026-11-01T12:00:00Z' } })
+    spawnSync('git', ['commit', '-q', '-m', `Old work\n\n${CO('Sonnet 5.5')}`], { cwd: dir, encoding: 'utf8', env: { ...process.env, GIT_AUTHOR_DATE: '2026-11-01T12:00:00Z', GIT_COMMITTER_DATE: '2026-11-01T12:00:00Z' } })
     const noCutoff = gate(dir)
     assert.equal(noCutoff.code, 1)
     const run = gate(dir, '--since', '2026-11-18')
@@ -308,6 +308,17 @@ describe('row 1.90a preconditions', () => {
     cpSync('scripts/gates', path.join(only, 'scripts/gates'), { recursive: true })
     const run = spawnSync('node', [path.join(only, 'scripts/gates/check-ai-use-trailers.mjs'), '--spec-dir', SPEC_DIR, '--base', 'main', '--head', 'topic'], { cwd: dir, encoding: 'utf8' })
     assert.equal(run.status, 0, run.stderr)
+  })
+
+  it('--since still checks a commit whose author date is forged with --date', () => {
+    const dir = repo([])
+    writeFileSync(path.join(dir, 'forged.txt'), 'x\n')
+    git(dir, 'add', '.')
+    git(dir, 'commit', '-q', '--date', '2026-11-01T12:00:00Z', '-m', `Forged\n\n${CO('Sonnet 5.5')}`)
+    git(dir, 'commit', '-q', '--allow-empty', '-m', good())
+    const run = gate(dir, '--since', '2026-11-18')
+    assert.equal(run.code, 1)
+    assert.match(run.err, /no AI-Use trailer/)
   })
 
   it('--since needs a date', () => {
