@@ -421,7 +421,7 @@ describe('the command line', () => {
     assert.deepEqual(person.tagTools, [])
     const bot = buildLedger({ commits: [c('claude[bot]'), c('Test Author', `x${co('claude[bot]')}`)], meta: { repo: 'example-site', ref: 'origin/main', head: 'abc' }, config: {} })
     assert.ok(!('claude[bot]' in bot.people.humans), 'an AI bot author is never a person')
-    assert.equal(bot.open.unclassifiedCoAuthors['claude[bot]'], 1, 'the bot stays an open item')
+    assert.equal(bot.open.unclassifiedCoAuthors['claude[bot]'], 2, 'the bot stays an open item, as author and as co-author')
   })
 
   it('verify catches a hand-edited tagTools, such as an inferred model added to it', () => {

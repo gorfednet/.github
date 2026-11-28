@@ -96,6 +96,7 @@ export function commitTools(body, humans, author = '') {
   const unclassified = []
   const authorKind = author ? classifyCoAuthor({ name: author }, humans) : null
   if (authorKind?.kind === 'tool' && authorKind.tool !== 'Claude Code') tools.push(authorKind.tool)
+  else if (authorKind?.kind === 'unclassified' && authorKind.name) unclassified.push(authorKind.name)
   for (const c of coAuthors) {
     const k = classifyCoAuthor(c, humans)
     if (k.kind === 'tool' && k.tool !== 'Claude Code') tools.push(k.tool)
