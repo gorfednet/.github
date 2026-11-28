@@ -280,11 +280,11 @@ bot now takes a draft itself when **all** of these hold:
   "Merge once gates are clean" is one, because it waits only on this pull
   request's own gates, which the bot reads anyway. The accepted clause is
   `once`, then gates, checks or CI (with "and review" if wanted), then "are
-  clean", "are green", "pass" or "have passed", ending the line or followed by
-  punctuation: "merge once checks and review are clean", "merge once all gates
-  pass". Anything else after `once` still means later ("merge once the owner
-  answers", "merge once checks pass on main", "merge once gates are clean and
-  PR 118 lands"). And no
+  clean", "are green", "pass" or "have passed", and nothing after it but a
+  full stop or closing markdown: "merge once checks and review are clean",
+  "merge once all gates pass". Any other `once` line still means later
+  ("merge once the owner answers", "merge once checks pass on PR 118", "merge
+  once gates are clean, and PR 118 has merged"). And no
   unchecked line under `## Next` hands the decision to a person (do not,
   don't, wait, hold, owner, needs a decision, decide). A diff that touches only
   documentation is **not** enough on its own: that branch was cut after five

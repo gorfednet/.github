@@ -24,14 +24,16 @@ const MERGE_OF_SOMETHING = /\b(main|master|origin|upstream|into|from|branch|reba
  * minutes on 28 November 2026). The clause is narrow on purpose. `once` must
  * be followed at once by the gates themselves (gates, checks or CI, with
  * "and review" if wanted), then by clean, green or pass, and the clause must
- * end there: at the end of the line or at punctuation. "Once the owner says
- * gates are clean", "once PR 118 gates are clean", "once checks pass on main"
- * and "once gates are clean and the owner answers" don't match, so their
- * `once` still means later. Only the clause is set aside; the rest of the
- * line is read by NOT_YET and MERGE_OF_SOMETHING as before.
+ * end the line: only a full stop or closing markdown may follow. A comma, a
+ * colon or a bracket after it can open a second condition under the same
+ * `once` ("once gates are clean, and PR 118 has merged"), so none of them
+ * ends the clause. "Once the owner says gates are clean", "once PR 118 gates
+ * are clean" and "once checks pass on PR 118" don't match either, so their
+ * `once` still means later. Only the clause is set aside; what comes before
+ * it is read by NOT_YET and MERGE_OF_SOMETHING as before.
  */
 const ONCE_OWN_GATES_CLEAN =
-  /\bonce\s+(?:all\s+)?(?:the\s+)?(?:gates|checks|ci)(?:\s+and\s+(?:the\s+)?review)?\s+(?:(?:are|is)\s+(?:all\s+|both\s+)?(?:clean|green)|pass(?:es)?|ha(?:ve|s)\s+passed)(?=\s*(?:$|[.,;:()]))/i
+  /\bonce\s+(?:all\s+)?(?:the\s+)?(?:gates|checks|ci)(?:\s+and\s+(?:the\s+)?review)?\s+(?:(?:are|is)\s+(?:all\s+|both\s+)?(?:clean|green)|pass(?:es)?|ha(?:ve|s)\s+passed)(?=[\s.*_`]*$)/i
 export const isMergeInstruction = (line) => {
   if (!MERGE_INSTRUCTION.test(line)) return false
   const rest = line.replace(ONCE_OWN_GATES_CLEAN, ' ')
