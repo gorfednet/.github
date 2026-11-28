@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-11-28T08:31:56.554Z",
-  "renderedAt": "2026-11-28T08:31:56.554Z",
+  "generatedAt": "2026-11-28T10:31:49.298Z",
+  "renderedAt": "2026-11-28T10:31:49.298Z",
   "repos": [
     {
       "slug": "gorfednet/bindercurve.com",
@@ -23,7 +23,7 @@
       "slug": "gorfednet/4thcltr.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 10,
+      "openPrCount": 9,
       "lapsedBacklogCount": 24,
       "noPrCount": 33,
       "idlePrCount": 7,
@@ -244,18 +244,6 @@
           "headSha": "8e7b3c2bdc84d6703823e0b1dcc42c2053d5d453",
           "ci": "red",
           "next": "Merge: docs only, no control-plane path.",
-          "author": "gorfednet"
-        },
-        {
-          "number": 266,
-          "title": "AI credit ledger tool: scripts/ai-credits.mjs (plan row 1.40)",
-          "ageDays": 9,
-          "labels": [],
-          "draft": false,
-          "review": "clean",
-          "headSha": "6ce5921a1884ece4d407b33c5306f71a59fb9f39",
-          "ci": "green",
-          "next": "Merge when the round-5 review is clean and CI is green (tool and docs only; no deploy). Desk decided ship after the one-line fix",
           "author": "gorfednet"
         }
       ],
@@ -645,17 +633,17 @@
       "slug": "gorfednet/MoonMan",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 14,
+      "openPrCount": 9,
       "lapsedBacklogCount": 3,
       "noPrCount": 47,
       "idlePrCount": 7,
       "duplicatePrCount": 0,
-      "dependabotRedCount": 5,
+      "dependabotRedCount": 1,
       "kitVersion": null,
       "kitPin": {
         "none": true
       },
-      "alertsOverdue": 36
+      "alertsOverdue": 9
     },
     {
       "slug": "gorfednet/ACID2REAPER",
@@ -735,13 +723,13 @@
       "slug": "gorfednet/heuristics.4thcltr.com",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 8,
+      "openPrCount": 5,
       "lapsedBacklogCount": 36,
       "noPrCount": 8,
-      "idlePrCount": 5,
+      "idlePrCount": 4,
       "duplicatePrCount": 0,
       "dependabotRedCount": 0,
-      "kitVersion": "0.65.0",
+      "kitVersion": "0.70.0",
       "kitPin": {
         "ref": "main"
       },
@@ -895,10 +883,10 @@
       "slug": "gorfednet/ops",
       "redacted": true,
       "mainRed": false,
-      "openPrCount": 28,
+      "openPrCount": 27,
       "lapsedBacklogCount": 0,
       "noPrCount": 15,
-      "idlePrCount": 22,
+      "idlePrCount": 14,
       "duplicatePrCount": 0,
       "dependabotRedCount": 0,
       "kitVersion": null,
@@ -962,11 +950,11 @@
     }
   },
   "inventory": {
-    "measuredAt": "2026-11-28T08:31:56.554Z",
+    "measuredAt": "2026-11-28T10:31:49.298Z",
     "counts": {
       "pr": {
-        "total": 159,
-        "orphans": 89
+        "total": 148,
+        "orphans": 84
       },
       "session": null,
       "worktree": null,
@@ -1090,13 +1078,13 @@
         "lapsed": true
       }
     ],
-    "hiddenPrivate": 79,
+    "hiddenPrivate": 74,
     "privateReposNotItemised": 18,
     "planRead": true
   },
   "dotgithub": {
-    "measuredAt": "2026-11-28T08:32:56.503Z",
-    "branches": 45,
+    "measuredAt": "2026-11-28T10:32:40.168Z",
+    "branches": 44,
     "merged": 3,
     "exposedFiles": 54,
     "rulesNotChecked": [],
