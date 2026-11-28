@@ -84,9 +84,11 @@ export function parseTrailers(body) {
 /**
  * The tools a commit credits: its co-author trailers, an `AI-Use` trailer, and its author when the author is a tool
  * (`Cursor Agent` committing as itself). An `AI-Use` tool counts unless a co-author already names it (`Claude Sonnet` is the
- * family `Claude Sonnet 5.5` was written under). An `AI-Use` model that disagrees with every co-author's family is
- * `conflicting` and credits nothing: the line was a template, or the commit was edited. `Claude Code` is the harness,
- * not a model. `AI-Use: L3 made (A + B)` names two tools.
+ * family `Claude Sonnet 5.5` was written under). A list that names every co-author's tool and more is the stated record
+ * of a wider hand, so its extras are credited. Otherwise an `AI-Use` model that disagrees with the co-authors (another
+ * version of a co-author's family, or a list that leaves a co-author out) is `conflicting` and credits nothing: the
+ * line was a template, or the commit was edited. `Claude Code` is the harness, not a model.
+ * `AI-Use: L3 made (A + B)` and `(A, B)` name two tools.
  */
 export function commitTools(body, humans, author = '') {
   const { coAuthors, aiUse } = parseTrailers(body)
@@ -108,8 +110,14 @@ export function commitTools(body, humans, author = '') {
   const harness = []
   const unversioned = []
   const conflicting = []
+  const family = (t) => t.split(' ').slice(0, 2).join(' ')
   for (const a of aiUse) {
-    for (const part of a.tool.split(' + ')) {
+    const parts = a.tool.split(/\s*(?:\+|,)\s*/)
+    // A list that names every co-author's tool and more is the stated record of a wider hand: its extras are credited.
+    // A list that leaves a co-author out disagrees with the commit, so its extras are only conflicts.
+    const listed = parts.map((x) => classifyCoAuthor({ name: x }, new Set())).filter((k) => k.kind === 'tool').map((k) => k.tool)
+    const superset = named.length > 0 && named.every((t) => listed.some((l) => l === t || t.startsWith(`${l} `)))
+    for (const part of parts) {
       const k = classifyCoAuthor({ name: part }, new Set())
       if (k.kind !== 'tool') {
         if (part) unclassified.push(part)
@@ -119,7 +127,6 @@ export function commitTools(body, humans, author = '') {
         harness.push('Claude Code')
         continue
       }
-      const family = (t) => t.split(' ').slice(0, 2).join(' ')
       if (named.some((t) => t === k.tool || t.startsWith(`${k.tool} `))) continue
       const sameFamily = named.filter((t) => family(t) === family(k.tool))
       if (sameFamily.length > 0) {
@@ -128,7 +135,7 @@ export function commitTools(body, humans, author = '') {
         conflicting.push(k.tool)
         continue
       }
-      if (named.length > 0) {
+      if (named.length > 0 && !superset) {
         conflicting.push(k.tool)
         continue
       }

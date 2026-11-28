@@ -195,6 +195,24 @@ describe('what the reviewer found', () => {
     assert.deepEqual(l.tagTools, ['Claude Opus 5.5'], 'settling it does not add a credit')
   })
 
+  it('reads an AI-Use tool list split on a comma as well as a plus', () => {
+    const t = commitTools('x\nAI-Use: L3 made undo (Claude Sonnet 5.5, Google Translate)', new Set())
+    assert.deepEqual(t.tools, ['Claude Sonnet 5.5'])
+    assert.deepEqual(t.unclassified, ['Google Translate'])
+    assert.deepEqual(commitTools('x\nAI-Use: L3 made undo (Claude Sonnet 5.5 + Claude Fable 5.2)', new Set()).tools, ['Claude Sonnet 5.5', 'Claude Fable 5.2'])
+  })
+
+  it('credits an AI-Use list that is a superset of the co-authors, and keeps a contradiction conflicting', () => {
+    const wide = commitTools(`${CLAUDE('Sonnet 5.5')}\nAI-Use: L3 made undo (Claude Sonnet 5.5 + Claude Fable 5.2)`, new Set())
+    assert.deepEqual(wide.tools, ['Claude Sonnet 5.5', 'Claude Fable 5.2'])
+    assert.deepEqual(wide.conflicting, [])
+    const left = commitTools(`${CLAUDE('Sonnet 5.5')}\nAI-Use: L3 made undo (Claude Fable 5.2)`, new Set())
+    assert.deepEqual(left.tools, ['Claude Sonnet 5.5'])
+    assert.deepEqual(left.conflicting, ['Claude Fable 5.2'])
+    const version = commitTools(`${CLAUDE('Sonnet 5.5')}\nAI-Use: L3 made undo (Claude Sonnet 5.4 + Claude Fable 5.2)`, new Set())
+    assert.ok(version.conflicting.includes('Claude Sonnet 5.4'), 'another version of a co-author family stays conflicting')
+  })
+
   it('flags an AI-Use model of another version in the co-author\'s family, and ignores an unversioned one', () => {
     const other = commitTools(`${CLAUDE('Opus 5.5')}\nAI-Use: L2 made undo (Claude Opus 5)`, new Set())
     assert.deepEqual(other.tools, ['Claude Opus 5.5'])
@@ -446,6 +464,62 @@ describe('the command line', () => {
     const bad = run('check-tags', '--ledger', out, '--record', good)
     assert.equal(bad.status, 1)
     assert.match(bad.stderr, /drops/)
+  })
+
+  it('verify refuses a ledger head that is not a commit id, so an option never reaches git', () => {
+    const out = join(tmp(), 'credits.json')
+    run('build', '--repo', repo, '--name', 'example-site', '--out', out)
+    const ledger = JSON.parse(readFileSync(out, 'utf8'))
+    const target = join(tmp(), 'written-by-git')
+    ledger.head = `--output=${target}`
+    writeFileSync(out, JSON.stringify(ledger))
+    const v = run('verify', '--repo', repo, '--ledger', out)
+    assert.equal(v.status, 1)
+    assert.match(v.stderr, /not a commit id/)
+    assert.throws(() => readFileSync(target), /ENOENT/)
+  })
+
+  it('build puts --end-of-options before the ref it hands to git rev-parse', () => {
+    const bin = tmp()
+    const log = join(bin, 'argv.log')
+    const real = execFileSync('which', ['git'], { encoding: 'utf8' }).trim()
+    writeFileSync(join(bin, 'git'), `#!/bin/sh\necho "$*" >> '${log}'\nexec '${real}' "$@"\n`, { mode: 0o755 })
+    const target = join(tmp(), 'written-by-git')
+    const env = { ...process.env, PATH: `${bin}:${process.env.PATH}` }
+    const b = spawnSync('node', [CLI, 'build', '--repo', repo, '--name', 'example-site', '--ref', `--output=${target}`, '--out', join(tmp(), 'credits.json')], { encoding: 'utf8', env })
+    assert.notEqual(b.status, 0)
+    assert.throws(() => readFileSync(target), /ENOENT/)
+    assert.match(readFileSync(log, 'utf8'), /rev-parse --verify --end-of-options --output=.*\^\{commit\}/)
+  })
+
+  it('verify ignores prose and the spec version: a different standard still verifies', () => {
+    const out = join(tmp(), 'credits.json')
+    run('build', '--repo', repo, '--name', 'example-site', '--out', out)
+    const ledger = JSON.parse(readFileSync(out, 'utf8'))
+    ledger.standard = 'AI Use Levels 9.9'
+    ledger.order = 'other words'
+    ledger.limits = ['other words']
+    ledger.grades = { other: 'words' }
+    writeFileSync(out, JSON.stringify(ledger))
+    const v = run('verify', '--repo', repo, '--ledger', out)
+    assert.equal(v.status, 0, v.stderr)
+  })
+
+  it('build refuses to merge a prior ledger of another repository or schema', () => {
+    const out = join(tmp(), 'credits.json')
+    assert.equal(run('build', '--repo', repo, '--name', 'other-site', '--out', out).status, 0)
+    const r = run('build', '--repo', repo, '--name', 'example-site', '--out', out)
+    assert.equal(r.status, 2)
+    assert.match(r.stderr, /ledger of other-site/)
+    assert.match(r.stderr, /pass --name other-site/)
+    const again = run('build', '--repo', repo, '--name', 'other-site', '--out', out)
+    assert.equal(again.status, 0, 'the same repository rebuilds in place')
+    const ledger = JSON.parse(readFileSync(out, 'utf8'))
+    ledger.schema = 'ai-credits/0'
+    writeFileSync(out, JSON.stringify(ledger))
+    const sch = run('build', '--repo', repo, '--name', 'other-site', '--out', out)
+    assert.equal(sch.status, 2)
+    assert.match(sch.stderr, /written under schema ai-credits\/0/)
   })
 
   it('refuses a missing argument and an unknown command', () => {
