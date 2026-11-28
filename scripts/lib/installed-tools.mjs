@@ -79,6 +79,14 @@ const tryGit = (dir, ...args) => {
     return null
   }
 }
+// NUL-separated and untrimmed: with -z git prints raw names, so a non-ASCII, quoted or newline-bearing path is not C-quoted or split.
+const tryGitZ = (dir, ...args) => {
+  try {
+    return execFileSync('git', ['-C', dir, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+  } catch {
+    return null
+  }
+}
 const inside = (p, root) => p === root || p.startsWith(root + sep)
 
 /** Program paths a LaunchAgent runs (every argument that is an absolute path to a file). */
@@ -390,7 +398,7 @@ export function installedTools({ home = homedir(), root, launchAgents } = {}) {
       const dir = join(home, c.mirrorDir)
       if (!existsSync(dir)) continue
       checked++
-      const listing = tryGit(clone, 'ls-tree', '-r', '--name-only', 'origin/main', '--', c.sourceDir)
+      const listing = tryGitZ(clone, 'ls-tree', '-r', '--name-only', '-z', 'origin/main', '--', c.sourceDir)
       if (listing === null) {
         unread.push(`~/${c.mirrorDir}`)
         continue
@@ -401,7 +409,7 @@ export function installedTools({ home = homedir(), root, launchAgents } = {}) {
       let compared = 0
       const items = [] // which files, so a count that falls is not news to the drift notifier
       const aheadItems = []
-      for (const src of listing.split('\n').filter(Boolean)) {
+      for (const src of listing.split('\0').filter(Boolean)) {
         const rel = src.slice(c.sourceDir.length + 1)
         if (!c.include.includes(rel.split('/')[0]) || (c.exclude ?? []).includes(rel)) continue
         compared++

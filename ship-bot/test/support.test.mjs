@@ -138,6 +138,14 @@ describe('command runner', () => {
     assert.ok(Date.now() - started < 15000)
   })
 
+  it('a multibyte character split across two chunks comes out whole, on stdout and stderr', async () => {
+    // \u00e9 is 0xC3 0xA9: write the halves 50 ms apart so they arrive as separate chunks.
+    const script = "const s=(w,b)=>w.write(Buffer.from(b));s(process.stdout,[0x61,0xc3]);s(process.stderr,[0xe2,0x82]);setTimeout(()=>{s(process.stdout,[0xa9,0x62]);s(process.stderr,[0xac])},50)"
+    const result = await run({ cmd: process.execPath, args: ['-e', script], kind: 'gate' })
+    assert.equal(result.stdout, 'a\u00e9b')
+    assert.equal(result.stderr, '\u20ac')
+  })
+
   it('reports a command that cannot start', async () => {
     const result = await run({ cmd: '/nonexistent/ship-bot-test-binary', kind: 'deploy' })
     assert.ok(result.error)
