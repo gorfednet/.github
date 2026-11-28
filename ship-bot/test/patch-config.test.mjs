@@ -27,12 +27,17 @@ describe('patch-config', () => {
       const full = example()
       const added = new Set((patch.add ?? []).map((r) => r.slug))
       const raw = { ...full, repos: full.repos.filter((r) => !added.has(r.slug)) }
+      // A row a patch removes is put back first, as a plain merge-only row, so the patch has something to remove.
+      for (const slug of patch.remove ?? []) {
+        raw.repos.push({ slug, dir: slug.split('/')[1], mode: 'merge-only', reason: 'stub for the removal test', claudeReview: true, live: false, expectedChecks: [] })
+      }
       // A top-level key a patch sets is taken out the same way, so the patch has to put back the example's value.
       for (const key of Object.keys(patch.set ?? {})) delete raw[key]
       const { changed, problems } = applyPatch(raw, patch)
       assert.deepEqual(problems, [])
       assert.ok(changed.length > 0)
       assert.deepEqual(validateConfig(raw), [])
+      for (const slug of patch.remove ?? []) assert.equal(raw.repos.some((r) => r.slug === slug), false, `${slug}: still in the config after the patch`)
       for (const slug of added) {
         assert.deepEqual(raw.repos.find((r) => r.slug === slug), full.repos.find((r) => r.slug === slug), `${slug}: the patch row and config.example.json differ`)
       }
@@ -50,6 +55,24 @@ describe('patch-config', () => {
     assert.throws(() => execFileSync(process.execPath, [script, patch, config], { stdio: 'pipe' }))
     assert.equal(readFileSync(config, 'utf8'), before)
     assert.equal(existsSync(`${config}.bak-t-missing`), false)
+  })
+
+  it('removes a row, and refuses to remove one that is not there without writing', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'patch-config-'))
+    const config = join(dir, 'config.json')
+    const before = example()
+    writeFileSync(config, `${JSON.stringify(before, null, 2)}\n`)
+    const patch = join(dir, 'p.json')
+    writeFileSync(patch, JSON.stringify({ label: 't-remove', remove: ['gorfednet/gorfednet'] }))
+    const out = execFileSync(process.execPath, [script, patch, config], { encoding: 'utf8' })
+    assert.match(out, /gorfednet\/gorfednet: removed row/)
+    const after = JSON.parse(readFileSync(config, 'utf8'))
+    assert.equal(after.repos.length, before.repos.length - 1)
+    assert.equal(after.repos.some((r) => r.slug === 'gorfednet/gorfednet'), false)
+    const written = readFileSync(config, 'utf8')
+    writeFileSync(patch, JSON.stringify({ label: 't-remove-missing', remove: ['gorfednet/nope'] }))
+    assert.throws(() => execFileSync(process.execPath, [script, patch, config], { stdio: 'pipe' }), /gorfednet\/nope: no such row to remove/)
+    assert.equal(readFileSync(config, 'utf8'), written)
   })
 
   it('refuses to add a row whose slug is already there and writes nothing', () => {
