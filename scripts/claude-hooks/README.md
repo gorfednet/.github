@@ -133,3 +133,24 @@ A hook on `Stop`, `StopFailure`, `Notification` and `PermissionRequest`. It appe
 - Limits: nothing marks a prompt answered (the next `turn-ended` or later line from that session does), a user interrupt fires no `Stop`, a session started from another session's shell inherits `DESK_SESSION_NAME`, and the file has no rotation yet.
 - Settings entry: `desk-event.settings.json`, merged into the `hooks` block of `~/.claude/settings.json`. Install the file the same way as gh-poll-guard.py.
 - Tests: `test/deskEvent.test.mjs`.
+
+## desk-message-guard.py (plan row 1.62)
+
+A `PreToolUse` hook on the session-message tools. It refuses a message to Desk from a turn the owner didn't start. The refusal tells the session to put the result in the PR's `## Next` and end the turn.
+
+- Why: every message to Desk starts a turn that re-reads its whole context. Turns the owner didn't start cost Desk 1,270M processed tokens in the week of 13 to 19 November 2026, 46% of its total. On 20 November 33 of its 170 turns were messages from other sessions. The rule already sent results to `## Next`. Nothing enforced it.
+- Tools read: `SendMessage`, `send_message` and any `mcp__*__send_message`. No other tool is read.
+- The target is every top-level string in the call, or list of strings, except the message's own text (`message`, `summary`, `body`, `subject` and the like).
+- A target is Desk when it's a title that starts `Active Remote Control [Desk`, with no letter, digit, hyphen or underscore straight after. `[Desk (28 Nov)]` is Desk. `[Desktop sync]` and `[Desk2]` aren't. The match is at the start and case-sensitive.
+- A target is also Desk when it's an app session id (`local_…`) whose record carries that title. The desktop app keeps 1 record a session under `~/Library/Application Support/Claude/claude-code-sessions/`, with `title`, `sessionId` and `cliSessionId`. That store isn't documented, so a release can move it. Then a send by id passes and a send by title is still refused.
+- An id listed in `~/.desk/context-cap-exempt` is Desk too, as a target and as a sender. It's the file `context-cap.py` reads.
+- Desk's own sends pass, so a handover to its successor works. The sender is Desk when its id is in that file, or when the record whose `cliSessionId` is the hook's `session_id` carries the Desk title.
+- The owner's turn passes. The hook reads the newest prompt in the transcript: a main-chain `user` line with an `origin`, a `promptSource` or a `turnOrigin`. `origin.kind` `human` is the owner, typed at the Mac or sent from another device.
+- A session's first prompt never counts as the owner's turn. It's the session's brief, and a brief he pastes reads the same as one a starter types. So a session he opens with "tell Desk X" is refused once, and the message says a later turn of his passes.
+- A scheduled task's turn passes (`origin.subkind` `scheduled-trigger`). The Desk timer and the owner's reminders are scheduled-task sessions, and each exists to send Desk 1 message. A session's own scheduled wake has no such origin and is refused.
+- Refused: a turn started by a background-task notice, by another session's message, by a starter session's brief, or by anything else that isn't his. A subagent's send is held like its session's.
+- It fails open. Bad input, another event, no string target, a missing or unreadable transcript, a transcript with no prompt in it, a missing or corrupt session record, an internal error and a 4-second alarm all let the call run.
+- A refusal is exit 2 with the reason on stderr, the only non-zero exit. The settings command starts with `[ -r ~/.claude/hooks/desk-message-guard.py ] || exit 0`, because `python3` also exits 2 on a missing script.
+- Install: copy this file at origin/main to `~/.claude/hooks/`, the same way as gh-poll-guard.py. Then merge `desk-message-guard.settings.json` into the `hooks` block of `~/.claude/settings.json`. Settings before the file lets every call through.
+- Tests: `test/deskMessageGuard.test.mjs`. Test overrides: `DESK_MESSAGE_GUARD_SESSIONS_DIR`, `DESK_MESSAGE_GUARD_DESK_FILE`.
+- Not covered: a message typed into a session's terminal from a shell (`hc send`), a session in a cloud or on another machine, and a Desk whose title was changed. A transcript that restarts in a new file makes the owner's next message read as a first prompt, and it's refused once.
